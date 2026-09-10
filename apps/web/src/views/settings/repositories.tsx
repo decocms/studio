@@ -108,6 +108,7 @@ function AccountRow({
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
+  const capabilities = useGitProviderCapabilities();
   const needsReconnect = account.status === "revoked" || !account.servable;
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
@@ -149,6 +150,17 @@ function AccountRow({
         </div>
       </div>
       <div className="flex flex-wrap justify-end gap-2 max-w-full">
+        {account.type === "github" &&
+          account.installationId &&
+          capabilities.data?.github.connectPath && (
+            <Button variant="outline" size="sm" asChild>
+              <a
+                href={`${capabilities.data.github.connectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories`)}`}
+              >
+                {t("settings.repositories.githubEditWorkspaceAccess")}
+              </a>
+            </Button>
+          )}
         {account.type === "github" &&
           account.installationId &&
           account.servable && (

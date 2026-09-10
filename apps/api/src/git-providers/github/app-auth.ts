@@ -200,11 +200,11 @@ export interface GithubInstallation {
 }
 
 /**
- * An installation a user may connect, with how much of it they authorized.
+ * An installation the user may choose repositories from.
  *
- * `repositoryIds: null` is the whole installation — the account's own owner
- * connected it. A list is the subset of repositories the connecting user
- * administers, which is all Studio may ever mint a token for on that account.
+ * `repositoryIds: null` means the user owns the account and may choose any
+ * installed repository. A list identifies repositories they administer.
+ * The persisted workspace grant is always a separate, explicit selection.
  */
 export interface AuthorizedInstallation extends GithubInstallation {
   repositoryIds: number[] | null;
@@ -448,16 +448,15 @@ export class GithubAppAuth {
   }
 
   /**
-   * The installations this user may hand to a Studio organization, and how
-   * much of each one they may hand over.
+   * The installations this user may delegate from. This is their authority
+   * ceiling; the connect route separately validates the selected repositories.
    *
    * GitHub lists an installation whenever the user can see a single repository
    * in it, and seeing a repository is not authority over the rest of the
    * account. So the answer is narrowed to what the user can actually authorize:
    *
-   * - their own personal account, whole (`repositoryIds: null`);
-   * - an organization they own, whole — an owner can install the App on any of
-   *   its repositories anyway;
+   * - their own personal account (`repositoryIds: null`);
+   * - an organization they own, where they may choose any installed repo;
    * - otherwise, only the repositories of that installation they administer,
    *   which is exactly the set GitHub would let them install the App on.
    *
@@ -532,13 +531,67 @@ export class GithubAppAuth {
     };
   }
 
+  /** Repository choices use the temporary user grant, never an installation token. */
+  async listRepositoryChoices(
+    userToken: string,
+    installation: AuthorizedInstallation,
+    page: number,
+  ) {
+    const result = z
+      .object({
+        repositories: z.array(
+          z.object({
+            id: z.number().int().positive().safe(),
+            full_name: z.string().min(1),
+            permissions: z.object({ admin: z.boolean().optional() }).optional(),
+          }),
+        ),
+      })
+      .parse(
+        await this.userGet(
+          `/user/installations/${installation.installationId}/repositories?per_page=100&page=${page}`,
+          userToken,
+          "list_repository_choices",
+        ),
+      );
+    return {
+      repositories: result.repositories
+        .filter(
+          (repo) =>
+            installation.repositoryIds === null ||
+            repo.permissions?.admin === true,
+        )
+        .map((repo) => ({ id: repo.id, name: repo.full_name })),
+      hasMore: result.repositories.length === 100,
+    };
+  }
+
+  /** Recheck every selected id against current installation membership and admin access. */
+  async canAuthorizeRepositories(
+    userToken: string,
+    installation: AuthorizedInstallation,
+    repositoryIds: number[],
+  ): Promise<boolean> {
+    const remaining = new Set(repositoryIds);
+    for (let page = 1; ; page++) {
+      const choices = await this.listRepositoryChoices(
+        userToken,
+        installation,
+        page,
+      );
+      for (const repo of choices.repositories) remaining.delete(repo.id);
+      if (remaining.size === 0) return true;
+      if (!choices.hasMore) return false;
+    }
+  }
+
   /**
    * The repositories of one installation the user administers, by id.
    *
    * Ids rather than names because the grant outlives a rename. The walk stops
    * at `MAX_TOKEN_REPOSITORIES`: a token cannot be minted for more than that
-   * anyway, and somebody who administers 500 repositories of an organization
-   * is better served by its owner connecting the whole installation.
+   * anyway. Repository selection and validation paginate independently, so
+   * this preview count never limits which repositories the user can select.
    */
   private async administeredRepositories(
     userToken: string,

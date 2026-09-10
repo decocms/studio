@@ -132,6 +132,23 @@ export const settings = {
     "Use a personal, project or group access token.",
   "settings.repositories.addGithubAccount":
     "Add GitHub account or organization",
+  "settings.repositories.githubSelectTitle": "Select repositories",
+  "settings.repositories.githubSelectedShareHint":
+    "Members with repository permissions in {organization} can use the repositories you authorize here.",
+  "settings.repositories.githubSelectHint":
+    "Choose up to 500 repositories for this workspace.",
+  "settings.repositories.githubReplaceHint":
+    "Saving replaces this account’s existing workspace access with your selection. Removed repositories stop receiving new credentials. Previously issued credentials may work until they expire.",
+  "settings.repositories.githubFilterRepos": "Filter loaded repositories",
+  "settings.repositories.githubNoRepos":
+    "No repositories available to authorize.",
+  "settings.repositories.githubAccessChanged":
+    "Someone changed this account’s access. Go back and review the repositories again before saving.",
+  "settings.repositories.githubMoreRepos": "Load more repositories",
+  "settings.repositories.githubBack": "Back to accounts",
+  "settings.repositories.githubSaveOneRepo": "Authorize 1 repository",
+  "settings.repositories.githubSaveRepos": "Authorize {count} repositories",
+  "settings.repositories.githubEditWorkspaceAccess": "Change workspace access",
   "settings.repositories.githubShareHint":
     "Choose your personal GitHub account, or an organization where you administer repositories, to share with {organization}. Members with repository permissions in Studio can use this connection.",
   "settings.repositories.githubInstallHint":

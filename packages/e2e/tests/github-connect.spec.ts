@@ -20,15 +20,20 @@ type Installation = {
     avatar_url: string | null;
   };
   /** What the connecting user sees in the installation, and may install on. */
-  repositories?: Array<{ id: number; permissions?: { admin?: boolean } }>;
+  repositories?: Array<{
+    id: number;
+    full_name?: string;
+    permissions?: { admin?: boolean };
+  }>;
 };
 function installation(
   login: string,
   type: "Organization" | "User" = "Organization",
   repositories?: Installation["repositories"],
 ): Installation {
+  const id = Math.floor(Math.random() * 1_000_000_000) + 1;
   return {
-    id: Math.floor(Math.random() * 1_000_000_000) + 1,
+    id,
     account: {
       id:
         type === "User" ? 1001 : Math.floor(Math.random() * 1_000_000_000) + 1,
@@ -36,7 +41,10 @@ function installation(
       type,
       avatar_url: null,
     },
-    ...(repositories && { repositories }),
+    repositories: (repositories ?? [{ id }]).map((repo) => ({
+      ...repo,
+      full_name: repo.full_name ?? `${login}/repo-${repo.id}`,
+    })),
   };
 }
 async function grantAccess(
@@ -58,7 +66,13 @@ async function grantAccess(
   const result = await request.post(`${fixtureOrigin}/__admin/github-users`, {
     data: {
       token,
-      installations,
+      installations: installations.map((item) => ({
+        ...item,
+        repositories: item.repositories?.map((repo) => ({
+          ...repo,
+          full_name: repo.full_name ?? `${item.account.login}/repo-${repo.id}`,
+        })),
+      })),
       user: { id: identity?.id ?? 1001, login: "connecting-user" },
       memberships:
         identity?.memberships ??
@@ -76,6 +90,28 @@ async function grantAccess(
   });
   expect(result.ok()).toBe(true);
 }
+async function grantInput(
+  request: APIRequestContext,
+  path: string,
+  installation: Installation,
+  repositoryIds?: number[],
+) {
+  const choices = await request.get(
+    `${path}/repositories?installationId=${installation.id}`,
+  );
+  const accountVersion = choices.ok()
+    ? (await choices.json()).accountVersion
+    : null;
+  return {
+    installationId: installation.id,
+    repositoryIds: repositoryIds ??
+      installation.repositories
+        ?.filter((repo) => repo.permissions?.admin !== false)
+        .map((repo) => repo.id) ?? [1],
+    accountVersion,
+  };
+}
+
 async function seedFlow(
   { page, orgSlug, user }: AuthedPage,
   installations: Installation[] = [],
@@ -149,6 +185,10 @@ test("choose one account, show its Studio connector, and manage that installatio
     animations: "disabled",
   });
   await dialog.getByRole("button", { name: selected.account.login }).click();
+  await dialog.getByRole("checkbox").first().check();
+  await dialog
+    .getByRole("button", { name: "Authorize 1 repository", exact: true })
+    .click();
   await expect(dialog).toHaveCount(0);
   await expect(
     page.getByText(`Connected by ${user.name}`, { exact: true }),
@@ -196,8 +236,12 @@ test("choose one account, show its Studio connector, and manage that installatio
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(manage).toBeVisible();
-  const bounds = await manage.boundingBox();
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await expect
+    .poll(async () => {
+      const bounds = await manage.boundingBox();
+      return bounds ? bounds.x + bounds.width : Infinity;
+    })
+    .toBeLessThanOrEqual(390);
   await expect(
     page.getByRole("heading", { name: "Connected accounts" }),
   ).toBeVisible();
@@ -254,6 +298,10 @@ test("installation in another tab refreshes the original chooser and closes the 
     dialog.getByRole("button", { name: account.account.login }),
   ).toBeVisible();
   await dialog.getByRole("button", { name: account.account.login }).click();
+  await dialog.getByRole("checkbox").first().check();
+  await dialog
+    .getByRole("button", { name: "Authorize 1 repository", exact: true })
+    .click();
   await expect(dialog).toHaveCount(0);
 });
 
@@ -271,6 +319,10 @@ test("check access recovers when GitHub stays on its settings page", async ({
   await page.getByRole("button", { name: "Check access", exact: true }).click();
   await page
     .getByRole("button", { name: account.account.login, exact: true })
+    .click();
+  await page.getByRole("dialog").getByRole("checkbox").first().check();
+  await page
+    .getByRole("button", { name: "Authorize 1 repository", exact: true })
     .click();
   const manage = page.getByRole("link", { name: "Manage repository access" });
   await expect(manage).toBeVisible();
@@ -306,7 +358,9 @@ test("flow ownership, expiry, validation, and concurrent completion protect the 
       expect((await outsider.get(path)).status()).toBe(410);
       expect(
         (
-          await outsider.post(path, { data: { installationId: account.id } })
+          await outsider.post(path, {
+            data: await grantInput(page.request, flow.path, account),
+          })
         ).status(),
       ).toBe(410);
       expect((await outsider.delete(path)).status()).toBe(204);
@@ -314,7 +368,11 @@ test("flow ownership, expiry, validation, and concurrent completion protect the 
     expect(
       (
         await page.request.post(flow.path, {
-          data: { installationId: account.id + 1 },
+          data: {
+            installationId: account.id + 1,
+            repositoryIds: [1],
+            accountVersion: null,
+          },
         })
       ).status(),
     ).toBe(403);
@@ -335,8 +393,10 @@ test("flow ownership, expiry, validation, and concurrent completion protect the 
     expect(listed.headers()["cache-control"]).toBe("no-store");
     expect(await listed.text()).not.toContain(flow.token);
     const results = await Promise.all(
-      [1, 2].map(() =>
-        page.request.post(flow.path, { data: { installationId: account.id } }),
+      [1, 2].map(async () =>
+        page.request.post(flow.path, {
+          data: await grantInput(page.request, flow.path, account),
+        }),
       ),
     );
     expect(results.map((r) => r.status()).sort()).toEqual([200, 410]);
@@ -353,7 +413,7 @@ test("flow ownership, expiry, validation, and concurrent completion protect the 
     expect(
       (
         await outsider.post(teammate.path, {
-          data: { installationId: account.id },
+          data: await grantInput(outsider, teammate.path, account),
         })
       ).status(),
     ).toBe(200);
@@ -373,7 +433,7 @@ test("flow ownership, expiry, validation, and concurrent completion protect the 
   expect(
     (
       await page.request.post(expired.path, {
-        data: { installationId: account.id },
+        data: await grantInput(page.request, flow.path, account),
       })
     ).status(),
   ).toBe(410);
@@ -581,6 +641,10 @@ test("OAuth creates an encrypted chooser grant, setup refreshes it, and restarti
     await page
       .getByRole("button", { name: account.account.login, exact: true })
       .click();
+    await page.getByRole("dialog").getByRole("checkbox").first().check();
+    await page
+      .getByRole("button", { name: "Authorize 1 repository", exact: true })
+      .click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(
       page.getByText(`Connected by ${user.name}`, { exact: true }),
@@ -629,7 +693,7 @@ test("access to a collaborator's personal installation does not authorize sharin
     body.installations.map((item: { login: string }) => item.login),
   ).not.toContain(collaborator.account.login);
   const connected = await authedPage.page.request.post(flow.path, {
-    data: { installationId: collaborator.id },
+    data: await grantInput(authedPage.page.request, flow.path, collaborator),
   });
   expect(connected.status()).toBe(403);
   await authedPage.page.addInitScript(() =>
@@ -697,7 +761,9 @@ test("an organization member shares only the repositories they administer", asyn
     expect(
       (
         await page.request.post(flow.path, {
-          data: { installationId: forbidden.id },
+          data: await grantInput(page.request, flow.path, forbidden, [
+            forbidden.repositories?.[0]?.id ?? 1,
+          ]),
         })
       ).status(),
     ).toBe(403);
@@ -709,14 +775,16 @@ test("an organization member shares only the repositories they administer", asyn
   });
   expect(
     (
-      await page.request.post(flow.path, { data: { installationId: owned.id } })
+      await page.request.post(flow.path, {
+        data: await grantInput(page.request, flow.path, owned),
+      })
     ).status(),
   ).toBe(403);
   // Losing the membership costs them nothing they administer, though.
   expect(
     (
       await page.request.post(flow.path, {
-        data: { installationId: member.id },
+        data: await grantInput(page.request, flow.path, member),
       })
     ).status(),
   ).toBe(200);
@@ -776,10 +844,34 @@ test("connecting checks repositories only for the selected organization", async 
     memberships: [],
   });
   const selected = installations[3]!;
+  const repositoryPath = `/user/installations/${selected.id}/repositories?per_page=100&page=1`;
+  const choices = await page.request.get(
+    `${flow.path}/repositories?installationId=${selected.id}`,
+  );
+  expect(choices.status()).toBe(200);
+  const selection = await choices.json();
+  expect(selection.repositories.map((repo: { id: number }) => repo.id)).toEqual(
+    [9003],
+  );
+  const beforeConnect = await (
+    await page.request.get(`${fixtureOrigin}/__admin/github-user-requests`, {
+      headers: { Authorization: `Bearer ${flow.token}` },
+    })
+  ).json();
+  // Authority lookup and repository listing both stay within this installation.
+  expect(
+    beforeConnect.paths.filter((path: string) =>
+      path.includes("/repositories?"),
+    ),
+  ).toEqual([repositoryPath, repositoryPath]);
   expect(
     (
       await page.request.post(flow.path, {
-        data: { installationId: selected.id },
+        data: {
+          installationId: selected.id,
+          repositoryIds: [9003],
+          accountVersion: selection.accountVersion,
+        },
       })
     ).status(),
   ).toBe(200);
@@ -790,12 +882,10 @@ test("connecting checks repositories only for the selected organization", async 
   ).json();
   expect(
     stats.paths.filter((path: string) => path.includes("/repositories?")),
-  ).toEqual([
-    `/user/installations/${selected.id}/repositories?per_page=100&page=1`,
-  ]);
+  ).toEqual([repositoryPath, repositoryPath, repositoryPath, repositoryPath]);
 });
 
-test("grants add up between connectors and an owner widens them to the whole installation", async ({
+test("reconnecting replaces the repository selection and an owner remains scoped", async ({
   authedPage,
 }) => {
   const { page, orgSlug } = authedPage;
@@ -812,7 +902,9 @@ test("grants add up between connectors and an owner widens them to the whole ins
   });
   expect(
     (
-      await page.request.post(first.path, { data: { installationId: org.id } })
+      await page.request.post(first.path, {
+        data: await grantInput(page.request, first.path, org, [6001]),
+      })
     ).status(),
   ).toBe(200);
 
@@ -845,12 +937,14 @@ test("grants add up between connectors and an owner widens them to the whole ins
   );
   expect(
     (
-      await page.request.post(second.path, { data: { installationId: org.id } })
+      await page.request.post(second.path, {
+        data: await grantInput(page.request, second.path, org, [6002]),
+      })
     ).status(),
   ).toBe(200);
-  expect((await grant())?.slice().sort()).toEqual([6001, 6002]);
+  expect(await grant()).toEqual([6002]);
 
-  // An owner authorizes the account itself, which is every repository in it.
+  // An owner also has to choose; reconnecting must never widen to the whole installation.
   const third = await seedFlow(authedPage, []);
   await grantAccess(page.request, third.token, [org], {
     memberships: [
@@ -859,10 +953,12 @@ test("grants add up between connectors and an owner widens them to the whole ins
   });
   expect(
     (
-      await page.request.post(third.path, { data: { installationId: org.id } })
+      await page.request.post(third.path, {
+        data: await grantInput(page.request, third.path, org, [6001]),
+      })
     ).status(),
   ).toBe(200);
-  expect(await grant()).toBeNull();
+  expect(await grant()).toEqual([6001]);
   const accounts = await callSelfMcpTool<{
     accounts: Array<{ login: string; servable: boolean }>;
   }>(page.request, orgSlug, "GIT_ACCOUNT_LIST", {});
@@ -901,7 +997,7 @@ test("a partial grant reaches its repositories and nothing else in the installat
     ],
   });
   const connected = await page.request.post(flow.path, {
-    data: { installationId: org.id },
+    data: await grantInput(page.request, flow.path, org),
   });
   expect(connected.status()).toBe(200);
   const { account } = (await connected.json()) as { account: { id: string } };
@@ -950,7 +1046,7 @@ test("owner lookup handles membership pagination and fails closed on GitHub erro
     expect(
       (
         await page.request.post(flow.path, {
-          data: { installationId: owned.id },
+          data: await grantInput(page.request, flow.path, owned),
         })
       ).status(),
     ).toBe(502);
@@ -1022,7 +1118,7 @@ test("historical accounts cannot mint credentials until an owner reconnects, and
     expect(
       (
         await page.request.post(flow.path, {
-          data: { installationId: owned.id },
+          data: await grantInput(page.request, flow.path, owned),
         })
       ).status(),
     ).toBe(200);
@@ -1046,5 +1142,259 @@ test("historical accounts cannot mint credentials until an owner reconnects, and
     ).rejects.toThrow("revoked");
   } finally {
     await db.end();
+  }
+});
+
+test("an owner chooses one repository across pages and malformed or foreign selections never authorize an account", async ({
+  authedPage,
+}, testInfo) => {
+  const { page } = authedPage;
+  const baseId = Math.floor(Math.random() * 100_000_000) + 10_000;
+  const repos = Array.from({ length: 101 }, (_, i) => ({ id: baseId + i }));
+  const account = installation("selected-projects", "Organization", repos);
+  const flow = await seedFlow(authedPage, [account]);
+  const input = await grantInput(page.request, flow.path, account, [
+    baseId + 100,
+  ]);
+  for (const repositoryIds of [
+    undefined,
+    null,
+    [],
+    [baseId, baseId],
+    [0],
+    [-1],
+    [1.5],
+    ["1"],
+    Array.from({ length: 501 }, (_, i) => baseId + i),
+  ]) {
+    expect(
+      (
+        await page.request.post(flow.path, {
+          data: { ...input, repositoryIds },
+        })
+      ).status(),
+    ).toBe(400);
+  }
+  expect(
+    (
+      await page.request.post(flow.path, {
+        data: { ...input, repositoryIds: [baseId, baseId + 200] },
+      })
+    ).status(),
+  ).toBe(403);
+  const accounts = await callSelfMcpTool<{ accounts: unknown[] }>(
+    page.request,
+    authedPage.orgSlug,
+    "GIT_ACCOUNT_LIST",
+    {},
+  );
+  expect(accounts.accounts).toEqual([]);
+  await page.goto(flow.url);
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: account.account.login, exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Authorize 0 repositories",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(100);
+  await dialog
+    .getByRole("button", { name: "Load more repositories", exact: true })
+    .click();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(101);
+  await dialog.getByRole("checkbox").last().check();
+  await page.screenshot({
+    path: testInfo.outputPath("github-repository-consent.png"),
+    animations: "disabled",
+  });
+  await dialog
+    .getByRole("button", { name: "Authorize 1 repository", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  const db = await connectDevDb();
+  try {
+    const saved = await db.query(
+      "SELECT installation_repository_ids FROM git_provider_accounts WHERE organization_id=$1",
+      [flow.orgId],
+    );
+    expect(saved.rows).toEqual([
+      { installation_repository_ids: [baseId + 100] },
+    ]);
+  } finally {
+    await db.end();
+  }
+});
+
+test("a repo admin cannot select a non-admin repository or retain permission lost after listing", async ({
+  authedPage,
+}) => {
+  const { page } = authedPage;
+  const account = installation("limited-selection", "Organization", [
+    { id: 91001, permissions: { admin: true } },
+    { id: 91002, permissions: { admin: true } },
+    { id: 91003, permissions: { admin: false } },
+  ]);
+  const flow = await seedFlow(authedPage, [account]);
+  await grantAccess(page.request, flow.token, [account], { memberships: [] });
+  const path = `${flow.path}/repositories?installationId=${account.id}`;
+  expect(
+    (await (await page.request.get(path)).json()).repositories.map(
+      (repo: { id: number }) => repo.id,
+    ),
+  ).toEqual([91001, 91002]);
+  const input = await grantInput(
+    page.request,
+    flow.path,
+    account,
+    [91001, 91003],
+  );
+  expect((await page.request.post(flow.path, { data: input })).status()).toBe(
+    403,
+  );
+  await grantAccess(
+    page.request,
+    flow.token,
+    [
+      {
+        ...account,
+        repositories: [
+          { id: 91001, permissions: { admin: false } },
+          { id: 91002, permissions: { admin: true } },
+        ],
+      },
+    ],
+    { memberships: [] },
+  );
+  expect(
+    (
+      await page.request.post(flow.path, {
+        data: { ...input, repositoryIds: [91001] },
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await page.request.post(flow.path, {
+        data: { ...input, repositoryIds: [91002] },
+      })
+    ).status(),
+  ).toBe(200);
+});
+
+test("a narrowed legacy grant blocks linked repos and a stale chooser cannot restore access", async ({
+  authedPage,
+  playwright,
+}) => {
+  const { page, orgSlug } = authedPage;
+  const suffix = randomUUID().slice(0, 8);
+  const repoId = Math.floor(Math.random() * 100_000_000) + 1;
+  const account = installation(`workspace-${suffix}`, "Organization", [
+    { id: repoId },
+    { id: repoId + 1 },
+  ]);
+  const kept = `${account.account.login}/kept`;
+  const removed = `${account.account.login}/removed`;
+  for (const [i, path] of [kept, removed].entries()) {
+    const [owner, repo] = path.split("/");
+    expect(
+      (
+        await page.request.post(`${fixtureOrigin}/__admin/repos`, {
+          data: {
+            owner,
+            repo,
+            id: repoId + i,
+            branches: { main: { files: { "README.md": "Synthetic fixture" } } },
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+  }
+  const initial = await seedFlow(authedPage, [account]);
+  const response = await page.request.post(initial.path, {
+    data: await grantInput(page.request, initial.path, account),
+  });
+  expect(response.status()).toBe(200);
+  const accountId = (await response.json()).account.id;
+  const linked = await callSelfMcpTool<{ repository: { id: string } }>(
+    page.request,
+    orgSlug,
+    "REPOSITORY_LINK",
+    {
+      accountId,
+      url: `https://github.com/${removed}`,
+    },
+  );
+  const teammate = await newApiContext(playwright);
+  const other = await signUpViaApi(teammate);
+  const db = await connectDevDb();
+  try {
+    await db.query(
+      'INSERT INTO member (id, "organizationId", "userId", role, "createdAt") VALUES ($1,$2,$3,$4,now())',
+      [randomUUID(), initial.orgId, other.userId, "owner"],
+    );
+    // Seed the historical whole-installation contract, then narrow through the real API.
+    await db.query(
+      "UPDATE git_provider_accounts SET installation_repository_ids=NULL, updated_at=now() WHERE id=$1 AND organization_id=$2",
+      [accountId, initial.orgId],
+    );
+    const first = await seedFlow(authedPage, [account]);
+    const second = await seedFlow({ ...authedPage, user: other }, [account]);
+    const narrow = await grantInput(page.request, first.path, account, [
+      repoId,
+    ]);
+    const stale = await grantInput(teammate, second.path, account);
+    expect(
+      (await page.request.post(first.path, { data: narrow })).status(),
+    ).toBe(200);
+    expect((await teammate.post(second.path, { data: stale })).status()).toBe(
+      409,
+    );
+    expect((await teammate.get(second.path)).status()).toBe(200);
+    const saved = await db.query(
+      "SELECT installation_repository_ids FROM git_provider_accounts WHERE id=$1 AND organization_id=$2",
+      [accountId, initial.orgId],
+    );
+    expect(saved.rows).toEqual([{ installation_repository_ids: [repoId] }]);
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, "REPOSITORY_LINK", {
+        accountId,
+        url: `https://github.com/${removed}`,
+      }),
+    ).rejects.toThrow(/was not found|cannot access/);
+    await expect(
+      callSelfMcpTool(page.request, orgSlug, "REPOSITORY_SEARCH_BRANCHES", {
+        repositoryId: linked.repository.id,
+        query: "",
+      }),
+    ).rejects.toThrow();
+    const visible = await callSelfMcpTool<{
+      repositories: Array<{ id: string; usable: boolean }>;
+    }>(page.request, orgSlug, "REPOSITORY_LIST", {});
+    expect(visible.repositories).toContainEqual(
+      expect.objectContaining({ id: linked.repository.id, usable: false }),
+    );
+    const allowed = await callSelfMcpTool<{ repository: { path: string } }>(
+      page.request,
+      orgSlug,
+      "REPOSITORY_LINK",
+      { accountId, url: `https://github.com/${kept}` },
+    );
+    expect(allowed.repository.path).toBe(kept);
+    const third = await seedFlow(authedPage, [account]);
+    const thirdInput = await grantInput(page.request, third.path, account, [
+      repoId,
+    ]);
+    const refreshed = await grantInput(teammate, second.path, account);
+    const raced = await Promise.all([
+      page.request.post(third.path, { data: thirdInput }),
+      teammate.post(second.path, { data: refreshed }),
+    ]);
+    expect(raced.map((result) => result.status()).sort()).toEqual([200, 409]);
+  } finally {
+    await db.end();
+    await teammate.dispose();
   }
 });

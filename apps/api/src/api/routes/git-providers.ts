@@ -11,11 +11,10 @@
  *   started the flow. The session cookie rides along on the top-level redirect,
  *   and the callback insists the session user is the state's user.
  *
- * GitHub: user-to-server OAuth is used ONLY to prove which App installations
- * the user owns or administers. Repository collaborators cannot share an
- * installation. An encrypted, ten-minute grant
- * lets the user select an installation or install the App in another tab. The
- * grant is deleted after selection; saved accounts use the App private key.
+ * GitHub: user OAuth proves which repositories the user may delegate. The
+ * user explicitly selects a workspace grant, including when they own the org.
+ * The encrypted ten-minute user grant is deleted after selection; saved
+ * accounts mint repository-restricted tokens using the App private key.
  *
  * GitLab: standard OAuth with a refreshable grant stored on the account.
  *
@@ -28,7 +27,14 @@ import { z } from "zod";
 import { ContextFactory } from "@/core/context-factory";
 import type { StudioContext } from "@/core/studio-context";
 import { getPublicUrl } from "@/core/server-constants";
-import { getGithubAppAuth } from "@/git-providers/github/app-auth";
+import {
+  getGithubAppAuth,
+  MAX_TOKEN_REPOSITORIES,
+} from "@/git-providers/github/app-auth";
+import {
+  GithubAccountChangedError,
+  githubAccountVersion,
+} from "@/storage/github-connect-flows";
 import { readGithubAppConfig } from "@/git-providers/github/env";
 import { readGitlabOAuthConfig } from "@/git-providers/gitlab/env";
 import {
@@ -177,6 +183,60 @@ export const createGitProviderRoutes = () => {
     }
   });
 
+  app.get("/git-providers/github/flows/:id/repositories", async (c) => {
+    const ctx = c.get("studioContext");
+    if (!ctx.auth.user || !ctx.organization)
+      return c.json({ error: "Unauthorized" }, 401);
+    await ctx.access.check("GIT_ACCOUNT_CONNECT_TOKEN");
+    c.header("Cache-Control", "no-store");
+    const input = z
+      .object({
+        installationId: z.coerce.number().int().positive().safe(),
+        page: z.coerce.number().int().positive().safe().default(1),
+      })
+      .safeParse(c.req.query());
+    if (!input.success) return c.json({ error: "Invalid installation" }, 400);
+    const owner = {
+      organizationId: ctx.organization.id,
+      userId: ctx.auth.user.id,
+    };
+    const flow = await ctx.storage.githubConnectFlows.get(
+      c.req.param("id"),
+      owner,
+    );
+    if (!flow) return c.json({ error: "flow_expired" }, 410);
+    const appAuth = getGithubAppAuth();
+    if (!appAuth) return c.json({ error: "not_configured" }, 503);
+    try {
+      const userToken = await ctx.vault.decrypt(flow.encrypted_access_token);
+      const access = await appAuth.listAuthorizedInstallations(
+        userToken,
+        input.data.installationId,
+      );
+      const installation = access.installations.find(
+        (item) => item.installationId === input.data.installationId,
+      );
+      if (!installation)
+        return c.json({ error: "installation_forbidden" }, 403);
+      const choices = await appAuth.listRepositoryChoices(
+        userToken,
+        installation,
+        input.data.page,
+      );
+      const account = await ctx.storage.gitProviderAccounts.findByExternalId({
+        organizationId: owner.organizationId,
+        host: "github.com",
+        externalAccountId: String(installation.installationId),
+      });
+      return c.json({
+        ...choices,
+        accountVersion: githubAccountVersion(account),
+      });
+    } catch {
+      return c.json({ error: "github_unavailable" }, 502);
+    }
+  });
+
   app.post("/git-providers/github/flows/:id", async (c) => {
     const ctx = c.get("studioContext");
     if (!ctx.auth.user || !ctx.organization)
@@ -186,7 +246,15 @@ export const createGitProviderRoutes = () => {
     if (!c.req.header("Content-Type")?.startsWith("application/json"))
       return c.json({ error: "Invalid content type" }, 415);
     const input = z
-      .object({ installationId: z.number().int().positive().safe() })
+      .object({
+        installationId: z.number().int().positive().safe(),
+        repositoryIds: z
+          .array(z.number().int().positive().safe())
+          .min(1)
+          .max(MAX_TOKEN_REPOSITORIES)
+          .refine((ids) => new Set(ids).size === ids.length),
+        accountVersion: z.string().max(200).nullable(),
+      })
       .safeParse(await c.req.json().catch(() => null));
     if (!input.success) return c.json({ error: "Invalid installation" }, 400);
     const owner = {
@@ -213,24 +281,41 @@ export const createGitProviderRoutes = () => {
       (item) => item.installationId === input.data.installationId,
     );
     if (!installation) return c.json({ error: "installation_forbidden" }, 403);
-    const account = await ctx.storage.githubConnectFlows.connect(
-      c.req.param("id"),
-      owner,
-      {
-        organizationId: owner.organizationId,
-        type: "github",
-        host: "github.com",
-        authKind: "github_app",
-        externalAccountId: String(installation.installationId),
-        login: installation.login,
-        avatarUrl: installation.avatarUrl,
-        installationId: installation.installationId,
-        installationAuthorizedBy: access.userId,
-        installationRepositoryIds: installation.repositoryIds,
-      },
-    );
-    if (!account) return c.json({ error: "flow_expired" }, 410);
-    return c.json({ account: { id: account.id, login: account.login } });
+    try {
+      const permitted = await appAuth.canAuthorizeRepositories(
+        await ctx.vault.decrypt(flow.encrypted_access_token),
+        installation,
+        input.data.repositoryIds,
+      );
+      if (!permitted) return c.json({ error: "repositories_forbidden" }, 403);
+    } catch {
+      return c.json({ error: "github_unavailable" }, 502);
+    }
+    try {
+      const account = await ctx.storage.githubConnectFlows.connect(
+        c.req.param("id"),
+        owner,
+        {
+          organizationId: owner.organizationId,
+          type: "github",
+          host: "github.com",
+          authKind: "github_app",
+          externalAccountId: String(installation.installationId),
+          login: installation.login,
+          avatarUrl: installation.avatarUrl,
+          installationId: installation.installationId,
+          installationAuthorizedBy: access.userId,
+          installationRepositoryIds: input.data.repositoryIds,
+        },
+        input.data.accountVersion,
+      );
+      if (!account) return c.json({ error: "flow_expired" }, 410);
+      return c.json({ account: { id: account.id, login: account.login } });
+    } catch (error) {
+      if (error instanceof GithubAccountChangedError)
+        return c.json({ error: "account_changed" }, 409);
+      throw error;
+    }
   });
 
   app.delete("/git-providers/github/flows/:id", async (c) => {

@@ -137,6 +137,24 @@ export const settings = {
     "Use um token de acesso pessoal, de projeto ou de grupo.",
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
+  "settings.repositories.githubSelectTitle": "Selecionar repositórios",
+  "settings.repositories.githubSelectedShareHint":
+    "Membros com permissão de repositórios em {organization} poderão usar os repositórios que você autorizar aqui.",
+  "settings.repositories.githubSelectHint":
+    "Escolha até 500 repositórios para este workspace.",
+  "settings.repositories.githubReplaceHint":
+    "Salvar substitui o acesso atual desta conta no workspace pela sua seleção. Repositórios removidos deixam de receber novas credenciais. Credenciais já emitidas podem funcionar até expirarem.",
+  "settings.repositories.githubFilterRepos": "Filtrar repositórios carregados",
+  "settings.repositories.githubNoRepos":
+    "Nenhum repositório disponível para autorizar.",
+  "settings.repositories.githubAccessChanged":
+    "Alguém alterou o acesso desta conta. Volte e revise os repositórios antes de salvar.",
+  "settings.repositories.githubMoreRepos": "Carregar mais repositórios",
+  "settings.repositories.githubBack": "Voltar às contas",
+  "settings.repositories.githubSaveOneRepo": "Autorizar 1 repositório",
+  "settings.repositories.githubSaveRepos": "Autorizar {count} repositórios",
+  "settings.repositories.githubEditWorkspaceAccess":
+    "Alterar acesso do workspace",
   "settings.repositories.githubShareHint":
     "Escolha sua conta pessoal do GitHub, ou uma organização onde você administra repositórios, para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
   "settings.repositories.githubInstallHint":
