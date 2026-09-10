@@ -315,15 +315,11 @@ export class ThreadConnection {
    */
   private chunkBuffer: UIMessageChunk[] | null = [];
 
-  /**
-   * Resolves once the initial page load settles (success, error, or
-   * null-client fallback). Consumers `use()` this to suspend the chat tree
-   * via the `<Suspense fallback={<Chat.Skeleton />}>` boundary in
-   * side-panel-chat.tsx so the first paint isn't an empty message list.
-   * Resolves only — never rejects; error states are surfaced through
-   * `status` so the UI can render an inline error instead of an
-   * ErrorBoundary fallback.
-   */
+  /** Settles once the initial page load does (success, error, or null-client
+   *  fallback). Consumers `use()` it to suspend the chat tree via
+   *  `MainPanelBoundary`, so the first paint is not an empty message list. It
+   *  resolves only, never rejects — errors surface through `status`, letting the
+   *  UI render inline instead of tripping an ErrorBoundary. */
   readonly ready: Promise<void>;
   private resolveReady!: () => void;
 

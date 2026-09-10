@@ -379,17 +379,26 @@ spec:
       volumes:
         {{- if .Values.readOnlyRootFilesystem }}
         # Sized to match the per-container ephemeral-storage limit shape;
-        # individual mounts get a slice. Adjust if a workload needs more.
+        # individual mounts get a slice.
+        #
+        # These are HARD limits: exceed one and the kubelet evicts the whole
+        # pod immediately, killing a run mid-turn with no error the agent or
+        # the user can see. `/tmp` at 1Gi was under that line for any Node
+        # build — a single package-manager cache clears it — and evicted 41
+        # pods in one afternoon in prod, each retry landing on a fresh pod
+        # that filled it again. Sized from what a real install actually
+        # writes, and configurable so raising one does not need a template
+        # edit.
         - name: workdir
           emptyDir:
-            sizeLimit: 4Gi
+            sizeLimit: {{ .Values.volumeSizes.workdir | default "4Gi" }}
         - name: tmp
           emptyDir:
-            sizeLimit: 1Gi
+            sizeLimit: {{ .Values.volumeSizes.tmp | default "4Gi" }}
         {{- end }}
         - name: home
           emptyDir:
-            sizeLimit: 5Gi
+            sizeLimit: {{ .Values.volumeSizes.home | default "5Gi" }}
         {{- if .Values.depsCache.enabled }}
         # Node-local package cache shared across sandbox pods (see the
         # depsCache comment in values.yaml for the hardlink + isolation

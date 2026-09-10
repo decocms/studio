@@ -11,6 +11,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
+import { mergeVirtualMcpLayout } from "./merge-virtual-mcp-layout";
 import { VirtualMCPEntitySchema } from "./schema";
 
 const pinnedViewSchema = z.object({
@@ -77,7 +78,10 @@ export const VIRTUAL_MCP_PINNED_VIEWS_UPDATE = defineTool({
     const updatedUI = {
       ...currentUI,
       pinnedViews: pinnedViews.length > 0 ? pinnedViews : null,
-      layout: layout ?? currentUI.layout ?? null,
+      // `layout` is a partial update. Preserve settings this focused tool does
+      // not accept (for example CMS mode and agent-declared tabs) instead of
+      // replacing the complete persisted layout object.
+      layout: mergeVirtualMcpLayout(currentUI.layout, layout),
     };
 
     const updated = await ctx.storage.virtualMcps.update(

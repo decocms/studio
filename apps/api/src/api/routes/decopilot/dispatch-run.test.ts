@@ -2,15 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { UIMessageChunk } from "ai";
+import { NoResultError } from "kysely";
 import {
   isRunSuperseded,
   RunSupersededError,
 } from "@/harnesses/sandbox-dispatch-client";
+import { PermanentRunError } from "@/core/dispatch-errors";
+import type { StudioContext } from "@/core/studio-context";
 import {
   assertHostedDispatchHarness,
   assertSinglePersistedRequestMessage,
   buildAgentSandboxUiStream,
   buildDurableDispatchInput,
+  resolveAgentInstructions,
+  resolveSecretModelSource,
 } from "./dispatch-run";
 import type { ChatMessage } from "./types";
 
@@ -367,5 +372,93 @@ describe("stream onError takeover guard", () => {
     expect(isRunSuperseded(takeover)).toBe(true);
     expect(isRunSuperseded(replayed)).toBe(true);
     expect(isRunSuperseded(new Error("boom"))).toBe(false);
+  });
+});
+
+describe("resolveAgentInstructions", () => {
+  const agentOwn = { instructions: "You are the org's Super Agent." };
+
+  test("uses the agent's own instructions when the dispatcher overrides nothing", () => {
+    expect(resolveAgentInstructions({}, agentOwn)).toBe(
+      "You are the org's Super Agent.",
+    );
+  });
+
+  test("lets an explicit override REPLACE the agent's own — the reviewer's persona swap", () => {
+    expect(
+      resolveAgentInstructions({ instructions: "You review PRs." }, agentOwn),
+    ).toBe("You review PRs.");
+  });
+
+  /** The board's system prompt is standing context, not a persona: it must add
+   *  to the agent's instructions, never stand in for them. */
+  test("appends to the agent's own instructions without displacing them", () => {
+    expect(
+      resolveAgentInstructions({ appendInstructions: "Use pnpm." }, agentOwn),
+    ).toBe("You are the org's Super Agent.\n\nUse pnpm.");
+  });
+
+  test("appends after an override too, keeping both", () => {
+    expect(
+      resolveAgentInstructions(
+        { instructions: "You review PRs.", appendInstructions: "Use pnpm." },
+        agentOwn,
+      ),
+    ).toBe("You review PRs.\n\nUse pnpm.");
+  });
+
+  test("is the only instruction when the agent has none of its own", () => {
+    expect(
+      resolveAgentInstructions({ appendInstructions: "Use pnpm." }, null),
+    ).toBe("Use pnpm.");
+  });
+
+  test("stays undefined when there is nothing to say", () => {
+    expect(resolveAgentInstructions({}, null)).toBeUndefined();
+    expect(resolveAgentInstructions({}, { instructions: 42 })).toBeUndefined();
+  });
+});
+
+describe("resolveSecretModelSource", () => {
+  test("surfaces an unconfigured credential as a permanent, readable error", async () => {
+    const ctx = {
+      storage: {
+        aiProviderKeys: {
+          resolve: () => Promise.reject(new NoResultError({} as never)),
+        },
+      },
+    } as unknown as StudioContext;
+
+    const rejection = resolveSecretModelSource(
+      ctx,
+      "org-1",
+      "cred-missing",
+      "model-1",
+    );
+
+    await expect(rejection).rejects.toThrow(PermanentRunError);
+    await expect(rejection).rejects.toMatchObject({
+      code: "model_credential_not_found",
+    });
+  });
+
+  test("propagates a transient lookup failure unchanged, not as permanent", async () => {
+    const dbError = new Error("connection terminated unexpectedly");
+    const ctx = {
+      storage: {
+        aiProviderKeys: {
+          resolve: () => Promise.reject(dbError),
+        },
+      },
+    } as unknown as StudioContext;
+
+    const rejection = resolveSecretModelSource(
+      ctx,
+      "org-1",
+      "cred-1",
+      "model-1",
+    );
+
+    await expect(rejection).rejects.toBe(dbError);
   });
 });

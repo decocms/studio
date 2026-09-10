@@ -99,11 +99,11 @@ test.describe("connections / agents / monitor gating", () => {
     // Agents page loads and the create CTA IS shown — the built-in user role
     // is granted agents:manage (USER_ROLE_CAPABILITY_IDS).
     await page.goto(`/${owner.orgSlug}/settings/agents`);
-    await expect(page.getByPlaceholder("Search for an agent...")).toBeVisible({
+    await expect(page.getByPlaceholder("Search for a project...")).toBeVisible({
       timeout: 15_000,
     });
     await expect(
-      page.getByRole("button", { name: "Create Agent" }),
+      page.getByRole("button", { name: "Create Project" }),
     ).toBeVisible();
 
     await ownerCtx.dispose();

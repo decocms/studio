@@ -3,6 +3,9 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { secretInfoSchema } from "./schema";
 
+// Caps the encrypted-at-rest text column against an unbounded caller payload.
+export const MAX_SECRET_VALUE_LENGTH = 65_536;
+
 export const SECRET_CREATE = defineTool({
   name: "SECRET_CREATE",
   description:
@@ -17,7 +20,7 @@ export const SECRET_CREATE = defineTool({
         message:
           "Name may only contain letters, digits, underscore, dot, and hyphen.",
       }),
-    value: z.string().min(1),
+    value: z.string().min(1).max(MAX_SECRET_VALUE_LENGTH),
     description: z.string().max(500).optional(),
   }),
   outputSchema: secretInfoSchema,

@@ -1,6 +1,5 @@
-import { AuthEntry } from "@/components/auth-entry";
+import { AuthEntry, AuthWait } from "@/components/auth-entry";
 import { AuthSplitLayout } from "@/components/auth-split-layout";
-import { SplashScreen } from "@/components/splash-screen";
 import { useNativeSessionSync } from "@/desktop/use-native-session-sync";
 import { authClient } from "@/lib/auth-client";
 import { captureSignupAttribution } from "@/lib/signup-attribution";
@@ -85,7 +84,8 @@ export default function LoginRoute() {
     // If OAuth flow, redirect to authorize endpoint to complete the flow
     if (oauthAuthorizeUrl) {
       window.location.href = oauthAuthorizeUrl;
-      return <SplashScreen />;
+      /** Navigating away to the authorize endpoint — a wait, not a boot. */
+      return <AuthWait />;
     }
     return <Navigate to={next} />;
   }

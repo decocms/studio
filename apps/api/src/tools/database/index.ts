@@ -3,6 +3,7 @@ import type { Kysely } from "kysely";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
+import type { Database } from "../../storage/types";
 
 const QueryResult = z.object({
   results: z.array(z.unknown()).optional(),
@@ -13,7 +14,7 @@ const QueryResult = z.object({
  * Safely escape and quote SQL values
  * This is still not as safe as parameterized queries, but better than raw replacement
  */
-function escapeSqlValue(value: any): string {
+function escapeSqlValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "NULL";
   }
@@ -41,41 +42,123 @@ function escapeSqlValue(value: any): string {
 }
 
 /**
- * Replace ALL placeholders (?, $1, $2, etc.) with escaped values
+ * Replace ALL placeholders (?, $1, $2, etc.) with escaped values.
  *
- * IMPORTANT: We find all placeholder positions FIRST, then replace from end to start.
- * This prevents ? characters inside interpolated values from being treated as placeholders.
+ * Walks the ORIGINAL sql string once, left to right, and only ever appends
+ * escaped values to the output — it never re-scans text it already produced.
+ * A prior version substituted placeholders in separate passes over a `result`
+ * string that grew with each pass; an escaped param containing a literal `?`
+ * or `$1` (e.g. a string param holding "a?b") was then picked up as a REAL
+ * placeholder by a later pass and substituted again, corrupting the query.
+ *
+ * Also tracks single- and double-quoted state: a literal `?` or `$1` typed
+ * inside the SQL text's own string literal (`'what?'`) or a quoted identifier
+ * (`"col?"`) is not a placeholder — treating it as one both mangles that
+ * literal/identifier and steals a positional slot from the real placeholder
+ * later in the query. A doubled `''`/`""` keeps the string/identifier open,
+ * matching how Postgres itself reads an escaped quote.
  */
-function interpolateParams(sql: string, params: any[]): string {
-  // First, handle $1, $2, etc. style placeholders (unambiguous)
-  let result = sql;
-  for (let i = params.length; i >= 1; i--) {
-    const placeholder = `$${i}`;
-    if (result.includes(placeholder)) {
-      result = result.replaceAll(placeholder, escapeSqlValue(params[i - 1]));
+export function interpolateParams(sql: string, params: unknown[]): string {
+  let result = "";
+  let questionMarkIndex = 0;
+  let inString = false;
+  let inIdentifier = false;
+  // Only an E'...' string treats \' as an escape, not a closing quote.
+  let inEscapedString = false;
+  // A DO/CREATE FUNCTION body's own $1 (its arg, not our param) lives here.
+  let dollarQuoteTag: string | null = null;
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    if (!inString && !inIdentifier && dollarQuoteTag === null) {
+      // A `?` inside a comment would otherwise shift every later positional index.
+      if (sql.startsWith("--", i)) {
+        const end = sql.indexOf("\n", i);
+        const comment = end === -1 ? sql.slice(i) : sql.slice(i, end);
+        result += comment;
+        i += comment.length - 1;
+        continue;
+      }
+      if (sql.startsWith("/*", i)) {
+        // Postgres block comments nest, so a `/*` inside bumps depth back up.
+        let depth = 1;
+        let j = i + 2;
+        while (depth > 0 && j < sql.length) {
+          if (sql.startsWith("/*", j)) {
+            depth++;
+            j += 2;
+          } else if (sql.startsWith("*/", j)) {
+            depth--;
+            j += 2;
+          } else {
+            j++;
+          }
+        }
+        const comment = sql.slice(i, j);
+        result += comment;
+        i += comment.length - 1;
+        continue;
+      }
     }
-  }
-
-  // For ? placeholders, find all positions FIRST, then replace from end to start
-  // This prevents ? inside interpolated values from being matched
-  const questionMarkPositions: number[] = [];
-  for (let i = 0; i < result.length; i++) {
-    if (result[i] === "?") {
-      questionMarkPositions.push(i);
+    if (dollarQuoteTag !== null) {
+      const closeDelim = `$${dollarQuoteTag}$`;
+      if (sql.startsWith(closeDelim, i)) {
+        result += closeDelim;
+        i += closeDelim.length - 1;
+        dollarQuoteTag = null;
+      } else {
+        result += char;
+      }
+      continue;
     }
+    if (inString && inEscapedString && char === "\\" && i + 1 < sql.length) {
+      result += char + sql[i + 1];
+      i += 1;
+      continue;
+    }
+    if (!inIdentifier && char === "'") {
+      if (!inString) {
+        const prev = sql[i - 1];
+        const prevPrev = sql[i - 2] ?? "";
+        inEscapedString =
+          (prev === "e" || prev === "E") && !/[A-Za-z0-9_]/.test(prevPrev);
+      }
+      inString = !inString;
+      result += char;
+      continue;
+    }
+    if (!inString && char === '"') {
+      inIdentifier = !inIdentifier;
+      result += char;
+      continue;
+    }
+    if (!inString && !inIdentifier && char === "$") {
+      const match = /^\$(\d+)/.exec(sql.slice(i));
+      const paramIndex = match ? Number(match[1]) - 1 : -1;
+      if (match && paramIndex >= 0 && paramIndex < params.length) {
+        result += escapeSqlValue(params[paramIndex]);
+        i += match[0].length - 1;
+        continue;
+      }
+      // A tag can't start with a digit, so this never fights the $1 case above.
+      const quoteStart = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
+      if (quoteStart) {
+        dollarQuoteTag = quoteStart[1] ?? "";
+        result += quoteStart[0];
+        i += quoteStart[0].length - 1;
+        continue;
+      }
+    } else if (
+      !inString &&
+      !inIdentifier &&
+      char === "?" &&
+      questionMarkIndex < params.length
+    ) {
+      result += escapeSqlValue(params[questionMarkIndex]);
+      questionMarkIndex++;
+      continue;
+    }
+    result += char;
   }
-
-  // Replace from end to start so positions don't shift
-  for (
-    let i = Math.min(questionMarkPositions.length, params.length) - 1;
-    i >= 0;
-    i--
-  ) {
-    const pos = questionMarkPositions[i];
-    const escaped = escapeSqlValue(params[i]);
-    result = result.slice(0, pos!) + escaped + result.slice(pos! + 1);
-  }
-
   return result;
 }
 
@@ -84,7 +167,7 @@ export type QueryResult = z.infer<typeof QueryResult>;
 const DatatabasesRunSqlInputSchema = z.object({
   sql: z.string().describe("The SQL query to run"),
   params: z
-    .array(z.any())
+    .array(z.unknown())
     .describe("The parameters to pass to the SQL query")
     .optional(),
 });
@@ -127,7 +210,7 @@ function isRoleOrSchemaNotFoundError(error: unknown): boolean {
  * - Revokes access to public schema for this role
  */
 async function createSchemaAndRole(
-  db: Kysely<any>,
+  db: Kysely<Database>,
   schemaName: string,
   roleName: string,
 ): Promise<void> {
@@ -178,11 +261,11 @@ async function createSchemaAndRole(
  * settings are automatically reset, preventing cross-request leakage.
  */
 async function executeWithIsolation(
-  db: Kysely<any>,
+  db: Kysely<Database>,
   schemaName: string,
   roleName: string,
   sqlQuery: string,
-): Promise<any> {
+): Promise<unknown> {
   try {
     // Use a transaction with SET LOCAL for concurrency-safe isolation
     // SET LOCAL only affects the current transaction - no leakage to other requests

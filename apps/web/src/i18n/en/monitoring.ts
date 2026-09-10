@@ -1,5 +1,5 @@
 export const monitoring = {
-  "monitoring.types.agent": "Agent",
+  "monitoring.types.agent": "Project",
   "monitoring.types.client": "Client",
   "monitoring.types.connectionNotFound":
     "Could not find the connection for this tool call",

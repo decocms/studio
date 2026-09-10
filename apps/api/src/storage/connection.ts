@@ -45,10 +45,10 @@ import {
 import type { ConnectionStoragePort } from "./ports";
 import type { Database } from "./types";
 
-/** JSON fields that need serialization/deserialization */
+/** JSON fields that need serialization/deserialization. oauth_config is handled
+ * separately below since it's encrypted (it may carry a client secret). */
 const JSON_FIELDS = [
   "connection_headers",
-  "oauth_config",
   "configuration_scopes",
   "metadata",
   "bindings",
@@ -315,6 +315,26 @@ export class ConnectionStorage implements ConnectionStoragePort {
     return row ? this.deserializeConnection(row as RawConnectionRow) : null;
   }
 
+  /**
+   * A connection whose id collides with `id` once `DATABASES_RUN_SQL` folds
+   * hyphens to underscores to build its Postgres schema/role name — excluding
+   * `id` itself. That fold is not injective ("acme-prod" and "acme_prod" both
+   * become "acme_prod"), so two DIFFERENT connections, in different orgs, can
+   * end up sharing the exact same isolated schema and role. Used to refuse
+   * creating the second one rather than silently handing it the first one's
+   * data (see `create.ts`).
+   */
+  async findBySanitizedId(id: string): Promise<ConnectionEntity | null> {
+    const sanitized = id.replace(/-/g, "_");
+    const row = await this.db
+      .selectFrom("connections")
+      .selectAll()
+      .where(sql<string>`replace(id, '-', '_')`, "=", sanitized)
+      .where("id", "!=", id)
+      .executeTakeFirst();
+    return row ? this.deserializeConnection(row as RawConnectionRow) : null;
+  }
+
   async list(
     organizationId: string,
     options?: {
@@ -364,8 +384,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
       }
     }
 
-    // Apply pagination
-    if (options?.limit) {
+    // Apply pagination. `!== undefined`, not truthiness — an explicit `limit: 0` must return zero rows, not "no limit".
+    if (options?.limit !== undefined) {
       query = query.limit(options.limit);
     }
     if (options?.offset) {
@@ -385,6 +405,16 @@ export class ConnectionStorage implements ConnectionStoragePort {
     id: string,
     data: Partial<ConnectionEntity>,
   ): Promise<ConnectionEntity> {
+    // Storage is the real trust boundary: never let identity/ownership columns reach the SET clause.
+    const {
+      id: _id,
+      organization_id: _organizationId,
+      created_by: _createdBy,
+      created_at: _createdAt,
+      ...safeData
+    } = data;
+    data = safeData;
+
     if (Object.keys(data).length === 0) {
       const connection = await this.findById(id);
       if (!connection) throw new Error("Connection not found");
@@ -504,13 +534,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
       } | null;
 
       // Bound the probe — a hanging remote server shouldn't hang this call.
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      let response: Response;
-      try {
-        response = await createNoRedirectFetch()(connection.connection_url, {
+      const response = await createNoRedirectFetch()(
+        connection.connection_url,
+        {
           method: "POST",
-          signal: controller.signal,
+          signal: AbortSignal.timeout(10_000),
           headers: {
             "Content-Type": "application/json",
             ...(connection.connection_token && {
@@ -524,10 +552,8 @@ export class ConnectionStorage implements ConnectionStoragePort {
             method: "ping",
             id: 1,
           }),
-        });
-      } finally {
-        clearTimeout(timer);
-      }
+        },
+      );
 
       return {
         healthy: response.ok || response.status === 404,
@@ -560,6 +586,9 @@ export class ConnectionStorage implements ConnectionStoragePort {
         // Encrypt configuration state
         const stateJson = JSON.stringify(value);
         result[key] = await this.vault.encrypt(stateJson);
+      } else if (key === "oauth_config" && value) {
+        // May carry an OAuth client secret — encrypt like connection_token.
+        result[key] = await this.vault.encrypt(JSON.stringify(value));
       } else if (key === "connection_headers" && value) {
         // For STDIO, encrypt envVars before storing
         const params = value as ConnectionParameters;
@@ -666,28 +695,43 @@ export class ConnectionStorage implements ConnectionStoragePort {
       }
     }
 
-    if (decryptErrors.length > 0) {
-      await this.handleDecryptFailures(row, decryptErrors);
-    } else if (row.connection_token || row.configuration_state) {
-      recordDecryptSuccess(row.id);
+    // Falls back to plain JSON for connections written before encryption.
+    let decryptedOAuthConfig: OAuthConfig | null = null;
+    if (typeof row.oauth_config === "string") {
+      try {
+        decryptedOAuthConfig = JSON.parse(
+          await this.vault.decrypt(row.oauth_config),
+        );
+      } catch {
+        try {
+          decryptedOAuthConfig = JSON.parse(row.oauth_config);
+        } catch (error) {
+          decryptErrors.push({ label: "oauth config", error });
+        }
+      }
+    } else {
+      decryptedOAuthConfig = row.oauth_config;
     }
 
     // Parse and decrypt connection_headers
     let connectionParameters: ConnectionParameters | null = null;
+    let hasEnvVars = false;
     if (row.connection_headers) {
       try {
         const parsed = JSON.parse(row.connection_headers);
         // For STDIO, decrypt envVars
         if (isStdioParameters(parsed) && parsed.envVars) {
+          hasEnvVars = true;
           const decryptedEnvVars: Record<string, string> = {};
           for (const [envKey, envValue] of Object.entries(parsed.envVars)) {
             try {
               decryptedEnvVars[envKey] = await this.vault.decrypt(
                 envValue as string,
               );
-            } catch {
-              // If decryption fails, keep encrypted value (migration case)
-              decryptedEnvVars[envKey] = envValue as string;
+            } catch (error) {
+              // Don't hand the spawned process raw ciphertext as its env var value.
+              decryptedEnvVars[envKey] = "";
+              decryptErrors.push({ label: `env var "${envKey}"`, error });
             }
           }
           connectionParameters = {
@@ -703,6 +747,17 @@ export class ConnectionStorage implements ConnectionStoragePort {
           error,
         );
       }
+    }
+
+    if (decryptErrors.length > 0) {
+      await this.handleDecryptFailures(row, decryptErrors);
+    } else if (
+      row.connection_token ||
+      row.configuration_state ||
+      row.oauth_config ||
+      hasEnvVars
+    ) {
+      recordDecryptSuccess(row.id);
     }
 
     const parseJson = <T>(value: string | T | null): T | null => {
@@ -732,7 +787,7 @@ export class ConnectionStorage implements ConnectionStoragePort {
       connection_url: row.connection_url,
       connection_token: decryptedToken,
       connection_headers: connectionParameters,
-      oauth_config: parseJson<OAuthConfig>(row.oauth_config),
+      oauth_config: decryptedOAuthConfig,
       configuration_state: decryptedConfigState,
       configuration_scopes: parseJson<string[]>(row.configuration_scopes),
       metadata: parseJson<Record<string, unknown>>(row.metadata),

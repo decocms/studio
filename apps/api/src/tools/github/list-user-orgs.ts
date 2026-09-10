@@ -14,9 +14,10 @@ import {
   isGithubRateLimited,
   recordGithubRateLimit,
 } from "@/observability/github-rate-limit";
+import { USER_BUDGET_OWNER } from "@/git-providers/github/budget-owner";
 
 const GITHUB_API = "https://api.github.com";
-/** Matches the Git Data client's per-attempt timeout in `decofile/github-git-data.ts`. */
+/** Matches the content client's per-attempt timeout in `git-providers/content/github.ts`. */
 const GITHUB_TIMEOUT_MS = 15_000;
 
 interface InstallationsPage {
@@ -169,14 +170,18 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       recordGithubRateLimit(res.headers, {
         lane: "rest",
         operation: "list_user_installations",
+        installation: USER_BUDGET_OWNER,
       });
 
       if (isGithubRateLimited(res)) {
+        // Drain the unread body before discarding, like github/http.ts.
+        await res.body?.cancel().catch(() => {});
         const kind =
           res.headers.get("retry-after") !== null ? "secondary" : "primary";
         countGithubRateLimited({
           lane: "rest",
           operation: "list_user_installations",
+          installation: USER_BUDGET_OWNER,
           kind,
         });
         const waitMs = githubRetryAfterMs(res.headers);
@@ -188,6 +193,7 @@ export const GITHUB_LIST_USER_ORGS = defineTool({
       }
 
       if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
         throw new Error(`GitHub /user/installations failed: ${res.status}`);
       }
 

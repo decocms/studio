@@ -1,3 +1,4 @@
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useState } from "react";
 import { useNavigate, useMatch } from "@tanstack/react-router";
 import {
@@ -574,6 +575,7 @@ export function AccountPopover() {
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <SidebarMenuButton
+              data-tour={LAYOUT_TOUR_ANCHORS.account}
               tooltip={
                 user?.name ?? t("common.accountPopover.defaultAccountLabel")
               }

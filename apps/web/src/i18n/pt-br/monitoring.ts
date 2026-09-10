@@ -1,7 +1,7 @@
 import type { monitoring as monitoringEn } from "../en/monitoring.ts";
 
 export const monitoring = {
-  "monitoring.types.agent": "Agente",
+  "monitoring.types.agent": "Projeto",
   "monitoring.types.client": "Cliente",
   "monitoring.types.connectionNotFound":
     "N\u00e3o foi poss\u00edvel encontrar a conex\u00e3o para esta chamada de ferramenta",

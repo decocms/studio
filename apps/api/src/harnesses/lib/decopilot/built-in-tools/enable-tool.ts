@@ -8,10 +8,15 @@
 import { tool } from "ai";
 import { z } from "zod";
 
+/** Well above any realistic tool catalog (mcp-tools.ts's comment cites 100s of
+ *  tools total); just bounds a runaway/malformed call. */
+const MAX_TOOLS_PER_CALL = 200;
+
 export const EnableToolInputSchema = z.object({
   tools: z
     .array(z.string())
     .min(1)
+    .max(MAX_TOOLS_PER_CALL)
     .describe(
       "Tool ids to enable, taken verbatim from <available-connections>.",
     ),

@@ -62,16 +62,13 @@ import type { BackgroundDispatcher } from "@/harnesses/lib/decopilot/built-in-to
 import { GenerateImageInputSchema } from "@/harnesses/lib/decopilot/built-in-tools/portable-media-tools";
 import { createWebSearchTool } from "@/harnesses/lib/decopilot/built-in-tools/web-search";
 import { createClusterResearchJob } from "./cluster-research-job";
-import {
-  createTakeScreenshotTool,
-  type PendingImage,
-} from "@/harnesses/lib/decopilot/built-in-tools/take-screenshot";
-import { createScrapeUrlTool } from "@/harnesses/lib/decopilot/built-in-tools/scrape-url";
-import { createInspectPageTool } from "@/harnesses/lib/decopilot/built-in-tools/inspect-page";
+import type { PendingImage } from "@/harnesses/lib/decopilot/built-in-tools/vm-tools/types";
 import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-tools/portable-built-ins";
 import { createThreadTools } from "./thread-tools";
+import { createJiraRunTools } from "./jira-run-tools";
 import { createTaskBoardTools } from "./task-board-tools";
-import { BROWSERLESS_BASE_URL } from "@/harnesses/lib/decopilot/built-in-tools/constants";
+import { isDecopilot } from "@decocms/shared/sdk";
+import { createAgentTools } from "./agent-tools";
 import type { ModelsConfig } from "@/harnesses/lib/types";
 import type { StudioProvider } from "@/ai-providers/types";
 import { getSettings } from "@/settings";
@@ -226,7 +223,26 @@ async function buildAllTools(
   // Task-board built-ins — the Super Agent aggregates no connections, so these
   // are the only way it can read or move cards on the board. Before this it had
   // to `subtask`-delegate to the (now retired) Task Manager agent.
-  Object.assign(tools, createTaskBoardTools(ctx));
+  //
+  // A Jira-triggered run gets the ISSUE's tools instead. Its card is a hidden
+  // anchor nobody reads, so handing it the board tools would have it record its
+  // work where no one looks while the issue stayed untouched. The sandbox
+  // harness makes the same swap at its run-scoped MCP endpoint
+  // (`resolveTaskRunToolNames`); this is the same rule for the Decopilot path,
+  // which an org with no repo to work in takes.
+  Object.assign(
+    tools,
+    (await isJiraRun(ctx, taskId))
+      ? createJiraRunTools(ctx, taskId)
+      : createTaskBoardTools(ctx),
+  );
+  // Agent-management built-ins — the Super Agent is the only agent that has
+  // no connections to reach them through, and it is the one asked to create or
+  // fix an agent. Scoped to it so a user-built agent doesn't silently gain the
+  // power to rewrite its siblings. They stay on the Studio MCP endpoint too.
+  if (isDecopilot(agentId)) {
+    Object.assign(tools, createAgentTools(ctx));
+  }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
   // lazily on the first tool invocation: `ensureSandbox` either reuses
@@ -406,37 +422,6 @@ async function buildAllTools(
         "lookups or fact-checks, use `web_search` instead.",
     });
   }
-  // take_screenshot, scrape_url, inspect_page require Browserless API token.
-  if (process.env.BROWSERLESS_TOKEN) {
-    // Resolve Browserless and storage here so the portable tools do not read
-    // StudioContext or environment variables.
-    const browserless = {
-      baseUrl: BROWSERLESS_BASE_URL,
-      token: process.env.BROWSERLESS_TOKEN,
-    };
-    // take_screenshot keeps its nullable objectStorage (it has a data-URI
-    // fallback when storage is unavailable).
-    tools.take_screenshot = createTakeScreenshotTool(writer, {
-      objectStorage: ctx.objectStorage,
-      toolOutputMap,
-      pendingImages,
-    });
-    // scrape_url / inspect_page require non-null objectStorage (the cluster's
-    // `deps.objectStorage` is universal). Object storage is effectively always
-    // present in the cluster; guard so the non-null hook type holds.
-    if (ctx.objectStorage) {
-      tools.scrape_url = createScrapeUrlTool(writer, {
-        browserless,
-        objectStorage: ctx.objectStorage,
-        toolOutputMap,
-      });
-      tools.inspect_page = createInspectPageTool(writer, {
-        browserless,
-        objectStorage: ctx.objectStorage,
-        toolOutputMap,
-      });
-    }
-  }
   return tools as {
     user_ask: typeof userAskTool;
     todo_write: typeof todoWriteTool;
@@ -447,9 +432,6 @@ async function buildAllTools(
     generate_image: ReturnType<typeof createGenerateImageTool>;
     web_search: ReturnType<typeof createWebSearchTool>;
     deep_research: ReturnType<typeof createWebSearchTool>;
-    take_screenshot: ReturnType<typeof createTakeScreenshotTool>;
-    scrape_url: ReturnType<typeof createScrapeUrlTool>;
-    inspect_page: ReturnType<typeof createInspectPageTool>;
   };
 }
 
@@ -468,7 +450,10 @@ export function instrumentBuiltIns<T extends Record<string, unknown>>(
   const userId = ctx.auth?.user?.id;
   const result: Record<string, unknown> = {};
   for (const [name, tool] of Object.entries(tools)) {
-    const t = tool as { execute?: Function; [k: string]: unknown };
+    const t = tool as {
+      execute?: (input: unknown, options: unknown) => unknown;
+      [k: string]: unknown;
+    };
     const originalExecute = t.execute;
     if (typeof originalExecute !== "function") {
       result[name] = tool;
@@ -593,4 +578,24 @@ export function buildBuiltInTools(
     tools.subtask = createSubtaskTool(writer, subtaskParams, ctx);
   }
   return tools;
+}
+
+/**
+ * Whether this run was started by the Jira integration.
+ *
+ * Read off the run thread's own metadata (stamped at dispatch), not off
+ * anything the model or the caller could assert — the same discriminator the
+ * run-scoped MCP endpoint uses. A thread that cannot be read is not a Jira run:
+ * the board tools are the safe default for every other run there is.
+ */
+async function isJiraRun(
+  ctx: StudioContext,
+  threadId: string,
+): Promise<boolean> {
+  try {
+    const thread = await ctx.storage.threads.get(threadId);
+    return thread?.metadata?.source === "jira";
+  } catch {
+    return false;
+  }
 }

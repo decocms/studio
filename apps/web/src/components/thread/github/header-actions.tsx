@@ -1,4 +1,4 @@
-import { useMCPClient, useProjectContext, useVirtualMCP } from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useDecofileWriting } from "@/components/sections-editor/use-decofile-writing";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -16,7 +16,7 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { resolveGithubAttachment } from "@/lib/github-repo.ts";
+import { repoToolTarget, resolveGithubAttachment } from "@/lib/github-repo.ts";
 import {
   branchUserLabel,
   generateBranchName,
@@ -24,7 +24,13 @@ import {
 import { useChatStream } from "../../chat/chat-context.tsx";
 import { useChatTask } from "../../chat/index";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { squashMergePullRequest } from "./github-pr-api.ts";
+import {
+  ChangeRequestMergeRefused,
+  mergeRefusalText,
+  squashMergeChangeRequest,
+} from "./github-pr-api.ts";
+import { useReleases } from "./use-releases";
+import { draftsModeEnabled } from "./use-version-gate";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
   isPrStateActivelyLoading,
@@ -51,7 +57,6 @@ import type {
 } from "@/components/sandbox/hooks/sandbox-events-context";
 import { useT, type TFunction } from "@/i18n/use-t";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
-import { TOUR_ANCHORS } from "@/components/cms-tour/anchors";
 import {
   AlertTriangle,
   CheckCircle,
@@ -135,6 +140,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const { deleteRelease } = useReleases(virtualMcpId);
   const { currentBranch: branch, setCurrentTaskBranch, taskId } = useChatTask();
   const chat = useChatStream();
   const { openSidePanel } = usePanelActions();
@@ -151,12 +157,6 @@ export function HeaderActions({ virtualMcpId }: Props) {
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
-
-  const githubClient = useMCPClient({
-    connectionId: githubRepo?.connectionId ?? "",
-    orgId: org.id,
-    orgSlug: org.slug,
-  });
 
   const {
     lifecycle: sseLifecycle,
@@ -205,7 +205,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -215,7 +215,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -224,7 +224,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const reviewsQuery = usePrReviews({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -318,7 +318,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
 
   const send = (text: string) => {
     // Surface the chat panel so the user sees the message we just sent.
-    openSidePanel("chat");
+    openSidePanel();
     return chat.sendMessage({ parts: [{ type: "text", text }] });
   };
 
@@ -333,19 +333,22 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const switchToFreshBranch = async () => {
+    // Always land on a fresh editable draft, never on read-only production.
+    const published = draftsModeEnabled(vm) ? branch : null;
     const nextBranch = generateBranchName(branchUserLabel(session?.user));
     await setCurrentTaskBranch(nextBranch);
+    if (published && published !== baseBranch) {
+      await deleteRelease(published);
+    }
   };
 
   const handleSquashMerge = async (pullNumber: number) => {
-    if (!githubRepo?.connectionId || githubActionPending) return;
+    if (!githubRepo || githubActionPending) return;
     setGithubActionPending(true);
     try {
       const coAuthor = coAuthorFromSessionUser(session?.user);
-      await squashMergePullRequest(githubClient, {
-        owner: githubRepo.owner,
-        repo: githubRepo.name,
-        pullNumber,
+      await squashMergeChangeRequest(org.slug, repoToolTarget(githubRepo), {
+        number: pullNumber,
         coAuthor,
       });
       toast.success(
@@ -355,9 +358,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
       await switchToFreshBranch();
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("thread.headerActions.failedToMergePullRequest"),
+        err instanceof ChangeRequestMergeRefused
+          ? (err.detail ?? mergeRefusalText(err.reason, t))
+          : err instanceof Error
+            ? err.message
+            : t("thread.headerActions.failedToMergePullRequest"),
       );
     } finally {
       setGithubActionPending(false);
@@ -450,7 +455,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
           virtualMcpId={virtualMcpId}
           branch={sandboxRouteBranch}
           baseBranch={baseBranch}
-          githubConnectionId={githubRepo.connectionId ?? ""}
+          repoTarget={repoToolTarget(githubRepo)}
           owner={githubRepo.owner}
           repo={githubRepo.name}
           previewUrl={previewUrl}
@@ -519,29 +524,19 @@ function HeaderButtonRenderer(props: {
     };
   });
 
-  /** Tour anchors: publish on the Review & Publish primary, submit on create-pr; otherwise off, so the tour skips the step (`skipMissingElement`). */
-  const tourAnchor =
-    action === "publish"
-      ? TOUR_ANCHORS.publish
-      : action === "create-pr"
-        ? TOUR_ANCHORS.submit
-        : undefined;
-
   return (
-    <span className="inline-flex" data-tour={tourAnchor}>
-      <SplitButton
-        size="sm"
-        label={button.label}
-        variant={button.variant}
-        disabled={disabled}
-        loading={loading}
-        {...(action && !loading ? { icon: actionIcon(action) } : {})}
-        {...(tooltip ? { tooltip } : {})}
-        items={items}
-        menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
-        onClick={action ? () => onAction(action) : undefined}
-      />
-    </span>
+    <SplitButton
+      size="sm"
+      label={button.label}
+      variant={button.variant}
+      disabled={disabled}
+      loading={loading}
+      {...(action && !loading ? { icon: actionIcon(action) } : {})}
+      {...(tooltip ? { tooltip } : {})}
+      items={items}
+      menuAriaLabel={t("thread.headerActions.moreActionsAriaLabel")}
+      onClick={action ? () => onAction(action) : undefined}
+    />
   );
 }
 

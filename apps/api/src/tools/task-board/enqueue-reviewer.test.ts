@@ -10,11 +10,15 @@ import {
   authorRunLive,
   MAX_REVIEWER_ATTEMPTS,
   reviewerAttemptsExhausted,
-  pinnedRepoConnectionId,
+  pinnedRepoId,
   priorCycleReviewAt,
   reviewerHandledThisCycle,
   spentAttemptsThisCycle,
   stalePreviewHandoffDue,
+  stalePreviewHandoffOwed,
+  undecidedReviewerThread,
+  verdictNudgedThreads,
+  awaitingVerdictNudge,
 } from "./enqueue-reviewer";
 
 /** Cycle start (the task last entered In Review) at 10:00. */
@@ -256,6 +260,138 @@ describe("reviewerHandledThisCycle", () => {
   });
 });
 
+describe("a reviewer that completed without recording a verdict", () => {
+  // Seen in production: the run finished while it was still "standing by" for a
+  // background task, so it never called the decision tool. The card sat In
+  // Review at 0/1 with nothing to move it — no re-dispatch, no hand-off.
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+
+  it("is not handled, and its attempt is spent, so it re-dispatches", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(1);
+    expect(
+      reviewerAttemptsExhausted(completed, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(false);
+  });
+
+  it("is handled once the verdict is on the cycle's timeline", () => {
+    expect(
+      reviewerHandledThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(true);
+    expect(
+      spentAttemptsThisCycle(completed, "reviewer", CYCLE_START, NOW, true),
+    ).toBe(0);
+  });
+
+  it("hands the card over once the budget is gone", () => {
+    const twice = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "completed",
+        createdAt: "2026-01-01T10:07:00Z",
+      }),
+    ]);
+    expect(
+      reviewerAttemptsExhausted(twice, "reviewer", CYCLE_START, NOW, false),
+    ).toBe(true);
+  });
+});
+
+describe("the ask for a missing verdict", () => {
+  const completed = taskWith([
+    thread({
+      title: "Reviewer: fix",
+      status: "completed",
+      createdAt: "2026-01-01T10:05:00Z",
+    }),
+  ]);
+  const owedThreadId = completed.threads[0]!.threadId;
+
+  it("names the completed thread that owes a verdict", () => {
+    expect(
+      undecidedReviewerThread(
+        completed,
+        "reviewer",
+        CYCLE_START,
+        new Map(),
+        NOW,
+      )?.threadId,
+    ).toBe(owedThreadId);
+  });
+
+  it("asks each thread at most once", () => {
+    const asked = new Map([[owedThreadId, NOW]]);
+    expect(
+      undecidedReviewerThread(completed, "reviewer", CYCLE_START, asked, NOW),
+    ).toBeNull();
+  });
+
+  it("does not ask a failed or still-live run", () => {
+    const dead = taskWith([
+      thread({
+        title: "Reviewer: fix",
+        status: "failed",
+        createdAt: "2026-01-01T10:05:00Z",
+      }),
+      thread({
+        title: "Reviewer: fix",
+        status: "in_progress",
+        createdAt: "2026-01-01T10:06:00Z",
+      }),
+    ]);
+    expect(
+      undecidedReviewerThread(dead, "reviewer", CYCLE_START, new Map(), NOW),
+    ).toBeNull();
+  });
+
+  it("reads the asks off the cycle's timeline, ignoring older ones", () => {
+    const asked = verdictNudgedThreads(
+      [
+        {
+          action: "review_verdict_requested",
+          data: { threadId: "stale" },
+          occurredAt: "2026-01-01T09:00:00Z",
+        },
+        {
+          action: "review_verdict_requested",
+          data: { threadId: owedThreadId },
+          occurredAt: "2026-01-01T10:06:00Z",
+        },
+        {
+          action: "status_changed",
+          data: { to: "in_review" },
+          occurredAt: "2026-01-01T10:00:00Z",
+        },
+      ],
+      CYCLE_START,
+    );
+    expect([...asked.keys()]).toEqual([owedThreadId]);
+  });
+
+  it("holds the reviewer's attempts back only while an ask is fresh", () => {
+    const at = new Date("2026-01-01T10:06:00Z").getTime();
+    expect(awaitingVerdictNudge(new Map([["t", at]]), NOW)).toBe(true);
+    expect(
+      awaitingVerdictNudge(new Map([["t", at]]), at + 11 * 60 * 1000),
+    ).toBe(false);
+  });
+});
+
 describe("reviewerAttemptsExhausted", () => {
   const failed = (createdAt: string) =>
     thread({ title: "Reviewer: fix", status: "failed", createdAt });
@@ -329,35 +465,35 @@ describe("reviewerAttemptsExhausted", () => {
   });
 });
 
-describe("pinnedRepoConnectionId", () => {
+describe("pinnedRepoId", () => {
   const choice = {
     choices: [
-      { connectionId: "conn_a", repo: "decocms/studio" },
-      { connectionId: "conn_b", repo: "decocms/context" },
+      { id: "conn_a", repo: "decocms/studio" },
+      { id: "repo_context", repo: "decocms/context" },
     ],
   };
 
   it("pins the id for the repo the card names", () => {
-    expect(pinnedRepoConnectionId("decocms/studio", choice)).toBe("conn_a");
+    expect(pinnedRepoId("decocms/studio", choice)).toBe("conn_a");
   });
 
   it("leaves the run to discover when the card names no repo", () => {
-    expect(pinnedRepoConnectionId(null, choice)).toBeNull();
+    expect(pinnedRepoId(null, choice)).toBeNull();
   });
 
   it("leaves the run to discover when the name matches nothing loadable", () => {
-    expect(pinnedRepoConnectionId("decocms/gone", choice)).toBeNull();
+    expect(pinnedRepoId("decocms/gone", choice)).toBeNull();
   });
 
   it("has nothing to pin when the sole repo is already cloned", () => {
     const sole = { repo: { owner: "decocms", name: "studio" } };
     expect(
-      pinnedRepoConnectionId(
+      pinnedRepoId(
         "decocms/studio",
-        sole as unknown as Parameters<typeof pinnedRepoConnectionId>[1],
+        sole as unknown as Parameters<typeof pinnedRepoId>[1],
       ),
     ).toBeNull();
-    expect(pinnedRepoConnectionId("decocms/studio", null)).toBeNull();
+    expect(pinnedRepoId("decocms/studio", null)).toBeNull();
   });
 });
 
@@ -442,6 +578,32 @@ describe("stalePreviewHandoffDue", () => {
   it("treats a card with no recorded cycle start as infinitely old", () => {
     expect(stalePreviewHandoffDue(0, at("2026-08-13T17:00:00.000Z"))).toBe(
       true,
+    );
+  });
+});
+
+describe("stalePreviewHandoffOwed", () => {
+  const cycle = Date.parse("2026-08-13T17:00:00.000Z");
+  const staleNow = Date.parse("2026-08-13T18:00:00.000Z");
+
+  it("hands off an undecided reviewer once the preview is stale", () => {
+    expect(stalePreviewHandoffOwed(false, false, cycle, staleNow)).toBe(true);
+  });
+
+  it("never hands off an already-approved card — the verdict already answered the question the preview gate protects", () => {
+    expect(stalePreviewHandoffOwed(true, false, cycle, staleNow)).toBe(false);
+  });
+
+  it("does nothing when the preview does match head", () => {
+    expect(stalePreviewHandoffOwed(false, true, cycle, staleNow)).toBe(false);
+    expect(stalePreviewHandoffOwed(false, undefined, cycle, staleNow)).toBe(
+      false,
+    );
+  });
+
+  it("waits out the grace even for an undecided reviewer", () => {
+    expect(stalePreviewHandoffOwed(false, false, cycle, cycle + 60_000)).toBe(
+      false,
     );
   });
 });

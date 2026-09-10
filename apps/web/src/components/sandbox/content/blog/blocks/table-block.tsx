@@ -1,4 +1,5 @@
 import { Plus, Trash01 } from "@untitledui/icons";
+import { useT } from "@/i18n/use-t.ts";
 import { AddButton, parseJsonArray, str } from "./primitives";
 
 /**
@@ -44,6 +45,7 @@ export function TableBlock({
   rows: string;
   onChange: (next: { headers: string; rows: string }) => void;
 }) {
+  const t = useT();
   const head = parseHeaders(headers);
   const body = parseRows(rows);
 
@@ -122,13 +124,17 @@ export function TableBlock({
                   <input
                     value={cell}
                     onChange={(e) => setHeader(c, e.target.value)}
-                    placeholder={`Header ${c + 1}`}
+                    placeholder={t("sandbox.tableBlock.headerPlaceholder", {
+                      n: c + 1,
+                    })}
                     className="w-full border-0 bg-transparent py-2 pl-7 pr-3 text-xs font-semibold uppercase tracking-wide outline-none placeholder:text-muted-foreground/40 focus:bg-background focus:ring-0"
                   />
                   {colCount > 1 && (
                     <button
                       type="button"
-                      aria-label={`Remove column ${c + 1}`}
+                      aria-label={t("sandbox.tableBlock.removeColumn", {
+                        n: c + 1,
+                      })}
                       onClick={() => removeColumn(c)}
                       className="absolute left-0.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground/50 opacity-0 transition-opacity hover:text-destructive group-hover/col:opacity-100 cursor-pointer"
                     >
@@ -157,7 +163,9 @@ export function TableBlock({
                   {displayBody.length > 1 && (
                     <button
                       type="button"
-                      aria-label={`Remove row ${r + 1}`}
+                      aria-label={t("sandbox.tableBlock.removeRow", {
+                        n: r + 1,
+                      })}
                       onClick={() => removeRow(r)}
                       className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer"
                     >
@@ -173,7 +181,7 @@ export function TableBlock({
                   colSpan={colCount + 1}
                   className="px-3 py-4 text-center text-xs text-muted-foreground"
                 >
-                  No rows yet — add one below.
+                  {t("sandbox.tableBlock.noRowsYet")}
                 </td>
               </tr>
             )}
@@ -181,14 +189,14 @@ export function TableBlock({
         </table>
       </div>
       <div className="flex gap-2">
-        <AddButton label="Add row" onClick={addRow} />
+        <AddButton label={t("sandbox.tableBlock.addRow")} onClick={addRow} />
         <button
           type="button"
           onClick={addColumn}
           className="flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
         >
           <Plus size={13} />
-          Add column
+          {t("sandbox.tableBlock.addColumn")}
         </button>
       </div>
     </div>

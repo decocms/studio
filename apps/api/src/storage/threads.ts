@@ -163,6 +163,8 @@ export class OrgScopedThreadStorage {
       agentId?: string;
       includeArchived?: boolean;
       hasTrigger?: boolean;
+      /** `metadata.source` — e.g. `jira` for runs the Jira integration started. */
+      source?: string;
     },
   ): Promise<{ threads: Thread[]; total: number }> {
     return this.inner.list(this.requireOrg(), createdBy, options);
@@ -442,22 +444,47 @@ export class SqlThreadStorage implements ThreadStoragePort {
   }
 
   /**
-   * Append a repo to `metadata.githubRepos`, in SQL, returning the whole list.
+   * Add a repository to the thread's extra checkouts, returning the whole set.
    *
-   * The append happens inside one UPDATE rather than as a read in JS followed
-   * by a write: the model can fire two `TASK_ADD_REPO` calls at once, and a
-   * read-modify-write loses the slower one — with the pod already holding the
-   * checkout the lost entry describes, so nothing looks wrong until the pod is
-   * recreated without it.
+   * DUAL-WRITE while migration 205 expands: the row in `thread_repositories`
+   * is the binding, and the `metadata.githubRepos` array is kept in step
+   * because a pod running the previous release still reads only the array.
+   * The array write goes away with the fallback read, not before.
    *
-   * Keyed on `owner/name`, so re-adding a repo the thread already has is a
-   * no-op instead of a duplicate directory.
+   * The array append happens inside one UPDATE rather than as a read in JS
+   * followed by a write: the model can fire two `TASK_ADD_REPO` calls at once,
+   * and a read-modify-write loses the slower one — with the pod already
+   * holding the checkout the lost entry describes, so nothing looks wrong
+   * until the pod is recreated without it. The table gets that for free from
+   * its primary key, which is most of why it exists.
+   *
+   * Re-adding a repo the thread already has is a no-op, not a duplicate
+   * directory: keyed on the repository row where there is one, and on
+   * `owner/name` in the array.
    */
   async appendThreadGithubRepo(
     id: string,
     organizationId: string,
     repo: GithubRepo,
   ): Promise<GithubRepo[]> {
+    /**
+     * Only a repo Studio has a row for can be referenced. One that has none
+     * (a legacy binding a reader has not stamped yet) still lands in the
+     * array, so nothing is lost — it simply has no reference until then.
+     */
+    if (repo.repositoryId) {
+      await this.db
+        .insertInto("thread_repositories")
+        .values({
+          thread_id: id,
+          organization_id: organizationId,
+          repository_id: repo.repositoryId,
+        })
+        .onConflict((oc) =>
+          oc.columns(["thread_id", "repository_id"]).doNothing(),
+        )
+        .execute();
+    }
     const key = `${repo.owner}/${repo.name}`.toLowerCase();
     const row = await this.db
       .updateTable("threads")
@@ -719,6 +746,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
       agentId?: string;
       includeArchived?: boolean;
       hasTrigger?: boolean;
+      /** `metadata.source` — e.g. `jira` for runs the Jira integration started. */
+      source?: string;
     },
   ): Promise<{ threads: Thread[]; total: number }> {
     const archived = options?.includeArchived === true;
@@ -766,6 +795,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
     if (options?.status) {
       query = query.where("status", "=", options.status as ThreadStatus);
     }
+    if (options?.source) {
+      query = query.where(sql`metadata->>'source'`, "=", options.source);
+    }
 
     let countQuery = this.db
       .selectFrom("threads")
@@ -810,6 +842,13 @@ export class SqlThreadStorage implements ThreadStoragePort {
         "status",
         "=",
         options.status as ThreadStatus,
+      );
+    }
+    if (options?.source) {
+      countQuery = countQuery.where(
+        sql`metadata->>'source'`,
+        "=",
+        options.source,
       );
     }
 

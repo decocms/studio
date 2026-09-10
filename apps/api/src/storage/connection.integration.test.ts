@@ -169,6 +169,42 @@ describe("ConnectionStorage", () => {
     });
   });
 
+  describe("findBySanitizedId", () => {
+    it("should find a connection whose id folds to the same schema/role name", async () => {
+      await storage.create({
+        id: "conn-acme-prod",
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "Acme Prod",
+        connection_type: "HTTP",
+        connection_url: "https://acme-prod.invalid/mcp",
+      });
+
+      const collision = await storage.findBySanitizedId("conn_acme_prod");
+      expect(collision?.id).toBe("conn-acme-prod");
+    });
+
+    it("should not report a connection as colliding with itself", async () => {
+      const created = await storage.create({
+        organization_id: "org_123",
+        created_by: "user_123",
+        title: "No Self Collision",
+        connection_type: "HTTP",
+        connection_url: "https://no-self-collision.invalid/mcp",
+      });
+
+      const collision = await storage.findBySanitizedId(created.id);
+      expect(collision).toBeNull();
+    });
+
+    it("should return null when no id sanitizes to the same value", async () => {
+      const collision = await storage.findBySanitizedId(
+        "conn_completely_unused_id",
+      );
+      expect(collision).toBeNull();
+    });
+  });
+
   describe("list", () => {
     it("should list all connections for an organization", async () => {
       await storage.create({
@@ -348,6 +384,15 @@ describe("ConnectionStorage", () => {
       // No overlap between pages
       const page1Ids = new Set(page1.items.map((c) => c.id));
       expect(page2.items.every((c) => !page1Ids.has(c.id))).toBe(true);
+    });
+
+    it("should return zero items for an explicit limit of 0, not the whole page", async () => {
+      const { items, totalCount } = await storage.list("org_123", {
+        limit: 0,
+        offset: 0,
+      });
+      expect(items).toHaveLength(0);
+      expect(totalCount).toBeGreaterThanOrEqual(3);
     });
 
     it("should return correct totalCount with filters", async () => {

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { Loading01 } from "@untitledui/icons";
 import { NoPermissionState } from "@/components/no-permission-state";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { CapabilityLoadError } from "@/components/capability-load-error";
 
 interface AccessGateProps {
@@ -29,11 +29,7 @@ export function AccessGate({
   children,
 }: AccessGateProps) {
   if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PanelLoading />;
   }
 
   if (error) {

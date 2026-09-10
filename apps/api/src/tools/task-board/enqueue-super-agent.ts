@@ -14,7 +14,9 @@ import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
+import { jiraRunFinishInstructions } from "./jira-run-prompt";
 import type { RunClass } from "@/dispatch-queue/run-priority";
+import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import { fetchPrHeadRef } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
 import {
@@ -34,7 +36,7 @@ import {
 export async function reactToSuperAgentDelegation(
   ctx: StudioContext,
   item: TaskBoardItem,
-  opts?: Pick<SuperAgentPromptOpts, "userInitiated">,
+  opts?: Pick<SuperAgentPromptOpts, "userInitiated" | "instruction">,
 ): Promise<void> {
   if (item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID) return;
   await enqueueSuperAgentForTask(ctx, item, opts).catch((err) => {
@@ -57,6 +59,10 @@ export async function reactToSuperAgentDelegation(
  */
 /** Options that steer the Super Agent prompt for a re-run on an existing PR. */
 export type SuperAgentPromptOpts = {
+  /** What the board's rule for this column says to do. Replaces the default
+   *  opening instruction; the task's own title and description still follow,
+   *  or the agent would not know which card it is on. */
+  instruction?: string;
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
   /** The PR already under review, so the re-run updates it in place instead
@@ -74,6 +80,11 @@ export type SuperAgentPromptOpts = {
   /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
    *  cap — which bounds automatic re-dispatch — does not apply to it. */
   userInitiated?: boolean;
+  /** The run works on something outside the board — a Jira issue — and the
+   *  card is only its anchor. `body` replaces the card's description in the
+   *  prompt, `title` names the thread, and the thread is stamped so its tools
+   *  and the monitoring filter can tell it apart. */
+  source?: { kind: "jira"; issueKey: string; title: string; body: string };
 };
 
 /**
@@ -95,7 +106,9 @@ export function buildSuperAgentTaskPrompt(
   // bloated prompt costs tokens every step.
   // prompt-region:start super-agent
   return [
-    "You've been assigned this task. Complete it.",
+    // A column's rule supplies its own instruction; without one this is the
+    // Super Agent's, which is what every run used before rules existed.
+    opts?.instruction?.trim() || "You've been assigned this task. Complete it.",
     "",
     "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
       "to completion on your own. Use `user_ask` ONLY for a genuine, " +
@@ -149,10 +162,18 @@ export function buildSuperAgentTaskPrompt(
       ? "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, make the change, then commit and push to the pull request named above."
       : "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
     "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
-    "- If a dev server is running it hot-reloads your changes — don't restart it, hunt for its port, or run a full typecheck/build just to verify a small edit.",
+    // "IF a dev server is running" was a condition the run could not evaluate,
+    // on a pod where the answer is always no (`harness-run` => `cloneOnly`), so
+    // it read as an invitation to go looking. State the fact instead.
+    "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port, and don't run a full typecheck/build just to verify a small edit.",
     "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
     "- Only if you hit a genuine blocker a human must clear (see above) may you call `user_ask` — otherwise keep going and finish the task.",
     "",
+    // Bare names: on this path the issue tools are Decopilot built-ins, not
+    // MCP tools behind a namespace.
+    ...(opts?.source?.kind === "jira"
+      ? [...jiraRunFinishInstructions(""), ""]
+      : []),
     `(task id: ${task.id})`,
   ].join("\n");
   // prompt-region:end super-agent
@@ -306,14 +327,31 @@ export async function enqueueSuperAgentForTask(
     // no repos imported runs Decopilot exactly as before.
     const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
 
+    // A run on an external issue reads the issue, not the card: the card's
+    // description is empty on purpose, so the prompt gets the rendered issue.
+    const promptTask = opts?.source
+      ? { ...task, description: opts.source.body }
+      : task;
+    const title = opts?.source?.title ?? `Super Agent: ${task.title}`;
+    const runMetadata = opts?.source
+      ? { source: opts.source.kind, jira_issue_key: opts.source.issueKey }
+      : undefined;
+
+    // Set here, not per caller, so the automatic hand-back and the manual
+    // "Resolve conflict" button land on the same tier.
+    const modelClass: ClaudeCodeModelClass | undefined = opts?.resolveConflict
+      ? "conflict"
+      : undefined;
+
     if (choice) {
       harness = "claude-code";
       const repo = "repo" in choice ? choice.repo : null;
       await enqueueAgentRunForTask(ctx, task, {
-        title: `Super Agent: ${task.title}`,
+        title,
+        ...(runMetadata ? { metadata: runMetadata } : {}),
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
         ...(pinnedRef ? { pinnedRef } : {}),
-        prompt: buildClaudeCodeTaskPrompt(task, repo, {
+        prompt: buildClaudeCodeTaskPrompt(promptTask, repo, {
           ...promptOpts,
           // Names the candidates in the prompt so the run doesn't spend its first
           // step asking what exists.
@@ -321,13 +359,15 @@ export async function enqueueSuperAgentForTask(
         }),
         temperature: 0.5,
         harnessId: "claude-code",
+        ...(modelClass ? { modelClass } : {}),
         ...(repo ? { repo } : {}),
       });
     } else {
       await enqueueAgentRunForTask(ctx, task, {
-        title: `Super Agent: ${task.title}`,
+        title,
+        ...(runMetadata ? { metadata: runMetadata } : {}),
         ...(opts?.runClass ? { runClass: opts.runClass } : {}),
-        prompt: buildSuperAgentTaskPrompt(task, promptOpts),
+        prompt: buildSuperAgentTaskPrompt(promptTask, promptOpts),
         temperature: 0.5,
         ...(pinnedRef ? { pinnedRef } : {}),
       });

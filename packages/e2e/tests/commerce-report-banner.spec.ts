@@ -1,5 +1,10 @@
 /**
- * E2E: the Commerce Discovery report banner on the org home (Overview).
+ * E2E: the Commerce Discovery report banner on the PROJECT home (Overview).
+ *
+ * Not the org home: that landing is the agent roster now, and the banner sits
+ * with the project's own summary. Every test therefore scopes to a project
+ * (`?virtualmcpid=`) before asserting — an unscoped home renders the roster and
+ * would fail these for the wrong reason.
  *
  * The banner reads run state live from the CD connection's own MCP
  * (`get_my_diagnostic`), so these specs stand up a controlled test MCP
@@ -11,14 +16,14 @@
  * Covered:
  *   1. Org without the CD connection → no banner, home intact.
  *   2. Completed diagnostic → "ready" banner; click navigates to the
- *      report app (new task URL with virtualmcpid + pinned main tab).
+ *      report app (the CD project's chat path, a fresh `?thread=` and a pinned main tab).
  *   3. Live run → "generating" banner.
  *   4. CD connection whose MCP is unreachable → no banner, home intact.
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
 import { z } from "zod";
-import { callSelfMcpTool } from "../fixtures/mcp-tools";
+import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import {
   startTestMcpServer,
   type TestMcpServer,
@@ -107,10 +112,49 @@ async function createCdConnection(
   });
 }
 
-async function waitForHome(page: Page, orgSlug: string): Promise<void> {
-  await page.goto(`/${orgSlug}`);
+/** A source-backed project to scope the home to. Project Home is presence-gated
+ *  on clonable source; the banner itself still reads the ORG's CD connection,
+ *  so which source-backed project this is does not matter. */
+async function createProject(
+  request: APIRequestContext,
+  orgSlug: string,
+): Promise<string> {
+  const connection = await createHttpConnection(request, orgSlug, {
+    title: "banner-scope placeholder",
+    url: "http://127.0.0.1:1/unused",
+  });
+  const agent = await callSelfMcpTool<{ item: { id: string } }>(
+    request,
+    orgSlug,
+    "COLLECTION_VIRTUAL_MCP_CREATE",
+    {
+      data: {
+        title: "Banner scope",
+        status: "active",
+        connections: [{ connection_id: connection.id }],
+        metadata: {
+          githubRepo: {
+            url: "https://github.com/example/commerce-report-banner",
+            owner: "example",
+            name: "commerce-report-banner",
+          },
+        },
+      },
+    },
+  );
+  return agent.item.id;
+}
+
+async function waitForHome(
+  page: Page,
+  orgSlug: string,
+  projectId: string,
+): Promise<void> {
+  await page.goto(`/${orgSlug}/home?virtualmcpid=${projectId}`);
+  /** The task composer belongs to the PROJECT home — an unscoped landing
+   *  renders the org roster and its search instead, never this. */
   await page
-    .getByRole("button", { name: "Customize" })
+    .getByPlaceholder("What needs doing in this project?")
     .waitFor({ state: "visible", timeout: HOME_TIMEOUT_MS });
 }
 
@@ -119,6 +163,8 @@ test.describe("commerce report banner", () => {
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const projectId = await createProject(request, orgSlug);
     // Register before navigating so we don't miss the response if the gate
     // resolves before we can await below (the app has persistent SSE
     // connections so waitForLoadState("networkidle") never settles). The self
@@ -128,7 +174,7 @@ test.describe("commerce report banner", () => {
       (resp) => resp.url().includes("/tools/COLLECTION_CONNECTIONS_GET"),
       { timeout: HOME_TIMEOUT_MS },
     );
-    await waitForHome(page, orgSlug);
+    await waitForHome(page, orgSlug, projectId);
     // Gate 1 resolved with { item: null } — banner correctly stays hidden.
     await connectionGateDone;
     await expect(
@@ -138,7 +184,9 @@ test.describe("commerce report banner", () => {
       page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
     ).toHaveCount(0);
     // Home is still functional.
-    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
+    await expect(
+      page.getByPlaceholder("What needs doing in this project?"),
+    ).toBeVisible();
   });
 
   test("completed diagnostic shows the ready banner and opens the report app", async ({
@@ -147,6 +195,7 @@ test.describe("commerce report banner", () => {
     const { page, orgSlug } = authedPage;
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
+    const projectId = await createProject(request, orgSlug);
 
     const mcp = await startDiagnosticMcp({
       url: SITE_URL,
@@ -155,7 +204,7 @@ test.describe("commerce report banner", () => {
     });
     try {
       await createCdConnection(request, orgSlug, orgId, mcp.url);
-      await waitForHome(page, orgSlug);
+      await waitForHome(page, orgSlug, projectId);
 
       const banner = page.getByRole("button", {
         name: new RegExp(READY_TITLE),
@@ -165,13 +214,14 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // New task URL: /$org/<uuid>?virtualmcpid=commerce-discovery_<orgId>&main=...<tool>
+      // Agent and view are both path here; only the view's param stays search.
       await expect(page).toHaveURL(
         new RegExp(
-          `/${orgSlug}/[0-9a-f-]{36}.*virtualmcpid=commerce-discovery_[^&]+.*${REPORT_TOOL}`,
+          `/${orgSlug}/agents/app\\?.*virtualmcpid=commerce-discovery_`,
         ),
         { timeout: 15_000 },
       );
+      expect(new URL(page.url()).searchParams.get("tool")).toBe(REPORT_TOOL);
     } finally {
       await mcp.stop();
     }
@@ -181,6 +231,7 @@ test.describe("commerce report banner", () => {
     const { page, orgSlug } = authedPage;
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
+    const projectId = await createProject(request, orgSlug);
 
     const mcp = await startDiagnosticMcp({
       url: SITE_URL,
@@ -190,7 +241,7 @@ test.describe("commerce report banner", () => {
     });
     try {
       await createCdConnection(request, orgSlug, orgId, mcp.url);
-      await waitForHome(page, orgSlug);
+      await waitForHome(page, orgSlug, projectId);
 
       await expect(
         page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
@@ -206,6 +257,7 @@ test.describe("commerce report banner", () => {
     const { page, orgSlug } = authedPage;
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
+    const projectId = await createProject(request, orgSlug);
 
     // Nothing listens here — the connection exists but its MCP is dead.
     await createCdConnection(
@@ -220,7 +272,7 @@ test.describe("commerce report banner", () => {
       (resp) => resp.url().includes(cdConnectionId(orgId)) && !resp.ok(),
       { timeout: HOME_TIMEOUT_MS },
     );
-    await waitForHome(page, orgSlug);
+    await waitForHome(page, orgSlug, projectId);
     // diagnosticQuery entered error state — banner stays hidden.
     await diagnosticFailed;
     await expect(
@@ -229,6 +281,8 @@ test.describe("commerce report banner", () => {
     await expect(
       page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
     ).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Customize" })).toBeVisible();
+    await expect(
+      page.getByPlaceholder("What needs doing in this project?"),
+    ).toBeVisible();
   });
 });

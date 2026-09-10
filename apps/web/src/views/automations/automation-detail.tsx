@@ -5,6 +5,7 @@
  */
 
 import { type SimpleModeTier } from "@/components/chat/simple-mode-tier-dropdown";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   AutomationModelControl,
   AutomationToolsControl,
@@ -34,7 +35,6 @@ import {
   ArrowUp,
   ChevronDown,
   Clock,
-  Loading01,
   Stars01,
   Trash01,
   XClose,
@@ -187,7 +187,7 @@ export function SettingsTab({
         instructions_length: instructionsText.length,
       });
 
-      openSidePanel("chat");
+      openSidePanel();
 
       await sendMessage({
         tiptapDoc: buildImprovePromptDoc({
@@ -367,7 +367,7 @@ export function SettingsTab({
     try {
       const result = await runMutation.mutateAsync(automationId);
       if (result.threadId) {
-        openSidePanel("chat");
+        openSidePanel();
         openTask(result.threadId);
       }
     } catch {
@@ -555,10 +555,7 @@ export function SettingsTab({
                 </span>
               )}
               {addTrigger.isPending && (
-                <Loading01
-                  size={13}
-                  className="animate-spin text-muted-foreground shrink-0"
-                />
+                <Spinner className="size-[13px] text-muted-foreground shrink-0" />
               )}
               <button
                 type="button"
@@ -577,10 +574,7 @@ export function SettingsTab({
             <Suspense
               fallback={
                 <div className="flex items-center gap-2 px-3 py-3 rounded-lg border border-border bg-background">
-                  <Loading01
-                    size={13}
-                    className="animate-spin text-muted-foreground"
-                  />
+                  <Spinner className="size-[13px] text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
                     {t("automations.automationDetail.loadingConnections")}
                   </span>

@@ -306,6 +306,8 @@ export interface ConnectionStoragePort {
   create(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   createNew(data: Partial<ConnectionEntity>): Promise<ConnectionEntity>;
   findById(id: string): Promise<ConnectionEntity | null>;
+  /** See `ConnectionStorage.findBySanitizedId`. */
+  findBySanitizedId(id: string): Promise<ConnectionEntity | null>;
   list(
     organizationId: string,
     options?: {
@@ -345,7 +347,6 @@ export interface OrganizationSettingsStoragePort {
         | "simple_mode"
         | "default_home_agents"
         | "flags"
-        | "main_agent_id"
       >
     >,
   ): Promise<OrganizationSettings>;
@@ -789,6 +790,18 @@ export interface OrgSiteStoragePort {
     source?: string;
     by: string;
   }): Promise<OrgSite>;
+  /**
+   * Move a slug to `organizationId` regardless of its current owner
+   * (deployment-admin override); insert it when unclaimed.
+   */
+  reassignSite(params: {
+    slug: string;
+    organizationId: string;
+    source?: string;
+    by: string;
+  }): Promise<OrgSite>;
+  /** Release a slug owned by this org; false when it wasn't owned by it. */
+  releaseSite(slug: string, organizationId: string): Promise<boolean>;
   getBySlug(slug: string): Promise<OrgSite | null>;
   /** Every slug this org owns, slug-ascending. */
   listByOrg(organizationId: string): Promise<OrgSite[]>;

@@ -94,6 +94,9 @@ export interface AutomationsStorage {
     eventType: string,
     organizationId: string,
   ): Promise<(AutomationTrigger & { automation: Automation })[]>;
+  listActiveByEventTriggerConnectionId(
+    connectionId: string,
+  ): Promise<Pick<Automation, "id" | "name">[]>;
   // Includes inactive automations: reconciler pauses (not deletes) their schedules.
   findAllCronTriggers(): Promise<
     (AutomationTrigger & { automation: Automation })[]
@@ -539,6 +542,29 @@ class KyselyAutomationsStorage implements AutomationsStorage {
       ...triggerFromDbRow(row),
       automation: automationFromAliasedRow(row),
     }));
+  }
+
+  /**
+   * Active automations with an event trigger bound to this connection.
+   *
+   * `automation_triggers.connection_id` has no FK — deleting the connection
+   * would silently strand the trigger (it just stops matching forever).
+   * Callers tearing down a connection must check this first.
+   */
+  async listActiveByEventTriggerConnectionId(
+    connectionId: string,
+  ): Promise<Pick<Automation, "id" | "name">[]> {
+    const rows = await this.db
+      .selectFrom("automation_triggers as t")
+      .innerJoin("automations as a", "a.id", "t.automation_id")
+      .select(["a.id", "a.name"])
+      .where("t.type", "=", "event")
+      .where("t.connection_id", "=", connectionId)
+      .where("a.active", "=", true)
+      .distinct()
+      .execute();
+
+    return rows;
   }
 
   async findAllCronTriggers(): Promise<

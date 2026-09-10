@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
@@ -44,7 +44,7 @@ function AdminGate() {
   if (loading) {
     return (
       <div className="flex h-dvh flex-1 items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }

@@ -10,6 +10,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
+import type { ThreadMetadata } from "@decocms/shared/entities";
 import {
   isReviewerThreadTitle,
   REVIEWER_KINDS,
@@ -48,8 +49,6 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
   "TASK_ADD_REPO",
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
-  "TASK_BOARD_ITEM_PRS_GET",
-  "TASK_BOARD_ITEM_PR_LINK",
   "TASK_BOARD_ACTIVITY_LIST",
   "TASK_BOARD_COMMENT_LIST",
   "TASK_BOARD_COMMENT_CREATE",
@@ -73,22 +72,45 @@ export const TASK_RUN_TOOL_NAMES: readonly ToolName[] = [
  */
 export const REVIEW_RUN_TOOL_NAMES: readonly ToolName[] = [
   ...TASK_RUN_TOOL_NAMES,
+  // The PR under review. Reviewer-only: a Super Agent run works on the branch
+  // it was given and never needs to look its own pull request up — the board
+  // does that for it now (`pr-by-branch.ts`).
+  "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_REVIEW_DECISION",
 ];
 
 /**
- * Which tool surface a task-run MCP session gets, from the run thread's title.
- *
- * The title is how the rest of the board already tells a reviewer thread from a
- * Super Agent one (`isReviewerThreadTitle`, `"Super Agent:"` in
- * `enqueueReviewersOnThreadFinish`) — reusing it keeps one discriminator rather
- * than adding a column. A missing thread falls back to the narrow list.
+ * The surface for a run the Jira integration started: the issue's tools, and
+ * NONE of the board's. The card behind such a run is only its anchor, and a
+ * board tool there would let the agent "update the task" on a card nobody
+ * reads instead of the issue everybody does.
  */
-export function resolveReviewRunToolNames(
-  title: string | null | undefined,
+export const JIRA_RUN_TOOL_NAMES: readonly ToolName[] = [
+  "TASK_ADD_REPO",
+  "JIRA_ISSUE_GET",
+  "JIRA_COMMENT_ADD",
+  "JIRA_ISSUE_TRANSITION",
+  "JIRA_ATTACHMENT_DOWNLOAD",
+];
+
+/**
+ * Which tool surface a task-run MCP session gets, from the run thread.
+ *
+ * A Jira-triggered run is stamped in its metadata at dispatch. A reviewer is
+ * told apart by the title, which is how the rest of the board already tells a
+ * reviewer thread from a Super Agent one (`isReviewerThreadTitle`,
+ * `"Super Agent:"` in `enqueueReviewersOnThreadFinish`). A missing thread
+ * falls back to the narrow list.
+ */
+export function resolveTaskRunToolNames(
+  thread:
+    | { title?: string | null; metadata?: ThreadMetadata | null }
+    | null
+    | undefined,
 ): readonly ToolName[] {
+  if (thread?.metadata?.source === "jira") return JIRA_RUN_TOOL_NAMES;
   const isReviewer = REVIEWER_KINDS.some((kind) =>
-    isReviewerThreadTitle(title, kind),
+    isReviewerThreadTitle(thread?.title, kind),
   );
   return isReviewer ? REVIEW_RUN_TOOL_NAMES : TASK_RUN_TOOL_NAMES;
 }

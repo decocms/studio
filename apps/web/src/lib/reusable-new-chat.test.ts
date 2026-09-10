@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Task } from "@/components/chat/task/types";
-import { findReusableNewChat } from "./reusable-new-chat";
+import { findAgentEntryThread, findReusableNewChat } from "./reusable-new-chat";
 
 const USER = "user-1";
 
@@ -115,5 +115,173 @@ describe("findReusableNewChat", () => {
         "sandbox",
       );
     });
+  });
+});
+
+describe("findAgentEntryThread", () => {
+  const empty = task({
+    id: "empty",
+    title: "New chat",
+    updated_at: "2026-01-01T00:00:00Z",
+  });
+  const lastReal = task({
+    id: "last",
+    title: "Fix the login bug",
+    harness_id: "claude-code",
+    branch: "tavano-newbranch",
+    updated_at: "2026-02-01T00:00:00Z",
+  });
+
+  // Inverts the old always-reuse-empty behavior that stranded repo-backed agents on the empty chat's stale branch.
+  it("resumes the most-recent real thread (last branch) for a repo-backed agent", () => {
+    expect(
+      findAgentEntryThread([empty, lastReal], "agent-1", USER, undefined, true)
+        ?.id,
+    ).toBe("last");
+  });
+
+  // Inverts the old always-reuse-empty behavior: re-entry now lands you back on your last conversation.
+  it("resumes the most-recent real thread for a branchless agent", () => {
+    expect(
+      findAgentEntryThread([empty, lastReal], "agent-1", USER, undefined, false)
+        ?.id,
+    ).toBe("last");
+  });
+
+  it("reuses the empty chat for a branchless agent with no real thread", () => {
+    expect(
+      findAgentEntryThread([empty], "agent-1", USER, undefined, false)?.id,
+    ).toBe("empty");
+  });
+
+  it("returns undefined for a branchless agent with no thread at all", () => {
+    expect(
+      findAgentEntryThread([], "agent-1", USER, undefined, false),
+    ).toBeUndefined();
+  });
+
+  it("falls back to the empty chat when a repo-backed agent has no real thread", () => {
+    expect(
+      findAgentEntryThread([empty], "agent-1", USER, undefined, true)?.id,
+    ).toBe("empty");
+  });
+
+  it("returns undefined when nothing matches (caller mints a fresh id)", () => {
+    expect(
+      findAgentEntryThread([], "agent-1", USER, undefined, true),
+    ).toBeUndefined();
+  });
+
+  const onRelease = task({
+    id: "release",
+    title: "Edit hero",
+    harness_id: "claude-code",
+    branch: "tavano-teste",
+    updated_at: "2026-02-01T00:00:00Z",
+  });
+  const newerUnnamedDraft = task({
+    id: "draft",
+    title: "Scratch",
+    harness_id: "claude-code",
+    branch: "tavano-unnamed",
+    updated_at: "2026-03-01T00:00:00Z",
+  });
+  const known = new Set(["main", "tavano-teste"]);
+
+  // Guards against re-entry landing on a newer unnamed draft (phantom "Rascunho") instead of the named release being edited.
+  it("prefers the last thread on a named version over a newer unnamed draft", () => {
+    expect(
+      findAgentEntryThread(
+        [onRelease, newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        { knownBranches: known },
+      )?.id,
+    ).toBe("release");
+  });
+
+  it("falls back to the raw last thread when none sits on a named version", () => {
+    expect(
+      findAgentEntryThread(
+        [newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        {
+          knownBranches: known,
+        },
+      )?.id,
+    ).toBe("draft");
+  });
+
+  // Drafts mode resumes the most recently edited draft, named or not.
+  it("drafts mode resumes the most recently edited draft, named or unnamed", () => {
+    expect(
+      findAgentEntryThread(
+        [onRelease, newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        { knownBranches: known, draftsMode: true, baseBranch: "main" },
+      )?.id,
+    ).toBe("draft");
+  });
+
+  it("drafts mode resumes an unnamed draft instead of minting on production", () => {
+    expect(
+      findAgentEntryThread(
+        [newerUnnamedDraft],
+        "agent-1",
+        USER,
+        undefined,
+        true,
+        { knownBranches: known, draftsMode: true, baseBranch: "main" },
+      )?.id,
+    ).toBe("draft");
+  });
+
+  it("drafts mode never resumes a production thread (caller mints a fresh draft)", () => {
+    const onProduction = task({
+      id: "prod",
+      title: "Live",
+      harness_id: "claude-code",
+      branch: "main",
+      updated_at: "2026-04-01T00:00:00Z",
+    });
+    expect(
+      findAgentEntryThread([onProduction], "agent-1", USER, undefined, true, {
+        knownBranches: known,
+        draftsMode: true,
+        baseBranch: "main",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("never resumes a thread of the other runtime for a repo-backed agent", () => {
+    const cmsReal = task({
+      id: "cms-real",
+      title: "Edit copy",
+      harness_id: "decopilot",
+      metadata: { runtime: "cms" },
+      updated_at: "2026-03-01T00:00:00Z",
+    });
+    const sandboxEmpty = task({
+      id: "sandbox-empty",
+      metadata: { runtime: "sandbox" },
+      updated_at: "2026-01-01T00:00:00Z",
+    });
+    expect(
+      findAgentEntryThread(
+        [cmsReal, sandboxEmpty],
+        "agent-1",
+        USER,
+        "sandbox",
+        true,
+      )?.id,
+    ).toBe("sandbox-empty");
   });
 });

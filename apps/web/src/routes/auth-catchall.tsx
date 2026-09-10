@@ -1,11 +1,5 @@
 import { Navigate, useParams } from "@tanstack/react-router";
-import {
-  AuthLoading,
-  AuthView,
-  SignedIn,
-  SignedOut,
-} from "@daveyplate/better-auth-ui";
-import { SplashScreen } from "@/components/splash-screen";
+import { AuthView, SignedIn, SignedOut } from "@daveyplate/better-auth-ui";
 
 /**
  * Redirect logged-out users to /login preserving the current URL as `next`
@@ -24,10 +18,6 @@ export default function AuthPage() {
   if (pathname === "accept-invitation") {
     return (
       <>
-        <AuthLoading>
-          <SplashScreen />
-        </AuthLoading>
-
         <SignedIn>
           <main className="container mx-auto flex grow flex-col items-center justify-center gap-3 self-center p-4 md:p-6">
             <AuthView pathname="accept-invitation" />

@@ -61,7 +61,8 @@ export function ConnectionItem({
   const connection = useConnection(connection_id);
   const { org } = useProjectContext();
 
-  if (!connection) return null;
+  // The referenced connection was deleted elsewhere — offer a way to remove it.
+  if (!connection) return <MissingConnectionItem onRemove={onRemove} />;
 
   const slug = getConnectionSlug(connection);
 
@@ -393,6 +394,36 @@ function ConnectionItemAuthFallback({
       <div className="flex items-center px-4 py-2 border-t border-border bg-muted/25">
         <div className="h-5 w-20 rounded bg-muted animate-pulse" />
       </div>
+    </div>
+  );
+}
+
+function MissingConnectionItem({ onRemove }: { onRemove: () => void }) {
+  const t = useT();
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-destructive/50 bg-destructive/5">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-destructive font-medium truncate">
+          {t("virtualMcp.connectionItem.connectionNotFound")}
+        </p>
+      </div>
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+            onClick={onRemove}
+            aria-label={t("virtualMcp.connectionItem.removeConnection")}
+          >
+            <XClose size={13} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {t("virtualMcp.connectionItem.remove")}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }

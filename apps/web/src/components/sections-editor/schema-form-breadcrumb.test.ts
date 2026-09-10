@@ -675,6 +675,115 @@ describe("resolveActiveFieldKey", () => {
     ).toBeNull();
   });
 
+  test("narrows to a loader when a freshly-added array item has only a generic label", () => {
+    // Minicart > Product Shelf: adding to the loader's `ids: ProductID[]` makes an empty `{ productID: "" }` labelled generic "Item 1"; ownership must fall back to the array KEY the crumb records, else the whole loader form shows.
+    const properties = {
+      products: {
+        title: "Products Loader",
+        type: "block-ref",
+        anyOfRefs: [
+          { resolveType: "vtex/loaders/productList.ts", title: "Product List" },
+        ],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      products: {
+        __resolveType: "vtex/loaders/productList.ts",
+        ids: [{ productID: "" }],
+        hideUnavailableItems: false,
+      },
+    };
+    const crumb = buildArrayDrillDownBreadcrumb([], "Ids", "Item 1", 0, {
+      arrayKey: "ids",
+    });
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        crumb,
+      ),
+    ).toBe("products");
+  });
+
+  test("narrows to an embedded-union field whose branch owns a generic-labelled item", () => {
+    // Same scenario one level deeper: `ids` lives in an embedded block-ref union ("Select products by") inside the loader; resolution must cascade by the recorded array KEY.
+    const branchProps = {
+      ids: {
+        type: "array",
+        title: "Ids",
+        items: {
+          type: "object",
+          properties: { productID: { type: "string" } },
+        },
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const loaderProps = {
+      selectBy: {
+        type: "block-ref",
+        title: "Select products by",
+        anyOfRefs: [
+          {
+            resolveType: "#embedded/ProductIDs",
+            title: "Product IDs",
+            schema: { type: "object", properties: branchProps },
+          },
+        ],
+      },
+      hideUnavailableItems: { type: "boolean", title: "Hide Unavailable" },
+    } satisfies Record<string, SchemaProperty>;
+    const loaderValue = {
+      selectBy: { ids: [{ productID: "" }] },
+      hideUnavailableItems: false,
+    };
+    const crumb = buildArrayDrillDownBreadcrumb([], "Ids", "Item 1", 0, {
+      arrayKey: "ids",
+    });
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(loaderProps),
+        loaderProps,
+        loaderValue,
+        crumb,
+      ),
+    ).toBe("selectBy");
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(branchProps),
+        branchProps,
+        loaderValue.selectBy,
+        crumb,
+      ),
+    ).toBe("ids");
+  });
+
+  test("does not narrow to a block-ref by array key when it holds no such array", () => {
+    // Guard: the recorded key must not claim a loader whose config has no `ids`.
+    const properties = {
+      enableCta: { title: "Ativar CTA", type: "boolean" },
+      loader: {
+        title: "Loader",
+        type: "block-ref",
+        anyOfRefs: [{ resolveType: "shelf/loader.ts", title: "Shelf" }],
+      },
+    } satisfies Record<string, SchemaProperty>;
+    const objValue = {
+      enableCta: true,
+      loader: { __resolveType: "shelf/loader.ts", banners: [] },
+    };
+    const crumb = buildArrayDrillDownBreadcrumb([], "Ids", "Item 1", 0, {
+      arrayKey: "ids",
+    });
+    expect(
+      resolveActiveFieldKey(
+        Object.keys(properties),
+        properties,
+        objValue,
+        crumb,
+      ),
+    ).toBeNull();
+  });
+
   test("narrows to a loader whose extensions[] item is labelled by __resolveType", () => {
     // ALS /flashsale: the extensions[] item's "DetailsPage" label comes from __resolveType (no name/label/title/alt), so ownership must see it.
     const properties = {
@@ -888,7 +997,7 @@ describe("resolveActiveFieldKey", () => {
   });
 
   test("narrows to a PLP loader whose selectedFacets[] item is labelled by key", () => {
-    // ALS/montecarlo/farmrio/osklen: selectedFacets items are {key,value} — the "category-1" label comes from `key`.
+    // Seen on four storefronts: selectedFacets items are {key,value} — the "category-1" label comes from `key`.
     const properties = {
       page: {
         title: "Page",
@@ -969,7 +1078,7 @@ describe("resolveActiveFieldKey", () => {
   });
 
   test("two loaders carrying the same facet: bare crumb is ambiguous, ancestor crumb pins it", () => {
-    // Real montecarlo SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
+    // A real storefront SearchResult: `page` + `RangePriceProps` both carry a selectedFacets item labelled "category-1".
     const properties = {
       page: {
         title: "Page",

@@ -3,7 +3,7 @@ import {
   DropdownMenuItem,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { Users03 } from "@untitledui/icons";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitBranch01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 
 interface CreateAgentDropdownContentProps {
@@ -14,6 +14,8 @@ interface CreateAgentDropdownContentProps {
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   showBetaBadge?: boolean;
+  /** Show the "Import from deco.cx" option (deco.cx staff only). */
+  showDecoImport?: boolean;
 }
 
 export function CreateAgentDropdownContent({
@@ -24,6 +26,7 @@ export function CreateAgentDropdownContent({
   align = "end",
   side,
   showBetaBadge,
+  showDecoImport,
 }: CreateAgentDropdownContentProps) {
   const t = useT();
 
@@ -34,7 +37,7 @@ export function CreateAgentDropdownContent({
         {t("common.createAgentDropdown.createFromScratch")}
       </DropdownMenuItem>
       <DropdownMenuItem onClick={onImportGitHub}>
-        <GitHubIcon className="size-3.5" />
+        <GitBranch01 className="size-3.5" />
         {t("common.createAgentDropdown.importFromGitHub")}
         {showBetaBadge && (
           <span className="ml-auto text-[10px] font-medium text-muted-foreground bg-muted rounded px-1 py-0.5">
@@ -42,10 +45,16 @@ export function CreateAgentDropdownContent({
           </span>
         )}
       </DropdownMenuItem>
-      <DropdownMenuItem onClick={onImportDeco}>
-        <img src="/logos/deco%20logo.svg" alt="deco.cx" className="size-3.5" />
-        {t("common.createAgentDropdown.importFromDeco")}
-      </DropdownMenuItem>
+      {showDecoImport && (
+        <DropdownMenuItem onClick={onImportDeco}>
+          <img
+            src="/logos/deco%20logo.svg"
+            alt="deco.cx"
+            className="size-3.5"
+          />
+          {t("common.createAgentDropdown.importFromDeco")}
+        </DropdownMenuItem>
+      )}
     </DropdownMenuContent>
   );
 }

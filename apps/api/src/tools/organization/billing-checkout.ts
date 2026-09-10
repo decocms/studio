@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { createOrgCheckoutSession } from "../../billing/stripe-api";
+import { orgSettingsPath } from "@decocms/shared/organization-paths";
 import { getPublicUrl } from "../../core/server-constants";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
@@ -53,7 +54,7 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
 
     // getPublicUrl: the browser follows these from Stripe's domain, so they
     // must be externally reachable, never a localhost fallback.
-    const membersUrl = `${getPublicUrl()}/${encodeURIComponent(orgSlug)}/members`;
+    const membersUrl = `${getPublicUrl()}${orgSettingsPath(orgSlug, "members")}`;
     const { url } = await createOrgCheckoutSession({
       organizationId,
       successUrl: `${membersUrl}?checkout=success`,

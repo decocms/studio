@@ -20,6 +20,20 @@ export const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
  */
 export const MCP_LIST_TOOLS_TIMEOUT_MS = 5_000; // 5 seconds
 
+/**
+ * Per-connection budget for one list call (tools/resources/prompts) inside a
+ * Virtual MCP's fan-out. A connection that misses it is skipped for that
+ * request; the cross-pod list cache still serves its last known tools on the
+ * next one.
+ *
+ * Sized against what the CLIENT will wait for, not what a server might want:
+ * MCP clients abandon a server that is slow to connect (Claude Code at 30s) and
+ * count `initialize` + `tools/list` against that single budget. The fan-out is
+ * parallel, so an aggregation costs one connection's latency rather than the
+ * sum — which is what makes a budget this generous affordable.
+ */
+export const MCP_LIST_TIMEOUT_MS = 10_000; // 10 seconds
+
 /** Number of consecutive failures before opening the circuit breaker for a connection */
 export const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
 

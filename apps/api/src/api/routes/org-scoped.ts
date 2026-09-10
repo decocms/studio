@@ -8,17 +8,22 @@ import type { StreamBuffer } from "@/api/routes/decopilot/stream-buffer";
 import type { SSEEvent } from "@/event-bus";
 import type { KVStorage } from "@/storage/kv";
 import type { TriggerCallbackTokenStorage } from "@/storage/trigger-callback-tokens";
+import { enforceOrgBlock } from "../middleware/enforce-org-block";
 import { resolveOrgFromPath } from "../middleware/resolve-org-from-path";
 import type { Env } from "../hono-env";
 
 import { createAutomationWebhookRoutes } from "./automation-webhooks";
 import { createDecoSitesOrgRoutes } from "./deco-sites";
+import { createHostingRoutes } from "./hosting";
+import { createMonitorRoutes } from "./monitor";
 import { createDevAssetsRoutes } from "./dev-assets";
 import { createCredentialVaultRoutes } from "./credential-vault";
 import { createDownstreamTokenRoutes } from "./downstream-token";
+import { createGitProviderRoutes } from "./git-providers";
 import { createFileUploadRoutes } from "./file-uploads";
 import { createKVRoutes } from "./kv";
 import { createOrgFsRoutes } from "./org-fs";
+import { createOrgNoticeRoutes } from "./org-notice";
 import { createOrgScopedWellKnownProtectedResourceRoutes } from "./oauth-proxy";
 import { createSsoRoutes } from "./org-sso";
 import { createProxyRoutes } from "./proxy";
@@ -85,9 +90,12 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
 
   // EVERY route in this sub-app gets org resolved from :org path param
   app.use("*", resolveOrgFromPath);
+  // Blocked orgs (see core/org-notice-gate) lose their control-plane writes.
+  app.use("*", enforceOrgBlock);
 
   // --- Routes that don't need extra middleware ---
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
+  app.route("/", createGitProviderRoutes()); // /api/:org/git-providers/:type/connect
   app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
   app.route("/", createCommerceDiagnosticShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
@@ -103,7 +111,10 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
   app.route("/", createHomeNextActionsRoutes());
+  app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
+  app.route("/hosting", createHostingRoutes()); // /api/:org/hosting/:site/...
+  app.route("/monitor", createMonitorRoutes()); // /api/:org/monitor/:site/cdn/data — native CDN analytics, direct ClickHouse
   app.route("/sso", createSsoRoutes()); // /api/:org/sso/* (renamed from /api/org-sso)
   app.route(
     "/",

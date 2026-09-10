@@ -1,5 +1,5 @@
-import { Loading01 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 interface ShowMoreButtonProps {
@@ -36,7 +36,7 @@ export function ShowMoreButton({
         "transition-colors disabled:cursor-progress disabled:opacity-60",
       )}
     >
-      {isFetching && <Loading01 size={14} className="animate-spin" />}
+      {isFetching && <Spinner className="size-3.5" />}
       <span>
         {isFetching
           ? t("sidebar.showMoreButton.loading")

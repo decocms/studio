@@ -2,7 +2,7 @@ import { useVirtualMCP } from "@/sdk";
 
 /**
  * The project's package path (`metadata.runtime.path`, e.g.
- * "eitri-shopping-monte-carlo-shared"), or null when the project lives at the
+ * "eitri-shopping-example-shared"), or null when the project lives at the
  * repo root. Pair with {@link decoRepoPath} to address `.deco/*` files through
  * the sandbox daemon, which resolves paths against the repo root.
  *

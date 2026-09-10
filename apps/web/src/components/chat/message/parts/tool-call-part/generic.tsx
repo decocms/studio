@@ -1,6 +1,7 @@
 "use client";
 
 import { useT } from "@/i18n/use-t.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { MCPAppRenderer as MCPAppIframeRenderer } from "@/mcp-apps/mcp-app-renderer";
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
@@ -12,7 +13,6 @@ import {
 import { useTaskExpandedTools } from "@/hooks/use-task-expanded-tools";
 import { formatBytes } from "@/lib/format-bytes";
 import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Tooltip,
@@ -46,7 +46,7 @@ import {
   XClose,
 } from "@untitledui/icons";
 import { TOOL_DISPLAY_MAP } from "./tool-display-map.ts";
-import { BashWaitSummary } from "./bash-wait.tsx";
+import { BashWaitSummary, ToolElapsedSummary } from "./bash-wait.tsx";
 import { parseSleepMs } from "./bash-sleep.ts";
 import { toEpochMs } from "@/lib/format-time.ts";
 import type { DynamicToolUIPart, ToolUIPart } from "ai";
@@ -54,6 +54,7 @@ import type React from "react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "@/components/error-boundary.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 
 import { getToolPartErrorText, safeStringifyFormatted } from "../utils.ts";
 import { ToolCallShell } from "./common.tsx";
@@ -123,24 +124,33 @@ function AnnotationBadges({
   annotations?: ToolDefinition["annotations"];
   toolMeta?: ToolDefinition["_meta"];
 }) {
+  const t = useT();
   const hasUI = !!getUIResourceUri(toolMeta);
   if (!annotations && !hasUI) return null;
   return (
     <>
-      {hasUI && <AnnotationBadge icon={<LayersTwo01 />} label="Interactive" />}
+      {hasUI && (
+        <AnnotationBadge
+          icon={<LayersTwo01 />}
+          label={t("chat.generic.annotation.interactive")}
+        />
+      )}
       {annotations?.readOnlyHint && (
-        <AnnotationBadge icon={<Eye />} label="Read-only — no side effects" />
+        <AnnotationBadge
+          icon={<Eye />}
+          label={t("chat.generic.annotation.readOnly")}
+        />
       )}
       {annotations?.destructiveHint && (
         <AnnotationBadge
           icon={<AlertCircle />}
-          label="May modify or delete data"
+          label={t("chat.generic.annotation.destructive")}
         />
       )}
       {annotations?.openWorldHint && (
         <AnnotationBadge
           icon={<Globe02 />}
-          label="Reaches outside this system"
+          label={t("chat.generic.annotation.openWorld")}
         />
       )}
     </>
@@ -248,7 +258,7 @@ export function GenericToolCallPart({
   // threads view, which has no ChatContextProvider / ThreadManagerProvider.
   const taskId = useOptionalChatTask()?.taskId ?? null;
   const { addOrReplaceEager } = useTaskExpandedTools(taskId);
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
 
   const connectionId =
     toolMeta &&
@@ -273,7 +283,9 @@ export function GenericToolCallPart({
   const toolName = stripToolNamespace(mcpStrippedName, gatewayClientId);
   const toolDisplay = TOOL_DISPLAY_MAP[toolName];
   const friendlyName =
-    toolDef?.title ?? toolDisplay?.label ?? toTitleCase(toolName);
+    toolDef?.title ??
+    (toolDisplay?.labelKey ? t(toolDisplay.labelKey) : undefined) ??
+    toTitleCase(toolName);
   const uiResourceUri = getUIResourceUri(meta);
 
   const hasMCPApp = !!uiResourceUri && part.state === "output-available";
@@ -296,14 +308,7 @@ export function GenericToolCallPart({
     // Use the self-describing `app:<connId>:<toolName>` tab id so the
     // main panel can render from the URL alone, without waiting on the
     // thread metadata to fetch.
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: formatPinnedViewTabId(connectionId, rawToolName),
-      }),
-      replace: true,
-    });
+    openPanel(formatPinnedViewTabId(connectionId, rawToolName));
   };
 
   const handleRequestDisplayMode = (
@@ -319,7 +324,7 @@ export function GenericToolCallPart({
   const handleAppMessage = (params: McpUiMessageRequest["params"]) => {
     const doc = contentBlocksToTiptapDoc(params.content);
     if (doc.content.length > 0) {
-      openSidePanel("chat");
+      openSidePanel();
       chatStream?.sendMessage(doc);
     }
   };
@@ -374,6 +379,16 @@ export function GenericToolCallPart({
       <BashWaitSummary
         toolCallId={toolCallId}
         durationMs={sleepDurationMs}
+        anchorMs={partCreatedAtMs(part)}
+      />
+    ) : effectiveState === "loading" ? (
+      // Any other still-running call: count up. A multi-minute build or test
+      // is the case that reads as a dead run, and it has no duration to count
+      // down from — "Preparing…" alone is what made it look frozen.
+      // A stale approval and an output error both resolve to another
+      // `effectiveState` above, so "loading" already excludes them.
+      <ToolElapsedSummary
+        toolCallId={toolCallId}
         anchorMs={partCreatedAtMs(part)}
       />
     ) : isStaleApproval ? (
@@ -459,7 +474,7 @@ export function GenericToolCallPart({
               fallback={
                 <div className="mt-2 flex items-center justify-center h-12 border border-border/75 rounded-lg overflow-hidden p-3">
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <Spinner className="size-4" />
                     <span className="text-sm">
                       {t("chat.generic.loadingApp")}
                     </span>

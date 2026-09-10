@@ -585,6 +585,16 @@ describe("markdownToAdf images", () => {
     ]);
   });
 
+  it("embeds inside a table cell", () => {
+    // Inline-only cells used to drop a QA before/after table's shots to links.
+    const [table] = markdownToAdf(
+      [`| before |`, `| --- |`, `| ![x](${target}) |`].join("\n"),
+      { media },
+    ).content;
+    const cell = table?.content?.[1]?.content?.[0];
+    expect(cell?.content?.map((node) => node.type)).toEqual(["mediaSingle"]);
+  });
+
   it("still keeps alt text when a media node cannot live in the parent", () => {
     // A heading is inline-only, so nothing is uploaded for it in the first
     // place and the label survives as text.
@@ -609,7 +619,7 @@ describe("collectImageTargets", () => {
       "",
       "# ![heading](/out/skip-heading.png)",
       "",
-      "| ![cell](/out/skip-cell.png) |",
+      "| ![cell](/out/4.png) |",
       "| --- |",
       "| x |",
       "",
@@ -621,6 +631,7 @@ describe("collectImageTargets", () => {
       "/out/1.png",
       "/out/2.png",
       "/out/3.png",
+      "/out/4.png",
     ]);
   });
 

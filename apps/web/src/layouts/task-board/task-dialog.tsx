@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
@@ -59,7 +60,6 @@ import {
   Lock01,
   Plus,
   RefreshCw01,
-  Repeat04,
   Link03,
   Tag01,
   Trash03,
@@ -70,6 +70,7 @@ import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import {
+  CANONICAL_COLUMN_KEYS,
   isReportsTask,
   isReviewerThreadTitle,
 } from "@decocms/shared/task-board";
@@ -80,7 +81,6 @@ import { getInitials } from "@/lib/get-initials";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
-  formatSprintDates,
   nextTagColor,
   PRIORITIES,
   PRIORITY_CONFIG,
@@ -88,10 +88,14 @@ import {
   TASK_TYPES,
   type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
+  laneHeader,
+  laneVisual,
   STATUS_CONFIG,
   moveTargets,
   statusIconClassName,
   SUPER_AGENT_ASSIGNEE_ID,
+  isFeedWorthyActivity,
+  isLiveAttempt,
   tagDotColor,
   type Member,
   type TaskBoardItem,
@@ -101,10 +105,15 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 import { summarizeTaskCost } from "./task-cost";
-import { prCardActions } from "./pr-card-actions";
+import {
+  collapsedChecksScore,
+  isSuccessfulCheck,
+  prCardActions,
+} from "./pr-card-actions";
+import { previewRouteUrl } from "./preview-routes";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
-import { useBoardSprintIndex } from "@/hooks/use-task-board-items";
+import { usePreviewProbe } from "@/hooks/use-preview-probe";
 import {
   useTaskBoardActivity,
   type TaskBoardActivity,
@@ -122,7 +131,12 @@ import {
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { parseChangeRequestUrl } from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
+import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
+import { entryForFilter, stampableEntries } from "@/lib/project-index";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
 import { AssigneePickerContent } from "./assignee-picker";
@@ -358,6 +372,10 @@ interface TaskEditorProps {
   /** In create mode, the status to start the new task in (e.g. the lane the
    * "+" was clicked from). Falls back to "triage". */
   defaultStatus?: TaskBoardItemStatus;
+  /** In create mode, the repository to stamp the new task with (e.g. the active
+   * Project filter's repo, so a card made while the board is narrowed to a
+   * project belongs to it). An `owner/name`, matching the {@link repo} field. */
+  defaultRepo?: string | null;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -402,6 +420,7 @@ function TaskBoardItemEditor({
   onClose,
   item,
   defaultStatus,
+  defaultRepo,
   onSubmit,
   onDelete,
   onClone,
@@ -424,27 +443,40 @@ function TaskBoardItemEditor({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
-  // The org's repos (which site a task pertains to).
+  /** Which project this task pertains to, offered as the board offers it: one
+   *  list where a repository IS the project that pins it. Narrowed to the
+   *  repositories the org can actually reach — see {@link stampableEntries}. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
+  const projectIndex = useProjectIndex(NO_TASKS, repos);
+  const projectEntries = stampableEntries(projectIndex);
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
     description: item?.description ?? "",
-    status: item?.status ?? defaultStatus ?? "triage",
+    // The board's leftmost column — where a card nobody placed is born.
+    status: item?.status ?? defaultStatus ?? CANONICAL_COLUMN_KEYS[0],
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    repo: item?.repo ?? null,
+    // Edit wins with the card's own repo; create seeds from the active project.
+    repo: item?.repo ?? defaultRepo ?? null,
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
   const { title, description, status, priority, assigneeId, repo, dueDate } =
     form;
+  /**
+   * The bucket this card's repository belongs to, so the control shows the
+   * PROJECT — its avatar and its name — rather than the string underneath.
+   *
+   * Resolved against the WHOLE index, not the stampable subset: a card already
+   * stamped for a repository whose connection has since gone still belongs to
+   * its project and should say so. The reachability gate decides what you can
+   * PICK, not what an existing value is called. Undefined only when nothing in
+   * the org names that repository, which renders as the raw `owner/name`.
+   */
+  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
   const taskType = form.type;
-  const sprintIndex = useBoardSprintIndex();
-  const cardSprint = item?.sprintId
-    ? (sprintIndex.get(item.sprintId) ?? null)
-    : null;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
@@ -465,8 +497,8 @@ function TaskBoardItemEditor({
   const [tagsOpen, setTagsOpen] = useState(false);
   /** The linked run being read in the sheet, by id rather than by object: a
    *  live list patch can drop it mid-read, and this closes the sheet instead
-   *  of freezing a stale copy. Local state — `?task=` already addresses the
-   *  page it opens over. */
+   *  of freezing a stale copy. Local state — the card's own path already
+   *  addresses the page it opens over. */
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const openThread =
     item?.threads.find((th) => th.threadId === openThreadId) ?? null;
@@ -606,12 +638,12 @@ function TaskBoardItemEditor({
     item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
   /** The card's human key (`DECO-01`), the one identity a person can quote. */
-  const key = item ? taskKey(org.slug, item.keySeq, item.jiraIssueKey) : null;
+  const key = item ? taskKey(org.slug, item.keySeq) : null;
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
-  const StatusIcon = STATUS_CONFIG[status].icon;
+  const StatusIcon = laneVisual(status).icon;
   // Reports-generated tasks: content (title/description/priority) is owned by
   // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
   // rejects a write that touches any of those fields. Board interactions
@@ -684,6 +716,23 @@ function TaskBoardItemEditor({
             {t("taskBoard.taskDialog.savingLabel")}
           </span>
         )}
+        {item?.externalUrl && (
+          /* The card's issue in the tracker it came from. It used to be the
+             first line of the description, which put it in every agent
+             prompt — it is a link for a person, so it lives here. */
+          <Button
+            asChild
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
+            title={item.externalUrl}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <a href={item.externalUrl} target="_blank" rel="noreferrer">
+              <LinkExternal01 size={16} />
+            </a>
+          </Button>
+        )}
         {item && (
           <>
             <Button
@@ -694,7 +743,7 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}/${org.slug}/t/${key ?? item.id}`,
+                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}
@@ -961,26 +1010,24 @@ function TaskBoardItemEditor({
                       className={cn(
                         item
                           ? statusIconClassName({ ...item, status })
-                          : STATUS_CONFIG[status].iconClassName,
+                          : laneVisual(status).iconClassName,
                       )}
                     />
-                    {t(STATUS_CONFIG[status].labelKey)}
+                    {laneHeader(status, t).label}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-44">
                   {moveTargets(deliveryEnabled).map((s) => {
-                    const Icon = STATUS_CONFIG[s].icon;
+                    const { label, visual } = laneHeader(s, t);
+                    const Icon = visual.icon;
                     return (
                       <DropdownMenuItem
                         key={s}
                         onSelect={() => patch({ status: s })}
                         className="gap-2"
                       >
-                        <Icon
-                          size={16}
-                          className={STATUS_CONFIG[s].iconClassName}
-                        />
-                        {t(STATUS_CONFIG[s].labelKey)}
+                        <Icon size={16} className={visual.iconClassName} />
+                        {label}
                       </DropdownMenuItem>
                     );
                   })}
@@ -1230,20 +1277,6 @@ function TaskBoardItemEditor({
                 </PopoverContent>
               </Popover>
 
-              {/* Read-only: sprint membership is owned by the tracker the
-                  board mirrors (see apps/api/src/jira/sync.ts). */}
-              {cardSprint && (
-                <span className={cn(PROPERTY_BUTTON, "cursor-default")}>
-                  <Repeat04 size={16} className="text-muted-foreground" />
-                  <span className="truncate">{cardSprint.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {cardSprint.state === "active"
-                      ? t("taskBoard.taskDialog.sprintCurrent")
-                      : formatSprintDates(cardSprint)}
-                  </span>
-                </span>
-              )}
-
               <TaskCost threads={item?.threads} />
             </PropertyGroup>
 
@@ -1265,44 +1298,40 @@ function TaskBoardItemEditor({
                       const tag = orgTags.find((ot) => ot.id === tagId);
                       if (!tag) return null;
                       return (
-                        <button
+                        // Two sibling buttons, not one nested in the other — a <button> can't validly contain another interactive element.
+                        <div
                           key={tagId}
-                          type="button"
-                          onClick={() => setTagsOpen(true)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                         >
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: tagDotColor(tag.color) }}
-                          />
-                          <span className="truncate">{tag.name}</span>
-                          <span
-                            role="button"
-                            tabIndex={0}
+                          <button
+                            type="button"
+                            onClick={() => setTagsOpen(true)}
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <span
+                              className="size-2 shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: tagDotColor(tag.color),
+                              }}
+                            />
+                            <span className="truncate">{tag.name}</span>
+                          </button>
+                          <button
+                            type="button"
                             aria-label={t(
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
                             className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
                               });
                             }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                patch({
-                                  tagIds: tagIds.filter((id) => id !== tagId),
-                                });
-                              }
-                            }}
                           >
                             <X size={10} />
-                          </span>
-                        </button>
+                          </button>
+                        </div>
                       );
                     })}
                     <PopoverTrigger asChild>
@@ -1336,38 +1365,40 @@ function TaskBoardItemEditor({
             </PropertyGroup>
 
             <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which repo (site) this task pertains to — scopes it to a
-                  site's task pill in the task-based flow. */}
+              {/* Which project this task pertains to. The value persisted is
+                  still the repository — that is the only per-card link there
+                  is — but what you PICK is a project, named as you know it. */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     /* Hugs its label like every other property; the cap is
-                       what keeps a long repo name inside the column. */
+                       what keeps a long project name inside the column. */
                     className={cn(
                       PROPERTY_BUTTON,
                       "max-w-full",
                       !repo && EMPTY_PROPERTY,
                     )}
                   >
-                    <GitHubIcon className="size-4 shrink-0" />
+                    <ProjectEntryIcon entry={selectedEntry} />
                     <span className="min-w-0 truncate text-left">
-                      {repo ?? t("taskBoard.taskDialog.repoButton")}
+                      {selectedEntry?.title ??
+                        repo ??
+                        t("taskBoard.taskDialog.projectButton")}
                     </span>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noRepo")}
+                    {t("taskBoard.taskDialog.noProject")}
                   </DropdownMenuItem>
-                  {repos.map((r) => (
+                  {projectEntries.map((entry) => (
                     <DropdownMenuItem
-                      key={r}
+                      key={entry.id}
                       className="gap-2"
-                      onSelect={() => patch({ repo: r })}
+                      onSelect={() => patch({ repo: entry.repo })}
                     >
-                      <GitHubIcon className="size-4 shrink-0" />
-                      <span className="truncate">{r}</span>
+                      <ProjectEntryRow entry={entry} />
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1443,7 +1474,7 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "onSubmit" | "isSaving"
+    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;
@@ -1600,10 +1631,13 @@ function ThreadActivityItem({
               state.className,
             )}
           >
-            <state.icon
-              size={15}
-              className={cn(state.spin && "animate-spin")}
-            />
+            {/* A spinning status glyph is a loading indicator, so it is the
+                shared Spinner; the settled states keep their own icon. */}
+            {state.spin ? (
+              <Spinner className="size-[15px]" label={state.label} />
+            ) : (
+              <state.icon size={15} />
+            )}
             <span className="text-sm">{state.label}</span>
           </span>
           {message && (
@@ -1705,10 +1739,109 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
   if (c && FAILED_CHECK_CONCLUSIONS.has(c)) {
     return { icon: AlertCircle, className: "text-destructive", spin: false };
   }
-  if (c === "success" || c === "neutral" || c === "skipped") {
+  if (isSuccessfulCheck(check)) {
     return { icon: CheckCircle, className: "text-success", spin: false };
   }
   return { icon: HelpCircle, className: "text-muted-foreground", spin: false };
+}
+
+/**
+ * The "Open preview" button, enabled only once the preview URL actually answers.
+ *
+ * A preview deploy is regularly still building — or already torn down — while
+ * the PR still advertises its URL, so the plain link sent people to a 404. The
+ * status can only be read server-side (CORS makes a cross-origin response
+ * opaque to the browser), so this blocks on `usePreviewProbe` and offers the
+ * link only on a < 400.
+ */
+function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
+  const t = useT();
+  const { data, isPending, isError } = usePreviewProbe(url);
+  const available = data?.available ?? false;
+
+  if (isPending) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        disabled
+      >
+        <Spinner className="size-[14px]" />
+        {t("taskBoard.taskDialog.previewLabel")}
+      </Button>
+    );
+  }
+
+  if (!available || isError) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        disabled
+        title={t("taskBoard.taskDialog.previewUnavailableTitle")}
+      >
+        <Globe01 size={14} />
+        {t("taskBoard.taskDialog.previewUnavailable")}
+      </Button>
+    );
+  }
+
+  const link = (
+    <Button
+      asChild
+      type="button"
+      variant="outline"
+      size="sm"
+      className={cn("gap-1.5", routes.length > 0 && "rounded-r-none")}
+    >
+      <a href={url} target="_blank" rel="noreferrer">
+        <Globe01 size={14} />
+        {t("taskBoard.taskDialog.previewLabel")}
+        <LinkExternal01 size={12} />
+      </a>
+    </Button>
+  );
+
+  if (routes.length === 0) return link;
+
+  // Button keeps opening the preview root; the caret offers the run's pages.
+  return (
+    <div className="flex items-center">
+      {link}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-l-none border-l-0 px-1.5"
+            aria-label={t("taskBoard.taskDialog.previewRoutesLabel")}
+            title={t("taskBoard.taskDialog.previewRoutesLabel")}
+          >
+            <ChevronDown size={14} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {routes.map((route) => (
+            <DropdownMenuItem key={route} asChild>
+              <a
+                href={previewRouteUrl(url, route)}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-xs"
+              >
+                {route}
+              </a>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
 }
 
 /**
@@ -1718,6 +1851,8 @@ function checkRunStyle(check: TaskBoardItemPr["checks"][number]): {
  */
 function PrCard({
   pr,
+  routes,
+  revalidating,
   previewThread,
   reviewsReady,
   shipPending,
@@ -1727,6 +1862,10 @@ function PrCard({
   onOpenPreview,
 }: {
   pr: TaskBoardItemPr;
+  /** The task's reported preview routes, offered under this PR's preview. */
+  routes: string[];
+  /** A live GitHub read is in flight behind the values shown. */
+  revalidating: boolean;
   previewThread?: TaskBoardItemThread;
   /** Task-level: In Review + every enabled reviewer approved. */
   reviewsReady: boolean;
@@ -1739,7 +1878,7 @@ function PrCard({
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
   const style = prStateStyle(pr, t);
-  const checksHeader = prChecksStyle(pr.checksStatus, t);
+  const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
     pr,
     reviewsReady,
@@ -1748,13 +1887,33 @@ function PrCard({
     !!previewThread || !!pr.previewUrl || showShip || showResolveConflict;
   // Null-safe: react-query cache from before `checks` shipped can lack it.
   const checks = pr.checks ?? [];
-  const hasChecksFooter = checks.length > 0 || checksHeader != null;
+  const hasChecksFooter = checks.length > 0 || checksState != null;
   const expandable = checks.length > 0;
+  const score = collapsedChecksScore(pr.checksStatus, checks, checksOpen);
+  const checksHeader = score
+    ? {
+        label: t("taskBoard.taskDialog.prChecksScore", score),
+        className: "text-warning",
+        icon: AlertCircle,
+      }
+    : checksState;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow",
+        // Cards are seeded from localStorage, so what's on screen may be a
+        // minute (or a day) old. The breathing border says "these numbers are
+        // being checked" without blanking the card back to a skeleton.
+        revalidating && "revalidating-ring",
+      )}
+    >
       <div className="flex items-center gap-3">
-        <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        {parseChangeRequestUrl(pr.url)?.repo.provider === "gitlab" ? (
+          <GitLabIcon className="size-4 shrink-0 text-foreground" />
+        ) : (
+          <GitHubIcon className="size-4 shrink-0 text-foreground" />
+        )}
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
           {pr.title ?? `${pr.repoOwner}/${pr.repoName}`}
         </span>
@@ -1803,19 +1962,7 @@ function PrCard({
             </Button>
           )}
           {pr.previewUrl && (
-            <Button
-              asChild
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-            >
-              <a href={pr.previewUrl} target="_blank" rel="noreferrer">
-                <Globe01 size={14} />
-                {t("taskBoard.taskDialog.previewLabel")}
-                <LinkExternal01 size={12} />
-              </a>
-            </Button>
+            <PreviewButton url={pr.previewUrl} routes={routes} />
           )}
           {showShip && (
             <Button
@@ -1874,19 +2021,21 @@ function PrCard({
           </button>
           {checksOpen && (
             <div className="mt-2 flex flex-col gap-2">
-              {checks.map((c) => {
+              {checks.map((c, i) => {
                 const cs = checkRunStyle(c);
+                // Two check runs can share a `name`, so index disambiguates the key.
+                const checkKey = `${c.name}-${i}`;
                 return (
-                  <div key={c.name} className="rounded-md bg-muted/40 p-2">
+                  <div key={checkKey} className="rounded-md bg-muted/40 p-2">
                     <div className="flex items-center gap-2">
-                      <cs.icon
-                        size={13}
-                        className={cn(
-                          "shrink-0",
-                          cs.className,
-                          cs.spin && "animate-spin",
-                        )}
-                      />
+                      {cs.spin ? (
+                        <Spinner className={cn("size-[13px]", cs.className)} />
+                      ) : (
+                        <cs.icon
+                          size={13}
+                          className={cn("shrink-0", cs.className)}
+                        />
+                      )}
                       <span className="min-w-0 flex-1 truncate font-medium text-foreground">
                         {c.name}
                       </span>
@@ -1904,7 +2053,7 @@ function PrCard({
                     {c.summary && (
                       <div className="mt-1.5 max-h-64 overflow-auto text-muted-foreground">
                         <MemoizedMarkdown
-                          id={`${pr.url}-${c.name}`}
+                          id={`${pr.url}-${checkKey}`}
                           text={c.summary}
                         />
                       </div>
@@ -1954,7 +2103,11 @@ function LinksSection({
   onOpenPreview?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-  const { data: prs, isLoading: prsLoading } = useTaskBoardItemPrs(item.id);
+  const {
+    data: prs,
+    isLoading: prsLoading,
+    isFetching: prsFetching,
+  } = useTaskBoardItemPrs(item.id);
   const { data: activity } = useTaskBoardActivity(item.id);
   const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
@@ -1973,7 +2126,11 @@ function LinksSection({
   // token verification). The per-card PrCard adds the PR-open + green-checks gate.
   const reviewsReady =
     laneCanShip(item.status) &&
-    reviewsSatisfiedForPromotion(activity ?? [], enabledReviewers(reviewerOn));
+    reviewsSatisfiedForPromotion(
+      activity ?? [],
+      enabledReviewers(reviewerOn),
+      item.reviewCycleStartedAt,
+    );
   const onShip = () =>
     promote.mutate(undefined, {
       onSuccess: (res) =>
@@ -2010,6 +2167,8 @@ function LinksSection({
             <PrCard
               key={pr.url}
               pr={pr}
+              routes={item.previewRoutes ?? []}
+              revalidating={prsFetching}
               previewThread={previewThread}
               reviewsReady={reviewsReady}
               shipPending={promote.isPending}
@@ -2112,14 +2271,14 @@ function ActivitySection({
     | { kind: "thread"; at: number; thread: TaskBoardItemThread }
     | { kind: "comment"; at: number; comment: TaskComment };
   const events: Ev[] = [
-    ...(activity ?? []).map(
+    ...(activity ?? []).filter(isFeedWorthyActivity).map(
       (a): Ev => ({
         kind: "activity",
         at: new Date(a.occurredAt).getTime(),
         activity: a,
       }),
     ),
-    ...item.threads.map(
+    ...item.threads.filter(isLiveAttempt).map(
       (thread): Ev => ({
         kind: "thread",
         at: new Date(thread.createdAt).getTime(),
@@ -2470,11 +2629,18 @@ function describeActivity(
         : t("taskBoard.taskDialog.activityReviewChangesRequested", {
             reviewer: reviewerName(d.reviewer, t),
           });
+    case "review_verdict_requested":
+      return t("taskBoard.taskDialog.activityReviewVerdictRequested", {
+        reviewer: reviewerName(d.reviewer, t),
+      });
     case "merge_conflict_resolution":
       return t("taskBoard.taskDialog.activityMergeConflictResolution");
     case "merge_failed": {
-      // `detail` names the repo (no_connection) or carries GitHub's refusal
-      // text — the difference between "it's broken" and "connect this repo".
+      /**
+       * `detail` names the repo (no_connection) or carries the provider's
+       * refusal text — the difference between "it's broken" and "connect this
+       * repo".
+       */
       const detail = typeof d.detail === "string" ? d.detail : "";
       switch (d.reason) {
         case "no_pr":
@@ -2489,6 +2655,9 @@ function describeActivity(
             : t("taskBoard.taskDialog.activityMergeFailed");
         case "rate_limited":
           return t("taskBoard.taskDialog.activityMergeFailedRateLimited");
+        // The one refusal with an automatic answer: the agent can rebase.
+        case "conflict":
+          return t("taskBoard.taskDialog.activityMergeFailedConflict");
         case "refused":
           return detail
             ? t("taskBoard.taskDialog.activityMergeFailedRefused", { detail })

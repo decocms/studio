@@ -7,7 +7,6 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { useT, type TranslationKey } from "@/i18n/use-t.ts";
-import { currentSprintId } from "@decocms/shared/sprints";
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -32,6 +31,11 @@ import {
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -46,18 +50,24 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
-  Repeat04,
   SearchSm,
+  Settings02,
   Tag01,
   User01,
   X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { getInitials } from "@/lib/get-initials";
 import {
-  formatSprintDates,
-  type Sprint,
+  entryForFilter,
+  NO_PROJECT_FILTER,
+  projectFilterNarrows,
+  taskMatchesProjectFilter,
+  type ProjectIndex,
+  type ProjectIndexEntry,
+} from "@/lib/project-index";
+import {
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -71,18 +81,6 @@ import {
 /** Sentinel assignee filter matching tasks with no assignee. */
 const UNASSIGNED_FILTER = "__unassigned__";
 
-/** Sentinel repo filter matching tasks with no associated repo. */
-const NO_REPO_FILTER = "__no_repo__";
-
-/** Sentinel sprint filter matching cards in no sprint (the backlog). Shares the
- *  namespace with sprint ids, which are `sprint_`-prefixed, so it can't collide. */
-const BACKLOG_FILTER = "backlog";
-
-/** Sentinel for "every sprint", which has to be SAID rather than implied by an
- *  absent param: absence is what selects the running sprint, so without this the
- *  Any-sprint option would drop out of the URL and default straight back. */
-const ALL_SPRINTS_FILTER = "all";
-
 /** Radix `RadioGroup` needs a string value — this stands in for `null` (any). */
 const ANY_FILTER = "__any__";
 
@@ -95,10 +93,9 @@ export type TaskFilters = {
   due: DueFilter | null;
   /** Org tag ids — a task matches if it has at least one of these. */
   tags: string[];
-  /** `owner/name` | NO_REPO_FILTER | null (any repo) */
-  repo: string | null;
-  /** Sprint id | BACKLOG_FILTER (no sprint) | null (any sprint) */
-  sprint: string | null;
+  /** A project index bucket id — `owner/name`, a `vir_…` project with no
+   *  repository, {@link NO_PROJECT_FILTER}, or null for every project. */
+  project: string | null;
   /** Free-text match against title/description, empty string = no filter. */
   search: string;
 };
@@ -108,78 +105,30 @@ export const EMPTY_FILTERS: TaskFilters = {
   priority: null,
   due: null,
   tags: [],
-  repo: null,
-  sprint: null,
+  project: null,
   search: "",
 };
 
-/**
- * The sprint filter this board should apply, given what the URL says.
- *
- * A board that runs sprints opens on the running one, the way Jira does, so an
- * absent param is not "no filter" — it is "nobody has chosen yet". Every sprint
- * is reachable only through {@link ALL_SPRINTS_FILTER}, which is the whole
- * reason that sentinel exists.
- *
- * An unresolvable id resolves like an absent one. The URL outlives the sprint it
- * names — a shared link, a bookmark, a sprint deleted in Jira — and left in
- * place it hides every card behind a chip that reads like "no filter". Falling
- * back to the default keeps a single rule: you see every sprint only by asking.
- *
- * Call it only once the sprints have loaded, or an in-flight read would drop a
- * filter that is about to be valid.
- */
-export function resolveSprintFilter(
-  value: string | null,
-  sprints: readonly Sprint[],
-): string | null {
-  if (value === ALL_SPRINTS_FILTER) return null;
-  if (value === BACKLOG_FILTER) return value;
-  if (value !== null && sprints.some((sprint) => sprint.id === value)) {
-    return value;
-  }
-  return currentSprintId(sprints);
-}
-
-/**
- * Whether the sprint scope is one the user narrowed to, as opposed to the board
- * opening on its running sprint. The default must not count: it would light up
- * "Clear" on a board nobody filtered, and clearing cannot remove it — the reset
- * writes an absent param, which is exactly what re-selects the default.
- *
- * Picking the running sprint by hand lands on the same state and so reads as
- * the default. Indistinguishable and harmless: the board shows the same cards.
- */
-function sprintNarrowed(f: TaskFilters, defaultSprint: string | null): boolean {
-  return f.sprint !== null && f.sprint !== defaultSprint;
-}
-
-function hasActiveFilters(
-  f: TaskFilters,
-  defaultSprint: string | null,
-): boolean {
+/** `index` so the project clause agrees with the chip: a filter that narrows
+ *  nothing must not offer a Clear that visibly does nothing. */
+function hasActiveFilters(f: TaskFilters, index: ProjectIndex): boolean {
   return (
     f.assignee !== null ||
     f.priority !== null ||
     f.due !== null ||
     f.tags.length > 0 ||
-    f.repo !== null ||
-    sprintNarrowed(f, defaultSprint) ||
+    projectFilterNarrows(f.project, index) ||
     f.search.trim() !== ""
   );
 }
 
-function activeFilterCount(
-  f: TaskFilters,
-  defaultSprint: string | null,
-): number {
+function activeFilterCount(f: TaskFilters, index: ProjectIndex): number {
   return (
     (f.assignee !== null ? 1 : 0) +
     (f.priority !== null ? 1 : 0) +
     (f.due !== null ? 1 : 0) +
     (f.tags.length > 0 ? 1 : 0) +
-    (f.repo !== null ? 1 : 0) +
-    (sprintNarrowed(f, defaultSprint) ? 1 : 0) +
+    (projectFilterNarrows(f.project, index) ? 1 : 0) +
     (f.search.trim() !== "" ? 1 : 0)
   );
 }
@@ -196,55 +145,55 @@ function isSameDay(a: number, b: number): boolean {
   );
 }
 
-/** A term written as a bare number — the shorthand both key vocabularies take. */
-const BARE_SEQ = /^0*(\d+)$/;
-
 /**
- * True when the term names this card by the key it SHOWS (see `taskKey`).
- *
- * A card synced from a tracker shows the tracker's key, so that is the only
- * lettered key it answers to. Falling through to the sequence would be worse
- * than useless: `parseTaskKeySeq` ignores the prefix, so searching `OS-333`
- * would quietly match whichever unrelated card happens to hold Studio sequence
- * 333, and miss the one actually named that.
- *
- * A bare number still works either way, since it is ambiguous by construction
- * and a search returning both readings of it is the honest answer.
+ * True when the term names this card by the key it SHOWS (see `taskKey`): the
+ * full `DECO-01`, a lower-cased or unpadded variant, or a bare number —
+ * `parseTaskKeySeq` reads the sequence out of any of them.
  */
 export function matchesTaskKey(
   search: string,
   keySeq: number | null | undefined,
-  trackerKey?: string | null,
 ): boolean {
   const term = search.trim();
   if (term === "") return false;
-  const tracker = trackerKey?.trim();
-  if (tracker) {
-    if (term.toLowerCase() === tracker.toLowerCase()) return true;
-    const bare = BARE_SEQ.exec(term)?.[1];
-    return bare !== undefined && Number(bare) === parseTaskKeySeq(tracker);
-  }
   return keySeq != null && parseTaskKeySeq(term) === keySeq;
 }
 
+/**
+ * Whether a card belongs to `userId`, delegation included.
+ *
+ * Handing a card to the Super Agent does not hand it away: the board renders
+ * the delegator's avatar beside the capybara, so a card that reads as "mine and
+ * the Super Agent's" has to survive filtering by me. Delegation counts only on
+ * Super Agent cards — `assignedBy` is stamped on every assignee change, so a
+ * card one teammate assigned to another is the assignee's, not the assigner's.
+ */
+function assignedTo(item: TaskBoardItem, userId: string): boolean {
+  if (item.assigneeId === userId) return true;
+  return (
+    item.assigneeId === SUPER_AGENT_ASSIGNEE_ID && item.assignedBy === userId
+  );
+}
+
+/** `index` is required rather than defaulted: an empty index answers the
+ *  no-project bucket with "every card", and a caller that forgot it would
+ *  quietly turn one filter into no filter. */
 export function taskMatchesFilters(
   item: TaskBoardItem,
   f: TaskFilters,
+  index: ProjectIndex,
 ): boolean {
   const search = f.search.trim().toLowerCase();
   if (search !== "") {
     const haystack = `${item.title} ${item.description ?? ""}`.toLowerCase();
-    if (
-      !haystack.includes(search) &&
-      !matchesTaskKey(search, item.keySeq, item.jiraIssueKey)
-    ) {
+    if (!haystack.includes(search) && !matchesTaskKey(search, item.keySeq)) {
       return false;
     }
   }
   if (f.assignee !== null) {
     if (f.assignee === UNASSIGNED_FILTER) {
       if (item.assigneeId !== null) return false;
-    } else if (item.assigneeId !== f.assignee) {
+    } else if (!assignedTo(item, f.assignee)) {
       return false;
     }
   }
@@ -265,21 +214,7 @@ export function taskMatchesFilters(
     const itemTagIds = item.tags.map((tag) => tag.id);
     if (!f.tags.some((id) => itemTagIds.includes(id))) return false;
   }
-  if (f.repo !== null) {
-    if (f.repo === NO_REPO_FILTER) {
-      if (item.repo != null) return false;
-      // GitHub treats owner/repo case-insensitively, so the filter must too.
-    } else if (item.repo?.toLowerCase() !== f.repo.toLowerCase()) {
-      return false;
-    }
-  }
-  if (f.sprint !== null) {
-    if (f.sprint === BACKLOG_FILTER) {
-      if (item.sprintId != null) return false;
-    } else if (item.sprintId !== f.sprint) {
-      return false;
-    }
-  }
+  if (!taskMatchesProjectFilter(item, f.project, index)) return false;
   return true;
 }
 
@@ -625,150 +560,168 @@ function TagFilter({
   );
 }
 
-function RepoFilter({
+/** One bucket's row. How it presents itself — project avatar and name, or the
+ *  repository's glyph when no single project names it — is
+ *  {@link ProjectEntryRow}'s to decide, shared with the task detail's picker. */
+function ProjectOption({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: ProjectIndexEntry;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <CommandItem
+      /**
+       * The bucket id leads, because cmdk keys a row's HIGHLIGHT on this string
+       * and nothing else: two repo-less projects both titled "Docs" would
+       * otherwise share a value, so both would render selected, arrow-down
+       * could not move between them, and Enter would fire whichever came first
+       * in the DOM. The rest of the string is what the row is searchable BY —
+       * its name, its repository, and its siblings' names.
+       */
+      value={`${entry.id} ${entry.title} ${entry.repo ?? ""} ${entry.projects
+        .map((p) => p.title)
+        .join(" ")}`}
+      onSelect={onSelect}
+      className="gap-2"
+    >
+      <ProjectEntryRow entry={entry} />
+      {selected && <Check size={14} className="shrink-0 text-foreground" />}
+    </CommandItem>
+  );
+}
+
+/**
+ * The filter chip's own label, which has to agree with what the board is
+ * actually doing.
+ *
+ * A `vir_…` the index cannot resolve — the first frame, or a link naming a
+ * project since deleted — lets every card through, so the chip reads UNSET
+ * rather than echoing the raw id back. A chip showing `vir_01j9x…` over a
+ * board that is not narrowed is the one label here that can mislead. An
+ * unresolved repo-shaped id still narrows (an exact compare against the card's
+ * own `repo`), so that one keeps saying what it filters by.
+ */
+function projectChipLabel(
+  value: string | null,
+  entry: ProjectIndexEntry | undefined,
+  narrows: boolean,
+  t: ReturnType<typeof useT>,
+): string {
+  if (value === null || !narrows)
+    return t("taskBoard.taskFilters.projectLabel");
+  if (value === NO_PROJECT_FILTER)
+    return t("taskBoard.taskFilters.projectNone");
+  return entry?.title ?? value;
+}
+
+/**
+ * The board's project filter — the control that used to say "Repo".
+ *
+ * Its option set is the project index, so a repository is offered as the
+ * project that pins it and picking one IS picking a project. A repository no
+ * project claims is still offered, under its own heading: the board must be
+ * able to narrow to work that exists.
+ */
+function ProjectFilter({
   value,
-  repos,
+  index,
   onChange,
   block,
 }: {
   value: string | null;
-  repos: string[];
+  index: ProjectIndex;
   onChange: (next: string | null) => void;
   block?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const label =
-    value === null
-      ? t("taskBoard.taskFilters.repoLabel")
-      : value === NO_REPO_FILTER
-        ? t("taskBoard.taskFilters.repoNoRepo")
-        : value;
+  const selected = value === null ? undefined : entryForFilter(value, index);
+  const narrows = projectFilterNarrows(value, index);
+  const label = projectChipLabel(value, selected, narrows, t);
   const select = (next: string | null) => {
     onChange(next);
     setOpen(false);
   };
-  const triggerClass = chipClass(value !== null, block);
+  const claimed = index.entries.filter((entry) => entry.projects.length > 0);
+  const unclaimed = index.entries.filter(
+    (entry) => entry.projects.length === 0,
+  );
+  /** `narrows`, not `value !== null`: the chip must look set only when the
+   *  board is actually narrowed. */
+  const triggerClass = chipClass(narrows, block);
   const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className={triggerClass}>
-          <GitHubIcon className="size-3.5 shrink-0" />
+          {/* The glyph follows the label: an unresolved bucket reads as unset,
+              so it must not wear a project's face either. */}
+          <ProjectEntryIcon entry={narrows ? selected : undefined} />
           <span className="max-w-[12rem] truncate">{label}</span>
           <ChevronDown size={12} className={chevronClass} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
+      <PopoverContent align="start" className="w-72 p-0">
         <Command>
           <CommandInput
-            placeholder={t("taskBoard.taskFilters.repoFilterPlaceholder")}
-            aria-label={t("taskBoard.taskFilters.repoFilterPlaceholder")}
+            placeholder={t("taskBoard.taskFilters.projectFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.projectFilterPlaceholder")}
             className="h-9"
           />
           <CommandList>
             <CommandEmpty>
-              {t("taskBoard.taskFilters.repoNoReposFound")}
+              {t("taskBoard.taskFilters.projectNoneFound")}
             </CommandEmpty>
             <CommandGroup>
               <CommandItem
-                value={t("taskBoard.taskFilters.repoAnyRepo")}
+                value={t("taskBoard.taskFilters.projectAny")}
                 onSelect={() => select(null)}
               >
-                {t("taskBoard.taskFilters.repoAnyRepo")}
+                {t("taskBoard.taskFilters.projectAny")}
               </CommandItem>
               <CommandItem
-                value={t("taskBoard.taskFilters.repoNoRepo")}
-                onSelect={() => select(NO_REPO_FILTER)}
+                value={t("taskBoard.taskFilters.projectNone")}
+                onSelect={() => select(NO_PROJECT_FILTER)}
               >
-                {t("taskBoard.taskFilters.repoNoRepo")}
+                {t("taskBoard.taskFilters.projectNone")}
               </CommandItem>
             </CommandGroup>
-            <CommandGroup>
-              {repos.map((repo) => (
-                <CommandItem
-                  key={repo}
-                  value={repo}
-                  onSelect={() => select(repo)}
-                  className="gap-2"
-                >
-                  <GitHubIcon className="size-4 shrink-0" />
-                  <span className="flex-1 truncate">{repo}</span>
-                  {value === repo && (
-                    <Check size={14} className="shrink-0 text-foreground" />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {claimed.length > 0 && (
+              <CommandGroup
+                heading={t("taskBoard.taskFilters.projectGroupProjects")}
+              >
+                {claimed.map((entry) => (
+                  <ProjectOption
+                    key={entry.id}
+                    entry={entry}
+                    selected={selected === entry}
+                    onSelect={() => select(entry.id)}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {unclaimed.length > 0 && (
+              <CommandGroup
+                heading={t("taskBoard.taskFilters.projectGroupRepos")}
+              >
+                {unclaimed.map((entry) => (
+                  <ProjectOption
+                    key={entry.id}
+                    entry={entry}
+                    selected={selected === entry}
+                    onSelect={() => select(entry.id)}
+                  />
+                ))}
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function SprintFilter({
-  value,
-  sprints,
-  onChange,
-  block,
-}: {
-  value: string | null;
-  /** Sprints to offer, in reading order (running → next → past). */
-  sprints: Sprint[];
-  /** Always a stored value — `ALL_SPRINTS_FILTER`, never a bare null. */
-  onChange: (next: string) => void;
-  block?: boolean;
-}) {
-  const t = useT();
-  const selected = sprints.find((sprint) => sprint.id === value);
-  const label =
-    value === null
-      ? t("taskBoard.taskFilters.sprintLabel")
-      : value === BACKLOG_FILTER
-        ? t("taskBoard.taskFilters.sprintBacklog")
-        : // A filter can outlive its sprint (a stored URL, a deleted sprint).
-          (selected?.name ?? t("taskBoard.taskFilters.sprintLabel"));
-  const triggerClass = chipClass(value !== null, block);
-  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button type="button" className={triggerClass}>
-          <Repeat04 size={14} className="shrink-0" />
-          {label}
-          <ChevronDown size={12} className={chevronClass} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="max-h-80 w-72 overflow-y-auto"
-      >
-        <DropdownMenuRadioGroup
-          value={value === null ? ANY_FILTER : value}
-          onValueChange={(next) =>
-            onChange(next === ANY_FILTER ? ALL_SPRINTS_FILTER : next)
-          }
-        >
-          <DropdownMenuRadioItem value={ANY_FILTER}>
-            {t("taskBoard.taskFilters.sprintAnySprint")}
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value={BACKLOG_FILTER}>
-            {t("taskBoard.taskFilters.sprintBacklog")}
-          </DropdownMenuRadioItem>
-          {sprints.map((sprint) => (
-            <DropdownMenuRadioItem key={sprint.id} value={sprint.id}>
-              <span className="truncate">{sprint.name}</span>
-              <span className="ml-auto shrink-0 text-muted-foreground">
-                {sprint.state === "active"
-                  ? t("taskBoard.taskFilters.sprintCurrent")
-                  : formatSprintDates(sprint)}
-              </span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -848,22 +801,64 @@ function SearchToggle({
   );
 }
 
+/**
+ * Button to the board's settings page. Navigation itself is the caller's
+ * job (passed in as `onClick`) — this component stays presentational like
+ * the rest of the bar, with no router or org dependency of its own.
+ *
+ * Icon-only with a hover tooltip in the inline bar; in the mobile drawer
+ * (`block`) the tooltip never shows (Radix tooltips are hover/focus-only,
+ * and drawer taps are touch), so it renders the label as text instead, like
+ * every other drawer control.
+ */
+function BoardSettingsButton({
+  block,
+  onClick,
+}: {
+  block?: boolean;
+  onClick: () => void;
+}) {
+  const t = useT();
+  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        chipClass(false, block),
+        block ? "h-10 w-full" : "w-8 justify-center px-0",
+      )}
+    >
+      <Settings02 size={14} className="shrink-0" />
+      {block && <span>{label}</span>}
+    </button>
+  );
+  if (block) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 /** The filter controls, shared by the inline bar and the mobile drawer. */
 function FilterControls({
   filters,
   members,
   tags,
-  repos,
-  sprints,
+  index,
   onChange,
+  onOpenBoardSettings,
   block,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
-  repos: string[];
-  sprints: Sprint[];
+  index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
   block?: boolean;
 }) {
   return (
@@ -895,28 +890,19 @@ function FilterControls({
         tags={tags}
         onChange={(tags) => onChange({ ...filters, tags })}
       />
-      {/* Keep the control mounted while a repo filter is active even if the
-          option list empties (last repo connection removed) — otherwise it
+      {/* Keep the control mounted while a project filter is active even if the
+          option list empties (last project and repo removed) — otherwise it
           silently hides tasks with no visible chip to clear. */}
-      {(repos.length > 0 || filters.repo !== null) && (
-        <RepoFilter
+      {(index.entries.length > 0 ||
+        projectFilterNarrows(filters.project, index)) && (
+        <ProjectFilter
           block={block}
-          value={filters.repo}
-          repos={repos}
-          onChange={(repo) => onChange({ ...filters, repo })}
+          value={filters.project}
+          index={index}
+          onChange={(project) => onChange({ ...filters, project })}
         />
       )}
-      {/* Same reasoning as the repo control: an active sprint filter keeps its
-          chip visible even when the board mirrors no sprints, so the hidden
-          cards can be brought back. */}
-      {(sprints.length > 0 || filters.sprint !== null) && (
-        <SprintFilter
-          block={block}
-          value={filters.sprint}
-          sprints={sprints}
-          onChange={(sprint) => onChange({ ...filters, sprint })}
-        />
-      )}
+      <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
     </>
   );
 }
@@ -926,16 +912,16 @@ export function TaskFiltersBar({
   filters,
   members,
   tags,
-  repos,
-  sprints,
+  index,
   onChange,
+  onOpenBoardSettings,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
-  repos: string[];
-  sprints: Sprint[];
+  index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
 }) {
   const t = useT();
   return (
@@ -948,11 +934,11 @@ export function TaskFiltersBar({
         filters={filters}
         members={members}
         tags={tags}
-        repos={repos}
-        sprints={sprints}
+        index={index}
         onChange={onChange}
+        onOpenBoardSettings={onOpenBoardSettings}
       />
-      {hasActiveFilters(filters, currentSprintId(sprints)) && (
+      {hasActiveFilters(filters, index) && (
         <button
           type="button"
           onClick={() => onChange(EMPTY_FILTERS)}
@@ -974,20 +960,20 @@ export function TaskFiltersDrawer({
   filters,
   members,
   tags,
-  repos,
-  sprints,
+  index,
   onChange,
+  onOpenBoardSettings,
 }: {
   filters: TaskFilters;
   members: Member[];
   tags: OrgTag[];
-  repos: string[];
-  sprints: Sprint[];
+  index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const count = activeFilterCount(filters, currentSprintId(sprints));
+  const count = activeFilterCount(filters, index);
   const triggerClass = chipClass(count > 0);
   return (
     <Drawer open={open} onOpenChange={setOpen} direction="bottom">
@@ -1012,9 +998,9 @@ export function TaskFiltersDrawer({
             filters={filters}
             members={members}
             tags={tags}
-            repos={repos}
-            sprints={sprints}
+            index={index}
             onChange={onChange}
+            onOpenBoardSettings={onOpenBoardSettings}
           />
         </div>
         <DrawerFooter className="flex-row gap-2">

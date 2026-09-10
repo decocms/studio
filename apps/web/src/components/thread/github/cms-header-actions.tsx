@@ -13,10 +13,6 @@
  */
 
 import type { BranchMeta } from "@decocms/sandbox/shared";
-import {
-  branchUserLabel,
-  generateBranchName,
-} from "@decocms/shared/branch-name";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   SplitButton,
@@ -35,8 +31,7 @@ import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
-import { authClient } from "@/lib/auth-client.ts";
-import { resolveGithubAttachment } from "@/lib/github-repo.ts";
+import { repoToolTarget, resolveGithubAttachment } from "@/lib/github-repo.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -67,7 +62,14 @@ import {
   sandboxGitStatusQueryOptions,
 } from "./sandbox-git-api.ts";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
+import { useReleases } from "./use-releases";
+import { draftsModeEnabled } from "./use-version-gate";
 import { usePrReviews } from "./use-pr-reviews.ts";
+import { authClient } from "@/lib/auth-client.ts";
+import {
+  branchUserLabel,
+  generateBranchName,
+} from "@decocms/shared/branch-name";
 
 interface Props {
   virtualMcpId: string;
@@ -89,8 +91,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const { data: session } = authClient.useSession();
   const vm = useVirtualMCP(virtualMcpId);
+  const { data: session } = authClient.useSession();
+  const { deleteRelease } = useReleases(virtualMcpId);
   const {
     currentBranch: branch,
     setCurrentTaskBranch,
@@ -181,7 +184,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -193,7 +196,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const lastPublishedQuery = useLastPublishedPr({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     base: baseBranch,
@@ -202,7 +205,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -211,7 +214,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const reviewsQuery = usePrReviews({
     orgId: org.id,
     orgSlug: org.slug,
-    connectionId: githubRepo?.connectionId ?? "",
+    target: repoToolTarget(githubRepo),
     owner: githubRepo?.owner ?? "",
     repo: githubRepo?.name ?? "",
     branch: githubHeadBranch,
@@ -229,17 +232,18 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     await prQuery.refetch();
   };
 
-  /**
-   * A squash-merge leaves the published commits on the branch, so the editor
-   * has to move to a fresh one or the next edit would re-publish work that is
-   * already live. Modelled as a mutation so `isPending` — not a hand-rolled
-   * flag — is what tells the state machine a publish is still settling.
-   */
+  /** Publish done: land on a fresh editable draft and discard the merged draft
+   *  (switcher entry + branch); a mutation so `isPending` signals the publish is
+   *  still settling. */
   const publishCompletion = useMutation({
     mutationFn: async () => {
+      const published = draftsModeEnabled(vm) ? branch : null;
       await setCurrentTaskBranch(
         generateBranchName(branchUserLabel(session?.user)),
       );
+      if (published && published !== baseBranch) {
+        await deleteRelease(published);
+      }
     },
     /** The dialog is already closed by now, so a toast is the only surface. */
     onError: (err: unknown) => {
@@ -439,7 +443,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           virtualMcpId={virtualMcpId}
           branch={branch}
           baseBranch={baseBranch}
-          githubConnectionId={githubRepo.connectionId ?? ""}
+          repoTarget={repoToolTarget(githubRepo)}
           owner={githubRepo.owner}
           repo={githubRepo.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}

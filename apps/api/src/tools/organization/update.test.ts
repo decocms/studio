@@ -10,11 +10,14 @@ function makeCtx() {
       createdAt: new Date("2026-01-01T00:00:00Z"),
     }),
   );
+  const get = mock(async () => ({
+    metadata: { archived: true, archivedAt: "2026-01-01T00:00:00Z" },
+  }));
   return {
     auth: { user: { id: "user-1" } },
     access: { check: mock(async () => {}) },
     organization: { id: "org-1", slug: "acme", name: "Acme" },
-    boundAuth: { organization: { update } },
+    boundAuth: { organization: { update, get } },
     update,
   } as unknown as Parameters<typeof ORGANIZATION_UPDATE.handler>[1] & {
     update: typeof update;
@@ -29,7 +32,13 @@ describe("ORGANIZATION_UPDATE", () => {
 
     expect(ctx.update).toHaveBeenCalledWith({
       organizationId: "org-1",
-      data: { metadata: { description: "" } },
+      data: {
+        metadata: {
+          archived: true,
+          archivedAt: "2026-01-01T00:00:00Z",
+          description: "",
+        },
+      },
     });
   });
 
@@ -43,8 +52,28 @@ describe("ORGANIZATION_UPDATE", () => {
 
     expect(ctx.update).toHaveBeenCalledWith({
       organizationId: "org-1",
-      data: { metadata: { description: "hello" } },
+      data: {
+        metadata: {
+          archived: true,
+          archivedAt: "2026-01-01T00:00:00Z",
+          description: "hello",
+        },
+      },
     });
+  });
+
+  it("preserves unrelated metadata keys instead of dropping them", async () => {
+    const ctx = makeCtx();
+
+    await ORGANIZATION_UPDATE.handler(
+      { id: "org-1", description: "hello" },
+      ctx,
+    );
+
+    const call = ctx.update.mock.calls[0]?.[0] as {
+      data: { metadata: Record<string, unknown> };
+    };
+    expect(call.data.metadata.archived).toBe(true);
   });
 
   it("rejects updating an organization other than the authenticated one", async () => {

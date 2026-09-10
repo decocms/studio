@@ -22,6 +22,8 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:threadIntent:${locator}:${taskId}`,
   chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
     `studio:chat:draft:${locator}:${taskKey}`,
+  /** One entry per locator holding that org's recently-viewed task PR cards. */
+  taskBoardPrs: (locator: ProjectLocator) => `studio:task-board-prs:${locator}`,
   sidePanelWidth: () => `studio:side-panel:width`,
   sidebarOpen: () => `studio:sidebar-open`,
   preferences: () => `studio:user:preferences`,
@@ -34,5 +36,4 @@ export const LOCALSTORAGE_KEYS = {
     `sidebar.group-order.${orgId}.${userId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
-  cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
 } as const;

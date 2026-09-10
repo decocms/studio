@@ -11,7 +11,7 @@ import { z } from "zod";
 /**
  * OAuth configuration schema for downstream MCP
  */
-const OAuthConfigSchema = z.object({
+export const OAuthConfigSchema = z.object({
   authorizationEndpoint: z.string().url(),
   tokenEndpoint: z.string().url(),
   introspectionEndpoint: z.string().url().optional(),
@@ -67,6 +67,30 @@ const StdioConnectionParametersSchema = z.object({
     .optional()
     .describe("Environment variables (encrypted in storage)"),
 });
+
+/**
+ * `metadata` and `configuration_state` are caller-supplied JSON blobs with no
+ * other size limit on the write path (no MCP-endpoint body-size middleware
+ * bounds them) — an org member with ordinary connection-write permission
+ * could otherwise stash an arbitrarily large object in a connection row.
+ * `configuration_state` is also embedded whole in the JWT sent to downstream
+ * MCP servers on every call, so an oversized value bloats every outbound
+ * request, not just storage.
+ */
+const MAX_JSON_FIELD_BYTES = 256 * 1024;
+
+function boundedJsonRecord(fieldName: string) {
+  return z
+    .record(z.string(), z.unknown())
+    .nullable()
+    .refine(
+      (value) =>
+        value === null || JSON.stringify(value).length <= MAX_JSON_FIELD_BYTES,
+      {
+        message: `${fieldName} must serialize to at most ${MAX_JSON_FIELD_BYTES} bytes`,
+      },
+    );
+}
 
 export type HttpConnectionParameters = z.infer<
   typeof HttpConnectionParametersSchema
@@ -131,20 +155,18 @@ export const ConnectionEntitySchema = z.object({
   oauth_config: OAuthConfigSchema.nullable().describe("OAuth configuration"),
 
   // New configuration fields (snake_case)
-  configuration_state: z
-    .record(z.string(), z.unknown())
-    .nullable()
-    .describe("Configuration state (decrypted)"),
+  configuration_state: boundedJsonRecord("configuration_state").describe(
+    "Configuration state (decrypted)",
+  ),
   configuration_scopes: z
     .array(z.string())
     .nullable()
     .optional()
     .describe("Configuration scopes"),
 
-  metadata: z
-    .record(z.string(), z.unknown())
-    .nullable()
-    .describe("Additional metadata (includes repository info)"),
+  metadata: boundedJsonRecord("metadata").describe(
+    "Additional metadata (includes repository info)",
+  ),
   tools: z
     .array(ToolDefinitionSchema)
     .nullable()

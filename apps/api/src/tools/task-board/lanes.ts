@@ -11,30 +11,44 @@
  * too, and those importing `run-reactions` for a constant would be a cycle.
  */
 
-import { DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  type CanonicalColumnKey,
+  DELIVERY_LANES,
+  LANES,
+} from "@decocms/shared/task-board";
 import type { TaskBoardItemStatus } from "@/storage/types";
 
-export const LANE_RANK: Record<TaskBoardItemStatus, number> = {
-  triage: 0,
-  todo: 1,
-  in_progress: 2,
-  in_review: 3,
-  approved: 4,
-  merged: 5,
-  post_deploy_validation: 6,
-  done: 7,
-  archived: 8,
-};
+const RANK_BY_KEY = Object.fromEntries(
+  CANONICAL_COLUMN_KEYS.map((key, index) => [key, index]),
+) as Record<CanonicalColumnKey, number>;
+
+/** Annotated, not cast: a status added to the union with no place in
+ *  `CANONICAL_COLUMN_KEYS` fails to satisfy this `Record` and is a compile
+ *  error here, which is the whole reason the table is exhaustive. */
+export const LANE_RANK: Record<TaskBoardItemStatus, number> = RANK_BY_KEY;
+
+/** Widened read of the same table: a card's status is typed as any column
+ *  key, and the closed Record would not accept it as an index. */
+const RANK_LOOKUP: Record<string, number> = LANE_RANK;
+
+/** Where a status sits in board order. Every status is a canonical column, so
+ *  an unknown key is a corrupt row, not a case to reason about. */
+export function laneRank(status: string): number {
+  const rank = RANK_LOOKUP[status];
+  if (rank === undefined) throw new Error(`Unknown board column "${status}"`);
+  return rank;
+}
 
 /** The delivery lanes, as board statuses — the assertion that the shared
  *  literal union stays a subset of this side's lane vocabulary. */
-export const DELIVERY_LANE_STATUSES: TaskBoardItemStatus[] = DELIVERY_LANES;
+export const DELIVERY_LANE_STATUSES: string[] = DELIVERY_LANES;
 
 /** True for one of the post-merge delivery lanes (Approved, Merged, Post-deploy
  *  Validation) — the statuses that only exist for an org running
  *  `delivery_lanes_enabled`. Mirrors the web-side `isDeliveryLane` in
  *  `layouts/task-board/config.tsx`. */
-export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
+export function isDeliveryLane(status: string): boolean {
   return DELIVERY_LANE_STATUSES.includes(status);
 }
 
@@ -46,11 +60,17 @@ export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
  * enumeration is correct only for the lanes that existed when it was written,
  * so adding one silently turns it into a path that drags cards BACKWARD.
  */
-export function movesForward(
-  from: TaskBoardItemStatus,
-  to: TaskBoardItemStatus,
-): boolean {
-  return LANE_RANK[to] > LANE_RANK[from];
+export function movesForward(from: string, to: string): boolean {
+  return laneRank(to) > laneRank(from);
+}
+
+/**
+ * True when a card in `from` may still be advanced to `to`: it sits at or
+ * before it. What stops a re-opened PR dragging a finished card backwards,
+ * while letting a repeated trigger on the target lane stay a no-op.
+ */
+export function atOrBefore(from: string, to: string): boolean {
+  return laneRank(from) <= laneRank(to);
 }
 
 /**
@@ -59,7 +79,7 @@ export function movesForward(
  * Without Approved, moving a card into it would lock the ship button out — the
  * lane would be a dead end.
  */
-export const SHIP_ELIGIBLE_LANES: ReadonlySet<TaskBoardItemStatus> = new Set([
+export const SHIP_ELIGIBLE_LANES: ReadonlySet<string> = new Set([
   "in_review",
   "approved",
 ]);
@@ -70,6 +90,30 @@ export const SHIP_ELIGIBLE_LANES: ReadonlySet<TaskBoardItemStatus> = new Set([
  * candidate query and the re-read inside the org's context have to agree, or
  * the sweep picks cards it then refuses.
  */
-export function isTaggableMergedStatus(status: TaskBoardItemStatus): boolean {
+export function isTaggableMergedStatus(status: string): boolean {
   return status === "done" || DELIVERY_LANE_STATUSES.includes(status);
+}
+
+/**
+ * True while a card is in its REVIEW PHASE: a reviewer owns it, or it is parked
+ * In Review waiting on a person.
+ *
+ * This is the gate every automatic review path takes, and it is deliberately
+ * not `status === "in_review"`. Since migration 190 an agent reviewer runs
+ * while the card still reads In Progress — the lane says whose turn it is, and
+ * during a review it is nobody's — so the durable fact is the open cycle
+ * (`reviewCycleStartedAt`), not the lane.
+ *
+ * Still bounded by rank: a card that has shipped (Approved and beyond) is out
+ * of the phase whatever a stale cycle stamp says, so a missed `closeReviewCycle`
+ * can never drag a merged card back into the sweeper's work.
+ */
+export function inReviewPhase(item: {
+  status: string;
+  reviewCycleStartedAt: string | null;
+}): boolean {
+  if (laneRank(item.status) > LANE_RANK.in_review) return false;
+  // Truthiness, not `!== null`: an absent stamp must read as "no cycle", and
+  // a partial item (a fixture, a projection) carries `undefined`, not `null`.
+  return item.status === LANES.review || Boolean(item.reviewCycleStartedAt);
 }

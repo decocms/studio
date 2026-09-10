@@ -4,7 +4,8 @@
  * Loads in two beats — see {@link useCmsPublishState} for what each decides.
  */
 
-import { useMCPClient } from "@/sdk";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
 import {
@@ -19,7 +20,6 @@ import {
   Eye,
   GitPullRequest,
   Globe01,
-  Loading01,
   RefreshCw01,
 } from "@untitledui/icons";
 import {
@@ -88,7 +88,8 @@ export interface CmsPublishPopoverProps {
   virtualMcpId: string;
   branch: string;
   baseBranch: string;
-  githubConnectionId: string;
+  /** Which repository this publishes to, and which credential writes it. */
+  repoTarget: RepoToolTarget;
   owner: string;
   repo: string;
   publishPolicy: PublishPolicy;
@@ -334,11 +335,10 @@ function CmsPublishContent({
   onOpenChange,
   mode = "publish",
   orgSlug,
-  orgId,
   virtualMcpId,
   branch,
   baseBranch,
-  githubConnectionId,
+  repoTarget,
   owner,
   repo,
   publishPolicy,
@@ -355,11 +355,6 @@ function CmsPublishContent({
   const t = useT();
   /** The session publishing — the git routes resolve their runtime from it. */
   const threadId = useOptionalChatTask()?.taskId ?? null;
-  const githubClient = useMCPClient({
-    connectionId: githubConnectionId,
-    orgId,
-    orgSlug,
-  });
   const { data: session } = authClient.useSession();
 
   const {
@@ -420,15 +415,12 @@ function CmsPublishContent({
     threadId,
     fastPreview: true,
     baseBranch,
-    githubClient,
+    target: repoTarget,
     owner,
     repo,
     headBranch: readGitHeadBranch(gitStatus) ?? branch,
     coAuthor: coAuthorFromSessionUser(session?.user),
     expectedHeadSha: headSha ?? undefined,
-    existingOpenPr: commitToOpenPr
-      ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
-      : undefined,
   };
 
   const {
@@ -532,7 +524,7 @@ function CmsPublishContent({
     if (gate.pending) {
       return (
         <div className="flex items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
-          <Loading01 className="size-3.5 animate-spin motion-reduce:animate-none" />
+          <Spinner className="size-3.5 motion-reduce:animate-none" />
           {t("thread.publishPopover.reviewing")}
         </div>
       );
@@ -694,7 +686,7 @@ function CmsPublishContent({
                 disabled={!canSubmit}
               >
                 {isPublishing ? (
-                  <Loading01 className="size-4 animate-spin motion-reduce:animate-none" />
+                  <Spinner className="size-4 motion-reduce:animate-none" />
                 ) : null}
                 {isPublishing
                   ? isReview

@@ -16,7 +16,8 @@ implementation — the TypeScript daemon it replaced was deleted.
 Clone and set up the repo, install dependencies, run the dev script and other
 project tasks under a PTY, serve filesystem and Git operations, dispatch agent
 harness runs and stream their output as SSE, proxy preview HTTP/WebSocket traffic
-to the dev server, publish work back to git on shutdown, and report health so
+to the dev server, publish work back to git on shutdown and periodically
+mid-run, and report health so
 Studio can tell a live sandbox from a dead one.
 
 ### Dispatch is single-writer per run
@@ -46,7 +47,7 @@ Two properties the consumer depends on, both asserted in `daemon-e2e/`:
 | `internal/routes/` | HTTP surface: `/health`, `/_sandbox/*`, fs, git, bash, exec, tasks, tools, events |
 | `internal/setup/` | Clone, install, golden cache, dep metrics, orchestration |
 | `internal/dispatch/` | Agent run dispatch and harness runner |
-| `internal/gitx/` | Git: checkout, rebase, publish, branch status, protected-branch guard |
+| `internal/gitx/` | Git: checkout, rebase, publish, autosave checkpoints, branch status, protected-branch guard |
 | `internal/proc/` | PTY spawn, task manager, log tee, ring buffer, port sniffer |
 | `internal/config/` | Tenant config store: classify, merge, validate, persist |
 | `internal/events/` | SSE broadcast and replay |

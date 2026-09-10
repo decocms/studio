@@ -27,7 +27,7 @@ function isPublicSharePath(c: Context): boolean {
  * Legacy/internal keys without that field are left to their existing route
  * authorization rules; a malformed explicit organization binding fails closed.
  */
-function getApiKeyOrganizationBinding(ctx: StudioContext): {
+export function getApiKeyOrganizationBinding(ctx: StudioContext): {
   present: boolean;
   id?: string;
 } {

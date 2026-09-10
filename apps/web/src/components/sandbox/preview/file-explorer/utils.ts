@@ -27,7 +27,7 @@ export function toDaemonPath(treePath: string) {
 }
 
 /**
- * Guards the deep-link `openPath` (sourced from the `?main=code:<path>` URL
+ * Guards the deep-link `openPath` (sourced from the `code` view's `?file=`
  * param) before it's used to read a file from the sandbox: rejects `..`
  * traversal, backslashes, remote-looking URLs, and paths that stay absolute
  * even after the single-leading-slash strip in `toDaemonPath`, so a crafted

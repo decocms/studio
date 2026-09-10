@@ -65,3 +65,58 @@ export function getActiveGithubRepo(
     ? attachment.repo
     : null;
 }
+
+/**
+ * `owner/name` for a project, or null when it has no repository attached.
+ *
+ * Lives here, beside `resolveGithubAttachment` whose answer it reads, so the
+ * project index (`lib/project-index.ts`) can join on it without importing a
+ * hook module. Deliberately non-null for `detached` and `public-clone` too: a
+ * project whose connection was deleted still owns its work, and hiding its
+ * cards is a worse answer than listing them under a project whose runs happen
+ * to be unable to boot.
+ */
+export function projectRepo(
+  virtualMcp: VirtualMCPEntity | null | undefined,
+): string | null {
+  const attachment = resolveGithubAttachment(virtualMcp);
+  if (attachment.status === "none") return null;
+  return `${attachment.repo.owner}/${attachment.repo.name}`;
+}
+
+/**
+ * Which repository a change-request or branch tool should act on, and which
+ * credential reads it.
+ *
+ * One value rather than three loose props threaded through the panel: a
+ * repository id is what a project records now, its URL is what names the
+ * provider, and a connection is the pre-repository world. Passing only the
+ * connection — which every one of these call sites used to do — is exactly
+ * what made the whole panel GitHub-only.
+ */
+export interface RepoToolTarget {
+  repositoryId?: string;
+  repoUrl?: string;
+  connectionId?: string;
+}
+
+export function repoToolTarget(
+  githubRepo: GithubRepo | null | undefined,
+): RepoToolTarget {
+  if (!githubRepo) return {};
+  return {
+    repositoryId: githubRepo.repositoryId,
+    repoUrl: githubRepo.url,
+    connectionId: githubRepo.connectionId,
+  };
+}
+
+/** True when Studio has any credential path to this repository. */
+export function hasRepoCredential(target: RepoToolTarget): boolean {
+  return !!(target.repositoryId || target.connectionId);
+}
+
+/** The cache identity of the credential — a repository row, else the connection. */
+export function repoTargetKey(target: RepoToolTarget): string | null {
+  return target.repositoryId ?? target.connectionId ?? null;
+}

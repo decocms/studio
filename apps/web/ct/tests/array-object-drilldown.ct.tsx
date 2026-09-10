@@ -277,7 +277,7 @@ test("deleting a row removes the right item from the array", async ({
 test("colliding fallback-title rows are position-disambiguated and each drills into its own content", async ({
   mount,
 }) => {
-  // The osklen bug: object-array items with no name/title field all fall back
+  // The bug this covers: object-array items with no name/title field all fall back
   // to the item schema `title` ("Spec"), so every row's label collides and
   // navigation used to collapse every item back to the first ("all items show
   // the same content"). Rows now render with the clean, identical label "Spec"

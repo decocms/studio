@@ -3,7 +3,7 @@
  * Shared between store server detail and inline installation flows.
  */
 
-import type { OAuthConfig } from "@decocms/shared/sdk/types";
+import { type OAuthConfig, OAuthConfigSchema } from "@decocms/shared/sdk/types";
 import type { RegistryItem, MCPRegistryServer } from "@/components/store/types";
 import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
 import { getGitHubAvatarUrl } from "@/utils/github.ts";
@@ -90,20 +90,12 @@ export function extractConnectionData(
   const icon =
     server?.icons?.[0]?.src || getGitHubAvatarUrl(server?.repository) || null;
 
-  const rawOauthConfig = studioMeta?.oauth_config as
-    | Record<string, unknown>
-    | null
-    | undefined;
-  const oauthConfig: OAuthConfig | null =
-    rawOauthConfig &&
-    typeof rawOauthConfig.authorizationEndpoint === "string" &&
-    typeof rawOauthConfig.tokenEndpoint === "string" &&
-    typeof rawOauthConfig.clientId === "string" &&
-    Array.isArray(rawOauthConfig.scopes) &&
-    (rawOauthConfig.grantType === "authorization_code" ||
-      rawOauthConfig.grantType === "client_credentials")
-      ? (rawOauthConfig as unknown as OAuthConfig)
-      : null;
+  const oauthConfigResult = OAuthConfigSchema.safeParse(
+    studioMeta?.oauth_config,
+  );
+  const oauthConfig: OAuthConfig | null = oauthConfigResult.success
+    ? oauthConfigResult.data
+    : null;
 
   const configState = studioMeta?.configuration_state as
     | Record<string, unknown>
@@ -166,10 +158,9 @@ export function extractConnectionData(
       ...(Object.keys(envVars).length > 0 && { envVars }),
     };
   } else if (selectedRemote) {
-    connectionType = (getConnectionTypeLabel(selectedRemote.type) || "HTTP") as
-      | "HTTP"
-      | "SSE"
-      | "Websocket";
+    // An unrecognized remote type uppercases to a bogus label — fall back to HTTP rather than mint an invalid connection_type.
+    const label = getConnectionTypeLabel(selectedRemote.type);
+    connectionType = label === "SSE" || label === "Websocket" ? label : "HTTP";
     connectionUrl = selectedRemote.url || "";
   } else {
     // Fallback

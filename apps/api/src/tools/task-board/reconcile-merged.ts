@@ -24,6 +24,7 @@ import type { TaskBoardItem } from "@/storage/types";
 import { shippedLane } from "@decocms/shared/task-board";
 import { recordTaskActivity } from "./activity";
 import { cardWorkLanded, type PrLanding } from "./archive-merged";
+import { inReviewPhase } from "./lanes";
 import { emitTaskBoardUpdated } from "./run-reactions";
 
 /**
@@ -53,7 +54,7 @@ export async function advanceToDoneIfMerged(
   prs: PrLanding[],
 ): Promise<boolean> {
   const orgId = item.organizationId;
-  if (item.status !== "in_review") return false;
+  if (!inReviewPhase(item)) return false;
   if (!cardWorkLanded(prs)) return false;
   if (await ctx.storage.taskBoard.hasHumanRejectedDone(item.id, orgId)) {
     return false;

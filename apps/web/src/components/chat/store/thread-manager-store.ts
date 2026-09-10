@@ -550,7 +550,7 @@ export class ThreadManagerStore {
    * Hidden/archived rows are never merged (preserves the panel's `hidden:false`
    * invariant, see `fetchThread`). Owner-scoping is intentionally NOT applied:
    * the slot is org-wide and every owner-sensitive reader re-filters by
-   * `created_by` (`findReusableNewChat`, `readCachedLastThread`, the sidebar's
+   * `created_by` (`findReusableNewChat`, `findLastThreadForAgent`, the sidebar's
    * `mineFiltered`).
    */
   async fetchThreadIntoSlot(id: string): Promise<Task | null> {

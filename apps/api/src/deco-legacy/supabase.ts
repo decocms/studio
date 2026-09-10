@@ -52,33 +52,3 @@ export async function supabaseGet<T>(
   }
   return res.json() as Promise<T[]>;
 }
-
-export async function supabasePost<T>(
-  supabaseUrl: string,
-  serviceKey: string,
-  table: string,
-  body: Record<string, unknown>,
-): Promise<T> {
-  const res = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
-    method: "POST",
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    console.error(`[deco-legacy] Supabase POST error (${res.status}): ${text}`);
-    throw new Error(`External service error (${res.status})`);
-  }
-  const rows = (await res.json()) as T[];
-  if (!rows[0]) {
-    throw new Error("Supabase POST returned no rows");
-  }
-  return rows[0];
-}

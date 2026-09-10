@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { parseSections } from "./parse-sections";
-import { unwrapBlockReference, unwrapSection } from "./unwrap-section";
+import {
+  savedBlockKey,
+  unwrapBlockReference,
+  unwrapSection,
+} from "./unwrap-section";
 
 const HERO = "site/sections/Hero/Hero.tsx";
 const LAZY = "website/sections/Rendering/Lazy.tsx";
@@ -182,5 +186,54 @@ describe("unwrapSection", () => {
     };
     const parsed = parseSections([raw], {})[0]!;
     expect(unwrapSection(raw, parsed, {})).toBeNull();
+  });
+});
+
+describe("savedBlockKey", () => {
+  it("returns the block id for a plain saved block", () => {
+    const raw = { __resolveType: "Header" };
+    const decofile = { Header: { __resolveType: HERO } };
+    const parsed = parseSections([raw], decofile)[0]!;
+    expect(savedBlockKey(raw, parsed)).toBe("Header");
+  });
+
+  // Regression: a hidden global block must key on its inner id, not the wrapper.
+  it("returns the inner block id for a hidden saved block, NOT the wrapper", () => {
+    const raw = {
+      __resolveType: MV,
+      variants: [
+        { value: { __resolveType: "Header" }, rule: { __resolveType: NEVER } },
+      ],
+    };
+    const decofile = { Header: { __resolveType: HERO, title: "Site Header" } };
+    const parsed = parseSections([raw], decofile)[0]!;
+    expect(parsed.isSavedBlock).toBe(true);
+    expect(parsed.isHidden).toBe(true);
+    expect(savedBlockKey(raw, parsed)).toBe("Header");
+    expect(savedBlockKey(raw, parsed)).not.toBe(MV);
+  });
+
+  it("returns the inner block id for a lazy-outer hidden saved block", () => {
+    const raw = {
+      __resolveType: LAZY,
+      section: {
+        __resolveType: MV,
+        variants: [
+          {
+            value: { __resolveType: "Header" },
+            rule: { __resolveType: NEVER },
+          },
+        ],
+      },
+    };
+    const decofile = { Header: { __resolveType: HERO } };
+    const parsed = parseSections([raw], decofile)[0]!;
+    expect(savedBlockKey(raw, parsed)).toBe("Header");
+  });
+
+  it("returns null for non-saved-block sections", () => {
+    const raw = { __resolveType: HERO, title: "Inline" };
+    const parsed = parseSections([raw], {})[0]!;
+    expect(savedBlockKey(raw, parsed)).toBeNull();
   });
 });

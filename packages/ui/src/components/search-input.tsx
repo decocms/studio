@@ -1,4 +1,5 @@
-import { SearchMd, Loading01 } from "@untitledui/icons";
+import { SearchMd } from "@untitledui/icons";
+import { Spinner } from "./spinner.tsx";
 import { cn } from "../lib/utils.ts";
 
 interface SearchInputProps {
@@ -38,10 +39,7 @@ function SearchInput({
       )}
     >
       {isSearching ? (
-        <Loading01
-          size={16}
-          className="animate-spin text-muted-foreground/75 shrink-0"
-        />
+        <Spinner className="size-4 text-muted-foreground/75 shrink-0" />
       ) : (
         <SearchMd size={16} className="text-muted-foreground/75 shrink-0" />
       )}

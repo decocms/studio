@@ -8,6 +8,8 @@
  * connection — every other part of the path is the real one.
  */
 
+import { OrganizationSettingsStorage } from "@/storage/organization-settings";
+import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -57,8 +59,11 @@ describe("auto-archive sweep", () => {
         organizationId: ORG,
         url: `https://github.com/acme/repo/pull/${item.id}`,
         prNumber: 1,
-        repoOwner: "acme",
-        repoName: "repo",
+        repo: {
+          provider: "github",
+          host: "github.com",
+          path: "acme/repo",
+        },
       });
     }
     return item.id;
@@ -81,7 +86,13 @@ describe("auto-archive sweep", () => {
     ctx = {
       auth: { user: { id: USER, email: "a1@archive.test", name: USER } },
       organization: { id: ORG, slug: "org-archive-1", name: ORG },
-      storage: { taskBoard },
+      storage: {
+        taskBoard,
+        // The sweep now asks the board where a finished card retires to, and
+        // the board asks the org which board it is.
+        organizationSettings: new OrganizationSettingsStorage(database.db),
+        columnAutomations: new ColumnAutomationStorage(database.db),
+      },
     } as unknown as StudioContext;
   });
 
@@ -167,6 +178,12 @@ describe("auto-archive sweep", () => {
     expect(second.archived).toBe(0);
   });
 
+  /**
+   * The org-owned board's `archiveColumn()` names a row the foreign key can
+   * hold a card to (#6710/#6723). The sweep must guard the card the same way
+   * `update.ts` does, or it retires the card into that row without the
+   * discriminator the key needs to notice.
+   */
   it("archives past an abandoned PR, and waits on a second repo", async () => {
     const settled = new Date(Date.now() - 3 * DAY_MS);
     const link = (id: string, prNumber: number, repoName: string) =>
@@ -175,8 +192,11 @@ describe("auto-archive sweep", () => {
         organizationId: ORG,
         url: `https://github.com/acme/${repoName}/pull/${prNumber}`,
         prNumber,
-        repoOwner: "acme",
-        repoName,
+        repo: {
+          provider: "github",
+          host: "github.com",
+          path: `acme/${repoName}`,
+        },
       });
 
     const bounced = await seed("done", settled, false);

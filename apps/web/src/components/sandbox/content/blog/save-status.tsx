@@ -1,4 +1,5 @@
-import { AlertCircle, Check, Loading01 } from "@untitledui/icons";
+import { AlertCircle, Check } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 
 /** Subtle autosave indicator shown in editor headers. */
@@ -21,7 +22,7 @@ export function SaveStatus({
   if (isPending) {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Loading01 size={13} className="animate-spin" />
+        <Spinner className="size-[13px]" />
         {t("sandbox.saveStatus.saving")}
       </span>
     );

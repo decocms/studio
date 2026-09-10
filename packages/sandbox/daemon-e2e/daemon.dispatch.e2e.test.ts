@@ -437,4 +437,49 @@ describe("daemon e2e: dispatch runs a harness", () => {
     },
     HOOK_TIMEOUT_MS,
   );
+
+  it(
+    "a stop pressed while a re-dispatch is waiting out the grace is not restarted",
+    async () => {
+      // A re-dispatch for a live run waits ~5s for the incumbent to hang up
+      // before calling itself a takeover. A DELETE landing inside that window is
+      // exactly what ENDS the wait (cancelling closes the run), so the waiting
+      // dispatch used to wake up, find the run gone, and start it again — a stop
+      // button that relaunches the turn it just stopped, holding the checkout
+      // for a full run. It must resolve to the tombstone instead.
+      const runId = "run-cancel-in-grace";
+      const first = await dispatch("hang", runId);
+      expect(first.status).toBe(200);
+      const firstEnded = (async () => {
+        const frames: DispatchFrame[] = [];
+        for await (const { frame } of readFrames(first)) frames.push(frame);
+        return frames;
+      })();
+
+      // Let the daemon exec the harness, then re-dispatch: the second request is
+      // now parked in the grace with the first still attached.
+      await new Promise((r) => setTimeout(r, 500));
+      const second = dispatch("frames", runId);
+
+      await new Promise((r) => setTimeout(r, 500));
+      const cancel = await fetch(url(d, `/_sandbox/runs/${runId}`), {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      expect(cancel.status).toBe(204);
+
+      const secondRes = await second;
+      expect(secondRes.status).toBe(410);
+      expect(((await secondRes.json()) as { error: string }).error).toBe(
+        "tombstoned",
+      );
+
+      // And the cancelled run really is the one that ended — no replacement
+      // harness produced frames behind it.
+      const terminal = (await firstEnded).at(-1);
+      expect(terminal?.done).toBe(true);
+      expect(terminal?.error?.code).toBe("cancelled");
+    },
+    HOOK_TIMEOUT_MS,
+  );
 });

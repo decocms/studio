@@ -1,10 +1,14 @@
 import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
 import { OVERLAY_TABS } from "@/layouts/main-panel-tabs/tab-id";
 
-// An app can request in-panel navigation (instead of sending content to chat)
-// by emitting a lone `studio://navigate?main=<tab>` resource-link message —
-// e.g. the commerce diagnostic report's "task board" button. Restricted to
-// OVERLAY_TABS so a message can't drive arbitrary navigation.
+/**
+ * An app requests in-panel navigation — rather than sending content to chat —
+ * by emitting a lone `studio://navigate?main=<tab>` resource-link message, e.g.
+ * the commerce diagnostic report's "task board" button. `main` here is the
+ * app-message wire name and is unrelated to the browser URL, which names the
+ * view in its path. Restricted to OVERLAY_TABS so a message cannot drive
+ * arbitrary navigation.
+ */
 const NAVIGATE_SCHEME = "studio://navigate";
 
 // `field=<key>` on `main=connect-sources` targets one specific source — the

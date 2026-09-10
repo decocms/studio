@@ -509,6 +509,7 @@ test.describe("decofile API", () => {
         baseBranch: "main",
         aheadBy: 0,
         behindBy: 0,
+        lastCommitAt: expect.any(String),
       });
 
       const commitsBefore = (await inspectStubRepo(ctx, owner, repo)).commits
@@ -553,7 +554,110 @@ test.describe("decofile API", () => {
         baseBranch: "main",
         aheadBy: 1,
         behindBy: 0,
+        lastCommitAt: expect.any(String),
       });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("large repo whose recursive tree read truncates still reads and writes blocks", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const hero = { __resolveType: "site/sections/Hero.tsx", title: "old" };
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        // A recursive read of this root tree 502s (GitHub's truncation cap).
+        truncateRecursive: true,
+        branches: {
+          main: {
+            files: {
+              ".deco/blocks/Hero.json": blockFileContent(hero),
+              // Non-block files a recursive read would drag in.
+              "src/index.ts": "export const x = 1;\n",
+              "package.json": '{"name":"site"}\n',
+            },
+          },
+          draft: null,
+        },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const url = decofileUrl(project, "draft");
+
+      // Read resolves the block via the scoped subtree walk, not a recursive read.
+      const before = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      expect(before.decofile["Hero"]).toEqual(hero);
+
+      // Write lands even though a recursive tree read would 502.
+      const nextHero = { ...hero, title: "Fresh" };
+      const patchRes = await ctx.patch(url, {
+        data: { set: { Hero: nextHero } },
+      });
+      expect(patchRes.status()).toBe(200);
+      const patchBody = (await patchRes.json()) as { version: string };
+      expect(patchBody.version).toMatch(/^[0-9a-f]{40}$/);
+
+      const inspected = await inspectStubRepo(ctx, owner, repo);
+      expect(inspected.branches["draft"]?.files[".deco/blocks/Hero.json"]).toBe(
+        blockFileContent(nextHero),
+      );
+
+      const after = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      expect(after.version).toBe(patchBody.version);
+      expect(after.decofile["Hero"]).toEqual(nextHero);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("PATCH accepts a slash-named page key (%2F) and stores it in a flat file", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: { main: { files: {} } },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const url = decofileUrl(project, "main");
+
+      // Deco keys a slash-named page as `pages-Joias%2Fcolecao-<id>`, like `%20` for a space.
+      const key = "pages-Joias%2Fcolecao%2Freligiosos%2Fcruz-862158";
+      const page = {
+        __resolveType: "website/pages/Page.tsx",
+        name: "/religiosos/cruz",
+        path: "/religiosos/cruz",
+      };
+      const patchRes = await ctx.patch(url, { data: { set: { [key]: page } } });
+      expect(patchRes.status()).toBe(200);
+
+      // The `%` is escaped in the on-disk stem — a single flat file, no escape.
+      const stem = "pages-Joias%252Fcolecao%252Freligiosos%252Fcruz-862158";
+      const inspected = await inspectStubRepo(ctx, owner, repo);
+      expect(
+        inspected.branches["main"]?.files[`.deco/blocks/${stem}.json`],
+      ).toBe(blockFileContent(page));
+
+      // The key round-trips back through GET exactly as sent.
+      const after = (await (await ctx.get(url)).json()) as DecofileGetBody;
+      expect(after.decofile[key]).toEqual(page);
     } finally {
       await ctx.dispose();
     }
@@ -941,6 +1045,68 @@ test.describe("decofile API", () => {
         },
       ).catch((error: unknown) => error);
       expect(String(refused)).toMatch(/CMS session/i);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("status exposes the branch head's last-commit date; null for the default branch and unmaterialized branches", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    try {
+      const user = await signUpViaApi(ctx);
+      const org = user.orgSlug;
+      const owner = uniqueOwner();
+      const repo = "site";
+
+      const staleAt = new Date(
+        Date.now() - 15 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      await seedStubRepo(ctx, {
+        owner,
+        repo,
+        defaultBranch: "main",
+        branches: {
+          main: { files: { ".deco/blocks/Hero.json": '{"n":1}\n' } },
+          // A side branch whose only commit is 15 days old (stale-shaped).
+          stale: {
+            files: { ".deco/blocks/Hero.json": '{"n":2}\n' },
+            committedAt: staleAt,
+          },
+        },
+      });
+      const project = await createFastPreviewProject(ctx, org, { owner, repo });
+      const statusUrl = (branch: string) =>
+        `${decofileUrl(project, branch)}/status`;
+
+      // Side branch: its own old commit date comes back verbatim.
+      const stale = await ctx.get(statusUrl("stale"));
+      expect(stale.status()).toBe(200);
+      expect(await stale.json()).toEqual({
+        baseBranch: "main",
+        aheadBy: 1,
+        behindBy: 0,
+        lastCommitAt: staleAt,
+      });
+
+      // Editing the default branch itself is never a stale side branch.
+      const onMain = await ctx.get(statusUrl("main"));
+      expect(await onMain.json()).toEqual({
+        baseBranch: "main",
+        aheadBy: 0,
+        behindBy: 0,
+        lastCommitAt: null,
+      });
+
+      // A branch not yet materialized on GitHub has no age — never stale.
+      const unmaterialized = await ctx.get(statusUrl("thread-minted-branch"));
+      expect(await unmaterialized.json()).toEqual({
+        baseBranch: "main",
+        aheadBy: 0,
+        behindBy: 0,
+        lastCommitAt: null,
+      });
     } finally {
       await ctx.dispose();
     }

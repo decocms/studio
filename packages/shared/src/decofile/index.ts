@@ -3,6 +3,7 @@ export {
   blockKeyToFileStem,
   decoBlockFilePath,
   decoBlockKeyFromFileStem,
+  isReservedResolverBlockKey,
 } from "./block-key";
 export {
   BLOCK_PATH_RE,

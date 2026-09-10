@@ -31,6 +31,8 @@ import {
   useDeleteApiKey,
 } from "@/hooks/use-api-keys";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
+import { SettingsSection } from "@/components/settings/settings-section";
+import { Card } from "@decocms/ui/components/card.tsx";
 
 function ErrorFallback({ error }: { error: Error }) {
   const t = useT();
@@ -53,8 +55,8 @@ function ApiKeyRow({
 }) {
   const t = useT();
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
-      <div className="flex items-start gap-3 min-w-0">
+    <li className="flex items-center justify-between gap-4 px-4 py-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
           <Key01 size={16} className="text-muted-foreground" />
         </div>
@@ -78,7 +80,7 @@ function ApiKeyRow({
       >
         <Trash01 size={14} />
       </Button>
-    </div>
+    </li>
   );
 }
 
@@ -237,13 +239,21 @@ function CreateApiKeyDialog({
   );
 }
 
-function ApiKeysContent() {
+/**
+ * API keys — the whole feature as one section, so it can sit under the clients
+ * it authenticates on the Connect page and still be all of `/settings/api-keys`.
+ *
+ * `headerClassName="px-0"` matches the Connect page's full-bleed cards: the
+ * heading aligns with the page, the card is the section's only surface.
+ */
+export function ApiKeysSection() {
   const t = useT();
-  const { data: apiKeys = [] } = useApiKeysList();
+  const { data, isLoading, error } = useApiKeysList();
   const deleteApiKey = useDeleteApiKey();
   const [createOpen, setCreateOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<CreatedApiKey | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ApiKey | null>(null);
+  const apiKeys = data ?? [];
 
   async function handleDelete() {
     if (!pendingDelete) return;
@@ -263,51 +273,47 @@ function ApiKeysContent() {
     }
   }
 
-  if (apiKeys.length === 0) {
-    return (
-      <>
-        <EmptyState onCreate={() => setCreateOpen(true)} />
-        <CreateApiKeyDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          onCreated={setCreatedKey}
-        />
-        <CreatedKeyDialog
-          createdKey={createdKey}
-          onClose={() => setCreatedKey(null)}
-        />
-      </>
-    );
-  }
-
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t(
-            apiKeys.length === 1
-              ? "settings.apiKeys.keysCountSingular"
-              : "settings.apiKeys.keysCountPlural",
-            { count: apiKeys.length },
-          )}
-        </p>
-        <Button onClick={() => setCreateOpen(true)} size="sm">
-          <Plus size={14} />
-          {t("settings.apiKeys.newKey")}
-        </Button>
-      </div>
-
-      <section className="rounded-2xl border border-border/60 bg-background p-5">
-        <div>
-          {apiKeys.map((key) => (
-            <ApiKeyRow
-              key={key.id}
-              apiKey={key}
-              onDelete={() => setPendingDelete(key)}
-            />
-          ))}
-        </div>
-      </section>
+    <SettingsSection
+      headerClassName="px-0"
+      title={t("settings.apiKeys.sectionTitle")}
+      description={t("settings.apiKeys.sectionDescription")}
+      actions={
+        apiKeys.length > 0 ? (
+          <Button onClick={() => setCreateOpen(true)} size="sm">
+            <Plus size={14} />
+            {t("settings.apiKeys.newKey")}
+          </Button>
+        ) : undefined
+      }
+    >
+      {isLoading ? (
+        <Card className="gap-0 overflow-hidden p-0">
+          <p className="px-4 py-3 text-xs text-muted-foreground">
+            {t("settings.apiKeys.loading")}
+          </p>
+        </Card>
+      ) : /* A failed REFETCH keeps `data`, so only surface the error when it
+             left us with nothing to show — otherwise a background 401 on
+             window focus replaces a loaded list (and its create path) with an
+             error card. */
+      error && apiKeys.length === 0 ? (
+        <ErrorFallback error={error} />
+      ) : apiKeys.length === 0 ? (
+        <EmptyState onCreate={() => setCreateOpen(true)} />
+      ) : (
+        <Card className="gap-0 overflow-hidden p-0">
+          <ul className="divide-y divide-border">
+            {apiKeys.map((key) => (
+              <ApiKeyRow
+                key={key.id}
+                apiKey={key}
+                onDelete={() => setPendingDelete(key)}
+              />
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <CreateApiKeyDialog
         open={createOpen}
@@ -346,7 +352,7 @@ function ApiKeysContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </SettingsSection>
   );
 }
 
@@ -358,7 +364,7 @@ export function OrgApiKeysPage() {
         <ErrorFallback error={error ?? new Error("Failed to load API keys")} />
       )}
     >
-      <ApiKeysContent />
+      <ApiKeysSection />
     </SettingsGroupPage>
   );
 }

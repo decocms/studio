@@ -1,9 +1,9 @@
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   AlertCircle,
   CheckCircle,
   ChevronLeft,
-  Loading01,
   XCircle,
   XClose,
 } from "@untitledui/icons";
@@ -226,7 +226,7 @@ function SubtaskRow({ part }: { part: SubtaskToolPart }) {
       )}
       <span className="ml-auto shrink-0">
         {isRunning ? (
-          <Loading01 size={12} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-3 text-muted-foreground" />
         ) : isError ? (
           <XCircle size={12} className="text-destructive" />
         ) : isApproval ? (

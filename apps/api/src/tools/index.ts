@@ -43,6 +43,8 @@ import * as ObjectStorageTools from "./object-storage";
 import * as RegistryTools from "./registry/index";
 import * as SandboxTools from "./sandbox";
 import * as GitHubTools from "./github";
+import * as GitTools from "./git";
+import * as ChangeRequestTools from "./change-requests";
 import * as SearchTools from "./search";
 import * as BlogTools from "./blog";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
@@ -55,6 +57,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
@@ -63,8 +66,14 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
+  TaskBoardTools.TASK_BOARD_AUTOMATION_LIST,
+  TaskBoardTools.TASK_BOARD_AUTOMATION_UPSERT,
+  TaskBoardTools.TASK_BOARD_AUTOMATION_DELETE,
+  TaskBoardTools.TASK_BOARD_PROMPT_LIST,
+  TaskBoardTools.TASK_BOARD_PROMPT_UPSERT,
+  TaskBoardTools.TASK_BOARD_PROMPT_DELETE,
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
-  TaskBoardTools.TASK_BOARD_ITEM_PR_LINK,
+  TaskBoardTools.TASK_BOARD_PREVIEW_PROBE,
   TaskBoardTools.TASK_BOARD_ITEM_RERUN,
   TaskBoardTools.TASK_BOARD_RESOLVE_CONFLICT,
   TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
@@ -223,14 +232,21 @@ export const CORE_TOOLS = [
   OrgRepoSyncTools.ORG_REPO_SYNC_DELETE,
   OrgRepoSyncTools.ORG_REPO_SYNC_RUN,
 
-  // Per-org Jira integration (pull sync into the task board)
+  // Per-org Jira integration
   JiraTools.JIRA_INTEGRATION_GET,
   JiraTools.JIRA_INTEGRATION_UPSERT,
   JiraTools.JIRA_INTEGRATION_DELETE,
   JiraTools.JIRA_BOARDS_LIST,
   JiraTools.JIRA_BOARD_COLUMNS_LIST,
-  JiraTools.JIRA_SYNC_RUN,
-  JiraTools.JIRA_RESYNC_REQUEST,
+  JiraTools.JIRA_AUTOMATION_LIST,
+  JiraTools.JIRA_AUTOMATION_UPSERT,
+  JiraTools.JIRA_AUTOMATION_DELETE,
+  JiraTools.JIRA_RUN_START,
+  // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
+  JiraTools.JIRA_ISSUE_GET,
+  JiraTools.JIRA_COMMENT_ADD,
+  JiraTools.JIRA_ISSUE_TRANSITION,
+  JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
@@ -247,11 +263,27 @@ export const CORE_TOOLS = [
   SandboxTools.SANDBOX_START,
   SandboxTools.SANDBOX_DELETE,
 
-  // GitHub tools (app-only)
+  // GitHub App installations (app-only) — the one surface that is GitHub's own
   GitHubTools.GITHUB_LIST_USER_ORGS,
-  GitHubTools.GITHUB_SEARCH_BRANCHES,
-  GitHubTools.GITHUB_PR_STATE,
-  GitHubTools.GITHUB_LAST_PUBLISHED_PR,
+
+  // Git provider accounts + first-class repositories (app-only)
+  GitTools.GIT_PROVIDER_CAPABILITIES,
+  GitTools.GIT_ACCOUNT_LIST,
+  GitTools.GIT_ACCOUNT_CONNECT_TOKEN,
+  GitTools.GIT_ACCOUNT_DELETE,
+  GitTools.REPOSITORY_LIST,
+  GitTools.REPOSITORY_SEARCH,
+  GitTools.REPOSITORY_LINK,
+  GitTools.REPOSITORY_DELETE,
+  GitTools.REPOSITORY_SEARCH_BRANCHES,
+
+  // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
+  ChangeRequestTools.CHANGE_REQUEST_STATE,
+  ChangeRequestTools.CHANGE_REQUEST_LAST_MERGED,
+  ChangeRequestTools.CHANGE_REQUEST_LIST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_CHECK_LOG,
+  ChangeRequestTools.CHANGE_REQUEST_OPEN,
+  ChangeRequestTools.CHANGE_REQUEST_MERGE,
 
   // Link tools
 

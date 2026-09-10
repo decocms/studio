@@ -16,7 +16,9 @@
 import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import type { Kysely } from "kysely";
+import { retry, RetryError } from "@decocms/shared/std";
 import type { Database } from "../storage/types";
+import { GitProviderError } from "../git-providers/types";
 import { OrgFsEntryStorage } from "../storage/org-fs";
 import {
   type BoundObjectStorage,
@@ -132,43 +134,24 @@ export function tarballRequestFor(
   };
 }
 
-/** Fetch `owner/repo@ref` and return files keyed by repo-relative path. */
-async function fetchRepoFiles(
-  repo: string,
-  ref: string,
-  authToken?: string,
-): Promise<Map<string, Uint8Array>> {
-  const { url, headers } = tarballRequestFor(repo, ref, authToken);
-  // Bound the whole download — a stalled codeload socket would otherwise hang
-  // this sync cycle (and the boot loop's first iteration) indefinitely.
-  const res = await fetch(url, {
-    headers,
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!res.ok) {
-    throw new Error(
-      `tarball fetch failed for ${repo}@${ref}: HTTP ${res.status}`,
-    );
-  }
-  // Refuse before buffering when the server declares the size; the
-  // post-download check stays as the backstop for chunked responses.
-  const declared = Number(res.headers.get("content-length") ?? 0);
-  if (declared > MAX_TARBALL_BYTES) {
-    throw new Error(
-      `tarball for ${repo}@${ref} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
-    );
-  }
-  const gz = new Uint8Array(await res.arrayBuffer());
+/**
+ * Gzipped tar bytes → files keyed by repo-relative path.
+ *
+ * Every provider wraps the tree in exactly one top-level directory, but they
+ * disagree on its name (`owner-repo-sha/` on GitHub, `project-ref-sha/` on
+ * GitLab) — so one leading segment is stripped generically, never matched.
+ */
+function filesFromTarball(
+  gz: Uint8Array,
+  label: string,
+): Map<string, Uint8Array> {
   if (gz.length > MAX_TARBALL_BYTES) {
-    throw new Error(
-      `tarball for ${repo}@${ref} exceeds ${MAX_TARBALL_BYTES} bytes`,
-    );
+    throw new Error(`tarball for ${label} exceeds ${MAX_TARBALL_BYTES} bytes`);
   }
   // maxOutputLength bounds decompression (a gzip bomb throws instead of OOM).
   const raw = parseTar(
     new Uint8Array(gunzipSync(gz, { maxOutputLength: MAX_UNPACKED_BYTES })),
   );
-  // strip the tarball's single top-level `<repo>-<ref>/` dir
   const files = new Map<string, Uint8Array>();
   for (const [path, bytes] of raw) {
     const slash = path.indexOf("/");
@@ -177,6 +160,169 @@ async function fetchRepoFiles(
     if (rel) files.set(rel, bytes);
   }
   return files;
+}
+
+/** Throws once `length` exceeds `cap` — shared by every tarball size guard. */
+export function assertWithinByteCap(
+  length: number,
+  cap: number,
+  label: string,
+): void {
+  if (length > cap) {
+    throw new Error(`tarball for ${label} exceeds ${cap} bytes`);
+  }
+}
+
+/** Buffer a tarball stream, refusing to grow past the download cap. */
+async function readTarballStream(
+  stream: ReadableStream<Uint8Array>,
+  label: string,
+): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      assertWithinByteCap(total, MAX_TARBALL_BYTES, label);
+      chunks.push(value);
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.length;
+  }
+  return out;
+}
+
+/** A non-2xx tarball response, carrying the status so retry can classify it. */
+export class TarballHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "TarballHttpError";
+  }
+}
+
+/**
+ * Whether a tarball fetch failure is worth retrying. A declared/actual
+ * size-cap refusal is permanent (the archive won't shrink). A 4xx (bad ref,
+ * missing repo, expired token) won't resolve either. Everything else —
+ * codeload 5xx/429, and whatever `fetch`/the 60s timeout throw for a reset or
+ * DNS hiccup — is the transient case this exists for.
+ *
+ * `GitProviderError` covers the first-class-repository path too: both
+ * provider clients (github/http.ts, gitlab/http.ts) fold a network failure
+ * into `status: 0`, so 0/5xx/429 is the same transient set as the raw-fetch
+ * `TarballHttpError` case above.
+ */
+export function isRetriableTarballError(err: unknown): boolean {
+  if (err instanceof TarballHttpError) {
+    return err.status >= 500 || err.status === 429;
+  }
+  if (err instanceof GitProviderError) {
+    return err.status === 0 || err.status >= 500 || err.status === 429;
+  }
+  if (
+    err instanceof Error &&
+    /declares .* bytes|exceeds .* bytes/.test(err.message)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Fetch `owner/repo@ref` and return files keyed by repo-relative path. */
+async function fetchRepoFiles(
+  repo: string,
+  ref: string,
+  authToken?: string,
+): Promise<Map<string, Uint8Array>> {
+  const { url, headers } = tarballRequestFor(repo, ref, authToken);
+  const label = `${repo}@${ref}`;
+  const attempt = async (): Promise<Uint8Array> => {
+    // Bounds the whole download so a stalled codeload socket can't hang this sync cycle.
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      throw new TarballHttpError(
+        res.status,
+        `tarball fetch failed for ${label}: HTTP ${res.status}`,
+      );
+    }
+    // Refuse before buffering when the server declares the size; the post-download check backstops chunked responses (no Content-Length).
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_TARBALL_BYTES) {
+      throw new Error(
+        `tarball for ${label} declares ${declared} bytes (cap ${MAX_TARBALL_BYTES})`,
+      );
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    assertWithinByteCap(bytes.length, MAX_TARBALL_BYTES, label);
+    return bytes;
+  };
+  try {
+    const gz = await retry(attempt, {
+      maxAttempts: 3,
+      minTimeout: 500,
+      maxTimeout: 4_000,
+      jitter: 0.5,
+      isRetriable: isRetriableTarballError,
+    });
+    return filesFromTarball(gz, label);
+  } catch (err) {
+    if (err instanceof RetryError) {
+      throw err.cause instanceof Error ? err.cause : err;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Where the archive comes from when it is not the GitHub codeload/API URL: a
+ * `GitProviderClient.archiveTarball` bound to a first-class repository. Null
+ * means the provider answered 404.
+ */
+export type TarballSource = () => Promise<ReadableStream<Uint8Array> | null>;
+
+async function repoFilesFor(
+  source: RepoSyncSource,
+  opts: { tarball?: TarballSource; authToken?: string },
+): Promise<Map<string, Uint8Array>> {
+  if (!opts.tarball) {
+    return fetchRepoFiles(source.repo, source.ref, opts.authToken);
+  }
+  const tarball = opts.tarball;
+  const label = `${source.repo}@${source.ref}`;
+  let stream: ReadableStream<Uint8Array> | null;
+  try {
+    // Same transient-failure policy as the raw-fetch path.
+    stream = await retry(() => tarball(), {
+      maxAttempts: 3,
+      minTimeout: 500,
+      maxTimeout: 4_000,
+      jitter: 0.5,
+      isRetriable: isRetriableTarballError,
+    });
+  } catch (err) {
+    throw err instanceof RetryError && err.cause instanceof Error
+      ? err.cause
+      : err;
+  }
+  if (!stream) throw new Error(`tarball not found for ${label}`);
+  return filesFromTarball(await readTarballStream(stream, label), label);
 }
 
 /**
@@ -297,6 +443,11 @@ export async function syncRepoToVolume(
     source: RepoSyncSource;
     /** Installation token for private repos; omit for anonymous fetch. */
     authToken?: string;
+    /**
+     * Provider-supplied archive, used instead of the GitHub tarball URL when
+     * the source is a first-class repository (`authToken` is then unused).
+     */
+    tarball?: TarballSource;
     /** Only system-owned shared content may bypass the per-volume quota. */
     skipVolumeQuota: boolean;
   },
@@ -310,7 +461,7 @@ export async function syncRepoToVolume(
   const fs = new OrgFs(storage, manifest, orgId);
 
   const desired = planVolumeTree(
-    await fetchRepoFiles(source.repo, source.ref, opts.authToken),
+    await repoFilesFor(source, opts),
     source.paths,
   );
   const current = new Map(

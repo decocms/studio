@@ -4,6 +4,7 @@ import {
   Coins01,
   Cube01,
   FileSearch02,
+  GitBranch01,
   GitMerge,
   Rocket01,
   Terminal,
@@ -14,7 +15,11 @@ import {
   SettingsCardItem,
   SettingsSection,
 } from "@/components/settings/settings-section";
-import { useOrgFlag, useSetOrgFlag } from "@/hooks/use-organization-settings";
+import {
+  useAutoResolveConflicts,
+  useOrgFlag,
+  useSetOrgFlag,
+} from "@/hooks/use-organization-settings";
 import type { OrgFlags } from "@decocms/shared/organization/schema";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -50,6 +55,7 @@ export function ReviewSettings() {
           titleKey="settings.review.autoMergeTitle"
           descriptionKey="settings.review.autoMergeDescription"
         />
+        <AutoResolveConflictsToggle />
         <FlagToggle
           flag="delivery_lanes_enabled"
           icon={<Rocket01 size={16} />}
@@ -111,20 +117,43 @@ export function CodeAgentsSettings() {
   );
 }
 
+/**
+ * Conflict resolution reads through `useAutoResolveConflicts`, not the raw
+ * flag: unset it follows `auto_merge`, so a switch bound to the raw value would
+ * read off while the server is resolving conflicts.
+ */
+function AutoResolveConflictsToggle() {
+  const enabled = useAutoResolveConflicts();
+  return (
+    <FlagToggle
+      flag="auto_resolve_conflicts"
+      icon={<GitBranch01 size={16} />}
+      titleKey="settings.review.autoResolveConflictsTitle"
+      descriptionKey="settings.review.autoResolveConflictsDescription"
+      enabled={enabled}
+    />
+  );
+}
+
 /** One org flag as a switch. Shared with the other org-settings sections. */
 function FlagToggle({
   flag,
   icon,
   titleKey,
   descriptionKey,
+  enabled: enabledOverride,
 }: {
   flag: keyof OrgFlags;
   icon: ReactNode;
   titleKey: TranslationKey;
   descriptionKey: TranslationKey;
+  /** Effective value when the flag's default is derived rather than a plain
+   *  `orgFlagEnabled` read. */
+  enabled?: boolean;
 }) {
   const t = useT();
-  const enabled = useOrgFlag(flag);
+  const flagValue = useOrgFlag(flag);
+  const enabled = enabledOverride ?? flagValue;
   const setFlag = useSetOrgFlag();
   return (
     <SettingsCardItem

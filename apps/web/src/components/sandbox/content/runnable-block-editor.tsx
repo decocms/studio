@@ -1,11 +1,11 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
   Code01,
   LinkExternal01,
-  Loading01,
   Maximize01,
   Minimize01,
   Play,
@@ -299,7 +299,7 @@ export function RunnableBlockEditor({
               })}
             >
               {run.isPending ? (
-                <Loading01 size={14} className="animate-spin" />
+                <Spinner className="size-3.5" />
               ) : (
                 <Play size={14} />
               )}
@@ -570,7 +570,7 @@ function RunResultPanel({
       <div className="min-h-0 flex-1">
         {result.isPending ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Loading01 size={16} className="animate-spin" />
+            <Spinner className="size-4" />
             {t("sandbox.runnableBlockEditor.running", { singular })}
           </div>
         ) : result.error ? (

@@ -25,6 +25,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
@@ -58,7 +59,8 @@ import {
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
-  useVirtualMCP,
+  useVirtualMCPNonBlocking,
+  useVirtualMCPsNonBlocking,
 } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
@@ -190,7 +192,8 @@ export interface ChatStreamContextValue {
 
 export interface ChatTaskContextValue {
   virtualMcpId: string;
-  taskId: string;
+  /** The thread the route names, or `null` on a route that names none. */
+  taskId: string | null;
   openTask: (taskId: string) => void;
   /** Creates a thread and navigates to it. `runtime: "sandbox"` starts a
    *  coding session; `branch` overrides the carried-over current branch. */
@@ -255,6 +258,16 @@ export interface ChatPrefsContextValue {
   setPendingAgentOption: (option: LocalAgentOption | null) => void;
   /** Derived from `pendingAgentOption`. Read-only. */
   pendingHarnessId: NativeHarnessId | null;
+}
+
+/** `sendMessage` takes either shape; both providers normalize it through here. */
+function toSendMessageParams(
+  params: SendMessageParams | Metadata["tiptapDoc"],
+): SendMessageParams {
+  if (params && typeof params === "object" && "type" in params) {
+    return { tiptapDoc: params as Metadata["tiptapDoc"] };
+  }
+  return params as SendMessageParams;
 }
 
 // ============================================================================
@@ -477,14 +490,26 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
     validatedStoredDeepResearch ??
     defaultDeepResearchModel;
 
-  // selectedVirtualMcp — URL-derived
-  const selectedVirtualMcpData = useVirtualMCP(urlVirtualMcpId);
-  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ?? {
-    id: urlVirtualMcpId,
-    title: "",
-    description: null,
-    icon: null,
-  };
+  /** URL-derived, and read NON-BLOCKING on purpose. This provider sits above
+   *  the sidebar and outside every Suspense boundary in the shell, so a
+   *  suspending read here blanks the whole app back to the splash screen. The
+   *  id flips (Super Agent → project) on any home → /projects navigation,
+   *  because only the projects route resolves `?virtualmcpid=`, so the key
+   *  changes on a navigation whose URL param did not. */
+  const selectedVirtualMcpData = useVirtualMCPNonBlocking(urlVirtualMcpId);
+  /** The org's list is already warm — the sidebar holds it — so the title and
+   *  icon are right on the first frame; the GET only adds the fields the list
+   *  omits, and lands without a visible change. */
+  const listedVirtualMcp = useVirtualMCPsNonBlocking().find(
+    (candidate) => candidate.id === urlVirtualMcpId,
+  );
+  const selectedVirtualMcp: VirtualMCPInfo = selectedVirtualMcpData ??
+    listedVirtualMcp ?? {
+      id: urlVirtualMcpId,
+      title: "",
+      description: null,
+      icon: null,
+    };
 
   // App contexts
   const [appContexts, setAppContextsState] = useState<Record<string, string>>(
@@ -651,7 +676,7 @@ export function ChatContextProvider({
   // panel-visible threads slot. Guard against transient prop/URL skew during
   // navigation by only honoring the prop when ids match.
   const activeTask =
-    effectiveTaskId && task?.id === effectiveTaskId ? task : null;
+    effectiveTaskId !== null && task?.id === effectiveTaskId ? task : null;
   const lockedHarness = activeTask?.harness_id ?? null;
   const lockedBranch = activeTask?.branch ?? null;
   const isThreadLocked = lockedHarness != null;
@@ -774,6 +799,53 @@ export function ChatContextProvider({
   );
 }
 
+/** Frozen identity so a threadless render never hands consumers a new array. */
+const NO_MESSAGES: ChatMessage[] = [];
+
+/**
+ * Chat context for a route with no thread — every destination (`/$org/home`,
+ * `/$org/tasks`, …) until one is opened.
+ *
+ * It installs the same stream shape the panel consumes, but owns no thread: no
+ * SSE subscription, no thread-scoped fetch, no `chat_opened`. The composer it
+ * renders is the empty one, and its first send mints the thread through the
+ * same create-and-hand-off path every other "new chat" affordance uses; the
+ * real {@link ActiveTaskProvider} then mounts on the thread that now exists.
+ */
+export function ThreadlessChatProvider({ children }: PropsWithChildren) {
+  const { createTaskWithMessage } = useChatTask();
+
+  const value: ChatStreamContextValue = {
+    messages: NO_MESSAGES,
+    status: "ready",
+    sendMessage: async (params) => {
+      createTaskWithMessage({ message: toSendMessageParams(params) });
+    },
+    editQueuedMessage: async () => false,
+    stop: () => {},
+    // Tool output and approval responses answer a message, and there are none.
+    submit: async () => {},
+    removeLocalMessage: () => {},
+    isSendInFlight: () => false,
+    error: null,
+    clearError: () => {},
+    finishReason: null,
+    runStatusStage: null,
+    clearFinishReason: () => {},
+    isStreaming: false,
+    isChatEmpty: true,
+    isWaitingForApprovals: false,
+    isRunInProgress: false,
+    hasMoreOlder: false,
+    isFetchingOlder: false,
+    fetchOlderMessages: async () => {},
+  };
+
+  return (
+    <ChatStreamValueProvider value={value}>{children}</ChatStreamValueProvider>
+  );
+}
+
 // ============================================================================
 // ActiveTaskProvider (inner, inside Suspense)
 // ============================================================================
@@ -793,11 +865,14 @@ export function ActiveTaskProvider({
     "chat.input.codingAgentRequiresDesktop",
   );
 
-  // Fire chat_opened once per (page session × taskId). Runs during render, but
-  // the Set gate keeps it idempotent. Fires for every thread a user views —
-  // new or existing — giving us a "chat session view" signal distinct from
-  // chat_started (thread creation).
-  if (taskId && !openedChats.has(taskId)) {
+  /**
+   * Fire chat_opened once per (page session × taskId). Runs during render, but
+   * the Set gate keeps it idempotent. Fires for every thread a user views —
+   * new or existing — giving us a "chat session view" signal distinct from
+   * chat_started (thread creation). A route that names no thread never reaches
+   * this provider, so the id here is always one a person actually opened.
+   */
+  if (!openedChats.has(taskId)) {
     openedChats.add(taskId);
     track("chat_opened", { thread_id: taskId });
   }
@@ -831,6 +906,7 @@ export function ActiveTaskProvider({
   const queryClient = useQueryClient();
   const manager = useThreadManager();
   const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
 
   // The connection owns SSE subscription, POSTs, and message state. The
   // provider is keyed by taskId at the layout level, so this resolves to a
@@ -841,12 +917,11 @@ export function ActiveTaskProvider({
     orgSlug: org.slug,
   });
   const conn = getOrOpenStream(org.slug, taskId, { client });
-  // Suspend until the initial-page MCP fetch settles. The Suspense boundary
-  // in side-panel-chat.tsx (`<Suspense fallback={<Chat.Skeleton />}>`)
-  // catches this and shows the skeleton instead of an empty message list.
-  // `conn.ready` resolves on success, error, and null-client paths so the
-  // chat unsuspends in every terminal case; error states are surfaced via
-  // `status` and rendered inline.
+  /** Suspend until the initial-page MCP fetch settles. The `MainPanelBoundary`
+   *  in side-panel-chat.tsx catches this and shows the app's one panel loader
+   *  instead of an empty message list. `conn.ready` resolves on success, error
+   *  and null-client paths so the chat unsuspends in every terminal case;
+   *  error states are surfaced via `status` and rendered inline. */
   use(conn.ready);
   const messages = useStore(conn.messages) as ChatMessage[];
   const connStatus = useStore(conn.status);
@@ -864,6 +939,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    openPanel,
     orgId: org.id,
     orgSlug: org.slug,
   });
@@ -875,6 +951,7 @@ export function ActiveTaskProvider({
     taskId,
     manager,
     navigate,
+    openPanel,
     orgId: org.id,
     orgSlug: org.slug,
   };
@@ -893,6 +970,26 @@ export function ActiveTaskProvider({
   // Delivery is at-most-once (NATS Core, no replay): a dropped event self-heals
   // because any LATER same-thread status event re-reconciles. Scoped to threads
   // that actually queued work (`isQueueDirty`) so normal threads are untouched.
+  // Shared by onTaskStatus and onReconnect: a dropped `/watch` connection can lose a status event, so a reconnect also re-checks the dirty queue.
+  const resyncDirtyQueue = () => {
+    const cb = cbRef.current;
+    if (!isQueueDirty(cb.taskId)) return;
+    void (async () => {
+      await refreshMessageQueue(cb.orgSlug, cb.taskId);
+      const applied = await conn.reconcileFromServer();
+      // The gate queue has drained — the last queued turn finished and its
+      // parts are committed (guaranteed by the ordering above), so the body
+      // is whole. Stop reconciling until the next time work is queued.
+      // Gate on `applied`: `reconcileFromServer` skips its apply while the
+      // next queued turn is already mid-stream (racing dequeue) — and by
+      // then the gate queue can look drained. The flag must survive the
+      // skip so that turn's own terminal event retries the reconcile.
+      if (applied && messageQueueStore(cb.taskId).get().length === 0) {
+        clearQueueDirty(cb.taskId);
+      }
+    })();
+  };
+
   useDecopilotEvents({
     orgSlug: org.slug,
     taskId,
@@ -906,22 +1003,9 @@ export function ActiveTaskProvider({
         if (stashed) conn.applyLocalMessage(stashed);
         void refreshMessageQueue(cb.orgSlug, cb.taskId); // authoritative re-sync
       }
-      if (!isQueueDirty(cb.taskId)) return;
-      void (async () => {
-        await refreshMessageQueue(cb.orgSlug, cb.taskId);
-        const applied = await conn.reconcileFromServer();
-        // The gate queue has drained — the last queued turn finished and its
-        // parts are committed (guaranteed by the ordering above), so the body
-        // is whole. Stop reconciling until the next time work is queued.
-        // Gate on `applied`: `reconcileFromServer` skips its apply while the
-        // next queued turn is already mid-stream (racing dequeue) — and by
-        // then the gate queue can look drained. The flag must survive the
-        // skip so that turn's own terminal event retries the reconcile.
-        if (applied && messageQueueStore(cb.taskId).get().length === 0) {
-          clearQueueDirty(cb.taskId);
-        }
-      })();
+      resyncDirtyQueue();
     },
+    onReconnect: resyncDirtyQueue,
   });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- observer slot is per-mount; useEffect is the natural fit
@@ -958,19 +1042,12 @@ export function ActiveTaskProvider({
           cb.queryClient.invalidateQueries({
             queryKey: KEYS.orgFsRecent(cb.orgId),
           });
-          cb.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: formatDeckTabId(path),
-            }),
-            replace: true,
-          });
+          cb.openPanel(formatDeckTabId(path));
           return;
         }
         // `load_repo` finished cloning a repo into the thread's sandbox. Patch
         // the local thread row (branch + repo + sandbox record) so the preview
-        // resolves without a refetch, then open the "preview" main-panel tab.
+        // resolves without a refetch, then open the site-editor main-panel tab.
         if (chunk.type === "data-open-preview") {
           const data = (
             chunk as unknown as {
@@ -995,14 +1072,7 @@ export function ActiveTaskProvider({
               } as Task["metadata"],
             });
           }
-          cb.navigate({
-            to: ".",
-            search: (prev: Record<string, unknown>) => ({
-              ...prev,
-              main: "preview",
-            }),
-            replace: true,
-          });
+          cb.openPanel("site-editor");
           return;
         }
       },
@@ -1404,14 +1474,7 @@ export function ActiveTaskProvider({
   // sendMessage wrapper: accept both SendMessageParams and raw tiptapDoc
   const sendMessagePublic = (
     params: SendMessageParams | Metadata["tiptapDoc"],
-  ): Promise<void> => {
-    if (params && typeof params === "object" && "type" in params) {
-      return sendMessageInternal({
-        tiptapDoc: params as Metadata["tiptapDoc"],
-      });
-    }
-    return sendMessageInternal(params as SendMessageParams);
-  };
+  ): Promise<void> => sendMessageInternal(toSendMessageParams(params));
 
   // Autosend consumer: the URL carries only `autosend=true`; the message
   // body lives in sessionStorage keyed by locator + taskId. It only boots empty

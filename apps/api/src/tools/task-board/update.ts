@@ -1,12 +1,9 @@
+import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
-import type {
-  TaskBoardActivityAction,
-  TaskBoardItem,
-  TaskBoardItemStatus,
-} from "@/storage/types";
+import type { TaskBoardActivityAction, TaskBoardItem } from "@/storage/types";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
   MAX_TASK_REPO_LENGTH,
@@ -17,13 +14,16 @@ import {
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
 } from "./schema";
-import { isDeliveryLane } from "./lanes";
+import { inReviewPhase, isDeliveryLane } from "./lanes";
 import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivities } from "./activity";
 import { taskRunContextStore } from "./task-run-context";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { extractPrFromText } from "./pr-extract";
+import { runColumnAutomation } from "./run-column-automation";
+import { findChangeRequestIn } from "./change-request-extract";
+import { normalizePreviewRoutes } from "./preview-routes";
+import { invalidatePrCards } from "./prs-get";
 import {
   ensureTaskExecutionAllowed,
   isReportsTask,
@@ -66,6 +66,7 @@ const UPDATABLE_FIELDS = [
   "repo",
   "dueDate",
   "sortOrder",
+  "previewRoutes",
   "tagIds",
 ] as const;
 
@@ -137,7 +138,7 @@ export function delegatesToSuperAgent(
   if (!previous) return false;
   return previous.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
     ? true
-    : previous.status === "todo";
+    : previous.status === LANES.queue;
 }
 
 /** Forward-only terminal lanes (see the activity comment above): once a card
@@ -145,7 +146,7 @@ export function delegatesToSuperAgent(
  *  review just as effectively as completing it does. The delivery lanes count
  *  too: they sit past In Review, so a run setting `merged` would escape this
  *  guard and drop the card out of `listItemsPendingReview`. */
-const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
+const REVIEW_CLOSING_STATUSES = new Set<string>([
   "approved",
   "merged",
   "post_deploy_validation",
@@ -156,13 +157,16 @@ const REVIEW_CLOSING_STATUSES = new Set<TaskBoardItemStatus>([
 /** `task-run-context` withholds REVIEW_DECISION and PROMOTE_TO_PRODUCTION for this
  *  invariant; this tool sets `status` freely, so it needs the same guard. */
 export function closesOwnReview(
-  inputStatus: TaskBoardItemStatus | undefined,
-  previousStatus: TaskBoardItemStatus | undefined,
+  inputStatus: string | undefined,
+  previous: { status: string; reviewCycleStartedAt: string | null } | undefined,
   isTaskRun: boolean,
 ): boolean {
   const completesTask =
     inputStatus !== undefined && REVIEW_CLOSING_STATUSES.has(inputStatus);
-  const awaitingReview = previousStatus === "in_review";
+  // The PHASE, not the lane: a card whose reviewer is still working reads In
+  // Progress since migration 190, and gating on the lane alone would let the
+  // author's own run mark its work Done out from under that reviewer.
+  const awaitingReview = previous !== undefined && inReviewPhase(previous);
   return isTaskRun && completesTask && awaitingReview;
 }
 
@@ -178,7 +182,7 @@ export function closesOwnReview(
  * gate the UI's own drag/dropdown, not the tool underneath them.
  */
 export function rejectsUngatedDeliveryLane(
-  inputStatus: TaskBoardItemStatus | undefined,
+  inputStatus: string | undefined,
   deliveryLanesEnabled: boolean,
 ): boolean {
   return (
@@ -215,6 +219,17 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
     sortOrder: z.number().optional(),
+    previewRoutes: z
+      .array(z.string().max(500))
+      .max(20)
+      .optional()
+      .describe(
+        "Paths this task's work created or edited, e.g. " +
+          '["/cliente-vip", "/cliente-vip/faq"]. Paths only — no host: the ' +
+          "card joins each onto the pull request's deploy-preview origin so " +
+          "a reviewer can open the pages directly. Replaces the previous set; " +
+          "pass [] to clear.",
+      ),
     /** Replaces the task's tags with this exact set (org tag ids). */
     tagIds: z.array(z.string()).max(1000).optional(),
     /** Link an existing chat thread to this task (many-to-many, idempotent). */
@@ -225,8 +240,8 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       .optional()
       .describe(
         "GitHub pull request URL to link to this task, e.g. " +
-          "https://github.com/owner/repo/pull/123. Pass this with " +
-          '`status: "in_review"` after opening a PR for an existing card.',
+          "https://github.com/owner/repo/pull/123. Pass it after opening a " +
+          "PR for an existing card; linking one is what starts its review.",
       ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
@@ -242,11 +257,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     // Parse the PR link before any write, so a bad URL fails without a partial edit.
-    const pr = input.prUrl ? extractPrFromText(input.prUrl) : null;
+    const pr = input.prUrl ? findChangeRequestIn(input.prUrl) : null;
     if (input.prUrl && !pr) {
       throw new Error(
-        `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
-          "https://github.com/<owner>/<repo>/pull/<number>)",
+        `Not a change request URL: ${input.prUrl} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number> or " +
+          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>)",
       );
     }
 
@@ -309,10 +325,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
 
     const isTaskRun = taskRunContextStore.getStore() !== undefined;
-    if (closesOwnReview(input.status, previous?.status, isTaskRun)) {
+    if (closesOwnReview(input.status, previous ?? undefined, isTaskRun)) {
       throw new Error(
-        "This task is In Review — a run can't move it to Done or Archived. " +
-          "Leave it in in_review for the reviewer; only a person, or " +
+        "This task is under review — a run can't move it to Done or Archived. " +
+          "Leave it for the reviewer; only a person, or " +
           "TASK_BOARD_REVIEW_DECISION on a reviewer's own run, closes out a " +
           "task under review.",
       );
@@ -321,9 +337,10 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     const assigneeChanged =
       input.assigneeId !== undefined &&
       input.assigneeId !== (previous?.assigneeId ?? null);
-    // Delegating a task to the Super Agent queues it to run — force To Do,
-    // overriding any status the caller passed alongside the reassignment.
+    // Delegating queues the card onto the queue lane.
     const becameSuperAgent = delegatesToSuperAgent(input.assigneeId, previous);
+    const queuedStatus = becameSuperAgent ? LANES.queue : undefined;
+    const nextStatus = queuedStatus ?? input.status;
 
     if (previous && isReportsTask(previous)) {
       // Reports-pushed tasks are the report's findings — their CONTENT is
@@ -381,7 +398,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         {
           title: input.title,
           description: input.description,
-          status: becameSuperAgent ? "todo" : input.status,
+          status: nextStatus,
           priority: input.priority,
           type: input.type,
           assigneeId: input.assigneeId,
@@ -394,6 +411,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
           repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,
+          previewRoutes: normalizePreviewRoutes(input.previewRoutes),
         },
         getUserId(ctx)!,
       );
@@ -412,9 +430,12 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
         organizationId,
         url: pr.url,
         prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
+        repo: pr.repo,
         connectionId: null,
+      });
+      // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
       });
     }
 
@@ -463,6 +484,21 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     }
     if (becameSuperAgent) {
       await reactToSuperAgentDelegation(ctx, item, { userInitiated: true });
+      return { item };
+    }
+
+    // A card that just landed in a column runs that column's rule, whoever
+    // moved it. Only on an actual lane change: re-saving a title must not
+    // re-trigger, and the card is already owned once the rule has fired.
+    if (
+      input.status !== undefined &&
+      previous !== null &&
+      previous.status !== item.status
+    ) {
+      item = await runColumnAutomation(ctx, item, {
+        assignedBy: getUserId(ctx)!,
+        actor: getUserId(ctx)!,
+      });
     }
 
     return { item };

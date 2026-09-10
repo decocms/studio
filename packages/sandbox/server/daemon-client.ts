@@ -5,6 +5,7 @@
 
 import type { ConfigPatch, TenantConfig } from "../daemon-protocol";
 import { sleep } from "../shared";
+import { retry, type RetryOptions } from "@decocms/shared/std";
 
 export type { ConfigPatch };
 
@@ -18,6 +19,92 @@ export class ConfigRequestError extends Error {
   ) {
     super(`sandbox daemon /_sandbox/config returned ${status}: ${body}`);
     this.name = "ConfigRequestError";
+  }
+}
+
+/** Returns true if an error is transient and should be retried. Distinguishes
+ * network/timeout failures (retriable) from other errors (permanent).
+ *
+ * Node/undici's fetch throws these as `TypeError`. Bun's fetch — the actual
+ * runtime this server runs on — throws a plain `Error` with a `.code` (e.g.
+ * `"ConnectionRefused"`, `"ConnectionClosed"`) instead: a cold sandbox pod
+ * that isn't accepting connections yet is exactly this, so without the
+ * `.code` check the daemon's single most common transient failure never
+ * actually retried. */
+function isTransientError(err: unknown): boolean {
+  // Network errors (DNS, connection refused, etc.) are transient
+  if (err instanceof TypeError) {
+    return true;
+  }
+  if (
+    err instanceof Error &&
+    !(err instanceof DOMException) &&
+    typeof (err as { code?: unknown }).code === "string"
+  ) {
+    return true;
+  }
+  // AbortError from timeout is transient
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Call a daemon endpoint and read its whole body, labelling any transport
+ * failure with the endpoint that failed. Retries on transient errors
+ * (network timeouts, connection failures) with exponential backoff.
+ *
+ * `AbortSignal.timeout()` rejects with a bare DOMException whose message is
+ * "The operation timed out." — no URL, no endpoint, no hint that a sandbox was
+ * even involved. Unwrapped, that string is what a run surfaces to the user: a
+ * montecarlo run failed with exactly `Error: The operation timed out.` and
+ * nothing anywhere — not the thread row, not the logs — recorded what had timed
+ * out. Every other timeout on this path already says what it was waiting for;
+ * these are the ones that did not.
+ *
+ * The body is read HERE, not by the caller, because the same signal aborts it:
+ * a daemon that sends headers and then stalls rejects the `.text()`, and a
+ * `.text()` awaited outside this try is exactly the unlabelled DOMException
+ * again. Every caller wants the body anyway.
+ *
+ * `timeoutMs` is applied via a *fresh* `AbortSignal.timeout()` on every
+ * attempt — not one built once by the caller and reused. A signal that has
+ * already fired stays fired, so reusing it across retries would make every
+ * attempt after the first one that times out fail instantly with the same
+ * stale AbortError instead of getting its own timeout window.
+ */
+async function daemonRequest(
+  url: string,
+  init: Omit<RequestInit, "signal">,
+  endpoint: string,
+  timeoutMs: number,
+): Promise<{ status: number; ok: boolean; body: string }> {
+  try {
+    const retryOpts: RetryOptions = {
+      maxAttempts: 3,
+      minTimeout: 50,
+      maxTimeout: 500,
+      multiplier: 2,
+      jitter: 0.5,
+      isRetriable: isTransientError,
+    };
+
+    return await retry(async () => {
+      const res = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      return { status: res.status, ok: res.ok, body: await res.text() };
+    }, retryOpts);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[SANDBOX_UNREACHABLE] sandbox daemon ${endpoint} request failed: ${message}`,
+      {
+        cause: err,
+      },
+    );
   }
 }
 
@@ -51,7 +138,15 @@ export async function probeDaemonHealth(
     const res = await fetch(`${daemonUrl}/health`, {
       signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Drain the body to ensure connection cleanup even on non-2xx responses.
+      try {
+        await res.text();
+      } catch {
+        // Ignore drain errors; connection cleanup is best-effort.
+      }
+      return null;
+    }
     const body = (await res.json()) as Partial<DaemonHealth>;
     if (
       typeof body === "object" &&
@@ -137,20 +232,23 @@ async function configRequest(
 ): Promise<ConfigResponse> {
   const wire: Record<string, unknown> = { ...payload };
   if (auth && auth.rotateToken !== undefined) wire.auth = auth;
-  const res = await fetch(`${daemonUrl}/_sandbox/config`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await daemonRequest(
+    `${daemonUrl}/_sandbox/config`,
+    {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(wire),
     },
-    body: JSON.stringify(wire),
-    signal: AbortSignal.timeout(opts?.timeoutMs ?? CONFIG_TIMEOUT_MS),
-  });
-  const body = await res.text();
+    "/_sandbox/config",
+    opts?.timeoutMs ?? CONFIG_TIMEOUT_MS,
+  );
   if (!res.ok) {
-    throw new ConfigRequestError(res.status, body);
+    throw new ConfigRequestError(res.status, res.body);
   }
-  return JSON.parse(body) as ConfigResponse;
+  return parseJsonResponse<ConfigResponse>(res.body, "/_sandbox/config");
 }
 
 /**
@@ -164,14 +262,18 @@ export async function postSetupStep(
   token: string,
   step: "clone" | "install" | "start",
 ): Promise<void> {
-  const res = await fetch(`${daemonUrl}/_sandbox/setup/${step}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
-  });
+  const res = await daemonRequest(
+    `${daemonUrl}/_sandbox/setup/${step}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+    `/_sandbox/setup/${step}`,
+    CONFIG_TIMEOUT_MS,
+  );
   if (!res.ok) {
     throw new Error(
-      `sandbox daemon /_sandbox/setup/${step} returned ${res.status}: ${await res.text()}`,
+      `sandbox daemon /_sandbox/setup/${step} returned ${res.status}: ${res.body}`,
     );
   }
 }
@@ -188,22 +290,45 @@ export async function postOrgFsConfig(
   token: string,
   configJson: string,
 ): Promise<{ written: boolean }> {
-  const res = await fetch(`${daemonUrl}/_sandbox/orgfs-config`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+  const res = await daemonRequest(
+    `${daemonUrl}/_sandbox/orgfs-config`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: configJson,
     },
-    body: configJson,
-    signal: AbortSignal.timeout(CONFIG_TIMEOUT_MS),
-  });
-  const body = await res.text();
+    "/_sandbox/orgfs-config",
+    CONFIG_TIMEOUT_MS,
+  );
   if (!res.ok) {
     throw new Error(
-      `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${body}`,
+      `sandbox daemon /_sandbox/orgfs-config returned ${res.status}: ${res.body}`,
     );
   }
-  return JSON.parse(body) as { written: boolean };
+  return parseJsonResponse<{ written: boolean }>(
+    res.body,
+    "/_sandbox/orgfs-config",
+  );
+}
+
+/**
+ * A malformed 2xx body (truncated response, a proxy's HTML error page mistaken
+ * for success) must not surface as a bare, unlabelled `SyntaxError` — see the
+ * rationale on `daemonRequest` above for why every failure on this path names
+ * its endpoint.
+ */
+function parseJsonResponse<T>(body: string, endpoint: string): T {
+  try {
+    return JSON.parse(body) as T;
+  } catch (err) {
+    throw new Error(
+      `sandbox daemon ${endpoint} returned a malformed JSON body: ${body.slice(0, 200)}`,
+      { cause: err },
+    );
+  }
 }
 
 const STRIP_REQUEST_HEADERS = [

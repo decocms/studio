@@ -9,8 +9,10 @@
 export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
   ".well-known",
   "_admin",
+  "_users",
   "api",
   "auth",
+  "choose-editor",
   "cli",
   "commerce-onboarding",
   "dbos-queue-depth",

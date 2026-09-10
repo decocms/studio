@@ -435,7 +435,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
         setCopiedOutput(true);
         setTimeout(() => setCopiedOutput(false), 2000);
       }
-    } catch (error) {
+    } catch {
       toast.error(t("monitoring.types.failedToCopy"));
     }
   };
@@ -483,7 +483,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
       await navigator.clipboard.writeText(log.requestId);
       setCopiedRequestId(true);
       setTimeout(() => setCopiedRequestId(false), 2000);
-    } catch (error) {
+    } catch {
       toast.error(t("monitoring.types.failedToCopy"));
     }
   };
@@ -626,7 +626,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                               `${key}=${value}`,
                             );
                             toast.success(t("monitoring.types.copiedFilter"));
-                          } catch (error) {
+                          } catch {
                             toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
@@ -642,7 +642,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                           try {
                             await navigator.clipboard.writeText(key);
                             toast.success(t("monitoring.types.copiedKey"));
-                          } catch (error) {
+                          } catch {
                             toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}
@@ -658,7 +658,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                           try {
                             await navigator.clipboard.writeText(value);
                             toast.success(t("monitoring.types.copiedValue"));
-                          } catch (error) {
+                          } catch {
                             toast.error(t("monitoring.types.failedToCopy"));
                           }
                         }}

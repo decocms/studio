@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { getSettings } from "../../settings";
-import { verifySignature } from "./dev-assets";
+import { getFilePath, verifySignature } from "./dev-assets";
 
 function sign(
   orgId: string,
@@ -45,5 +45,18 @@ describe("verifySignature", () => {
     expect(
       verifySignature("org_1", "logo.png", 9999999999, "PUT", signature),
     ).toBe(false);
+  });
+});
+
+describe("getFilePath", () => {
+  test("keeps a percent-encoded traversal key contained under the org dir", () => {
+    const path = getFilePath("org_1", "%2e%2e/%2e%2e/etc/passwd");
+    expect(path.startsWith("data/assets/org_1")).toBe(true);
+    expect(path).not.toContain("..");
+  });
+
+  test("resolves a literal traversal key back under the org dir", () => {
+    const path = getFilePath("org_1", "../../../etc/passwd");
+    expect(path.startsWith("data/assets/org_1")).toBe(true);
   });
 });

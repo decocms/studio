@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  defaultPreviewServerUrl,
   pickProductionDomain,
   productionUrlFromDomain,
   resolvePreviewServerUrl,
@@ -79,6 +80,25 @@ describe("productionUrlFromDomain", () => {
     expect(productionUrlFromDomain("   ")).toBeNull();
     expect(productionUrlFromDomain(null)).toBeNull();
     expect(productionUrlFromDomain(undefined)).toBeNull();
+  });
+});
+
+describe("defaultPreviewServerUrl", () => {
+  it("slugifies a bare site name into the deco.site host", () => {
+    expect(defaultPreviewServerUrl("acme")).toBe("https://acme.deco.site/");
+  });
+
+  it("slugifies a display name with spaces and symbols", () => {
+    expect(defaultPreviewServerUrl("My Cool Site!")).toBe(
+      "https://my-cool-site.deco.site/",
+    );
+  });
+
+  it("returns null for empty / whitespace-only / nullish, instead of throwing", () => {
+    expect(defaultPreviewServerUrl("")).toBeNull();
+    expect(defaultPreviewServerUrl("   ")).toBeNull();
+    expect(defaultPreviewServerUrl(null)).toBeNull();
+    expect(defaultPreviewServerUrl(undefined)).toBeNull();
   });
 });
 

@@ -1,3 +1,4 @@
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
   AlertCircle,
   AlertOctagon,
@@ -19,9 +20,12 @@ import {
 } from "@untitledui/icons";
 import { Bug } from "lucide-react";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
-import { DEFAULT_TAG_COLOR, DELIVERY_LANES } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  DEFAULT_TAG_COLOR,
+  DELIVERY_LANES,
+} from "@decocms/shared/task-board";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
-import type { Sprint } from "@decocms/shared/sprints";
 import type { ComponentType } from "react";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -32,7 +36,6 @@ export {
 } from "@decocms/shared/task-board";
 
 export type TaskBoardItem = ToolOutput<"TASK_BOARD_ITEM_LIST">["items"][number];
-export type { Sprint };
 export type TaskBoardItemStatus = TaskBoardItem["status"];
 export type TaskBoardItemPriority = TaskBoardItem["priority"];
 export type TaskBoardItemType = NonNullable<TaskBoardItem["type"]>;
@@ -41,31 +44,39 @@ export type TaskBoardItemTag = TaskBoardItem["tags"][number];
 export type TaskBoardItemPr =
   ToolOutput<"TASK_BOARD_ITEM_PRS_GET">["prs"][number];
 
+/**
+ * An infrastructure retry is not news. Each one wrote its own
+ * `In Progress → In Progress` activity ("scheduled retry 1 of 1 — error"), so a
+ * card that burned its budget read as a wall of retry chatter with the actual
+ * story buried in it. The retry is still counted — the terminal
+ * `activityRetriesExhausted` line ("moved to To Do after N failed retries") is
+ * the part a person acts on, and it survives this filter.
+ */
+export function isFeedWorthyActivity(a: {
+  action: string;
+  data?: Record<string, unknown> | null;
+}): boolean {
+  return !(a.action === "status_changed" && typeof a.data?.retry === "number");
+}
+
+/**
+ * The same noise from the other side: every retry spawns a fresh thread, and
+ * each one rendered its own card, so three attempts meant three near-identical
+ * "Retried" cards stacked above the one that matters.
+ *
+ * `superseded` means a NEWER attempt replaced this one, so a superseded thread
+ * can never be the newest — the live (or last) run always survives this filter,
+ * and with it the link to a transcript.
+ */
+export function isLiveAttempt(thread: {
+  failureKind?: string | null;
+}): boolean {
+  return thread.failureKind !== "superseded";
+}
+
 /** Org tag, as returned by TAGS_LIST/TAGS_CREATE (same shape a task's `tags`
  *  snapshot is drawn from). */
 export type OrgTag = ToolOutput<"TAGS_LIST">["tags"][number];
-
-/** UTC: a sprint's dates are calendar days in Jira, so rendering them in the
- *  viewer's zone shows the day before for anyone west of UTC. */
-const SPRINT_DATE_FMT = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
-
-/** A sprint's span as `Jan 5 – Jan 18`, or null when it carries no dates (a
- *  planned sprint nobody has scheduled yet). */
-export function formatSprintDates(sprint: Sprint): string | null {
-  const day = (value: string | null) => {
-    if (!value) return null;
-    const ms = Date.parse(value);
-    return Number.isNaN(ms) ? null : SPRINT_DATE_FMT.format(new Date(ms));
-  };
-  const start = day(sprint.startsAt);
-  const end = day(sprint.endsAt);
-  if (!start && !end) return null;
-  return start && end ? `${start} – ${end}` : (start ?? end);
-}
 
 /**
  * A task is "blocked" when one of its agent threads is waiting on human input
@@ -113,7 +124,7 @@ export function cardNeedsAttention(item: TaskBoardItem): boolean {
 export function statusIconClassName(item: TaskBoardItem): string {
   return item.status === "in_progress" && isTaskBlocked(item)
     ? "text-warning animate-pulse"
-    : STATUS_CONFIG[item.status].iconClassName;
+    : laneVisual(item.status).iconClassName;
 }
 
 /**
@@ -182,27 +193,18 @@ export type Member = {
   user?: { name?: string | null; image?: string | null };
 };
 
-export const STATUSES: TaskBoardItemStatus[] = [
-  "triage",
-  "todo",
-  "in_progress",
-  "in_review",
-  "approved",
-  "merged",
-  "post_deploy_validation",
-  "done",
-  "archived",
-];
-
 /**
  * Lanes that don't earn a board column by default — they sit collapsed under
- * "Hidden columns" until shown. They stay in `STATUSES`, so "Move to", drag
- * targets and status validation still know about them.
+ * "Hidden columns" until shown. They stay in `CANONICAL_COLUMN_KEYS`, so "Move
+ * to", drag targets and status validation still know about them.
  */
-export const HIDDEN_STATUSES: TaskBoardItemStatus[] = ["archived"];
+export const HIDDEN_STATUSES: CanonicalColumnKey[] = ["archived"];
 
+/** Keyed by the board's lanes. Exhaustive on purpose: adding a lane is a
+ *  compile error here. A card's status arrives as a plain string, which is
+ *  what `laneVisual` and `laneHeader` are for. */
 export const STATUS_CONFIG: Record<
-  TaskBoardItemStatus,
+  CanonicalColumnKey,
   { labelKey: TranslationKey; icon: typeof Circle; iconClassName: string }
 > = {
   triage: {
@@ -251,6 +253,45 @@ export const STATUS_CONFIG: Record<
     iconClassName: "text-muted-foreground",
   },
 };
+
+/** What a lane looks like, for a status we may not recognise. */
+type LaneVisual = {
+  icon: typeof Circle;
+  iconClassName: string;
+};
+
+/** Neutral stand-in for a status this bundle does not know — a card written by
+ *  a server one lane ahead of the client it is talking to. */
+const UNKNOWN_LANE: LaneVisual = {
+  icon: Circle,
+  iconClassName: "text-muted-foreground",
+};
+
+/** Widened on purpose. `STATUS_CONFIG` is exhaustive over the board's lanes —
+ *  that is what makes adding one a compile error — but a card's status is a
+ *  plain string on the wire, and indexing the closed Record would let the
+ *  compiler believe every lookup hits. */
+const LANE_VISUALS: Record<string, LaneVisual> = STATUS_CONFIG;
+
+export function laneVisual(status: string): LaneVisual {
+  return LANE_VISUALS[status] ?? UNKNOWN_LANE;
+}
+
+/**
+ * How a lane reads: the translated name of one of the board's lanes and its
+ * icon. A status this bundle does not know is named by its raw key and drawn
+ * neutral rather than hidden — the card is still the org's card.
+ */
+export function laneHeader(
+  status: string,
+  t: (key: TranslationKey) => string,
+): { label: string; visual: LaneVisual } {
+  const known = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG];
+  return {
+    label: known ? t(known.labelKey) : status,
+    visual: laneVisual(status),
+  };
+}
 
 export const TASK_TYPES: TaskBoardItemType[] = [
   "bug",
@@ -309,20 +350,19 @@ export const TASK_TYPE_CONFIG: Record<
 };
 
 /** True for one of the post-merge delivery lanes. */
-export function isDeliveryLane(status: TaskBoardItemStatus): boolean {
+function isDeliveryLane(status: string): boolean {
   return (DELIVERY_LANES as string[]).includes(status);
 }
 
 /**
- * Lanes a card may be MOVED to — "Move to", the status dropdown, drag targets.
- * With the delivery lanes off they aren't offered, so nobody can put a card
- * somewhere the org's state machine doesn't ship to. Rendering a lane's own
- * label is a separate question, always answered by `STATUS_CONFIG`.
+ * Lanes a card may be MOVED to — "Move to", the status dropdown. With the
+ * delivery lanes off they aren't offered, so nobody can put a card somewhere
+ * the org's state machine doesn't ship to.
  */
-export function moveTargets(deliveryEnabled: boolean): TaskBoardItemStatus[] {
-  return deliveryEnabled
-    ? STATUSES
-    : STATUSES.filter((s) => !isDeliveryLane(s));
+export function moveTargets(deliveryEnabled: boolean): CanonicalColumnKey[] {
+  return CANONICAL_COLUMN_KEYS.filter(
+    (key) => deliveryEnabled || !isDeliveryLane(key),
+  );
 }
 
 /**
@@ -340,13 +380,13 @@ export function laneVisibility({
   deliveryEnabled: boolean;
   /** `string[]`: it comes out of localStorage, which can hold a dead lane. */
   shownLanes: readonly string[];
-  occupied: readonly TaskBoardItemStatus[];
+  occupied: readonly string[];
 }): {
-  lanes: TaskBoardItemStatus[];
-  hidden: TaskBoardItemStatus[];
-  hideable: TaskBoardItemStatus[];
+  lanes: CanonicalColumnKey[];
+  hidden: CanonicalColumnKey[];
+  hideable: CanonicalColumnKey[];
 } {
-  const known = STATUSES.filter(
+  const known = CANONICAL_COLUMN_KEYS.filter(
     (s) => deliveryEnabled || !isDeliveryLane(s) || occupied.includes(s),
   );
   const hideable = known.filter(
@@ -355,6 +395,39 @@ export function laneVisibility({
   );
   const hidden = hideable.filter((s) => !shownLanes.includes(s));
   return { lanes: known.filter((s) => !hidden.includes(s)), hidden, hideable };
+}
+
+/** dnd-kit id prefix for a lane's own droppable — the empty space below the
+ *  last card. Anything else `over` reports is a card id. */
+export const LANE_DROPPABLE_PREFIX = "lane:";
+
+/** True for one of the board's columns — the only place a drop may land. */
+function isColumnKey(status: string): status is CanonicalColumnKey {
+  return (CANONICAL_COLUMN_KEYS as readonly string[]).includes(status);
+}
+
+/**
+ * Where a drag currently sits, or null when it sits nowhere it may land.
+ *
+ * Two ways to be over a lane — its own droppable, or a card in it — and one
+ * rule over both: the landing has to be one of the board's columns, else the
+ * server rejects the write and the drop only looks like it worked until the
+ * list refetches.
+ */
+export function dropLane({
+  overId,
+  statusOf,
+}: {
+  overId: string | number | undefined;
+  /** A card's lane, by card id. */
+  statusOf: (cardId: string) => string | undefined;
+}): CanonicalColumnKey | null {
+  if (overId === undefined) return null;
+  const id = String(overId);
+  const status = id.startsWith(LANE_DROPPABLE_PREFIX)
+    ? id.slice(LANE_DROPPABLE_PREFIX.length)
+    : statusOf(id);
+  return status !== undefined && isColumnKey(status) ? status : null;
 }
 
 export const PRIORITIES: TaskBoardItemPriority[] = [

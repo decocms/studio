@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loading01 } from "@untitledui/icons";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -87,7 +87,7 @@ export default function AdminPromptsPage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }

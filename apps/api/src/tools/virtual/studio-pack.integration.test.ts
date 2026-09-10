@@ -119,10 +119,32 @@ describe("installStudioPack", () => {
 
   test("legacy managers still bind to the self connection", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
-    const agentId = StudioPackAgentId.AGENT_MANAGER(orgId);
+    const agentId = StudioPackAgentId.AUTOMATION_MANAGER(orgId);
     const agent = await virtualMcpStorage.findById(agentId, orgId);
     const connIds = (agent?.connections ?? []).map((c) => c.connection_id);
     expect(connIds).toEqual([WellKnownOrgMCPId.SELF(orgId)]);
+  });
+
+  test("deletes a previously-installed Agent Manager", async () => {
+    const retiredId = `studio-agent-manager_${orgId}`;
+    await virtualMcpStorage.create(
+      orgId,
+      userId,
+      {
+        title: "Agent Manager",
+        description: "retired",
+        icon: null,
+        status: "active",
+        pinned: false,
+        metadata: {},
+        connections: [],
+      },
+      { id: retiredId },
+    );
+
+    await installStudioPack(orgId, userId, virtualMcpStorage);
+
+    expect(await virtualMcpStorage.findById(retiredId, orgId)).toBeNull();
   });
 
   test("API Key Manager exposes only key management and read-only discovery tools", async () => {

@@ -1,10 +1,10 @@
 import { useMCPAuthStatus } from "@/hooks/use-mcp-auth-status";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import type { ConnectionEntity } from "@/sdk";
 import {
-  Loading01,
   Plus,
   Power01,
   Settings02,
@@ -198,11 +198,7 @@ export function ConnectionInstancesPanel({
           onClick={onAdd}
           disabled={isAdding}
         >
-          {isAdding ? (
-            <Loading01 size={13} className="animate-spin" />
-          ) : (
-            <Plus size={13} />
-          )}
+          {isAdding ? <Spinner className="size-[13px]" /> : <Plus size={13} />}
           {t("details.connectionInstancesPanel.addInstance")}
         </Button>
       </div>

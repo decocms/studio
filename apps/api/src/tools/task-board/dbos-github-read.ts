@@ -97,12 +97,18 @@ export type SweptPrState = {
   /** Head's checks, derived from the same `get` (`checksFromMergeableState`) —
    *  no extra GitHub call. Gates the QA dispatch (`previewMatchesHead`). */
   checksStatus: ChecksStatus;
+  /** Conflicts with the base branch, from the same `get` (`conflictFromPrGet`).
+   *  `null` is unknown and never acts. Lets the sweep hand a conflicting PR
+   *  back to the Super Agent without an auto-merge attempt to discover it — an
+   *  org can run `auto_resolve_conflicts` with `auto_merge` off. */
+  conflict: boolean | null;
 };
 
 const UNKNOWN: SweptPrState = {
   state: null,
   merged: null,
   checksStatus: null,
+  conflict: null,
 };
 
 async function readPrState(

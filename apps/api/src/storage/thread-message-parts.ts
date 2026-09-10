@@ -58,12 +58,73 @@ function estimatePayloadBytes(value: unknown, budget: number): number {
 // untrusted, so sanitize it here at the storage boundary rather than trusting
 // every producer. Clean strings are returned unchanged, so ids derived from the
 // serialized payload stay stable.
+//
+// The same pass redacts credentials (below) — this table is the one place every
+// harness's output funnels through on its way to durable storage, so it is the
+// only guard that cannot be bypassed by a new producer.
 const NUL = /\u0000/g;
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
+// A URL's userinfo. The sandbox's `origin` remote is
+// `https://x-access-token:ghs_…@github.com/owner/repo`, and the Super Agent
+// prompt points the agent AT that token as its REST fallback — so a run that
+// does no more than `git remote -v` lands a live GitHub App token in this
+// table, in plaintext, readable by anyone who can read the thread. A push is
+// irreversible and a leak is not undone by deleting the row, so this strips at
+// the write: one guard covers every producer, present and future.
+//
+// `[^\s/@]` cannot cross a path separator, so a credential-less URL that
+// merely contains an `@` (`https://github.com/a@b`) is left alone.
+//
+// BOTH quantifiers are bounded, and that is load-bearing, not tidiness: an
+// unbounded `[a-z0-9+.-]*` or `[^\s/@]+` scans to the end of the string and
+// backtracks at EVERY start offset, which is quadratic. Payloads here reach
+// tens of MB (see the large-payload tests), so the unbounded form hangs the
+// projector — the sole writer of terminal thread status — and strands the run.
+// No real scheme exceeds 30 chars and no real credential 512.
+const URL_USERINFO = /([a-z][a-z0-9+.-]{0,30}:\/\/)[^\s/@]{1,512}@/gi;
+// The same secrets reach a log with no URL around them — an env dump, an
+// `Authorization:` header, a `.netrc`. GitHub's prefixes are unambiguous, and
+// the 20-char floor keeps an ordinary identifier like `ghs_count` readable.
+// Deliberately only GitHub's formats: a general secret scanner at this boundary
+// would redact chat content the user needs to read.
+const GITHUB_TOKEN = /\b(gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g;
+
+// A base64 data URL inline in tool output or agent text. Same reasoning as the
+// image blocks below, minus the structure: it is bulk binary that nobody reads
+// out of this table. Bounded prefix, and the payload class excludes whitespace
+// so it cannot run past the URL into surrounding prose.
+const BASE64_DATA_URL =
+  /data:[a-z0-9.+-]{0,60}\/[a-z0-9.+-]{0,60};base64,[A-Za-z0-9+/=]{100,}/gi;
+
 function sanitizeForPg(value: string): string {
-  return value.replace(NUL, "").replace(LONE_SURROGATE, "\uFFFD");
+  return value
+    .replace(NUL, "")
+    .replace(LONE_SURROGATE, "\uFFFD")
+    .replace(URL_USERINFO, "$1***@")
+    .replace(GITHUB_TOKEN, "$1***")
+    .replace(BASE64_DATA_URL, "[base64 data omitted]");
+}
+
+// A screenshot the agent read is megabytes of base64 that dominates this table
+// (54 MB across ~700 rows in production) and rides into every later prompt
+// folded from these parts. It becomes a text block, not an image block with
+// gutted `data`, so the folded message stays a valid content block.
+//
+// Only blocks carrying the bytes: an image block pointing at object storage
+// (`studio-storage:`, a signed URL) is a cheap reference the UI still needs.
+function isInlineBase64Image(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const block = value as { type?: unknown; data?: unknown; source?: unknown };
+  if (block.type !== "image") return false;
+  if (typeof block.data === "string") return true;
+  const source = block.source;
+  return (
+    typeof source === "object" &&
+    source !== null &&
+    typeof (source as { data?: unknown }).data === "string"
+  );
 }
 
 export function serializePayload(payload: unknown): string {
@@ -79,9 +140,12 @@ export function serializePayload(payload: unknown): string {
   // A JSON replacer visits every string in the payload tree; clean strings pass
   // through untouched (byte-identical output, so ids derived from the payload
   // stay stable).
-  return JSON.stringify(payload, (_key, value) =>
-    typeof value === "string" ? sanitizeForPg(value) : value,
-  );
+  return JSON.stringify(payload, (_key, value) => {
+    if (typeof value === "string") return sanitizeForPg(value);
+    if (isInlineBase64Image(value))
+      return { type: "text", text: "[image omitted]" };
+    return value;
+  });
 }
 
 export class SqlThreadMessagePartStorage {

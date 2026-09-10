@@ -10,6 +10,8 @@
  */
 
 export function stringifyError(error: unknown): string {
+  const upstream = upstreamProviderError(error);
+  if (upstream) return upstream;
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null) {
     try {
@@ -49,9 +51,17 @@ export function classifyStreamError(
   | "tool_error"
   | "unknown" {
   if (error instanceof Error && error.name === "AbortError") return "aborted";
-  const msg = (
-    error instanceof Error ? error.message : stringifyError(error)
-  ).toLowerCase();
+  // Both halves: the upstream detail is what distinguishes a relayed rate
+  // limit or auth failure from a plain model error, and the relay's own
+  // wording ("provider returned error") is what keeps an unrecognised detail
+  // classified as `model_error` rather than `unknown`.
+  const msg = [
+    upstreamProviderError(error),
+    error instanceof Error ? error.message : stringifyError(error),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   if (
     /insufficient|no credits|out of credits|balance|payment|quota exceeded|key limit|402/i.test(
       msg,
@@ -70,6 +80,88 @@ export function classifyStreamError(
 }
 
 /**
+ * OpenRouter relays EVERY upstream failure as the same opaque
+ * `"Provider returned error"` and puts what actually happened — which upstream
+ * served the request, and that upstream's own message — in `metadata`. The AI
+ * SDK keeps the whole body on the error (`responseBody`, and `data` for the
+ * parsed form) and sets `message` to the opaque half, so reading only `message`
+ * throws away the one part of the failure anybody can act on.
+ *
+ * That discard is why a real production bug hid for a month: 169 identical
+ * `400 Provider returned error` over 30 days, every one of them Alibaba
+ * rejecting `response_format: json_object` on a prompt with no "json" in it —
+ * visible only by opening a pod log and reading the raw error dump.
+ *
+ * Returns `"[<provider>] <upstream message>"`, or null when the error carries
+ * no such body (a non-gateway failure, or a gateway error of its own like a
+ * 402 credit limit, whose `message` is already the real one).
+ */
+export function upstreamProviderError(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  // `responseBody` first, not `data`: the AI SDK builds `data` by zod-parsing
+  // the body against the provider's error schema, and neither the OpenAI nor
+  // the Anthropic schema declares `metadata` — so zod strips exactly the field
+  // we came for. `data` stays a fallback for a provider whose schema passes
+  // unknown keys through.
+  const body =
+    (error as { responseBody?: unknown }).responseBody ??
+    (error as { data?: unknown }).data;
+  const parsed = typeof body === "string" ? safeParse(body) : body;
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const outer = parsed as {
+    error?: { metadata?: unknown };
+    metadata?: unknown;
+  };
+  // Two shapes carry it: `{error:{metadata}}` on the OpenAI-compatible route,
+  // `{error, metadata}` on the Anthropic-skin one.
+  const metadata = (outer.error?.metadata ?? outer.metadata) as
+    | { provider_name?: unknown; raw?: unknown }
+    | undefined;
+  if (typeof metadata !== "object" || metadata === null) return null;
+  const provider =
+    typeof metadata.provider_name === "string" ? metadata.provider_name : null;
+  const upstream =
+    typeof metadata.raw === "string" ? upstreamMessage(metadata.raw) : null;
+  if (!provider && !upstream) return null;
+  return `[${provider ?? "upstream provider"}] ${upstream ?? "no detail returned"}`;
+}
+
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The upstream's own message out of `metadata.raw`, which is that provider's
+ * verbatim error body — plain JSON on the blocking route, and an SSE body when
+ * the request was streaming. That SSE body is not always the one bare
+ * `data: {...}` line: it can carry `event:`/`id:` lines around it, or several
+ * frames. Try each `data:` frame and take the first that names a message,
+ * falling back to treating the whole raw as JSON.
+ */
+function upstreamMessage(raw: string): string | null {
+  const frames = raw
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s*/, ""));
+  for (const candidate of frames.length > 0 ? frames : [raw.trim()]) {
+    const message = messageOf(safeParse(candidate));
+    if (message) return message;
+  }
+  return null;
+}
+
+function messageOf(parsed: unknown): string | null {
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as { error?: { message?: unknown }; message?: unknown };
+  const message = obj.error?.message ?? obj.message;
+  return typeof message === "string" && message.length > 0 ? message : null;
+}
+
+/**
  * Pull a human-readable message + HTTP status out of an unknown error.
  * Gateway/provider errors frequently arrive as plain objects rather than
  * `Error` instances (e.g. the `{ code, message, metadata }` shape a 504 idle
@@ -81,9 +173,10 @@ function extractErrorParts(error: unknown): {
   message: string;
   statusCode?: number;
 } {
+  const upstream = upstreamProviderError(error);
   if (error instanceof Error) {
     return {
-      message: error.message,
+      message: upstream ?? error.message,
       statusCode: (error as { statusCode?: number }).statusCode,
     };
   }
@@ -94,7 +187,8 @@ function extractErrorParts(error: unknown): {
       code?: unknown;
     };
     const message =
-      typeof obj.message === "string" ? obj.message : stringifyError(error);
+      upstream ??
+      (typeof obj.message === "string" ? obj.message : stringifyError(error));
     const statusCode =
       typeof obj.statusCode === "number"
         ? obj.statusCode

@@ -20,18 +20,10 @@
  *   + Sheet for mobile sidebar (rendered alongside, portal-based)
  */
 
-import { Suspense } from "react";
-import {
-  SidebarInset,
-  SidebarLayout,
-  SidebarProvider,
-} from "@decocms/ui/components/sidebar.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Outlet, useSearch } from "@tanstack/react-router";
 import { CommerceConnectModal } from "@/routes/commerce-onboarding/commerce-connect-modal";
-import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
-import { useSidebarResize } from "@/hooks/use-sidebar-resize";
-import { StudioSidebar, StudioSidebarMobile } from "@/components/sidebar";
+import { StudioSidebarMobile } from "@/components/sidebar";
 import { ChatPrefsProvider } from "@/components/chat/context";
 import { ThreadManagerProvider } from "@/components/chat/store/hooks";
 import { Toolbar } from "@/layouts/agent-shell-layout/toolbar";
@@ -39,14 +31,7 @@ import {
   MobileSidebarSheet,
   SidebarTriggerButton,
 } from "@/layouts/shell-controls";
-import { useLocalStorage } from "@/hooks/use-local-storage";
-import { ShellRouteLoading } from "@/layouts/shell-route-loading";
-
-const SIDEBAR_OPEN_STORAGE_KEY = "sidebar.open";
-
-function RouteFallback() {
-  return <ShellRouteLoading />;
-}
+import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
@@ -57,18 +42,14 @@ export default function OrgShellLayout() {
     connect?: string;
     siteUrl?: string;
   };
-  // Scoped by the `?connect=1` param, which ONLY the commerce onboarding
-  // hand-off ever sets — a regular org (e.g. the deco org) never navigates with
-  // it, so it can't be locked. We intentionally do NOT also gate on
-  // `reports_only`: that flag collapses the org UI, which would leave nothing
-  // but a blank surface behind the modal instead of the org home.
+  /**
+   * Scoped by the `?connect=1` param, which ONLY the commerce onboarding
+   * hand-off ever sets — a regular org never navigates with it, so it can't be
+   * locked. Deliberately not also gated on `reports_only`: that flag trims the
+   * footer and the main-panel tabs, never the destinations, so an org carrying
+   * it still has a full org home to render behind the modal.
+   */
   const showConnectModal = connect === "1";
-  const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
-    SIDEBAR_OPEN_STORAGE_KEY,
-    false,
-  );
-  const { width, wrapperRef, onStartResize, resetWidth } = useSidebarResize();
-
   // On desktop each panel owns its own 48px header (see WorkspacePanelGroup), so
   // there is no shared top bar spanning the panels — only the mobile layout,
   // which has no side-by-side split, keeps a single shared header on top.
@@ -91,78 +72,39 @@ export default function OrgShellLayout() {
     </Toolbar.Header>
   );
 
-  const inset = (
-    <SidebarInset
-      className="flex flex-col min-h-0"
-      style={{
-        background: "transparent",
-        containerType: "inline-size",
-      }}
-    >
-      <div className="flex flex-col h-full min-h-0">
-        <div className="relative flex-1 min-h-0 flex flex-row">
-          <Suspense fallback={<RouteFallback />}>
-            <Outlet />
-          </Suspense>
-        </div>
-      </div>
-    </SidebarInset>
-  );
-
   return (
     <ThreadManagerProvider>
       <Toolbar.Provider>
-        <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <ChatPrefsProvider>
-            <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-              {/* Shared header on top for mobile only; desktop panels each own
-                  their own header. */}
-              {headerOnTop && mobileHeader}
-              <SidebarLayout
-                ref={wrapperRef}
-                className="flex-1 bg-sidebar relative min-h-0"
-                style={
-                  {
-                    "--sidebar-width": `${width}px`,
-                    // 3.125rem → collapsed-rail buttons are 34px (calc(3.125rem -
-                    // 1rem)), matching the expanded toolbar's 34px icon buttons so
-                    // the sidebar toggle + new-task don't jump size between
-                    // open/collapsed.
-                    "--sidebar-width-icon": "3.125rem",
-                  } as Record<string, string>
-                }
-              >
-                {!isMobile && (
-                  <>
-                    <StudioSidebar />
-                    <SidebarResizeHandle
-                      onPointerDown={onStartResize}
-                      onDoubleClick={resetWidth}
-                    />
-                  </>
-                )}
-                {inset}
-              </SidebarLayout>
-              {isMobile && (
-                <MobileSidebarSheet
-                  renderSidebar={({ onClose }) => (
-                    <div className="flex h-full">
-                      <div
-                        className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
-                        data-state="expanded"
-                      >
-                        <StudioSidebarMobile onClose={onClose} />
-                      </div>
-                    </div>
-                  )}
-                />
-              )}
-              {showConnectModal && (
-                <CommerceConnectModal siteUrl={connectSiteUrl} />
-              )}
+        <ChatPrefsProvider>
+          {/* The sidebar row belongs to `OrgLayout`; this is what goes INSIDE
+              its inset. Mobile keeps a shared top bar because it has no
+              side-by-side split; desktop panels own their own headers. */}
+          <div className="flex flex-col h-full min-h-0">
+            {headerOnTop && mobileHeader}
+            <div className="relative flex-1 min-h-0 flex flex-row">
+              <MainPanelBoundary>
+                <Outlet />
+              </MainPanelBoundary>
             </div>
-          </ChatPrefsProvider>
-        </SidebarProvider>
+          </div>
+          {isMobile && (
+            <MobileSidebarSheet
+              renderSidebar={({ onClose }) => (
+                <div className="flex h-full">
+                  <div
+                    className="w-full bg-sidebar flex flex-col overflow-y-auto group/sidebar"
+                    data-state="expanded"
+                  >
+                    <StudioSidebarMobile onClose={onClose} />
+                  </div>
+                </div>
+              )}
+            />
+          )}
+          {showConnectModal && (
+            <CommerceConnectModal siteUrl={connectSiteUrl} />
+          )}
+        </ChatPrefsProvider>
       </Toolbar.Provider>
     </ThreadManagerProvider>
   );

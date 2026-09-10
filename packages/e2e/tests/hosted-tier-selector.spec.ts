@@ -62,7 +62,7 @@ test.describe("hosted tier selector", () => {
 
     // The well-known Decopilot agent on the org home page is sufficient; no
     // sandbox needs to start to prove the selector's hosted-only shape.
-    await page.goto(`/${orgSlug}`);
+    await page.goto(`/${orgSlug}?sidepanel=true`);
     await waitForChatInput(page);
 
     const trigger = page.getByRole("button", { name: "Smart", exact: true });

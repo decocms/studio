@@ -3,21 +3,15 @@ import {
   SidebarFooter,
   SidebarMenu,
   SidebarMenuItem,
-  useSidebar,
 } from "@decocms/ui/components/sidebar.tsx";
-import { Settings02 } from "@untitledui/icons";
-import { useProjectContext } from "@/sdk";
-import { useNavigate } from "@tanstack/react-router";
-import { useT } from "@/i18n/use-t.ts";
-import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { InboxIconButton } from "./inbox";
 
+/** The mobile account footer. Like the desktop one it carries no Settings
+ *  shortcut: `NavSettingsRow` is the sidebar's last row on both surfaces, and
+ *  scoped to a project it targets that project's settings panel — a second
+ *  control here pointed at the org tree instead, so the same sheet offered two
+ *  Settings buttons that landed in different places. */
 export function SidebarAccountFooterMobile() {
-  const t = useT();
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
-  const { setOpenMobile } = useSidebar();
-
   return (
     <SidebarFooter className="px-2 pb-3">
       <div className="flex items-center gap-1">
@@ -29,18 +23,6 @@ export function SidebarAccountFooterMobile() {
           </SidebarMenu>
         </div>
         <InboxIconButton />
-        <ToolbarIconButton
-          aria-label={t("sidebar.sidebarFooterMobile.settings")}
-          onClick={() => {
-            navigate({
-              to: "/$org/settings",
-              params: { org: org.slug },
-            });
-            setOpenMobile(false);
-          }}
-        >
-          <Settings02 className="size-4" />
-        </ToolbarIconButton>
       </div>
     </SidebarFooter>
   );

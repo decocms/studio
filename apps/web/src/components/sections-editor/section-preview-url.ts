@@ -101,6 +101,54 @@ export function buildFastPreviewDraftUrl(
   return url.toString();
 }
 
+/**
+ * Fast Preview in-place render request — the old admin's `/live/previews` POST,
+ * revived for the main canvas.
+ *
+ * Instead of committing to git and re-navigating the iframe to a `?__draft=@sha`
+ * URL (a ~15s GitHub round-trip), this POSTs the CURRENT page block plus the
+ * merged-with-unsaved decofile to the deco runtime's
+ * `/live/previews/:pageResolveType`. The runtime builds a throwaway resolver
+ * from the inline `__decofile` and server-renders the page from unsaved state,
+ * returning HTML the injected editor script swaps into the frame in place. No
+ * commit, no reload.
+ *
+ * Body shape matches the runtime's `getPropsFromRequest` + inline-decofile
+ * branch: `{ __props, __decofile }`, where the handler renders `:pageResolveType`
+ * with `__props` and resolves the page's section `$ref`s against `__decofile`.
+ * `__decoFBT=0` disables deferred rendering so one POST returns the whole page.
+ *
+ * Returns null when the page block has no `__resolveType` (nothing to render).
+ * deco-runtime only — the same assumption `resolveSectionPreviewBase` documents.
+ */
+export function buildPageRenderRequest(input: {
+  /** The frame's own origin (Fast Preview production deployment). */
+  previewBaseUrl: string;
+  /** The current page block from the merged decofile: `{ __resolveType, path, sections, … }`. */
+  pageBlock: Record<string, unknown>;
+  /** The full merged decofile, including the unsaved edit (KEYS.decofile). */
+  decofile: Record<string, unknown>;
+  /** Resolved path (`:param`s filled) for matcher/routing context. */
+  path: string;
+  /** Path template, so the page stays matched. */
+  pathTemplate: string;
+}): { src: string; body: string } | null {
+  const resolveType = input.pageBlock.__resolveType;
+  if (typeof resolveType !== "string" || !resolveType) return null;
+  const origin = new URL(input.previewBaseUrl).origin;
+  const url = new URL(
+    `/live/previews/${encodeURIComponent(resolveType)}`,
+    origin,
+  );
+  url.searchParams.set("__decoFBT", "0");
+  url.searchParams.set("__d", "");
+  url.searchParams.set("path", input.path);
+  url.searchParams.set("pathTemplate", input.pathTemplate);
+  const { __resolveType: _resolveType, ...props } = input.pageBlock;
+  const body = JSON.stringify({ __props: props, __decofile: input.decofile });
+  return { src: url.toString(), body };
+}
+
 export function buildSectionPreviewUrl(
   previewBaseUrl: string,
   livePageResolveType: string,

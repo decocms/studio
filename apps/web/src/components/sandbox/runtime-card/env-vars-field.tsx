@@ -1,4 +1,5 @@
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, useState } from "react";
 import type {
   Control,
@@ -39,7 +40,6 @@ import {
   AlertTriangle,
   ClipboardCheck,
   Key01,
-  Loading01,
   Lock01,
   Plus,
   RefreshCw01,
@@ -225,7 +225,7 @@ function RunningSandboxNotice<T extends FieldValues>({
         className="shrink-0"
       >
         {isRestarting ? (
-          <Loading01 className="size-3.5 animate-spin" />
+          <Spinner className="size-3.5" />
         ) : (
           <RefreshCw01 className="size-3.5" />
         )}

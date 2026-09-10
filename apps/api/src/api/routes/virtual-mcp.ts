@@ -20,7 +20,10 @@ import { SpanStatusCode } from "@opentelemetry/api";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { getUserId, type StudioContext } from "../../core/studio-context";
-import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/core/constants";
+import {
+  MCP_LIST_TIMEOUT_MS,
+  MCP_TOOL_CALL_TIMEOUT_MS,
+} from "@/core/constants";
 import { createVirtualClientFrom } from "../../mcp-clients/virtual-mcp";
 import { resolveDevConnection } from "./dev-connection";
 import { readSandboxMap } from "../../tools/sandbox/sandbox-map";
@@ -179,6 +182,8 @@ export async function handleVirtualMcpRequest(
             {
               includeSkillsCatalog: true,
               additionalConnections: devConnection ? [devConnection] : [],
+              // One slow child must not eat the MCP client's connect budget.
+              listTimeoutMs: MCP_LIST_TIMEOUT_MS,
             },
           );
           span.setStatus({ code: SpanStatusCode.OK });

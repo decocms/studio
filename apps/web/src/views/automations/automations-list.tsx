@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { Plus, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
@@ -10,13 +9,14 @@ import {
   useAutomationActions,
   useAutomations,
 } from "@/hooks/use-automations";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { AutomationListRow } from "./automation-list-row";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const { data: automations = [] } = useAutomations(virtualMcpId);
   const { create } = useAutomationActions();
   const [search, setSearch] = useState("");
@@ -26,15 +26,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
     a.name.toLowerCase().includes(lowerSearch),
   );
 
-  const goToDetail = (id: string) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: "automation:" + id,
-      }),
-      replace: true,
-    });
+  const goToDetail = (id: string) => openPanel(`automation:${id}`);
 
   const handleNew = async () => {
     if (create.isPending) return;

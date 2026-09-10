@@ -7,28 +7,26 @@
 
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Folder } from "@untitledui/icons";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 
 export function SeeInLibraryLink({ previewPath }: { previewPath: string }) {
   const t = useT();
   const navigate = useNavigate();
+  const org = useParams({ strict: false }).org ?? "";
   const parentPath = previewPath.split("/").slice(0, -1).join("/");
 
   const handleClick = () => {
+    /** The Library is a destination, not a panel: `path` navigates its folder
+     *  and `preview` opens the file in its own side panel. */
     navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        // The Library is the `files` main-panel tab; `path` is what navigates
-        // it. (This used to set a `library:<path>` tab id that no parser knew,
-        // so the button did nothing.)
-        main: "files",
+      to: DESTINATION_ROUTE.library,
+      params: { org },
+      search: {
         path: parentPath || undefined,
         preview: previewPath,
-        skill: undefined,
-        brand: undefined,
-      }),
+      },
     });
   };
 

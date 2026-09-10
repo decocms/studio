@@ -15,3 +15,7 @@ export {
   BridgeServerTransport,
   type BridgeTransportPair,
 } from "./bridge-transport.ts";
+export {
+  llmSafeInputSchema,
+  restoreOriginalKeys,
+} from "./llm-safe-property-keys.ts";

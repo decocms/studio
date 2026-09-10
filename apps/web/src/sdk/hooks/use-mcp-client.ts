@@ -1,5 +1,5 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { SELF_MCP_ALIAS_ID } from "@decocms/shared/sdk/lib/constants";
 import { KEYS } from "@/lib/query-keys";
 import { createRestSelfClient } from "../lib/rest-self-client";
@@ -176,6 +176,18 @@ export function mcpClientQueryOptions(options: UseMcpClientOptions) {
 export function useMCPClient(options: UseMcpClientOptions): Client {
   const { data: client } = useSuspenseQuery(mcpClientQueryOptions(options));
   return client!;
+}
+
+/** The connection's client, read WITHOUT suspending — `null` until it connects.
+ *
+ *  Shares `mcpClientQueryOptions`' exact cache entry with `useMCPClient` and the
+ *  shell's pre-warm, so this is a hit wherever the shell has mounted. For
+ *  callers that must not put a connect round-trip in front of paint. */
+export function useMCPClientNonBlocking(
+  options: UseMcpClientOptions,
+): Client | null {
+  const { data } = useQuery(mcpClientQueryOptions(options));
+  return data ?? null;
 }
 
 /**

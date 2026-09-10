@@ -21,6 +21,8 @@
 //     for StableWindow — else a flapping crash-loop that serves for one probe
 //     cycle between deaths would reset the budget every time and never give up
 //     (see TestTracker_FlappingDoesNotResetBudget).
+//   - "how long dead before it is dead" and "how long a respawn gets to come
+//     up" are DIFFERENT durations (Grace vs RestartGrace) — see RestartGrace.
 package devwatch
 
 import "time"
@@ -32,6 +34,22 @@ import "time"
 // than this will be restarted (and, after MaxRestarts, fail). Tune via
 // SANDBOX_DEV_WATCH_GRACE_MS for frameworks with long first compiles.
 const DefaultGracePeriod = 20 * time.Second
+
+// DefaultRestartGrace is how long a *respawned* dev server gets to serve before
+// the next restart is charged. It is deliberately far larger than
+// DefaultGracePeriod: those two numbers answer different questions. Grace asks
+// "has the server that was serving a moment ago died?" — 20s is plenty.
+// RestartGrace asks "has the server we just launched finished booting?", and a
+// respawn is a cold boot, which on a large Fresh/Vite app is minutes.
+//
+// Reusing Grace for both is what took a montecarlo sandbox down in production:
+// a dev server needing 5m18s to first serve was respawned at +20s, +41s and
+// +62s — each restart killing the previous boot — and declared start-failed
+// 63s into an episode that only ever needed one restart and five minutes of
+// patience. The tracker also raises this from the boot it actually observed
+// (see RaiseRestartGrace), so a slow repo tunes itself. Override the floor with
+// SANDBOX_DEV_WATCH_RESTART_GRACE_MS.
+const DefaultRestartGrace = 5 * time.Minute
 
 // DefaultStableWindow is how long the server must serve continuously before the
 // restart budget resets. Longer than a flap so a crash-loop that briefly serves
@@ -60,6 +78,7 @@ const (
 // Config parameterizes a Tracker. Zero values fall back to the Default* consts.
 type Config struct {
 	Grace        time.Duration
+	RestartGrace time.Duration
 	StableWindow time.Duration
 	MaxRestarts  int
 }
@@ -67,6 +86,14 @@ type Config struct {
 func (c Config) withDefaults() Config {
 	if c.Grace <= 0 {
 		c.Grace = DefaultGracePeriod
+	}
+	if c.RestartGrace <= 0 {
+		c.RestartGrace = DefaultRestartGrace
+	}
+	// A restart that gets less time than the initial dead-detection window is
+	// never what anyone means; it only re-creates the bug this field fixes.
+	if c.RestartGrace < c.Grace {
+		c.RestartGrace = c.Grace
 	}
 	if c.StableWindow <= 0 {
 		c.StableWindow = DefaultStableWindow
@@ -119,6 +146,21 @@ func (t *Tracker) Attempts() int { return t.attempts }
 // MaxRestarts is the effective budget (after defaults), for log messages.
 func (t *Tracker) MaxRestarts() int { return t.cfg.MaxRestarts }
 
+// RestartGrace is the effective post-restart window, for log messages.
+func (t *Tracker) RestartGrace() time.Duration { return t.cfg.RestartGrace }
+
+// RaiseRestartGrace widens the post-restart window to `d`, ignoring anything
+// at or below the current value. Callers feed it the boot this sandbox was
+// actually measured to need (with headroom), so a repo that takes eleven
+// minutes to serve gets eleven minutes on a respawn without anyone having to
+// guess a constant. One-way on purpose: a single fast boot on a warm cache
+// must not shrink the window back under a repo that is usually slow.
+func (t *Tracker) RaiseRestartGrace(d time.Duration) {
+	if d > t.cfg.RestartGrace {
+		t.cfg.RestartGrace = d
+	}
+}
+
 // Observe advances the tracker with one tick's snapshot and returns the action
 // to take. On ActionRestart it has already charged one attempt and reset the
 // grace window; on ActionGiveUp it latches the given-up state until the server
@@ -150,7 +192,14 @@ func (t *Tracker) Observe(s Snapshot) Action {
 		t.notServingSince = s.Now
 	}
 
-	if t.gaveUp || s.Now.Sub(t.notServingSince) < t.cfg.Grace {
+	// Before the first restart we are judging a server that WAS serving, so the
+	// short dead-detection window applies. Afterwards we are judging a boot we
+	// just started, which needs a boot's worth of time.
+	window := t.cfg.Grace
+	if t.attempts > 0 {
+		window = t.cfg.RestartGrace
+	}
+	if t.gaveUp || s.Now.Sub(t.notServingSince) < window {
 		return ActionNone
 	}
 	if t.attempts >= t.cfg.MaxRestarts {

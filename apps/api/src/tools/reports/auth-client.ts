@@ -1,9 +1,18 @@
 import { COMMERCE_DISCOVERY_MCP_URL } from "@decocms/shared/sdk";
+import { retry, RetryError } from "@decocms/shared/std";
 import { z } from "zod";
 import { getSettings } from "../../settings";
 import type { Settings } from "../../settings";
 
 const DEFAULT_INTERNAL_API_URL = new URL(COMMERCE_DISCOVERY_MCP_URL).origin;
+
+/**
+ * None of these calls carried a timeout — a hung Commerce Discovery request
+ * (dead connection, stalled upstream) would block the calling tool call
+ * indefinitely. 15s matches the jira client's REQUEST_TIMEOUT_MS for the same
+ * kind of external-service call.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
 
 const UpgradeResponseSchema = z.object({
   token: z.string().min(1),
@@ -239,6 +248,7 @@ export async function fetchCommerceDiscoveryAuth(
       ...(input.email ? { email: input.email } : {}),
       ...(input.reportUrl ? { report_url: input.reportUrl } : {}),
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -301,6 +311,7 @@ export async function bindCommerceDiscoveryResource(
       provider: input.provider,
       resource_id: input.resourceId,
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (response.status === 409) {
@@ -376,6 +387,7 @@ export async function triggerCommerceDiscoveryRun(
       org_id: input.orgId,
       ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
     }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (response.status === 409) {
@@ -385,6 +397,55 @@ export async function triggerCommerceDiscoveryRun(
     throw new Error(await responseErrorMessage(response));
   }
   return { triggered: true };
+}
+
+/** A transient (5xx / 429) status from a status-check GET, carrying the
+ *  message already built from the response body so a retry exhaustion still
+ *  surfaces something actionable instead of a generic "retries exceeded". */
+class TransientStatusResponseError extends Error {}
+
+/**
+ * A GET is always safe to retry — unlike the /upgrade, /bindings, and /run
+ * POSTs above (each idempotent only because the callee de-dupes on its own
+ * side, not because a retry can't double an effect), this call has no side
+ * effect at all. So a single flaky 5xx from Commerce Discovery no longer
+ * fails the whole "Conectado" status read.
+ */
+async function fetchStatusWithRetry(
+  fetchImpl: FetchImpl,
+  url: string,
+  apiKey: string,
+): Promise<Response> {
+  try {
+    return await retry(
+      async () => {
+        const response = await fetchImpl(url, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (response.status >= 500 || response.status === 429) {
+          throw new TransientStatusResponseError(
+            await responseErrorMessage(response),
+          );
+        }
+        return response;
+      },
+      {
+        maxAttempts: 3,
+        minTimeout: 200,
+        maxTimeout: 2000,
+        multiplier: 2,
+        jitter: 1,
+        isRetriable: (error) => error instanceof TransientStatusResponseError,
+      },
+    );
+  } catch (error) {
+    if (error instanceof RetryError && error.cause instanceof Error) {
+      throw error.cause;
+    }
+    throw error;
+  }
 }
 
 const ConnectionStatusSchema = z.object({
@@ -426,10 +487,7 @@ export async function fetchCommerceDiscoveryConnectionStatus(
     domain,
   )}/connections/status?org_id=${encodeURIComponent(input.orgId)}`;
 
-  const response = await fetchImpl(url, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
+  const response = await fetchStatusWithRetry(fetchImpl, url, apiKey);
 
   if (response.status === 404 || response.status === 409) {
     return { providers: {}, claimed: false };

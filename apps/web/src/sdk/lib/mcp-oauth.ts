@@ -471,10 +471,7 @@ export async function authenticateMcp(params: {
             resolve({
               tokens,
               clientId: clientInfo.client_id ?? null,
-              clientSecret:
-                "client_secret" in clientInfo
-                  ? (clientInfo.client_secret as string)
-                  : null,
+              clientSecret: clientInfo.client_secret ?? null,
               tokenEndpoint: authServerMetadata?.token_endpoint ?? null,
               userinfoEndpoint:
                 (authServerMetadata?.userinfo_endpoint as
@@ -575,7 +572,6 @@ export async function authenticateMcp(params: {
 
     if (result === "REDIRECT") {
       const fullResult = await oauthCompletePromise;
-      const rawTokens = fullResult.tokens as unknown as Record<string, unknown>;
       return {
         token: fullResult.tokens.access_token,
         tokenInfo: {
@@ -587,8 +583,7 @@ export async function authenticateMcp(params: {
           clientSecret: fullResult.clientSecret,
           tokenEndpoint: fullResult.tokenEndpoint,
           userinfoEndpoint: fullResult.userinfoEndpoint,
-          idToken:
-            typeof rawTokens.id_token === "string" ? rawTokens.id_token : null,
+          idToken: fullResult.tokens.id_token ?? null,
         },
         error: null,
       };
@@ -597,7 +592,6 @@ export async function authenticateMcp(params: {
     // If we got here without redirect, check for tokens
     const tokens = provider.tokens();
     const clientInfo = provider.clientInformation();
-    const rawTokens = tokens as unknown as Record<string, unknown> | null;
     return {
       token: tokens?.access_token || null,
       tokenInfo: tokens
@@ -607,16 +601,10 @@ export async function authenticateMcp(params: {
             expiresIn: tokens.expires_in ?? null,
             scope: tokens.scope ?? null,
             clientId: clientInfo?.client_id ?? null,
-            clientSecret:
-              clientInfo && "client_secret" in clientInfo
-                ? (clientInfo.client_secret as string)
-                : null,
+            clientSecret: clientInfo?.client_secret ?? null,
             tokenEndpoint: null, // Would need to be passed through
             userinfoEndpoint: null,
-            idToken:
-              rawTokens && typeof rawTokens.id_token === "string"
-                ? rawTokens.id_token
-                : null,
+            idToken: tokens.id_token ?? null,
           }
         : null,
       error: null,

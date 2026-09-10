@@ -13,6 +13,11 @@
  */
 
 import { useProjectContext, useVirtualMCP } from "@/sdk";
+import {
+  hasRepoCredential,
+  type RepoToolTarget,
+  repoToolTarget,
+} from "@/lib/github-repo.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { GitBranch01, LinkExternal01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
@@ -53,8 +58,13 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { currentBranch: branch } = useChatTask();
 
   const githubRepo = vm?.metadata?.githubRepo ?? null;
+  const target = repoToolTarget(githubRepo);
 
-  if (!githubRepo?.connectionId) {
+  /**
+   * A repository row is enough on its own — a GitLab project never has a
+   * connection, so gating on one here is what kept this tab dark for it.
+   */
+  if (!githubRepo || !hasRepoCredential(target)) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
         {t("thread.gitTab.notLinkedToGithub")}
@@ -81,7 +91,7 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
       orgId={org.id}
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
-      connectionId={githubRepo.connectionId}
+      target={target}
       owner={githubRepo.owner}
       repo={githubRepo.name}
       branch={branch}
@@ -93,7 +103,7 @@ interface ContentProps {
   orgId: string;
   orgSlug: string;
   virtualMcpId: string;
-  connectionId: string;
+  target: RepoToolTarget;
   owner: string;
   repo: string;
   branch: string;
@@ -101,8 +111,7 @@ interface ContentProps {
 
 function GitTabContent(props: ContentProps) {
   const t = useT();
-  const { orgId, orgSlug, virtualMcpId, connectionId, owner, repo, branch } =
-    props;
+  const { orgId, orgSlug, virtualMcpId, target, owner, repo, branch } = props;
 
   const {
     data: pr,
@@ -111,7 +120,7 @@ function GitTabContent(props: ContentProps) {
   } = usePrByBranch({
     orgId,
     orgSlug,
-    connectionId,
+    target,
     owner,
     repo,
     branch,
@@ -180,7 +189,7 @@ function GitTabContent(props: ContentProps) {
             pr={pr}
             virtualMcpId={virtualMcpId}
             branch={branch}
-            connectionId={connectionId}
+            target={target}
             owner={owner}
             repo={repo}
           />

@@ -3,7 +3,7 @@
  *
  * Provides a cross-pod cache for MCP tool, resource, and prompt lists via NATS JetStream KV.
  *
- * Used by the withMcpCaching decorator and lazy clients in PassthroughClient.
+ * Used by the lazy client (see lazy-client.ts) and PassthroughClient.
  */
 
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -253,7 +253,7 @@ export async function fetchWithCache(
   return cached;
 }
 
-// Module-level active cache — set once at app startup, read by withMcpCaching
+// Module-level active cache — set once at app startup, read by the lazy client
 let activeCache: McpListCache | null = null;
 
 export function setMcpListCache(cache: McpListCache | null): void {

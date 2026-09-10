@@ -23,14 +23,16 @@ export const taskBoard = {
   "taskBoard.taskBoard.checksLabel": "{passed} of {total} reviews approved",
   "taskBoard.taskBoard.checksPending": "not reviewed yet",
   "taskBoard.taskBoard.checksUnverified": "approved (unverified)",
-  "taskBoard.taskBoard.autoFix": "Auto-fix",
+  // The key stays `autoFix` (it drives the auto-fix run); only the label
+  // people read was renamed. Same split as thread-vs-chat.
+  "taskBoard.taskBoard.autoFix": "Run",
   "taskBoard.taskBoard.rerun": "Re-run",
   "taskBoard.taskBoard.blockedBadgeTitle":
     "The agent is waiting for your input",
   "taskBoard.taskBoard.clearFilters": "Clear filters",
   "taskBoard.taskBoard.connectGithubButton": "Connect GitHub",
   "taskBoard.taskBoard.connectGithubDescription":
-    "Auto-fix puts the Super Agent to work on this task and saves the change to your codebase, ready for your team to review and approve.",
+    "Run puts the Super Agent to work on this task and saves the change to your codebase, ready for your team to review and approve.",
   "taskBoard.taskBoard.connectGithubTitle": "Connect GitHub",
   "taskBoard.taskBoard.handedToHumanBadgeTitle":
     "Automation stopped on this task — open it to see why",
@@ -54,6 +56,7 @@ export const taskBoard = {
   "taskBoard.taskBoard.moveToButton": "Move to",
   "taskBoard.taskBoard.changePriorityButton": "Change priority",
   "taskBoard.taskBoard.assignButton": "Assign",
+  "taskBoard.taskBoard.assignProjectButton": "Assign project",
   "taskBoard.taskBoard.dueDateButton": "Due date",
   "taskBoard.taskBoard.addTagButton": "Add tag",
   "taskBoard.taskBoard.deleteSelectedButton": "Delete",
@@ -93,6 +96,8 @@ export const taskBoard = {
     "{reviewer} requested changes and handed the task back to the Super Agent",
   "taskBoard.taskDialog.activityReviewChangesRequestedWithNotes":
     "{reviewer} requested changes: {notes}",
+  "taskBoard.taskDialog.activityReviewVerdictRequested":
+    "{reviewer} finished without a verdict and was asked to record one",
   "taskBoard.taskDialog.subscribe": "Subscribe",
   "taskBoard.taskDialog.unsubscribe": "Unsubscribe",
   "taskBoard.taskDialog.activityMergeConflictResolution":
@@ -107,7 +112,9 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityMergeFailedRateLimited":
     "couldn't merge yet — GitHub is rate-limiting us. This retries automatically.",
   "taskBoard.taskDialog.activityMergeFailedRefused":
-    "GitHub refused the merge: {detail}",
+    "the provider refused the merge: {detail}",
+  "taskBoard.taskDialog.activityMergeFailedConflict":
+    "it conflicts with the base branch and could not be merged",
   "taskBoard.taskDialog.activityMergeFailedError":
     "couldn't merge the pull request: {detail}",
   "taskBoard.taskDialog.tagsButton": "Tags",
@@ -119,8 +126,8 @@ export const taskBoard = {
   "taskBoard.taskDialog.createTagOption": 'Create tag "{name}"',
   "taskBoard.taskDialog.noTagsFound": "No tags yet. Type a name to create one.",
   "taskBoard.taskDialog.assignButton": "Assign",
-  "taskBoard.taskDialog.repoButton": "Repository",
-  "taskBoard.taskDialog.noRepo": "No repository",
+  "taskBoard.taskDialog.projectButton": "Select project",
+  "taskBoard.taskDialog.noProject": "No project",
   "taskBoard.taskDialog.assignToPlaceholder": "Assign to…",
   "taskBoard.taskDialog.closeAriaLabel": "Close",
   "taskBoard.taskDialog.commentActionsAriaLabel": "Comment actions",
@@ -146,7 +153,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.descriptionPlaceholder":
     "Describe a task for an agent...",
   "taskBoard.taskDialog.dueDateLabel": "Due date",
-  "taskBoard.taskDialog.sprintCurrent": "current",
   "taskBoard.taskDetail.breadcrumbTasks": "Tasks",
   "taskBoard.taskDetail.breadcrumbTask": "Task",
   "taskBoard.taskDialog.membersGroupHeading": "Members",
@@ -157,11 +163,16 @@ export const taskBoard = {
   "taskBoard.taskDialog.prChecksPassing": "Checks passing",
   "taskBoard.taskDialog.prChecksPending": "Checks pending",
   "taskBoard.taskDialog.prChecksLabel": "Checks",
+  "taskBoard.taskDialog.prChecksScore": "{passed}/{total} successful checks",
   "taskBoard.taskDialog.prStateClosed": "Closed",
   "taskBoard.taskDialog.prStateDraft": "Draft",
   "taskBoard.taskDialog.prStateMerged": "Merged",
   "taskBoard.taskDialog.prStateOpen": "Open",
   "taskBoard.taskDialog.previewLabel": "Open preview",
+  "taskBoard.taskDialog.previewRoutesLabel": "Pages changed in this PR",
+  "taskBoard.taskDialog.previewUnavailable": "Preview unavailable",
+  "taskBoard.taskDialog.previewUnavailableTitle":
+    "The deploy preview isn't responding yet — it may still be building",
   "taskBoard.taskDialog.shipToProductionButton": "Ship to production",
   "taskBoard.taskDialog.shipSuccess": "Merged and shipped to production",
   "taskBoard.taskDialog.shipError": "Couldn't merge the pull request",
@@ -194,6 +205,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.showLess": "Show less",
   "taskBoard.taskDialog.copyIdAriaLabel": "Copy task ID",
   "taskBoard.taskDialog.idCopied": "Task ID copied",
+  "taskBoard.taskDialog.openInTrackerAriaLabel": "Open the original issue",
   "taskBoard.taskDialog.shareAriaLabel": "Copy link to this task",
   "taskBoard.taskDialog.shareTitle": "Copy link",
   "taskBoard.taskDialog.linkCopied": "Link copied",
@@ -244,15 +256,14 @@ export const taskBoard = {
   "taskBoard.taskFilters.filterDrawerTitle": "Filters",
   "taskBoard.taskFilters.priorityAnyPriority": "Any priority",
   "taskBoard.taskFilters.priorityLabel": "Priority",
-  "taskBoard.taskFilters.repoAnyRepo": "Any repo",
-  "taskBoard.taskFilters.repoFilterPlaceholder": "Filter by repo…",
-  "taskBoard.taskFilters.repoLabel": "Repo",
-  "taskBoard.taskFilters.sprintLabel": "Sprint",
-  "taskBoard.taskFilters.sprintAnySprint": "Any sprint",
-  "taskBoard.taskFilters.sprintBacklog": "No sprint",
-  "taskBoard.taskFilters.sprintCurrent": "current",
-  "taskBoard.taskFilters.repoNoRepo": "No repo",
-  "taskBoard.taskFilters.repoNoReposFound": "No repos found.",
+  "taskBoard.taskFilters.projectAny": "All projects",
+  "taskBoard.taskFilters.projectFilterPlaceholder": "Filter by project…",
+  "taskBoard.taskFilters.projectLabel": "Project",
+  "taskBoard.taskFilters.projectGroupProjects": "Projects",
+  "taskBoard.taskFilters.projectGroupRepos": "Repositories",
+  "taskBoard.taskFilters.boardSettingsLabel": "Board settings",
+  "taskBoard.taskFilters.projectNone": "No project",
+  "taskBoard.taskFilters.projectNoneFound": "No projects found.",
   "taskBoard.taskFilters.searchLabel": "Search tasks",
   "taskBoard.taskFilters.searchPlaceholder": "Search tasks…",
   "taskBoard.taskFilters.searchClearLabel": "Clear search",
@@ -296,7 +307,6 @@ export const taskBoard = {
   "taskBoard.config.typeFeature": "Feature",
   "taskBoard.config.typeSecurity": "Security",
   "taskBoard.config.typeSpike": "Spike",
-  "taskBoard.taskBoard.typeLabel": "Type",
   "taskBoard.taskDialog.activityTypeFromTo": "changed type from {from} to {to}",
   "taskBoard.taskDialog.activityTypeSet": "set the type to {to}",
 } as const;

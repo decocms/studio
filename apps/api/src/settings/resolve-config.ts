@@ -235,6 +235,7 @@ export function resolveConfig(
     ),
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
+    jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
     deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
       .split(",")
@@ -292,6 +293,8 @@ export function resolveConfig(
 
     // Feature Flags
     enableDecoImport: toBool(envVars.ENABLE_DECO_IMPORT),
+    hostingControlPlaneGa: toBool(envVars.HOSTING_CONTROL_PLANE_GA),
+    monitorGa: toBool(envVars.MONITOR_GA),
     // MCP caching is on by default in production, off in development. Set
     // MCP_CACHE_ENABLED=false to disable in prod, =true to enable in dev.
     mcpCacheEnabled: toBoolWithDefault(
@@ -374,6 +377,10 @@ export function resolveConfig(
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,
     decoSupabaseServiceKey: envVars.DECO_SUPABASE_SERVICE_KEY,
     firecrawlApiKey: envVars.FIRECRAWL_API_KEY,
+    controlplaneRestUrl: envVars.CONTROLPLANE_REST_URL,
+    controlplaneServiceToken: envVars.CONTROLPLANE_SERVICE_TOKEN,
+    analyticsDataUrl: envVars.ANALYTICS_URL,
+    analyticsMasterToken: envVars.ANALYTICS_MASTER_TOKEN,
     clickhouseAnalyticsUrl: envVars.CLICKHOUSE_ANALYTICS_ADDRESS,
     clickhouseAnalyticsUsername:
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",

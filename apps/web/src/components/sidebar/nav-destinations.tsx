@@ -1,342 +1,237 @@
-/**
- * The sidebar lists DESTINATIONS — Home, Reports, Tasks, Library — instead of
- * chat threads. Each opens as the main panel's active view (`?main=<tabId>`),
- * the same mechanism the top tab bar uses. They are org-level, so they always
- * resolve on the Super Agent. Threads moved to the chat panel's own header (see
- * `ThreadsMenu`); Home, Automations and Settings left the top tab bar.
+/** The org-wide destination rows: real `<Link>`s, so nav paints on the first
+ *  frame. Projects are a scope, not rows: see `OrgProjectPicker`. Discover has
+ *  no row for now; its page stays routable and is still reachable from the
+ *  command palette.
  *
- * The org's coding agents (GitHub-backed virtual MCPs) trail the list, one row
- * per repo — those DO switch agents, since each owns its own codebase.
- * Agent rows also carry a `showProjectSettingsGear`-gated gear onto settings.
- *
- * Inbox is in the design but has no backing surface yet, so it is deliberately
- * not listed.
- */
+ *  The one thing read here is the SCOPED project, to resolve its source and
+ *  sidebar preferences. That read is non-blocking and fails open, so the first
+ *  frame is unchanged. */
 
 import type { ReactNode } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import type { LinkProps } from "@tanstack/react-router";
+import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
+import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
+import { SidebarNavRow } from "./nav-row";
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
+import { useProjectContext } from "@/sdk";
+import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
+import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import {
-  BarChartSquare02,
-  Columns03,
-  Folder,
-  Home02,
-  Settings02,
-} from "@untitledui/icons";
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from "@decocms/ui/components/sidebar.tsx";
-import { Button } from "@decocms/ui/components/button.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
-import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCPs,
-} from "@/sdk";
-import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { AgentAvatar } from "@/components/agent-icon";
-import {
-  agentHasClonableSource,
-  agentIsSidebarPinned,
-  getDevAgentIds,
-} from "@/lib/agent-capabilities";
-import { getActiveGithubRepo } from "@/lib/github-repo";
-import { useThreads } from "@/components/chat/store/hooks";
-import { usePanelActions } from "@/layouts/shell-layout";
-import { findReusableNewChat } from "@/lib/reusable-new-chat";
-import { useProjectDefaultRuntime } from "@/sdk/project-default-runtime";
-import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
-import { authClient } from "@/lib/auth-client";
-import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
-import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
-import { usePreferences } from "@/hooks/use-preferences.ts";
+  DESTINATION_ROUTE,
+  routeExistsInScope,
+  useLeafRoutePath,
+} from "@/hooks/use-destination-route";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import {
+  effectiveProjectSidebarViews,
+  resolveProjectSidebarViews,
+  type ProjectSidebarViewsMetadata,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import type { VirtualMcpSidebarView } from "@decocms/shared/sdk/types";
 
 interface NavDestination {
-  key: string;
+  key: NavDestinationKey;
   label: string;
   icon: ReactNode;
   isActive: boolean;
-  onSelect: () => void;
-  /** When set, the row grows a hover-revealed gear opening this destination's
-   *  settings. Only the agent rows have one — the fixed destinations are
-   *  views, not configurable entities. */
-  onOpenSettings?: () => void;
-}
-
-/** The well-known Decopilot (Super Agent) id for the current org. */
-function useDecopilotId(): string {
-  const { org } = useProjectContext();
-  return getWellKnownDecopilotVirtualMCP(org.id).id;
-}
-
-/** The destinations, in display order. */
-function useNavDestinations({
-  onNavigate,
-}: {
-  onNavigate?: () => void;
-} = {}): NavDestination[] {
-  const t = useT();
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as {
-    main?: string | 0;
-    virtualmcpid?: string;
-  };
-  const { diagnostic, connectionId } = useCommerceDiagnostic();
-  const decopilotId = useDecopilotId();
-  const { threads } = useThreads();
-  const { data: session } = authClient.useSession();
-  const { setTaskId, createNewTask } = usePanelActions();
-  const projectDefaultRuntime = useProjectDefaultRuntime();
-
-  /**
-   * These destinations are org-level, so they belong to the Super Agent. From a
-   * coding agent's thread we must hand back to it — otherwise the panel would
-   * show e.g. the Report while the header still carried that agent's
-   * Preview / Publish controls.
-   */
-  const onSuperAgent =
-    !search.virtualmcpid || search.virtualmcpid === decopilotId;
-
-  const open = (tabId: string) => {
-    track("nav_destination_clicked", { destination: tabId });
-    onNavigate?.();
-    if (onSuperAgent) {
-      navigate({
-        to: ".",
-        search: (prev: Record<string, unknown>) => ({ ...prev, main: tabId }),
-        replace: true,
-      });
-      return;
-    }
-    // Reuse-or-create via setTaskId/createNewTask — same path useAgentNavRows uses.
-    const existing = findReusableNewChat(
-      threads,
-      decopilotId,
-      session?.user?.id,
-      projectDefaultRuntime(decopilotId),
-    );
-    if (existing) setTaskId(existing.id, decopilotId, { main: tabId });
-    else void createNewTask(decopilotId, undefined, { main: tabId });
-  };
-
-  /**
-   * A cold `/$org` lands with no `main` at all, and the Super Agent's default
-   * view IS Overview — so there, an absent `main` reads as Home rather than
-   * leaving the list unhighlighted. On any other agent an absent `main` means
-   * ITS default view (Preview for a coding agent), which is no destination at
-   * all, so nothing highlights.
-   */
-  const activeKey =
-    search.main === 0 || !search.main
-      ? onSuperAgent
-        ? "overview"
-        : null
-      : search.main;
-
-  const destination = (
-    key: string,
-    label: string,
-    icon: ReactNode,
-  ): NavDestination => ({
-    key,
-    label,
-    icon,
-    isActive: activeKey === key,
-    onSelect: () => open(key),
-  });
-
-  const destinations: NavDestination[] = [
-    destination(
-      "overview",
-      t("sidebar.navDestinations.home"),
-      <Home02 size={16} />,
-    ),
-  ];
-
-  destinations.push(
-    destination(
-      diagnostic
-        ? formatPinnedViewTabId(
-            connectionId,
-            COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-          )
-        : "reports",
-      t("sidebar.navDestinations.reports"),
-      <BarChartSquare02 size={16} />,
-    ),
-  );
-  destinations.push(
-    destination(
-      "board",
-      t("sidebar.navDestinations.tasks"),
-      <Columns03 size={16} />,
-    ),
-    destination(
-      "files",
-      t("sidebar.navDestinations.library"),
-      <Folder size={16} />,
-    ),
-  );
-
-  return destinations;
-}
-
-/** Sidebar agent rows matching `predicate` (coding agents / org-pinned non-code); selecting one opens its chat, reusing an empty "New chat". */
-function useAgentNavRows(
-  predicate: (agent: VirtualMCPEntity, devAgentIds: Set<string>) => boolean,
-  {
-    onNavigate,
-  }: {
-    onNavigate?: () => void;
-  } = {},
-): NavDestination[] {
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  const agents = useVirtualMCPs() ?? [];
-  const devAgentIds = getDevAgentIds(agents);
-  const { threads } = useThreads();
-  const { data: session } = authClient.useSession();
-  const { setTaskId, createNewTask, openTab } = usePanelActions();
-
-  /**
-   * Open the agent's chat, optionally landing on a specific main view. Reuses
-   * the agent's existing empty "New chat" so repeat clicks don't pile up
-   * threads; `opts.main` beats that thread's remembered layout (see
-   * resolveTaskSwitchSearch), so the gear always lands on Settings.
-   */
-  const openAgent = (
-    agent: VirtualMCPEntity,
-    opts?: { main?: string },
-  ): void => {
-    onNavigate?.();
-    const existing = findReusableNewChat(
-      threads,
-      agent.id,
-      session?.user?.id,
-      defaultThreadRuntime(agent.metadata),
-    );
-    if (existing) setTaskId(existing.id, agent.id, opts);
-    else void createNewTask(agent.id, undefined, opts);
-  };
-
-  return agents
-    .filter((agent) => predicate(agent, devAgentIds))
-    .map((agent) => {
-      const repo = getActiveGithubRepo(agent);
-      const isActive = search.virtualmcpid === agent.id;
-      return {
-        key: agent.id,
-        label: agent.title || repo?.name || "",
-        icon: (
-          <AgentAvatar
-            icon={agent.icon}
-            name={agent.title}
-            size="2xs"
-            className="shrink-0"
-          />
-        ),
-        isActive,
-        onSelect: () => {
-          track("nav_destination_clicked", { destination: "coding_agent" });
-          openAgent(agent);
-        },
-        onOpenSettings: () => {
-          track("nav_destination_clicked", {
-            destination: "coding_agent_settings",
-          });
-          // `?main=settings` — the target the agents list's row menu opens too.
-          if (isActive) {
-            // Already on this agent: swap the view, keep the open thread.
-            onNavigate?.();
-            openTab("settings");
-          } else {
-            openAgent(agent, { main: "settings" });
-          }
-        },
-      };
-    });
+  /** `nav_destination_clicked`'s `destination` property. PostHog dashboards key
+   *  on these exact values, so they are decoupled from the route. */
+  trackAs: string;
+  link: LinkProps;
+  /** `data-tour` anchor, for the rows the layout tour highlights. */
+  dataTour?: string;
 }
 
 /**
- * The destination list. New chat lives in the panel header (NewChatCrumb) and
- * chat search lives in the chat panel's threads menu, so this renders
- * destinations only. Collapsed, it becomes an icon rail — SidebarMenuButton
- * supplies the tooltips.
+ * `nav_destination_clicked`'s `destination` for the Settings row.
+ *
+ * Settings left the spine when it became one scope-aware row rendered last
+ * (`nav-settings-row.tsx`), but the VALUE did not change: PostHog dashboards
+ * key on it, and merging two controls is not a reason to break their series.
+ * It stays in this file — the module that owns the analytics vocabulary, and
+ * the only one of the two a `bun test` can import without dragging the browser
+ * auth client in with it.
  */
+export const SETTINGS_DESTINATION = "settings";
+
+/** The destination keys, in display order — and the order the sidebar actually
+ *  renders, since `useNavDestinations` maps over this rather than returning a
+ *  literal array. Growing or shrinking it is a compile error until the keyed
+ *  record below matches, so a test asserting on it pins the real spine. */
+export const NAV_DESTINATION_KEYS = [
+  "overview",
+  "reports",
+  "board",
+  "files",
+] as const;
+
+type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
+
+/**
+ * Whether the scope in force is a project WITHOUT a repo — the state in which
+ * Home, Reports and Tasks are dropped, because each is about work on a
+ * codebase.
+ *
+ * Pure so the rule is testable, and it FAILS OPEN: `project` is null both while
+ * the agent list loads (it is read non-blocking) and when nothing is scoped, so
+ * hiding on null would blank three rows on every cold load and pop them back,
+ * and would empty the unscoped org sidebar outright. Only a RESOLVED project
+ * that has no source hides them.
+ */
+export function scopedProjectLacksSource(
+  scopeId: string | null,
+  project: { metadata?: unknown } | null,
+): boolean {
+  if (!scopeId || !project) return false;
+  return !agentHasClonableSource(project.metadata);
+}
+
+/** Whether one of the project-aware destination rows survives sidebar
+ * customization. Like the source gate above, this fails open until a scoped
+ * project resolves so the non-blocking sidebar never disappears on cold load. */
+export function scopedProjectDestinationEnabled(
+  scopeId: string | null,
+  project: { metadata?: ProjectSidebarViewsMetadata | null } | null,
+  viewId: "overview" | "reports" | "board",
+  optimisticViews?: readonly VirtualMcpSidebarView[],
+): boolean {
+  if (!scopeId || !project) return true;
+  const hasOptimisticViews = optimisticViews !== undefined;
+  return effectiveProjectSidebarViews(
+    hasOptimisticViews
+      ? optimisticViews
+      : resolveProjectSidebarViews(project.metadata),
+    hasOptimisticViews ? 1 : project.metadata?.sidebarViewsVersion,
+  ).includes(viewId);
+}
+
+/** The destinations, in display order. Scope-bound in four ways: Library is
+ *  org-only (it lists the ORG's files), Reports is project-only (a report is
+ *  about one site), and Home / Reports / Tasks additionally require the scoped
+ *  project to have a source and to select that row. The first two live in
+ *  `routeExistsInScope`, because `useExitProjectScope` reads the same fact when
+ *  clearing scope; the latter two are the pure gates above. */
+function useNavDestinations(): NavDestination[] {
+  const t = useT();
+  const { org } = useProjectContext();
+  const leafPath = useLeafRoutePath();
+  const scopeId = useScopeId();
+  const { project, repo } = useProjectScope();
+  const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
+
+  const lacksSource = scopedProjectLacksSource(scopeId, project);
+  const destinationEnabled = (viewId: "overview" | "reports" | "board") =>
+    scopedProjectDestinationEnabled(
+      scopeId,
+      project,
+      viewId,
+      optimisticSidebarViews,
+    );
+
+  /** Keyed, not ordered — NAV_DESTINATION_KEYS fixes the order below. The
+   *  record is exhaustive over that constant, so a key added there without a
+   *  row here (or a row here the constant does not list) fails to compile.
+   *  `null` is a row this scope drops. */
+  const rows: Record<NavDestinationKey, NavDestination | null> = {
+    overview:
+      lacksSource || !destinationEnabled("overview")
+        ? null
+        : {
+            key: "overview",
+            label: t("sidebar.navDestinations.home"),
+            icon: <Home02 size={16} />,
+            isActive:
+              leafPath === DESTINATION_ROUTE.home ||
+              leafPath === DESTINATION_ROUTE.orgIndex,
+            trackAs: "overview",
+            link: { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
+          },
+    reports:
+      routeExistsInScope(DESTINATION_ROUTE.reports, scopeId) &&
+      !lacksSource &&
+      destinationEnabled("reports")
+        ? {
+            key: "reports",
+            label: t("sidebar.navDestinations.reports"),
+            icon: <BarChartSquare02 size={16} />,
+            isActive: leafPath === DESTINATION_ROUTE.reports,
+            trackAs: "reports",
+            link: { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
+          }
+        : null,
+    board:
+      lacksSource || !destinationEnabled("board")
+        ? null
+        : {
+            key: "board",
+            label: t("sidebar.navDestinations.tasks"),
+            icon: <Columns03 size={16} />,
+            isActive: leafPath === DESTINATION_ROUTE.tasks,
+            trackAs: "board",
+            dataTour: LAYOUT_TOUR_ANCHORS.tasks,
+            link: {
+              to: DESTINATION_ROUTE.tasks,
+              /** Explicitly cleared: params merge with the current match, so an open
+               *  card would otherwise keep its segment and this link would go
+               *  nowhere. Tasks means the lanes. */
+              params: { org: org.slug, taskKey: undefined },
+              /** Entering a project SEEDS the board's Project filter with it — a
+               *  hint on entry, not a lock: clearing the filter stays cleared
+               *  until you enter the project again. The `?repo=` value is a
+               *  bucket id — the repo's `owner/name`, or a repo-less project's
+               *  `vir_…` id — both of which `entryForFilter` resolves. */
+              search: (prev: Record<string, unknown>) => {
+                const seed = repo ?? project?.id;
+                return seed ? { ...prev, repo: seed } : prev;
+              },
+            },
+          },
+    files: routeExistsInScope(DESTINATION_ROUTE.library, scopeId)
+      ? {
+          key: "files",
+          label: t("sidebar.navDestinations.library"),
+          icon: <Folder size={16} />,
+          isActive: leafPath === DESTINATION_ROUTE.library,
+          trackAs: "files",
+          link: { to: DESTINATION_ROUTE.library, params: { org: org.slug } },
+        }
+      : null,
+  };
+
+  return NAV_DESTINATION_KEYS.map((key) => rows[key]).filter(
+    (row): row is NavDestination => row !== null,
+  );
+}
+
+/** The destination list. New chat lives in the panel header (NewChatCrumb) and
+ *  chat search lives in the chat panel's threads menu, so this renders
+ *  destinations only. Collapsed, it becomes an icon rail — `SidebarNavRow`
+ *  supplies the tooltips and the accessible names. */
 export function NavDestinationsContent({
   onNavigate,
 }: {
   onNavigate?: () => void;
 }) {
-  const t = useT();
-  const destinations = useNavDestinations({ onNavigate });
-  const codingAgents = useAgentNavRows(
-    (agent) => agentHasClonableSource(agent.metadata),
-    { onNavigate },
-  );
-  const pinnedAgents = useAgentNavRows(
-    (agent, devAgentIds) =>
-      agentIsSidebarPinned(agent) && !devAgentIds.has(agent.id),
-    { onNavigate },
-  );
-  const agentRows = [...codingAgents, ...pinnedAgents];
-  const [{ showProjectSettingsGear }] = usePreferences();
-  // Expanded, the label is right there — a tooltip repeating it is noise.
-  const { state, isMobile } = useSidebar();
-  const isCollapsed = state === "collapsed" && !isMobile;
-
-  const row = (item: NavDestination) => {
-    // Opt-in per person; the icon rail has no room for a second control.
-    const gear = item.onOpenSettings && showProjectSettingsGear && !isCollapsed;
-    return (
-      <SidebarMenuItem key={item.key}>
-        <SidebarMenuButton
-          onClick={item.onSelect}
-          isActive={item.isActive}
-          aria-current={item.isActive ? "page" : undefined}
-          tooltip={isCollapsed ? item.label : undefined}
-          className={cn(
-            gear &&
-              "group-hover/menu-item:bg-sidebar-accent group-hover/menu-item:text-sidebar-accent-foreground",
-          )}
-        >
-          {item.icon}
-          {/* Reserve the overlaid gear's width so the ellipsis clears it. */}
-          <span className={cn("truncate", gear && "pr-7")}>{item.label}</span>
-        </SidebarMenuButton>
-        {gear && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("sidebar.navDestinations.projectSettings", {
-              name: item.label,
-            })}
-            onClick={item.onOpenSettings}
-            className={cn(
-              // One tint throughout — only ghost's background reacts to hover.
-              "absolute right-1 top-1/2 -translate-y-1/2 text-sidebar-foreground/60 hover:text-sidebar-foreground/60",
-              // Hover-to-reveal has no touch equivalent.
-              isMobile
-                ? "opacity-100"
-                : "opacity-0 group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100",
-            )}
-          >
-            <Settings02 />
-          </Button>
-        )}
-      </SidebarMenuItem>
-    );
-  };
+  const destinations = useNavDestinations();
 
   return (
     <SidebarMenu className="gap-1">
-      {destinations.map(row)}
-      {agentRows.length > 0 && <li aria-hidden className="h-2" />}
-      {agentRows.map(row)}
+      {destinations.map((item) => (
+        <SidebarNavRow
+          key={item.key}
+          icon={item.icon}
+          label={item.label}
+          dataTour={item.dataTour}
+          isActive={item.isActive}
+          link={item.link}
+          onSelect={() => {
+            track("nav_destination_clicked", { destination: item.trackAs });
+            onNavigate?.();
+          }}
+        />
+      ))}
     </SidebarMenu>
   );
 }

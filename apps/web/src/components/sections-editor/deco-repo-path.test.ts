@@ -19,11 +19,8 @@ describe("decoRepoPath", () => {
 
   test("prefixes the package path when the project is in a subdirectory", () => {
     expect(
-      decoRepoPath(
-        "eitri-shopping-monte-carlo-shared",
-        ".deco/blocks.gen.json",
-      ),
-    ).toBe("eitri-shopping-monte-carlo-shared/.deco/blocks.gen.json");
+      decoRepoPath("eitri-shopping-example-shared", ".deco/blocks.gen.json"),
+    ).toBe("eitri-shopping-example-shared/.deco/blocks.gen.json");
   });
 
   test("normalizes leading and trailing slashes on the package path", () => {

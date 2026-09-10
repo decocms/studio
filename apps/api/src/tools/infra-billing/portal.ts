@@ -12,6 +12,7 @@ import {
   StripeApiError,
 } from "../../billing/stripe-api";
 import { defineTool } from "../../core/define-tool";
+import { orgSettingsPath } from "@decocms/shared/organization-paths";
 import { getPublicUrl } from "../../core/server-constants";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
@@ -74,7 +75,7 @@ export const INFRA_BILLING_PORTAL = defineTool({
       return await createBillingPortalSession({
         customerId: subscription.customer,
         // Followed from Stripe's domain, so it must be externally reachable.
-        returnUrl: `${getPublicUrl()}/${encodeURIComponent(org.slug)}/settings/infra-billing`,
+        returnUrl: `${getPublicUrl()}${orgSettingsPath(org.slug, "infra-billing")}`,
       });
     } catch (err) {
       // Stripe's raw message names the subscription id — not the caller's to see.

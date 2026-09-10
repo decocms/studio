@@ -249,8 +249,7 @@ function defineWellKnownAgentVMCP(opts: {
 }
 
 // ---- Decopilot ----
-// Default agent that aggregates ALL org connections. Gateway populates
-// the connections array at lookup time.
+// Default agent. Aggregates no connections — see `storage/virtual.ts` findById.
 const decopilotPrefix = createWellKnownAgentPrefix("decopilot_");
 export const isDecopilot = decopilotPrefix.is;
 export const getDecopilotId = decopilotPrefix.get;
@@ -426,7 +425,6 @@ export function getWellKnownReportVirtualMCP(
  * Studio Pack agent ID prefixes (org-scoped), keyed the same as StudioPackAgentId below.
  */
 const studioPackAgentPrefixes = {
-  AGENT_MANAGER: createWellKnownAgentPrefix("studio-agent-manager_"),
   AUTOMATION_MANAGER: createWellKnownAgentPrefix("studio-automation-manager_"),
   CONNECTION_MANAGER: createWellKnownAgentPrefix("studio-connection-manager_"),
   API_KEY_MANAGER: createWellKnownAgentPrefix("studio-api-key-manager_"),
@@ -439,7 +437,6 @@ const studioPackAgentPrefixes = {
  * Studio Pack agent ID generators (org-scoped)
  */
 export const StudioPackAgentId = {
-  AGENT_MANAGER: studioPackAgentPrefixes.AGENT_MANAGER.get,
   AUTOMATION_MANAGER: studioPackAgentPrefixes.AUTOMATION_MANAGER.get,
   CONNECTION_MANAGER: studioPackAgentPrefixes.CONNECTION_MANAGER.get,
   API_KEY_MANAGER: studioPackAgentPrefixes.API_KEY_MANAGER.get,
@@ -454,6 +451,33 @@ export const StudioPackAgentId = {
 export function isStudioPackAgent(id: string | null | undefined): boolean {
   if (!id) return false;
   return Object.values(studioPackAgentPrefixes).some(
+    (prefix) => prefix.is(id) !== null,
+  );
+}
+
+/**
+ * Retired Studio Pack agent ID prefixes: agents that used to be installed
+ * per-org but no longer exist. Their rows linger in orgs that once had them
+ * (the backfill that deletes them is version-gated), so the UI must keep
+ * hiding them as scaffolding even though they are no longer part of the pack.
+ */
+export const RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES = [
+  "studio-agent-manager_",
+  "studio-task-manager_",
+] as const;
+
+const retiredStudioPackAgentPrefixes =
+  RETIRED_STUDIO_PACK_AGENT_ID_PREFIXES.map(createWellKnownAgentPrefix);
+
+/**
+ * Check if a connection or virtual MCP ID is a retired Studio Pack agent whose
+ * leftover row should be hidden from users.
+ */
+export function isRetiredStudioPackAgent(
+  id: string | null | undefined,
+): boolean {
+  if (!id) return false;
+  return retiredStudioPackAgentPrefixes.some(
     (prefix) => prefix.is(id) !== null,
   );
 }

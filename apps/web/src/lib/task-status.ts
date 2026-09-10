@@ -2,7 +2,6 @@
  * Task status utilities.
  *
  * Status is a small colored icon inline with the title.
- * Each status has a "verb" — what this means for you as a manager.
  */
 
 import {
@@ -13,6 +12,7 @@ import {
   Loading01,
   XCircle,
 } from "@untitledui/icons";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 
 export type StatusKey =
   | "requires_action"
@@ -22,47 +22,42 @@ export type StatusKey =
   | "completed";
 
 export interface StatusConfig {
-  label: string;
-  /** What this status means for you — shown as metadata */
-  verb: string;
+  /** Translation key for the label — resolve with `t()`, this is not
+   *  display-ready on its own. */
+  labelKey: TranslationKey;
   icon: typeof Loading01;
   iconClassName: string;
-  /** Color for the verb/label text */
+  /** Color for the label text */
   labelColor: string;
 }
 
 export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
   requires_action: {
-    label: "Needs review",
-    verb: "Waiting for your review",
+    labelKey: "common.taskStatus.requiresAction",
     icon: AlertCircle,
     iconClassName: "text-warning",
     labelColor: "text-warning",
   },
   failed: {
-    label: "Failed",
-    verb: "Something went wrong",
+    labelKey: "common.taskStatus.failed",
     icon: XCircle,
     iconClassName: "text-destructive",
     labelColor: "text-destructive",
   },
   expired: {
-    label: "Timed out",
-    verb: "Stopped responding",
+    labelKey: "common.taskStatus.expired",
     icon: Hourglass03,
     iconClassName: "text-warning",
     labelColor: "text-warning",
   },
   in_progress: {
-    label: "Running",
-    verb: "Agent is working",
+    labelKey: "common.taskStatus.inProgress",
     icon: Loading01,
     iconClassName: "text-primary",
     labelColor: "text-primary",
   },
   completed: {
-    label: "Done",
-    verb: "Completed",
+    labelKey: "common.taskStatus.completed",
     icon: CheckCircle,
     iconClassName: "text-muted-foreground/50",
     labelColor: "text-muted-foreground",
@@ -70,13 +65,21 @@ export const STATUS_CONFIG: Record<StatusKey, StatusConfig> = {
 };
 
 const UNKNOWN: StatusConfig = {
-  label: "Unknown",
-  verb: "Unknown status",
+  labelKey: "common.taskStatus.unknown",
   icon: Circle,
   iconClassName: "text-muted-foreground",
   labelColor: "text-muted-foreground",
 };
 
-export function getStatusConfig(status: string | undefined): StatusConfig {
-  return STATUS_CONFIG[(status ?? "completed") as StatusKey] ?? UNKNOWN;
+function isStatusKey(status: string): status is StatusKey {
+  return status in STATUS_CONFIG;
+}
+
+export function getStatusConfig(
+  status: string | null | undefined,
+): StatusConfig {
+  // Explicit null (unlike undefined) means a genuinely unknown status, not "no status field yet".
+  if (status === null) return UNKNOWN;
+  const key = status ?? "completed";
+  return isStatusKey(key) ? STATUS_CONFIG[key] : UNKNOWN;
 }

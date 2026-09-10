@@ -54,6 +54,29 @@ export interface PublicConfig {
   internalUrl?: string;
   enableDecoImport?: boolean;
   brandExtractEnabled?: boolean;
+  /** Whether the per-site Hosting tab (control-plane BFF proxy) is available. */
+  hostingEnabled?: boolean;
+  /**
+   * Deployment-wide GA switch for the control-plane views (Hosting · E2E · Deco
+   * Analytics): when true all three are offered to every org at once, not just
+   * deco.cx staff, local dev, or orgs with a view's own flag
+   * (`hosting_enabled` / `deco_analytics_enabled` / `e2e_enabled`).
+   */
+  hostingControlPlaneGa?: boolean;
+  /**
+   * Deployment-wide GA switch for the Monitor tab (env `MONITOR_GA`),
+   * independent of the control-plane trio: when true Monitor is offered to
+   * every org at once, not just deco.cx staff, local dev, or orgs with the
+   * `monitor_enabled` flag.
+   */
+  monitorGa?: boolean;
+  /**
+   * Whether the native CDN Monitor tab is available (the stats-lake ClickHouse
+   * warehouse is wired). Independent of `hostingEnabled` — it reads the
+   * warehouse directly, not the control-plane. GA: any org that owns the site
+   * sees the tab, no internal flag.
+   */
+  monitorEnabled?: boolean;
   auth: AuthConfig;
   posthog: { key: string; host: string } | null;
   googleMapsApiKey: string | null;

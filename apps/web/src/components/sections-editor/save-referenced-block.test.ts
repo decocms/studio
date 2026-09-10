@@ -23,10 +23,14 @@ describe("save-referenced-block", () => {
 });
 
 describe("assertSafeDecoBlockKey encoded traversal", () => {
-  it("rejects percent-encoded path segments", () => {
+  it("rejects percent-encoded path traversal (decoded `..`)", () => {
     expect(() => assertSafeDecoBlockKey("%2e%2e")).toThrow(/Invalid block key/);
-    expect(() => assertSafeDecoBlockKey("pages-%2fhome")).toThrow(
+    expect(() => assertSafeDecoBlockKey("%2e%2e%2fHeader")).toThrow(
       /Invalid block key/,
     );
+  });
+
+  it("allows percent-encoded slashes (deco slash-named page keys)", () => {
+    expect(() => assertSafeDecoBlockKey("pages-%2fhome")).not.toThrow();
   });
 });

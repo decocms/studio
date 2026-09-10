@@ -409,9 +409,8 @@ export function AnyOfField({
     const handleMakeGlobalSubmit = (blockId: string) => {
       if (!onSaveReferencedBlock) return;
       const trimmed = blockId.trim();
-      const validationError = decofile
-        ? validateBlockId(trimmed, decofile)
-        : null;
+      // Never skip validation just because decofile hasn't loaded yet.
+      const validationError = validateBlockId(trimmed, decofile ?? {});
       if (validationError) {
         toast.error(validationError);
         return;
@@ -438,7 +437,7 @@ export function AnyOfField({
             virtualMcpId={sandbox?.virtualMcpId}
           />
           <Select value={activeRt || undefined} onValueChange={handleRefChange}>
-            <SelectTrigger id={path}>
+            <SelectTrigger id={path} className="w-full min-w-0">
               <SelectValue
                 placeholder={t("sectionsEditor.anyOfField.selectPlaceholder")}
               />

@@ -232,7 +232,7 @@ export async function runHostedHarness(
 
   // Fire-and-forget: moving the card must not delay the loop.
   try {
-    void advanceTaskBoardForRun(studioCtx, "in_progress", input.threadId);
+    void advanceTaskBoardForRun(studioCtx, "progress", input.threadId);
 
     // If the user re-engaged a task that had moved to In Review, pull it back to
     // In Progress. Link-based (`task_board_item_threads`), so it fires for a

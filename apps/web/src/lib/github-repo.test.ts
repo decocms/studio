@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { getActiveGithubRepo, resolveGithubAttachment } from "./github-repo";
+import {
+  getActiveGithubRepo,
+  projectRepo,
+  resolveGithubAttachment,
+} from "./github-repo";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 
 const baseEntity: VirtualMCPEntity = {
@@ -167,5 +171,54 @@ describe("resolveGithubAttachment", () => {
         withRepo({ url: "u", owner: "a", name: "b", installationId: 7 }, []),
       ).status,
     ).toBe("detached");
+  });
+});
+
+/**
+ * The join key the project index is built on, so it is worth being explicit
+ * about which attachment states count. Every one but `none` does — a project
+ * whose repo connection was torn down still OWNS its work, and dropping its
+ * cards off the board is a worse answer than listing them under a project
+ * whose runs happen to be unable to boot. This is why it is NOT
+ * `getActiveGithubRepo`, which answers a different question (can we clone).
+ */
+describe("projectRepo", () => {
+  const withRepo = (githubRepo: unknown, connectionIds: string[] = []) =>
+    ({
+      ...baseEntity,
+      metadata: { instructions: null, githubRepo: githubRepo as never },
+      connections: connectionIds.map((id) => ({
+        connection_id: id,
+        selected_tools: null,
+        selected_resources: null,
+        selected_prompts: null,
+      })),
+    }) as VirtualMCPEntity;
+
+  test("null when no repository is attached", () => {
+    expect(projectRepo(baseEntity)).toBeNull();
+    expect(projectRepo(null)).toBeNull();
+    expect(projectRepo(undefined)).toBeNull();
+  });
+
+  test("owner/name for every attachment state but 'none'", () => {
+    const attached = withRepo(
+      { url: "u", owner: "acme", name: "site", connectionId: "c" },
+      ["c"],
+    );
+    const detached = withRepo({
+      url: "u",
+      owner: "acme",
+      name: "site",
+      connectionId: "gone",
+    });
+    const publicClone = withRepo({ url: "u", owner: "acme", name: "site" });
+
+    expect(resolveGithubAttachment(attached).status).toBe("attached");
+    expect(resolveGithubAttachment(detached).status).toBe("detached");
+    expect(resolveGithubAttachment(publicClone).status).toBe("public-clone");
+    for (const entity of [attached, detached, publicClone]) {
+      expect(projectRepo(entity)).toBe("acme/site");
+    }
   });
 });

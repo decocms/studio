@@ -13,7 +13,6 @@ import {
   BookOpen01,
   Check,
   ChevronDown,
-  Code01,
   Cube01,
   Database01,
   Edit01,
@@ -22,11 +21,9 @@ import {
   Folder,
   GitBranch01,
   Globe01,
-  Globe02,
   HelpCircle,
   Image01,
   Lightning01,
-  Monitor01,
   SearchMd,
   Stars01,
   TerminalSquare,
@@ -316,9 +313,10 @@ interface BuiltinGroup {
  * enable_tool, todo_write, update_interests, open_in_agent) are intentionally
  * absent — they are never filtered out (see ALLOWLIST_EXEMPT_BUILTINS in
  * harnesses/decopilot/tools.ts). The set mirrors what the agent can actually
- * run; tools not provisioned for a given agent (e.g. browser tools without a
- * BROWSERLESS_TOKEN, VM tools without a sandbox) simply never appear at
- * runtime, so toggling them off is a harmless no-op.
+ * run; tools not provisioned for a given agent (e.g. VM tools without a
+ * sandbox) simply never appear at runtime, so toggling them off is a harmless
+ * no-op. Browsing a page is one of those VM tools now — it is `bash` running
+ * `qa-screenshot` in the sandbox, not a tool of its own to govern.
  */
 const BUILTIN_GROUPS: BuiltinGroup[] = [
   {
@@ -417,31 +415,6 @@ const BUILTIN_GROUPS: BuiltinGroup[] = [
         titleKey: "automations.automationConfig.toolLoadSkill",
         descriptionKey: "automations.automationConfig.toolLoadSkillDesc",
         icon: BookOpen01,
-      },
-    ],
-  },
-  {
-    key: "browser",
-    headingKey: "automations.automationConfig.browser",
-    icon: Globe02,
-    tools: [
-      {
-        name: "take_screenshot",
-        titleKey: "automations.automationConfig.toolTakeScreenshot",
-        descriptionKey: "automations.automationConfig.toolTakeScreenshotDesc",
-        icon: Monitor01,
-      },
-      {
-        name: "scrape_url",
-        titleKey: "automations.automationConfig.toolScrapeUrl",
-        descriptionKey: "automations.automationConfig.toolScrapeUrlDesc",
-        icon: Globe02,
-      },
-      {
-        name: "inspect_page",
-        titleKey: "automations.automationConfig.toolInspectPage",
-        descriptionKey: "automations.automationConfig.toolInspectPageDesc",
-        icon: Code01,
       },
     ],
   },

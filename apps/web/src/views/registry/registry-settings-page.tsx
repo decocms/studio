@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext } from "@/sdk";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -23,7 +24,6 @@ import {
   Eye,
   EyeOff,
   Key01,
-  Loading01,
   Plus,
   Trash01,
 } from "@untitledui/icons";
@@ -475,7 +475,7 @@ export default function RegistrySettingsPage({
                     onClick={handleGenerateKey}
                   >
                     {generateMutation.isPending ? (
-                      <Loading01 size={14} className="animate-spin" />
+                      <Spinner className="size-3.5" />
                     ) : (
                       <Plus size={14} />
                     )}

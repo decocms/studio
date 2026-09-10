@@ -148,7 +148,27 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
 
 const ORG_KEY_PREFIX = "studio:org-cache:";
 
+/** Cap on distinct orgs cached per user. Bounds unbounded localStorage growth
+ * for an account that has visited many orgs over time. */
+const MAX_CACHED_ORGS = 20;
+
 type CachedOrgMap = Record<string, { data: unknown; updatedAt: number }>;
+
+/**
+ * Drop expired entries, then keep only the `MAX_CACHED_ORGS` most-recently
+ * updated ones. `readCachedOrg` already ignores expired entries, but without
+ * this the map itself never shrinks — every org a user ever visits, active or
+ * not, stays in localStorage forever.
+ */
+function pruneOrgMap(map: CachedOrgMap): CachedOrgMap {
+  const now = Date.now();
+  const fresh = Object.entries(map).filter(
+    ([, entry]) => now - entry.updatedAt <= MAX_AGE_MS,
+  );
+  fresh.sort(([, a], [, b]) => a.updatedAt - b.updatedAt);
+  while (fresh.length > MAX_CACHED_ORGS) fresh.shift();
+  return Object.fromEntries(fresh);
+}
 
 function orgCacheKey(userId: string): string {
   return `${ORG_KEY_PREFIX}${userId}`;
@@ -184,7 +204,7 @@ export function writeCachedOrg(
     const raw = window.localStorage.getItem(key);
     const map: CachedOrgMap = raw ? JSON.parse(raw) : {};
     map[slug] = { data, updatedAt: Date.now() };
-    window.localStorage.setItem(key, JSON.stringify(map));
+    window.localStorage.setItem(key, JSON.stringify(pruneOrgMap(map)));
   } catch {
     // Quota / serialization failure is non-fatal.
   }

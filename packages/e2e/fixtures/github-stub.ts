@@ -19,10 +19,10 @@
  *   - refs:    `branch -> commitSha`
  *
  * GitHub-shaped endpoints (only what the decofile client calls):
- *   GET   /repos/{o}/{r}                              -> { default_branch }
+ *   GET   /repos/{o}/{r}                              -> { id, full_name, private, html_url, default_branch }
  *   GET   /repos/{o}/{r}/git/ref/heads/{branch}       -> { object: { sha } }
  *   GET   /repos/{o}/{r}/git/commits/{sha}            -> { tree: { sha }, parents }
- *   GET   /repos/{o}/{r}/git/trees/{sha}?recursive=1  -> { tree: [...], truncated }
+ *   GET   /repos/{o}/{r}/git/trees/{sha}[?recursive=1] -> { tree: [...], truncated } (non-recursive = direct children + subtree shas)
  *   GET   /repos/{o}/{r}/git/blobs/{sha}              -> { content, encoding }
  *   GET   /repos/{o}/{r}/contents/{path}?ref={sha}    -> { sha, content, encoding }
  *   POST  /repos/{o}/{r}/git/blobs                    -> { sha }
@@ -34,6 +34,17 @@
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
  *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
  *
+ * GitHub App endpoints (the git-provider account suite):
+ *   GET   /user/installations                          -> { installations }
+ *   GET   /user/installations/{id}/repositories        -> { repositories }
+ *   POST  /app/installations/{id}/access_tokens        -> { token, expires_at }
+ *
+ * A minted token carries its own scope (`ghs-inst-{id}-all` or
+ * `ghs-inst-{id}-ids-{a}.{b}`), and `/repos/{o}/{r}` answers 404 for a
+ * repository outside it — the same wall GitHub puts up, so a test can prove
+ * Studio never widens a partial grant. Any other Authorization value is taken
+ * as an unrestricted legacy token, which is what the decofile suite sends.
+ *
  * Test-only admin endpoints (no auth):
  *   GET  /health
  *   POST /__admin/repos                    seed a repo (see SeedRepoBody)
@@ -42,6 +53,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { sleep } from "@decocms/shared/std";
 import {
   createServer,
   type IncomingMessage,
@@ -62,6 +74,8 @@ interface CommitRecord {
   treeSha: string;
   parents: string[];
   message: string;
+  /** Committer date (ISO); the branch head's drives the CMS staleness check. */
+  committedAt: string;
 }
 
 interface PullRecord {
@@ -74,6 +88,8 @@ interface PullRecord {
 }
 
 interface RepoState {
+  /** GitHub's numeric repository id, which is what a token scope names. */
+  id: number;
   owner: string;
   name: string;
   defaultBranch: string;
@@ -85,15 +101,23 @@ interface RepoState {
   commitLog: string[];
   /** treeSha -> (path -> blobSha) */
   trees: Map<string, Map<string, string>>;
+  /** Synthetic subtree sha -> the root tree + path prefix it lists (minted on
+   *  demand when a non-recursive listing descends into a subdirectory). */
+  subtrees: Map<string, { rootSha: string; prefix: string }>;
   /** blobSha -> utf-8 content */
   blobs: Map<string, string>;
   pulls: PullRecord[];
   nextPullNumber: number;
+  /** When set, recursive tree reads answer `truncated: true` (GitHub's
+   *  100k-entry / 7MB cap) — arms the large-repo path in tests. */
+  truncateRecursive: boolean;
 }
 
 interface SeedRepoBody {
   owner: string;
   repo: string;
+  /** Numeric id, for tests that pin it to an installation grant. */
+  id?: number;
   defaultBranch?: string;
   /**
    * Per-branch file map (`path -> content`). The default branch becomes a root
@@ -101,11 +125,32 @@ interface SeedRepoBody {
    * (i.e. ahead-by-1). A branch entry WITHOUT a `files` key aliases the
    * default head instead (ahead-by-0) — handy for drift/status tests.
    */
-  branches?: Record<string, { files?: Record<string, string> } | null>;
+  branches?: Record<
+    string,
+    { files?: Record<string, string>; committedAt?: string } | null
+  >;
   mergeMode?: MergeMode;
+  /** Make recursive tree reads return `truncated: true`, simulating a repo too
+   *  large for GitHub's recursive listing. */
+  truncateRecursive?: boolean;
 }
 
 const repos = new Map<string, RepoState>();
+let repoIdSequence = 1_000_000;
+function nextRepoId(): number {
+  return ++repoIdSequence;
+}
+
+/**
+ * The repository ids an Authorization header may reach, or null for every one.
+ *
+ * Only tokens this stub minted carry a scope; anything else is treated as
+ * unrestricted so the suites that send a static token are unaffected.
+ */
+function tokenScope(authorization: string | undefined): number[] | null {
+  const scope = /^Bearer ghs-inst-\d+-ids-([\d.]+)$/.exec(authorization ?? "");
+  return scope?.[1] ? scope[1].split(".").map(Number) : null;
+}
 let commitCounter = 0;
 
 function sha1(input: string): string {
@@ -134,13 +179,14 @@ function putCommit(
   treeSha: string,
   parents: string[],
   message: string,
+  committedAt: string = new Date().toISOString(),
 ): string {
   // The counter keeps same-(tree,parents,message) commits distinct — this is
   // fixture code, not git; determinism-per-run is all the tests need.
   const sha = sha1(
     `commit:${treeSha}:${parents.join(",")}:${message}:${commitCounter++}`,
   );
-  repo.commits.set(sha, { sha, treeSha, parents, message });
+  repo.commits.set(sha, { sha, treeSha, parents, message, committedAt });
   repo.commitLog.push(sha);
   return sha;
 }
@@ -219,6 +265,7 @@ function mergeBaseOf(repo: RepoState, a: string, b: string): string | null {
 function seedRepo(body: SeedRepoBody): RepoState {
   const defaultBranch = body.defaultBranch ?? "main";
   const repo: RepoState = {
+    id: body.id ?? nextRepoId(),
     owner: body.owner,
     name: body.repo,
     defaultBranch,
@@ -227,9 +274,11 @@ function seedRepo(body: SeedRepoBody): RepoState {
     commits: new Map(),
     commitLog: [],
     trees: new Map(),
+    subtrees: new Map(),
     blobs: new Map(),
     pulls: [],
     nextPullNumber: 1,
+    truncateRecursive: body.truncateRecursive ?? false,
   };
 
   const branches = body.branches ?? {};
@@ -243,7 +292,13 @@ function seedRepo(body: SeedRepoBody): RepoState {
       ]),
     ),
   );
-  const defaultHead = putCommit(repo, defaultTree, [], `seed ${defaultBranch}`);
+  const defaultHead = putCommit(
+    repo,
+    defaultTree,
+    [],
+    `seed ${defaultBranch}`,
+    branches[defaultBranch]?.committedAt,
+  );
   repo.refs.set(defaultBranch, defaultHead);
 
   for (const [branch, spec] of Object.entries(branches)) {
@@ -263,7 +318,7 @@ function seedRepo(body: SeedRepoBody): RepoState {
     );
     repo.refs.set(
       branch,
-      putCommit(repo, tree, [defaultHead], `seed ${branch}`),
+      putCommit(repo, tree, [defaultHead], `seed ${branch}`, spec.committedAt),
     );
   }
   repos.set(repoKey(body.owner, body.repo), repo);
@@ -382,7 +437,9 @@ async function handleRepos(
   const owner = segments[1];
   const name = segments[2];
   const repo = owner && name ? repos.get(repoKey(owner, name)) : undefined;
-  if (!repo) {
+  const scope = tokenScope(req.headers.authorization);
+  // Out of scope reads as absent, exactly as it does on github.com.
+  if (!repo || (scope && !scope.includes(repo.id))) {
     notFound(res);
     return;
   }
@@ -391,10 +448,32 @@ async function handleRepos(
   // GET /repos/{o}/{r}
   if (req.method === "GET" && rest.length === 0) {
     json(res, 200, {
+      id: repo.id,
       name: repo.name,
       full_name: repoKey(repo.owner, repo.name),
+      private: true,
+      html_url: `https://github.com/${repoKey(repo.owner, repo.name)}`,
       default_branch: repo.defaultBranch,
       owner: { login: repo.owner },
+    });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/branches/{branch...}
+  if (req.method === "GET" && rest[0] === "branches" && rest.length >= 2) {
+    const branch = rest.slice(1).join("/");
+    const sha = repo.refs.get(branch);
+    const commit = sha ? repo.commits.get(sha) : undefined;
+    if (!sha || !commit) {
+      notFound(res);
+      return;
+    }
+    json(res, 200, {
+      name: branch,
+      commit: {
+        sha,
+        commit: { committer: { date: commit.committedAt } },
+      },
     });
     return;
   }
@@ -440,30 +519,75 @@ async function handleRepos(
     return;
   }
 
-  // GET /repos/{o}/{r}/git/trees/{sha}
+  // GET /repos/{o}/{r}/git/trees/{sha}[?recursive=1]
   if (
     req.method === "GET" &&
     rest[0] === "git" &&
     rest[1] === "trees" &&
     rest.length === 3
   ) {
-    const tree = rest[2] ? repo.trees.get(rest[2]) : undefined;
-    if (!tree) {
+    const treeSha = rest[2];
+    // A tree sha is a real root tree, or a synthetic subtree sha (see below).
+    const sub = treeSha ? repo.subtrees.get(treeSha) : undefined;
+    const rootSha = sub ? sub.rootSha : treeSha;
+    const prefix = sub ? sub.prefix : "";
+    const flat = rootSha ? repo.trees.get(rootSha) : undefined;
+    if (!treeSha || !rootSha || !flat) {
       notFound(res);
       return;
     }
+    // GitHub returns blob byte size; the decofile cold read pre-validates on it.
+    const blobSize = (blobSha: string): number =>
+      Buffer.byteLength(repo.blobs.get(blobSha) ?? "", "utf8");
+    if (url.searchParams.get("recursive") === "1") {
+      // truncateRecursive arms GitHub's cap; recursive only hits a root tree.
+      if (repo.truncateRecursive) {
+        json(res, 200, { sha: treeSha, truncated: true, tree: [] });
+        return;
+      }
+      json(res, 200, {
+        sha: treeSha,
+        truncated: false,
+        tree: [...flat.entries()].map(([path, blobSha]) => ({
+          path,
+          mode: "100644",
+          type: "blob",
+          sha: blobSha,
+          size: blobSize(blobSha),
+        })),
+      });
+      return;
+    }
+    // Non-recursive: DIRECT children under `prefix`; a subdir becomes a `tree`.
+    const blobEntries: Array<Record<string, unknown>> = [];
+    const subdirs = new Set<string>();
+    for (const [path, blobSha] of flat) {
+      if (!path.startsWith(prefix)) continue;
+      const rel = path.slice(prefix.length);
+      const slash = rel.indexOf("/");
+      if (slash === -1) {
+        blobEntries.push({
+          path: rel,
+          mode: "100644",
+          type: "blob",
+          sha: blobSha,
+          size: blobSize(blobSha),
+        });
+      } else {
+        subdirs.add(rel.slice(0, slash));
+      }
+    }
+    // Register each subtree sha so a follow-up GET can list that directory.
+    const treeEntries = [...subdirs].map((name) => {
+      const childPrefix = `${prefix}${name}/`;
+      const childSha = sha1(`subtree:${rootSha}:${childPrefix}`);
+      repo.subtrees.set(childSha, { rootSha, prefix: childPrefix });
+      return { path: name, mode: "040000", type: "tree", sha: childSha };
+    });
     json(res, 200, {
-      sha: rest[2],
+      sha: treeSha,
       truncated: false,
-      tree: [...tree.entries()].map(([path, blobSha]) => ({
-        path,
-        mode: "100644",
-        type: "blob",
-        sha: blobSha,
-        // GitHub returns the blob byte size for blob entries; the decofile
-        // cold-read path pre-validates tarball downloads against it.
-        size: Buffer.byteLength(repo.blobs.get(blobSha) ?? "", "utf8"),
-      })),
+      tree: [...blobEntries, ...treeEntries],
     });
     return;
   }
@@ -813,12 +937,214 @@ async function handleRepos(
   notFound(res);
 }
 
+interface UserInstallation {
+  id: number;
+  account: {
+    id: number;
+    login: string;
+    avatar_url: string | null;
+    type: "Organization" | "User";
+  };
+  /**
+   * What `GET /user/installations/{id}/repositories` answers for this user.
+   * `admin` is GitHub's "can this person install the App here" signal.
+   */
+  repositories?: Array<{ id: number; permissions?: { admin?: boolean } }>;
+}
+
 export function createGithubStubServer(): Server {
+  const userRequests = new Map<
+    string,
+    { paths: string[]; active: number; peak: number }
+  >();
+  const users = new Map<
+    string,
+    {
+      installations: UserInstallation[];
+      user: { id: number; login: string };
+      memberships: Array<{
+        state: string;
+        role: string;
+        organization: { id: number };
+      }>;
+      identityStatus?: number;
+      membershipsStatus?: number;
+      repositoryDelayMs?: number;
+    }
+  >();
+  const codes = new Map<string, string>();
   return createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     const dispatch = async (): Promise<void> => {
+      const userToken =
+        req.headers.authorization?.replace(/^Bearer /, "") ?? "";
+      if (
+        req.method === "GET" &&
+        url.pathname === "/__admin/github-user-requests"
+      ) {
+        json(
+          res,
+          200,
+          userRequests.get(userToken) ?? { paths: [], active: 0, peak: 0 },
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/user")) {
+        let requests = userRequests.get(userToken);
+        if (!requests) {
+          requests = { paths: [], active: 0, peak: 0 };
+          userRequests.set(userToken, requests);
+        }
+        requests.paths.push(url.pathname + url.search);
+        if (/^\/user\/installations\/\d+\/repositories$/.test(url.pathname)) {
+          requests.active++;
+          requests.peak = Math.max(requests.peak, requests.active);
+          await sleep(users.get(userToken)?.repositoryDelayMs ?? 0);
+          requests.active--;
+        }
+      }
       if (req.method === "GET" && url.pathname === "/health") {
         json(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/__admin/github-users") {
+        const body = JSON.parse(await readBody(req)) as {
+          token: string;
+          installations: UserInstallation[];
+          user: { id: number; login: string };
+          memberships: Array<{
+            state: string;
+            role: string;
+            organization: { id: number };
+          }>;
+          identityStatus?: number;
+          membershipsStatus?: number;
+        };
+        users.set(body.token, body);
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/__admin/github-codes") {
+        const body = JSON.parse(await readBody(req)) as {
+          code: string;
+          token: string;
+        };
+        codes.set(body.code, body.token);
+        json(res, 200, { ok: true });
+        return;
+      }
+      if (
+        req.method === "POST" &&
+        url.pathname === "/login/oauth/access_token"
+      ) {
+        const body = JSON.parse(await readBody(req)) as { code: string };
+        const token = codes.get(body.code);
+        codes.delete(body.code);
+        json(
+          res,
+          200,
+          token
+            ? { access_token: token, token_type: "bearer", expires_in: 28800 }
+            : { error: "bad_verification_code" },
+        );
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        (url.pathname === "/user" || url.pathname === "/user/memberships/orgs")
+      ) {
+        const user = users.get(
+          req.headers.authorization?.replace(/^Bearer /, "") ?? "",
+        );
+        if (!user) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        if (url.pathname === "/user") {
+          json(
+            res,
+            user.identityStatus ?? 200,
+            user.identityStatus ? { message: "Denied" } : user.user,
+          );
+        } else {
+          const page = Number(url.searchParams.get("page") ?? 1);
+          json(
+            res,
+            user.membershipsStatus ?? 200,
+            user.membershipsStatus
+              ? { message: "Denied" }
+              : user.memberships.slice((page - 1) * 100, page * 100),
+          );
+        }
+        return;
+      }
+      const installationRepositories =
+        /^\/user\/installations\/(\d+)\/repositories$/.exec(url.pathname);
+      if (
+        req.method === "GET" &&
+        (url.pathname === "/user/installations" || installationRepositories)
+      ) {
+        const installations = users.get(
+          req.headers.authorization?.replace(/^Bearer /, "") ?? "",
+        )?.installations;
+        if (!installations) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        const page = Number(url.searchParams.get("page") ?? 1);
+        const perPage = Number(url.searchParams.get("per_page") ?? 100);
+        const slice = <T>(items: T[]) =>
+          items.slice((page - 1) * perPage, page * perPage);
+        if (url.pathname === "/user/installations") {
+          json(res, 200, {
+            installations: slice(installations),
+            total_count: installations.length,
+          });
+          return;
+        }
+        const id = Number(installationRepositories?.[1]);
+        const installation = installations.find((item) => item.id === id);
+        if (!installation) {
+          notFound(res);
+          return;
+        }
+        const repositories = installation.repositories ?? [];
+        json(res, 200, {
+          repositories: slice(repositories),
+          total_count: repositories.length,
+        });
+        return;
+      }
+      if (
+        req.method === "POST" &&
+        /^\/app\/installations\/\d+\/access_tokens$/.test(url.pathname)
+      ) {
+        const installationId = url.pathname.split("/")[3];
+        const body = JSON.parse((await readBody(req)) || "{}") as {
+          repository_ids?: number[];
+          permissions?: Record<string, string>;
+        };
+        // The scope travels in the token, so a later read can be judged by it.
+        const scope = body.repository_ids?.length
+          ? `ids-${body.repository_ids.join(".")}`
+          : "all";
+        json(res, 201, {
+          token: `ghs-inst-${installationId}-${scope}`,
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          permissions: body.permissions ?? {},
+        });
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/app/installations/")
+      ) {
+        const id = Number(url.pathname.split("/").at(-1));
+        const installation = [...users.values()]
+          .flatMap((user) => user.installations)
+          .find((item) => item.id === id);
+        if (installation) json(res, 200, installation);
+        else notFound(res);
         return;
       }
       if (url.pathname.startsWith("/__admin/")) {

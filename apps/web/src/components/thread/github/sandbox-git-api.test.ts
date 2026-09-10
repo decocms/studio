@@ -137,15 +137,15 @@ describe("isDecoOnlyDiff", () => {
   test("true for a subdir package path (`<pkg>/.deco/...` + generated assets)", () => {
     const diff: GitDiffResult = {
       diffs: {
-        "eitri-shopping-monte-carlo-shared/.deco/blocks/foo.json": {
+        "eitri-shopping-example-shared/.deco/blocks/foo.json": {
           from: "{}",
           to: "{}",
         },
-        "eitri-shopping-monte-carlo-shared/.deco/blocks.gen.json": {
+        "eitri-shopping-example-shared/.deco/blocks.gen.json": {
           from: "{}",
           to: '{"foo":{}}',
         },
-        "eitri-shopping-monte-carlo-shared/static/tailwind.css": {
+        "eitri-shopping-example-shared/static/tailwind.css": {
           from: "a",
           to: "b",
         },

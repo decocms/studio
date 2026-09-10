@@ -7,20 +7,18 @@
  */
 
 import { type ReactNode, useState } from "react";
-import { Inbox01 } from "@untitledui/icons";
+import { Bell01 } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import {
-  SidebarMenuButton,
-  useSidebar,
-} from "@decocms/ui/components/sidebar.tsx";
+import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useNavigate } from "@tanstack/react-router";
 import { useInboxFeed } from "@/hooks/use-inbox-feed";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useProjectContext } from "@/sdk";
 import { taskKey } from "@decocms/shared/task-key";
 import { useT } from "@/i18n/use-t.ts";
@@ -69,7 +67,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
       </div>
       {updates.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-          <Inbox01 size={24} className="text-muted-foreground/50" />
+          <Bell01 size={24} className="text-muted-foreground/50" />
           <p className="text-sm font-medium text-foreground">
             {t("sidebar.inbox.emptyTitle")}
           </p>
@@ -92,7 +90,7 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
                   onClose();
                   if (key) {
                     navigate({
-                      to: "/$org/t/$taskKey",
+                      to: "/$org/tasks/{-$taskKey}",
                       params: { org: org.slug, taskKey: key },
                     });
                   }
@@ -118,19 +116,18 @@ function InboxDot() {
 function InboxPopover({
   open,
   onOpenChange,
-  side,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  side: "right" | "top";
   children: ReactNode;
 }) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       {children}
       <PopoverContent
-        side={side}
+        // Beside the sidebar: `top` covered the nav the trigger sits in.
+        side="right"
         align="end"
         sideOffset={12}
         collisionPadding={16}
@@ -147,14 +144,14 @@ export function InboxIconButton() {
   const t = useT();
   const [open, setOpen] = useState(false);
   return (
-    <InboxPopover open={open} onOpenChange={setOpen} side="top">
+    <InboxPopover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
           aria-label={t("sidebar.inbox.title")}
           className="relative flex size-7 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
         >
-          <Inbox01 size={15} />
+          <Bell01 size={15} />
           <InboxDot />
         </button>
       </PopoverTrigger>
@@ -166,15 +163,15 @@ export function InboxIconButton() {
 export function InboxFullButton() {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const { state } = useSidebar();
+  const collapsed = useSidebarCollapsed();
   return (
-    <InboxPopover open={open} onOpenChange={setOpen} side="right">
+    <InboxPopover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <SidebarMenuButton
-          tooltip={state === "collapsed" ? t("sidebar.inbox.title") : undefined}
+          tooltip={collapsed ? t("sidebar.inbox.title") : undefined}
           className="relative"
         >
-          <Inbox01 />
+          <Bell01 />
           {/* Before the label: the collapsed rail hides `span:last-child`. */}
           <InboxDot />
           <span className="truncate">{t("sidebar.inbox.title")}</span>

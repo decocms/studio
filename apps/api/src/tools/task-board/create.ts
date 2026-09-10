@@ -1,3 +1,4 @@
+import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -16,7 +17,8 @@ import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { extractPrFromText } from "./pr-extract";
+import { findChangeRequestIn } from "./change-request-extract";
+import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
 export const TASK_BOARD_ITEM_CREATE = defineTool({
@@ -49,9 +51,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       .optional()
       .describe(
         "GitHub pull request URL to link to the new task, e.g. " +
-          "https://github.com/owner/repo/pull/123. Pass this with " +
-          '`status: "in_review"` right after you open a PR so the card lands ' +
-          "on the board with its PR already attached for review.",
+          "https://github.com/owner/repo/pull/123. Pass it right after you " +
+          "open a PR so the card lands on the board with its PR already " +
+          "attached for review.",
       ),
   }),
   outputSchema: z.object({ item: TaskBoardItemSchema }),
@@ -67,11 +69,12 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     // Parse the PR link before any write, so a bad URL fails without orphaning a card.
-    const pr = input.prUrl ? extractPrFromText(input.prUrl) : null;
+    const pr = input.prUrl ? findChangeRequestIn(input.prUrl) : null;
     if (input.prUrl && !pr) {
       throw new Error(
-        `Not a GitHub pull request URL: ${input.prUrl} (expected ` +
-          "https://github.com/<owner>/<repo>/pull/<number>)",
+        `Not a change request URL: ${input.prUrl} (expected ` +
+          "https://github.com/<owner>/<repo>/pull/<number> or " +
+          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>)",
       );
     }
 
@@ -97,6 +100,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     }
 
     const delegatedToSuperAgent = input.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+    const status = delegatedToSuperAgent
+      ? LANES.queue
+      : (input.status ?? LANES.intake);
 
     if (input.tagIds?.length) {
       const orgTags = await ctx.storage.tags.listOrgTags(organizationId);
@@ -112,8 +118,7 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       organizationId,
       title: input.title,
       description: input.description ?? null,
-      // A task handed to the Super Agent is queued to run — land it in To Do.
-      status: delegatedToSuperAgent ? "todo" : input.status,
+      status,
       priority: input.priority,
       type: input.type,
       assigneeId: input.assigneeId ?? null,
@@ -138,9 +143,12 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         organizationId,
         url: pr.url,
         prNumber: pr.number,
-        repoOwner: pr.owner,
-        repoName: pr.repo,
+        repo: pr.repo,
         connectionId: null,
+      });
+      // Drop the cached card so a viewer's next poll shows the new PR, not a stale "no PR" placeholder.
+      await invalidatePrCards(organizationId).catch((err) => {
+        console.error("[task-board] PR card cache invalidation failed", err);
       });
     }
 

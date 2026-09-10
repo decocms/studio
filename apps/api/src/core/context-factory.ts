@@ -83,12 +83,19 @@ import { readStudioHeader } from "./studio-headers";
 // Helper Functions
 // ============================================================================
 
+const MAX_PROPERTIES_COUNT = 50;
+const MAX_PROPERTY_STRING_LENGTH = 500;
+
 /**
  * Parse the Studio properties header into a Record<string, string>.
  * The header value should be a JSON object with string values.
  * Returns undefined if the header is missing, empty, or invalid.
+ *
+ * Capped at MAX_PROPERTIES_COUNT entries / MAX_PROPERTY_STRING_LENGTH chars
+ * each — this unsigned, caller-set header lands verbatim in the monitoring
+ * log's `properties` column on every request (see mergeProperties).
  */
-function parsePropertiesHeader(
+export function parsePropertiesHeader(
   headerValue: string | null | undefined,
 ): Record<string, string> | undefined {
   if (!headerValue) return undefined;
@@ -106,7 +113,12 @@ function parsePropertiesHeader(
     // Validate all values are strings
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "string") {
+      if (Object.keys(result).length >= MAX_PROPERTIES_COUNT) break;
+      if (
+        typeof value === "string" &&
+        key.length <= MAX_PROPERTY_STRING_LENGTH &&
+        value.length <= MAX_PROPERTY_STRING_LENGTH
+      ) {
         result[key] = value;
       }
     }
@@ -171,6 +183,14 @@ interface AuthenticatedUser {
   name?: string;
   image?: string;
   role?: string;
+}
+
+/** Prefers the JWT-verified connectionId over the client-set x-caller-id header. */
+export function resolveCallerConnectionId(
+  req: Request | undefined,
+  user: Pick<AuthenticatedUser, "connectionId"> | undefined,
+): string | undefined {
+  return user?.connectionId ?? req?.headers.get("x-caller-id") ?? undefined;
 }
 
 /**
@@ -509,8 +529,14 @@ import { SecretStorage } from "@/storage/secrets";
 import { OrgFileConfigStorage } from "@/storage/org-file-configs";
 import { OrgSiteStorage } from "@/storage/org-sites";
 import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
+import { GitProviderAccountStorage } from "@/storage/git-provider-accounts";
+import { GitProviderAccountCredentialStorage } from "@/storage/git-provider-account-credentials";
+import { RepositoryStorage } from "@/storage/repositories";
+import { GithubConnectFlowStorage } from "@/storage/github-connect-flows";
+import { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-states";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
-import { SprintStorage } from "@/storage/sprints";
+import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
+import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { NotificationStorage } from "@/storage/notifications";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -575,7 +601,48 @@ export async function fetchRolePermissions(
 // request, so caching keeps the lookup off the hot path. Archiving is a
 // one-way soft-delete, so a short TTL is plenty.
 const ARCHIVED_CACHE_TTL_MS = 60_000;
+// Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
+const ARCHIVED_CACHE_MAX_SIZE = 10_000;
 const orgArchivedCache = new Map<string, { archived: boolean; at: number }>();
+
+/** Write (or refresh) a cache entry, moving it to the most-recently-set
+ *  position. `Map.set` on an existing key updates the value in place but
+ *  keeps its original iteration position, so a hot org that's refreshed on
+ *  every lookup would otherwise sit at the "oldest" end forever and be the
+ *  first thing `evictExpiredOrgArchivedEntries` trims once the cache is
+ *  full — evicting the entry the cache most needs to keep. Exported for
+ *  unit testing. */
+export function refreshOrgArchivedCacheEntry(
+  cache: Map<string, { archived: boolean; at: number }>,
+  organizationId: string,
+  archived: boolean,
+): void {
+  cache.delete(organizationId);
+  cache.set(organizationId, { archived, at: Date.now() });
+}
+
+/** Exported for unit testing. */
+export function evictExpiredOrgArchivedEntries(
+  cache: Map<string, { archived: boolean; at: number }>,
+  maxSize: number,
+  ttlMs: number,
+): void {
+  if (cache.size <= maxSize) return;
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now - entry.at >= ttlMs) cache.delete(key);
+  }
+  // Trims oldest first (Map iteration order = insertion order).
+  if (cache.size > maxSize) {
+    const excess = cache.size - maxSize;
+    let removed = 0;
+    for (const key of cache.keys()) {
+      if (removed >= excess) break;
+      cache.delete(key);
+      removed++;
+    }
+  }
+}
 
 async function isOrgArchivedCached(
   db: Kysely<Database>,
@@ -593,7 +660,12 @@ async function isOrgArchivedCached(
       .executeTakeFirst(),
   );
   const archived = isOrgArchived(orgRow);
-  orgArchivedCache.set(organizationId, { archived, at: Date.now() });
+  refreshOrgArchivedCacheEntry(orgArchivedCache, organizationId, archived);
+  evictExpiredOrgArchivedEntries(
+    orgArchivedCache,
+    ARCHIVED_CACHE_MAX_SIZE,
+    ARCHIVED_CACHE_TTL_MS,
+  );
   return archived;
 }
 
@@ -1402,9 +1474,18 @@ export async function createStudioContextFactory(
     orgFileConfigs: new OrgFileConfigStorage(config.db, vault),
     orgSites: new OrgSiteStorage(config.db),
     orgRepoSyncs: new OrgRepoSyncStorage(config.db),
+    gitProviderAccounts: new GitProviderAccountStorage(config.db),
+    gitProviderAccountCredentials: new GitProviderAccountCredentialStorage(
+      config.db,
+      vault,
+    ),
+    gitProviderOAuthStates: new GitProviderOAuthStateStorage(config.db),
+    githubConnectFlows: new GithubConnectFlowStorage(config.db),
+    repositories: new RepositoryStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
     taskBoard: new TaskBoardStorage(config.db),
-    sprints: new SprintStorage(config.db),
+    columnAutomations: new ColumnAutomationStorage(config.db),
+    taskBoardPrompts: new TaskBoardPromptStorage(config.db),
     notifications: new NotificationStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
@@ -1485,14 +1566,8 @@ export async function createStudioContextFactory(
         )
       : { user: undefined };
 
-    // Resolve caller connection ID: explicit header takes priority, then fall
-    // back to the connectionId embedded in the studio JWT. This ensures that
-    // management tools on _self see the caller's connection ID even when the
-    // runtime doesn't set x-caller-id.
-    const connectionId =
-      req?.headers.get("x-caller-id") ??
-      authResult.user?.connectionId ??
-      undefined;
+    // The signed JWT's connectionId is authoritative; x-caller-id is a client-set header, only a fallback.
+    const connectionId = resolveCallerConnectionId(req, authResult.user);
 
     // Create bound auth client (encapsulates HTTP headers and auth context)
     const boundAuth = createBoundAuthClient({

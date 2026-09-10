@@ -778,6 +778,10 @@ function resolveActiveFieldKeyInScope(
   const foldedArrayLabels = breadcrumbPath
     .map(crumbArrayLabel)
     .filter((l): l is string => l != null);
+  // The array's own key recorded on each item crumb — a label-free owner probe that still identifies the owning block-ref when a freshly-added (empty) item carries only the generic "Item N" label `valueOwnsItemCrumb` rejects.
+  const crumbFieldKeys = breadcrumbPath
+    .map(crumbFieldKey)
+    .filter((k): k is string => k != null);
   for (const key of keys) {
     const schema = properties[key];
     if (schema?.type !== "block-ref") continue;
@@ -797,6 +801,11 @@ function resolveActiveFieldKeyInScope(
       const data = saved?.data ?? rawVal;
       if (
         valueOwnsItemCrumb(data, head) ||
+        crumbFieldKeys.some(
+          (fk) =>
+            valueOwnsItemCrumb(data, fk) ||
+            blockRefSchemaOwnsArrayLabel(data, fk, meta),
+        ) ||
         foldedArrayLabels.some(
           (al) =>
             valueOwnsItemCrumb(data, al) ||

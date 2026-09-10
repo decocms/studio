@@ -1,9 +1,10 @@
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { KEYS } from "@/lib/query-keys";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { ArrowLeft, Loading01 } from "@untitledui/icons";
+import { ArrowLeft } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import {
@@ -475,10 +476,7 @@ export function ToolSetSelector({
               <div ref={scrollSentinelRef} className="h-4" />
               {isFetchingNextPage && (
                 <div className="flex justify-center py-3">
-                  <Loading01
-                    size={18}
-                    className="animate-spin text-muted-foreground"
-                  />
+                  <Spinner className="size-4.5 text-muted-foreground" />
                 </div>
               )}
             </div>
@@ -528,10 +526,7 @@ export function ToolSetSelector({
             <div className="flex-1 overflow-auto p-4">
               {isToolsFetching ? (
                 <div className="flex justify-center py-8">
-                  <Loading01
-                    size={18}
-                    className="animate-spin text-muted-foreground"
-                  />
+                  <Spinner className="size-4.5 text-muted-foreground" />
                 </div>
               ) : connectionTools.length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">

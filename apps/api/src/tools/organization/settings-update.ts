@@ -9,6 +9,14 @@ import {
   OrgFlagsSchema,
 } from "@decocms/shared/organization/schema";
 
+// Bounds on client-controlled collection sizes not enforced by the shared schema.
+const MAX_SIDEBAR_ITEMS = 50;
+const MAX_BLOCKED_MCPS = 500;
+const MAX_DEFAULT_HOME_AGENTS = 100;
+const MAX_ENABLED_PLUGINS = 200;
+const MAX_REGISTRIES = 200;
+const MAX_STRING_LENGTH = 500;
+
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
   description:
@@ -22,11 +30,30 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   },
   inputSchema: z.object({
     organizationId: z.string(),
-    sidebar_items: z.array(SidebarItemSchema).optional(),
-    enabled_plugins: z.array(z.string()).optional(),
-    registry_config: RegistryConfigSchema.optional(),
+    sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
+    enabled_plugins: z
+      .array(z.string().max(MAX_STRING_LENGTH))
+      .max(MAX_ENABLED_PLUGINS)
+      .optional(),
+    registry_config: RegistryConfigSchema.extend({
+      registries: z
+        .record(
+          z.string().max(MAX_STRING_LENGTH),
+          z.object({ enabled: z.boolean() }),
+        )
+        .refine((r) => Object.keys(r).length <= MAX_REGISTRIES, {
+          message: `registries must have at most ${MAX_REGISTRIES} entries`,
+        }),
+      blockedMcps: z
+        .array(z.string().max(MAX_STRING_LENGTH))
+        .max(MAX_BLOCKED_MCPS),
+    }).optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
-    default_home_agents: DefaultHomeAgentsConfigSchema.optional(),
+    default_home_agents: DefaultHomeAgentsConfigSchema.extend({
+      ids: z
+        .array(z.string().max(MAX_STRING_LENGTH))
+        .max(MAX_DEFAULT_HOME_AGENTS),
+    }).optional(),
     // .strict() here (not on the shared OrgFlagsSchema) so a mistyped flag
     // name is rejected instead of silently stripped and merged as `{}` —
     // that no-op was indistinguishable from a successful update.
@@ -34,13 +61,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .optional()
       .describe(
         "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
-      ),
-    main_agent_id: z
-      .string()
-      .nullable()
-      .optional()
-      .describe(
-        "Virtual MCP id the org lands on instead of the Super Agent. Pass null to clear.",
       ),
   }),
 
@@ -52,7 +72,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
-    main_agent_id: z.string().nullable().optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -79,7 +98,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         flags: input.flags,
-        main_agent_id: input.main_agent_id,
       },
     );
 

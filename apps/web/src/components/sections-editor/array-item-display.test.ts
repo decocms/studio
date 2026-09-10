@@ -138,7 +138,7 @@ describe("getArrayItemLabel", () => {
   });
 
   test("labels a date matcher item by its configured range", () => {
-    // Real farmrio data: a Multi rule's `matchers` child.
+    // Real storefront data: a Multi rule's `matchers` child.
     const item = {
       __resolveType: "website/matchers/date.ts",
       start: "2026-08-10T15:00:00Z",

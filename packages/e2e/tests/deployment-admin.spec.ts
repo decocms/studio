@@ -585,6 +585,433 @@ test.describe("/api/_admin/*", () => {
     await ownerCtx.dispose();
   });
 
+  test("flags: PUT toggles, GET reflects stored + effective, merge preserves neighbors", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // Fresh org: demo_mode (default-off) reads false, reviewer_enabled (default-on) reads true.
+    const initial = await adminCtx.get(`/api/_admin/orgs/${orgId}/flags`);
+    expect(initial.status()).toBe(200);
+    const initialBody = (await initial.json()) as {
+      flags: Record<string, boolean | undefined>;
+      effective: Record<string, boolean>;
+    };
+    expect(initialBody.flags.demo_mode).toBeUndefined();
+    expect(initialBody.effective.demo_mode).toBe(false);
+    expect(initialBody.effective.reviewer_enabled).toBe(true);
+
+    // Turn one flag on.
+    const put1 = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: true } },
+    });
+    expect(put1.status()).toBe(200);
+    const put1Body = (await put1.json()) as {
+      flags: Record<string, boolean>;
+      effective: Record<string, boolean>;
+    };
+    expect(put1Body.flags.demo_mode).toBe(true);
+    expect(put1Body.effective.demo_mode).toBe(true);
+
+    // Persisted to the jsonb column, keyed by org.
+    const storedRow = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(storedRow.rows[0]?.flags?.demo_mode).toBe(true);
+
+    // A second partial write must MERGE, not replace: demo_mode survives.
+    const put2 = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { hosting_enabled: true } },
+    });
+    expect(put2.status()).toBe(200);
+    const put2Body = (await put2.json()) as { flags: Record<string, boolean> };
+    expect(put2Body.flags.demo_mode).toBe(true);
+    expect(put2Body.flags.hosting_enabled).toBe(true);
+
+    // An explicit false persists (opting a default-on flag out).
+    const put3 = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { reviewer_enabled: false } },
+    });
+    expect(put3.status()).toBe(200);
+    const put3Body = (await put3.json()) as {
+      flags: Record<string, boolean>;
+      effective: Record<string, boolean>;
+    };
+    expect(put3Body.flags.reviewer_enabled).toBe(false);
+    expect(put3Body.effective.reviewer_enabled).toBe(false);
+    expect(put3Body.flags.demo_mode).toBe(true);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("flags: a custom snake_case key is accepted; a malformed key or non-boolean is 400", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // A well-formed key outside the schema is now a valid custom flag.
+    const custom = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { not_in_schema_yet: true } },
+    });
+    expect(custom.status()).toBe(200);
+    const customBody = (await custom.json()) as {
+      flags: Record<string, boolean>;
+      effective: Record<string, boolean>;
+    };
+    expect(customBody.flags.not_in_schema_yet).toBe(true);
+    expect(customBody.effective.not_in_schema_yet).toBe(true);
+
+    // A malformed key (not lowercase snake_case) is rejected.
+    const badKey = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { "Bad-Key!": true } },
+    });
+    expect(badKey.status()).toBe(400);
+
+    const nonBoolean = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: "yes" } },
+    });
+    expect(nonBoolean.status()).toBe(400);
+
+    // A trailing/doubled underscore is not snake_case.
+    const trailing = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { trailing_: true } },
+    });
+    expect(trailing.status()).toBe(400);
+
+    // An unsupported mode must not silently fall back to merge.
+    const badMode = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "REPLACE", flags: {} },
+    });
+    expect(badMode.status()).toBe(400);
+
+    // A non-object body is rejected instead of succeeding as a no-op merge.
+    const nullBody = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: null,
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(nullBody.status()).toBe(400);
+
+    // The rejected writes left the earlier custom flag untouched.
+    const stored = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(stored.rows[0]?.flags?.demo_mode).toBeUndefined();
+    expect(stored.rows[0]?.flags?.not_in_schema_yet).toBe(true);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("flags: replace mode overwrites the whole bag, deleting omitted keys", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // Seed two flags via the default merge path.
+    await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: true, hosting_enabled: true } },
+    });
+
+    // Replace with a single key: demo_mode must disappear, hosting_enabled kept.
+    const replace = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "replace", flags: { hosting_enabled: true } },
+    });
+    expect(replace.status()).toBe(200);
+    const replaceBody = (await replace.json()) as {
+      flags: Record<string, boolean>;
+    };
+    expect(replaceBody.flags.hosting_enabled).toBe(true);
+    expect(replaceBody.flags.demo_mode).toBeUndefined();
+
+    const stored = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(stored.rows[0]?.flags).toEqual({ hosting_enabled: true });
+
+    // An empty replace clears the bag entirely.
+    const clear = await adminCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { mode: "replace", flags: {} },
+    });
+    expect(clear.status()).toBe(200);
+    const cleared = await db.query<{ flags: Record<string, boolean> | null }>(
+      `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+      [orgId],
+    );
+    expect(cleared.rows[0]?.flags ?? {}).toEqual({});
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("flags: a nonexistent org is 404 on both GET and PUT", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const get = await adminCtx.get(
+      `/api/_admin/orgs/nonexistent-${Date.now()}/flags`,
+    );
+    expect(get.status()).toBe(404);
+
+    const put = await adminCtx.put(
+      `/api/_admin/orgs/nonexistent-${Date.now()}/flags`,
+      { data: { flags: { demo_mode: true } } },
+    );
+    expect(put.status()).toBe(404);
+
+    await adminCtx.dispose();
+  });
+
+  test("flags: a non-admin cannot read or write them (surface not advertised)", async ({
+    playwright,
+  }) => {
+    const outsiderCtx = await newApiContext(playwright);
+    const outsider = await signUpViaApi(outsiderCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [outsider.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    // Instance-admin surface, not org-scoped: even the org's own owner is refused.
+    const get = await outsiderCtx.get(`/api/_admin/orgs/${orgId}/flags`);
+    expect([401, 403]).toContain(get.status());
+
+    const put = await outsiderCtx.put(`/api/_admin/orgs/${orgId}/flags`, {
+      data: { flags: { demo_mode: true } },
+      headers: { Origin: getE2EAppOrigin() },
+    });
+    expect([401, 403]).toContain(put.status());
+
+    await outsiderCtx.dispose();
+  });
+
+  test("sites: claim, list, release", async ({ playwright }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    const slug = `e2e-site-${Date.now()}`;
+
+    const claim = await adminCtx.post(`/api/_admin/orgs/${orgId}/sites`, {
+      data: { slug },
+    });
+    expect(claim.status()).toBe(200);
+    const claimBody = (await claim.json()) as {
+      site: { slug: string; organizationId: string; source: string };
+    };
+    expect(claimBody.site.slug).toBe(slug);
+    expect(claimBody.site.organizationId).toBe(orgId);
+    expect(claimBody.site.source).toBe("manual");
+
+    const ownerRow = await db.query<{ organization_id: string }>(
+      `SELECT organization_id FROM "org_sites" WHERE slug = $1`,
+      [slug],
+    );
+    expect(ownerRow.rows[0]?.organization_id).toBe(orgId);
+
+    const list = await adminCtx.get(`/api/_admin/orgs/${orgId}/sites`);
+    expect(list.status()).toBe(200);
+    const listBody = (await list.json()) as { sites: Array<{ slug: string }> };
+    expect(listBody.sites.some((s) => s.slug === slug)).toBe(true);
+
+    const release = await adminCtx.delete(
+      `/api/_admin/orgs/${orgId}/sites/${slug}`,
+    );
+    expect(release.status()).toBe(200);
+    const gone = await db.query(`SELECT 1 FROM "org_sites" WHERE slug = $1`, [
+      slug,
+    ]);
+    expect(gone.rows).toHaveLength(0);
+
+    // Releasing a slug the org doesn't own is a 404, not a silent success.
+    const releaseMissing = await adminCtx.delete(
+      `/api/_admin/orgs/${orgId}/sites/${slug}`,
+    );
+    expect(releaseMissing.status()).toBe(404);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("sites: claiming a slug owned by another org needs explicit reassign", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const orgACtx = await newApiContext(playwright);
+    const orgA = await signUpViaApi(orgACtx);
+    const orgAId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [orgA.orgSlug],
+      )
+    ).rows[0]?.id;
+    const orgBCtx = await newApiContext(playwright);
+    const orgB = await signUpViaApi(orgBCtx);
+    const orgBId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [orgB.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgAId || !orgBId) throw new Error("Org not found after signup");
+
+    const slug = `e2e-shared-${Date.now()}`;
+    expect(
+      (
+        await adminCtx.post(`/api/_admin/orgs/${orgAId}/sites`, {
+          data: { slug },
+        })
+      ).status(),
+    ).toBe(200);
+
+    // Org B claims the same slug without confirming: 409 naming the current owner.
+    const conflict = await adminCtx.post(`/api/_admin/orgs/${orgBId}/sites`, {
+      data: { slug },
+    });
+    expect(conflict.status()).toBe(409);
+    const conflictBody = (await conflict.json()) as {
+      error: string;
+      ownerOrganizationId: string;
+    };
+    expect(conflictBody.error).toBe("owned_by_other_org");
+    expect(conflictBody.ownerOrganizationId).toBe(orgAId);
+
+    // Still owned by A — the refused claim changed nothing.
+    expect(
+      (
+        await db.query<{ organization_id: string }>(
+          `SELECT organization_id FROM "org_sites" WHERE slug = $1`,
+          [slug],
+        )
+      ).rows[0]?.organization_id,
+    ).toBe(orgAId);
+
+    // With reassign:true it moves to B.
+    const moved = await adminCtx.post(`/api/_admin/orgs/${orgBId}/sites`, {
+      data: { slug, reassign: true },
+    });
+    expect(moved.status()).toBe(200);
+    const movedBody = (await moved.json()) as {
+      reassignedFrom: string;
+      site: { organizationId: string; source: string };
+    };
+    expect(movedBody.reassignedFrom).toBe(orgAId);
+    expect(movedBody.site.organizationId).toBe(orgBId);
+    // Reassign is a re-claim: source must flip too, not just the owner.
+    expect(movedBody.site.source).toBe("manual");
+    expect(
+      (
+        await db.query<{ organization_id: string; source: string }>(
+          `SELECT organization_id, source FROM "org_sites" WHERE slug = $1`,
+          [slug],
+        )
+      ).rows[0]?.organization_id,
+    ).toBe(orgBId);
+
+    await adminCtx.dispose();
+    await orgACtx.dispose();
+    await orgBCtx.dispose();
+  });
+
+  test("sites: invalid slug 400, unknown org 404, non-admin blocked", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const outsiderCtx = await newApiContext(playwright);
+    const outsider = await signUpViaApi(outsiderCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [outsider.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    const badSlug = await adminCtx.post(`/api/_admin/orgs/${orgId}/sites`, {
+      data: { slug: "Bad Slug!" },
+    });
+    expect(badSlug.status()).toBe(400);
+
+    const unknownOrg = await adminCtx.post(
+      `/api/_admin/orgs/nonexistent-${Date.now()}/sites`,
+      { data: { slug: `e2e-x-${Date.now()}` } },
+    );
+    expect(unknownOrg.status()).toBe(404);
+
+    // Instance-admin surface: the org's own owner (not a deployment admin) is refused.
+    const outsiderGet = await outsiderCtx.get(
+      `/api/_admin/orgs/${orgId}/sites`,
+    );
+    expect([401, 403]).toContain(outsiderGet.status());
+    const outsiderPost = await outsiderCtx.post(
+      `/api/_admin/orgs/${orgId}/sites`,
+      {
+        data: { slug: `e2e-y-${Date.now()}` },
+        headers: { Origin: getE2EAppOrigin() },
+      },
+    );
+    expect([401, 403]).toContain(outsiderPost.status());
+
+    await adminCtx.dispose();
+    await outsiderCtx.dispose();
+  });
+
   test("the SSO-enforcement middleware exempts /api/_admin/*", async ({
     playwright,
   }) => {
@@ -643,6 +1070,391 @@ test.describe("/api/_admin/*", () => {
       );
     }
 
+    await adminCtx.dispose();
+  });
+
+  test("notice: PUT pins it, GET returns it, DELETE clears it", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      await (await adminCtx.get(`/api/_admin/orgs/${orgId}/notice`)).json(),
+    ).toEqual({ notice: null });
+
+    const put = await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+      data: {
+        severity: "warn",
+        title: "Payment overdue",
+        message: "Settle the invoice to keep your workspace.",
+        ctaLabel: "Pay invoice",
+        ctaUrl: "https://billing.example.com/invoice",
+      },
+    });
+    expect(put.status()).toBe(200);
+    const putBody = (await put.json()) as {
+      notice: { severity: string; title: string; source: string };
+    };
+    expect(putBody.notice.severity).toBe("warn");
+    expect(putBody.notice.source).toBe("manual");
+
+    // Escalating edits the same row rather than stacking a second one.
+    const escalate = await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+      data: {
+        severity: "block",
+        title: "Access suspended",
+        message: "Your account is more than 7 days overdue.",
+      },
+    });
+    expect(escalate.status()).toBe(200);
+    const rows = await db.query<{ severity: string; cta_url: string | null }>(
+      `SELECT severity, cta_url FROM "organization_notices"
+         WHERE organization_id = $1 AND resolved_at IS NULL`,
+      [orgId],
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.severity).toBe("block");
+    // The edit dropped the CTA — a stale "Pay invoice" button would outlive it.
+    expect(rows.rows[0]?.cta_url).toBeNull();
+
+    const del = await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`);
+    expect(del.status()).toBe(200);
+    // Resolved, not deleted: the org's notice history survives.
+    const afterDelete = await db.query<{ resolved_at: string | null }>(
+      `SELECT resolved_at FROM "organization_notices" WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(afterDelete.rows).toHaveLength(1);
+    expect(afterDelete.rows[0]?.resolved_at).not.toBeNull();
+
+    // Clearing a org with nothing pinned is a 404, not a silent success.
+    expect(
+      (await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`)).status(),
+    ).toBe(404);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: PUT rejects a bad severity, empty text, a half CTA and a non-http link", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    const invalid = [
+      { severity: "nope", title: "t", message: "m" },
+      { severity: "warn", title: "   ", message: "m" },
+      { severity: "warn", title: "t", message: "" },
+      { severity: "warn", title: "t", message: "m", ctaLabel: "Pay" },
+      {
+        severity: "warn",
+        title: "t",
+        message: "m",
+        ctaLabel: "Pay",
+        ctaUrl: "javascript:alert(1)",
+      },
+    ];
+    for (const data of invalid) {
+      const res = await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+        data,
+      });
+      expect(res.status(), JSON.stringify(data)).toBe(400);
+    }
+
+    // Nothing was pinned by any of the rejected writes.
+    const stored = await db.query(
+      `SELECT 1 FROM "organization_notices" WHERE organization_id = $1`,
+      [orgId],
+    );
+    expect(stored.rows).toHaveLength(0);
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: { severity: "warn", title: "t", message: "m" },
+        })
+      ).status(),
+    ).toBe(200);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: a block stops the org's writes while billing and reads keep working", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+    const org = owner.orgSlug;
+
+    // Baseline: the owner can write, and an unrouted POST 404s (not 403).
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/ORGANIZATION_SETTINGS_UPDATE`, {
+          data: { organizationId: orgId, flags: { demo_mode: true } },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (await ownerCtx.post(`/api/${org}/no-such-route`, { data: {} })).status(),
+    ).toBe(404);
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: {
+            severity: "block",
+            title: "Access suspended",
+            message: "Your account is more than 7 days overdue.",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+
+    // The same write is now refused, with a code the client can branch on.
+    const blockedWrite = await ownerCtx.post(
+      `/api/${org}/tools/ORGANIZATION_SETTINGS_UPDATE`,
+      { data: { organizationId: orgId, flags: { demo_mode: false } } },
+    );
+    expect(blockedWrite.status()).toBe(403);
+    expect(((await blockedWrite.json()) as { code?: string }).code).toBe(
+      "org_blocked",
+    );
+    // The refused write changed nothing.
+    expect(
+      (
+        await db.query<{ flags: Record<string, boolean> | null }>(
+          `SELECT flags FROM "organization_settings" WHERE "organizationId" = $1`,
+          [orgId],
+        )
+      ).rows[0]?.flags?.demo_mode,
+    ).toBe(true);
+
+    // Every non-GET org route is gated, not just the ones with a handler.
+    const blockedRoute = await ownerCtx.post(`/api/${org}/no-such-route`, {
+      data: {},
+    });
+    expect(blockedRoute.status()).toBe(403);
+    expect(((await blockedRoute.json()) as { code?: string }).code).toBe(
+      "org_blocked",
+    );
+
+    // What the block screen and the billing page need still answers.
+    const notice = await ownerCtx.get(`/api/${org}/notice`);
+    expect(notice.status()).toBe(200);
+    expect(
+      ((await notice.json()) as { notice: { severity: string; title: string } })
+        .notice,
+    ).toMatchObject({ severity: "block", title: "Access suspended" });
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/ORGANIZATION_SETTINGS_GET`, {
+          data: {},
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/INFRA_BILLING_SITES_LIST`, {
+          data: {},
+        })
+      ).status(),
+    ).toBe(200);
+
+    // Lifting the block restores the write on the next request, not in 5 minutes.
+    expect(
+      (await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`)).status(),
+    ).toBe(200);
+    expect(
+      (
+        await ownerCtx.post(`/api/${org}/tools/ORGANIZATION_SETTINGS_UPDATE`, {
+          data: { organizationId: orgId, flags: { demo_mode: false } },
+        })
+      ).status(),
+    ).toBe(200);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: a warn leaves the org's writes alone", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: {
+            severity: "warn",
+            title: "Payment overdue",
+            message: "Settle the invoice within 7 days.",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+
+    expect(
+      (
+        await ownerCtx.post(
+          `/api/${owner.orgSlug}/tools/ORGANIZATION_SETTINGS_UPDATE`,
+          {
+            data: { organizationId: orgId, flags: { demo_mode: true } },
+          },
+        )
+      ).status(),
+    ).toBe(200);
+    const notice = await ownerCtx.get(`/api/${owner.orgSlug}/notice`);
+    expect(
+      ((await notice.json()) as { notice: { severity: string } }).notice
+        .severity,
+    ).toBe("warn");
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+  });
+
+  test("notice: a non-member cannot read another org's notice", async ({
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: { severity: "warn", title: "t", message: "m" },
+        })
+      ).status(),
+    ).toBe(200);
+
+    const outsiderCtx = await newApiContext(playwright);
+    await signUpViaApi(outsiderCtx);
+    const res = await outsiderCtx.get(`/api/${owner.orgSlug}/notice`);
+    expect(res.status()).toBe(403);
+
+    await adminCtx.dispose();
+    await ownerCtx.dispose();
+    await outsiderCtx.dispose();
+  });
+
+  test("notice: a blocked org shows the block screen, with billing still reachable", async ({
+    browser,
+    playwright,
+  }) => {
+    const adminCtx = await newApiContext(playwright);
+    const admin = await ensureDeploymentAdmin(adminCtx);
+    await verifyDeploymentAdmin(db, admin.userId);
+
+    const baseURL = getE2EAppOrigin();
+    const ctx = await browser.newContext({
+      baseURL,
+      extraHTTPHeaders: { Origin: baseURL },
+    });
+    const page = await ctx.newPage();
+    const owner = await signUpViaApi(page.context().request);
+    const orgId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM "organization" WHERE slug = $1`,
+        [owner.orgSlug],
+      )
+    ).rows[0]?.id;
+    if (!orgId) throw new Error("Org not found after signup");
+
+    expect(
+      (
+        await adminCtx.put(`/api/_admin/orgs/${orgId}/notice`, {
+          data: {
+            severity: "block",
+            title: "Access suspended",
+            message: "Your account is more than 7 days overdue.",
+            ctaLabel: "Pay invoice",
+            ctaUrl: "https://billing.example.com/invoice",
+          },
+        })
+      ).status(),
+    ).toBe(200);
+
+    await page.goto(`/${owner.orgSlug}`);
+    // The operator's own words, not a generic error page.
+    await expect(page.getByText("Access suspended")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole("link", { name: "Pay invoice" })).toBeVisible();
+
+    // The one route a blocked org still opens, so it can settle the notice.
+    await page.getByRole("link", { name: "Go to billing" }).click();
+    await expect(page).toHaveURL(/\/settings\/infra-billing/);
+    await expect(page.getByText("Access suspended")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Lifting the block gives the org back.
+    expect(
+      (await adminCtx.delete(`/api/_admin/orgs/${orgId}/notice`)).status(),
+    ).toBe(200);
+    await page.goto(`/${owner.orgSlug}`);
+    await expect(page.getByText("Access suspended")).toHaveCount(0);
+
+    await ctx.close();
     await adminCtx.dispose();
   });
 

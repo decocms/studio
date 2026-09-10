@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
 import {
@@ -8,7 +9,6 @@ import {
   Globe02,
   Grid01,
   LayoutAlt01,
-  Loading01,
   Plus,
   SearchLg,
   Tag01,
@@ -79,12 +79,14 @@ import {
   nextUniquePagePath,
 } from "./content-mutations";
 import { PageFormDialog, type PageFormMode } from "./page-form-dialog";
+import { RedirectFormDialog } from "./redirect-form-dialog";
 import { SectionRenameDialog } from "./section-rename-dialog";
 import {
   buildRedirectBlock,
   extractRedirects,
   generateRedirectBlockKey,
   type RedirectEntry,
+  type RedirectPayload,
 } from "./redirect-data";
 import { RedirectTypeBadge } from "./redirect-type-badge";
 import {
@@ -495,6 +497,10 @@ function ContentBrowserReady({
   // Dialog state
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
   const [pageDialogError, setPageDialogError] = useState<string | undefined>();
+  const [redirectDialogOpen, setRedirectDialogOpen] = useState(false);
+  const [redirectDialogError, setRedirectDialogError] = useState<
+    string | undefined
+  >();
   const [renameSectionKey, setRenameSectionKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null);
   const [jsonPageKey, setJsonPageKey] = useState<string | null>(null);
@@ -509,7 +515,7 @@ function ContentBrowserReady({
   if (decofileLoading || metaLoading || (dataMissing && sandboxWarming)) {
     return (
       <div className="h-full w-full flex items-center justify-center">
-        <Loading01 size={20} className="animate-spin text-muted-foreground" />
+        <Spinner className="size-5 text-muted-foreground" />
       </div>
     );
   }
@@ -811,23 +817,22 @@ function ContentBrowserReady({
   // ------------------ Redirect CRUD ------------------
   // Redirects are standalone `website/loaders/redirect.ts` blocks; the site's
   // routes auto-discover them, so create/delete is a plain block write.
-  const handleCreateRedirect = async () => {
-    // Seed non-empty placeholder paths so the new block is a valid redirect
-    // (never an empty from/to that would emit a broken route once published).
-    const from = "/redirect-from";
-    const key = generateRedirectBlockKey(decofile, from);
-    const data = buildRedirectBlock({
-      from,
-      to: "/redirect-to",
-      type: "temporary",
-      discardQueryParameters: false,
-    });
+  // Open the create dialog; the block is written only on submit.
+  const openCreateRedirect = () => {
+    setRedirectDialogError(undefined);
+    setRedirectDialogOpen(true);
+  };
+
+  const submitRedirectDialog = async (values: RedirectPayload) => {
+    const key = generateRedirectBlockKey(decofile, values.from);
+    const data = buildRedirectBlock(values);
     try {
       await saveBlock.mutateAsync({ blockKey: key, data });
       toast.success("Created redirect");
+      setRedirectDialogOpen(false);
       setSelection({ collection: "redirects", key });
     } catch (err) {
-      toast.error(
+      setRedirectDialogError(
         err instanceof Error ? err.message : "Could not create redirect",
       );
     }
@@ -1139,7 +1144,7 @@ function ContentBrowserReady({
               if (activeCollection === "pages") {
                 openCreatePage();
               } else if (activeCollection === "redirects") {
-                void handleCreateRedirect();
+                openCreateRedirect();
               } else if (isBlogKind(activeCollection)) {
                 void handleCreateBlog(activeCollection);
               }
@@ -1198,10 +1203,7 @@ function ContentBrowserReady({
           <Suspense
             fallback={
               <div className="h-full flex items-center justify-center">
-                <Loading01
-                  size={20}
-                  className="animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-5 text-muted-foreground" />
               </div>
             }
           >
@@ -1442,6 +1444,20 @@ function ContentBrowserReady({
         />
       )}
 
+      {/* Redirect create dialog */}
+      <RedirectFormDialog
+        open={redirectDialogOpen}
+        isPending={saveBlock.isPending}
+        error={redirectDialogError}
+        onSubmit={submitRedirectDialog}
+        onOpenChange={(next) => {
+          if (!next) {
+            setRedirectDialogOpen(false);
+            setRedirectDialogError(undefined);
+          }
+        }}
+      />
+
       {/* Section rename dialog */}
       {renameSectionKey && (
         <SectionRenameDialog
@@ -1508,7 +1524,7 @@ function ContentBrowserReady({
             >
               {isDeleting ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   Deleting…
                 </>
               ) : (
@@ -1945,10 +1961,7 @@ function ItemList({
           ) : activeCollection === "apps" ? (
             appCatalogLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loading01
-                  size={18}
-                  className="animate-spin text-muted-foreground"
-                />
+                <Spinner className="size-4.5 text-muted-foreground" />
               </div>
             ) : filteredApps.length === 0 ? (
               <ListEmpty

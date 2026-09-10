@@ -1,0 +1,168 @@
+/**
+ * Reading and writing the main-panel view — the ONE place a tab id becomes a
+ * URL, and the only writer of the `{-$panel}` segment.
+ *
+ * A view is opened by NAME, not by `to: "."`: the panel machinery renders on
+ * every destination (the tab bar is in the shell header, the chat side panel
+ * follows you around), so "open Preview" clicked from the Library has to land
+ * on Preview's own address rather than leaving `/$org/library` in the URL
+ * showing something else. The four views that ARE a destination page (Tasks,
+ * Library, Reports, Home) navigate to that page for the same reason.
+ *
+ * Closing is the exception and stays `to: "."`: `?mainpanel=false` is layout,
+ * it keeps the path — and therefore the view — so re-opening returns to it.
+ */
+
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import {
+  DESTINATION_ROUTE,
+  type DestinationRoutePath,
+  useLeafRoutePath,
+} from "@/hooks/use-destination-route";
+import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
+import {
+  type DestinationPanel,
+  isDestinationPanel,
+  panelLocationForTab,
+  type PanelPayload,
+  tabIdForPanel,
+} from "./panel-route";
+import { type EntityLayoutMetadata, resolveActiveTabAndOpen } from "./tab-id";
+
+/** Typed against the router's own paths, so a rename in `router.tsx` breaks here. */
+const DESTINATION_ROUTE_BY_PANEL = {
+  board: DESTINATION_ROUTE.tasks,
+  files: DESTINATION_ROUTE.library,
+  reports: DESTINATION_ROUTE.reports,
+  overview: DESTINATION_ROUTE.home,
+  discover: DESTINATION_ROUTE.discover,
+} as const satisfies Record<DestinationPanel, DestinationRoutePath>;
+
+/** The view the URL names, as a tab id; `undefined` when it names none. */
+export function useActivePanelTabId(): string | undefined {
+  const params = useParams({ strict: false });
+  const search = useSearch({ strict: false }) as PanelPayload;
+  /** One optional segment now, so it is unambiguously the view — the project
+   *  moved to `?virtualmcpid=`. A bookmarked project id in that slot is redirected
+   *  by the route's own `beforeLoad` before anything renders. */
+  return tabIdForPanel(params.panel, search);
+}
+
+/**
+ * The main-panel view actually SHOWING, resolving the agent's `defaultMainView`
+ * and the route default the SAME way the panel content does (see
+ * {@link resolveActiveTabAndOpen}).
+ *
+ * Unlike {@link useActivePanelTabId}, which returns only what the URL segment
+ * NAMES, this is defined on the bare `/$org/agents` entry that renders the
+ * default Preview without a `{-$panel}` segment. Gates that ask "is the Site
+ * Editor surface on screen?" (the publish cluster, the branch selector) must
+ * use THIS — reading the raw segment made them vanish whenever the surface was
+ * shown by default rather than by an explicit segment.
+ */
+export function useResolvedMainTabId(
+  entityMetadata: EntityLayoutMetadata | null,
+): string {
+  const panelTabId = useActivePanelTabId();
+  const routeDefaultMain = useRouteDefaultMain();
+  const search = useSearch({ strict: false }) as { mainpanel?: boolean };
+  return resolveActiveTabAndOpen({
+    panelTabId,
+    mainPanelParam: search.mainpanel,
+    routeDefaultMain,
+    metadata: entityMetadata,
+  }).activeTab;
+}
+
+export interface OpenPanelOptions {
+  /** Defaults to `true`: swapping the view is a layout write, not a place. */
+  replace?: boolean;
+  /** Scope the view to another project. */
+  virtualmcpid?: string;
+  /** Extra search the caller owns, applied under the panel's own payload. */
+  search?: (prev: Record<string, unknown>) => Record<string, unknown>;
+}
+
+export function usePanelNavigate(): {
+  openPanel: (tabId: string, opts?: OpenPanelOptions) => void;
+  closePanel: (opts?: { replace?: boolean }) => void;
+} {
+  const navigate = useNavigate();
+  const params = useParams({ strict: false });
+  const currentProject = (
+    useSearch({ strict: false }) as { virtualmcpid?: string }
+  ).virtualmcpid;
+  const orgSlug = params.org ?? "";
+  const onChatRoute = useLeafRoutePath() === DESTINATION_ROUTE.agents;
+  /** The legacy `/$org/$taskId` keeps the thread in its path; every destination
+   *  carries it in `?thread=`, so it has to move with the navigation. */
+  const legacyThreadId = params.taskId;
+
+  /**
+   * Search is the page's, so only layout crosses a page boundary: leaving one
+   * destination for another carries the thread and the chat panel and nothing
+   * else. Two pages that both declare a key (`?preview=` on Chat and Library)
+   * mean different things by it, and TanStack's own validator cannot tell them
+   * apart. Staying put keeps the page's search intact.
+   */
+  const nextSearch =
+    (payload: PanelPayload, samePage: boolean, opts?: OpenPanelOptions) =>
+    (prev: Record<string, unknown>) => {
+      const base: Record<string, unknown> = samePage
+        ? { ...prev }
+        : { thread: prev.thread, sidepanel: prev.sidepanel };
+      if (legacyThreadId) base.thread = legacyThreadId;
+      const next: Record<string, unknown> = {
+        ...(opts?.search ? opts.search(base) : base),
+        ...payload,
+        /** An explicit `?mainpanel=false` is stale once a view is chosen. */
+        mainpanel: undefined,
+      };
+      return next;
+    };
+
+  const openPanel = (tabId: string, opts?: OpenPanelOptions) => {
+    const { panel, payload } = panelLocationForTab(tabId);
+    const replace = opts?.replace ?? true;
+    const toDestination = !!panel && isDestinationPanel(panel);
+    const search = nextSearch(payload, onChatRoute && !toDestination, opts);
+
+    if (panel && toDestination) {
+      const to = DESTINATION_ROUTE_BY_PANEL[panel];
+      if (to === DESTINATION_ROUTE.tasks) {
+        navigate({
+          to,
+          params: { org: orgSlug, taskKey: undefined },
+          search,
+          replace,
+        });
+        return;
+      }
+      navigate({ to, params: { org: orgSlug }, search, replace });
+      return;
+    }
+
+    const virtualmcpid = opts?.virtualmcpid ?? currentProject;
+    navigate({
+      to: DESTINATION_ROUTE.agents,
+      params: { org: orgSlug, panel },
+      search: (prev: Record<string, unknown>) => ({
+        ...search(prev),
+        virtualmcpid,
+      }),
+      replace,
+    });
+  };
+
+  const closePanel = (opts?: { replace?: boolean }) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        mainpanel: false,
+      }),
+      replace: opts?.replace ?? true,
+    });
+
+  return { openPanel, closePanel };
+}

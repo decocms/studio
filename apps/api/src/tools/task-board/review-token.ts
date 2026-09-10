@@ -7,28 +7,12 @@
  * one agent could forge the "both reviewers approved" auto-merge gate.
  *
  * A signature, not a stored row: the tuple it signs is already derivable at
- * verify time, so there is nothing to persist. Same signing key and compare as
- * `file-storage/share-password.ts`.
+ * verify time, so there is nothing to persist. Signed with `core/signing-key`.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ReviewerKind } from "@decocms/shared/task-board";
-import { getSettings } from "@/settings";
-
-let signingKey: Buffer | null = null;
-function getSigningKey(): Buffer {
-  if (signingKey) return signingKey;
-  let secret: string | undefined;
-  try {
-    const settings = getSettings();
-    secret = settings.studioJwtSecret ?? settings.betterAuthSecret;
-  } catch {
-    // Settings not initialized (e.g. unit tests) — fall back like auth/jwt.ts.
-    secret = undefined;
-  }
-  signingKey = secret ? Buffer.from(secret) : randomBytes(32);
-  return signingKey;
-}
+import { getSigningKey } from "@/core/signing-key";
 
 /** The `rtok_` prefix is quoted verbatim in reviewer prompts — keep it. */
 export function mintReviewToken(

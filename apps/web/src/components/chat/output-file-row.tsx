@@ -6,25 +6,17 @@
  */
 
 import { useT } from "@/i18n/use-t.ts";
-import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Download01 } from "@untitledui/icons";
 import { FileTypeIcon } from "@/components/file-type-icon";
 import { formatFileTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import type { ThreadOutput } from "./use-thread-outputs.ts";
 
 export function OutputFileRow({ file }: { file: ThreadOutput }) {
   const t = useT();
-  const navigate = useNavigate();
-  const open = () =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: formatFileTabId(file.key),
-      }),
-      replace: true,
-    });
+  const { openPanel } = usePanelNavigate();
+  const open = () => openPanel(formatFileTabId(file.key));
 
   return (
     <div className="group flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">

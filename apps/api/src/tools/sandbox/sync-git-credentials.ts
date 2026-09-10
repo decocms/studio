@@ -9,6 +9,11 @@ import {
   buildCloneInfo,
   ensureGithubCloneToken,
 } from "../../shared/github-clone-info";
+import {
+  cloneInfoForRepository,
+  findRepositoryForLegacyBinding,
+  repositoryUsesStudioCredentials,
+} from "@/git-providers";
 
 /** Matches the cap `sandbox-proxy.ts` applies to `/_sandbox/config` responses. */
 const CONFIG_RESPONSE_MAX_BYTES = 10 * 1024 * 1024;
@@ -42,20 +47,43 @@ export async function refreshSandboxGitCredentials(
   handle: string,
   githubRepo: GithubRepo,
 ): Promise<void> {
-  if (!githubRepo.connectionId) {
-    throw new GitPushAuthError(
-      "Push requires a connected GitHub account. Connect mcp-github for this project and restart the sandbox.",
-    );
-  }
-
   const organizationId = ctx.organization?.id;
   if (!organizationId) {
     throw new GitPushAuthError(RECONNECT_ERROR);
   }
 
+  // Studio-owned credentials refresh through the repository's provider account.
+  const repository = await findRepositoryForLegacyBinding(
+    ctx.storage,
+    organizationId,
+    githubRepo,
+  );
+  if (
+    repository &&
+    (await repositoryUsesStudioCredentials(ctx.storage, repository))
+  ) {
+    const info = await cloneInfoForRepository(ctx, repository, {
+      forceRefresh: true,
+    }).catch((error) => {
+      throw new GitPushAuthError(
+        error instanceof Error ? error.message : RECONNECT_ERROR,
+      );
+    });
+    await pushGitConfig(ctx, runner, handle, info);
+    return;
+  }
+
+  const connectionId =
+    githubRepo.connectionId ?? repository?.legacyConnectionId;
+  if (!connectionId) {
+    throw new GitPushAuthError(
+      "Push requires a connected git account. Connect the repository's provider for this project and restart the sandbox.",
+    );
+  }
+
   await ensureGithubCloneToken({
     ctx,
-    connectionId: githubRepo.connectionId,
+    connectionId,
     organizationId,
     forceRefresh: true,
     onLegacyMintError: (error) => {
@@ -65,7 +93,7 @@ export async function refreshSandboxGitCredentials(
   });
 
   const { cloneUrl, gitUserName, gitUserEmail } = await buildCloneInfo(
-    githubRepo.connectionId,
+    connectionId,
     githubRepo.owner,
     githubRepo.name,
     ctx.db,
@@ -78,6 +106,20 @@ export async function refreshSandboxGitCredentials(
     throw code ? new GitPushAuthError(message) : error;
   });
 
+  await pushGitConfig(ctx, runner, handle, {
+    cloneUrl,
+    gitUserName,
+    gitUserEmail,
+  });
+}
+
+async function pushGitConfig(
+  ctx: StudioContext,
+  runner: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
+  handle: string,
+  info: { cloneUrl: string; gitUserName: string; gitUserEmail: string },
+): Promise<void> {
+  const { cloneUrl, gitUserName, gitUserEmail } = info;
   const operator = coAuthorFromStudioContext(ctx);
 
   const res = await runner.proxyDaemonRequest(handle, "/_sandbox/config", {

@@ -1,6 +1,6 @@
 /**
  * Join a virtual MCP's package path (`metadata.runtime.path`, e.g.
- * "eitri-shopping-monte-carlo-shared") with a repo-relative `.deco/*` path.
+ * "eitri-shopping-example-shared") with a repo-relative `.deco/*` path.
  *
  * The sandbox daemon resolves file reads against the repo root, but when the
  * project doesn't live at the repo root the dev server runs with the package

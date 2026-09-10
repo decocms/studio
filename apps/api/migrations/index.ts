@@ -1,3 +1,9 @@
+import * as migration211userfsorg from "./211-user-fs-org";
+import * as migration210githubrepositoryauthorization from "./210-github-repository-authorization";
+import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
+import * as migration208githubconnectflows from "./208-github-connect-flows";
+import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
+import * as migration206repositoryconsumers from "./206-repository-consumers";
 import { type Migration } from "kysely";
 import * as migration001initialschema from "./001-initial-schema.ts";
 import * as migration002organizationsettings from "./002-organization-settings.ts";
@@ -187,6 +193,23 @@ import * as migration185jirarescanexistingcards from "./185-jira-rescan-existing
 import * as migration186jirarescanpendingflag from "./186-jira-rescan-pending-flag.ts";
 import * as migration187taskboardcommentthread from "./187-task-board-comment-thread.ts";
 import * as migration188invitationautoaccept from "./188-invitation-auto-accept.ts";
+import * as migration189taskboardcolumnautomations from "./189-task-board-column-automations.ts";
+import * as migration190taskboardreviewcyclestartedat from "./190-task-board-review-cycle-started-at.ts";
+import * as migration191taskboardcolumns from "./191-task-board-columns.ts";
+import * as migration192taskboardverdictnudgeactivity from "./192-task-board-verdict-nudge-activity.ts";
+import * as migration193taskboardstatuscolumnfk from "./193-task-board-status-column-fk.ts";
+import * as migration194jiralinksprint from "./194-jira-link-sprint.ts";
+import * as migration195taskboardsprintactivity from "./195-task-board-sprint-activity.ts";
+import * as migration196taskboardcolumntrackerstatuses from "./196-task-board-column-tracker-statuses.ts";
+import * as migration197taskboardprompts from "./197-task-board-prompts.ts";
+import * as migration198taskboardexternalurl from "./198-task-board-external-url.ts";
+import * as migration199dropjiramirrorandorgcolumns from "./199-drop-jira-mirror-and-org-columns.ts";
+import * as migration200jirarruntrigger from "./200-jira-run-trigger.ts";
+import * as migration201organizationnotices from "./201-organization-notices.ts";
+import * as migration202redactbase64threadparts from "./202-redact-base64-thread-parts.ts";
+import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
+import * as migration204gitprovideraccountsandrepositories from "./204-git-provider-accounts-and-repositories.ts";
+import * as migration205repositoryreferences from "./205-repository-references.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -405,6 +428,36 @@ const migrations: Record<string, Migration> = {
   "186-jira-rescan-pending-flag": migration186jirarescanpendingflag,
   "187-task-board-comment-thread": migration187taskboardcommentthread,
   "188-invitation-auto-accept": migration188invitationautoaccept,
+  "189-task-board-column-automations": migration189taskboardcolumnautomations,
+  "190-task-board-review-cycle-started-at":
+    migration190taskboardreviewcyclestartedat,
+  "191-task-board-columns": migration191taskboardcolumns,
+  "192-task-board-verdict-nudge-activity":
+    migration192taskboardverdictnudgeactivity,
+  "193-task-board-status-column-fk": migration193taskboardstatuscolumnfk,
+  "194-jira-link-sprint": migration194jiralinksprint,
+  "195-task-board-sprint-activity": migration195taskboardsprintactivity,
+  "196-task-board-column-tracker-statuses":
+    migration196taskboardcolumntrackerstatuses,
+  "197-task-board-prompts": migration197taskboardprompts,
+  "198-task-board-external-url": migration198taskboardexternalurl,
+  "199-drop-jira-mirror-and-org-columns":
+    migration199dropjiramirrorandorgcolumns,
+  "200-jira-run-trigger": migration200jirarruntrigger,
+  "201-organization-notices": migration201organizationnotices,
+  "202-redact-base64-thread-parts": migration202redactbase64threadparts,
+  "203-task-board-preview-routes": migration203taskboardpreviewroutes,
+  "204-git-provider-accounts-and-repositories":
+    migration204gitprovideraccountsandrepositories,
+  "205-repository-references": migration205repositoryreferences,
+  "206-repository-consumers": migration206repositoryconsumers,
+  "207-task-board-prs-repo-idx": migration207taskboardprsrepoidx,
+  "208-github-connect-flows": migration208githubconnectflows,
+  "209-github-installation-authorization":
+    migration209githubinstallationauthorization,
+  "210-github-repository-authorization":
+    migration210githubrepositoryauthorization,
+  "211-user-fs-org": migration211userfsorg,
 };
 
 export default migrations;

@@ -17,6 +17,7 @@ import {
   type Workload,
 } from "@decocms/sandbox/provider";
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
 import { secondaryRepoDirNames } from "@decocms/shared/secondary-repo-dirs";
 import { sleep } from "@decocms/shared/std";
@@ -75,12 +76,24 @@ import { getSettings } from "../../settings";
 import { getPublicUrl } from "../../core/server-constants";
 import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
+import {
+  cloneInfoForRepository,
+  findRepositoryForLegacyBinding,
+  repositoryUsesStudioCredentials,
+} from "@/git-providers";
+import { GitProviderError } from "../../git-providers/types";
+import type { RepositoryRecord } from "../../storage/repositories";
+import {
+  encodeSandboxStartError,
+  SANDBOX_START_ERROR_CODES,
+} from "@decocms/shared/sandbox-start-errors";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
 type GithubRepo = {
   owner: string;
   name: string;
   connectionId?: string;
+  repositoryId?: string;
 };
 
 type GithubRepoMeta = {
@@ -179,16 +192,8 @@ export const SANDBOX_START = defineTool({
       resolvedBranch,
     );
 
-    // Thread-scoped repo (bound by `load_repo`) wins over the agent's repo — the
-    // same rule as `ensureSandbox`. Without this the frontend's auto-start
-    // provisions a repo-LESS sandbox for the synthetic Decopilot agent (whose
-    // metadata has no repo), so nothing clones and the dev server stays idle.
-    // Derive the thread id from the branch since this path has no
-    // `ctx.metadata.threadId`.
-    const threadRepo = await getThreadGithubRepo(
-      ctx,
-      threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
-    );
+    // Thread-scoped repo wins over the agent's repo — reuse askingThreadId (not a re-derivation that drops input.threadId).
+    const threadRepo = await getThreadGithubRepo(ctx, askingThreadId);
     const githubRepo =
       threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
 
@@ -201,10 +206,7 @@ export const SANDBOX_START = defineTool({
       branch: resolvedBranch,
       metadata,
       githubRepo,
-      threadRepos: await getThreadGithubRepos(
-        ctx,
-        threadIdFromBranch(resolvedBranch) ?? ctx.metadata?.threadId,
-      ),
+      threadRepos: await getThreadGithubRepos(ctx, askingThreadId),
       existing,
       runner,
     });
@@ -239,6 +241,24 @@ export async function ensureSandbox(
      * agent-run SandboxTemplate + warm pool. Defaults to `interactive`.
      */
     purpose?: SandboxPurpose;
+    /**
+     * Fired only when this call actually has to provision a pod — i.e. the
+     * resume fast path below did NOT hit. Callers that show a "booting the
+     * sandbox" status use this so a warm resume doesn't announce a boot that
+     * isn't happening. Best-effort: a throw here must not fail the ensure.
+     */
+    onColdStart?: () => Promise<void>;
+    /**
+     * The pod this call bound, once it is known: `warmPoolAdopted` means the
+     * tenant warm pool handed over a pod that is already cloned, installed and
+     * serving, rather than a bare `cloneOnly` checkout.
+     *
+     * A callback rather than a return field because `SandboxRecord` is
+     * persisted (thread + agent metadata) and this is a fact about ONE claim,
+     * not about the sandbox. Not fired on the resume fast path — no pod was
+     * bound there, so a caller keeps whatever it already assumed.
+     */
+    onBound?: (info: { warmPoolAdopted: boolean }) => void;
   },
   ctx: StudioContext,
 ): Promise<SandboxRecord> {
@@ -301,7 +321,9 @@ export async function ensureSandbox(
   const threadRepo = await getThreadGithubRepo(ctx, provisioningThreadId);
   const githubRepo =
     threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
-  const { entry } = await provisionSandbox({
+  // Past the resume fast path: this call is a real boot, so tell the caller.
+  await input.onColdStart?.().catch(() => {});
+  const { entry, warmPoolAdopted } = await provisionSandbox({
     ctx,
     userId,
     sandboxUserId,
@@ -315,6 +337,7 @@ export async function ensureSandbox(
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
   });
+  input.onBound?.({ warmPoolAdopted });
   return entry;
 }
 
@@ -341,6 +364,28 @@ type StartParams = {
 };
 
 /**
+ * The `repository` row to clone through Studio-owned credentials, or null to
+ * fall back to the legacy connection path — either because it's a bare
+ * credentialless legacy binding (no account, no connection at all) or because
+ * its account is actually servable by Studio.
+ */
+async function resolveStudioRepository(
+  ctx: StudioContext,
+  repository: RepositoryRecord | null,
+  rawConnectionId: string | undefined,
+): Promise<RepositoryRecord | null> {
+  if (!repository) return null;
+  const credentialless =
+    repository.accountId === null &&
+    !rawConnectionId &&
+    !repository.legacyConnectionId;
+  if (credentialless) return repository;
+  return (await repositoryUsesStudioCredentials(ctx.storage, repository))
+    ? repository
+    : null;
+}
+
+/**
  * `EnsureRepo` entries for a thread's secondary checkouts.
  *
  * Skips the primary when it turns up in the list, so a repo cannot be cloned
@@ -365,21 +410,46 @@ async function buildExtraRepoOpts(args: {
   const dirNames = secondaryRepoDirNames(secondaries);
   const out: EnsureRepo[] = [];
   for (const [i, repo] of secondaries.entries()) {
-    if (!repo.connectionId) continue;
     try {
-      const { cloneUrl } = await buildCloneInfo(
-        repo.connectionId,
-        repo.owner,
-        repo.name,
-        args.ctx.db,
-        args.ctx.vault,
+      /**
+       * A secondary may come from either model, and the two can mix in one
+       * sandbox: the daemon clones each checkout from its own credentialed
+       * URL, so a GitHub primary alongside a GitLab secondary is just two
+       * independent clones.
+       */
+      const repository = await findRepositoryForLegacyBinding(
+        args.ctx.storage,
+        args.orgId,
+        repo,
       );
+      const studioRepository = await resolveStudioRepository(
+        args.ctx,
+        repository,
+        repo.connectionId,
+      );
+      const connectionId = repo.connectionId ?? repository?.legacyConnectionId;
+      if (!studioRepository && !connectionId) continue;
+      const { cloneUrl } = studioRepository
+        ? await cloneInfoForRepository(args.ctx, studioRepository, {
+            forceRefresh: true,
+          })
+        : await buildCloneInfo(
+            connectionId!,
+            repo.owner,
+            repo.name,
+            args.ctx.db,
+            args.ctx.vault,
+          );
       out.push({
         cloneUrl,
-        connectionId: repo.connectionId,
+        ...(studioRepository
+          ? { repositoryId: studioRepository.id }
+          : { connectionId: connectionId! }),
         userName: args.gitUserName,
         userEmail: args.gitUserEmail,
-        displayName: `${repo.owner}/${repo.name}`,
+        displayName: studioRepository
+          ? studioRepository.path
+          : `${repo.owner}/${repo.name}`,
         directoryName: dirNames[i]!,
         submoduleCredentials: [],
       });
@@ -393,9 +463,11 @@ async function buildExtraRepoOpts(args: {
   return out;
 }
 
-async function provisionSandbox(
-  params: StartParams,
-): Promise<{ entry: SandboxRecord; isNewVm: boolean }> {
+async function provisionSandbox(params: StartParams): Promise<{
+  entry: SandboxRecord;
+  isNewVm: boolean;
+  warmPoolAdopted: boolean;
+}> {
   const {
     ctx,
     userId,
@@ -437,6 +509,7 @@ async function provisionSandbox(
     | {
         cloneUrl: string;
         connectionId?: string;
+        repositoryId?: string;
         userName: string;
         userEmail: string;
         branch: string;
@@ -446,13 +519,28 @@ async function provisionSandbox(
     | undefined;
 
   if (githubRepo) {
+    // Studio-owned credentials mint through the repository's provider account.
+    const repository = await findRepositoryForLegacyBinding(
+      ctx.storage,
+      orgId,
+      githubRepo,
+    );
+    const studioRepository = await resolveStudioRepository(
+      ctx,
+      repository,
+      githubRepo.connectionId,
+    );
+
+    const connectionId =
+      githubRepo.connectionId ?? repository?.legacyConnectionId ?? undefined;
+
     // Legacy repo-scoped children may mint through their source connection here.
     // buildCloneInfo and detectRepoRuntime refresh OAuth-shaped tokens before
     // using them, including refreshable repo-scoped GitHub children.
-    if (githubRepo.connectionId) {
+    if (!studioRepository && connectionId) {
       await ensureGithubCloneToken({
         ctx,
-        connectionId: githubRepo.connectionId,
+        connectionId,
         organizationId: orgId,
         forceRefresh: true,
         onLegacyMintError: (error) => {
@@ -462,7 +550,7 @@ async function provisionSandbox(
           console.error(
             "[provisionSandbox] repo-scoped legacy token mint failed",
             {
-              connectionId: githubRepo.connectionId,
+              connectionId,
               error: (error as Error).message,
             },
           );
@@ -474,15 +562,17 @@ async function provisionSandbox(
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
     // trade-off of linking a repo without a GitHub connection.
-    const { cloneUrl, gitUserName, gitUserEmail } = githubRepo.connectionId
-      ? await buildCloneInfo(
-          githubRepo.connectionId,
-          githubRepo.owner,
-          githubRepo.name,
-          ctx.db,
-          ctx.vault,
-        )
-      : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
+    const { cloneUrl, gitUserName, gitUserEmail } = studioRepository
+      ? await studioCloneInfo(ctx, studioRepository)
+      : connectionId
+        ? await buildCloneInfo(
+            connectionId,
+            githubRepo.owner,
+            githubRepo.name,
+            ctx.db,
+            ctx.vault,
+          )
+        : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
 
     // Lockfile probe only when metadata has no PM. Used to be client-side in
     // the repo picker, but that introduced a race — SANDBOX_START fired from the
@@ -491,10 +581,11 @@ async function provisionSandbox(
     // Running it here piggybacks on the same request so the baked workload
     // always matches the detected PM; the result is persisted so subsequent
     // starts skip the probe.
-    if (!packageManager) {
-      const detected = githubRepo.connectionId
+    // Studio-credentialed repos skip the probe: the daemon reads the lockfile.
+    if (!packageManager && !studioRepository) {
+      const detected = connectionId
         ? await detectRepoRuntime(
-            githubRepo.connectionId,
+            connectionId,
             githubRepo.owner,
             githubRepo.name,
             ctx.db,
@@ -548,13 +639,17 @@ async function provisionSandbox(
     repoOpts = {
       cloneUrl,
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
-      ...(githubRepo.connectionId
-        ? { connectionId: githubRepo.connectionId }
-        : {}),
+      ...(studioRepository
+        ? { repositoryId: studioRepository.id }
+        : connectionId
+          ? { connectionId }
+          : {}),
       userName: gitUserName,
       userEmail: gitUserEmail,
       branch: gitBranch,
-      displayName: `${githubRepo.owner}/${githubRepo.name}`,
+      displayName: studioRepository
+        ? studioRepository.path
+        : `${githubRepo.owner}/${githubRepo.name}`,
       // Always set, empty included — see buildConfigPayload: an absent field
       // means "keep current" to the daemon, which would make a revoked PAT
       // outlive its deletion.
@@ -637,7 +732,8 @@ async function provisionSandbox(
   // infrastructure.
   await waitForSchedulableCapacity(runner);
 
-  const sandbox = await runner.ensure(
+  const sandbox = await ensureOrRephrase(
+    runner,
     { userId: sandboxUserId, projectRef },
     {
       // Annotation only — the handle comes from `projectRef`, which already
@@ -721,7 +817,7 @@ async function provisionSandbox(
 
   // Different handle = new sandbox (stale entry / orphan recovery / state miss).
   const isNewVm = !existing || existing.sandboxHandle !== sandbox.handle;
-  return { entry, isNewVm };
+  return { entry, isNewVm, warmPoolAdopted: sandbox.warmPoolAdopted };
 }
 
 /**
@@ -846,6 +942,36 @@ const CAPACITY_POLL_MS = 5_000;
  * everyone behind it. That is the trade — one run pays the readiness timeout
  * instead of every run in the burst.
  */
+/**
+ * `runner.ensure`, with daemon-config failures rephrased for the caller.
+ *
+ * A `ConfigRequestError` is the bootstrap handshake failing against the pod —
+ * most often a sentinel 401, meaning the pool handed out a pod already bound to
+ * another claim. The runner already tore the claim down, so the correct next
+ * step is another attempt on a different pod. Two callers need that said in
+ * words: the task board decides a retry by matching the message
+ * (`isTransientRunFailure` — "sandbox provisioning failed" is one of its
+ * patterns), and the agent gets this as a tool error, where the raw
+ * `/_sandbox/config returned 401: {"error":"unauthorized"}` reads as a bug in
+ * the tool call it just made and it stops using the filesystem instead of
+ * retrying. The status stays in the message for the logs; `cause` keeps the
+ * original for anything that wants it.
+ */
+async function ensureOrRephrase(
+  runner: AgentSandboxProvider,
+  ...args: Parameters<AgentSandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  try {
+    return await runner.ensure(...args);
+  } catch (err) {
+    if (!(err instanceof ConfigRequestError)) throw err;
+    throw new Error(
+      `sandbox provisioning failed: the sandbox pod rejected the bootstrap handshake (HTTP ${err.status}). The claim was released; retrying gets a different pod.`,
+      { cause: err },
+    );
+  }
+}
+
 async function waitForSchedulableCapacity(
   runner: AgentSandboxProvider,
 ): Promise<void> {
@@ -867,5 +993,30 @@ async function waitForSchedulableCapacity(
       );
     }
     await sleep(CAPACITY_POLL_MS);
+  }
+}
+
+/**
+ * Clone credentials from a first-class repository, surfaced with the same
+ * typed error codes the legacy path emits so the client's reconnect / relink
+ * affordances keep working.
+ */
+async function studioCloneInfo(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+): Promise<{ cloneUrl: string; gitUserName: string; gitUserEmail: string }> {
+  try {
+    return await cloneInfoForRepository(ctx, repository, {
+      forceRefresh: true,
+    });
+  } catch (error) {
+    if (error instanceof GitProviderError) {
+      const code =
+        error.status === 404
+          ? SANDBOX_START_ERROR_CODES.githubConnectionMissing
+          : SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
+      throw new Error(encodeSandboxStartError(code, error.message));
+    }
+    throw error;
   }
 }

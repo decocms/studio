@@ -387,6 +387,7 @@ export const sandbox = {
   "sandbox.itemActions.moreActions": "More actions",
   "sandbox.itemActions.rename": "Rename",
   "sandbox.itemActions.viewJson": "View JSON",
+  "sandbox.itemRow.selectItem": "Select {title}",
   "sandbox.library.subtitle":
     "The context every generated post is written against.",
   "sandbox.library.tabContext": "Context",
@@ -573,36 +574,26 @@ export const sandbox = {
   "sandbox.preview.catchAllParamLabel": "path",
   "sandbox.preview.choosePage": "Choose page",
   "sandbox.preview.clickElementToAsk": "Click any element to ask the AI",
-  "sandbox.preview.cms": "CMS",
   "sandbox.preview.collapseTerminal": "Collapse terminal",
-  "sandbox.preview.editContent": "Edit content",
-  "sandbox.preview.exitEditor": "Exit editor",
   "sandbox.preview.expandTerminal": "Expand terminal",
   "sandbox.preview.resizeTerminal": "Resize terminal",
-  "sandbox.preview.copyCurrentUrl": "Copy Current URL",
   "sandbox.preview.createNewPage": "Create new page",
   "sandbox.preview.devServerPreviewTitle": "Dev Server Preview",
   "sandbox.preview.deviceDesktop": "Desktop",
   "sandbox.preview.deviceMobile": "Mobile (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
-  "sandbox.preview.editSeo": "Edit SEO",
   "sandbox.preview.enterToGo": "Enter to go",
-  "sandbox.preview.failedToCopyUrl": "Failed to copy URL",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
   "sandbox.preview.globalComponents": "Global components",
   "sandbox.preview.globalLoaders": "Global loaders",
-  "sandbox.preview.invalidPageBlockKey": "Invalid page block key",
   "sandbox.preview.loaderBadge": "Loader",
   "sandbox.preview.loaderNoLongerExists": "This loader no longer exists.",
-  "sandbox.preview.moreOptions": "More options",
   "sandbox.preview.noPagesFound": "No pages found in this site.",
   "sandbox.preview.noSearchResults": "No results match your search.",
   "sandbox.preview.noServerRunning": "No server running",
-  "sandbox.preview.openInCursor": "Open in Cursor",
   "sandbox.preview.openInBrowser": "Open in browser",
   "sandbox.preview.failedToOpenInBrowser": "Couldn't open your browser",
   "sandbox.preview.openInNewTab": "Open in new tab",
-  "sandbox.preview.openInVscode": "Open in VSCode",
   "sandbox.preview.pageAlreadyExists":
     'A page with path "{path}" already exists.',
   "sandbox.preview.pageCreated": 'Page "{name}" created',
@@ -614,9 +605,7 @@ export const sandbox = {
     "Showing your published site. You can make changes now — they'll appear once the preview is ready.",
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
-  "sandbox.preview.urlCopiedToClipboard": "URL copied to clipboard",
   "sandbox.preview.valueForParam": "Value for {label}",
-  "sandbox.preview.viewJson": "View JSON",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
   "sandbox.productBlocks.addProductsButton": "Add products",
@@ -688,6 +677,11 @@ export const sandbox = {
   "sandbox.recordEditor.optionPerson": "Person",
   "sandbox.recordEditor.placeholderEmail": "author@example.com",
   "sandbox.recordEditor.titleAuthor": "Author",
+  "sandbox.redirectFormDialog.title": "Create redirect",
+  "sandbox.redirectFormDialog.submit": "Create",
+  "sandbox.redirectFormDialog.pending": "Creating…",
+  "sandbox.redirectFormDialog.cancel": "Cancel",
+  "sandbox.redirectFormDialog.errorRequired": "From and To are required.",
   "sandbox.redirectEditor.discardQueryParameters": "Discard query parameters",
   "sandbox.redirectEditor.fromDescription":
     "The source path to match. Supports URLPattern syntax (e.g. /product/:slug).",
@@ -711,19 +705,19 @@ export const sandbox = {
     "New chats start as CMS sessions, previewed on your preview server instead of a sandbox. Existing chats keep the mode they were created with.",
   "sandbox.cmsSettings.fastPreview.needsPreviewServerUrl":
     "Set a preview server above to enable Fast Preview.",
+  "sandbox.cmsSettings.fastPreviewInPlace.label":
+    "Instant preview (experimental)",
+  "sandbox.cmsSettings.fastPreviewInPlace.description":
+    "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.cmsSettings.contentEditing.description":
-    "Whether this agent offers a CMS, and where the preview lands when it does.",
-  "sandbox.cmsSettings.contentEditing.manual": "Enabled",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Editors open the CMS from the preview when they need it.",
-  "sandbox.cmsSettings.contentEditing.auto": "Auto",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "The preview opens the CMS as soon as it can edit content.",
+    "Whether this project offers a CMS.",
+  "sandbox.cmsSettings.contentEditing.on": "Enabled",
+  "sandbox.cmsSettings.contentEditing.onDescription":
+    "The Site Editor offers Content and opens Blocks beside Preview on desktop.",
   "sandbox.cmsSettings.contentEditing.off": "Disabled",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "No CMS button in the preview and no Content tab. The site still previews, and the agent can still edit content.",
-  "sandbox.cmsUnavailable.title": "This chat can't preview your site",
+    "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
   "sandbox.cmsUnavailable.noRepo":
@@ -740,7 +734,7 @@ export const sandbox = {
   "sandbox.repoRow.label": "Repository",
   "sandbox.repoRow.noRepositoryConnected": "No repository connected",
   "sandbox.repoRow.tooltipContent":
-    "The connected GitHub repository for this agent. Manage in Connections.",
+    "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
   "sandbox.runnableBlockEditor.backToList": "Back to list",
@@ -828,7 +822,7 @@ export const sandbox = {
     "The GitHub connection this chat used was removed. Link the repository again to start the sandbox.",
   "sandbox.stateCard.linkRepoAgain": "Link repository",
   "sandbox.stateCard.githubNotAuthenticatedMessage":
-    "This agent's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
+    "This project's GitHub repo isn't authenticated. Reconnect it in Connections, then retry.",
   "sandbox.stateCard.reconnectGithub": "Reconnect GitHub",
   "sandbox.stateCard.resume": "Resume",
   "sandbox.stateCard.suspendedHeadline": "Sandbox is paused",
@@ -878,6 +872,12 @@ export const sandbox = {
   "sandbox.submoduleCredentialsField.title": "Submodule credentials",
   "sandbox.submoduleCredentialsField.tokenLabel": "Personal access token",
   "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
+  "sandbox.tableBlock.addColumn": "Add column",
+  "sandbox.tableBlock.addRow": "Add row",
+  "sandbox.tableBlock.headerPlaceholder": "Header {n}",
+  "sandbox.tableBlock.noRowsYet": "No rows yet — add one below.",
+  "sandbox.tableBlock.removeColumn": "Remove column {n}",
+  "sandbox.tableBlock.removeRow": "Remove row {n}",
   "sandbox.themes.add": "New theme",
   "sandbox.themes.bodyPlaceholder":
     "The angle, who it's for, and what the post has to cover…",
@@ -909,6 +909,7 @@ export const sandbox = {
   "sandbox.themes.title": "Themes",
   "sandbox.themes.untitled": "Untitled theme",
   "sandbox.toolbar.closeTab": "Close {tab}",
+  "sandbox.toolbar.moreActions": "More actions",
   "sandbox.toolbar.noScriptsFound": "No scripts found",
   "sandbox.toolbar.restart": "Restart",
   "sandbox.toolbar.resume": "Resume",

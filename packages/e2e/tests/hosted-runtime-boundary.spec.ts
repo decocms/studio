@@ -739,7 +739,7 @@ test.describe("hosted runtime boundary", () => {
       });
 
       await page.goto(
-        `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&sidepanel=chat&main=preview`,
+        `/${orgSlug}/${thread.item.id}?virtualmcpid=${agent.item.id}&sidepanel=true&main=preview`,
       );
 
       await expect(

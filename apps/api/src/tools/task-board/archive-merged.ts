@@ -14,6 +14,8 @@
  * history for free and dragging a card back out un-archives it.
  */
 
+import { LANES } from "@decocms/shared/task-board";
+
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItemPrRef } from "@/storage/types";
 import { recordTaskActivity } from "./activity";
@@ -110,17 +112,19 @@ async function archiveIfMerged(
   );
   if (!cardWorkLanded(landings)) return false;
 
+  const archived = LANES.archive;
+
   const updated = await ctx.storage.taskBoard.update(
     itemId,
     organizationId,
-    { status: "archived" },
+    { status: archived },
     item.updatedBy,
   );
   await recordTaskActivity(ctx, {
     taskBoardItemId: itemId,
     action: "status_changed",
     actorId: null,
-    data: { from: "done", to: "archived", reason: "merged_pr_auto_archive" },
+    data: { from: "done", to: archived, reason: "merged_pr_auto_archive" },
   });
   emitTaskBoardUpdated(organizationId, updated);
   return true;

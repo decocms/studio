@@ -21,6 +21,7 @@ import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { ChevronUp, ChevronDown, Container } from "@untitledui/icons";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
@@ -28,7 +29,7 @@ import {
   ThreadSheetBody,
   type ThreadEntity,
 } from "@/components/thread/thread-sheet-body.tsx";
-import { STATUS_CONFIG } from "@/lib/task-status";
+import { getStatusConfig } from "@/lib/task-status";
 import {
   formatCompactNumber,
   formatUsd,
@@ -69,6 +70,7 @@ function ThreadRow({
   onClick: () => void;
   lastRowRef?: (node: HTMLTableRowElement | null) => void;
 }) {
+  const t = useT();
   const agentId = getThreadAgentId(thread);
   const agentName = resolveAgentName(
     agentId,
@@ -97,9 +99,7 @@ function ThreadRow({
     minute: "2-digit",
   });
 
-  const statusCfg =
-    STATUS_CONFIG[thread.status as keyof typeof STATUS_CONFIG] ??
-    STATUS_CONFIG.completed;
+  const statusCfg = getStatusConfig(thread.status);
   const StatusIcon = statusCfg.icon;
 
   return (
@@ -141,7 +141,7 @@ function ThreadRow({
         <div className="flex items-center gap-1.5">
           <StatusIcon size={14} className={statusCfg.iconClassName} />
           <span className={cn("text-sm", statusCfg.labelColor)}>
-            {statusCfg.label}
+            {t(statusCfg.labelKey)}
           </span>
         </div>
       </TableCell>
@@ -217,6 +217,7 @@ export interface ThreadsTabContentProps {
   filterAgentIds?: string[];
   filterUserIds?: string[];
   filterStatus?: string;
+  filterSource?: string;
 }
 
 const THREADS_PAGE_SIZE = 50;
@@ -232,12 +233,9 @@ export function ThreadsTabContent({
   filterAgentIds,
   filterUserIds,
   filterStatus,
+  filterSource,
 }: ThreadsTabContentProps) {
   const t = useT();
-  const [selectedThreadIndex, setSelectedThreadIndex] = useState<number | null>(
-    null,
-  );
-
   const startDate = dateRange.startDate.toISOString();
   const endDate = dateRange.endDate.toISOString();
 
@@ -248,6 +246,7 @@ export function ThreadsTabContent({
     agentIds: filterAgentIds,
     userIds: filterUserIds,
     status: filterStatus,
+    source: filterSource,
   });
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -271,6 +270,9 @@ export function ThreadsTabContent({
               : {}),
             ...(filterStatus && filterStatus !== "all"
               ? { status: filterStatus }
+              : {}),
+            ...(filterSource && filterSource !== "all"
+              ? { source: filterSource }
               : {}),
           },
         })) as { structuredContent?: unknown };
@@ -355,10 +357,8 @@ export function ThreadsTabContent({
       })
     : visibleThreads;
 
-  const selectedThread =
-    selectedThreadIndex !== null
-      ? (displayThreads[selectedThreadIndex] ?? null)
-      : null;
+  const selection = useIdSelection(displayThreads);
+  const selectedThread = selection.selected;
 
   const handleLoadMore = () => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
@@ -374,14 +374,8 @@ export function ThreadsTabContent({
     !!searchQuery ||
     (filterAgentIds?.length ?? 0) > 0 ||
     (filterUserIds?.length ?? 0) > 0 ||
-    !!(filterStatus && filterStatus !== "all");
-
-  const handlePrev = () =>
-    setSelectedThreadIndex((i) => (i !== null && i > 0 ? i - 1 : i));
-  const handleNext = () =>
-    setSelectedThreadIndex((i) =>
-      i !== null && i < displayThreads.length - 1 ? i + 1 : i,
-    );
+    !!(filterStatus && filterStatus !== "all") ||
+    !!(filterSource && filterSource !== "all");
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
@@ -457,7 +451,7 @@ export function ThreadsTabContent({
                           members={membersData}
                           connections={allConnections}
                           virtualMcps={allVirtualMcps}
-                          onClick={() => setSelectedThreadIndex(idx)}
+                          onClick={() => selection.select(thread.id)}
                           lastRowRef={
                             idx === displayThreads.length - 1
                               ? (lastRowRef as (
@@ -478,13 +472,13 @@ export function ThreadsTabContent({
       </div>
 
       <Sheet
-        open={selectedThreadIndex !== null}
+        open={selection.isOpen}
         onOpenChange={(open) => {
-          if (!open) setSelectedThreadIndex(null);
+          if (!open) selection.close();
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedThread && selectedThreadIndex !== null && (
+          {selectedThread && (
             <ThreadSheetBody
               thread={selectedThread}
               client={client}
@@ -493,10 +487,10 @@ export function ThreadsTabContent({
               virtualMcps={allVirtualMcps}
               members={membersData}
               nav={{
-                index: selectedThreadIndex,
+                index: selection.index,
                 total: displayThreads.length,
-                onPrev: handlePrev,
-                onNext: handleNext,
+                onPrev: selection.prev,
+                onNext: selection.next,
               }}
             />
           )}

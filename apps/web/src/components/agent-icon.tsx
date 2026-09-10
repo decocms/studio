@@ -268,14 +268,62 @@ function hashString(input: string): number {
 // Size config
 // ---------------------------------------------------------------------------
 
+/**
+ * Box, glyph, and corner per step.
+ *
+ * `icon` and `iconClass` are the SAME number said twice, and both are needed.
+ * The number is the svg's intrinsic `width`/`height` attribute; the class is
+ * what survives a cascade. `CommandItem` and `DropdownMenuItem` each carry
+ * `[&_svg:not([class*='size-'])]:size-4` and
+ * `[&_svg:not([class*='text-'])]:text-muted-foreground` (packages/ui), and a
+ * presentational attribute loses to a CSS rule — so a glyph with no class was
+ * being blown to 16px and repainted grey inside every menu and command list in
+ * the app, while the same avatar rendered correctly two pixels outside one.
+ * They must stay in step; `agent-icon.test.tsx` pins the pair.
+ */
 const SIZES = {
-  "2xs": { container: "w-5 h-5", icon: 12, radius: "rounded-md" },
-  xs: { container: "w-6 h-6", icon: 14, radius: "rounded-md" },
-  sm: { container: "w-8 h-8", icon: 16, radius: "rounded-lg" },
-  "sm+": { container: "w-10 h-10", icon: 20, radius: "rounded-lg" },
-  md: { container: "w-12 h-12", icon: 24, radius: "rounded-xl" },
-  lg: { container: "w-16 h-16", icon: 32, radius: "rounded-2xl" },
-  xl: { container: "w-20 h-20", icon: 40, radius: "rounded-2xl" },
+  "2xs": {
+    container: "size-4",
+    icon: 12,
+    iconClass: "size-3",
+    radius: "rounded-md",
+  },
+  xs: {
+    container: "w-6 h-6",
+    icon: 14,
+    iconClass: "size-3.5",
+    radius: "rounded-md",
+  },
+  sm: {
+    container: "w-8 h-8",
+    icon: 16,
+    iconClass: "size-4",
+    radius: "rounded-lg",
+  },
+  "sm+": {
+    container: "w-10 h-10",
+    icon: 20,
+    iconClass: "size-5",
+    radius: "rounded-lg",
+  },
+  md: {
+    container: "w-12 h-12",
+    icon: 24,
+    iconClass: "size-6",
+    radius: "rounded-xl",
+  },
+  lg: {
+    container: "w-16 h-16",
+    icon: 32,
+    iconClass: "size-8",
+    radius: "rounded-2xl",
+  },
+  xl: {
+    container: "w-20 h-20",
+    icon: 40,
+    iconClass: "size-10",
+    radius: "rounded-2xl",
+  },
 } as const;
 
 export type AgentAvatarSize = keyof typeof SIZES;
@@ -324,7 +372,12 @@ function IconAvatar({
       )}
       aria-label={ariaLabel}
     >
-      <Icon size={sizeConfig.icon} />
+      {/* The classes are what make the size and the color hold: a menu or a
+          command list repaints and resizes any svg that carries neither. */}
+      <Icon
+        size={sizeConfig.icon}
+        className={cn(sizeConfig.iconClass, color.text)}
+      />
     </div>
   );
 }

@@ -120,6 +120,43 @@ describe("genTitle model fallback chain", () => {
     expect(result).toBe("Built by the second slot");
   });
 
+  test("a non-retryable rejection still rotates — the next model is a different request", async () => {
+    const handle = genTitle({
+      abortSignal: new AbortController().signal,
+      models: [
+        () =>
+          makeFailingModel(
+            Object.assign(new Error("Provider returned error"), {
+              isRetryable: false,
+            }),
+          ),
+        () => makeSucceedingModel("Second model title"),
+      ],
+      userMessage: "does not matter",
+    });
+    expect(await handle.promise).toBe("Second model title");
+  });
+
+  test("a non-retryable rejection on the last model is not retried into itself", async () => {
+    let calls = 0;
+    const handle = genTitle({
+      abortSignal: new AbortController().signal,
+      models: [
+        () => {
+          calls++;
+          return makeFailingModel(
+            Object.assign(new Error("Provider returned error"), {
+              isRetryable: false,
+            }),
+          );
+        },
+      ],
+      userMessage: "Fix the login button on mobile devices please",
+    });
+    expect(await handle.promise).toBe("Fix the login button on mobile d");
+    expect(calls).toBe(1);
+  });
+
   test("empty model list falls back to clamped user message (never a broken title)", async () => {
     const handle = genTitle({
       abortSignal: new AbortController().signal,

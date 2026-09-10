@@ -93,11 +93,20 @@ export async function createOutboundClient(
     }
 
     case "HTTP":
-    case "Websocket": {
+    case "Websocket":
+    case "SSE": {
       if (!connection.connection_url) {
         throw new Error(`${connection.connection_type} connection missing URL`);
       }
       const connectionUrl = connection.connection_url;
+      const makeBaseTransport =
+        connection.connection_type === "SSE"
+          ? (url: URL, headers: Record<string, string>) =>
+              new SSEClientTransport(url, { requestInit: { headers } })
+          : (url: URL, headers: Record<string, string>) =>
+              new StreamableHTTPClientTransport(url, {
+                requestInit: { headers },
+              });
 
       // Deferred: only builds headers (DB lookup + JWT issuance) on a cache miss.
       return ctx.getOrCreateClient(async () => {
@@ -108,45 +117,9 @@ export async function createOutboundClient(
           Object.assign(headers, httpParams.headers);
         }
 
-        let transport: Transport = new StreamableHTTPClientTransport(
+        let transport: Transport = makeBaseTransport(
           new URL(connectionUrl),
-          { requestInit: { headers } },
-        );
-
-        // Compose with auth and monitoring transports
-        transport = composeTransport(
-          transport,
-          (t) => new AuthTransport(t, { ctx, connection, superUser }),
-          (t) =>
-            new MonitoringTransport(t, {
-              ctx,
-              connectionId,
-              virtualMcpId,
-            }),
-        );
-
-        return transport;
-      }, connectionId);
-    }
-
-    case "SSE": {
-      if (!connection.connection_url) {
-        throw new Error("SSE connection missing URL");
-      }
-      const connectionUrl = connection.connection_url;
-
-      // Deferred: only builds headers (DB lookup + JWT issuance) on a cache miss.
-      return ctx.getOrCreateClient(async () => {
-        const headers = await buildRequestHeaders(connection, ctx, superUser);
-
-        const httpParams = connection.connection_headers;
-        if (httpParams && "headers" in httpParams) {
-          Object.assign(headers, httpParams.headers);
-        }
-
-        let transport: Transport = new SSEClientTransport(
-          new URL(connectionUrl),
-          { requestInit: { headers } },
+          headers,
         );
 
         // Compose with auth and monitoring transports

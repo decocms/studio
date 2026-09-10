@@ -13,10 +13,11 @@
  * is sent to `/login?next=/choose-editor?…` and bounced back with params intact.
  */
 
-import { useState } from "react";
 import { Navigate, useNavigate, useSearch } from "@tanstack/react-router";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import { panelLocationForTab } from "@/layouts/main-panel-tabs/panel-route";
 import { useQuery } from "@tanstack/react-query";
-import { Loading01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
@@ -56,6 +57,10 @@ function isDeadEnd(error: unknown): boolean {
   return typeof status === "number" && status >= 400 && status < 500;
 }
 
+/** Content's own address, from the one module that owns the URL grammar: the
+ *  Site Editor segment plus the search that selects the Content view. */
+const CONTENT_PANEL = panelLocationForTab("content");
+
 /** The page/preview deep-link the storefront handed us, minus empty values. */
 function buildPageSearch(search: ChooseEditorSearch) {
   return {
@@ -89,7 +94,7 @@ function ResolvingScreen() {
   const t = useT();
   return (
     <CenteredCard>
-      <Loading01 size={24} className="animate-spin text-muted-foreground" />
+      <Spinner className="size-6 text-muted-foreground" />
       <p className="text-sm text-muted-foreground">
         {t("chooseEditor.resolving")}
       </p>
@@ -140,13 +145,15 @@ function EditorRedirect({
   projectId: string;
   pageSearch: Record<string, string>;
 }) {
-  // Stable across re-renders so the redirect target doesn't churn.
-  const [taskId] = useState(() => crypto.randomUUID());
   return (
     <Navigate
-      to="/$org/$taskId"
-      params={{ org: orgSlug, taskId }}
-      search={{ virtualmcpid: projectId, main: "content", ...pageSearch }}
+      to={DESTINATION_ROUTE.agents}
+      params={{ org: orgSlug, panel: CONTENT_PANEL.panel }}
+      search={{
+        ...pageSearch,
+        ...CONTENT_PANEL.payload,
+        virtualmcpid: projectId,
+      }}
       replace
     />
   );
@@ -163,12 +170,12 @@ function EditorChooser({
   const navigate = useNavigate();
   const open = (match: EditorMatch) => {
     navigate({
-      to: "/$org/$taskId",
-      params: { org: match.orgSlug, taskId: crypto.randomUUID() },
+      to: DESTINATION_ROUTE.agents,
+      params: { org: match.orgSlug, panel: CONTENT_PANEL.panel },
       search: {
-        virtualmcpid: match.project.id,
-        main: "content",
         ...pageSearch,
+        ...CONTENT_PANEL.payload,
+        virtualmcpid: match.project.id,
       },
     });
   };

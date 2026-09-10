@@ -13,11 +13,26 @@
 
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import type { DownstreamToken } from "../storage/types";
-import type { DownstreamTokenStorage } from "../storage/downstream-token";
+import type {
+  DownstreamTokenData,
+  DownstreamTokenStorage,
+} from "../storage/downstream-token";
 import { refreshAccessToken } from "./refresh-access-token";
 import { resolveOriginTokenEndpoint } from "./resolve-token-endpoint";
 
 export type { TokenRefreshResult } from "./refresh-access-token";
+
+/**
+ * The storage surface the refresh helpers need. `DownstreamTokenStorage`
+ * (grants keyed by connection id) is the original implementation; the git
+ * provider account credential store implements the same shape keyed by
+ * account id, so one refresh path serves both. `DownstreamToken.connectionId`
+ * is therefore "the grant's owner key", whatever table it lives in.
+ */
+export type OAuthGrantStore = Pick<
+  DownstreamTokenStorage,
+  "get" | "delete" | "isExpired"
+> & { upsert(data: DownstreamTokenData): Promise<unknown> };
 
 export const PROACTIVE_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -89,7 +104,7 @@ export function clearRefreshBackoff(connectionId?: string): void {
 
 async function refreshAndStoreOnce(
   token: DownstreamToken,
-  tokenStorage: DownstreamTokenStorage,
+  tokenStorage: OAuthGrantStore,
 ): Promise<{ accessToken: string | null; permanent: boolean }> {
   const result = await refreshAccessToken(token);
   if (!result.success || !result.accessToken) {
@@ -136,7 +151,7 @@ async function refreshAndStoreOnce(
 
 export function refreshAndStore(
   token: DownstreamToken,
-  tokenStorage: DownstreamTokenStorage,
+  tokenStorage: OAuthGrantStore,
 ): Promise<string | null> {
   const existing = inflightRefreshes.get(token.connectionId);
   if (existing) return existing;
@@ -193,7 +208,7 @@ export type ValidDownstreamAccessTokenResult =
 export async function getValidDownstreamAccessToken(params: {
   connectionId: string;
   connectionUrl?: string | null;
-  tokenStorage: DownstreamTokenStorage;
+  tokenStorage: OAuthGrantStore;
   bufferMs?: number;
   force?: boolean;
 }): Promise<ValidDownstreamAccessTokenResult> {

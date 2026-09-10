@@ -2,8 +2,8 @@
  * Audit Tab — log table with detail sheet.
  */
 
-import { useState } from "react";
 import type { useConnections, useVirtualMCPs } from "@/sdk";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useMCPClient } from "@/sdk";
 import type { useProjectContext } from "@/sdk";
 import { useQuery, useSuspenseInfiniteQuery } from "@tanstack/react-query";
@@ -31,6 +31,7 @@ import {
   type MonitoringLogsResponse,
 } from "@/components/monitoring";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { useT } from "@/i18n/use-t.ts";
@@ -73,8 +74,6 @@ function MonitoringLogsTableContent({
   const t = useT();
   const connections = connectionsData ?? [];
   const virtualMcps = virtualMcpsData ?? [];
-  const [selectedLogIndex, setSelectedLogIndex] = useState<number | null>(null);
-
   const lastLogRef = useInfiniteScroll(onLoadMore, hasMore, isLoadingMore);
 
   const members = getOrgMembers(membersData);
@@ -124,8 +123,8 @@ function MonitoringLogsTableContent({
     );
   }
 
-  const selectedLog =
-    selectedLogIndex !== null ? (filteredLogs[selectedLogIndex] ?? null) : null;
+  const selection = useIdSelection(filteredLogs);
+  const selectedLog = selection.selected;
 
   // Lazy-load full input/output when a log is selected (list query omits them)
   const detailQuery = useQuery({
@@ -213,7 +212,7 @@ function MonitoringLogsTableContent({
                   connection={connectionMap.get(log.connectionId)}
                   virtualMcpName={log.virtualMcpName ?? ""}
                   virtualMcpIcon={log.virtualMcpIcon}
-                  onClick={() => setSelectedLogIndex(index)}
+                  onClick={() => selection.select(log.id)}
                   lastLogRef={
                     index === filteredLogs.length - 1 ? lastLogRef : undefined
                   }
@@ -225,13 +224,13 @@ function MonitoringLogsTableContent({
       </div>
 
       <Sheet
-        open={selectedLogIndex !== null}
+        open={selection.isOpen}
         onOpenChange={(open) => {
-          if (!open) setSelectedLogIndex(null);
+          if (!open) selection.close();
         }}
       >
         <SheetContent className="sm:max-w-2xl flex flex-col p-0 gap-0">
-          {selectedLog && selectedLogIndex !== null && (
+          {selectedLog && (
             <>
               <SheetHeader className="px-5 md:px-6 pt-6 pb-5 border-b border-border shrink-0">
                 <div className="flex items-start justify-between gap-3 pr-8">
@@ -262,12 +261,8 @@ function MonitoringLogsTableContent({
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() =>
-                        setSelectedLogIndex((i) =>
-                          i !== null && i > 0 ? i - 1 : i,
-                        )
-                      }
-                      disabled={selectedLogIndex === 0}
+                      onClick={selection.prev}
+                      disabled={selection.index === 0}
                       className="h-7 w-7 text-muted-foreground"
                       aria-label={t("orgs.audit.previousEntry")}
                     >
@@ -276,12 +271,8 @@ function MonitoringLogsTableContent({
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() =>
-                        setSelectedLogIndex((i) =>
-                          i !== null && i < filteredLogs.length - 1 ? i + 1 : i,
-                        )
-                      }
-                      disabled={selectedLogIndex === filteredLogs.length - 1}
+                      onClick={selection.next}
+                      disabled={selection.index === filteredLogs.length - 1}
                       className="h-7 w-7 text-muted-foreground"
                       aria-label={t("orgs.audit.nextEntry")}
                     >
@@ -293,7 +284,7 @@ function MonitoringLogsTableContent({
               <div className="flex-1 overflow-y-auto min-h-0">
                 {detailQuery.isLoading ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="size-5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                    <Spinner className="size-5 text-muted-foreground" />
                   </div>
                 ) : detailQuery.isError ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-sm text-muted-foreground">

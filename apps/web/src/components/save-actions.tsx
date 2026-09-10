@@ -1,5 +1,6 @@
 import { Button } from "@decocms/ui/components/button.tsx";
-import { FlipBackward, Loading01, Save01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { FlipBackward, Save01 } from "@untitledui/icons";
 
 interface SaveActionsProps {
   onSave: () => void | Promise<void>;
@@ -41,11 +42,7 @@ export function SaveActions({
         disabled={isSaving}
         aria-label={saveLabel}
       >
-        {isSaving ? (
-          <Loading01 size={14} className="animate-spin" />
-        ) : (
-          <Save01 size={14} />
-        )}
+        {isSaving ? <Spinner className="size-3.5" /> : <Save01 size={14} />}
         {saveLabel}
       </Button>
     </>

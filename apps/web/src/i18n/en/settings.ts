@@ -7,14 +7,13 @@ export const settings = {
   "settings.nav.connect": "Connect",
   "settings.nav.aiProviders": "AI Providers",
   "settings.nav.secrets": "Secrets",
-  "settings.nav.apiKeys": "API Keys",
   "settings.nav.billing": "Billing & AI",
   "settings.nav.buckets": "Buckets",
   "settings.nav.syncedRepos": "Synced repos",
+  "settings.nav.repositories": "Repositories",
   "settings.nav.storage": "Storage",
   "settings.nav.advanced": "Advanced",
   "settings.subnav.ariaLabel": "Settings sections",
-  "settings.subnav.clients": "Clients",
   "settings.subnav.infrastructure": "Infrastructure",
   "settings.nav.tasks": "Board",
   "settings.jira.sectionTitle": "Jira integration",
@@ -39,42 +38,21 @@ export const settings = {
   "settings.jira.cancel": "Cancel",
   "settings.jira.boardLabel": "Jira board",
   "settings.jira.boardDescription":
-    "Everything the board covers is mirrored, its backlog included. Epics and sub-tasks are not, and cards show which sprint they are in.",
+    "The board Studio watches — a card entering one of its columns is what sets the integration off.",
   "settings.jira.boardPlaceholder": "Select a board",
   "settings.jira.boardSearchPlaceholder": "Search boards…",
   "settings.jira.noBoardsMatch": "No board matches that search",
   "settings.jira.loadingBoards": "Loading boards…",
-  "settings.jira.mappingLabel": "Column mapping",
-  "settings.jira.mappingDescription":
-    "Map the board's columns onto this board's lanes. Columns marked “Don't sync” never appear here.",
-  "settings.jira.dontSync": "Don't sync",
-  "settings.jira.columnsFailed": "Could not load the board's columns",
-  "settings.jira.autoDelegateLabel": "Auto-delegate to the agent",
-  "settings.jira.autoDelegateDescription":
-    "When an issue lands in a column mapped to To Do, the Super Agent takes the card and starts working. Its progress is mirrored back onto the issue.",
-  "settings.jira.enableLabel": "Sync enabled",
+  "settings.jira.enabledLabel": "Integration enabled",
+  "settings.jira.enabledDescription":
+    "While off, cards moving on the board are ignored.",
   "settings.jira.enableRequirements":
-    "Pick a project and map at least one status before enabling the sync",
-  "settings.jira.lastSynced": "Last synced {ago}",
-  "settings.jira.waitingFirstSync": "Waiting for the next sync",
-  "settings.jira.resyncAll": "Resync everything",
-  "settings.jira.resyncAllTitle": "Re-scan the whole board?",
-  "settings.jira.resyncAllQueued":
-    "Re-scan requested — the next sync will start it.",
-  "settings.jira.resyncAllDescription":
-    '"Sync now" only pulls issues changed since the last run. This marks every issue on the board to be re-read \u2014 what you want after changing the status mapping, or when cards look wrong. It starts on the next scheduled sync rather than now, can span several runs on a large board, and never assigns an agent to a card.',
-  "settings.jira.syncNow": "Sync now",
-  "settings.jira.syncing": "Syncing…",
-  "settings.jira.syncDone":
-    "Synced: {created} created, {updated} updated, {archived} archived",
-  "settings.jira.unmappedWarning":
-    "Not mapped yet: {columns}. An issue moving into one of these columns is skipped, and its card stays in whatever lane it last had — pick a lane, or \u201cDon't sync\u201d to say so on purpose.",
-  "settings.jira.syncFailed": "Sync failed",
+    "Pick a board before enabling the integration",
   "settings.jira.saveFailed": "Could not save the Jira settings",
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, changes made in Jira reach the board on the next 10-minute sync; with it, they arrive in seconds.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts within seconds.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -86,9 +64,35 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. Changes made in Jira now show up on the board within seconds.",
+    "Save. An issue entering an automated status now starts its run within seconds.",
+  "settings.jira.automationsLabel": "Run the agent when an issue enters…",
+  "settings.jira.automationsDescription":
+    "When an issue enters one of these statuses, Studio starts an agent run on it. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+  "settings.jira.addAutomation": "Add automation",
+  "settings.jira.automationOn": "Automation on",
+  "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
+  "settings.jira.promptHelp":
+    "Leave empty to use the agent's own instruction. The issue's description, comments and attachments are always included.",
+  "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
+  "settings.jira.noColumnsYet": "No columns on this board yet",
+  "settings.jira.columnsFailed": "Could not load this board's columns",
+  "settings.jira.testRunLabel": "Try it on one issue",
+  "settings.jira.testRunDescription":
+    "Run the agent on a single issue now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
+  "settings.jira.testRunIssuePlaceholder": "ABC-123 or a link",
+  "settings.jira.testRunIssueAriaLabel": "Jira issue key or link",
+  "settings.jira.testRunPromptAriaLabel": "Instruction for this test run",
+  "settings.jira.testRun": "Run agent",
+  "settings.jira.testRunRunning": "Starting\u2026",
+  "settings.jira.testRunStarted": "Agent started on {issueKey}",
+  "settings.jira.testRunTookOver":
+    "Agent restarted on {issueKey} \u2014 the run already working it was stopped",
+  "settings.jira.testRunFailed": "Could not start the run",
+  "settings.jira.testRunHelp":
+    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Leave the instruction empty to use the agent's own.",
+  "settings.jira.testRunWatch": "Watch runs in Monitor",
   "settings.syncedRepos.pageDescription":
-    "GitHub repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
+    "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
   "settings.syncedRepos.cancel": "Cancel",
   "settings.syncedRepos.create": "Create",
@@ -97,7 +101,7 @@ export const settings = {
     'Sync created — syncing into "{volume}" in the background',
   "settings.syncedRepos.emptyTitle": "No synced repos yet",
   "settings.syncedRepos.emptyDescription":
-    "Pick a GitHub repository and it will appear in the library as a read-only folder, kept in sync automatically.",
+    "Pick a repository and it will appear in the library as a read-only folder, kept in sync automatically.",
   "settings.syncedRepos.failed": "Something went wrong",
   "settings.syncedRepos.nameDialogDescription":
     "{repo} will be kept in sync into this read-only library folder.",
@@ -110,19 +114,140 @@ export const settings = {
   "settings.syncedRepos.removeTitle": 'Stop syncing "{volume}"?',
   "settings.syncedRepos.removed": "Sync removed",
   "settings.syncedRepos.rowSubtitle": "Library folder: {volume}",
+  "settings.repositories.pageDescription":
+    "Connect your git provider accounts and link the repositories this organization works with.",
+  "settings.repositories.accountsTitle": "Connected accounts",
+  "settings.repositories.accountsDescription":
+    "Accounts Studio uses to read your repositories and push changes on your behalf.",
+  "settings.repositories.accountsEmptyTitle": "No accounts connected",
+  "settings.repositories.accountsEmptyDescription":
+    "Connect a GitHub or GitLab account to browse your repositories and link private ones.",
+  "settings.repositories.noProvidersTitle": "No git provider configured",
+  "settings.repositories.noProvidersDescription":
+    "Signing in with GitHub or GitLab needs provider credentials an administrator configures for this deployment. You can still connect a GitLab account with an access token.",
+  "settings.repositories.githubUnavailable":
+    "Ask an administrator to enable GitHub.",
+  "settings.repositories.browseAccount": "Browse repositories in your account.",
+  "settings.repositories.gitlabTokenHint":
+    "Use a personal, project or group access token.",
+  "settings.repositories.addGithubAccount":
+    "Add GitHub account or organization",
+  "settings.repositories.githubSelectTitle": "Select repositories",
+  "settings.repositories.githubSelectedShareHint":
+    "Members with repository permissions in {organization} can use the repositories you authorize here.",
+  "settings.repositories.githubSelectHint":
+    "Choose up to 500 repositories for this workspace.",
+  "settings.repositories.githubReplaceHint":
+    "Saving replaces this account’s existing workspace access with your selection. Removed repositories stop receiving new credentials. Previously issued credentials may work until they expire.",
+  "settings.repositories.githubFilterRepos": "Filter loaded repositories",
+  "settings.repositories.githubNoRepos":
+    "No repositories available to authorize.",
+  "settings.repositories.githubAccessChanged":
+    "Someone changed this account’s access. Go back and review the repositories again before saving.",
+  "settings.repositories.githubMoreRepos": "Load more repositories",
+  "settings.repositories.githubBack": "Back to accounts",
+  "settings.repositories.githubSaveOneRepo": "Authorize 1 repository",
+  "settings.repositories.githubSaveRepos": "Authorize {count} repositories",
+  "settings.repositories.githubEditWorkspaceAccess": "Change workspace access",
+  "settings.repositories.githubShareHint":
+    "Choose your personal GitHub account, or an organization where you administer repositories, to share with {organization}. Members with repository permissions in Studio can use this connection.",
+  "settings.repositories.githubInstallHint":
+    "Nothing here is yours to share yet. Install the GitHub App on your personal account or on repositories you administer, or ask an account owner to connect it to Studio. A repository you only collaborate on is not yours to share.",
+  "settings.repositories.githubAdministered":
+    "{count} repositories you administer",
+  "settings.repositories.githubAdministeredOne": "1 repository you administer",
+  "settings.repositories.installGithubAccount": "Install on another account",
+  "settings.repositories.checkGithubAccess": "Check access",
+  "settings.repositories.switchGithubUser": "Use another GitHub login",
+  "settings.repositories.githubReturnHint":
+    "GitHub opens in a new tab. After saving access, return here to choose the account. If it does not appear, use Check access.",
+  "settings.repositories.githubRefreshFailed":
+    "Could not check GitHub access. Try again without leaving this dialog.",
+  "settings.repositories.githubConnected": "GitHub account connected",
+  "settings.repositories.manageRepositoryAccess": "Manage repository access",
+  "settings.repositories.connectedBy": "Connected by {name}",
+  "settings.repositories.connectedByUnknown":
+    "Connected by an unavailable user",
+  "settings.repositories.dismiss": "Dismiss",
+  "settings.repositories.tryAgain": "Try again",
+  "settings.repositories.oauthNoInstallations":
+    "GitHub authorization succeeded, but no app installations are available to this user. Add a GitHub account or organization to finish setup.",
+  "settings.repositories.oauthDenied":
+    "Authorization was cancelled. Connect again when you are ready.",
+  "settings.repositories.oauthExpired":
+    "This connection attempt expired or belongs to another session. Start again from this page.",
+  "settings.repositories.oauthNotConfigured":
+    "This git provider is not configured. Ask an administrator to enable it.",
+  "settings.repositories.oauthFailed":
+    "Could not connect your git account. Try again. If it keeps failing, contact an administrator.",
+  "settings.repositories.connectGitlab": "Connect GitLab",
+  "settings.repositories.connectGitlabToken": "Connect GitLab with a token",
+  "settings.repositories.authKindGithubApp": "GitHub App",
+  "settings.repositories.authKindOauth": "OAuth",
+  "settings.repositories.authKindToken": "Personal token",
+  "settings.repositories.needsReconnect": "Needs reconnect",
+  "settings.repositories.needsReconnectHint":
+    "This deployment can no longer authenticate as this account. Reconnect it to restore access to its private repositories.",
+  "settings.repositories.disconnect": "Disconnect",
+  "settings.repositories.disconnectTitle": 'Disconnect "{login}"?',
+  "settings.repositories.disconnectDescription":
+    "Repositories linked through this account stay listed, but become anonymous public clones — private ones will stop working.",
+  "settings.repositories.disconnected": "Account disconnected",
+  "settings.repositories.tokenDialogTitle": "Connect GitLab with a token",
+  "settings.repositories.tokenDialogDescription":
+    "Use a personal, project or group access token with the api scope — agents push branches and open merge requests with it. Stored encrypted and never shown again.",
+  "settings.repositories.tokenHostLabel": "Host",
+  "settings.repositories.tokenHostPlaceholder": "gitlab.com",
+  "settings.repositories.tokenLabel": "Access token",
+  "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.connect": "Connect",
+  "settings.repositories.connecting": "Connecting…",
+  "settings.repositories.connected": 'Connected as "{login}"',
+  "settings.repositories.reposTitle": "Repositories",
+  "settings.repositories.reposDescription":
+    "Repositories available to this organization's agents and workflows.",
+  "settings.repositories.reposEmptyTitle": "No repositories yet",
+  "settings.repositories.reposEmptyDescription":
+    "Choose a repository from a connected GitHub or GitLab account.",
+  "settings.repositories.addRepository": "Add repository",
+  "settings.repositories.unlink": "Unlink",
+  "settings.repositories.unlinkTitle": 'Unlink "{path}"?',
+  "settings.repositories.unlinkDescription":
+    "The repository is removed from this organization. Nothing is deleted on the provider.",
+  "settings.repositories.unlinked": "Repository unlinked",
+  "settings.repositories.defaultBranch": "Default branch: {branch}",
+  "settings.repositories.openInProvider": "Open repository",
+  "settings.repositories.visibilityPublic": "Public",
+  "settings.repositories.visibilityPrivate": "Private",
+  "settings.repositories.visibilityInternal": "Internal",
+  "settings.repositories.anonymousClone": "Anonymous clone",
+  "settings.repositories.addDialogTitle": "Add repository",
+  "settings.repositories.cancel": "Cancel",
+  "settings.repositories.failed": "Something went wrong",
   "settings.nav.connections": "Connections",
-  "settings.nav.agents": "Agents",
+  "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
+  "settings.nav.skills": "Skills",
   "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
   "settings.nav.profile": "Profile & Preferences",
+  "settings.nav.backToHome": "Back to home",
   "settings.nav.signOut": "Sign Out",
   "settings.profile.avatar": "Avatar",
   "settings.profile.displayName": "Display name",
   "settings.profile.displayNamePlaceholder": "Your name",
   "settings.profile.email": "Email",
+  "settings.profile.avatarUpload": "Change your picture",
+  "settings.profile.avatarDialogTitle": "Profile picture",
+  "settings.profile.avatarDialogDescription":
+    "Drag to reposition and scroll to zoom. Only the picture you are using is visible to other people.",
+  "settings.profile.avatarDeleted": "Picture deleted",
+  "settings.profile.avatarRemove": "Remove",
+  "settings.profile.avatarRemoved": "Picture removed",
+  "settings.profile.avatarUpdated": "Picture updated",
+  "settings.profile.avatarUploadError": "Failed to update the picture",
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
@@ -156,7 +281,7 @@ export const settings = {
   "settings.preferences.toolApprovalAutoShort": "Auto",
   "settings.preferences.toolApprovalAutoDescription":
     "Execute all without approval",
-  "settings.automations.browseAgentsButton": "Browse agents",
+  "settings.automations.browseAgentsButton": "Browse projects",
   "settings.automations.emptyDescription":
     "Automations are created per agent. Open an agent and add one from its Automations tab.",
   "settings.automations.emptyTitle": "No automations yet",
@@ -165,6 +290,38 @@ export const settings = {
   "settings.automations.noResultsTitle": "No automations found",
   "settings.automations.pageTitle": "Automations",
   "settings.automations.searchPlaceholder": "Search automations...",
+  "settings.skills.pageTitle": "Skills",
+  "settings.skills.importButton": "Import skill",
+  "settings.skills.importing": "Importing…",
+  "settings.skills.importSuccess": 'Imported "{name}"',
+  "settings.skills.importError": "Failed to import skill",
+  "settings.skills.importMissingSkillMd":
+    "That folder has no SKILL.md at its root. Pick the skill's own folder.",
+  "settings.skills.importNeedsFolder":
+    "Pick a folder, not individual files — this browser may not support folder upload.",
+  "settings.skills.searchPlaceholder": "Search skills...",
+  "settings.skills.noDescription": "No description",
+  "settings.skills.filterAll": "All",
+  "settings.skills.emptyTitle": "No skills yet",
+  "settings.skills.emptyDescription":
+    "Import a folder with a SKILL.md to give your agents reusable instructions they can load on demand.",
+  "settings.skills.noResultsTitle": "No skills found",
+  "settings.skills.noResultsDescription": 'No skills match "{search}"',
+  "settings.skills.cancel": "Cancel",
+  "settings.skills.deleteButton": "Delete",
+  "settings.skills.deleteDialogTitle": "Delete this skill?",
+  "settings.skills.deleteDialogDescription":
+    'This removes "{name}" and its files. This can\'t be undone.',
+  "settings.skills.deleteSuccess": "Skill deleted",
+  "settings.skills.deleteError": "Failed to delete skill",
+  "settings.skills.importTooManyFiles":
+    "That folder has {count} files (limit {max}). Import a folder with just the skill's own files.",
+  "settings.skills.importSlugTaken":
+    'A skill named "{slug}" already exists. Delete it first to re-import.',
+  "settings.skills.errorTitle": "Couldn't load skills",
+  "settings.skills.errorDescription":
+    "The skill catalog could not be loaded. You may not have access to this org's files.",
+  "settings.skills.retry": "Try again",
   "settings.buckets.accessKeyIdLabel": "Access key ID",
   "settings.buckets.addBucket": "Add bucket",
   "settings.buckets.addBucketButton": "Add bucket",
@@ -238,36 +395,27 @@ export const settings = {
     "Stores only a refresh endpoint + API key; short-lived credentials are fetched on demand and refreshed automatically.",
   "settings.buckets.temporarySessionOption":
     "Temporary session (STS, auto-refreshed)",
-  "settings.connectClients.activeKeys": "Active keys",
-  "settings.connectClients.activeKeysDescription":
-    "Keys you've generated for headless clients. Revoke any time.",
-  "settings.connectClients.apiKeyTab": "API key",
+  "settings.connectClients.anyOtherClientDescription":
+    "Any other MCP client: paste this endpoint into it to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.connectClients.apiKeyOption": "API key",
+  "settings.connectClients.connectAClient": "Connect a client",
   "settings.connectClients.copy": "Copy",
-  "settings.connectClients.createdAt": "Created {date}",
-  "settings.connectClients.customClientHint": "Wiring a custom client?",
   "settings.connectClients.doneHideKey": "Done, hide key",
-  "settings.connectClients.failedToLoadKeys": "Failed to load keys: {error}",
+  "settings.connectClients.generateKey": "Generate key",
   "settings.connectClients.generateKeyFor": "Generate key for {client}",
   "settings.connectClients.generatingKey": "Generating…",
   "settings.connectClients.headlessKeyHint":
     "For CI, Conductor, or headless agents that can't open a browser.",
+  "settings.connectClients.installMethod": "Installation method",
   "settings.connectClients.keyCreated": "Key created",
-  "settings.connectClients.keyRevoked": "Key revoked",
-  "settings.connectClients.loadingActiveKeys": "Loading active keys…",
-  "settings.connectClients.noConnectKeysYet":
-    "No connect keys minted yet. Generate one from a client tab above for headless setups.",
+  "settings.connectClients.oauthDiscoveryDetails": "OAuth discovery details",
   "settings.connectClients.oauthKeyHint":
     "Recommended for your laptop. Browser will open on first use to sign in — no token to manage.",
   "settings.connectClients.oauthMetadataHint":
     "OAuth 2.1 Protected Resource Metadata is advertised on 401:",
-  "settings.connectClients.oauthTab": "OAuth",
-  "settings.connectClients.orgUnifiedMcp": "Your org's unified MCP",
-  "settings.connectClients.orgUnifiedMcpDescription":
-    "Plug this URL into any MCP client to give that runtime every connection enabled in this org, governed by your Decopilot rules.",
+  "settings.connectClients.oauthOption": "OAuth",
+  "settings.connectClients.otherClient": "Other",
   "settings.connectClients.pageTitle": "Connect to clients",
-  "settings.connectClients.revoke": "Revoke",
-  "settings.connectClients.revokeConfirm":
-    'Revoke "{name}"? Any client still using this key will lose access.',
   "settings.connectClients.snippetOneTimeWarning":
     "Copy this snippet now — the key won't be shown again. You can revoke it later from the list below.",
   "settings.connectForms.apiKeyField": "API Key",
@@ -447,16 +595,6 @@ export const settings = {
     "People who requested to join via a domain in approval mode.",
   "settings.joinRequestsSection.title": "Join requests",
   "settings.orgGeneral.organization": "Organization",
-  "settings.mainAgent.title": "Main agent",
-  "settings.mainAgent.description":
-    "The agent this organization opens on. Every member lands here instead of the Super Agent.",
-  "settings.mainAgent.itemTitle": "Landing agent",
-  "settings.mainAgent.itemDescription":
-    "Pick the agent to open when entering this organization.",
-  "settings.mainAgent.superAgentOption": "Super Agent (default)",
-  "settings.mainAgent.setToast": '"{title}" is now the main agent',
-  "settings.mainAgent.resetToast": "Reset to the Super Agent",
-  "settings.mainAgent.errorToast": "Couldn't update the main agent",
   "settings.review.title": "Reviewers & merge",
   "settings.review.description":
     "The automated Reviewer runs on a task's pull request once it's In Review (checks passing or none). It appears as a session on the task card.",
@@ -468,7 +606,10 @@ export const settings = {
     "The Reviewer runs on a smaller model than the Super Agent that wrote the change. Cuts review cost; may cut review depth.",
   "settings.review.autoMergeTitle": "Enable Auto-merge",
   "settings.review.autoMergeDescription":
-    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human. If a conflict blocks the merge, the Super Agent resolves it first.",
+    "When every enabled reviewer approves, merge the pull request automatically instead of waiting for a human.",
+  "settings.review.autoResolveConflictsTitle": "Auto-resolve merge conflicts",
+  "settings.review.autoResolveConflictsDescription":
+    "When an approved pull request conflicts with its base branch, hand it back to the Super Agent to check out the branch, merge the base and push. Follows Auto-merge unless you set it here.",
   "settings.review.deliveryLanesTitle": "Show delivery lanes",
   "settings.review.deliveryLanesDescription":
     "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
@@ -477,6 +618,13 @@ export const settings = {
   "settings.review.autoAssignReportTasksDescription":
     "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
+  "settings.taskPrompt.title": "System prompt",
+  "settings.taskPrompt.fieldLabel": "Instructions",
+  "settings.taskPrompt.placeholder":
+    "e.g. Use pnpm, never npm. Never edit files under src/generated/.",
+  "settings.taskPrompt.save": "Save",
+  "settings.taskPrompt.saved": "System prompt saved",
+  "settings.taskPrompt.failed": "Couldn't save the system prompt",
   "settings.agentTools.title": "Agent tools",
   "settings.agentTools.description":
     "What a coding-agent run reaches beyond the repository it is working in.",
@@ -487,21 +635,6 @@ export const settings = {
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
     "Chats on an agent imported from a GitHub repo run inside that agent's sandbox, next to the checkout, instead of on Decopilot. Replies arrive a whole turn at a time rather than word by word. Only new chats are affected — an existing chat keeps the runtime it started on.",
-  "settings.sprints.title": "Sprints",
-  "settings.sprints.description":
-    "Plan tasks into fixed-length sprints. Sprints are counted from a start day, so there is nothing to open or close.",
-  "settings.sprints.enabledTitle": "Enable sprints",
-  "settings.sprints.enabledDescription":
-    "Adds a sprint property to every task and a sprint filter to the board.",
-  "settings.sprints.cadenceTitle": "Cadence",
-  "settings.sprints.cadenceDescription":
-    "How long a sprint lasts, and the day sprint 1 started.",
-  "settings.sprints.cadenceCurrent":
-    "Sprint {number} is running now ({start} to {end}).",
-  "settings.sprints.weeksValue": "{count} weeks",
-  "settings.sprints.weeksValueOne": "1 week",
-  "settings.sprints.startDateLabel": "Sprint 1 start day",
-  "settings.sprints.updateError": "Couldn't update the sprint settings",
   "settings.orgRoleDetail.addMember": "Add Member",
   "settings.orgRoleDetail.addMembersToGrantPermissions":
     "Add members to grant them the configured permissions.",
@@ -714,14 +847,16 @@ export const settings = {
   "settings.apiKeys.failedToDeleteKey": "Failed to delete API key",
   "settings.apiKeys.failedToLoadError": "Failed to load API keys: {error}",
   "settings.apiKeys.keyDeleted": 'API key "{name}" deleted',
-  "settings.apiKeys.keysCountPlural": "{count} keys",
-  "settings.apiKeys.keysCountSingular": "{count} key",
+  "settings.apiKeys.loading": "Loading API keys…",
   "settings.apiKeys.nameLabel": "Name",
   "settings.apiKeys.namePlaceholder": "My integration",
   "settings.apiKeys.newKey": "New key",
   "settings.apiKeys.newKeyDescription":
     "Give the key a name so you can recognize it later.",
   "settings.apiKeys.newKeyTitle": "New API key",
+  "settings.apiKeys.sectionDescription":
+    "Long-lived keys for scripts and clients that can't sign in through a browser.",
+  "settings.apiKeys.sectionTitle": "API keys",
   "settings.secrets.cancelButton": "Cancel",
   "settings.secrets.createButton": "Create secret",
   "settings.secrets.creatingButton": "Creating…",
@@ -788,22 +923,6 @@ export const settings = {
     "Deco AI Gateway connected successfully",
   "settings.aiProviders.decoConnectError":
     "Failed to connect Deco AI Gateway: {error}",
-  "settings.billing.autoTasksTitle": "Auto tasks",
-  "settings.billing.unlimitedDescription":
-    "Auto-task runs are unlimited on this deployment. Tasks you create yourself are never limited either.",
-  "settings.billing.autoTasksDescriptionTrial":
-    "3 free lifetime runs, then $50/month for 10 runs per billing cycle.",
-  "settings.billing.autoTasksDescriptionSubscribed":
-    "10 auto-task runs per billing cycle. Tasks you create yourself are never limited.",
-  "settings.billing.statusTrial": "Free trial",
-  "settings.billing.statusActive": "Active",
-  "settings.billing.statusPastDue": "Payment issue",
-  "settings.billing.runsUsedLabel": "runs used",
-  "settings.billing.renewsOn": "Renews {date}",
-  "settings.billing.subscribeButton": "Subscribe",
-  "settings.billing.manageButton": "Manage billing",
-  "settings.billing.checkoutError": "Couldn't start checkout: {message}",
-  "settings.billing.portalError": "Couldn't open billing portal: {message}",
 
   "settings.infraBilling.noSites":
     "This organization doesn't own any deco.cx site yet.",

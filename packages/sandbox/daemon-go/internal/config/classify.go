@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -156,6 +158,39 @@ func diffEnv(before, after map[string]string) *EnvDiff {
 	return &EnvDiff{Set: set, Deleted: deleted}
 }
 
+// GlabConfigFromCloneUrl builds the `glab` config file for the credential baked
+// into a GitLab clone URL, or "" for any other URL.
+//
+// `is_oauth2: true` makes glab authenticate with `Authorization: Bearer`, which
+// is the only form gitlab.com accepts for an OAuth access token and is also
+// accepted for a personal/project access token — so one shape serves both and
+// the daemon does not need to know which kind of token Studio minted.
+//
+// ⚠️ SECURITY: the result embeds a credential. Never log it, and write it 0600.
+func GlabConfigFromCloneUrl(rawUrl string) string {
+	u, err := url.Parse(rawUrl)
+	if err != nil || u.User == nil || u.User.Username() != "oauth2" {
+		return ""
+	}
+	token, ok := u.User.Password()
+	if !ok || token == "" || u.Host == "" {
+		return ""
+	}
+	host := strings.ToLower(u.Host)
+	// Indented with two spaces per level, as glab writes it. The token is a
+	// plain scalar: git URLs cannot carry a character that needs quoting here
+	// (userinfo is percent-encoded), and the host is a bare hostname[:port].
+	return fmt.Sprintf(
+		"hosts:\n  %s:\n    token: %s\n    api_host: %s\n    api_protocol: https\n    is_oauth2: true\n",
+		host, token, host,
+	)
+}
+
+// GlabConfigPath is where glab looks for the config above, under a given HOME.
+func GlabConfigPath(home string) string {
+	return filepath.Join(home, ".config", "glab-cli", "config.yml")
+}
+
 func StripCredentials(rawUrl string) string {
 	u, err := url.Parse(rawUrl)
 	if err != nil {
@@ -180,4 +215,45 @@ func TokenFromCloneUrl(rawUrl string) string {
 	}
 	token, _ := u.User.Password()
 	return token
+}
+
+// CliEnvFromCloneUrl returns the environment a provider CLI needs to act with
+// the credential baked into a clone URL, keyed off the userinfo username Studio
+// chose for the provider: `x-access-token` is GitHub (`gh` reads GH_TOKEN, plus
+// GH_HOST off github.com), `oauth2` is GitLab (`glab` reads GITLAB_TOKEN and
+// GITLAB_HOST). Empty for an SSH, anonymous or unrecognised URL.
+//
+// The GitLab entries are NOT sufficient on their own: glab sends an env token
+// as `PRIVATE-TOKEN`, which GitLab rejects for an OAuth access token (verified
+// against gitlab.com — every env form, including OAUTH_TOKEN and
+// GITLAB_ACCESS_TOKEN, answers 401). `GlabConfigFromCloneUrl` is what actually
+// authenticates it; these stay because they are what a personal or project
+// access token needs, and because `GITLAB_HOST` is read for the default host.
+//
+// ⚠️ SECURITY: the values are credentials. Never log them.
+func CliEnvFromCloneUrl(rawUrl string) map[string]string {
+	u, err := url.Parse(rawUrl)
+	if err != nil || u.User == nil {
+		return nil
+	}
+	token, ok := u.User.Password()
+	if !ok || token == "" {
+		return nil
+	}
+	host := strings.ToLower(u.Host)
+	switch u.User.Username() {
+	case "x-access-token":
+		env := map[string]string{"GH_TOKEN": token}
+		if host != "" && host != "github.com" {
+			env["GH_HOST"] = host
+		}
+		return env
+	case "oauth2":
+		env := map[string]string{"GITLAB_TOKEN": token}
+		if host != "" {
+			env["GITLAB_HOST"] = "https://" + host
+		}
+		return env
+	}
+	return nil
 }

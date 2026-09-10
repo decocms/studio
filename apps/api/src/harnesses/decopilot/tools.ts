@@ -42,6 +42,7 @@ import {
   type PrOpenedEvent,
   type ToolCallAnalytics,
 } from "@/harnesses/lib/decopilot/mcp-tools";
+import { MCP_LIST_TIMEOUT_MS } from "@/core/constants";
 import { MCP_TOOL_CALL_TIMEOUT_MS } from "@/harnesses/lib/decopilot/harness-constants";
 import { requireDecopilotRunContext } from "@/harnesses/lib/decopilot/run-context";
 import type { HarnessStreamInput } from "@/harnesses/lib/types";
@@ -240,9 +241,15 @@ export async function assembleDecopilotTools(
   // per-tool AuthTransport check would block every non-public connection
   // tool (GitHub, Slack, etc.) for users who don't have explicit per-tool
   // permissions configured — the wrong enforcement layer for chat.
+  // `listTimeoutMs` reached the aggregator for the first time when the fan-out
+  // was bounded; until then it was an inert option and this 1s never applied.
+  // 1s is below a cache-cold MCP handshake, so honouring it literally would
+  // start dropping working connections out of a chat's toolset. The shared
+  // budget keeps the intent (no connection may stall run start) at a value a
+  // healthy connection actually meets.
   const passthroughClient = await extras.mcpForAgent(input.agent.id, {
     superUser: true,
-    listTimeoutMs: 1_000,
+    listTimeoutMs: MCP_LIST_TIMEOUT_MS,
   });
 
   // Once the passthrough client is open, every subsequent failure in

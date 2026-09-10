@@ -181,10 +181,14 @@ export function createLanguageModel(
   // Provider-specific settings (reasoning / models fallback) are not part of
   // the generic ProviderV3 interface, so we cast to pass them through.
   const make = (id: string, s?: Record<string, unknown>): LanguageModelV3 =>
-    (s && Object.keys(s).length > 0
-      ? // biome-ignore lint/complexity/noBannedTypes: pass-through provider settings
-        (provider.aiSdk.languageModel as Function)(id, s)
-      : provider.aiSdk.languageModel(id)) as LanguageModelV3;
+    s && Object.keys(s).length > 0
+      ? (
+          provider.aiSdk.languageModel as (
+            id: string,
+            settings: Record<string, unknown>,
+          ) => LanguageModelV3
+        )(id, s)
+      : provider.aiSdk.languageModel(id);
 
   const primary = make(model.id, settings);
   // Free model is plain (no reasoning, no nested models array) so the retry is

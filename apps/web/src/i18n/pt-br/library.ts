@@ -105,7 +105,6 @@ export const library = {
   "library.library.renameDescription": "Digite o novo nome.",
   "library.library.renamed": "Renomeado para {name}",
   "library.library.renameFailed": "Falha ao renomear",
-  "library.library.move": "Mover",
   "library.library.moved": "Movido {name} para {destination}",
   "library.library.moveFailed": "Falha ao mover",
   "library.library.dropToUpload": "Solte para enviar para {location}",

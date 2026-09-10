@@ -1,4 +1,6 @@
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
+import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -15,13 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import {
-  ArrowRight,
-  Eye,
-  GitBranch01,
-  Loading01,
-  Stars01,
-} from "@untitledui/icons";
+import { ArrowRight, Eye, GitBranch01, Stars01 } from "@untitledui/icons";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
@@ -70,7 +66,8 @@ export interface PublishDialogProps {
   virtualMcpId: string;
   branch: string;
   baseBranch: string;
-  githubConnectionId: string;
+  /** Which repository this publishes to, and which credential writes it. */
+  repoTarget: RepoToolTarget;
   owner: string;
   repo: string;
   previewUrl?: string | null;
@@ -119,7 +116,7 @@ function PublishDialogBody({
   virtualMcpId,
   branch,
   baseBranch,
-  githubConnectionId,
+  repoTarget,
   owner,
   repo,
   previewUrl,
@@ -131,11 +128,6 @@ function PublishDialogBody({
   onPublished,
 }: PublishDialogProps) {
   const t = useT();
-  const githubClient = useMCPClient({
-    connectionId: githubConnectionId,
-    orgId,
-    orgSlug,
-  });
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId,
@@ -154,13 +146,6 @@ function PublishDialogBody({
   const coAuthor = coAuthorFromSessionUser(session?.user);
 
   const commitToOpenPr = openPullRequest?.state === "open";
-  // The branch's already-known open PR (from the header's polled PR state).
-  // Passed to openPullRequestForBranch so it reuses this PR instead of calling
-  // list_pull_requests to rediscover it.
-  const existingOpenPr =
-    openPullRequest?.state === "open"
-      ? { number: openPullRequest.number, htmlUrl: openPullRequest.htmlUrl }
-      : undefined;
   const openPrFromCommits = dialogIntent === "open-pr" && !commitToOpenPr;
   /** Side "Publish" button — direct publish to base, single green button. */
   const isPublishOnly = dialogIntent === "publish-only";
@@ -343,12 +328,11 @@ function PublishDialogBody({
     branch,
     threadId: sandboxRef.threadId,
     baseBranch,
-    githubClient,
+    target: repoTarget,
     owner,
     repo,
     headBranch: githubHeadBranch,
     coAuthor,
-    existingOpenPr,
     expectedHeadSha: headSha ?? undefined,
   };
 
@@ -496,9 +480,7 @@ function PublishDialogBody({
                   onClick={handleDiscardAll}
                   disabled={isDiscardingAll}
                 >
-                  {isDiscardingAll ? (
-                    <Loading01 className="h-3 w-3 animate-spin" />
-                  ) : null}
+                  {isDiscardingAll ? <Spinner className="h-3 w-3" /> : null}
                   {t("thread.publishDialog.discardAll")}
                 </Button>
               </div>
@@ -532,7 +514,7 @@ function PublishDialogBody({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoadingGitDiff ? (
             <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-              <Loading01 className="h-4 w-4 animate-spin" />
+              <Spinner className="h-4 w-4" />
               <span className="text-sm">
                 {t("thread.publishDialog.loadingChanges")}
               </span>
@@ -558,7 +540,7 @@ function PublishDialogBody({
                       onClick={regenerateSuggestion}
                     >
                       {isGeneratingSuggestion ? (
-                        <Loading01 className="h-3 w-3 animate-spin" />
+                        <Spinner className="h-3 w-3" />
                       ) : (
                         <Stars01 className="h-3 w-3" />
                       )}
@@ -686,7 +668,7 @@ function PublishDialogBody({
                     disabled={isSubmittingForReview}
                   >
                     {isSubmittingForReview ? (
-                      <Loading01 className="h-4 w-4 animate-spin" />
+                      <Spinner className="h-4 w-4" />
                     ) : (
                       <GitBranch01 className="h-4 w-4" />
                     )}
@@ -709,7 +691,7 @@ function PublishDialogBody({
                 disabled={!canSubmitForReview || isSubmittingForReview}
               >
                 {isSubmittingForReview ? (
-                  <Loading01 className="h-4 w-4 animate-spin" />
+                  <Spinner className="h-4 w-4" />
                 ) : (
                   <GitBranch01 className="h-4 w-4" />
                 )}
@@ -749,7 +731,7 @@ function PublishButton({
       onClick={onPublish}
       disabled={!canPublish || isPublishing}
     >
-      {isPublishing ? <Loading01 className="h-4 w-4 animate-spin" /> : null}
+      {isPublishing ? <Spinner className="h-4 w-4" /> : null}
       {label}
     </Button>
   );

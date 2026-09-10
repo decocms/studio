@@ -21,11 +21,10 @@ import type {
   OrgFlags,
   UserModelPreferences,
 } from "@decocms/shared/organization/schema";
-import type { SprintState } from "@decocms/shared/sprints";
+import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { ReviewerKind } from "@decocms/shared/task-board";
 import type { PrivateRegistryDatabase } from "./registry/types";
-import type { JiraStatusMapping } from "@decocms/shared/jira-status-mapping";
 
 export type {
   OrgSsoConfigPublic,
@@ -189,7 +188,6 @@ export interface OrganizationSettingsTable {
   // (@decocms/shared/organization/schema); updates shallow-merge.
   flags: JsonObject<OrgFlags> | null;
   // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
-  main_agent_id: string | null;
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }
@@ -202,7 +200,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
-  main_agent_id: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -240,10 +237,34 @@ export interface MCPConnectionTable {
   metadata: JsonObject<Record<string, unknown>> | null;
   bindings: JsonArray<string[]> | null; // Detected bindings (CHAT, EMAIL, etc.)
 
+  /**
+   * The repository a VIRTUAL connection (an agent) works in — migration 205.
+   * Null for every other connection type, and for an agent with no repository.
+   *
+   * Preferred over `metadata.githubRepo`, which is still written and read as
+   * the fallback until the expand completes. A GitLab project in subgroups
+   * only fits here: the JSON's `owner`/`name` pair cannot carry a namespace.
+   */
+  repository_id: string | null;
+
   status: "active" | "inactive" | "error";
   pinned: boolean;
   created_at: ColumnType<Date, Date | string, never>;
   updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+/**
+ * A repository checked out into a thread's run, beyond the agent's own.
+ *
+ * `TASK_ADD_REPO` appends here so one run can hold several checkouts. The
+ * primary key is what makes a concurrent double-add a no-op — the reason this
+ * is a table and not the `metadata.githubRepos` array it replaces.
+ */
+export interface ThreadRepositoryTable {
+  thread_id: string;
+  organization_id: string;
+  repository_id: string;
+  added_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 // MCPConnection runtime type is now ConnectionEntity from "../tools/connection/schema"
@@ -1197,7 +1218,7 @@ export interface ThreadMessagePartTable {
 // Member Tags Table Definitions
 // ============================================================================
 
-/** Per-org subsidy gateway key (migration 159) — vault-encrypted; see
+/** Per-org subsidy gateway key (migration 160) — vault-encrypted; see
  *  storage/subsidized-gateway-keys.ts. */
 export interface SubsidizedGatewayKeyTable {
   organization_id: string;
@@ -1205,7 +1226,7 @@ export interface SubsidizedGatewayKeyTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-/** Quota ledger for reports-pushed task executions (migration 158) — one
+/** Quota ledger for reports-pushed task executions (migration 160) — one
  *  claim per task, bucketed by period_key (see billing/task-quota.ts). */
 /** `held` = charged (counts toward the period); `released` = refunded
  *  because the run produced nothing. A union, so a typo in a comparison is a
@@ -1552,14 +1573,63 @@ export interface OrgSite {
 }
 
 // ============================================================================
+// Organization Notices (deployment-admin billing warning / block)
+// ============================================================================
+
+export interface OrganizationNoticeTable {
+  id: string;
+  organization_id: string;
+  /** 'warn' renders a banner; 'block' replaces the org UI and gates writes. */
+  severity: string;
+  title: string;
+  message: string;
+  cta_label: string | null;
+  cta_url: string | null;
+  /** 'manual' (typed in the admin UI) or, later, an invoice sync's id. */
+  source: ColumnType<string, string | undefined, string>;
+  resolved_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  resolved_by: string | null;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_by: string;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface OrganizationNotice {
+  id: string;
+  organizationId: string;
+  severity: OrgNoticeSeverity;
+  title: string;
+  message: string;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  source: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+// ============================================================================
 // Org Repo Sync (per-org GitHub repo → org-fs volume mirror)
 // ============================================================================
 
 export interface OrgRepoSyncTable {
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
-  /** Repo-scoped `mcp-github` connection the sync mints tokens from. */
-  connection_id: string;
+  /** Repo-scoped `mcp-github` connection the sync mints tokens from; null
+   *  once the sync is backed by a first-class `repository_id` instead. */
+  connection_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   repo_owner: string;
   repo_name: string;
   ref: ColumnType<string, string | undefined, string>;
@@ -1570,6 +1640,12 @@ export interface OrgRepoSyncTable {
     string
   >;
   volume: string;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
   last_synced_at: ColumnType<Date | null, never, Date | string | null>;
   last_sync_error: ColumnType<string | null, never, string | null>;
@@ -1581,7 +1657,8 @@ export interface OrgRepoSyncTable {
 export interface OrgRepoSync {
   id: string;
   organizationId: string;
-  connectionId: string;
+  connectionId: string | null;
+  repositoryId: string | null;
   repoOwner: string;
   repoName: string;
   ref: string;
@@ -1626,11 +1703,9 @@ export interface TaskBoardItemTable {
   organization_id: string;
   title: string;
   description: string | null;
-  status: ColumnType<
-    TaskBoardItemStatus,
-    TaskBoardItemStatus | undefined,
-    string
-  >;
+  /** The key of the column the card sits in — free text, because on a board
+   *  whose columns are the org's own the key comes from their tracker. */
+  status: ColumnType<string, string | undefined, string>;
   priority: ColumnType<
     TaskBoardItemPriority,
     TaskBoardItemPriority | undefined,
@@ -1640,10 +1715,36 @@ export interface TaskBoardItemTable {
   assignee_id: string | null;
   assigned_by: string | null;
   repo: string | null;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   due_date: ColumnType<
     Date | null,
     Date | string | null | undefined,
     Date | string | null
+  >;
+  /** The card's issue in the tracker it came from (`{site}/browse/{KEY}`), for
+   *  a human to open. Written by the Jira pull; null for a card Studio owns.
+   *  Deliberately NOT in the description — see migration 198. */
+  /** What created the card, when not a person or an import: `jira` for the
+   *  hidden anchor a Jira-triggered run hangs off. Null for a card the board
+   *  shows. */
+  source: ColumnType<"jira" | null, "jira" | null | undefined, "jira" | null>;
+  external_url: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Paths the task's work created or edited (`["/cliente-vip"]`), joined onto
+   *  a PR's deploy-preview origin by the card. Reported by the run through
+   *  `TASK_BOARD_ITEM_UPDATE`; null for a task that never named one. */
+  preview_routes: ColumnType<
+    string[] | null,
+    string | null | undefined,
+    string | null
   >;
   /** Sender-minted finding identity (e.g. `diag:{domain}:{check_id}`) — the
    *  import refreshes an OPEN item with the same key instead of duplicating
@@ -1662,14 +1763,6 @@ export interface TaskBoardItemTable {
     Date | string | null | undefined,
     Date | string | null
   >;
-  /** The sprint this card belongs to (`task_board_sprints.id`). Null =
-   *  backlog, which is every card on a board that mirrors no Jira sprints.
-   *  Pull-owned: the Jira sync writes it, nothing else does. */
-  sprint_id: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sort_order: ColumnType<number, number | undefined, number>;
   /** Per-org sequence behind the card's human key (`DECO-01`), assigned once at
@@ -1682,6 +1775,20 @@ export interface TaskBoardItemTable {
    *  see `migrations/166-task-board-last-swept-at.ts`. Not `updated_at`: a
    *  sweep is not a user-visible edit. */
   last_swept_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  /** When this card's CURRENT review cycle opened — the boundary that decides
+   *  which reviewer verdicts still count (`reviewCycleStart`). Null = no cycle
+   *  open, i.e. nothing is waiting on a reviewer.
+   *
+   *  It is a column rather than a derivation off the newest
+   *  `status_changed → in_review` precisely so the cycle does NOT ride on the
+   *  lane: an agent reviewer runs while the card reads In Progress, which it
+   *  could not do while moving the card meant resetting the cycle. See
+   *  `migrations/190-task-board-review-cycle-started-at.ts`. */
+  review_cycle_started_at: ColumnType<
     Date | null,
     Date | string | null | undefined,
     Date | string | null
@@ -1706,36 +1813,32 @@ export interface TaskBoardItemTable {
 }
 
 /**
- * A sprint a card can belong to — an entity, not a window over a cadence (see
- * `migrations/182-task-board-sprints-entities.ts`).
+ * Instructions appended to the system prompt of every agent run dispatched
+ * from a board card (migration 197). `column_key` null is the org-wide row;
+ * a non-null key scopes the text to one column.
  *
- * `jira_sprint_id` is the mirror's identity: UNIQUE per org, so the pull
- * upserts on it and a renamed Jira sprint updates in place instead of
- * splitting in two. Null means a sprint this board owns — nothing writes those
- * yet.
+ * Distinct from `TaskBoardColumnAutomationTable` below: that one's `prompt` is
+ * the opening USER instruction of the run a column rule fires, this one is
+ * standing context every run carries.
  */
-export interface TaskBoardSprintTable {
+export interface TaskBoardPromptTable {
   id: string;
   organization_id: string;
-  name: string;
-  /** Jira's own vocabulary; the board renders `active` differently. */
-  state: ColumnType<SprintState, SprintState | undefined, SprintState>;
-  starts_at: ColumnType<
-    Date | null,
-    Date | string | null | undefined,
-    Date | string | null
-  >;
-  ends_at: ColumnType<
-    Date | null,
-    Date | string | null | undefined,
-    Date | string | null
-  >;
-  jira_sprint_id: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
-  created_at: ColumnType<Date, Date | string | undefined, never>;
+  column_key: string | null;
+  prompt: string;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A rule the board runs when a card lands in a column (migration 189). The
+ *  row's existence is the switch; `prompt` null means the Super Agent's own
+ *  instruction. */
+export interface TaskBoardColumnAutomationTable {
+  id: string;
+  organization_id: string;
+  column_key: string;
+  prompt: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
@@ -1768,6 +1871,8 @@ export interface TaskBoardItemPrTable {
   /** Source GitHub MCP connection, when the PR was opened via MCP. Null for
    *  bash-opened PRs — the live fetcher falls back to the org's shared conn. */
   connection_id: string | null;
+  /** First-class repository (migration 204); null until backfilled/linked. */
+  repository_id: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -1817,13 +1922,23 @@ export interface TaskBoardItemTagRef {
   createdAt: string;
 }
 
-/** A PR linked to a task — identity only. Title/state are fetched live. */
+/**
+ * A change request linked to a task — identity only. Title/state are fetched
+ * live through a `ChangeRequestClient`.
+ *
+ * `url` is the identity that matters: it names the provider, the host and the
+ * repository path, which is the only shape a GitLab project nested in
+ * subgroups fits. `repoOwner`/`repoName` are the pre-provider split, kept for
+ * the legacy readers; `repositoryId` is the credential, and `connectionId` the
+ * legacy one it replaces.
+ */
 export interface TaskBoardItemPrRef {
   url: string;
   number: number;
   repoOwner: string;
   repoName: string;
   connectionId: string | null;
+  repositoryId: string | null;
   createdAt: string;
 }
 
@@ -1901,18 +2016,26 @@ export interface TaskBoardItem {
    *  created org-wide (no site context) carry none. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card belongs to (`TaskBoardSprint.id`); null = backlog. */
-  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`), never null. */
   keySeq: number;
-  /** The key this card's issue wears in the tracker (`OS-333`), for a card that
-   *  came from one — attached on reads, null for a card Studio owns. */
-  jiraIssueKey: string | null;
+  /** Link to that issue in the tracker, for a human to open. Never part of the
+   *  description, which is quoted into agent prompts verbatim. */
+  externalUrl: string | null;
+  /** Paths this task's work created or edited; empty when it named none. */
+  previewRoutes: string[];
+  /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
+   *  board shows. */
+  source: "jira" | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
+  /** When this card's current review cycle opened; null when none is open.
+   *  The anchor every cycle-scoped reducer takes (`reviewCycleStart`), and the
+   *  one thing that says "a reviewer owns this card" independently of its
+   *  lane — see `reviewCycleOpen`. */
+  reviewCycleStartedAt: string | null;
   /** Agent threads linked to this task (most-recent first). */
   threads: TaskBoardItemThreadRef[];
   /** Org tags attached to this task, name ascending. */
@@ -2014,7 +2137,7 @@ export interface BrandContext {
   updatedAt: Date | string;
 }
 
-/** Per-org Jira Cloud integration config (pull sync into the task board). */
+/** Per-org Jira Cloud integration config. */
 export interface OrgJiraIntegrationTable {
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
@@ -2022,31 +2145,13 @@ export interface OrgJiraIntegrationTable {
   email: string;
   /** Vault-encrypted Jira API token (Basic auth pairs it with `email`). */
   api_token: string;
-  /** Agile board the sync mirrors: its saved filter is the pull's scope (the
-   *  board's Backlog tab included) and its columns are the mapping UI's names. */
+  /** Agile board the integration watches. */
   board_id: string | null;
   board_name: string | null;
-  /** { "<board status>": ["<jira status name>", …] } — the per-tenant mapping,
-   *  each lane's Jira statuses in board order. Issues whose Jira status names
-   *  no lane are skipped by the sync. Read through `normalizeStatusMapping`,
-   *  which also accepts the pre-array shape (migration 205). */
-  status_mapping: ColumnType<JiraStatusMapping, string | undefined, string>;
-  /** Issue lands in a To Do-mapped column → assign the Super Agent. */
-  auto_delegate: ColumnType<boolean, boolean | undefined, boolean>;
   /** Capability URL segment for `/api/_jira/webhook/<secret>` — DB-generated,
    *  never updated. */
   webhook_secret: ColumnType<string, string | undefined, never>;
   enabled: ColumnType<boolean, boolean | undefined, boolean>;
-  /** Incremental-sync watermark: the max issue `updated` fully processed —
-   *  not "when the cron last ran". A truncated run advances it only as far
-   *  as it got, so the next run resumes instead of skipping. */
-  last_synced_at: ColumnType<Date | null, never, Date | string | null>;
-  last_sync_error: ColumnType<string | null, never, string | null>;
-  /** Set while a rescan (scope change, existing-card fix, or first import)
-   *  hasn't yet finished re-reading the whole scope — survives across the
-   *  multiple runs a large board needs, independent of `last_synced_at`
-   *  (see migration 186). */
-  rescan_pending: ColumnType<boolean, boolean | undefined, boolean>;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
@@ -2061,45 +2166,39 @@ export interface OrgJiraIntegration {
   apiToken: string;
   boardId: string | null;
   boardName: string | null;
-  statusMapping: JiraStatusMapping;
-  autoDelegate: boolean;
   webhookSecret: string;
   enabled: boolean;
-  lastSyncedAt: string | null;
-  lastSyncError: string | null;
-  rescanPending: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Board card ↔ Jira issue link. `jira_updated_at` is the issue's `updated`
- *  as of our last pull — an event or page with an older-or-equal `updated`
- *  is a no-op, which dedupes the sync's watermark overlap. */
+/** Board card ↔ Jira issue link: the issue a card stands for. */
 export interface TaskBoardItemJiraLinkTable {
   item_id: string;
   organization_id: string;
   jira_issue_id: string;
   jira_issue_key: string;
-  jira_updated_at: ColumnType<Date, Date | string, Date | string>;
-  /** Last status name SEEN OR SET on the Jira side — the pull applies status
-   *  only when this changed, and the status push records its target here so
-   *  the resulting echo is a no-op. */
-  jira_status: ColumnType<
-    string | null,
-    string | null | undefined,
-    string | null
-  >;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
-/** Board comment ↔ Jira comment link — the echo/idempotency cut for comment
- *  sync: a Jira comment id with a link row is known (either we pushed it or
- *  already pulled it), never re-imported. */
-export interface TaskBoardCommentJiraLinkTable {
-  comment_id: string;
+/** A rule the Jira integration runs when an issue enters a status (migration
+ *  200). Row existence is the switch; `prompt` null is the agent's own
+ *  instruction. */
+export interface OrgJiraColumnAutomationTable {
   organization_id: string;
-  jira_comment_id: string;
+  jira_status: string;
+  prompt: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One row per Jira transition a run was dispatched for — the fence between
+ *  a redelivered webhook, the safety-net poll, and a second paid run. */
+export interface JiraTriggerClaimTable {
+  organization_id: string;
+  jira_issue_id: string;
+  changelog_id: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -2147,11 +2246,105 @@ export interface NotificationTable {
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
+// ============================== Git providers ===============================
+
+export type GitProviderKindColumn = "github" | "gitlab";
+export type GitAuthKindColumn = "github_app" | "oauth" | "token";
+export type GitAccountStatusColumn = "active" | "revoked";
+
+export interface GitProviderAccountTable {
+  /**
+   * The granted repositories of the installation, by id. Null is the whole
+   * installation; an empty list would grant nothing and is never written.
+   */
+  installation_repository_ids: ColumnType<
+    number[] | null,
+    string | null | undefined,
+    string | null
+  >;
+  installation_authorized_by: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  type: GitProviderKindColumn;
+  host: string;
+  auth_kind: GitAuthKindColumn;
+  external_account_id: string;
+  login: string;
+  avatar_url: string | null;
+  /** bigint: pg returns it as a string. */
+  installation_id: ColumnType<
+    string | number | null,
+    string | number | null | undefined,
+    string | number | null
+  >;
+  /** Legacy `mcp-github` connection whose grant a backfilled account borrows. */
+  credential_connection_id: string | null;
+  status: ColumnType<
+    GitAccountStatusColumn,
+    GitAccountStatusColumn | undefined,
+    GitAccountStatusColumn
+  >;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderAccountCredentialTable {
+  account_id: string;
+  access_token: string; // Encrypted
+  refresh_token: string | null; // Encrypted
+  scope: string | null;
+  expires_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  client_id: string | null;
+  client_secret: string | null; // Encrypted
+  token_endpoint: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface GitProviderOAuthStateTable {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  provider: GitProviderKindColumn;
+  host: string;
+  return_to: string;
+  expires_at: ColumnType<Date, Date | string, never>;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+export interface RepositoryTable {
+  id: ColumnType<string, string | undefined, never>;
+  organization_id: string;
+  account_id: string | null;
+  provider: GitProviderKindColumn;
+  host: string;
+  path: string;
+  external_id: string | null;
+  default_branch: string | null;
+  web_url: string;
+  visibility: "public" | "private" | "internal" | null;
+  /** Repo-scoped `mcp-github` child whose token still clones this repo. */
+  legacy_connection_id: string | null;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
   connections: MCPConnectionTable; // MCP connections (organization-scoped)
+  thread_repositories: ThreadRepositoryTable;
   organization_settings: OrganizationSettingsTable; // Organization-level configuration
   user_model_preferences: UserModelPreferencesTable; // Per-user chat tier → model overrides
   api_keys: ApiKeyTable; // Better Auth API keys
@@ -2235,9 +2428,24 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+
+  // Deployment-admin billing warning / block pinned on an org
+  organization_notices: OrganizationNoticeTable;
   org_repo_sync: OrgRepoSyncTable;
+  git_provider_accounts: GitProviderAccountTable;
+  git_provider_account_credentials: GitProviderAccountCredentialTable;
+  git_provider_oauth_states: GitProviderOAuthStateTable;
+  github_connect_flows: {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    encrypted_access_token: string;
+    expires_at: ColumnType<Date, Date, never>;
+  };
+  repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
-  task_board_sprints: TaskBoardSprintTable;
+  task_board_column_automations: TaskBoardColumnAutomationTable;
+  task_board_prompts: TaskBoardPromptTable;
   task_board_item_threads: TaskBoardItemThreadTable;
   task_board_activity: TaskBoardActivityTable;
   task_board_item_prs: TaskBoardItemPrTable;
@@ -2246,10 +2454,11 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
-  // Jira integration (per-org pull sync into the task board)
+  // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
   task_board_item_jira_links: TaskBoardItemJiraLinkTable;
-  task_board_comment_jira_links: TaskBoardCommentJiraLinkTable;
+  org_jira_column_automations: OrgJiraColumnAutomationTable;
+  jira_trigger_claims: JiraTriggerClaimTable;
 
   // Follow/inbox for the task board
   notification_subscriptions: NotificationSubscriptionTable;

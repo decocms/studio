@@ -12,6 +12,7 @@
  */
 
 import type { NatsConnection } from "@nats-io/nats-core";
+import { invalidateSkillCatalog } from "./skill-catalog-cache";
 
 const SUBJECT_PREFIXES = [
   "studio.org-fs.changes",
@@ -33,17 +34,29 @@ export function orgFsChangeSubjects(orgId: string, volume: string): string[] {
 /**
  * Best-effort wake-up after a write. Never throws — if NATS is down the
  * daemon's long-poll timeout still picks the change up on its next cycle.
+ *
+ * Also drops the org's cached skill catalog, since a write is the only thing
+ * that can invalidate it from inside Studio (an imported or deleted `SKILL.md`
+ * is just an org-fs write). Awaited, not fire-and-forget: the UI refetches the
+ * catalog the moment the write responds, and a delete landing after that read
+ * would serve the stale build for the rest of the TTL.
+ *
+ * Every org-fs mutation route funnels through here, so a route added later
+ * inherits the invalidation instead of having to remember it.
  */
-export function notifyOrgFsChange(
+export async function notifyOrgFsChange(
   nc: NatsConnection | null,
   orgId: string,
   volume: string,
-): void {
-  if (!nc) return;
-  const subjects = orgFsChangeSubjects(orgId, volume);
-  try {
-    for (const subject of subjects) nc.publish(subject);
-  } catch {
-    // best-effort
+): Promise<void> {
+  if (nc) {
+    try {
+      for (const subject of orgFsChangeSubjects(orgId, volume)) {
+        nc.publish(subject);
+      }
+    } catch {
+      // best-effort
+    }
   }
+  await invalidateSkillCatalog(orgId);
 }

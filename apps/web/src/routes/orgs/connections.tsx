@@ -1,4 +1,5 @@
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { useT } from "@/i18n/use-t";
@@ -60,25 +61,20 @@ import {
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  mcpClientQueryOptions,
   useConnectionActions,
   useConnections,
   useProjectContext,
   type ConnectionEntity,
   useVirtualMCPs,
 } from "@/sdk";
+import { resolveConnectedMcpTarget } from "./connected-mcp-target.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import {
-  Container,
-  Globe02,
-  Loading01,
-  Plus,
-  Terminal,
-  XClose,
-} from "@untitledui/icons";
+import { Container, Globe02, Plus, Terminal, XClose } from "@untitledui/icons";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { track } from "@/lib/posthog-client";
@@ -289,7 +285,8 @@ function ConnectionResults({
         return;
       }
 
-      const { id } = await actions.create.mutateAsync(connectionData);
+      const created = await actions.create.mutateAsync(connectionData);
+      const { id } = created;
 
       // Handle OAuth flow (if needed) + persist, via the shared helper.
       const auth = await authenticateAndPersistOAuth({
@@ -332,7 +329,50 @@ function ConnectionResults({
         toast.success(t("orgs.connections.authenticationSuccessful"));
       }
 
-      toast.success(t("orgs.connections.connectedSuccessfully"));
+      // Own try: the connection exists; a failed listTools isn't a failed connect.
+      let target: ReturnType<typeof resolveConnectedMcpTarget> = null;
+      try {
+        const client = await queryClient.fetchQuery(
+          mcpClientQueryOptions({
+            connectionId: id,
+            orgId: org.id,
+            orgSlug: org.slug,
+          }),
+        );
+        target = resolveConnectedMcpTarget((await client.listTools()).tools);
+      } catch {
+        // No target — the toast below just loses its button.
+      }
+
+      const appSlug = getConnectionSlug(created);
+      const to = !target
+        ? null
+        : target.appToolName
+          ? ({
+              to: "/$org/settings/connections/$appSlug/$collectionName/$itemId",
+              params: {
+                org: org.slug,
+                appSlug,
+                collectionName: "tools",
+                itemId: encodeURIComponent(target.appToolName),
+              },
+            } as const)
+          : ({
+              to: "/$org/settings/connections/$appSlug",
+              params: { org: org.slug, appSlug },
+            } as const);
+
+      toast.success(
+        t("orgs.connections.connectedSuccessfully"),
+        to
+          ? {
+              action: {
+                label: t("orgs.connections.openConnection"),
+                onClick: () => navigate(to),
+              },
+            }
+          : undefined,
+      );
     } catch (error) {
       toast.error(
         t("orgs.connections.failedToConnect", {
@@ -364,16 +404,13 @@ function ConnectionResults({
     setBulkDeleteOpen(false);
     const ids = [...selectedIds];
     track("connections_bulk_delete", { count: ids.length });
-    let deleted = 0;
 
-    for (const id of ids) {
-      try {
-        await studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true });
-        deleted++;
-      } catch {
-        // continue with next
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        studio.call("COLLECTION_CONNECTIONS_DELETE", { id, force: true }),
+      ),
+    );
+    const deleted = results.filter((r) => r.status === "fulfilled").length;
 
     invalidateConnections();
     toast.success(t("orgs.connections.deletedConnections", { count: deleted }));
@@ -403,16 +440,10 @@ function ConnectionResults({
       count: ids.length,
       to_status: status,
     });
-    let updated = 0;
-
-    for (const id of ids) {
-      try {
-        await actions.update.mutateAsync({ id, data: { status } });
-        updated++;
-      } catch {
-        // continue
-      }
-    }
+    const results = await Promise.allSettled(
+      ids.map((id) => actions.update.mutateAsync({ id, data: { status } })),
+    );
+    const updated = results.filter((r) => r.status === "fulfilled").length;
 
     invalidateConnections();
     toast.success(
@@ -500,7 +531,7 @@ function ConnectionResults({
       {/* Cards */}
       {mergedDiscovery.isInitialLoading && activeTab === "all" ? (
         <div className="flex h-full items-center justify-center">
-          <Loading01 size={32} className="animate-spin text-muted-foreground" />
+          <Spinner className="size-8 text-muted-foreground" />
         </div>
       ) : (
         <div>
@@ -635,10 +666,7 @@ function ConnectionResults({
               {(activeTab === "all" || isSearching) &&
                 mergedDiscovery.isLoadingMore && (
                   <div className="col-span-full flex justify-center py-6">
-                    <Loading01
-                      size={24}
-                      className="animate-spin text-muted-foreground"
-                    />
+                    <Spinner className="size-6 text-muted-foreground" />
                   </div>
                 )}
             </div>
@@ -1488,10 +1516,7 @@ function OrgMcpsContent() {
               <Suspense
                 fallback={
                   <div className="flex h-full items-center justify-center">
-                    <Loading01
-                      size={32}
-                      className="animate-spin text-muted-foreground"
-                    />
+                    <Spinner className="size-8 text-muted-foreground" />
                   </div>
                 }
               >
@@ -1528,10 +1553,7 @@ export default function OrgMcps() {
       <Suspense
         fallback={
           <div className="flex h-full items-center justify-center">
-            <Loading01
-              size={32}
-              className="animate-spin text-muted-foreground"
-            />
+            <Spinner className="size-8 text-muted-foreground" />
           </div>
         }
       >

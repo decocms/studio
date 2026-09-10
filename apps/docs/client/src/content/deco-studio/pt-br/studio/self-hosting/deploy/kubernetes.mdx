@@ -472,7 +472,7 @@ helm template studio-previews deploy/helm/studio-previews \
   --set applicationSet.repo.name=seu-fork \
   --set applicationSet.repo.tokenSecret.name=preview-github-token \
   --set studioChart.repoURL=oci://ghcr.io/decocms \
-  --set studioChart.version=0.14.0 \
+  --set studioChart.version="$STUDIO_CHART_VERSION" \
   --set studioChart.valuesRepo.url=https://github.com/sua-org/seu-fork.git \
   --set images.api=ghcr.io/sua-org/studio-preview \
   --set images.nginx=ghcr.io/sua-org/studio-nginx-preview \

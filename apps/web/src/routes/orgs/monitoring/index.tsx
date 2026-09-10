@@ -684,11 +684,13 @@ function MonitoringDashboardContent({
   );
   const [threadFilterUserIds, setThreadFilterUserIds] = useState<string[]>([]);
   const [threadFilterStatus, setThreadFilterStatus] = useState("all");
+  const [threadFilterSource, setThreadFilterSource] = useState("all");
 
   const threadActiveFiltersCount =
     (threadFilterAgentIds.length > 0 ? 1 : 0) +
     (threadFilterUserIds.length > 0 ? 1 : 0) +
-    (threadFilterStatus !== "all" ? 1 : 0);
+    (threadFilterStatus !== "all" ? 1 : 0) +
+    (threadFilterSource !== "all" ? 1 : 0);
 
   const memberOptions = getOrgMembers(membersData).map((m) => {
     const label = m.user.name ?? m.user.email ?? m.userId;
@@ -785,6 +787,7 @@ function MonitoringDashboardContent({
                   filterAgentIds={threadFilterAgentIds}
                   filterUserIds={threadFilterUserIds}
                   filterStatus={threadFilterStatus}
+                  filterSource={threadFilterSource}
                   virtualMcpOptions={virtualMcpOptions}
                   memberOptions={memberOptions}
                   activeFiltersCount={threadActiveFiltersCount}
@@ -792,6 +795,7 @@ function MonitoringDashboardContent({
                     filterAgentIds,
                     filterUserIds,
                     filterStatus,
+                    filterSource,
                   }) => {
                     if (filterAgentIds !== undefined)
                       setThreadFilterAgentIds(filterAgentIds);
@@ -799,6 +803,8 @@ function MonitoringDashboardContent({
                       setThreadFilterUserIds(filterUserIds);
                     if (filterStatus !== undefined)
                       setThreadFilterStatus(filterStatus);
+                    if (filterSource !== undefined)
+                      setThreadFilterSource(filterSource);
                   }}
                 />
               )}
@@ -922,6 +928,7 @@ function MonitoringDashboardContent({
           filterAgentIds={threadFilterAgentIds}
           filterUserIds={threadFilterUserIds}
           filterStatus={threadFilterStatus}
+          filterSource={threadFilterSource}
         />
       ) : tab === "audit" ? (
         <AuditTabContent

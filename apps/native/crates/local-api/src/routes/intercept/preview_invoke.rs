@@ -96,27 +96,28 @@ async fn invoke(state: &AppState, virtual_mcp_id: &str, branch: &str, body: &Byt
         return ApiError::new(StatusCode::BAD_GATEWAY, "Preview not available").into_response();
     };
 
-    let url = format!(
-        "http://127.0.0.1:{port}/deco/invoke/{}",
-        // RAW in the path, slashes intact: the deco runtime routes
-        // `/deco/invoke/*` on the UN-decoded path, so a percent-encoded key
-        // never matches a loader. `parse_invoke` has already rejected
-        // anything that could escape the path.
-        parsed.resolve_type
-    );
     let payload = match serde_json::to_vec(&parsed.payload) {
         Ok(bytes) => bytes,
         Err(_) => {
             return ApiError::internal("could not re-encode the invoke payload").into_response()
         }
     };
+    // RAW in the path, slashes intact: the deco runtime routes
+    // `/deco/invoke/*` on the UN-decoded path, so a percent-encoded key
+    // never matches a loader. `parse_invoke` has already rejected anything
+    // that could escape the path.
+    let resolve_type = parsed.resolve_type;
 
-    let request = reqwest::Client::new()
-        .post(&url)
-        .header(header::CONTENT_TYPE, "application/json")
-        .body(payload);
-    super::dev_server::send_and_mirror(request, Some(HeaderValue::from_static("application/json")))
-        .await
+    super::dev_server::send_and_mirror(
+        |host| {
+            reqwest::Client::new()
+                .post(format!("http://{host}:{port}/deco/invoke/{resolve_type}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(payload.clone())
+        },
+        Some(HeaderValue::from_static("application/json")),
+    )
+    .await
 }
 
 struct Invoke {

@@ -133,6 +133,7 @@ describe("mergeRetryExpired", () => {
       mergeRetryExpired(
         [inReview(ago(12 * MINUTE)), approved(ago(MINUTE))],
         NOW,
+        null,
       ),
     ).toBe(false);
   });
@@ -142,6 +143,7 @@ describe("mergeRetryExpired", () => {
       mergeRetryExpired(
         [inReview(ago(30 * MINUTE)), approved(ago(20 * MINUTE))],
         NOW,
+        null,
       ),
     ).toBe(true);
   });
@@ -152,6 +154,7 @@ describe("mergeRetryExpired", () => {
       mergeRetryExpired(
         [approved(ago(60 * MINUTE)), inReview(ago(MINUTE))],
         NOW,
+        null,
       ),
     ).toBe(true);
   });
@@ -159,6 +162,16 @@ describe("mergeRetryExpired", () => {
   // No approval to read at all (activity unreadable) — the human is here and
   // the machine has shown nothing, so the re-run wins.
   test("expires when there is no approval to read", () => {
-    expect(mergeRetryExpired([], NOW)).toBe(true);
+    expect(mergeRetryExpired([], NOW, null)).toBe(true);
+  });
+
+  // Since migration 190 the cycle boundary is the card's column, not a lane
+  // transition on the timeline — a card mid-review has no `→ in_review` entry
+  // to read at all, so the column is the only thing that can date its cycle.
+  test("takes the cycle boundary from the card's column when it has one", () => {
+    const activity = [approved(ago(60 * MINUTE)), approved(ago(MINUTE))];
+    expect(mergeRetryExpired(activity, NOW, ago(30 * MINUTE))).toBe(false);
+    // Same activity, a cycle that opened AFTER both approvals: neither counts.
+    expect(mergeRetryExpired(activity, NOW, ago(0))).toBe(true);
   });
 });

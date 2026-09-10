@@ -22,11 +22,6 @@ import {
   setOrgRepoSyncRuntime,
 } from "@/file-storage/dbos-org-repo-sync";
 import {
-  registerJiraSyncWorkflow,
-  setJiraSyncRuntime,
-} from "@/jira/dbos-jira-sync";
-import { createJiraWebhookRoutes } from "./routes/jira-webhook";
-import {
   registerTaskBoardArchiveSweepWorkflow,
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
@@ -76,6 +71,9 @@ import {
 import { posthog } from "../posthog";
 import authRoutes from "./routes/auth";
 import desktopAuthRoutes from "./routes/desktop-auth";
+import { ME_API_PREFIX, createMeRoutes } from "./routes/me";
+import { createUserFsRoutes } from "./routes/user-fs";
+import { USER_FS_API_PREFIX } from "@/file-storage/user-fs";
 import {
   ADMIN_API_PREFIX,
   createAdminRoutes,
@@ -118,7 +116,14 @@ import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
-import { githubWebhookRoutes } from "./routes/github-webhook";
+import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
+import { createJiraWebhookRoutes } from "./routes/jira-webhook";
+import {
+  registerJiraTriggerSweepWorkflow,
+  setJiraTriggerSweepRuntime,
+} from "@/jira/dbos-jira-trigger-sweep";
+import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
 import { createSelfRoutes } from "./routes/self";
@@ -139,6 +144,17 @@ import {
   setMcpListCache,
   type McpListCache,
 } from "../mcp-clients/mcp-list-cache";
+import {
+  JetStreamKVSkillCatalogCache,
+  setSkillCatalogCache,
+  type SkillCatalogCache,
+} from "../file-storage/skill-catalog-cache";
+import {
+  JetStreamKVPrCache,
+  PR_CARDS_CACHE,
+  PR_READS_CACHE,
+  setPrCaches,
+} from "../tools/task-board/pr-cache";
 import { isMcpCacheEnabled } from "../mcp-clients/mcp-read-cache";
 import {
   startMcpCacheInvalidation,
@@ -198,10 +214,7 @@ import {
   THREAD_GATE_PARTITION_CONCURRENCY,
   THREAD_GATE_QUEUE,
 } from "../dispatch-queue";
-import {
-  GITHUB_READS_QUEUE,
-  JIRA_PUSH_QUEUE,
-} from "../dispatch-queue/queue-names";
+import { GITHUB_READS_QUEUE } from "../dispatch-queue/queue-names";
 import { setProjectorWorkflowRuntime } from "./routes/decopilot/projector-workflow";
 import { synthesizedErrorMessageId } from "./routes/decopilot/message-ids";
 import { backfillStudioPackForAllOrgs } from "../auth/install-studio-pack-workflow";
@@ -322,7 +335,8 @@ function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
  * routes, the OAuth proxy (legacy `/oauth-proxy/...` and canonical
  * `/api/:org/oauth-proxy/...` — both must stay reachable so a browser
  * session mid-connect to a downstream MCP isn't 403'd before it can
- * establish an SSO session), and the instance-level admin surface.
+ * establish an SSO session), and the instance-level admin and user-filesystem
+ * surfaces.
  */
 export function isSsoExemptPath(path: string): boolean {
   return (
@@ -336,7 +350,11 @@ export function isSsoExemptPath(path: string): boolean {
     // Instance-level operator surface — not governed by any single org's SSO
     // policy. Without this, an admin whose active org enforces SSO gets 403'd
     // off the whole dashboard, and the UI reads that as "not an admin".
-    path.startsWith(`${ADMIN_API_PREFIX}/`)
+    path.startsWith(`${ADMIN_API_PREFIX}/`) ||
+    // A person's own filesystem belongs to them, not to a tenant, so no single
+    // org's SSO policy governs it — and published files must serve with no
+    // session at all.
+    path.startsWith(`${USER_FS_API_PREFIX}/`)
   );
 }
 
@@ -460,6 +478,24 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
   );
   if (!connection?.connection_url) {
     return c.json({ error: "Connection not found" }, 404);
+  }
+
+  // Some providers advertise a `registration_endpoint` and then 403 it (Figma):
+  // answer DCR from the connection's hand-registered client so the authorize
+  // and token legs below need no special case.
+  if (endpoint === "register" && connection.oauth_config?.clientId) {
+    // The client metadata is echoed back because RFC 7591 §3.2.1 says the
+    // response is the request plus the credentials, and clients validate it.
+    const requested = await c.req.json().catch(() => ({}));
+    return c.json({
+      ...(typeof requested === "object" && requested !== null ? requested : {}),
+      client_id: connection.oauth_config.clientId,
+      ...(connection.oauth_config.clientSecret
+        ? { client_secret: connection.oauth_config.clientSecret }
+        : {}),
+      // 0 = never expires; an expiry would send the client back through /register.
+      client_secret_expires_at: 0,
+    });
   }
 
   // Get origin auth server - tries Protected Resource Metadata first, then falls back to origin root
@@ -980,6 +1016,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
 
   let mcpListCache: McpListCache | null;
+  let skillCatalogCache: SkillCatalogCache | null;
+  let prCaches: { reads: JetStreamKVPrCache; cards: JetStreamKVPrCache } | null;
   let connectionCircuitStore: ConnectionCircuitStore;
   // Model lists are public, low-stakes metadata cached per-replica with a TTL —
   // no NATS needed, so this is shared across the test and production branches.
@@ -1002,6 +1040,12 @@ export async function createApp(options: CreateAppOptions = {}) {
       invalidate: async () => {},
       teardown: () => {},
     };
+    // Without NATS every read rebuilds the catalog — the behavior before the
+    // cache existed.
+    skillCatalogCache = null;
+    // Null here means the getters serve their inert instances — the per-pod
+    // in-memory SWR cache, which is what this path had before.
+    prCaches = null;
     connectionCircuitStore = new NoopConnectionCircuitStore();
     cancelBroadcast = {
       start: async () => {},
@@ -1072,6 +1116,22 @@ export async function createApp(options: CreateAppOptions = {}) {
     tlc?.init().catch(() => {});
     mcpListCache = tlc;
 
+    const scc = new JetStreamKVSkillCatalogCache({
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    scc.init().catch(() => {});
+    skillCatalogCache = scc;
+
+    const prReads = new JetStreamKVPrCache(PR_READS_CACHE, {
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    const prCards = new JetStreamKVPrCache(PR_CARDS_CACHE, {
+      getJetStream: () => natsProvider!.getJetStream(),
+    });
+    prReads.init().catch(() => {});
+    prCards.init().catch(() => {});
+    prCaches = { reads: prReads, cards: prCards };
+
     const ccs = new JetStreamKVConnectionCircuitStore({
       getJetStream: () => natsProvider!.getJetStream(),
     });
@@ -1098,6 +1158,15 @@ export async function createApp(options: CreateAppOptions = {}) {
       tlc?.init().catch((err: unknown) => {
         console.error("[McpListCache] Deferred init failed:", err);
       });
+      scc.init().catch((err: unknown) => {
+        console.error("[SkillCatalogCache] Deferred init failed:", err);
+      });
+      prReads.init().catch((err: unknown) => {
+        console.error("[PrReadCache] Deferred init failed:", err);
+      });
+      prCards.init().catch((err: unknown) => {
+        console.error("[PrCardCache] Deferred init failed:", err);
+      });
       ccs.init().catch((err: unknown) => {
         console.error("[ConnectionCircuitStore] Deferred init failed:", err);
       });
@@ -1120,6 +1189,8 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Set tool list cache after cleanup to avoid previous cleanup nulling the new cache
   setMcpListCache(mcpListCache);
+  setSkillCatalogCache(skillCatalogCache);
+  setPrCaches(prCaches);
   setConnectionCircuitStore(connectionCircuitStore);
 
   const threadStorage = new SqlThreadStorage(database.db);
@@ -1131,7 +1202,7 @@ export async function createApp(options: CreateAppOptions = {}) {
     // reaches the projector, so this reactor is its only terminal writer — and
     // owes the board the pass the projector's own terminals already run. Same
     // storages, built here because this wiring precedes theirs.
-    onThreadFinished: (threadId, orgId) =>
+    onThreadFinished: async (threadId, orgId) =>
       advanceTasksToReviewOnThreadFinish(
         new TaskBoardStorage(database.db),
         threadId,
@@ -1202,11 +1273,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     stopFlipBroadcast();
     streamBuffer.teardown();
     mcpListCache?.teardown();
+    skillCatalogCache?.teardown();
+    prCaches?.reads.teardown();
+    prCaches?.cards.teardown();
     modelListCache.teardown();
     providerKeyCache.teardown();
     teardownMcpCacheInvalidation();
     connectionCircuitStore.teardown();
     setMcpListCache(null);
+    setSkillCatalogCache(null);
+    setPrCaches(null);
     setConnectionCircuitStore(null);
   };
 
@@ -1345,20 +1421,73 @@ export async function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  // Backlog size (ENQUEUED count) for one DBOS queue, e.g. for a KEDA
-  // metrics-api trigger: `{ "queue_length": <n> }`. Restricted to the
-  // queues we actually register — DBOS.listQueuedWorkflows would happily
-  // query a made-up name and just return an empty list.
+  // Depth of one DBOS queue for a KEDA metrics-api trigger, split by what the
+  // two numbers mean for scaling:
+  //
+  //   queue_length — ENQUEUED, work waiting for any pod. Scales UP.
+  //   in_flight    — PENDING, runs executing on some pod right now. Targeted at
+  //                  the queue's `workerConcurrency`, so it asks for exactly the
+  //                  replicas needed to hold the work already running.
+  //
+  // `in_flight` behaves as a FLOOR while recovery is healthy — every PENDING row
+  // belongs to a live executor, and per-pod PENDING is capped at
+  // `workerConcurrency` by the dequeue, so it can never ask for more replicas
+  // than are already busy. It is NOT an unconditional floor: during a rollout,
+  // and until DBOS recovery re-enqueues a dead pod's rows, the dead and the live
+  // rows are both counted and the trigger can briefly ask for more. That
+  // over-ask is bounded by `dequeuedAfter` below and self-corrects on recovery.
+  //
+  // Reporting only the backlog is what made KEDA scale in a busy worker: a run
+  // streams for minutes with nothing enqueued behind it, the trigger reads
+  // `0/5 (avg)`, and the pod holding a live DBOS workflow is the one taken away
+  // (prod 2026-09-04). The daemon can now reattach when that happens; this stops
+  // it happening for a queue that is merely busy rather than backed up.
+  //
+  // Restricted to the queues we actually register — DBOS.listQueuedWorkflows
+  // would happily query a made-up name and just return an empty list.
+  //
+  // How stale a PENDING row may be and still count as in flight. Comfortably
+  // above `RUN_IDLE_TIMEOUT_MS` (10 min), the point at which Studio itself stops
+  // believing a run is alive — so this never clips a real run's floor, it only
+  // stops an unrecovered row from holding a replica up indefinitely.
+  const IN_FLIGHT_STALENESS_MS = 30 * 60 * 1000;
   app.get(`${SYSTEM_PATHS.DBOS_QUEUE_DEPTH_PREFIX}:queueName`, async (c) => {
     const queueName = c.req.param("queueName");
     if (!DBOS_QUEUE_NAMES.has(queueName)) {
       return c.json({ error: `Unknown queue: ${queueName}` }, 404);
     }
-    const queued = await DBOS.listQueuedWorkflows({
-      queueName,
-      status: "ENQUEUED",
+    // `loadInput: false` on both: the rows are counted, never read, and a
+    // hosted-harness workflow's input is the whole run request — deserializing
+    // every one of them twice per KEDA poll to call `.length` on the array is
+    // pure waste.
+    const [enqueued, running] = await Promise.all([
+      DBOS.listQueuedWorkflows({
+        queueName,
+        status: "ENQUEUED",
+        loadInput: false,
+        loadOutput: false,
+      }),
+      DBOS.listQueuedWorkflows({
+        queueName,
+        status: "PENDING",
+        loadInput: false,
+        loadOutput: false,
+        // PENDING is not proof of a LIVE executor: a pod that was SIGKILLed
+        // leaves its rows PENDING with `queue_name` intact until DBOS recovery
+        // re-enqueues them, and a workflow that recovery never reaches stays
+        // that way indefinitely. Unbounded, those rows would hold worker
+        // replicas up forever. Bounded here to runs dequeued recently enough
+        // to still be plausibly executing, so a stuck row ages out of the
+        // floor instead of pinning capacity to it.
+        dequeuedAfter: new Date(
+          Date.now() - IN_FLIGHT_STALENESS_MS,
+        ).toISOString(),
+      }),
+    ]);
+    return c.json({
+      queue_length: enqueued.length,
+      in_flight: running.length,
     });
-    return c.json({ queue_length: queued.length });
   });
 
   // ============================================================================
@@ -1377,14 +1506,25 @@ export async function createApp(options: CreateAppOptions = {}) {
   // GitHub push webhook (tenant warm-pool freshness): HMAC-authed, no session.
   // Optional — 503 without GITHUB_WEBHOOK_SECRET, and pools refresh on their
   // own schedule regardless.
-  app.route("/api/_github", githubWebhookRoutes);
   app.route(
-    "/api/_jira",
-    createJiraWebhookRoutes({
-      db: database.db,
-      encryptionKey: getSettings().encryptionKey,
+    "/api/_github",
+    createGithubWebhookRoutes({
+      taskBoard: () => projectorTaskBoard,
+      contextFactory: () => automationContextFactory,
     }),
   );
+  // Git provider OAuth callbacks: the state, not the URL, carries org+user.
+  app.route("/api/_git", gitProviderCallbackRoutes);
+
+  // Jira: the issue-event intake that starts runs, and the attachment grant
+  // route those runs download through. Both authenticate by capability
+  // (per-org secret, signed token), not by session.
+  const jiraRouteDeps = {
+    db: database.db,
+    encryptionKey: getSettings().encryptionKey,
+  };
+  app.route("/api/_jira", createJiraWebhookRoutes(jiraRouteDeps));
+  app.route("/api/_jira", createJiraAttachmentRoutes(jiraRouteDeps));
 
   // Auth-gated report page + domain-derived metadata. API-only/test apps safely
   // return 404 for the HTML shell when no built client directory is supplied.
@@ -1533,14 +1673,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Per-org repo syncs: same DBOS-scheduled shape, work list from the DB.
   setOrgRepoSyncRuntime({ db: database.db });
 
-  // Per-org Jira pull syncs: same shape, credentials decrypted per run.
-  setJiraSyncRuntime({
+  // Hourly auto-archive of settled Done cards, one org leg per candidate org.
+  setTaskBoardArchiveSweepRuntime({ db: database.db });
+
+  // Every 10 minutes: the Jira transitions the webhook may have missed.
+  setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
   });
-
-  // Hourly auto-archive of settled Done cards, one org leg per candidate org.
-  setTaskBoardArchiveSweepRuntime({ db: database.db });
 
   // Every 5 minutes: email what's still unread, then prune the 30-day window.
   setNotificationDigestRuntime({ db: database.db });
@@ -1813,8 +1953,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerMonitoringRetentionWorkflow();
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
-  registerJiraSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerJiraTriggerSweepWorkflow();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
@@ -1870,13 +2010,10 @@ export async function createApp(options: CreateAppOptions = {}) {
       );
   }
 
-  // Expired API key cleanup (e.g. short-lived claude-code-session keys)
+  // Expired API key cleanup — the api-key plugin's own sweep, not a raw query.
   const cleanupExpiredApiKeys = () =>
-    database.db
-      .deleteFrom("apikey" as any)
-      .where("expiresAt" as any, "<", new Date())
-      .execute()
-      .then(() => {})
+    auth.api
+      .deleteAllExpiredApiKeys()
       .catch((err: unknown) =>
         console.error("[auth] Expired API key cleanup failed:", err),
       );
@@ -2207,6 +2344,16 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());
 
+  // User-scoped, cross-organization reads (project search). Instance-level for
+  // the same reason as the two above: `/api/:org` would bind the request to one
+  // tenant, which is exactly what these routes must not do.
+  app.route(ME_API_PREFIX, createMeRoutes());
+
+  // Per-user filesystems (avatars today). Instance-level for the same reason
+  // as the routes above, plus one of its own: published files here serve
+  // without a session, which no `/api/:org` route may do.
+  app.route(USER_FS_API_PREFIX, createUserFsRoutes());
+
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
@@ -2337,19 +2484,16 @@ export async function createApp(options: CreateAppOptions = {}) {
     // enforced in the system DB, so it is a cap on ALL replicas together —
     // the one thing an in-process token bucket could never be.
     await DBOS.registerQueue(GITHUB_READS_QUEUE, GITHUB_READS_QUEUE_PARAMS);
-    // Board→Jira comment pushes: org partitions at concurrency 1 = posting order.
-    await DBOS.registerQueue(JIRA_PUSH_QUEUE, {
-      partitionQueue: true,
-      concurrency: 1,
-    });
     await reconcileAutomationSchedules(automationsStorage);
 
     // One-time cleanup of the retired per-automation/global gate queues.
     // Fires now run on the partitioned queue, so these rows are orphaned;
     // deleteQueue is a no-op once they're gone. Stale gate workflows still
     // ENQUEUED from a previous version are cancelled by the reconciler.
+    // `jira-push` carried the retired board→Jira mirror; its rows are orphaned
+    // the same way.
     await Promise.allSettled(
-      ["automations-gate", "automations-global"].map((q) =>
+      ["automations-gate", "automations-global", "jira-push"].map((q) =>
         DBOS.deleteQueue(q),
       ),
     );

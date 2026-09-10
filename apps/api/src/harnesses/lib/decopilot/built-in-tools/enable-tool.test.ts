@@ -31,6 +31,11 @@ describe("EnableToolInputSchema", () => {
     );
   });
 
+  test("rejects an oversized tools array", () => {
+    const tools = Array.from({ length: 201 }, (_, i) => `tool_${i}`);
+    expect(EnableToolInputSchema.safeParse({ tools }).success).toBe(false);
+  });
+
   test("rejects a connections input field", () => {
     const parsed = EnableToolInputSchema.safeParse({
       tools: ["a"],

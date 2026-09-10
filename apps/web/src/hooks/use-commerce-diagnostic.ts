@@ -20,12 +20,13 @@ import {
   useProjectContext,
   WellKnownOrgMCPId,
 } from "@/sdk";
-import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { KEYS } from "@/lib/query-keys";
 import { unwrapToolResult } from "@/routes/commerce-onboarding/companions-core";
 import {
   type CommerceDiagnosticRunState,
   deriveCommerceReportBannerStatus,
+  isCommerceDiagnosticLoading,
 } from "./commerce-diagnostic-status";
 
 /** Poll cadence while a run is live; a run takes minutes, not seconds. */
@@ -62,7 +63,8 @@ export interface UseCommerceDiagnosticResult {
    * True while we still can't tell whether a report exists — either gate 1 is in
    * flight, or it found the connection and the diagnostic read is in flight. It
    * goes false (with a null diagnostic) as soon as gate 1 says the org has no CD
-   * connection, so "no report" is distinguishable from "not known yet".
+   * connection, or gate 2 fails to open a client, so "no report" is
+   * distinguishable from "not known yet".
    */
   isLoading: boolean;
   /** The org's Commerce Discovery site, as claimed on the connection. */
@@ -105,7 +107,7 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
   const connectionItem = connectionQuery.data?.item ?? null;
 
   // Gate 2: only orgs that passed gate 1 open a client to the CD MCP.
-  const { data: cdClient } = useQuery({
+  const { data: cdClient, isError: cdClientIsError } = useQuery({
     ...mcpClientQueryOptions({
       connectionId,
       orgId: org.id,
@@ -141,9 +143,12 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
   return {
     diagnostic: diagnosticQuery.data ?? null,
     isSuccess: diagnosticQuery.isSuccess,
-    isLoading:
-      connectionQuery.isPending ||
-      (!!connectionItem && diagnosticQuery.isPending),
+    isLoading: isCommerceDiagnosticLoading({
+      connectionQueryPending: connectionQuery.isPending,
+      hasConnection: !!connectionItem,
+      cdClientFailed: cdClientIsError,
+      diagnosticQueryPending: diagnosticQuery.isPending,
+    }),
     siteUrl: typeof siteUrl === "string" && siteUrl ? siteUrl : null,
     host: hostFromSiteUrl(siteUrl),
     connectionId,
@@ -152,21 +157,26 @@ export function useCommerceDiagnostic(): UseCommerceDiagnosticResult {
 }
 
 /** Navigate args that open the Commerce Discovery report app (where the unlock /
- *  checkout lives) as a pinned view on a fresh thread. Shared by the home banner
- *  and the board paywall so the target stays identical. */
+ *  checkout lives) as the report agent's `app` view. Shared by the home banner
+ *  and the board paywall so the target stays identical. The report needs no
+ *  thread of its own, so none is minted: the chat opens an empty composer. */
 export function commerceReportNavTarget(
   org: { id: string; slug: string },
   connectionId: string,
 ) {
   return {
-    to: "/$org/$taskId" as const,
-    params: { org: org.slug, taskId: crypto.randomUUID() },
+    to: DESTINATION_ROUTE.agents,
+    params: {
+      org: org.slug,
+      panel: "app",
+    },
+    /** The scope is SEARCH, not a param: `/$org/agents/{-$panel}` declares only
+     *  `org` and `panel`, so a `virtualmcpid` param is silently discarded and
+     *  the report opens on the Super Agent. */
     search: {
       virtualmcpid: getCommerceDiscoveryAgentId(org.id),
-      main: formatPinnedViewTabId(
-        connectionId,
-        COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-      ),
+      connection: connectionId,
+      tool: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
     },
-  };
+  } as const;
 }

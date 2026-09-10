@@ -31,6 +31,7 @@ const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
     id: "item-1",
     organizationId: "org-1",
     status: "in_review",
+    reviewCycleStartedAt: null,
     updatedBy: "user-1",
     ...over,
   }) as TaskBoardItem;
@@ -44,7 +45,9 @@ function fakeCtx(
     storage: {
       organizationSettings: {
         get: async () => ({
-          flags: { delivery_lanes_enabled: over.deliveryLanes ?? false },
+          flags: {
+            delivery_lanes_enabled: over.deliveryLanes ?? false,
+          },
         }),
       },
       taskBoard: {
@@ -91,6 +94,8 @@ describe("advanceToDoneIfMerged", () => {
     });
   });
 
+  // The org-owned board needs the same discriminator a manual move sets (#6725).
+
   it("leaves an unmerged card alone", async () => {
     const { ctx, updates } = fakeCtx();
     expect(await advanceToDoneIfMerged(ctx, item(), [openPr])).toBe(false);
@@ -125,13 +130,31 @@ describe("advanceToDoneIfMerged", () => {
     expect(await advanceToDoneIfMerged(ctx, item(), [])).toBe(false);
   });
 
-  it("only ever moves a card that is still In Review", async () => {
+  it("only ever moves a card that is still in the review phase", async () => {
     const { ctx } = fakeCtx();
     expect(
       await advanceToDoneIfMerged(ctx, item({ status: "in_progress" }), [
         merged,
       ]),
     ).toBe(false);
+  });
+
+  // A card whose reviewer is still working reads In Progress since migration
+  // 189, and a PR merged out from under it must still catch the card up —
+  // gating on the lane alone would leave it behind forever.
+  it("moves an In Progress card whose review cycle is open", async () => {
+    const { ctx, updates } = fakeCtx();
+    expect(
+      await advanceToDoneIfMerged(
+        ctx,
+        item({
+          status: "in_progress",
+          reviewCycleStartedAt: "2026-01-01T00:00:00.000Z",
+        }),
+        [merged],
+      ),
+    ).toBe(true);
+    expect(updates).toEqual([{ status: "done" }]);
   });
 
   // A person who pulled the card back out of Done outranks a merged PR.

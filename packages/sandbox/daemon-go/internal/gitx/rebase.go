@@ -77,10 +77,10 @@ func commitBeforeRebase(repoDir string, operator *CoAuthorIdentity) error {
 	if _, err := rebaseRun(repoDir, []string{"add", "."}); err != nil {
 		return err
 	}
-	args := []string{
-		"-c", "core.hooksPath=" + getEmptyHooksDir(),
-		"commit", "--no-verify", "-m", AppendCoAuthorTrailer("Before rebase", operator),
-	}
+	commitMsg, authorArgs := CommitAttribution("Before rebase", operator)
+	args := []string{"-c", "core.hooksPath=" + getEmptyHooksDir(), "commit", "--no-verify"}
+	args = append(args, authorArgs...)
+	args = append(args, "-m", commitMsg)
 	_, err := rebaseRun(repoDir, args, skipHooksEnv)
 	return err
 }

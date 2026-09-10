@@ -1,11 +1,16 @@
-import { Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { OrgAccessGate } from "@/components/org-access-gate";
-import { SplashScreen } from "@/components/splash-screen";
 import { FloatingReleaseCard } from "@/components/release-channel/floating-release-card";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { CommandPalette } from "@/components/command-palette";
+import {
+  closeCommandPalette,
+  openCommandPalette,
+  useCommandPaletteOpen,
+} from "@/components/command-palette-store";
 import { VersionCheckDialog } from "@/components/version-check-dialog";
 import { LanguageAnnouncementDialog } from "@/components/language-announcement-dialog";
-import { isModKey } from "@/lib/keyboard-shortcuts";
+import { isModKey, isTypingTarget } from "@/lib/keyboard-shortcuts";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { authClient } from "@/lib/auth-client";
 import { AUTOSEND_QUERY_VALUE } from "@/lib/autosend";
@@ -24,20 +29,39 @@ import {
   Outlet,
   useMatch,
   useNavigate,
-  useParams,
   useRouter,
+  useRouterState,
   useSearch,
 } from "@tanstack/react-router";
+import {
+  useRouteAgentId,
+  useRouteThreadId,
+  useRouteVirtualMcpId,
+  useThreadNavigate,
+} from "@/layouts/thread-route";
 import { KEYS } from "../lib/query-keys";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import { resolveTaskSwitchSearch } from "@/layouts/resolve-task-switch-search";
+import {
+  useActivePanelTabId,
+  usePanelNavigate,
+} from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { readThreadLayout, saveThreadLayout } from "@/lib/thread-layout-memory";
 import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
 import { ArchivedOrgScreen } from "../components/archived-org-screen";
+import { BlockedOrgScreen } from "../components/blocked-org-screen";
+import { useOrgNotice } from "../hooks/use-org-notice";
+import { isBillingEscapeHatch } from "../lib/org-block-escape";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+
+/** What `getFullOrganization` resolves to — named so the cache seed below can
+ *  be typed against it in one place. */
+type ActiveOrgData = Awaited<
+  ReturnType<typeof authClient.organization.getFullOrganization>
+>["data"];
 
 // ---------------------------------------------------------------------------
 // ShellProjectProvider — fetches org settings and provides project context.
@@ -76,10 +100,13 @@ function ShellProjectProvider({
 
 // ---------------------------------------------------------------------------
 // Panel actions — works anywhere in the router tree.
-// Only updates URL search params. The UnifiedPanelGroup useEffect syncs
-// the visual panel layout from the querystring-derived state.
 // ---------------------------------------------------------------------------
 
+/**
+ * Layout actions only update search (`to: "."`, so they stay on the matched
+ * route); thread switches go through `useThreadNavigate`. The UnifiedPanelGroup
+ * effect syncs the visual panel layout from the querystring-derived state.
+ */
 export function usePanelActions() {
   const navigate = useNavigate();
   // Optional: the settings route tree has no ThreadManagerProvider, so this is
@@ -87,49 +114,44 @@ export function usePanelActions() {
   const manager = useOptionalThreadManager();
   const { org } = useProjectContext();
 
-  const params = useParams({ strict: false }) as {
-    org?: string;
-    taskId?: string;
-  };
   const search = useSearch({ strict: false }) as {
-    virtualmcpid?: string;
-    main?: string | 0;
-    sidepanel?: "chat" | 0;
+    mainpanel?: boolean;
+    sidepanel?: boolean;
   };
-  const orgSlug = params.org ?? "";
-  const currentTaskId = params.taskId ?? "";
+  const activeTabId = useActivePanelTabId();
+  const { openPanel, closePanel } = usePanelNavigate();
+  /** The agent the route NAMES — undefined on an org-level destination, which
+   *  belongs to the Super Agent and so records no agent anywhere. */
+  const routeAgentId = useRouteAgentId();
+  const currentTaskId = useRouteThreadId();
+  const routeVirtualMcpId = useRouteVirtualMcpId();
+  const navigateThread = useThreadNavigate();
 
-  const navWith = (
-    taskId: string,
+  /**
+   * Search-only navigation: `to: "."` re-interpolates the matched route's own
+   * path params, so a panel/tab change stays on the current page and can never
+   * fabricate a thread id.
+   */
+  const navSearch = (
     searchFn: (prev: Record<string, unknown>) => Record<string, unknown>,
     replace = true,
-  ) =>
-    navigate({
-      to: "/$org/$taskId",
-      params: { org: orgSlug, taskId },
-      search: searchFn,
-      replace,
-    });
+  ) => navigate({ to: ".", search: searchFn, replace });
 
-  const nav = (
-    searchFn: (prev: Record<string, unknown>) => Record<string, unknown>,
-    replace = true,
-  ) => navWith(currentTaskId, searchFn, replace);
-
-  const openSidePanel = (sidePanel: "chat") =>
-    nav((prev) => ({ ...prev, sidepanel: sidePanel }));
+  const openSidePanel = () =>
+    navSearch((prev) => ({ ...prev, sidepanel: true }));
 
   const setTaskId = (
     id: string,
     virtualMcpId?: string,
-    opts?: { autosend?: boolean; main?: string },
+    opts?: { autosend?: boolean; panel?: string },
   ) => {
     const isSameThread = !!currentTaskId && currentTaskId === id;
     // Remember the layout of the thread we're leaving so returning to it
     // restores the same tabs/side-panel instead of the agent default.
     if (currentTaskId && !isSameThread) {
       saveThreadLayout(currentTaskId, {
-        main: search.main,
+        tab: activeTabId,
+        mainpanel: search.mainpanel,
         sidepanel: search.sidepanel,
       });
     }
@@ -138,45 +160,48 @@ export function usePanelActions() {
     const savedLayout = isSameThread ? null : readThreadLayout(id);
     const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
 
-    return navWith(
+    const target = resolveTaskSwitchSearch({
+      /** The source agent is the one the ROUTE names, never a search param a previous navigation left behind — a stale one misreports the agent we're switching AWAY from, and the carry-forward view rides on that comparison. */
+      prev: { virtualmcpid: routeAgentId, tabId: activeTabId },
+      virtualMcpId,
+      decopilotId,
+      savedLayout,
+      opts,
+      autosendValue: AUTOSEND_QUERY_VALUE,
+    });
+
+    return navigateThread(
       id,
-      (prev) =>
-        resolveTaskSwitchSearch({
-          prev: prev as { virtualmcpid?: unknown; main?: unknown },
-          virtualMcpId,
-          decopilotId,
-          savedLayout,
-          opts,
-          autosendValue: AUTOSEND_QUERY_VALUE,
-        }),
-      false,
+      () => target.search,
+      /** A thread belongs to one agent, so switching to another project's thread moves the `{-$project}` segment with it — and the view it lands on moves with it too. */
+      { virtualMcpId, view: { tabId: target.tabId } },
     );
   };
 
-  // Create the row before navigating so the route loader does not race its
-  // create-on-404 fallback.
-  //
-  // `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin
-  // the thread to a specific agent regardless of the current URL. When
-  // omitted, falls back to the URL's `virtualmcpid`, then to the well-known
-  // Decopilot agent.
-  //
-  // `branch` lets a "New chat on the branch I'm viewing" caller inherit the
-  // current thread's branch. When omitted/null (e.g. a branchless agent, or an
-  // "open agent X" flow), the server picks the most-recently-touched branch from
-  // the user's sandboxMap. The schema only accepts a non-empty branch string, so
-  // null/empty is dropped.
-  /** `opts` forwards straight to `setTaskId` (e.g. to pin the new thread's landing tab). */
+  /**
+   * Create the row before navigating so the route loader does not race its
+   * create-on-404 fallback.
+   *
+   * `virtualMcpId` lets callers (e.g. the per-group "+" in the sidebar) pin the
+   * thread to a specific agent regardless of the current URL. When omitted, the
+   * route answers — `useRouteVirtualMcpId` reads the `{-$project}` segment
+   * first, so a new chat on a project belongs to that project.
+   *
+   * `branch` lets a "New chat on the branch I'm viewing" caller inherit the
+   * current thread's branch. When omitted/null (e.g. a branchless agent, or an
+   * "open agent X" flow), the server picks the most-recently-touched branch from
+   * the user's sandboxMap. The schema only accepts a non-empty branch string, so
+   * null/empty is dropped.
+   *
+   * `opts` forwards straight to `setTaskId` (e.g. to pin the new thread's landing tab).
+   */
   const createNewTask = async (
     virtualMcpId?: string,
     branch?: string | null,
-    opts?: { main?: string },
+    opts?: { panel?: string },
   ) => {
     const newId = crypto.randomUUID();
-    const targetVmcp =
-      virtualMcpId ??
-      search.virtualmcpid ??
-      getWellKnownDecopilotVirtualMCP(org.id).id;
+    const targetVmcp = virtualMcpId ?? routeVirtualMcpId;
     try {
       // No manager (settings tree): skip the eager create and let the
       // /$org/$taskId route loader's ensure-fallback create the thread.
@@ -192,18 +217,31 @@ export function usePanelActions() {
     setTaskId(newId, targetVmcp, opts);
   };
 
-  const openTab = (tabId: string) =>
-    navWith(currentTaskId || crypto.randomUUID(), (prev) => ({
-      ...prev,
-      main: tabId,
-    }));
-
   return {
     openSidePanel,
     setTaskId,
     createNewTask,
-    openTab,
+    /** Changing which view is showing is not a reason to mint a thread. */
+    openTab: openPanel,
+    closeTab: closePanel,
   };
+}
+
+/**
+ * The two routes that land on the home overview: the `/$org` resolver and the
+ * `/$org/home` destination it resolves to. Matching on the route rather than on
+ * "this URL has no taskId" keeps the prefetch off every other destination,
+ * none of which carries a thread in its path either.
+ */
+const HOME_ROUTE_FULL_PATHS = new Set(["/$org/", "/$org/home"]);
+
+function useIsHomeRoute(): boolean {
+  return useRouterState({
+    select: (state) => {
+      const fullPath = state.matches.at(-1)?.fullPath;
+      return fullPath !== undefined && HOME_ROUTE_FULL_PATHS.has(fullPath);
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -214,13 +252,14 @@ export function usePanelActions() {
 function ShellLayoutContent() {
   const orgMatch = useMatch({ from: "/shell/$org", shouldThrow: false });
   const org = orgMatch?.params.org;
-  const { taskId } = useParams({ strict: false }) as { taskId?: string };
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useCommandPaletteOpen();
   const router = useRouter();
+  const isHomeRoute = useIsHomeRoute();
 
   useQuery({
     ...homeNextActionsQueryOptions(org ?? ""),
-    enabled: !!org && !taskId,
+    enabled: !!org && isHomeRoute,
   });
 
   // Session is guaranteed present here (this renders inside <SignedIn>), so the
@@ -233,6 +272,15 @@ function ShellLayoutContent() {
   useEffect(() => {
     const handler = (e: globalThis.KeyboardEvent) => {
       if (isModKey(e) && e.code === "KeyK") {
+        e.preventDefault();
+        /** The module-scope opener, not the setter this component reads with:
+         *  a store write needs no subscription, and it keeps the effect's
+         *  dependency list to the router. */
+        openCommandPalette();
+        return;
+      }
+      /** "?" opens the shortcuts sheet that ⌘K used to; ignored while typing. */
+      if (e.key === "?" && !isTypingTarget(e.target)) {
         e.preventDefault();
         setShortcutsDialogOpen(true);
         return;
@@ -296,14 +344,19 @@ function ShellLayoutContent() {
 
       return data;
     },
-    // Hydrate from the user-scoped cache so the shell paints without waiting on
-    // the network; the stale `initialDataUpdatedAt` triggers a background
-    // refetch that flips to the access gate if membership was revoked.
-    initialData: cachedOrg
-      ? (cachedOrg.data as Awaited<
-          ReturnType<typeof authClient.organization.getFullOrganization>
-        >["data"])
-      : undefined,
+    /** Boot is the only moment this query may suspend, and the splash is the
+     *  right loader then because no shell is on screen yet. Its key carries the
+     *  org slug, so an org SWITCH re-resolves it — but that happens inside the
+     *  router's transition, on a boundary that is already mounted, so React
+     *  keeps the painted shell up instead of dropping to the fallback. That is
+     *  the property `loading-states.spec.ts` pins; if a future change remounts
+     *  this boundary, the splash comes back on top of a painted shell.
+     *
+     *  Hydrating from the user-scoped cache keeps a reload of a known org off
+     *  the network entirely. The stale `initialDataUpdatedAt` still triggers a
+     *  background refetch, which flips to the access gate if membership was
+     *  revoked. */
+    initialData: cachedOrg ? (cachedOrg.data as ActiveOrgData) : undefined,
     initialDataUpdatedAt: cachedOrg?.updatedAt,
     gcTime: Infinity,
     refetchOnWindowFocus: false,
@@ -313,6 +366,15 @@ function ShellLayoutContent() {
   const orgId = activeOrg?.id;
   const orgSlug = activeOrg?.slug;
   const { data: ssoStatus } = useOrgSsoStatus(orgId, orgSlug);
+  const ssoBlocked = !!ssoStatus?.ssoRequired && !ssoStatus.authenticated;
+
+  /** A blocked org (billing notice) shows the notice instead of itself —
+   *  except on billing, which stays reachable so the org can settle it. The
+   *  server enforces the same block on writes; this is the screen for it. */
+  const { data: orgNotice } = useOrgNotice(orgSlug);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const orgBlocked =
+    orgNotice?.severity === "block" && !isBillingEscapeHatch(pathname);
 
   // Warm the self-MCP connection in parallel with the rest of shell bootstrap,
   // so the home's useMCPClient resolves without waiting on a fresh connect()
@@ -328,16 +390,19 @@ function ShellLayoutContent() {
     enabled: !!orgId && !!orgSlug,
   });
 
+  /** Below this line the shell may return a gate screen instead of itself, and
+   *  none of them mount the palette — so drop any flag ⌘K set on the way in. */
+  if (!activeOrg || isOrgArchived(activeOrg) || ssoBlocked || orgBlocked) {
+    closeCommandPalette();
+  }
+
   if (!activeOrg) {
-    // Not a member: figure out which screen to show (no-access / pending
-    // invite / auto-domain-join / not-found). Wrapped in Suspense so the
-    // brief access-status fetch shows the splash instead of throwing back to
-    // the parent suspense boundary.
-    return (
-      <Suspense fallback={<SplashScreen />}>
-        <OrgAccessGate orgSlug={org!} />
-      </Suspense>
-    );
+    /** Not a member: figure out which screen to show (no-access / pending
+     *  invite / auto-domain-join / not-found). No boundary of its own — the
+     *  brief access-status fetch suspends up to the app's single splash
+     *  boundary, which is the same splash a local fallback used to draw and one
+     *  element fewer to remount (`layouts/boot-gate.tsx`). */
+    return <OrgAccessGate orgSlug={org!} />;
   }
 
   const isArchivedOrg = isOrgArchived(activeOrg);
@@ -349,7 +414,11 @@ function ShellLayoutContent() {
     return <ArchivedOrgScreen orgName={activeOrg.name} />;
   }
 
-  if (ssoStatus?.ssoRequired && !ssoStatus.authenticated) {
+  if (orgBlocked && orgNotice) {
+    return <BlockedOrgScreen notice={orgNotice} orgSlug={activeOrg.slug} />;
+  }
+
+  if (ssoBlocked) {
     return (
       <SsoRequiredScreen
         orgId={activeOrg.id}
@@ -369,6 +438,14 @@ function ShellLayoutContent() {
         <FloatingReleaseCard />
         <VersionCheckDialog />
       </div>
+
+      {/* Mounted only while open: this sits outside every Suspense boundary
+          but the root, so nothing here may suspend — the palette's search
+          client is non-blocking for that reason. The ⌘K binding lives above,
+          so gating the mount does not lose it. */}
+      {paletteOpen && (
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      )}
 
       {/* Keyboard Shortcuts Dialog */}
       <KeyboardShortcutsDialog

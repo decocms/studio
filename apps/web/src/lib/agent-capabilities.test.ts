@@ -1,19 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import {
-  agentCanBePinned,
   agentHasClonableSource,
   agentHasConnectedGithub,
-  agentIsSidebarPinned,
   agentShowsGithubHeaderActions,
+  findDevPartner,
 } from "./agent-capabilities";
-
-const CODE_META = {
-  githubRepo: {
-    url: "https://github.com/acme/app",
-    owner: "acme",
-    name: "app",
-  },
-};
 
 describe("agentHasClonableSource", () => {
   it("returns false for null/undefined metadata", () => {
@@ -60,36 +51,6 @@ describe("agentHasClonableSource", () => {
   it("ignores non-object metadata", () => {
     expect(agentHasClonableSource("string")).toBe(false);
     expect(agentHasClonableSource(42)).toBe(false);
-  });
-});
-
-describe("agentCanBePinned", () => {
-  it("returns true for a non-code agent (no clonable source)", () => {
-    expect(agentCanBePinned({ metadata: {} })).toBe(true);
-    expect(agentCanBePinned({ metadata: null })).toBe(true);
-  });
-
-  it("returns false for a code agent (clonable source)", () => {
-    expect(agentCanBePinned({ metadata: CODE_META })).toBe(false);
-  });
-});
-
-describe("agentIsSidebarPinned", () => {
-  it("returns true only when a non-code agent is pinned", () => {
-    expect(agentIsSidebarPinned({ pinned: true, metadata: {} })).toBe(true);
-  });
-
-  it("returns false when not pinned", () => {
-    expect(agentIsSidebarPinned({ pinned: false, metadata: {} })).toBe(false);
-    expect(agentIsSidebarPinned({ pinned: undefined, metadata: {} })).toBe(
-      false,
-    );
-  });
-
-  it("returns false for a pinned code agent (already auto-listed)", () => {
-    expect(agentIsSidebarPinned({ pinned: true, metadata: CODE_META })).toBe(
-      false,
-    );
   });
 });
 
@@ -200,5 +161,43 @@ describe("agentShowsGithubHeaderActions", () => {
         },
       } as any),
     ).toBe(true);
+  });
+});
+
+describe("findDevPartner", () => {
+  it("returns null for a null/undefined agent", () => {
+    expect(findDevPartner(null, [])).toBeNull();
+    expect(findDevPartner(undefined, [])).toBeNull();
+  });
+
+  it("resolves the dev agent's live counterpart when it's in the list", () => {
+    const dev = { id: "vir_dev", metadata: { liveAgentId: "vir_live" } } as any;
+    const live = { id: "vir_live", metadata: {} } as any;
+    expect(findDevPartner(dev, [dev, live])).toEqual({
+      mode: "dev",
+      targetId: "vir_live",
+    });
+  });
+
+  it("resolves the live agent's dev counterpart via reverse lookup", () => {
+    const dev = { id: "vir_dev", metadata: { liveAgentId: "vir_live" } } as any;
+    const live = { id: "vir_live", metadata: {} } as any;
+    expect(findDevPartner(live, [dev, live])).toEqual({
+      mode: "live",
+      targetId: "vir_dev",
+    });
+  });
+
+  it("returns null when liveAgentId is dangling (the live agent was deleted)", () => {
+    const dev = {
+      id: "vir_dev",
+      metadata: { liveAgentId: "vir_deleted" },
+    } as any;
+    expect(findDevPartner(dev, [dev])).toBeNull();
+  });
+
+  it("returns null for an agent that isn't part of a dev/live pair", () => {
+    const solo = { id: "vir_solo", metadata: {} } as any;
+    expect(findDevPartner(solo, [solo])).toBeNull();
   });
 });

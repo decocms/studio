@@ -64,7 +64,7 @@ test.describe("clonable agent identity (settings tab)", () => {
 
     // The settings tab renders the title input with placeholder "Agent
     // name" — present regardless of value, so getByPlaceholder is robust.
-    const titleInput = page.getByPlaceholder("Agent name");
+    const titleInput = page.getByPlaceholder("Project name");
     await expect(titleInput).toBeVisible({ timeout: 15_000 });
 
     // The IconPicker trigger button is tagged with data-testid so the

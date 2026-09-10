@@ -35,3 +35,35 @@ export function deriveCommerceReportBannerStatus(
   if (diagnostic.scanned_at) return "ready";
   return "none";
 }
+
+export interface CommerceDiagnosticLoadingState {
+  /** Gate 1 (the CD connection lookup) hasn't resolved yet. */
+  connectionQueryPending: boolean;
+  /** Gate 1 resolved and found a CD connection. */
+  hasConnection: boolean;
+  /**
+   * Opening the CD MCP client (gate 2) failed permanently — e.g. the
+   * connection was revoked or the network is down. With no client, the
+   * diagnostic read never runs and would otherwise sit at its initial
+   * "pending" state forever.
+   */
+  cdClientFailed: boolean;
+  /** The diagnostic read (gate 2's query) hasn't resolved yet. */
+  diagnosticQueryPending: boolean;
+}
+
+/**
+ * Whether {@link useCommerceDiagnostic} should still report `isLoading`. A
+ * failed gate-2 client open must resolve to "not loading" (diagnostic: null)
+ * rather than leave callers stuck on a loading state that can never clear —
+ * the diagnostic query stays disabled, and never fetching, once its client
+ * dependency has errored out.
+ */
+export function isCommerceDiagnosticLoading(
+  state: CommerceDiagnosticLoadingState,
+): boolean {
+  if (state.connectionQueryPending) return true;
+  if (!state.hasConnection) return false;
+  if (state.cdClientFailed) return false;
+  return state.diagnosticQueryPending;
+}

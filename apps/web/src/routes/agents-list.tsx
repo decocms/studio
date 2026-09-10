@@ -9,6 +9,7 @@ import {
 import { Page } from "@/components/page";
 import { ProjectCard } from "@/components/project-card";
 import { useCapability } from "@/hooks/use-capability";
+import { useIsDecoStaff } from "@/hooks/use-organization-settings";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { useCreateVirtualMCP } from "@/hooks/use-create-virtual-mcp";
 import { ImportFromDecoDialog } from "@/components/import-from-deco-dialog.tsx";
@@ -30,16 +31,18 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { FolderClosed, Plus } from "@untitledui/icons";
 import { toast } from "sonner";
-import { GitHubRepoPicker } from "@/components/github-repo-picker.tsx";
+import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 
 export default function AgentsListPage() {
   const t = useT();
   const { org } = useProjectContext();
-  const agents = useVirtualMCPs();
-  const actions = useVirtualMCPActions();
   const [search, setSearch] = useState("");
+  const searchTerm = useDebouncedValue(search, 300);
+  const agents = useVirtualMCPs({ searchTerm });
+  const actions = useVirtualMCPActions();
   const { createVirtualMCP, isCreating } = useCreateVirtualMCP({
     navigateOnCreate: true,
   });
@@ -50,16 +53,10 @@ export default function AgentsListPage() {
   const [importDecoOpen, setImportDecoOpen] = useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
   const { granted: canManageAgents } = useCapability("agents:manage");
+  const showDecoImport = useIsDecoStaff();
 
-  const lowerSearch = search.toLowerCase();
-
-  // Filter out org-admin and apply search
-  const filteredAgents = agents.filter(
-    (s) =>
-      s.id !== org.id &&
-      (s.title.toLowerCase().includes(lowerSearch) ||
-        s.description?.toLowerCase().includes(lowerSearch)),
-  );
+  // Search is server-side via searchTerm; only the org-admin exclusion stays here.
+  const filteredAgents = agents.filter((s) => s.id !== org.id);
 
   const { data: lastUsedMap } = useVirtualMCPsLastUsed(
     filteredAgents.map((a) => a.id),
@@ -129,6 +126,7 @@ export default function AgentsListPage() {
                     }}
                     isCreating={isCreating}
                     align="end"
+                    showDecoImport={showDecoImport}
                   />
                 </DropdownMenu>
               )}
@@ -188,6 +186,7 @@ export default function AgentsListPage() {
                         isCreating={isCreating}
                         align="center"
                         showBetaBadge
+                        showDecoImport={showDecoImport}
                       />
                     </DropdownMenu>
                   )
@@ -224,7 +223,7 @@ export default function AgentsListPage() {
         </Page.Body>
       </Page.Content>
 
-      <GitHubRepoPicker
+      <RepositoryImportPicker
         open={githubPickerOpen}
         onOpenChange={setGithubPickerOpen}
       />

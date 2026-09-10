@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { deriveCommerceReportBannerStatus } from "./commerce-diagnostic-status";
+import {
+  deriveCommerceReportBannerStatus,
+  isCommerceDiagnosticLoading,
+} from "./commerce-diagnostic-status";
 
 describe("deriveCommerceReportBannerStatus", () => {
   test("no diagnostic hides the banner", () => {
@@ -63,5 +66,63 @@ describe("deriveCommerceReportBannerStatus", () => {
         locked: false,
       }),
     ).toBe("generating");
+  });
+});
+
+describe("isCommerceDiagnosticLoading", () => {
+  test("loading while gate 1 (the connection lookup) is in flight", () => {
+    expect(
+      isCommerceDiagnosticLoading({
+        connectionQueryPending: true,
+        hasConnection: false,
+        cdClientFailed: false,
+        diagnosticQueryPending: true,
+      }),
+    ).toBe(true);
+  });
+
+  test("not loading once gate 1 resolves with no CD connection", () => {
+    expect(
+      isCommerceDiagnosticLoading({
+        connectionQueryPending: false,
+        hasConnection: false,
+        cdClientFailed: false,
+        diagnosticQueryPending: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("loading while the diagnostic read (gate 2) is in flight", () => {
+    expect(
+      isCommerceDiagnosticLoading({
+        connectionQueryPending: false,
+        hasConnection: true,
+        cdClientFailed: false,
+        diagnosticQueryPending: true,
+      }),
+    ).toBe(true);
+  });
+
+  test("not loading once the diagnostic read resolves", () => {
+    expect(
+      isCommerceDiagnosticLoading({
+        connectionQueryPending: false,
+        hasConnection: true,
+        cdClientFailed: false,
+        diagnosticQueryPending: false,
+      }),
+    ).toBe(false);
+  });
+
+  test("a failed gate-2 client open resolves to not-loading, not stuck forever", () => {
+    // regression: a disabled query never leaves "pending" on its own
+    expect(
+      isCommerceDiagnosticLoading({
+        connectionQueryPending: false,
+        hasConnection: true,
+        cdClientFailed: true,
+        diagnosticQueryPending: true,
+      }),
+    ).toBe(false);
   });
 });

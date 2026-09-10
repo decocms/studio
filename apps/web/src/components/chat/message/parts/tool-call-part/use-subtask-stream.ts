@@ -50,7 +50,7 @@ function sseToChunkStream(
  */
 export function useSubtaskStream(args: {
   orgSlug: string;
-  threadId: string;
+  threadId: string | null;
   jobId: string | undefined;
   enabled: boolean;
 }): { messages: UIMessage[]; streaming: boolean } {
@@ -60,7 +60,7 @@ export function useSubtaskStream(args: {
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- an SSE subscription is a mount/enable-scoped side effect; a ref-bound effect is the natural fit (mirrors useTopSentinel in chat/index.tsx).
   useEffect(() => {
-    if (!enabled || !jobId) return;
+    if (!enabled || !jobId || !threadId) return;
     const abort = new AbortController();
     setMessages([]);
     setStreaming(true);

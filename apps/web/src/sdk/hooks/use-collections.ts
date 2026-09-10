@@ -237,11 +237,11 @@ function extractPayload<T>(result: unknown): T {
  * query key + queryFn — letting a prefetch warm the exact cache entry the hook
  * later reads.
  */
-function collectionItemQueryOptions<T extends CollectionEntity>(
+export function collectionItemQueryOptions<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   itemId: string | undefined,
-  client: Client,
+  client: Client | null | undefined,
 ) {
   const upperName = collectionName.toUpperCase();
   const getToolName = `COLLECTION_${upperName}_GET`;
@@ -254,7 +254,7 @@ function collectionItemQueryOptions<T extends CollectionEntity>(
       itemId ?? "",
     ),
     queryFn: async () => {
-      if (!itemId) {
+      if (!itemId || !client) {
         return { item: null } satisfies CollectionGetOutput<T>;
       }
 
@@ -299,7 +299,15 @@ export const EMPTY_COLLECTION_LIST_RESULT = {
  * @param options - Filter and configuration options
  * @returns Suspense query result with items array
  */
-export function useCollectionList<T extends CollectionEntity>(
+/**
+ * The query options behind `useCollectionList`, extracted so the same list can
+ * be read either blocking (`useSuspenseQuery`) or non-blocking (`useQuery`)
+ * off one cache entry. Mirrors `collectionItemQueryOptions` above.
+ *
+ * The sidebar's scope chip is the reason this split exists: it needs the org's
+ * project list, but must never put a fetch in front of first paint.
+ */
+export function collectionListQueryOptions<T extends CollectionEntity>(
   scopeKey: string,
   collectionName: string,
   client: Client | null | undefined,
@@ -343,7 +351,7 @@ export function useCollectionList<T extends CollectionEntity>(
     argsKey,
   );
 
-  const { data } = useSuspenseQuery({
+  return {
     queryKey,
     queryFn: async () => {
       if (!client) {
@@ -357,11 +365,65 @@ export function useCollectionList<T extends CollectionEntity>(
     },
     staleTime: 30_000,
     retry: false,
-    select: (result) => {
+    select: (result: unknown) => {
       const payload = extractPayload<CollectionListOutput<T>>(result ?? {});
       return payload?.items ?? [];
     },
-  });
+  };
+}
+
+/**
+ * The same query, keeping the page metadata instead of discarding it.
+ *
+ * `collectionListQueryOptions` selects `payload.items` and drops the
+ * `totalCount` and `hasMore` the server already returns, which is why a
+ * truncated list reads as a complete one everywhere it is used. Callers that
+ * need to say "100 of 137" — or to page at all — take this one instead. Same
+ * query key, so the two share a cache entry rather than double-fetching.
+ */
+export function collectionListPageQueryOptions<T extends CollectionEntity>(
+  scopeKey: string,
+  collectionName: string,
+  client: Client | null | undefined,
+  options: UseCollectionListOptions<T> = {},
+) {
+  const base = collectionListQueryOptions<T>(
+    scopeKey,
+    collectionName,
+    client,
+    options,
+  );
+  return {
+    ...base,
+    select: (result: unknown): CollectionListPage<T> => {
+      const payload = extractPayload<CollectionListOutput<T>>(result ?? {});
+      return {
+        items: payload?.items ?? [],
+        totalCount: payload?.totalCount,
+        hasMore: payload?.hasMore,
+      };
+    },
+  };
+}
+
+/** One page of a collection, with the counts the list tool returns. */
+export interface CollectionListPage<T extends CollectionEntity> {
+  items: T[];
+  /** Rows matching the filter before the limit was applied. */
+  totalCount?: number;
+  /** Whether rows exist past this page. */
+  hasMore?: boolean;
+}
+
+export function useCollectionList<T extends CollectionEntity>(
+  scopeKey: string,
+  collectionName: string,
+  client: Client | null | undefined,
+  options: UseCollectionListOptions<T> = {},
+) {
+  const { data } = useSuspenseQuery(
+    collectionListQueryOptions<T>(scopeKey, collectionName, client, options),
+  );
 
   return data;
 }

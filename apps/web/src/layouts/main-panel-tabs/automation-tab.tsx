@@ -13,9 +13,9 @@ import {
   SelectValue,
 } from "@decocms/ui/components/select.tsx";
 import { ArrowLeft } from "@untitledui/icons";
-import { useNavigate } from "@tanstack/react-router";
+import { usePanelNavigate } from "./use-panel-navigate";
 import { Suspense, useState } from "react";
-import { MainPanelLoading } from "./main-panel-loading";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t.ts";
 
 // Stat-card window options for the Runs tab. Anchored once at selection time so
@@ -97,7 +97,7 @@ export function AutomationTab({ tabId }: { tabId: string }) {
   if (!parsed) return null;
 
   return (
-    <Suspense fallback={<MainPanelLoading />}>
+    <Suspense fallback={<PanelLoading />}>
       <AutomationTabInner id={parsed.id} />
     </Suspense>
   );
@@ -105,23 +105,14 @@ export function AutomationTab({ tabId }: { tabId: string }) {
 
 function AutomationTabInner({ id }: { id: string }) {
   const t = useT();
-  const navigate = useNavigate();
+  const { openPanel } = usePanelNavigate();
   const { data: automation, isLoading } = useAutomation(id);
   const [tab, setTab] = useState<"settings" | "runs">("settings");
 
-  const onBack = () => {
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        main: "automations",
-      }),
-      replace: true,
-    });
-  };
+  const onBack = () => openPanel("automations");
 
   if (isLoading) {
-    return <MainPanelLoading />;
+    return <PanelLoading />;
   }
 
   if (!automation) {

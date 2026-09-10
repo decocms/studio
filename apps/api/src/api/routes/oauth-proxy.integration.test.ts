@@ -338,6 +338,55 @@ describe("MCP OAuth Proxy E2E", () => {
     }
   });
 
+  // Pre-registered OAuth clients — for providers that 403 their own DCR.
+  describe("Register Endpoint", () => {
+    test("returns the connection's pre-registered client instead of proxying DCR", async () => {
+      const connectionId = "conn_preregistered_oauth";
+      await database.db
+        .insertInto("connections")
+        .values({
+          id: connectionId,
+          organization_id: "org_test",
+          created_by: "test_user",
+          title: "Pre-registered OAuth",
+          connection_type: "HTTP",
+          // Unreachable on purpose: a short-circuit that still dials would fail.
+          connection_url: "https://mcp.invalid.example/mcp",
+          oauth_config: JSON.stringify({
+            authorizationEndpoint: "https://auth.example/authorize",
+            tokenEndpoint: "https://auth.example/token",
+            clientId: "static-client-id",
+            clientSecret: "static-client-secret",
+            scopes: ["mcp:connect"],
+            grantType: "authorization_code",
+          }),
+          status: "active",
+          pinned: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .execute();
+
+      const res = await app.request(`/oauth-proxy/${connectionId}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_name: "probe",
+          redirect_uris: ["https://studio.example/oauth/callback"],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        client_name: "probe",
+        redirect_uris: ["https://studio.example/oauth/callback"],
+        client_id: "static-client-id",
+        client_secret: "static-client-secret",
+        client_secret_expires_at: 0,
+      });
+    });
+  });
+
   // ===========================================================================
   // Servers without OAuth support - should return 401 without WWW-Authenticate
   // ===========================================================================

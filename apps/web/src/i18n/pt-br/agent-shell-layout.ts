@@ -5,9 +5,9 @@ export const agentShellLayout = {
     "Este chat não está disponível na web",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
     "Chats com agentes de código são executados localmente no Studio Desktop. Abra este chat lá para continuar.",
-  "agentShellLayout.agentShellLayout.agentNotFound": "Agente não encontrado",
+  "agentShellLayout.agentShellLayout.agentNotFound": "Projeto não encontrado",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
-    'O agente "{virtualMcpId}" não existe nesta organização.',
+    'O projeto "{virtualMcpId}" não existe nesta organização.',
   "agentShellLayout.agentShellLayout.chatLoadingError":
     "Algo deu errado ao carregar o chat. Tente atualizar.",
   "agentShellLayout.agentShellLayout.creatingTask": "Criando tarefa…",
@@ -18,13 +18,8 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.somethingWentWrong":
     "Algo deu errado. Tente atualizar.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Tarefa indisponível",
-  "agentShellLayout.libraryToggle.library": "Biblioteca",
-  "agentShellLayout.tasksToggle.tasks": "Tarefas",
   "agentShellLayout.toggleButtons.hideChat": "Ocultar chat",
   "agentShellLayout.toggleButtons.hidePanel": "Ocultar painel",
   "agentShellLayout.toggleButtons.showChat": "Mostrar chat",
   "agentShellLayout.toggleButtons.showPanel": "Mostrar painel",
-  "agentShellLayout.toggleButtons.chat": "Chat",
-  "agentShellLayout.toolbar.backToHome": "Voltar para home",
-  "agentShellLayout.toolbar.logo": "Logo",
 } satisfies Record<keyof typeof agentShellLayoutEn, string>;

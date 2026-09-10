@@ -48,6 +48,13 @@ describe("filterSeoSchema", () => {
     );
   });
 
+  test("general exposes noIndexing", () => {
+    const filtered = filterSeoSchema(sampleSchema, DEFAULT_SEO_RESOLVE_TYPE);
+    expect(filtered.properties?.noIndexing).toEqual(
+      sampleSchema.properties?.noIndexing as SchemaProperty,
+    );
+  });
+
   test("pdp keeps commerce PDP fields", () => {
     const filtered = filterSeoSchema(
       sampleSchema,

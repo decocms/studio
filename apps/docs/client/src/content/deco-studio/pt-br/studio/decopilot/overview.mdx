@@ -57,7 +57,7 @@ O Decopilot funciona com múltiplos provedores de IA — Anthropic, Google, Open
 
 ## Agents e subtasks
 
-Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Decopilot pode delegá-la a um [agent](/pt-br/studio/agents) especialista em uma **subtask**. A subtask roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
+Quando uma tarefa precisa de um trabalho focado — uma pergunta de atendimento ao cliente, uma pesquisa aprofundada, uma análise de dados — o Decopilot pode delegá-la a um [agent](/pt-br/studio/agents) especialista ou diretamente a uma concrete MCP connection em uma **subtask**. Uma connection alvo roda como um subagent efêmero, então não requer uma configuração dedicada de agent. A subtask roda de forma independente com seu próprio contexto limpo, e então reporta um resumo de volta. Sua conversa principal permanece limpa.
 
 ## Tools built-in
 
@@ -65,7 +65,7 @@ O Decopilot vem com tools para coordenar trabalho em qualquer escopo:
 
 | Tool | O que faz |
 |---|---|
-| `subtask` | Delega trabalho a um agent especialista |
+| `subtask` | Delega trabalho a um agent especialista ou a uma concrete MCP connection |
 | `user_ask` | Faz uma pergunta a você quando precisa de esclarecimento |
 | `enable_tool` | Ativa uma scope tool para uso nos próximos passos |
 | `read_resource` | Lê documentação ou diretrizes disponíveis no escopo |

@@ -12,7 +12,8 @@
  * are purely informational (quota renews on its own / make a new task), so
  * they stay a plain title + description.
  */
-import { CheckCircle, Loading01 } from "@untitledui/icons";
+import { CheckCircle } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -113,9 +114,7 @@ export function SubscriptionPaywallDialog({
                   }
                   className="order-1 w-full gap-2 sm:order-none sm:w-auto"
                 >
-                  {isPending && (
-                    <Loading01 size={16} className="animate-spin" />
-                  )}
+                  {isPending && <Spinner className="size-4" />}
                   {t("taskBoard.subscriptionPaywall.subscribeButton")}
                 </Button>
               </div>

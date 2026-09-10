@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,6 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
-import { Loading01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
 
 export function MakeReusableModal({
@@ -91,7 +91,7 @@ export function MakeReusableModal({
             <Button type="submit" disabled={!blockId.trim() || isPending}>
               {isPending ? (
                 <>
-                  <Loading01 size={14} className="animate-spin" />
+                  <Spinner className="size-3.5" />
                   {t("sectionsEditor.makeReusableModal.saving")}
                 </>
               ) : (

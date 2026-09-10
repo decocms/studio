@@ -110,6 +110,76 @@ describe("createServerFromClient", () => {
     });
   });
 
+  describe("LLM-safe property keys", () => {
+    const unsafeClient = () =>
+      createMockClient({
+        listTools: mock(async (_params) => ({
+          tools: [
+            {
+              name: "vtex_doc",
+              inputSchema: {
+                type: "object" as const,
+                properties: { acronym: {}, "{fieldName}": {} },
+                required: ["{fieldName}"],
+              },
+            },
+          ] as Tool[],
+        })),
+      });
+
+    it("renames keys Anthropic rejects and restores them on call", async () => {
+      const client = unsafeClient();
+      const server = createServerFromClient(client, {
+        name: "test",
+        version: "1.0.0",
+      });
+      const list = (server.server as any)._requestHandlers.get(
+        ListToolsRequestSchema.shape.method.value,
+      );
+      const call = (server.server as any)._requestHandlers.get(
+        CallToolRequestSchema.shape.method.value,
+      );
+
+      const listed = await list({ method: "tools/list", params: {} });
+      expect(Object.keys(listed.tools[0].inputSchema.properties)).toEqual([
+        "acronym",
+        "_fieldName_",
+      ]);
+      expect(listed.tools[0].inputSchema.required).toEqual(["_fieldName_"]);
+
+      await call({
+        method: "tools/call",
+        params: { name: "vtex_doc", arguments: { _fieldName_: "email" } },
+      });
+      expect(client.callTool).toHaveBeenCalledWith(
+        { name: "vtex_doc", arguments: { "{fieldName}": "email" } },
+        undefined,
+        undefined,
+      );
+    });
+
+    it("restores keys for a client that calls without listing first", async () => {
+      const client = unsafeClient();
+      const server = createServerFromClient(client, {
+        name: "test",
+        version: "1.0.0",
+      });
+      const call = (server.server as any)._requestHandlers.get(
+        CallToolRequestSchema.shape.method.value,
+      );
+
+      await call({
+        method: "tools/call",
+        params: { name: "vtex_doc", arguments: { _fieldName_: "email" } },
+      });
+      expect(client.callTool).toHaveBeenCalledWith(
+        { name: "vtex_doc", arguments: { "{fieldName}": "email" } },
+        undefined,
+        undefined,
+      );
+    });
+  });
+
   describe("callTool", () => {
     it("passes timeout option when toolCallTimeoutMs is set", async () => {
       const client = createMockClient();

@@ -7,6 +7,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { GLOBAL_SECTION_ICON_COLOR } from "@/components/sections-editor/section-types";
+import { useT } from "@/i18n/use-t.ts";
 
 export function ItemRow({
   icon: Icon,
@@ -51,6 +52,7 @@ export function ItemRow({
   onClick: () => void;
   menu?: React.ReactNode;
 }) {
+  const t = useT();
   const isGlobal = accent === "global";
   const rowIcon =
     variantCount && variantCount > 1 ? (
@@ -113,7 +115,7 @@ export function ItemRow({
           <Checkbox
             checked={selected}
             onCheckedChange={() => onToggleSelect?.()}
-            aria-label={`Select ${title}`}
+            aria-label={t("sandbox.itemRow.selectItem", { title })}
           />
         </span>
       )}

@@ -1,12 +1,9 @@
-/**
- * HeaderTabButton — a tab in the agent-shell header tab bar.
- *
- * Every tab shows its icon at all sizes; the text label drops out per
- * `labelCollapse`, leaving an icon-only button. That decision is a CONTAINER
- * query against the enclosing PanelHeader, not a viewport media query — the
- * button cares how wide its panel is, not how wide the screen is.
- *
- * The active tab gets the accent background; inactive tabs are muted.
+/** HeaderTabButton — a tab in the agent-shell header bar. Every tab shows its
+ *  icon; the label drops out per `labelCollapse`, on a CONTAINER query against
+ *  the enclosing PanelHeader rather than the viewport, because the button cares
+ *  how wide its panel is. Active gets the accent background, inactive is muted,
+ *  and that skin — colours, transition, focus ring — comes from
+ *  `panelButtonChrome`, shared with the icon buttons beside it.
  *
  * Every button is wrapped in a Tooltip so the title stays discoverable in both
  * states — and, once the label is gone, so an icon-only tab is identifiable at
@@ -20,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { panelButtonChrome } from "@/components/toolbar-icon-button";
 import type { TabIcon } from "./resolve-tab-icon";
 import { TabIconGlyph } from "./tab-icon-glyph";
 
@@ -42,7 +40,6 @@ export function HeaderTabButton({
   locked = false,
   className,
   testId,
-  dataTour,
   tooltip,
   labelCollapse = "later",
 }: {
@@ -52,8 +49,6 @@ export function HeaderTabButton({
   onClick: () => void;
   /** Optional test hook (data-testid). */
   testId?: string;
-  /** Optional anchor for the CMS onboarding tour (data-tour). */
-  dataTour?: string;
   /** Disables the button and dims it (e.g. every tab while the org still
    *  needs runtime setup — the view is a genuine dead-end). */
   disabled?: boolean;
@@ -87,18 +82,14 @@ export function HeaderTabButton({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      data-tour={dataTour}
       aria-pressed={active}
       aria-disabled={locked || undefined}
       aria-label={title}
       className={cn(
         "shrink-0 flex items-center gap-1.5 h-7 rounded-md px-2",
-        "[transition:background-color_180ms_ease,color_180ms_ease]",
+        panelButtonChrome(active),
         "disabled:opacity-40 disabled:pointer-events-none",
         locked && "pointer-events-none",
-        active
-          ? "bg-sidebar-accent text-sidebar-foreground"
-          : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
         className,
       )}
     >

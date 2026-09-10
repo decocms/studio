@@ -109,6 +109,23 @@ export function useOrgFsList(volume: string, path: string) {
   });
 }
 
+/** Metadata for one entry — null when absent. Imperative twin of {@link useOrgFsStat}. */
+export async function fetchOrgFsStat(
+  orgSlug: string,
+  volume: string,
+  path: string,
+): Promise<OrgFsEntry | null> {
+  const res = await fsFetch(
+    fsUrl(orgSlug, volume, "stat", { path }),
+    undefined,
+    {
+      allow404: true,
+    },
+  );
+  if (res.status === 404) return null;
+  return ((await res.json()) as { entry: OrgFsEntry }).entry;
+}
+
 /** Metadata for one entry — null when absent. Powers the Library preview. */
 export function useOrgFsStat(
   volume: string | null,
@@ -125,15 +142,7 @@ export function useOrgFsStat(
       ? (query) =>
           query.state.data ? false : (opts.refetchIntervalWhenAbsent ?? false)
       : undefined,
-    queryFn: async (): Promise<OrgFsEntry | null> => {
-      const res = await fsFetch(
-        fsUrl(org.slug, volume ?? "", "stat", { path }),
-        undefined,
-        { allow404: true },
-      );
-      if (res.status === 404) return null;
-      return ((await res.json()) as { entry: OrgFsEntry }).entry;
-    },
+    queryFn: () => fetchOrgFsStat(org.slug, volume ?? "", path),
   });
 }
 
@@ -271,6 +280,19 @@ export async function fetchOrgFsSkillCatalog(
     skills: OrgFsSkillCatalogEntry[];
   };
   return skills;
+}
+
+/** react-query wrapper around {@link fetchOrgFsSkillCatalog} — same cache key
+ *  the chat "/" picker uses (`KEYS.slashSkills`), so both surfaces share one
+ *  fetch of the org's full skill catalog (home + public sets + synced repos). */
+export function useOrgFsSkillCatalog() {
+  const { org } = useProjectContext();
+  return useQuery({
+    queryKey: KEYS.slashSkills(org.id),
+    queryFn: () => fetchOrgFsSkillCatalog(org.slug),
+    // Same window as the picker: a build rescans home + every synced volume.
+    staleTime: 60_000,
+  });
 }
 
 /** Read a file's contents as UTF-8 text (org-fs `/read` endpoint). */

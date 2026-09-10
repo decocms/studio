@@ -1,12 +1,3 @@
-/**
- * Settings → Synced repos — manage the org's GitHub repo → volume syncs
- * (`org_repo_sync`). Add picks a repo via GitHubRepoPicker (connection mode,
- * which provisions the org-shared repo-scoped connection) and names the
- * target volume; each config row shows the last sync status and offers
- * remove. The synced content itself is browsed in the Library, where the
- * volume presents as a read-only folder.
- */
-
 import { useState } from "react";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -32,11 +23,11 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import {
-  type GitHubImportPayload,
-  GitHubRepoPicker,
-} from "@/components/github-repo-picker";
+import { GitBranch01 } from "@untitledui/icons";
+import { RepositoryPicker } from "@/components/repository-picker";
+import { useRepositories, type Repository } from "@/hooks/use-git-providers";
+import { GitLabIcon } from "@/components/icons/gitlab-icon";
+
 import { useT } from "@/i18n/use-t.ts";
 import {
   type OrgRepoSyncConfig,
@@ -83,16 +74,24 @@ function SyncRow({
 }) {
   const t = useT();
   const status = syncStatus(config, t);
+  const repositories = useRepositories();
+  const repository = repositories.data?.find(
+    (r) => r.id === config.repositoryId,
+  );
   return (
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
         <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
-          <GitHubIcon size={16} className="text-muted-foreground" />
+          {repository?.provider === "gitlab" ? (
+            <GitLabIcon size={16} className="text-muted-foreground" />
+          ) : (
+            <GitBranch01 size={16} className="text-muted-foreground" />
+          )}
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">
-              {config.repoOwner}/{config.repoName}
+              {repository?.path ?? `${config.repoOwner}/${config.repoName}`}
             </span>
             <span className="text-xs text-muted-foreground shrink-0">
               @{config.ref}
@@ -121,7 +120,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
       <div className="size-12 rounded-full bg-muted flex items-center justify-center">
-        <GitHubIcon size={20} className="text-muted-foreground" />
+        <GitBranch01 size={20} className="text-muted-foreground" />
       </div>
       <div>
         <p className="font-medium text-sm">
@@ -146,8 +145,7 @@ function SyncedReposContent() {
   const remove = useDeleteOrgRepoSync();
 
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pendingImport, setPendingImport] =
-    useState<GitHubImportPayload | null>(null);
+  const [pendingImport, setPendingImport] = useState<Repository | null>(null);
   const [volumeName, setVolumeName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<OrgRepoSyncConfig | null>(
     null,
@@ -156,10 +154,7 @@ function SyncedReposContent() {
   function handleCreate() {
     if (!pendingImport || !volumeName.trim()) return;
     create.mutate(
-      {
-        connectionId: pendingImport.connectionId,
-        volume: volumeName.trim(),
-      },
+      { repositoryId: pendingImport.id, volume: volumeName.trim() },
       {
         onSuccess: (config) => {
           // The first sync runs in the background (see useCreateOrgRepoSync);
@@ -224,15 +219,16 @@ function SyncedReposContent() {
         </>
       )}
 
-      <GitHubRepoPicker
-        mode="connection"
+      <RepositoryPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         title={t("settings.syncedRepos.pickerTitle")}
-        onImportComplete={(payload) => {
+        onPicked={({ repository }) => {
           setPickerOpen(false);
-          setPendingImport(payload);
-          setVolumeName(volumeNameFor(payload.repo.name));
+          setPendingImport(repository);
+          setVolumeName(
+            volumeNameFor(repository.path.split("/").at(-1) ?? repository.path),
+          );
         }}
       />
 
@@ -249,9 +245,7 @@ function SyncedReposContent() {
             </DialogTitle>
             <DialogDescription>
               {t("settings.syncedRepos.nameDialogDescription", {
-                repo: pendingImport
-                  ? `${pendingImport.repo.owner}/${pendingImport.repo.name}`
-                  : "",
+                repo: pendingImport ? pendingImport.path : "",
               })}
             </DialogDescription>
           </DialogHeader>

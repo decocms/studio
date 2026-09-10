@@ -39,6 +39,13 @@ interface InflightRequest {
   span?: Span;
 }
 
+/** A pooled connection's transport lives for the pool's whole lifetime, not one
+ *  request — so a response that never arrives (a dropped connection, a
+ *  malformed frame missing the request id) would otherwise leak its entry,
+ *  and the span it holds, forever. Cap the count, ending and evicting the
+ *  oldest (Map preserves insertion order) once a new entry would exceed it. */
+export const MAX_INFLIGHT_REQUESTS = 500;
+
 export class MonitoringTransport extends WrapperTransport {
   private inflightRequests = new Map<string | number, InflightRequest>();
   private requestContext: Context;
@@ -107,6 +114,17 @@ export class MonitoringTransport extends WrapperTransport {
 
     // Only track if request has an ID
     if (request.id !== null && request.id !== undefined) {
+      if (
+        !this.inflightRequests.has(request.id) &&
+        this.inflightRequests.size >= MAX_INFLIGHT_REQUESTS
+      ) {
+        const oldestId = this.inflightRequests.keys().next().value;
+        if (oldestId !== undefined) {
+          this.inflightRequests.get(oldestId)?.span?.end();
+          this.inflightRequests.delete(oldestId);
+        }
+      }
+
       // Store request info with span
       this.inflightRequests.set(request.id, {
         startTime: Date.now(),

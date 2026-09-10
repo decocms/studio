@@ -22,8 +22,15 @@ type BoardSearch = {
   priority?: string;
   due?: string;
   tags?: string;
+  /**
+   * The project filter. Still keyed `repo` because that key is DECLARED — on
+   * `tasksRoute.validateSearch` and on `unifiedChatSearchSchema`, which are
+   * bare `z.object`s that strip anything they do not enumerate — and because
+   * every `?repo=owner/name` link anyone has shared has to keep working. The
+   * VALUE domain widened (a bucket id: `owner/name`, a `vir_…` project, or
+   * `__no_repo__`); the key did not.
+   */
   repo?: string;
-  sprint?: string;
 };
 
 const str = (v: unknown): string | null =>
@@ -37,7 +44,6 @@ export function parseBoardSearch(search: BoardSearch): {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
-  const sprint = str(search.sprint);
   return {
     layout: search.view === "list" ? "list" : "board",
     filters: {
@@ -48,8 +54,7 @@ export function parseBoardSearch(search: BoardSearch): {
         : null,
       due: DUE_FILTERS.includes(due as DueFilter) ? (due as DueFilter) : null,
       tags: tags ? tags.split(",").filter(Boolean) : [],
-      repo: str(search.repo),
-      sprint: sprint,
+      project: str(search.repo),
     },
   };
 }
@@ -66,9 +71,22 @@ export function boardSearchParams(
     priority: filters.priority ?? undefined,
     due: filters.due ?? undefined,
     tags: filters.tags.length > 0 ? filters.tags.join(",") : undefined,
-    repo: filters.repo ?? undefined,
-    sprint: filters.sprint ?? undefined,
+    repo: filters.project ?? undefined,
   };
+}
+
+/**
+ * The selection a bulk action is allowed to touch: only cards currently on
+ * screen. The project scope is not the board's own control — it can change
+ * under a live selection — so a stale id must never reach an update or a
+ * delete for a card the user cannot see.
+ */
+export function visibleSelection(
+  selection: ReadonlySet<string>,
+  visibleItems: readonly { id: string }[],
+): Set<string> {
+  const visible = new Set(visibleItems.map((item) => item.id));
+  return new Set([...selection].filter((id) => visible.has(id)));
 }
 
 /** `useState`-shaped replacement for the board's filters + layout state. */

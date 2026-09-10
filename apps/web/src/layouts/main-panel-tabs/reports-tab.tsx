@@ -1,6 +1,6 @@
 /**
  * ReportsTab — what the sidebar's Reports destination opens for an org that has
- * no report yet (`?main=reports`).
+ * no report yet (the route's own `reports` view).
  *
  * Reports used to be hidden until a diagnostic existed, which left no way to ask
  * for one from inside the product: the only entry was the public
@@ -13,14 +13,14 @@
  * CommerceConnectModal — the step that asks for the data sources (GA4/GSC/VTEX/
  * GitHub), triggers COMMERCE_DISCOVERY_RUN and opens the report.
  *
- * Once a diagnostic does exist this tab is a redirect to the report app, so a
- * click made while the diagnostic read was still in flight (or a stale
- * `?main=reports` URL) still lands on the report.
+ * Once a diagnostic does exist this tab IS the report app: Reports is a
+ * destination, so which view it shows follows from whether a report exists, not
+ * from a URL the caller has to get right.
  */
 import { useMutation } from "@tanstack/react-query";
-import { Navigate, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight } from "@untitledui/icons";
-import { Suspense, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   normalizeReportsSiteUrl,
@@ -29,6 +29,7 @@ import {
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
 import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
@@ -42,28 +43,28 @@ import {
 } from "@/sdk";
 import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
 import { translateSiteError } from "@/routes/commerce-onboarding/site-error.ts";
-import { MainPanelLoading } from "./main-panel-loading";
-import { formatPinnedViewTabId } from "./tab-id";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
+
+const AppViewContent = lazy(() =>
+  import("@/routes/project-app-view").then((m) => ({
+    default: m.AppViewContent,
+  })),
+);
 
 export function ReportsTab() {
   const { diagnostic, isLoading, siteUrl, connectionId } =
     useCommerceDiagnostic();
 
-  if (isLoading) return <MainPanelLoading />;
+  if (isLoading) return <PanelLoading />;
 
   if (diagnostic) {
     return (
-      <Navigate
-        to="."
-        search={(prev: Record<string, unknown>) => ({
-          ...prev,
-          main: formatPinnedViewTabId(
-            connectionId,
-            COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-          ),
-        })}
-        replace
-      />
+      <Suspense fallback={<PanelLoading />}>
+        <AppViewContent
+          connectionId={connectionId}
+          toolName={COMMERCE_DISCOVERY_REPORT_TOOL_NAME}
+        />
+      </Suspense>
     );
   }
 
@@ -72,7 +73,7 @@ export function ReportsTab() {
       <ErrorBoundary
         fallback={() => <StartDiagnosticState claimedSiteUrl={siteUrl} />}
       >
-        <Suspense fallback={<MainPanelLoading />}>
+        <Suspense fallback={<PanelLoading />}>
           <StartDiagnostic claimedSiteUrl={siteUrl} />
         </Suspense>
       </ErrorBoundary>
@@ -198,8 +199,8 @@ function StartDiagnostic({
     }
     // The connections step triggers the run and opens the report.
     navigate({
-      to: "/$org/$taskId",
-      params: { org: org.slug, taskId: crypto.randomUUID() },
+      to: DESTINATION_ROUTE.agents,
+      params: { org: org.slug, panel: undefined },
       search: {
         virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
         connect: "1",

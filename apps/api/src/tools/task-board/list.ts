@@ -1,9 +1,17 @@
+import { CANONICAL_COLUMNS } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
-import { SprintSchema, TaskBoardItemSchema } from "./schema";
+import { TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
+
+/** A board column as the client renders it — mirrors `BoardColumn` in shared. */
+const BoardColumnSchema = z.object({
+  key: z.string(),
+  title: z.string(),
+  position: z.number(),
+});
 
 export const TASK_BOARD_ITEM_LIST = defineTool({
   name: "TASK_BOARD_ITEM_LIST",
@@ -23,8 +31,8 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     items: z.array(TaskBoardItemSchema),
     // The repo picker's option set — the valid values for a task's `repo`.
     repos: z.array(z.string()),
-    // The sprint filter's option set, in reading order (running → next → past).
-    sprints: z.array(SprintSchema),
+    // The board's columns, left to right — its whole vocabulary.
+    columns: z.array(BoardColumnSchema),
   }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
@@ -37,12 +45,23 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
       );
     }
 
-    const [items, { items: githubConnections }, sprints] = await Promise.all([
-      ctx.storage.taskBoard.list(organizationId),
-      ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
-      ctx.storage.sprints.listByOrg(organizationId),
-    ]);
-    const repos = listRepoScopeLabels(githubConnections);
+    const [items, { items: githubConnections }, repositories] =
+      await Promise.all([
+        ctx.storage.taskBoard.list(organizationId),
+        ctx.storage.connections.list(organizationId, { slug: "mcp-github" }),
+        ctx.storage.repositories.listByOrg(organizationId),
+      ]);
+    /**
+     * Both eras, deduped: the org's first-class repositories and the legacy
+     * repo-scoped connections. A GitLab-only org has no connection at all, so
+     * reading only those was what left its board with no repository filter.
+     */
+    const repos = [
+      ...new Set([
+        ...repositories.map((repository) => repository.path),
+        ...listRepoScopeLabels(githubConnections),
+      ]),
+    ];
 
     // Opening the board is the stall-recovery trigger: re-run the thread-finish
     // decision over the list we just loaded, for the cards whose finish hook
@@ -51,6 +70,6 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     // moves broadcast over SSE, which is how the board already learns them).
     void recoverStalledTasks(ctx, items);
 
-    return { items, repos, sprints };
+    return { items, repos, columns: CANONICAL_COLUMNS };
   },
 });

@@ -137,8 +137,358 @@ describe("UiChunkTranslator", () => {
   test("unknown message types and blocks are ignored", () => {
     const t = new UiChunkTranslator();
     expect(t.translate({ type: "system" })).toEqual([]);
+    // A stream_event with no `event` payload is still nothing to render — but a
+    // populated one is NOT ignored any more; see the streaming tests below.
     expect(t.translate({ type: "stream_event" })).toEqual([]);
     expect(t.translate(assistant([{ type: "future_block" }]))).toEqual([]);
+  });
+});
+
+/** One raw Anthropic streaming event, as the SDK forwards it. */
+const streamEvent = (event: unknown) => ({
+  type: "stream_event" as const,
+  event,
+});
+
+describe("UiChunkTranslator — token streaming (includePartialMessages)", () => {
+  test("a text block streams start/delta/end as the events arrive", () => {
+    const t = new UiChunkTranslator();
+    expect(t.translate(streamEvent({ type: "message_start" }))).toEqual([]);
+    // The part opens on the first delta, not on the block start.
+    const start = t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      }),
+    );
+    expect(start).toEqual([]);
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Hel" },
+        }),
+      ),
+    ).toEqual([
+      { type: "text-start", id: "stream-1" },
+      { type: "text-delta", id: "stream-1", delta: "Hel" },
+    ]);
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "lo" },
+        }),
+      ),
+    ).toEqual([{ type: "text-delta", id: "stream-1", delta: "lo" }]);
+    expect(
+      t.translate(streamEvent({ type: "content_block_stop", index: 0 })),
+    ).toEqual([{ type: "text-end", id: "stream-1" }]);
+  });
+
+  test("thinking streams as reasoning; signature deltas emit nothing", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "thinking", thinking: "" },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "thinking_delta", thinking: "hmm" },
+        }),
+      ),
+    ).toEqual([
+      { type: "reasoning-start", id: "stream-1" },
+      { type: "reasoning-delta", id: "stream-1", delta: "hmm" },
+    ]);
+    // Not renderable text — and it must not be appended to the reasoning part.
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "signature_delta", signature: "sig" },
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("the assistant message does not restate a block it already streamed", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "Hello" },
+      }),
+    );
+    t.translate(streamEvent({ type: "content_block_stop", index: 0 }));
+    // The SDK now restates the finished message. The text is already on the
+    // wire; emitting it again is the duplication this guards.
+    expect(t.translate(assistant([{ type: "text", text: "Hello" }]))).toEqual(
+      [],
+    );
+  });
+
+  test("a block still open at the step boundary is closed by the caller, once", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "thinking_delta", thinking: "hmm" },
+      }),
+    );
+    // No `content_block_stop`. The caller closes BEFORE it pushes
+    // `finish-step` — the SDK reducer drops its open reasoning parts there, so
+    // an end emitted after it is an orphan that throws and kills the run.
+    expect(t.closeOpenStreamBlocks()).toEqual([
+      { type: "reasoning-end", id: "stream-1" },
+    ]);
+    // The assistant restatement must not end it a second time.
+    expect(
+      t.translate(assistant([{ type: "thinking", thinking: "hmm" }])),
+    ).toEqual([]);
+  });
+
+  test("tool calls still come from the assistant message, not the deltas", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    // A tool_use block streams its input as partial JSON — unusable, so the
+    // start and the deltas yield nothing.
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "tool_use", id: "call-1", name: "Bash" },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "input_json_delta", partial_json: '{"cmd' },
+        }),
+      ),
+    ).toEqual([]);
+    // The complete input arrives with the assistant message, which is what
+    // satisfies the tool-input-before-output contract.
+    expect(
+      t.translate(
+        assistant([
+          {
+            type: "tool_use",
+            id: "call-1",
+            name: "Bash",
+            input: { cmd: "ls" },
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "Bash",
+        input: { cmd: "ls" },
+      },
+    ]);
+  });
+
+  test("a streamed text block mixed with a tool call keeps both", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "Running it" },
+      }),
+    );
+    t.translate(streamEvent({ type: "content_block_stop", index: 0 }));
+    // Index 0 was streamed, index 1 was not — only the tool call is restated.
+    expect(
+      t.translate(
+        assistant([
+          { type: "text", text: "Running it" },
+          { type: "tool_use", id: "call-1", name: "Bash", input: {} },
+        ]),
+      ),
+    ).toEqual([
+      {
+        type: "tool-input-available",
+        toolCallId: "call-1",
+        toolName: "Bash",
+        input: {},
+      },
+    ]);
+  });
+
+  test("a block left open by an interrupted stream is closed, not leaked", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "half a sen" },
+      }),
+    );
+    // No content_block_stop. The next message must close it, or the part is
+    // reassembled as unfinished forever.
+    expect(t.translate(streamEvent({ type: "message_start" }))).toEqual([
+      { type: "text-end", id: "stream-1" },
+    ]);
+  });
+
+  test("a second API message's indices are not skipped by the first's", () => {
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "first" },
+      }),
+    );
+    t.translate(streamEvent({ type: "content_block_stop", index: 0 }));
+    expect(t.translate(assistant([{ type: "text", text: "first" }]))).toEqual(
+      [],
+    );
+    // An unstreamed new message still emits, though its block is at index 0 too.
+    t.translate(streamEvent({ type: "message_start" }));
+    expect(t.translate(assistant([{ type: "text", text: "second" }]))).toEqual([
+      { type: "text-start", id: "u1-2" },
+      { type: "text-delta", id: "u1-2", delta: "second" },
+      { type: "text-end", id: "u1-2" },
+    ]);
+  });
+
+  test("the text after a thinking block is streamed once, not twice", () => {
+    // One `assistant` message per block: the text arrives at local index 0.
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "thinking_delta", thinking: "weighing it" },
+      }),
+    );
+    t.translate(streamEvent({ type: "content_block_stop", index: 0 }));
+    expect(
+      t.translate(assistant([{ type: "thinking", thinking: "weighing it" }])),
+    ).toEqual([]);
+    t.translate(
+      streamEvent({
+        type: "content_block_start",
+        index: 1,
+        content_block: { type: "text", text: "" },
+      }),
+    );
+    t.translate(
+      streamEvent({
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "text_delta", text: "The answer." },
+      }),
+    );
+    t.translate(streamEvent({ type: "content_block_stop", index: 1 }));
+    expect(
+      t.translate(assistant([{ type: "text", text: "The answer." }])),
+    ).toEqual([]);
+  });
+
+  test("a thinking block that streamed no text is restated in full", () => {
+    // This SDK sends only `signature_delta`, so the text is the message's alone.
+    const t = new UiChunkTranslator();
+    t.translate(streamEvent({ type: "message_start" }));
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "thinking", thinking: "" },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      t.translate(
+        streamEvent({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "signature_delta", signature: "sig" },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      t.translate(streamEvent({ type: "content_block_stop", index: 0 })),
+    ).toEqual([]);
+    expect(
+      t.translate(assistant([{ type: "thinking", thinking: "weighing it" }])),
+    ).toEqual([
+      { type: "reasoning-start", id: "u1-2" },
+      { type: "reasoning-delta", id: "u1-2", delta: "weighing it" },
+      { type: "reasoning-end", id: "u1-2" },
+    ]);
   });
 });
 

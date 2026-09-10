@@ -8,7 +8,7 @@ import {
   ALWAYS_MATCHER_RESOLVE_TYPE,
   labelFromResolveType,
 } from "./section-types";
-import { safeEditorImageUrl } from "./safe-editor-image-url";
+import { safeImageUrl } from "@/lib/safe-image-url";
 
 // Legacy $live path for the same "always" matcher (see format-matcher.ts's alwaysTypes).
 const LEGACY_ALWAYS_MATCHER_RESOLVE_TYPE = "$live/matchers/MatchAlways.ts";
@@ -279,5 +279,5 @@ export function getArrayItemImageSrc(
   );
   if (!rendered) return undefined;
   const candidate = extractUrl(rendered) || rendered;
-  return safeEditorImageUrl(candidate);
+  return safeImageUrl(candidate);
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Container, Loading01 } from "@untitledui/icons";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Container } from "@untitledui/icons";
 import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import {
   AlertDialog,
@@ -134,7 +135,7 @@ export function CatalogItemCard({
                   }}
                 >
                   {connectingItemId === item.id ? (
-                    <Loading01 size={14} className="animate-spin" />
+                    <Spinner className="size-3.5" />
                   ) : (
                     t("orgs.catalogItemCard.connect")
                   )}

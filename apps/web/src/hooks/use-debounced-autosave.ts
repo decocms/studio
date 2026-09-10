@@ -36,11 +36,19 @@ export function useDebouncedAutosave<R>({
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Timers and effect cleanup have nobody to receive a rejected promise. The
+  // save implementation owns user-visible error handling; consume its
+  // rejection here so a failed background save is not reported as unhandled.
+  // Explicit `flush` deliberately returns the original rejecting promise.
+  const runDetached = () => {
+    void saveRef.current().catch(() => undefined);
+  };
+
   const schedule = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      saveRef.current();
+      runDetached();
     }, delayMs);
   };
 
@@ -60,7 +68,7 @@ export function useDebouncedAutosave<R>({
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
-        saveRef.current();
+        runDetached();
       }
     };
   }, []);

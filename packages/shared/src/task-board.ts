@@ -187,6 +187,59 @@ export function enabledReviewerKinds(
  * status stays in the union, keeping `LANE_RANK`/`STATUS_CONFIG` exhaustive.
  * The flag gates REACHABILITY: which lanes a board offers, where a ship lands.
  */
+/**
+ * The board Studio ships with, in board order.
+ *
+ * One ordering, read by both the rank guard (`LANE_RANK`) and the static
+ * column set, so "left of" cannot come to mean two different things.
+ */
+export const CANONICAL_COLUMN_KEYS = [
+  "triage",
+  "todo",
+  "in_progress",
+  "in_review",
+  "approved",
+  "merged",
+  "post_deploy_validation",
+  "done",
+  "archived",
+] as const;
+
+export type CanonicalColumnKey = (typeof CANONICAL_COLUMN_KEYS)[number];
+
+/**
+ * The columns Studio's lifecycle gives meanings to, by meaning.
+ *
+ * Named so the writers and SQL predicates that move cards say what they mean
+ * (`LANES.review`) rather than repeating the literal at each site.
+ */
+export const LANES = {
+  /** Where a card is born. */
+  intake: "triage",
+  /** Queued for the agent to pick up — the claim's starting line. */
+  queue: "todo",
+  /** Being worked on. */
+  progress: "in_progress",
+  /** Waiting on review. */
+  review: "in_review",
+  /** Retired. */
+  archive: "archived",
+} as const satisfies Record<string, CanonicalColumnKey>;
+
+/** A board column as every surface reads it. `key` is the value a card's
+ *  `status` holds. */
+export interface BoardColumn {
+  key: string;
+  title: string;
+  position: number;
+}
+
+/** The board's columns, left to right. `title` is the key: the client
+ *  translates it, being the only place that knows the reader's language. */
+export const CANONICAL_COLUMNS: BoardColumn[] = CANONICAL_COLUMN_KEYS.map(
+  (key, position) => ({ key, title: key, position }),
+);
+
 export type DeliveryLane = "approved" | "merged" | "post_deploy_validation";
 
 export const DELIVERY_LANES: DeliveryLane[] = [
@@ -236,9 +289,27 @@ export type ReviewCycleActivity = {
   occurredAt: string;
 };
 
-/** When the task most recently entered In Review (ms since epoch), else 0 — the
- *  start of the current review cycle. Verdicts before this are stale. */
-export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
+/**
+ * When the task's current review cycle opened (ms since epoch), else 0 —
+ * verdicts recorded before it are stale.
+ *
+ * The card's `reviewCycleStartedAt` IS the boundary: it is stamped when the
+ * work becomes reviewable and re-stamped on every re-review, independently of
+ * what lane the card sits in. That independence is the point — the cycle used
+ * to be derived from the newest `status_changed → in_review`, which made the
+ * lane load-bearing (a card could not leave In Review mid-review without
+ * invalidating its own reviewer's verdict), and so pinned every card to In
+ * Review while an agent was still working on it.
+ *
+ * The activity scan survives only as the fallback for a card stamped before
+ * migration 190. Pass `null` for a card that has no column value and the old
+ * derivation applies, so an in-flight cycle is never lost mid-deploy.
+ */
+export function reviewCycleStart(
+  activity: ReviewCycleActivity[],
+  cycleStartedAt: string | Date | null | undefined,
+): number {
+  if (cycleStartedAt) return new Date(cycleStartedAt).getTime();
   let latest = 0;
   for (const a of activity) {
     if (a.action !== "status_changed") continue;
@@ -250,6 +321,19 @@ export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
   return latest;
 }
 
+/**
+ * What every cycle-scoped reducer below needs: the card's own
+ * `reviewCycleStartedAt` (see {@link reviewCycleStart}). It is a REQUIRED
+ * field, not an optional one — a caller that forgets it would silently fall
+ * back to the activity scan, which for a card written after migration 190 finds
+ * no boundary at all and so counts a previous cycle's verdicts as current.
+ */
+export type ReviewCycleOpts = {
+  cycleStartedAt: string | Date | null | undefined;
+  /** Count an approval only when it was token-verified (`data.verified`). */
+  verifiedOnly?: boolean;
+};
+
 /** Each reviewer's latest verdict within the current review cycle. Approvals /
  *  change-requests recorded before the cycle start are ignored. With
  *  `verifiedOnly`, an approval counts only when it was token-verified
@@ -257,9 +341,9 @@ export function reviewCycleStart(activity: ReviewCycleActivity[]): number {
  *  (unverifiable) approval can't ship; the manual ship button does not. */
 export function reviewCycleVerdicts(
   activity: ReviewCycleActivity[],
-  opts?: { verifiedOnly?: boolean },
+  opts: ReviewCycleOpts,
 ): Map<ReviewerKind, "approved" | "changes_requested"> {
-  const start = reviewCycleStart(activity);
+  const start = reviewCycleStart(activity, opts.cycleStartedAt);
   const latest = new Map<ReviewerKind, "approved" | "changes_requested">();
   for (const a of activity) {
     if (
@@ -291,7 +375,7 @@ export function reviewCycleVerdicts(
 export function allReviewersApproved(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
-  opts?: { verifiedOnly?: boolean },
+  opts: ReviewCycleOpts,
 ): boolean {
   if (enabled.length === 0) return false;
   const verdicts = reviewCycleVerdicts(activity, opts);
@@ -311,10 +395,11 @@ export function allReviewersApproved(
 export function approvedButUnverified(
   activity: ReviewCycleActivity[],
   enabled: ReviewerKind[],
+  opts: ReviewCycleOpts,
 ): boolean {
   return (
-    allReviewersApproved(activity, enabled) &&
-    !allReviewersApproved(activity, enabled, { verifiedOnly: true })
+    allReviewersApproved(activity, enabled, opts) &&
+    !allReviewersApproved(activity, enabled, { ...opts, verifiedOnly: true })
   );
 }
 
@@ -322,11 +407,12 @@ export function approvedButUnverified(
  * The notes of the task's most recent review verdict, when that verdict asked
  * for changes — i.e. the work still outstanding on its pull request.
  *
- * This is what makes a re-run a CONTINUATION rather than a restart. A reviewer
- * bounce already carries its own notes into the re-run prompt; a human pressing
- * Re-run (or re-assigning the card to the Super Agent) carried nothing, so the
- * agent re-derived the whole task from the title and re-litigated an approach
- * the reviewer had explicitly told it to keep. Two prod cards spent five rounds
+ * This is what makes a re-run a CONTINUATION rather than a restart. Review is
+ * single-pass, so a change request is never bounced back to the Super Agent —
+ * the only way one reaches a run is a human pressing Re-run (or re-assigning
+ * the card), and that path carried nothing, so the agent re-derived the whole
+ * task from the title and re-litigated an approach the reviewer had explicitly
+ * told it to keep. Two prod cards spent five rounds
  * that way, one with a reviewer writing "a correção em si está CERTA — não
  * refaça o approach" into a run that then redid it.
  *
@@ -378,3 +464,51 @@ export const TASK_BOARD_ITEM_UPDATED_EVENT = "task-board.item.updated";
  * cache, so a delete on one client clears the card on every open board.
  */
 export const TASK_BOARD_ITEM_DELETED_EVENT = "task-board.item.deleted";
+
+/**
+ * Org-scoped SSE event pushed on `sseHub` whenever a task's linked PR cards are
+ * re-read from GitHub because a webhook said they changed — CI finished, or a
+ * deploy bot commented. Its `data` is `{ id, prs }` (the task id and the fresh
+ * cards); the open task dialog writes them straight into its react-query cache,
+ * so checks and the preview url land without waiting for the next poll.
+ */
+export const TASK_BOARD_ITEM_PRS_UPDATED_EVENT = "task-board.item.prs.updated";
+
+/**
+ * Cap on the org's task system prompt. It rides in the system prompt of EVERY
+ * task run, so an unbounded textarea is a per-run token bill. Shared so the
+ * settings tool rejects what the textarea already refuses.
+ */
+export const TASK_SYSTEM_PROMPT_MAX_LENGTH = 4000;
+
+/** Bound on chasing a preview url that may never arrive, from GitHub's
+ *  `updated_at`. */
+const PREVIEW_CHASE_MS = 10 * 60_000;
+
+/**
+ * A PR card waiting on something that ends by itself: never asked GitHub yet,
+ * CI running, or no preview url yet (time-bounded — a repo may publish none,
+ * ever).
+ *
+ * Shared because both sides key off it and must not drift: the server drops the
+ * card cache's hit window to zero, and the dialog polls faster.
+ */
+export function isCardNotReady(
+  card: {
+    checksStatus: string | null;
+    previewUrl: string | null;
+    state: string | null;
+    updatedAt: string | null;
+  },
+  now: number = Date.now(),
+): boolean {
+  // `null` is the placeholder: we have not asked GitHub yet, so it is the least
+  // ready a card can be. Only a state GitHub actually reported as not-open is
+  // settled.
+  if (card.state !== null && card.state !== "open") return false;
+  if (card.state === null) return true;
+  if (card.checksStatus === "pending") return true;
+  if (card.previewUrl !== null) return false;
+  const activeAt = card.updatedAt ? Date.parse(card.updatedAt) : Number.NaN;
+  return Number.isFinite(activeAt) && now - activeAt < PREVIEW_CHASE_MS;
+}

@@ -12,6 +12,7 @@ import { useStickToBottom } from "use-stick-to-bottom";
 import {
   ActiveTaskProvider,
   ChatProvider,
+  ThreadlessChatProvider,
   useChatStream,
   useChatTask,
 } from "./context";
@@ -30,7 +31,6 @@ import { NoAiProviderEmptyState } from "./no-ai-provider-empty-state";
 import { CreditsEmptyState } from "./credits-empty-state";
 import { CreditsExhaustedBanner } from "./credits-exhausted-banner";
 import { CreditsEyebrow, NoCreditsEyebrow } from "./credits-eyebrow";
-import { DecoChatSkeleton } from "./skeleton";
 export type { VirtualMCPInfo } from "./select-virtual-mcp";
 export type { ChatMessage, ChatStatus } from "./types.ts";
 
@@ -333,7 +333,7 @@ export const Chat = Object.assign(ChatRoot, {
   Input: ChatInput,
   Provider: ChatProvider,
   ActiveTaskProvider: ActiveTaskProvider,
-  Skeleton: DecoChatSkeleton,
+  ThreadlessProvider: ThreadlessChatProvider,
   IceBreakers: IceBreakers,
   NoAiProviderEmptyState: NoAiProviderEmptyState,
   CreditsEmptyState: CreditsEmptyState,

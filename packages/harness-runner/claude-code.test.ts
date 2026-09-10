@@ -3,11 +3,14 @@ import type { HarnessStreamInputWire } from "@decocms/sandbox/dispatch/schemas";
 import {
   brokenStudioMcp,
   buildOptions,
+  createDeltaCoalescer,
+  errorFinishChunks,
   isTransientProviderRejection,
   mcpServersFor,
   promptForRun,
   promptFromUserMessage,
 } from "./claude-code";
+import { UiChunkTranslator } from "./to-ui-chunks";
 
 /** A minimal valid wire input; each test overrides what it cares about. */
 function input(
@@ -158,6 +161,12 @@ describe("brokenStudioMcp", () => {
 });
 
 describe("buildOptions", () => {
+  test("asks the SDK for partial messages", () => {
+    // Without this the SDK yields only complete assistant messages and a
+    // paragraph reaches the UI as one frame after the model finished writing.
+    expect(options().includePartialMessages).toBe(true);
+  });
+
   test("bypasses permissions — the pod is the isolation boundary", () => {
     expect(options().permissionMode).toBe("bypassPermissions");
   });
@@ -394,13 +403,44 @@ describe("mcpServersFor", () => {
 });
 
 describe("isTransientProviderRejection", () => {
-  test("matches OpenRouter's upstream relay, whatever the status", () => {
-    expect(
-      isTransientProviderRejection("API Error: 400 Provider returned error"),
-    ).toBe(true);
+  test("matches OpenRouter's upstream relay on a server-side status", () => {
     expect(
       isTransientProviderRejection("API Error: 502 Provider returned error"),
     ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 529 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 429 Provider returned error"),
+    ).toBe(true);
+    expect(
+      isTransientProviderRejection("API Error: 408 Provider returned error"),
+    ).toBe(true);
+  });
+
+  // Inverts the previous "whatever the status" case: OpenRouter now flattens a
+  // malformed request to the same relay wording, and fails over across its
+  // upstreams before answering, so a 4xx is one every upstream refused.
+  test("a 4xx relay is fatal — every upstream already refused it", () => {
+    expect(
+      isTransientProviderRejection("API Error: 400 Provider returned error"),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("API Error: 404 Provider returned error"),
+    ).toBe(false);
+  });
+
+  test("an unparseable status keeps the benefit of the doubt", () => {
+    expect(isTransientProviderRejection("Provider returned error")).toBe(true);
+  });
+
+  test("only a 5xx retries — a 2xx/3xx relay is not a server failure", () => {
+    expect(
+      isTransientProviderRejection("API Error: 302 Provider returned error"),
+    ).toBe(false);
+    expect(
+      isTransientProviderRejection("API Error: 200 Provider returned error"),
+    ).toBe(false);
   });
 
   test("a 400 that describes the request stays fatal", () => {
@@ -425,5 +465,121 @@ describe("isTransientProviderRejection", () => {
     expect(
       isTransientProviderRejection("Session ID abc is already in use"),
     ).toBe(false);
+  });
+});
+
+describe("createDeltaCoalescer", () => {
+  const delta = (id: string, text: string) => ({
+    type: "text-delta",
+    id,
+    delta: text,
+  });
+
+  test("holds a short delta until something forces it out", () => {
+    const c = createDeltaCoalescer(10);
+    expect(c.push([delta("a", "hi")])).toEqual([]);
+    expect(c.drain()).toEqual([delta("a", "hi")]);
+    // Drained once; nothing left to emit twice.
+    expect(c.drain()).toEqual([]);
+  });
+
+  test("concatenates same-block deltas and flushes at the threshold", () => {
+    const c = createDeltaCoalescer(5);
+    expect(c.push([delta("a", "ab")])).toEqual([]);
+    expect(c.push([delta("a", "cd")])).toEqual([]);
+    expect(c.push([delta("a", "ef")])).toEqual([delta("a", "abcdef")]);
+    expect(c.drain()).toEqual([]);
+  });
+
+  test("a non-delta chunk flushes what is held, before itself", () => {
+    const c = createDeltaCoalescer(100);
+    // Ordering is the contract: text-end must never overtake its own text.
+    expect(c.push([delta("a", "hi"), { type: "text-end", id: "a" }])).toEqual([
+      delta("a", "hi"),
+      { type: "text-end", id: "a" },
+    ]);
+  });
+
+  test("a different block flushes the previous one rather than merging", () => {
+    const c = createDeltaCoalescer(100);
+    c.push([delta("a", "one")]);
+    expect(c.push([delta("b", "two")])).toEqual([delta("a", "one")]);
+    expect(c.drain()).toEqual([delta("b", "two")]);
+  });
+
+  test("reasoning and text deltas are not merged into each other", () => {
+    const c = createDeltaCoalescer(100);
+    c.push([{ type: "reasoning-delta", id: "a", delta: "think" }]);
+    // Same id, different kind — merging would put reasoning into a text part.
+    expect(c.push([delta("a", "say")])).toEqual([
+      { type: "reasoning-delta", id: "a", delta: "think" },
+    ]);
+  });
+
+  test("chunks that are not deltas pass through untouched", () => {
+    const c = createDeltaCoalescer(100);
+    const chunks = [
+      { type: "text-start", id: "a" },
+      { type: "tool-input-available", toolCallId: "t", toolName: "Bash" },
+      { type: "finish-step" },
+    ];
+    expect(c.push(chunks)).toEqual(chunks);
+  });
+
+  test("a malformed delta is passed through, not swallowed", () => {
+    const c = createDeltaCoalescer(100);
+    // No `delta` string: not coalescable, but dropping it would lose output.
+    const odd = { type: "text-delta", id: "a" };
+    expect(c.push([odd])).toEqual([odd]);
+  });
+
+  test("discard drops what is held instead of emitting it", () => {
+    const c = createDeltaCoalescer(100);
+    c.push([delta("a", "abandoned")]);
+    c.discard();
+    expect(c.drain()).toEqual([]);
+    // A later push starts clean, not merged into the discarded text.
+    expect(c.push([delta("a", "fresh")])).toEqual([]);
+    expect(c.drain()).toEqual([delta("a", "fresh")]);
+  });
+});
+
+describe("errorFinishChunks", () => {
+  test("closes a block stream_event left open before finish-step", () => {
+    const translator = new UiChunkTranslator();
+    translator.translate({
+      type: "stream_event",
+      event: { type: "message_start" },
+    });
+    translator.translate({
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      },
+    });
+    translator.translate({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "hi" },
+      },
+    });
+    // No `content_block_stop` — the SDK threw mid-block.
+    expect(errorFinishChunks(translator)).toEqual([
+      { type: "text-end", id: "stream-1" },
+      { type: "finish-step" },
+      { type: "finish", finishReason: "error" },
+    ]);
+  });
+
+  test("nothing left open: just finish-step and finish", () => {
+    const translator = new UiChunkTranslator();
+    expect(errorFinishChunks(translator)).toEqual([
+      { type: "finish-step" },
+      { type: "finish", finishReason: "error" },
+    ]);
   });
 });

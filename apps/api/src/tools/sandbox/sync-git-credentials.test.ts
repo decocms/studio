@@ -79,7 +79,12 @@ describe("refreshSandboxGitCredentials", () => {
   test("decodes buildCloneInfo's SANDBOX_START_ERROR_CODES prefix into a clean GitPushAuthError", async () => {
     const ctx = {
       organization: { id: "org_1" },
-      storage: { connections: { findById: async () => null } },
+      storage: {
+        connections: { findById: async () => null },
+        // No repository row: this test covers the legacy `mcp-github` path.
+        repositories: { get: async () => null, findByRef: async () => null },
+        gitProviderAccounts: { getUnscoped: async () => null },
+      },
       db: {},
       vault: {},
     } as unknown as StudioContext;

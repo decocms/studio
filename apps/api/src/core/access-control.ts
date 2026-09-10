@@ -69,6 +69,8 @@ export class AccessControl {
     private connectionId: string = "self", // For connection-specific checks (matches permission resource key)
     private getToolMeta?: GetToolMetaFn, // Optional callback for public tool check
     private organizationId?: string, // Path-resolved org (overrides session active org)
+    // False when toolName is untrusted (e.g. a downstream connection's own tool name).
+    private trustPublicPrefix: boolean = true,
   ) {}
 
   setToolName(toolName: string): void {
@@ -133,8 +135,9 @@ export class AccessControl {
     }
     // tool is public with zero IO operations, so we can grant access immediately
     if (
-      this.toolName?.startsWith("STUDIO_PUBLIC_") ||
-      this.toolName?.startsWith("MESH_PUBLIC_")
+      this.trustPublicPrefix &&
+      (this.toolName?.startsWith("STUDIO_PUBLIC_") ||
+        this.toolName?.startsWith("MESH_PUBLIC_"))
     ) {
       this.grant();
       return;
@@ -248,8 +251,9 @@ export class AccessControl {
    */
   private async isToolPublic(): Promise<boolean> {
     if (
-      this.toolName?.startsWith("STUDIO_PUBLIC_") ||
-      this.toolName?.startsWith("MESH_PUBLIC_")
+      this.trustPublicPrefix &&
+      (this.toolName?.startsWith("STUDIO_PUBLIC_") ||
+        this.toolName?.startsWith("MESH_PUBLIC_"))
     ) {
       return true;
     }

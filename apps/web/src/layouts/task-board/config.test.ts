@@ -1,17 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
+import {
+  CANONICAL_COLUMN_KEYS,
+  SUPER_AGENT_ASSIGNEE_ID,
+} from "@decocms/shared/task-board";
 import {
   agentRunState,
   cardNeedsAttention,
+  dropLane,
   dueDateUrgency,
-  formatSprintDates,
   insertSortOrder,
+  isFeedWorthyActivity,
+  isLiveAttempt,
   isTaskHandedToHuman,
+  laneHeader,
   laneVisibility,
+  laneVisual,
   moveTargets,
   runSortOrders,
   statusIconClassName,
-  STATUSES,
 } from "./config";
 import type { TaskBoardItem } from "./config";
 
@@ -24,15 +30,17 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     status: "todo",
     priority: "none",
     type: "chore",
-    sprintId: null,
     assigneeId: null,
     assignedBy: null,
     repo: null,
     dueDate: null,
     sortOrder,
     keySeq: 1,
-    jiraIssueKey: null,
+    externalUrl: null,
+    previewRoutes: [],
+    source: null,
     retryAttempts: 0,
+    reviewCycleStartedAt: null,
     threads: [],
     tags: [],
     reviewVerdicts: [],
@@ -42,6 +50,8 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     updatedAt: new Date().toISOString(),
   } as TaskBoardItem;
 }
+
+const STATUSES = [...CANONICAL_COLUMN_KEYS];
 
 describe("insertSortOrder", () => {
   const lane = [item("a", 0), item("b", 10), item("c", 20)];
@@ -137,40 +147,6 @@ describe("isTaskHandedToHuman", () => {
     for (const status of ["triage", "todo", "in_progress", "done"] as const) {
       expect(isTaskHandedToHuman({ ...item("t", 0), status })).toBe(false);
     }
-  });
-});
-
-describe("formatSprintDates", () => {
-  const sprint = {
-    id: "sprint_1",
-    name: "Sprint 12",
-    state: "active" as const,
-    startsAt: "2026-01-05T00:00:00.000Z",
-    endsAt: "2026-01-18T00:00:00.000Z",
-  };
-
-  test("spans the sprint's own days, read in UTC", () => {
-    // Day numbers, not the whole string: month names follow the test locale.
-    const label = formatSprintDates(sprint);
-    expect(label).toContain("5");
-    expect(label).toContain("18");
-  });
-
-  test("renders the one date it has when the other is missing", () => {
-    expect(formatSprintDates({ ...sprint, endsAt: null })).toContain("5");
-    expect(formatSprintDates({ ...sprint, startsAt: null })).toContain("18");
-  });
-
-  test("is null for a sprint nobody has scheduled", () => {
-    expect(formatSprintDates({ ...sprint, startsAt: null, endsAt: null })).toBe(
-      null,
-    );
-  });
-
-  test("is null rather than `Invalid Date` for an unparseable date", () => {
-    expect(
-      formatSprintDates({ ...sprint, startsAt: "nope", endsAt: null }),
-    ).toBe(null);
   });
 });
 
@@ -297,6 +273,51 @@ describe("moveTargets", () => {
   });
 });
 
+describe("dropLane", () => {
+  const statusOf = (id: string) =>
+    ({ card_in_column: "in_progress", card_in_dead_lane: "not_a_lane" })[id];
+  const over = (overId: string | undefined) => dropLane({ overId, statusOf });
+
+  test("lands a drag in an empty column", () => {
+    expect(over("lane:in_progress")).toBe("in_progress");
+  });
+
+  test("lands a drag on a card, in that card's column", () => {
+    expect(over("card_in_column")).toBe("in_progress");
+  });
+
+  /** Both ways of being over a lane the board does not have are the same
+   *  illegal landing: the server rejects the write either way. */
+  test("refuses a lane that is not a column, hovered directly or through its card", () => {
+    expect(over("lane:not_a_lane")).toBeNull();
+    expect(over("card_in_dead_lane")).toBeNull();
+  });
+
+  test("refuses a card it has never heard of, and no target at all", () => {
+    expect(over("card_that_left")).toBeNull();
+    expect(over(undefined)).toBeNull();
+  });
+});
+
+describe("laneHeader", () => {
+  const t = ((key: string) => `t:${key}`) as never;
+
+  test("translates one of the board's own lanes", () => {
+    const header = laneHeader("in_progress", t);
+    expect(header.label).toBe("t:taskBoard.config.statusInProgress");
+    expect(header.visual).toBe(laneVisual("in_progress"));
+  });
+
+  /** A status this bundle does not know is still shown, by its raw key and
+   *  with the neutral visual — not hidden, and not dressed as one of ours. */
+  test("names an unknown status by its key, drawn neutral", () => {
+    const header = laneHeader("not_a_lane", t);
+    expect(header.label).toBe("not_a_lane");
+    expect(header.visual).toBe(laneVisual("not_a_lane"));
+    expect(header.visual).not.toBe(laneVisual("triage"));
+  });
+});
+
 describe("laneVisibility", () => {
   const shown: string[] = [];
 
@@ -365,5 +386,54 @@ describe("laneVisibility", () => {
       occupied: [],
     });
     expect(lanes).not.toContain("a_lane_that_no_longer_exists");
+  });
+});
+
+describe("isFeedWorthyActivity", () => {
+  test("drops the per-retry line — it says nothing a person acts on", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "in_progress", to: "in_progress", retry: 1, of: 1 },
+      }),
+    ).toBe(false);
+  });
+
+  test("keeps the terminal line that counts the retries", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "in_progress", to: "todo", retriesSpent: 1 },
+      }),
+    ).toBe(true);
+  });
+
+  test("keeps ordinary moves, and anything that is not a status change", () => {
+    expect(
+      isFeedWorthyActivity({
+        action: "status_changed",
+        data: { from: "todo", to: "in_progress" },
+      }),
+    ).toBe(true);
+    expect(isFeedWorthyActivity({ action: "created", data: null })).toBe(true);
+    // `retry` is only a retry when it is a count — a stray string is not one.
+    expect(
+      isFeedWorthyActivity({ action: "status_changed", data: { retry: "1" } }),
+    ).toBe(true);
+  });
+});
+
+describe("isLiveAttempt", () => {
+  test("drops a superseded attempt — a newer run replaced it", () => {
+    expect(isLiveAttempt({ failureKind: "superseded" })).toBe(false);
+  });
+
+  test("keeps the attempt that actually ended the card", () => {
+    // The last attempt is never superseded (nothing replaced it), so a card
+    // whose every run failed still shows one card, and one transcript.
+    expect(isLiveAttempt({ failureKind: "error" })).toBe(true);
+    expect(isLiveAttempt({ failureKind: "ended_after_delivery" })).toBe(true);
+    expect(isLiveAttempt({ failureKind: null })).toBe(true);
+    expect(isLiveAttempt({})).toBe(true);
   });
 });

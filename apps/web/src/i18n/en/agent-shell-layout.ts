@@ -3,9 +3,9 @@ export const agentShellLayout = {
     "This chat isn't available on the web",
   "agentShellLayout.agentShellLayout.runtimeUnavailableOnWebDescription":
     "Coding-agent chats run locally in Studio Desktop. Open this chat there to continue.",
-  "agentShellLayout.agentShellLayout.agentNotFound": "Agent not found",
+  "agentShellLayout.agentShellLayout.agentNotFound": "Project not found",
   "agentShellLayout.agentShellLayout.agentNotFoundDescription":
-    'The agent "{virtualMcpId}" does not exist in this organization.',
+    'The project "{virtualMcpId}" does not exist in this organization.',
   "agentShellLayout.agentShellLayout.chatLoadingError":
     "Something went wrong loading the chat. Try refreshing.",
   "agentShellLayout.agentShellLayout.creatingTask": "Creating task…",
@@ -15,13 +15,8 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.somethingWentWrong":
     "Something went wrong. Try refreshing.",
   "agentShellLayout.agentShellLayout.taskUnavailable": "Task unavailable",
-  "agentShellLayout.libraryToggle.library": "Library",
-  "agentShellLayout.tasksToggle.tasks": "Tasks",
   "agentShellLayout.toggleButtons.hideChat": "Hide chat",
   "agentShellLayout.toggleButtons.hidePanel": "Hide panel",
   "agentShellLayout.toggleButtons.showChat": "Show chat",
   "agentShellLayout.toggleButtons.showPanel": "Show panel",
-  "agentShellLayout.toggleButtons.chat": "Chat",
-  "agentShellLayout.toolbar.backToHome": "Back to home",
-  "agentShellLayout.toolbar.logo": "Logo",
 } as const;

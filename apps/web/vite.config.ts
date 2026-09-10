@@ -14,6 +14,21 @@ import { MONACO_VS_PATH } from "./src/lib/monaco-vs-path";
 
 const bunServerTarget = `http://localhost:${process.env.PORT || "3000"}`;
 
+/**
+ * Point the dev server's `/api` proxy at a REMOTE Studio instead of the local
+ * Bun server, to exercise the UI against real data:
+ *
+ *   STUDIO_API_TARGET=https://studio.decocms.com bun run --cwd=apps/web dev
+ *
+ * The browser still talks only to the Vite origin, so this is same-origin and
+ * needs no CORS. Two headers have to be rewritten for the upstream to accept
+ * the request at all — see `remoteApiProxyOptions`.
+ *
+ * Everything the UI does through this proxy is a REAL write against that
+ * instance, under whoever you log in as. There is no read-only mode.
+ */
+const remoteApiTarget = process.env.STUDIO_API_TARGET?.trim() || null;
+
 // Desktop (Tauri) build mode — VITE_TAURI_APP=1 bun --bun vite build. Points
 // the build at index.native.html (-> src/index.native.tsx) instead
 // of the standard index.html, into a SEPARATE output dir, so a standard
@@ -54,7 +69,30 @@ const nativeLocalApiDefaultTarget =
     : "https://127.0.0.1:43121";
 const nativeLocalApiTarget =
   process.env.NATIVE_LOCAL_API_TARGET ?? nativeLocalApiDefaultTarget;
-const appServerTarget = isNativeBuild ? nativeLocalApiTarget : bunServerTarget;
+const appServerTarget = isNativeBuild
+  ? nativeLocalApiTarget
+  : (remoteApiTarget ?? bunServerTarget);
+
+/**
+ * Extra proxy options when `/api` points at a remote Studio.
+ *
+ * `changeOrigin` rewrites Host so the upstream's router resolves the right app,
+ * and the `Origin` rewrite is what makes Better Auth accept the call at all:
+ * its `trustedOrigins` is derived from the server's OWN base URL
+ * (apps/api/src/auth/index.ts), which never contains a localhost dev origin, so
+ * an un-rewritten `Origin` is rejected as cross-site.
+ *
+ * That check is the upstream's CSRF defence. Standing it down is safe here only
+ * because the proxy is unreachable off this machine — never do the equivalent
+ * by adding a dev origin to a deployed `trustedOrigins`.
+ */
+const remoteApiProxyOptions = remoteApiTarget
+  ? {
+      changeOrigin: true,
+      secure: true,
+      headers: { origin: remoteApiTarget },
+    }
+  : null;
 
 // Native (Tauri) build ONLY: emit the entry as `index.html`, not
 // `index.native.html`. Tauri adds a page's inline-script hashes to the CSP
@@ -276,6 +314,22 @@ const sharedProxy = {
       }
     : {}),
 };
+
+/**
+ * Routes aimed at the app server inherit the remote overrides when
+ * `STUDIO_API_TARGET` is set; the native-only routes keep their local target,
+ * since the Rust local-api always runs on this machine.
+ */
+const devProxy = remoteApiProxyOptions
+  ? Object.fromEntries(
+      Object.entries(sharedProxy).map(([path, options]) => [
+        path,
+        options.target === appServerTarget
+          ? { ...options, ...remoteApiProxyOptions }
+          : options,
+      ]),
+    )
+  : sharedProxy;
 
 /**
  * Emit sourcemaps so PostHog error tracking can un-minify stack traces —
@@ -510,12 +564,12 @@ export default defineConfig({
       host: "localhost",
       clientPort: parseInt(process.env.VITE_PORT || "4000", 10),
     },
-    proxy: sharedProxy,
+    proxy: devProxy,
   },
   preview: {
     port: parseInt(process.env.VITE_PORT || "4000", 10),
     strictPort: true,
-    proxy: sharedProxy,
+    proxy: devProxy,
   },
   clearScreen: false,
   logLevel: "warn",

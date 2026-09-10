@@ -23,11 +23,12 @@ export interface Release {
   title: string;
   eyebrow?: string;
   bullets: ReleaseBullet[];
-  // href navigates; action is handled by the card (currently only opening
-  // the desktop-app download dialog).
+  /** `href` navigates; `action` is handled by the card — either opening the
+   *  desktop-app download dialog, or starting the new-layout product tour. */
   cta?:
     | { label: string; href: string }
-    | { label: string; action: "download-app" };
+    | { label: string; action: "download-app" }
+    | { label: string; action: "start-tour" };
   learnMoreHref?: string;
 }
 
@@ -36,6 +37,30 @@ export interface Release {
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
 const ALL_RELEASES: Release[] = [
+  {
+    id: "unified-workspace-layout",
+    date: "2026-09-01",
+    eyebrow: "Now Available",
+    title: "A new way around Studio",
+    bullets: [
+      {
+        icon: Users03,
+        title: "Unified org switcher",
+        body: "Organizations and agents now share one control at the top of the sidebar. Search it to jump straight to any agent, including ones in your other organizations.",
+      },
+      {
+        icon: Stars02,
+        title: "Your org at a glance",
+        body: "The organization home now opens on the agents your team built and the tasks they are running — no empty board to fill in first.",
+      },
+      {
+        icon: Monitor01,
+        title: "Simplified CMS",
+        body: "The CMS opens over the page you are previewing rather than somewhere else, so changing a section never costs you your place.",
+      },
+    ],
+    cta: { label: "Take the tour", action: "start-tour" },
+  },
   {
     id: "native-app-linux-beta",
     date: "2026-08-20",
@@ -295,9 +320,19 @@ const ALL_RELEASES: Release[] = [
   },
 ];
 
-// An install prompt inside the installed app is noise: when the Tauri build
-// flag is set, drop releases whose CTA is the download action at the source,
-// so every consumer (floating card, inbox counts) agrees.
+/** An install prompt inside the installed app is noise, so the Tauri build drops
+ *  the releases whose CTA is the DOWNLOAD action — and only those. Every other
+ *  action works the same in the desktop app as in the browser, and a blanket
+ *  "has an action" filter would silently vanish the whole release (card, inbox
+ *  entry and all) the moment a new action variant is added. Filtered at the
+ *  source, so every consumer (floating card, inbox counts) agrees. */
 export const RELEASES: Release[] = isDesktopAppEnvironment()
-  ? ALL_RELEASES.filter((release) => !(release.cta && "action" in release.cta))
+  ? ALL_RELEASES.filter(
+      (release) =>
+        !(
+          release.cta &&
+          "action" in release.cta &&
+          release.cta.action === "download-app"
+        ),
+    )
   : ALL_RELEASES;

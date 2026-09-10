@@ -21,24 +21,35 @@ use crate::error::ApiError;
 /// hop.
 const DEV_SERVER_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Sends `request` to the dev server and mirrors its response back: status,
-/// `Content-Type` (falling back to `default_content_type` when the dev server
-/// sent none — `None` omits the header instead), and the full body. A send or
-/// body-read failure — including a timeout — is the family's uniform 502
-/// `Preview unreachable`.
+/// Tries `[::1]` then `127.0.0.1`, matching `routes/proxy.rs`'s
+/// `send_to_loopback` and `setup/dev.rs`'s `probe_loopback` — some dev
+/// servers (Vite on macOS) bind IPv6-only, some IPv4-only. Only a
+/// connect-phase failure falls through to the next host; a request whose
+/// connection succeeded is never retried, since re-sending a non-idempotent
+/// invoke risks a double write upstream.
+const LOOPBACK_HOSTS: [&str; 2] = ["[::1]", "127.0.0.1"];
+
+/// Builds and sends a request to the dev server and mirrors its response
+/// back: status, `Content-Type` (falling back to `default_content_type` when
+/// the dev server sent none — `None` omits the header instead), and the full
+/// body. A send or body-read failure — including a timeout — is the family's
+/// uniform 502 `Preview unreachable`.
+///
+/// `build(host)` constructs the request against one candidate loopback host
+/// (e.g. `format!("http://{host}:{port}/...")`); called once per host tried.
 pub(super) async fn send_and_mirror(
-    request: reqwest::RequestBuilder,
+    build: impl Fn(&str) -> reqwest::RequestBuilder,
     default_content_type: Option<HeaderValue>,
 ) -> Response {
-    send_and_mirror_with_timeout(request, default_content_type, DEV_SERVER_TIMEOUT).await
+    send_and_mirror_with_timeout(build, default_content_type, DEV_SERVER_TIMEOUT).await
 }
 
 async fn send_and_mirror_with_timeout(
-    request: reqwest::RequestBuilder,
+    build: impl Fn(&str) -> reqwest::RequestBuilder,
     default_content_type: Option<HeaderValue>,
     timeout: Duration,
 ) -> Response {
-    let Ok(response) = request.timeout(timeout).send().await else {
+    let Ok(response) = send_to_loopback(build, timeout).await else {
         return ApiError::new(StatusCode::BAD_GATEWAY, "Preview unreachable").into_response();
     };
     let status =
@@ -58,6 +69,27 @@ async fn send_and_mirror_with_timeout(
         res.headers_mut().insert(header::CONTENT_TYPE, content_type);
     }
     res
+}
+
+async fn send_to_loopback(
+    build: impl Fn(&str) -> reqwest::RequestBuilder,
+    timeout: Duration,
+) -> Result<reqwest::Response, String> {
+    let mut last_err: Option<String> = None;
+    for (idx, host) in LOOPBACK_HOSTS.iter().enumerate() {
+        match build(host).timeout(timeout).send().await {
+            Ok(response) => return Ok(response),
+            Err(error) => {
+                let is_last = idx == LOOPBACK_HOSTS.len() - 1;
+                if !is_last && error.is_connect() {
+                    last_err = Some(error.to_string());
+                    continue;
+                }
+                return Err(error.to_string());
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "upstream unreachable".to_string()))
 }
 
 #[cfg(test)]
@@ -95,13 +127,35 @@ mod tests {
         let port = spawn_upstream(app).await;
 
         let res = send_and_mirror(
-            reqwest::Client::new().get(format!("http://127.0.0.1:{port}/x")),
+            |host| reqwest::Client::new().get(format!("http://{host}:{port}/x")),
             None,
         )
         .await;
         assert_eq!(res.status(), StatusCode::CREATED);
         assert_eq!(res.headers()[header::CONTENT_TYPE], "text/plain");
         assert!(res.headers().get(header::SET_COOKIE).is_none());
+        let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
+        assert_eq!(&body[..], b"payload");
+    }
+
+    /// Vite binds `localhost`, which resolves to `[::1]` first on macOS — a
+    /// dev server reachable only over IPv6 (the exact failure `#6599` fixed
+    /// for the boot probe) must still be reachable here.
+    #[tokio::test]
+    async fn reaches_a_dev_server_bound_ipv6_only() {
+        let app = axum::Router::new().route("/x", get(|| async { "payload" }));
+        let listener = TcpListener::bind("[::1]:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        let res = send_and_mirror(
+            |host| reqwest::Client::new().get(format!("http://{host}:{port}/x")),
+            None,
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK);
         let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], b"payload");
     }
@@ -120,14 +174,14 @@ mod tests {
 
         let default = Some(HeaderValue::from_static("application/json"));
         let res = send_and_mirror(
-            reqwest::Client::new().get(format!("http://127.0.0.1:{port}/none")),
+            |host| reqwest::Client::new().get(format!("http://{host}:{port}/none")),
             default.clone(),
         )
         .await;
         assert_eq!(res.headers()[header::CONTENT_TYPE], "application/json");
 
         let res = send_and_mirror(
-            reqwest::Client::new().get(format!("http://127.0.0.1:{port}/none")),
+            |host| reqwest::Client::new().get(format!("http://{host}:{port}/none")),
             None,
         )
         .await;
@@ -141,7 +195,7 @@ mod tests {
             listener.local_addr().unwrap().port()
         };
         let res = send_and_mirror(
-            reqwest::Client::new().get(format!("http://127.0.0.1:{free_port}/x")),
+            |host| reqwest::Client::new().get(format!("http://{host}:{free_port}/x")),
             None,
         )
         .await;
@@ -166,7 +220,7 @@ mod tests {
         let port = spawn_upstream(app).await;
 
         let res = send_and_mirror_with_timeout(
-            reqwest::Client::new().get(format!("http://127.0.0.1:{port}/slow")),
+            |host| reqwest::Client::new().get(format!("http://{host}:{port}/slow")),
             None,
             Duration::from_millis(50),
         )

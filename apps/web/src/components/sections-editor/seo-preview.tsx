@@ -1,7 +1,7 @@
 import { Image01 } from "@untitledui/icons";
 import type { TranslationKey } from "@/i18n/use-t";
 import { useT } from "@/i18n/use-t";
-import { safeEditorImageUrl } from "./safe-editor-image-url";
+import { safeImageUrl } from "@/lib/safe-image-url";
 
 /**
  * Live, multi-platform preview of how a page's SEO/Open-Graph metadata renders
@@ -32,12 +32,12 @@ function safePreviewImageUrl(
   if (baseUrl) {
     try {
       const resolved = new URL(raw, baseUrl).href;
-      return safeEditorImageUrl(resolved);
+      return safeImageUrl(resolved);
     } catch {
       return undefined;
     }
   }
-  return safeEditorImageUrl(raw);
+  return safeImageUrl(raw);
 }
 
 function readSeo(seo: Record<string, unknown> | null | undefined): SeoValues {

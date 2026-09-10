@@ -37,6 +37,7 @@ export type ToolCategory =
   | "Object Storage"
   | "Registry"
   | "GitHub"
+  | "Git"
   | "VM"
   | "Search"
   | "Task Board"
@@ -55,6 +56,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
+  "ORGANIZATION_HAS_SITE",
   "BRAND_CONTEXT_LIST",
   "BRAND_CONTEXT_GET",
   "BRAND_CONTEXT_CREATE",
@@ -198,8 +200,14 @@ const ALL_TOOL_NAMES = [
   "JIRA_INTEGRATION_DELETE",
   "JIRA_BOARDS_LIST",
   "JIRA_BOARD_COLUMNS_LIST",
-  "JIRA_SYNC_RUN",
-  "JIRA_RESYNC_REQUEST",
+  "JIRA_AUTOMATION_LIST",
+  "JIRA_AUTOMATION_UPSERT",
+  "JIRA_AUTOMATION_DELETE",
+  "JIRA_RUN_START",
+  "JIRA_ISSUE_GET",
+  "JIRA_COMMENT_ADD",
+  "JIRA_ISSUE_TRANSITION",
+  "JIRA_ATTACHMENT_DOWNLOAD",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -245,11 +253,27 @@ const ALL_TOOL_NAMES = [
   "SANDBOX_START",
   "SANDBOX_DELETE",
 
-  // GitHub tools (app-only)
+  // GitHub App installations (app-only)
   "GITHUB_LIST_USER_ORGS",
-  "GITHUB_SEARCH_BRANCHES",
-  "GITHUB_PR_STATE",
-  "GITHUB_LAST_PUBLISHED_PR",
+
+  // Git provider accounts + repositories (app-only)
+  "GIT_PROVIDER_CAPABILITIES",
+  "GIT_ACCOUNT_LIST",
+  "GIT_ACCOUNT_CONNECT_TOKEN",
+  "GIT_ACCOUNT_DELETE",
+  "REPOSITORY_LIST",
+  "REPOSITORY_SEARCH",
+  "REPOSITORY_LINK",
+  "REPOSITORY_DELETE",
+  "REPOSITORY_SEARCH_BRANCHES",
+
+  // Change requests — pull requests on GitHub, merge requests on GitLab (app-only)
+  "CHANGE_REQUEST_STATE",
+  "CHANGE_REQUEST_LAST_MERGED",
+  "CHANGE_REQUEST_LIST_OPEN",
+  "CHANGE_REQUEST_CHECK_LOG",
+  "CHANGE_REQUEST_OPEN",
+  "CHANGE_REQUEST_MERGE",
 
   // Search tools
   "GLOBAL_SEARCH",
@@ -259,8 +283,14 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
+  "TASK_BOARD_AUTOMATION_LIST",
+  "TASK_BOARD_AUTOMATION_UPSERT",
+  "TASK_BOARD_AUTOMATION_DELETE",
+  "TASK_BOARD_PROMPT_LIST",
+  "TASK_BOARD_PROMPT_UPSERT",
+  "TASK_BOARD_PROMPT_DELETE",
   "TASK_BOARD_ITEM_PRS_GET",
-  "TASK_BOARD_ITEM_PR_LINK",
+  "TASK_BOARD_PREVIEW_PROBE",
   "TASK_BOARD_ITEM_RERUN",
   "TASK_BOARD_RESOLVE_CONFLICT",
   "TASK_BOARD_REVIEW_DECISION",
@@ -914,7 +944,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_INTEGRATION_GET",
-    description: "Get the org's Jira integration config and last sync status",
+    description: "Get the org's Jira integration config",
     category: "Jira",
   },
   {
@@ -938,14 +968,44 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
-    name: "JIRA_SYNC_RUN",
-    description: "Pull from Jira into the task board right now",
+    name: "JIRA_AUTOMATION_LIST",
+    description: "List which Jira statuses start an agent run",
     category: "Jira",
   },
   {
-    name: "JIRA_RESYNC_REQUEST",
+    name: "JIRA_AUTOMATION_UPSERT",
+    description: "Run the agent on issues entering a Jira status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_AUTOMATION_DELETE",
+    description: "Stop running the agent on issues entering a Jira status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_RUN_START",
+    description: "Run the agent on one Jira issue now, to try a rule out",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_GET",
+    description: "Re-read the Jira issue a run is working on",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_COMMENT_ADD",
+    description: "Comment on the Jira issue a run is working on",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_TRANSITION",
+    description: "Move the Jira issue a run is working on to another status",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
-      "Mark the whole Jira board to be re-read on the next scheduled sync",
+      "Get a short-lived download URL for an attachment of the run's Jira issue",
     category: "Jira",
   },
   {
@@ -1172,22 +1232,86 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
   },
+  // Git provider accounts + repositories
   {
-    name: "GITHUB_SEARCH_BRANCHES",
-    description: "Search a repository's branches by name substring",
-    category: "GitHub",
+    name: "GIT_PROVIDER_CAPABILITIES",
+    description:
+      "Which git providers this deployment can connect, with their connect URLs",
+    category: "Git",
   },
   {
-    name: "GITHUB_PR_STATE",
-    description:
-      "Read a branch's pull request with its checks, review state and comments",
-    category: "GitHub",
+    name: "GIT_ACCOUNT_LIST",
+    description: "List the git provider accounts connected to the organization",
+    category: "Git",
   },
   {
-    name: "GITHUB_LAST_PUBLISHED_PR",
+    name: "GIT_ACCOUNT_CONNECT_TOKEN",
+    description: "Connect a git provider account with an access token",
+    category: "Git",
+  },
+  {
+    name: "GIT_ACCOUNT_DELETE",
+    description: "Disconnect a git provider account",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LIST",
+    description: "List the repositories linked to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH",
+    description: "Search the repositories an account can reach on its provider",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_LINK",
+    description: "Link a repository to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_SEARCH_BRANCHES",
     description:
-      "Read the most recently merged pull request into a base branch",
-    category: "GitHub",
+      "Search a repository's branches by name substring, on either provider",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_STATE",
+    description:
+      "Read a branch's change request with its CI runs, review state and comments",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_LAST_MERGED",
+    description:
+      "Read the most recently merged change request into a base branch",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_LIST_OPEN",
+    description: "List a repository's open change requests",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_CHECK_LOG",
+    description: "Read one CI run's report for a change request",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_OPEN",
+    description:
+      "Propose a branch onto another, reusing the branch's existing change request",
+    category: "Git",
+  },
+  {
+    name: "CHANGE_REQUEST_MERGE",
+    description: "Land a change request, reporting why it could not merge",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_DELETE",
+    description: "Unlink a repository from the organization",
+    category: "Git",
   },
   // Search tools
   {
@@ -1219,13 +1343,47 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "TASK_BOARD_AUTOMATION_LIST",
+    description: "List what the board runs when a card lands in each column",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_AUTOMATION_UPSERT",
+    description: "Run the agent on cards landing in a board column",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_AUTOMATION_DELETE",
+    description: "Stop running the agent on cards landing in a board column",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_LIST",
+    description:
+      "List the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_UPSERT",
+    description:
+      "Set the instructions appended to the system prompt of the board's runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_PROMPT_DELETE",
+    description: "Clear a board system prompt",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
     name: "TASK_BOARD_ITEM_PRS_GET",
     description: "Get a task board item's linked pull requests with live state",
     category: "Task Board",
   },
   {
-    name: "TASK_BOARD_ITEM_PR_LINK",
-    description: "Link a pull request a task run opened to its task board item",
+    name: "TASK_BOARD_PREVIEW_PROBE",
+    description:
+      "Check whether a pull request's deploy preview URL is currently reachable",
     category: "Task Board",
   },
   {
@@ -1392,10 +1550,17 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // Sandbox previews, and the branch picker that feeds them
       "SANDBOX_START",
       "SANDBOX_DELETE",
-      "GITHUB_SEARCH_BRANCHES",
-      // The PR panel's whole read side, for anyone who can open a preview
-      "GITHUB_PR_STATE",
-      "GITHUB_LAST_PUBLISHED_PR",
+      "REPOSITORY_SEARCH_BRANCHES",
+      // Repo picker reads: which accounts/repos exist and what can be connected
+      "GIT_PROVIDER_CAPABILITIES",
+      "GIT_ACCOUNT_LIST",
+      "REPOSITORY_LIST",
+      "REPOSITORY_SEARCH",
+      // The change-request panel's whole read side, for anyone who can open a preview
+      "CHANGE_REQUEST_STATE",
+      "CHANGE_REQUEST_LAST_MERGED",
+      "CHANGE_REQUEST_LIST_OPEN",
+      "CHANGE_REQUEST_CHECK_LOG",
       // Cross-resource discovery / command palette
       "GLOBAL_SEARCH",
       // App-shell essentials (read-only) — every member hits these on first
@@ -1407,6 +1572,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
       "BRAND_CONTEXT_LIST",
+      // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
+      "ORGANIZATION_HAS_SITE",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -1423,8 +1590,14 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
+      "TASK_BOARD_AUTOMATION_LIST",
+      "TASK_BOARD_AUTOMATION_UPSERT",
+      "TASK_BOARD_AUTOMATION_DELETE",
+      "TASK_BOARD_PROMPT_LIST",
+      "TASK_BOARD_PROMPT_UPSERT",
+      "TASK_BOARD_PROMPT_DELETE",
       "TASK_BOARD_ITEM_PRS_GET",
-      "TASK_BOARD_ITEM_PR_LINK",
+      "TASK_BOARD_PREVIEW_PROBE",
       "TASK_BOARD_ITEM_RERUN",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -1472,8 +1645,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_INTEGRATION_DELETE",
       "JIRA_BOARDS_LIST",
       "JIRA_BOARD_COLUMNS_LIST",
-      "JIRA_SYNC_RUN",
-      "JIRA_RESYNC_REQUEST",
+      "JIRA_AUTOMATION_LIST",
+      "JIRA_AUTOMATION_UPSERT",
+      "JIRA_AUTOMATION_DELETE",
+      "JIRA_RUN_START",
     ],
   },
   {
@@ -1896,6 +2071,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     "Object Storage": [],
     Registry: [],
     GitHub: [],
+    Git: [],
     VM: [],
     Search: [],
     "Task Board": [],

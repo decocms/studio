@@ -3,6 +3,7 @@
 import type * as React from "react";
 import { ChevronDown } from "@untitledui/icons";
 
+import { INSET_FOCUS_RING } from "../lib/focus-ring.ts";
 import { cn } from "../lib/utils.ts";
 import { Button } from "./button.tsx";
 import { ButtonGroup } from "./button-group.tsx";
@@ -77,13 +78,13 @@ function SplitButtonMenuEntry({ item }: { item: SplitButtonMenuItem }) {
   );
 }
 
-/**
- * A primary action with an attached dropdown half — `[ Primary | v ]`.
- *
- * Without `items` it collapses to a plain single button (same rounding as
- * `Button`); with them, the halves share one control and only the primary
- * responds to `disabled`.
- */
+/** A primary action with an attached dropdown half — `[ Primary | v ]`. Without
+ *  `items` it collapses to a plain button (same rounding as `Button`); with
+ *  them the halves share one control and only the primary honours `disabled`.
+ *  Every focusable part wears {@link INSET_FOCUS_RING}, because this lives in a
+ *  panel header where an outset ring is clipped and a ring on one half would
+ *  overlap the other; a disabled primary moves focus to its tooltip wrapper, so
+ *  that span carries the ring too. */
 export function SplitButton({
   label,
   onClick,
@@ -99,6 +100,17 @@ export function SplitButton({
   className,
 }: SplitButtonProps) {
   const hasMenu = (items?.length ?? 0) > 0;
+  /**
+   * The shared inset ring is the `ring` token, which is picked to contrast with
+   * the PAGE — so on a filled button, whose fill is that same light-on-dark
+   * relationship inverted, it disappears into the button. currentColor is the
+   * one value guaranteed to contrast with a button's own background, so the
+   * filled variant rings in its own text colour.
+   */
+  const focusRing = cn(
+    INSET_FOCUS_RING,
+    variant === "default" && "focus-visible:inset-ring-current",
+  );
 
   const primary = (
     <Button
@@ -109,7 +121,10 @@ export function SplitButton({
       aria-busy={loading || undefined}
       // Loading dims nothing, so guard the handler against a double-fire.
       onClick={loading ? undefined : onClick}
-      className={cn(hasMenu && "rounded-r-none border-r border-current/20")}
+      className={cn(
+        focusRing,
+        hasMenu && "rounded-r-none border-r border-current/20",
+      )}
     >
       {loading ? <Spinner size="xs" /> : icon}
       {label}
@@ -131,7 +146,8 @@ export function SplitButton({
           <TooltipTrigger asChild>
             <span
               className={cn(
-                "inline-flex rounded-lg outline-none focus-visible:ring-[2px] focus-visible:ring-ring/20",
+                "inline-flex rounded-lg outline-none",
+                focusRing,
                 disabled && "cursor-not-allowed",
               )}
               tabIndex={disabled ? 0 : undefined}
@@ -155,7 +171,7 @@ export function SplitButton({
               variant={variant}
               size={size}
               aria-label={menuAriaLabel}
-              className="has-[>svg]:px-2"
+              className={cn("has-[>svg]:px-2", focusRing)}
             >
               <ChevronDown className="size-3.5" />
             </Button>

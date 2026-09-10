@@ -52,6 +52,17 @@ app.get("/", (c) => {
     ...(isLocalMode() && { internalUrl: getInternalUrl() }),
     ...(getSettings().enableDecoImport && { enableDecoImport: true }),
     brandExtractEnabled: !!getSettings().firecrawlApiKey,
+    hostingEnabled:
+      !!getSettings().controlplaneRestUrl &&
+      !!getSettings().controlplaneServiceToken,
+    hostingControlPlaneGa: getSettings().hostingControlPlaneGa,
+    // Native CDN Monitor tab: available when the stats-lake ClickHouse warehouse
+    // is wired (independent of the control-plane). GA — any org that owns the
+    // site sees it; no internal flag.
+    monitorEnabled:
+      !!getSettings().clickhouseAnalyticsUrl &&
+      !!getSettings().clickhouseAnalyticsPassword,
+    monitorGa: getSettings().monitorGa,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || null,

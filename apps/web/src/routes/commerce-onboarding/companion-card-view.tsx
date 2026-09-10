@@ -1,8 +1,9 @@
 import { IntegrationIcon } from "@/components/integration-icon";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { CheckCircle, Loading01, Settings01 } from "@untitledui/icons";
+import { CheckCircle, Settings01 } from "@untitledui/icons";
 import type { ReactNode } from "react";
 
 /**
@@ -98,7 +99,7 @@ export function ConnectAction({
       })}
     >
       {connecting ? (
-        <Loading01 size={16} className="animate-spin" />
+        <Spinner className="size-4" />
       ) : (
         t("commerceOnboarding.companionCard.connect")
       )}

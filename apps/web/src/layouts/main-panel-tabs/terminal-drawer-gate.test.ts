@@ -10,14 +10,19 @@ function input(
   return {
     hasClonableSource: true,
     fastPreviewActive: false,
-    mainTab: null,
+    mainTab: "site-editor",
     ...overrides,
   };
 }
 
 describe("shouldShowTerminalDrawer", () => {
-  test("shows for a sandbox session on a clonable agent", () => {
+  test("shows on the Site Editor for a sandbox session on a clonable agent", () => {
     expect(shouldShowTerminalDrawer(input())).toBe(true);
+  });
+
+  // `/site-editor?main=content` is the same route as the preview.
+  test("shows on the Site Editor's Content sub-view", () => {
+    expect(shouldShowTerminalDrawer(input({ mainTab: "content" }))).toBe(true);
   });
 
   // Callers only reach this gate with visibility already on.
@@ -33,17 +38,27 @@ describe("shouldShowTerminalDrawer", () => {
     );
   });
 
-  test("hides under an overlay tab", () => {
-    expect(shouldShowTerminalDrawer(input({ mainTab: "board" }))).toBe(false);
-    expect(shouldShowTerminalDrawer(input({ mainTab: "files" }))).toBe(false);
-    expect(
-      shouldShowTerminalDrawer(input({ mainTab: "connect-sources" })),
-    ).toBe(false);
-    expect(shouldShowTerminalDrawer(input({ mainTab: "reports" }))).toBe(false);
+  test("hides under every view that is not the Site Editor", () => {
+    for (const mainTab of [
+      "overview",
+      "settings",
+      "git",
+      "code",
+      "code:src%2Fapp.tsx",
+      "assets",
+      "automations",
+      "hosting",
+      "board",
+      "files",
+      "connect-sources",
+      "reports",
+      "discover",
+    ]) {
+      expect(shouldShowTerminalDrawer(input({ mainTab }))).toBe(false);
+    }
   });
 
-  test("shows under a non-overlay tab", () => {
-    expect(shouldShowTerminalDrawer(input({ mainTab: "preview" }))).toBe(true);
-    expect(shouldShowTerminalDrawer(input({ mainTab: "code" }))).toBe(true);
+  test("hides when the panel names no view", () => {
+    expect(shouldShowTerminalDrawer(input({ mainTab: null }))).toBe(false);
   });
 });

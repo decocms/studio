@@ -592,4 +592,59 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
     );
     expect(out).toEqual({ providers: {}, claimed: false });
   });
+
+  test("retries a transient 503 and succeeds once the upstream recovers", async () => {
+    let calls = 0;
+    const out = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () => {
+          calls += 1;
+          if (calls < 3) {
+            return new Response("upstream unavailable", { status: 503 });
+          }
+          return Response.json({ providers: {} });
+        },
+      },
+    );
+    expect(calls).toBe(3);
+    expect(out).toEqual({ providers: {}, claimed: true });
+  });
+
+  test("gives up after exhausting retries on a persistent 503, surfacing the status", async () => {
+    let calls = 0;
+    await expect(
+      fetchCommerceDiscoveryConnectionStatus(
+        { siteUrl: "https://example.com", orgId: "org_123" },
+        {
+          baseUrl: "https://commerce.example.test",
+          apiKey: "master-key",
+          fetchImpl: async () => {
+            calls += 1;
+            return new Response("upstream unavailable", { status: 503 });
+          },
+        },
+      ),
+    ).rejects.toThrow("Commerce Discovery auth failed with status 503.");
+    expect(calls).toBe(3);
+  });
+
+  test("does not retry a 404 (not a transient failure)", async () => {
+    let calls = 0;
+    const out = await fetchCommerceDiscoveryConnectionStatus(
+      { siteUrl: "https://example.com", orgId: "org_123" },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async () => {
+          calls += 1;
+          return Response.json({ error: "not_found" }, { status: 404 });
+        },
+      },
+    );
+    expect(calls).toBe(1);
+    expect(out).toEqual({ providers: {}, claimed: false });
+  });
 });

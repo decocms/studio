@@ -69,28 +69,3 @@ export function extractToolJson<T>(r: unknown): T | null {
   const parsed = payloadFromToolResult(r);
   return parsed === null ? null : (parsed as T);
 }
-
-/** Pull request number from a GitHub PR URL, if present. */
-export function pullNumberFromUrl(url: string | undefined): number | null {
-  if (!url) return null;
-  const match = url.match(/\/pull\/(\d+)\b/);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-/** Plain-text tool payloads that embed a PR link. */
-export function pullRequestFromToolText(r: unknown): {
-  number: number;
-  htmlUrl: string;
-} | null {
-  if (!r || typeof r !== "object") return null;
-  const text = (r as ToolResultLike).content?.find(
-    (c) => c.type === "text",
-  )?.text;
-  if (!text) return null;
-  const htmlUrl = text.match(/https:\/\/github\.com\/[^\s"]+\/pull\/\d+/)?.[0];
-  const number = pullNumberFromUrl(htmlUrl);
-  if (!number || !htmlUrl) return null;
-  return { number, htmlUrl };
-}

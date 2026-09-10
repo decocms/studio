@@ -25,7 +25,7 @@ export abstract class WrapperTransport implements Transport {
   constructor(protected innerTransport: Transport) {}
 
   get sessionId(): string | undefined {
-    return (this.innerTransport as any).sessionId;
+    return this.innerTransport.sessionId;
   }
 
   async start(): Promise<void> {

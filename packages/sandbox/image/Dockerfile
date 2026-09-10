@@ -164,6 +164,19 @@ RUN arch="$(dpkg --print-architecture)" \
   && rm -rf "/tmp/gh_${GH_CLI_VERSION}_linux_${arch}" \
   && gh --version
 
+# `glab`, the GitLab counterpart: agents working on a GitLab-hosted repository
+# open merge requests with it, fed GITLAB_TOKEN + GITLAB_HOST per run by the
+# daemon (same RunEnv, keyed off the clone URL's `oauth2` userinfo). Release
+# tarball, pinned, per-arch — same reasoning as `gh` above.
+ARG GLAB_CLI_VERSION=1.57.0
+RUN arch="$(dpkg --print-architecture)" \
+  && curl -fsSL --retry 3 \
+       "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_CLI_VERSION}/downloads/glab_${GLAB_CLI_VERSION}_linux_${arch}.tar.gz" \
+     | tar -xz -C /tmp \
+  && mv /tmp/bin/glab /usr/local/bin/glab \
+  && rm -rf /tmp/bin \
+  && glab --version
+
 # The claude-code harness: the Claude Agent SDK (a TS library) plus the `claude`
 # CLI it drives. The daemon execs the runner once per run — see
 # daemon-go/internal/dispatch/runner.go and packages/harness-runner/README.md.

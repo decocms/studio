@@ -96,7 +96,7 @@ export function InlineUnionField(props: FieldProps) {
           />
         )}
         <Select value={String(activeIndex)} onValueChange={handleBranchChange}>
-          <SelectTrigger id={path}>
+          <SelectTrigger id={path} className="w-full min-w-0">
             <SelectValue
               placeholder={t(
                 "sectionsEditor.inlineUnionField.selectPlaceholder",

@@ -62,4 +62,12 @@ describe("ORGANIZATION_DELETE", () => {
     );
     expect(ctx.update.mock.calls.length).toBe(0);
   });
+
+  it("is a no-op when the org is already archived, keeping the original archivedAt", async () => {
+    const ctx = makeCtx({ archived: true, archivedAt: "2026-01-01T00:00:00Z" });
+
+    await ORGANIZATION_DELETE.handler({ id: "org-1" }, ctx);
+
+    expect(ctx.update.mock.calls.length).toBe(0);
+  });
 });

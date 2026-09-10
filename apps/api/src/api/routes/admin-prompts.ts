@@ -15,14 +15,17 @@
  *
  * Mounted by `admin.ts`, therefore already behind `requireDeploymentAdmin`.
  */
+import {
+  repoRefFromOwnerName,
+  repoWebUrl,
+} from "@decocms/shared/git-providers";
 import { Hono } from "hono";
 import type { Env } from "@/api/hono-env";
 import {
-  createGitDataClient,
-  type GitDataClient,
-} from "@/decofile/github-git-data";
-import { githubConnectionAccessToken } from "@/oauth/github-mint";
-import { resolveGithubConnection } from "@/tools/task-board/prs-get";
+  contentClientForProjectRepo,
+  requireBranchHead,
+  type RepoContentClient,
+} from "@/git-providers";
 import {
   extractPromptRegion,
   replacePromptRegion,
@@ -30,6 +33,10 @@ import {
 
 /** The repo the prompts live in — this one. */
 const PROMPT_REPO = { owner: "decocms", repo: "studio" } as const;
+const PROMPT_REPO_REF = repoRefFromOwnerName(
+  PROMPT_REPO.owner,
+  PROMPT_REPO.repo,
+);
 
 /**
  * The editable prompts, each addressed by the marker pair that fences it in its
@@ -57,6 +64,10 @@ const PROMPTS = [
 ] as const;
 
 type PromptId = (typeof PROMPTS)[number]["id"];
+
+/** A generous ceiling, not a real limit — just enough to reject a runaway body. */
+const MAX_TITLE_LENGTH = 200;
+const MAX_PROMPT_LENGTH = 20_000;
 
 export class PromptEditorError extends Error {
   constructor(
@@ -116,30 +127,30 @@ async function resolveActorOrg(
 /** A GitHub client on the acting admin's own connection. */
 async function clientForActor(
   ctx: Ctx,
-): Promise<{ gh: GitDataClient; org: { slug: string; name: string } }> {
+): Promise<{ gh: RepoContentClient; org: { slug: string; name: string } }> {
   const org = await resolveActorOrg(ctx);
   // The mint path for a repo-scoped child connection reads `ctx.organization`,
   // which is exactly what this route doesn't have — bind the resolved org so
   // both the lookup and the token agree on one scope.
   const orgCtx: Ctx = { ...ctx, organization: org };
-  const connection = await resolveGithubConnection(orgCtx, org.id, null, {
+  /**
+   * The same credential ladder every other repository read takes — a
+   * first-class `repositories` row for this repo when the org has one, else
+   * its legacy `mcp-github` connection.
+   */
+  const gh = await contentClientForProjectRepo(orgCtx, org.id, {
+    url: repoWebUrl(PROMPT_REPO_REF),
     owner: PROMPT_REPO.owner,
     name: PROMPT_REPO.repo,
-  });
-  if (!connection) {
+  }).catch((cause: unknown) => {
     throw new PromptEditorError(
-      "Connect GitHub in this organization to edit prompts",
+      cause instanceof Error
+        ? cause.message
+        : "Connect GitHub in this organization to edit prompts",
       400,
     );
-  }
-  const accessToken = await githubConnectionAccessToken(orgCtx, connection);
-  if (!accessToken) {
-    throw new PromptEditorError("Reconnect GitHub to edit prompts", 400);
-  }
-  return {
-    gh: createGitDataClient({ ...PROMPT_REPO, accessToken }),
-    org: { slug: org.slug, name: org.name },
-  };
+  });
+  return { gh, org: { slug: org.slug, name: org.name } };
 }
 
 /**
@@ -173,12 +184,12 @@ export function applyPromptEdits(
 
 /** Every distinct source file the registry touches, read once at `ref`. */
 async function readSources(
-  gh: GitDataClient,
+  gh: RepoContentClient,
   ref: string,
 ): Promise<Map<string, string>> {
   const paths = [...new Set(PROMPTS.map((p) => p.path))];
   const texts = await Promise.all(
-    paths.map((path) => gh.getFileTextAtRef(ref, path)),
+    paths.map((path) => gh.readFileAtRef(ref, path)),
   );
   const sources = new Map<string, string>();
   paths.forEach((path, i) => {
@@ -200,7 +211,7 @@ export function createAdminPromptRoutes(): Hono<Env> {
     // Pin the read to the commit, not the branch: the sha goes back to the
     // client and is what a save is written against, so a push landing between
     // the two can be reported as a conflict instead of silently reverted.
-    const baseSha = await gh.getHeadSha(branch);
+    const baseSha = await requireBranchHead(gh, branch);
     const sources = await readSources(gh, baseSha);
 
     return c.json({
@@ -227,6 +238,12 @@ export function createAdminPromptRoutes(): Hono<Env> {
       typeof body.title === "string" && body.title.trim()
         ? body.title.trim()
         : "chore(prompts): edit agent prompts";
+    if (title.length > MAX_TITLE_LENGTH) {
+      return c.json(
+        { error: `Title must be at most ${MAX_TITLE_LENGTH} characters` },
+        400,
+      );
+    }
     const known = new Set<string>(PROMPTS.map((p) => p.id));
     const edits = (Array.isArray(body.edits) ? body.edits : [])
       .filter(
@@ -242,10 +259,19 @@ export function createAdminPromptRoutes(): Hono<Env> {
     if (edits.length === 0) {
       return c.json({ error: "No prompt edits to commit" }, 400);
     }
+    const oversized = edits.find((e) => e.content.length > MAX_PROMPT_LENGTH);
+    if (oversized) {
+      return c.json(
+        {
+          error: `Prompt "${oversized.id}" must be at most ${MAX_PROMPT_LENGTH} characters`,
+        },
+        400,
+      );
+    }
 
     const { gh } = await clientForActor(c.get("studioContext"));
     const base = await gh.getDefaultBranch();
-    const baseSha = await gh.getHeadSha(base);
+    const baseSha = await requireBranchHead(gh, base);
     if (typeof body.baseSha === "string" && body.baseSha !== baseSha) {
       // The editor loaded an older HEAD; committing its text would revert
       // whatever landed since. The client reloads and the operator re-applies.
@@ -266,29 +292,20 @@ export function createAdminPromptRoutes(): Hono<Env> {
     const changedPaths = [
       ...new Set(edits.map((e) => PROMPTS.find((p) => p.id === e.id)!.path)),
     ];
-    const entries = await Promise.all(
-      changedPaths.map(async (path) => ({
-        path,
-        mode: "100644",
-        type: "blob" as const,
-        sha: await gh.createBlob(sources.get(path)!),
-      })),
-    );
-
-    const treeSha = await gh.createTree(
-      await gh.getCommitTreeSha(baseSha),
-      entries,
-    );
-    const commitSha = await gh.createCommit({
-      message: title,
-      treeSha,
-      parentShas: [baseSha],
-    });
     const branch = `admin/prompts-${Date.now().toString(36)}`;
-    await gh.createRef(branch, commitSha);
-    const pr = await gh.createPullRequest({ base, head: branch, title });
+    await gh.createBranch(branch, baseSha);
+    await gh.commitFiles({
+      branch,
+      message: title,
+      expectedHead: baseSha,
+      changes: changedPaths.map((path) => ({
+        path,
+        content: sources.get(path)!,
+      })),
+    });
+    const pr = await gh.createChangeRequest({ base, head: branch, title });
 
-    return c.json({ number: pr.number, url: pr.html_url, branch });
+    return c.json({ number: pr.number, url: pr.url, branch });
   });
 
   app.onError((error, c) => {

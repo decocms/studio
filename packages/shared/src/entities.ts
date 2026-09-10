@@ -166,18 +166,27 @@ export interface TaskBoardItem {
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
   dueDate: string | null;
-  /** Sprint this card belongs to (`Sprint.id`); null = backlog. */
-  sprintId: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
   /** Per-org sequence behind the card's human key (`DECO-01`). */
   keySeq: number | null;
-  /** The key this card's issue wears in the tracker (`OS-333`), for a card
-   *  synced from one — what `taskKey` shows. Null for a card Studio owns. */
-  jiraIssueKey: string | null;
+  /** Link to that issue in the tracker, for a human to open. Never folded into
+   *  `description`, which agent prompts quote verbatim. */
+  externalUrl: string | null;
+  /** Paths this task's work created or edited, joined onto a PR's deploy-preview
+   *  origin by the card. Empty when the task named none. */
+  previewRoutes: string[];
+  /** `jira` for the hidden anchor of a Jira-triggered run; null for a card the
+   *  board shows. */
+  source: "jira" | null;
   /** Infrastructure retries already spent on this card's runs — the budget
    *  `reactToFailedTaskRun` spends against `MAX_RUN_RETRIES`. */
   retryAttempts: number;
+  /** When this card's current review cycle opened; null when none is open.
+   *  The boundary that decides which reviewer verdicts still count, and what
+   *  says a reviewer owns the card while its lane still reads In Progress.
+   *  Mirrors `task_board_items.review_cycle_started_at`. */
+  reviewCycleStartedAt: string | null;
   threads: TaskBoardItemThreadRef[];
   tags: TaskBoardItemTagRef[];
   /** Each reviewer's standing verdict in the current review cycle; reviewers

@@ -95,6 +95,41 @@ export function unwrapBlockReference(
 }
 
 /**
+ * The decofile key a saved-block section writes back to. For a hidden saved
+ * block, `raw.__resolveType` is the multivariate+never wrapper, not the block
+ * key — the real key lives in the wrapped variant value. Returns null when the
+ * section isn't a saved block.
+ */
+export function savedBlockKey(
+  raw: RawSection,
+  parsed: ParsedSection,
+): string | null {
+  if (!parsed.isSavedBlock) return null;
+
+  if (parsed.isHidden) {
+    const wrapperIsLazy = isLazyResolveType(raw.__resolveType);
+    const mvObj = wrapperIsLazy ? (raw.section as RawSection | undefined) : raw;
+    const innerValue = mvObj?.variants?.[0]?.value as
+      | Record<string, unknown>
+      | undefined;
+    if (!innerValue) return null;
+    const innerRt = (innerValue.__resolveType as string) ?? "";
+    if (!isLazyResolveType(innerRt)) return innerRt || null;
+    return (
+      ((innerValue.section as Record<string, unknown> | undefined)
+        ?.__resolveType as string) ??
+      innerRt ??
+      null
+    );
+  }
+
+  const key = parsed.isLazy
+    ? ((raw.section?.__resolveType as string) ?? raw.__resolveType)
+    : raw.__resolveType;
+  return key || null;
+}
+
+/**
  * Unwrap a raw section to get the actual editable data and its resolveType.
  * Handles lazy wrappers, hidden (multivariate+never), saved blocks, and
  * multivariate sections — mirrors admin-mcp's handleCmsSelectSection.

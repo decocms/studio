@@ -43,7 +43,7 @@ export function EnumField({
         value={selectValue}
         onValueChange={(v) => onChange(selectValueToFormValue(v, options))}
       >
-        <SelectTrigger id={path} className="h-10">
+        <SelectTrigger id={path} className="h-10 w-full min-w-0">
           <SelectValue
             placeholder={t("sectionsEditor.enumField.selectPlaceholder")}
           />

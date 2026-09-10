@@ -6,6 +6,7 @@
  * explicit config, since the tool reads frozen global settings.
  */
 
+import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "kysely";
 import type { StudioContext } from "../../core/studio-context";
@@ -60,6 +61,7 @@ describe("reports-task guards", () => {
       storage: {
         taskBoard,
         organizationBilling: new OrganizationBillingStorage(database.db),
+        columnAutomations: new ColumnAutomationStorage(database.db),
       },
       access: {
         granted: () => true,

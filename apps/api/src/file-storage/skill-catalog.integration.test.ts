@@ -137,4 +137,46 @@ describe("detectSkills (integration)", () => {
     const out = await detectSkills(fs, VOL, "", { remaining: 2 });
     expect(out.length).toBe(2);
   });
+
+  it("holds the budget across concurrent scans", async () => {
+    // `buildSkillCatalog` fans its volume scans out with Promise.all over one
+    // shared budget. Now that each scan issues its reads together there is no
+    // longer a decrement between them to serialize on, so the slice has to be
+    // claimed up front — without that, both scans read the same remaining
+    // count and together return more than the cap.
+    await fs.write(VOL, "top/SKILL.md", "# top\n\nd\n", { actor: ACTOR });
+    for (const n of ["a", "b", "c"]) {
+      await fs.write(VOL, `skills/${n}/SKILL.md`, `# ${n}\n\nd\n`, {
+        actor: ACTOR,
+      });
+    }
+
+    const shared = { remaining: 2 };
+    const [top, nested] = await Promise.all([
+      detectSkills(fs, VOL, "", shared),
+      detectSkills(fs, VOL, "skills", shared),
+    ]);
+
+    expect(top.length + nested.length).toBe(2);
+    expect(shared.remaining).toBe(0);
+  });
+
+  it("truncates an over-budget tree to the same set every time", async () => {
+    // The catalog feeds a cached prompt prefix, so an org past the cap has to
+    // lose the SAME skills on every build. Spending the budget in whatever
+    // order storage answered in made that depend on the network.
+    for (const n of ["e", "d", "c", "b", "a"]) {
+      await fs.write(VOL, `${n}/SKILL.md`, `# ${n}\n\nd\n`, { actor: ACTOR });
+    }
+
+    const runs = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        detectSkills(fs, VOL, "", { remaining: 3 }),
+      ),
+    );
+
+    for (const run of runs) {
+      expect(run.map((s) => s.dirPath)).toEqual(["a", "b", "c"]);
+    }
+  });
 });

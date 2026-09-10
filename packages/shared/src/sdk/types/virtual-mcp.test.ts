@@ -1,32 +1,55 @@
 import { describe, expect, it, test } from "bun:test";
 import {
+  AgentKickstartPromptSchema,
   SandboxMapSchema,
   VirtualMCPEntitySchema,
   VirtualMCPCreateDataSchema,
+  VirtualMcpSidebarViewSchema,
   VirtualMcpUILayoutSchema,
+  type VirtualMcpUILayout,
   VirtualMCPUpdateDataSchema,
   SandboxRecordSchema,
   parseBranchMap,
   normalizeSandboxMap,
+  normalizeCmsMode,
   resolveCmsMode,
   withCmsMode,
 } from "./virtual-mcp";
 
+describe("AgentKickstartPromptSchema", () => {
+  it("rejects a text longer than 4000 chars", () => {
+    const result = AgentKickstartPromptSchema.safeParse({
+      title: "Say hi",
+      text: "a".repeat(4001),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a text at the 4000 char boundary", () => {
+    const result = AgentKickstartPromptSchema.safeParse({
+      title: "Say hi",
+      text: "a".repeat(4000),
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("withCmsMode", () => {
   it("writes the mode and drops the boolean it supersedes", () => {
-    expect(withCmsMode({ cmsDefaultOpen: true }, "manual")).toEqual({
-      cms: "manual",
+    expect(withCmsMode({ cmsDefaultOpen: true }, "on")).toEqual({
+      cms: "on",
       cmsDefaultOpen: null,
     });
-    expect(
-      resolveCmsMode(withCmsMode({ cmsDefaultOpen: true }, "manual")),
-    ).toBe("manual");
+    expect(resolveCmsMode(withCmsMode({ cmsDefaultOpen: true }, "on"))).toBe(
+      "on",
+    );
   });
 
   it("keeps every other layout setting", () => {
     const layout = {
       chatDefaultOpen: true,
-      defaultMainView: { type: "preview" },
+      defaultMainView: { type: "site-editor" },
+      sidebarViews: ["assets", "cdn"],
       tabs: [
         {
           id: "analytics",
@@ -34,25 +57,24 @@ describe("withCmsMode", () => {
           view: { type: "ext-app" as const, appId: "app_abc" },
         },
       ],
-    };
-    const next = withCmsMode(layout, "auto");
+    } satisfies VirtualMcpUILayout;
+    const next = withCmsMode(layout, "on");
     expect(next.chatDefaultOpen).toBe(true);
-    expect(next.defaultMainView).toEqual({ type: "preview" });
+    expect(next.defaultMainView).toEqual({ type: "site-editor" });
+    expect(next.sidebarViews).toEqual(["assets", "cdn"]);
     expect(next.tabs).toEqual(layout.tabs);
   });
 
   it("moves an agent off a Content home when the CMS goes off", () => {
     const next = withCmsMode({ defaultMainView: { type: "content" } }, "off");
-    expect(next.defaultMainView).toEqual({ type: "preview" });
+    expect(next.defaultMainView).toEqual({ type: "site-editor" });
   });
 
   it("leaves a Content home alone while the CMS is still offered", () => {
-    for (const mode of ["manual", "auto"] as const) {
-      expect(
-        withCmsMode({ defaultMainView: { type: "content" } }, mode)
-          .defaultMainView,
-      ).toEqual({ type: "content" });
-    }
+    expect(
+      withCmsMode({ defaultMainView: { type: "content" } }, "on")
+        .defaultMainView,
+    ).toEqual({ type: "content" });
   });
 
   it("leaves any other home alone when the CMS goes off", () => {
@@ -71,30 +93,55 @@ describe("withCmsMode", () => {
   });
 });
 
+describe("normalizeCmsMode", () => {
+  /** THE migration this collapse turns on: `auto` and `manual` are persisted
+   *  on real agents, and reading either as anything but `on` would take a
+   *  configured CMS away from every one of them. */
+  it("reads the retired modes as on", () => {
+    expect(normalizeCmsMode("auto")).toBe("on");
+    expect(normalizeCmsMode("manual")).toBe("on");
+  });
+
+  it("passes the live modes through", () => {
+    expect(normalizeCmsMode("on")).toBe("on");
+    expect(normalizeCmsMode("off")).toBe("off");
+  });
+
+  it("has no answer for an absent or unknown value", () => {
+    expect(normalizeCmsMode(null)).toBeNull();
+    expect(normalizeCmsMode(undefined)).toBeNull();
+    expect(normalizeCmsMode("")).toBeNull();
+    expect(normalizeCmsMode("hidden")).toBeNull();
+  });
+});
+
 describe("resolveCmsMode", () => {
-  it("defaults to manual for an agent that never configured a CMS", () => {
-    expect(resolveCmsMode(null)).toBe("manual");
-    expect(resolveCmsMode(undefined)).toBe("manual");
-    expect(resolveCmsMode({})).toBe("manual");
+  it("defaults to on for an agent that never configured a CMS", () => {
+    expect(resolveCmsMode(null)).toBe("on");
+    expect(resolveCmsMode(undefined)).toBe("on");
+    expect(resolveCmsMode({})).toBe("on");
   });
 
-  it("reads the legacy cmsDefaultOpen boolean the enum replaced", () => {
-    expect(resolveCmsMode({ cmsDefaultOpen: true })).toBe("auto");
-    expect(resolveCmsMode({ cmsDefaultOpen: false })).toBe("manual");
-    expect(resolveCmsMode({ cmsDefaultOpen: null })).toBe("manual");
+  it("reads a stored auto / manual as on", () => {
+    expect(resolveCmsMode({ cms: "auto" })).toBe("on");
+    expect(resolveCmsMode({ cms: "manual" })).toBe("on");
   });
 
-  it("lets an explicit mode win over the legacy boolean", () => {
-    expect(resolveCmsMode({ cms: "off", cmsDefaultOpen: true })).toBe("off");
-    expect(resolveCmsMode({ cms: "manual", cmsDefaultOpen: true })).toBe(
-      "manual",
-    );
-    expect(resolveCmsMode({ cms: "auto", cmsDefaultOpen: false })).toBe("auto");
+  it("keeps off, the only mode anyone opts into", () => {
+    expect(resolveCmsMode({ cms: "off" })).toBe("off");
   });
 
   it("round-trips every mode through the layout schema", () => {
-    for (const cms of ["off", "manual", "auto"] as const) {
+    for (const cms of ["off", "on"] as const) {
       expect(resolveCmsMode(VirtualMcpUILayoutSchema.parse({ cms }))).toBe(cms);
+    }
+  });
+
+  it("still parses a layout carrying a retired mode", () => {
+    for (const cms of ["manual", "auto"] as const) {
+      expect(resolveCmsMode(VirtualMcpUILayoutSchema.parse({ cms }))).toBe(
+        "on",
+      );
     }
   });
 
@@ -139,6 +186,161 @@ describe("VirtualMcpUILayoutSchema tabs", () => {
       ],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("VirtualMcpUILayoutSchema deprecated sidebarViews fallback", () => {
+  const sidebarViews = [
+    "overview",
+    "reports",
+    "board",
+    "site-editor",
+    "automations",
+    "assets",
+    "hosting",
+    "e2e",
+    "analytics",
+    "cdn",
+  ] as const;
+
+  it("round-trips every project sidebar view", () => {
+    const parsed = VirtualMcpUILayoutSchema.parse({
+      sidebarViews: [...sidebarViews],
+    });
+
+    expect(parsed.sidebarViews).toEqual([...sidebarViews]);
+    for (const view of sidebarViews) {
+      expect(VirtualMcpSidebarViewSchema.parse(view)).toBe(view);
+    }
+  });
+
+  it("accepts omitted, null, and empty values for existing projects", () => {
+    expect(VirtualMcpUILayoutSchema.parse({}).sidebarViews).toBeUndefined();
+    expect(
+      VirtualMcpUILayoutSchema.parse({ sidebarViews: null }).sidebarViews,
+    ).toBeNull();
+    expect(
+      VirtualMcpUILayoutSchema.parse({ sidebarViews: [] }).sidebarViews,
+    ).toEqual([]);
+  });
+
+  it("rejects unknown sidebar views", () => {
+    expect(
+      VirtualMcpUILayoutSchema.safeParse({
+        sidebarViews: ["assets", "unknown"],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("metadata.sidebarViews", () => {
+  const sidebarViews = [
+    "overview",
+    "reports",
+    "board",
+    "site-editor",
+    "automations",
+    "assets",
+    "hosting",
+    "e2e",
+    "analytics",
+    "cdn",
+  ] as const;
+
+  it("round-trips every project sidebar view on an entity", () => {
+    const parsed = VirtualMCPEntitySchema.parse({
+      id: "x",
+      title: "x",
+      description: null,
+      icon: null,
+      created_at: "t",
+      updated_at: "t",
+      created_by: "u",
+      organization_id: "o",
+      status: "active",
+      pinned: false,
+      metadata: {
+        instructions: null,
+        sidebarViews: [...sidebarViews],
+        sidebarViewsVersion: 1,
+      },
+      connections: [],
+    });
+
+    expect(parsed.metadata.sidebarViews).toEqual([...sidebarViews]);
+    expect(parsed.metadata.sidebarViewsVersion).toBe(1);
+    for (const view of sidebarViews) {
+      expect(VirtualMcpSidebarViewSchema.parse(view)).toBe(view);
+    }
+  });
+
+  it("round-trips through create and update inputs", () => {
+    const created = VirtualMCPCreateDataSchema.parse({
+      title: "x",
+      metadata: {
+        sidebarViews: ["overview", "site-editor", "assets", "analytics"],
+        sidebarViewsVersion: 1,
+      },
+      connections: [],
+    });
+    const updated = VirtualMCPUpdateDataSchema.parse({
+      metadata: {
+        sidebarViews: ["reports", "board", "automations", "hosting", "cdn"],
+        sidebarViewsVersion: 1,
+      },
+    });
+
+    expect(created.metadata?.sidebarViews).toEqual([
+      "overview",
+      "site-editor",
+      "assets",
+      "analytics",
+    ]);
+    expect(created.metadata?.sidebarViewsVersion).toBe(1);
+    expect(updated.metadata?.sidebarViews).toEqual([
+      "reports",
+      "board",
+      "automations",
+      "hosting",
+      "cdn",
+    ]);
+    expect(updated.metadata?.sidebarViewsVersion).toBe(1);
+  });
+
+  it("accepts null and empty values but rejects unknown views", () => {
+    expect(
+      VirtualMCPUpdateDataSchema.parse({
+        metadata: { sidebarViews: null },
+      }).metadata?.sidebarViews,
+    ).toBeNull();
+    expect(
+      VirtualMCPUpdateDataSchema.parse({
+        metadata: { sidebarViews: [] },
+      }).metadata?.sidebarViews,
+    ).toEqual([]);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: ["assets", "unknown"] },
+      }).success,
+    ).toBe(false);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: [], sidebarViewsVersion: 2 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("caps the array at 10 entries", () => {
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: [...sidebarViews] },
+      }).success,
+    ).toBe(true);
+    expect(
+      VirtualMCPUpdateDataSchema.safeParse({
+        metadata: { sidebarViews: [...sidebarViews, "overview"] },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -192,6 +394,202 @@ test("VirtualMCPUpdateDataSchema accepts metadata.runtime", () => {
   });
   expect(parsed.metadata?.runtime?.selected).toBe("bun");
   expect(parsed.metadata?.runtime?.port).toBeNull();
+});
+
+test("VirtualMCPCreateDataSchema rejects a description over 500 chars", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    description: "a".repeat(501),
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 20 kickstart prompts", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    prompts: Array.from({ length: 21 }, (_, i) => ({
+      title: `Prompt ${i}`,
+      text: "hi",
+    })),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 200 connections", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: Array.from({ length: 201 }, (_, i) => ({
+      connection_id: `conn-${i}`,
+    })),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 500 selected_tools on a connection", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    connections: [
+      {
+        connection_id: "conn-1",
+        selected_tools: Array.from({ length: 501 }, (_, i) => `tool-${i}`),
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    description: "a".repeat(501),
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 200 enabled_plugins", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    metadata: {
+      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 200 enabled_plugins", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPEntitySchema rejects more than 200 enabled_plugins on read", () => {
+  const result = VirtualMCPEntitySchema.safeParse({
+    id: "x",
+    title: "x",
+    description: null,
+    icon: null,
+    created_at: "t",
+    updated_at: "t",
+    created_by: "u",
+    organization_id: "o",
+    status: "active",
+    pinned: false,
+    metadata: {
+      instructions: null,
+      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
+    },
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPEntitySchema rejects more than 200 subAgents", () => {
+  const result = VirtualMCPEntitySchema.safeParse({
+    id: "x",
+    title: "x",
+    description: null,
+    icon: null,
+    created_at: "t",
+    updated_at: "t",
+    created_by: "u",
+    organization_id: "o",
+    status: "active",
+    pinned: false,
+    metadata: {
+      instructions: null,
+      subAgents: Array.from({ length: 201 }, (_, i) => `agent-${i}`),
+    },
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPEntitySchema rejects more than 50 releases", () => {
+  const result = VirtualMCPEntitySchema.safeParse({
+    id: "x",
+    title: "x",
+    description: null,
+    icon: null,
+    created_at: "t",
+    updated_at: "t",
+    created_by: "u",
+    organization_id: "o",
+    status: "active",
+    pinned: false,
+    metadata: {
+      instructions: null,
+      releases: Array.from({ length: 51 }, (_, i) => ({
+        branch: `release-${i}`,
+        name: `Release ${i}`,
+        color: "#000000",
+      })),
+    },
+    connections: [],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPCreateDataSchema rejects more than 100 knowledge files", () => {
+  const result = VirtualMCPCreateDataSchema.safeParse({
+    title: "Agent",
+    connections: [],
+    metadata: {
+      knowledge: Array.from({ length: 101 }, (_, i) => ({
+        id: `file-${i}`,
+        name: `Doc ${i}`,
+        volume: "lib",
+        path: `/doc${i}.md`,
+        url: `https://example.com/doc${i}.md`,
+        addedAt: new Date().toISOString(),
+      })),
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects more than 100 runtime env vars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      runtime: {
+        env: Array.from({ length: 101 }, (_, i) => ({
+          key: `VAR_${i}`,
+          kind: "literal" as const,
+          value: `value${i}`,
+        })),
+      },
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema rejects a literal runtime env value over 8192 chars", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      runtime: {
+        env: [
+          { key: "TOKEN", kind: "literal" as const, value: "a".repeat(8193) },
+        ],
+      },
+    },
+  });
+  expect(result.success).toBe(false);
+});
+
+test("VirtualMCPUpdateDataSchema accepts a literal runtime env value at the 8192 char boundary", () => {
+  const result = VirtualMCPUpdateDataSchema.safeParse({
+    metadata: {
+      runtime: {
+        env: [
+          { key: "TOKEN", kind: "literal" as const, value: "a".repeat(8192) },
+        ],
+      },
+    },
+  });
+  expect(result.success).toBe(true);
 });
 
 test("SandboxRecord.startedWith is optional with nullable packageManager/port/path", () => {

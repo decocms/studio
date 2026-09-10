@@ -1,4 +1,6 @@
 import { useProjectContext, WellKnownOrgMCPId } from "@/sdk";
+import { authClient } from "@/lib/auth-client";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import {
   useMutation,
   useQuery,
@@ -7,13 +9,13 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useRef } from "react";
 import { KEYS } from "@/lib/query-keys";
 import { callStudioTool, useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolInput as ToolInput } from "@decocms/shared/tools/tool-io";
 
 export type { SimpleModeTier } from "@decocms/shared/organization/schema";
 import {
+  autoResolveConflictsEnabled,
   DEFAULT_ON_FLAGS,
   orgFlagEnabled,
 } from "@decocms/shared/organization/schema";
@@ -50,7 +52,6 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
-  main_agent_id: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -63,7 +64,6 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   flags: null,
-  main_agent_id: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -147,7 +147,6 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "flags"
-    | "main_agent_id"
   >
 >;
 
@@ -258,6 +257,79 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
   return data ?? DEFAULT_ON_FLAGS.has(flag);
 }
 
+/** deco.cx staff — the internal audience the in-flight surfaces open to first. */
+function isDecoStaffEmail(email: string | null | undefined): boolean {
+  return !!email && email.trim().toLowerCase().endsWith("@deco.cx");
+}
+
+/**
+ * Whether the signed-in user is deco.cx staff (by email). Cosmetic gating for
+ * internal-only surfaces still rolling out (e.g. the "Import from deco.cx"
+ * create-agent option); a brief pre-resolution render as `false` is harmless.
+ */
+export function useIsDecoStaff(): boolean {
+  const { data: session } = authClient.useSession();
+  return isDecoStaffEmail(session?.user?.email);
+}
+
+/** The three control-plane views, each toggled by its own org flag. */
+export interface ControlPlaneViews {
+  hosting: boolean;
+  analytics: boolean;
+  e2e: boolean;
+  monitor: boolean;
+}
+
+/**
+ * Per-view gate for the Deco control-plane tabs (Hosting · Deco Analytics ·
+ * E2E). Each view is enabled when ANY of these is on:
+ *  - local mode — always in local dev (deco-infra feature, never self-hosted,
+ *    so no reason to hide it from a developer whose deployment wired the BFF);
+ *  - deco.cx staff (by email) — always, while the surface rolls out;
+ *  - a deployment-wide GA switch — the "open to every org at once" env: the
+ *    control-plane trio (Hosting/Analytics/E2E) shares `HOSTING_CONTROL_PLANE_GA`;
+ *    Monitor has its own `MONITOR_GA`;
+ *  - the view's own org flag (`hosting_enabled` / `deco_analytics_enabled` /
+ *    `e2e_enabled` / `monitor_enabled`) — the per-client lever set via
+ *    `organization_settings`.
+ *
+ * A client never sees a view — even an org admin — until deco.cx turns that
+ * view's flag (or GA) on; deco.cx controls the rollout. Product gating only —
+ * the BFF still enforces deployment wiring, per-site ownership, and org
+ * membership server-side.
+ */
+export function useControlPlaneViews(): ControlPlaneViews {
+  const { data: session } = authClient.useSession();
+  const config = usePublicConfig();
+  const staffOrLocal =
+    config.auth.localMode === true || isDecoStaffEmail(session?.user?.email);
+  const controlPlaneGa = config.hostingControlPlaneGa === true;
+  const monitorGa = config.monitorGa === true;
+  const hostingFlag = useOrgFlag("hosting_enabled");
+  const analyticsFlag = useOrgFlag("deco_analytics_enabled");
+  const e2eFlag = useOrgFlag("e2e_enabled");
+  const monitorFlag = useOrgFlag("monitor_enabled");
+  return {
+    hosting: staffOrLocal || controlPlaneGa || hostingFlag,
+    analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
+    e2e: staffOrLocal || controlPlaneGa || e2eFlag,
+    monitor: staffOrLocal || monitorGa || monitorFlag,
+  };
+}
+
+/**
+ * Whether an approved-but-conflicting PR is auto-handed back to the Super
+ * Agent. Not `useOrgFlag`: unset it inherits `auto_merge` (see
+ * `autoResolveConflictsEnabled`), so the switch must show what the server gate
+ * will actually do rather than a raw `undefined`.
+ */
+export function useAutoResolveConflicts(): boolean {
+  const { data } = useOrganizationSettings((s) =>
+    autoResolveConflictsEnabled(s.flags),
+  );
+  return data ?? false;
+}
+
 /**
  * True when this org runs the automated Reviewer. Not `useOrgFlag`: it carries
  * over the two-reviewer era's opt-out, which the server gate also honors
@@ -306,31 +378,6 @@ export function useUpdateRegistryConfig() {
   };
 }
 
-/**
- * Returns a predicate that tells whether a given connectionId is an enabled
- * registry. Falls back to "Deco Store is the default" when no registry_config
- * is set.
- */
-export function useDefaultHomeAgents(): DefaultHomeAgentsConfig | null {
-  const { data } = useOrganizationSettings((s) => s.default_home_agents);
-  return data ?? null;
-}
-
-function useUpdateDefaultHomeAgents() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (
-      config: DefaultHomeAgentsConfig,
-      options?: OrgSettingsMutateOptions,
-    ) => mutation.mutate({ default_home_agents: config }, options),
-    mutateAsync: (
-      config: DefaultHomeAgentsConfig,
-      options?: OrgSettingsMutateOptions,
-    ) => mutation.mutateAsync({ default_home_agents: config }, options),
-  };
-}
-
 export interface HomeAgentsWriter {
   /** The freshest id list, read live from the cache (not a render snapshot). */
   currentIds: () => string[];
@@ -339,90 +386,6 @@ export interface HomeAgentsWriter {
    * next one, or `null` to skip (no-op guards like "already on home").
    */
   apply: (transform: (ids: string[]) => string[] | null) => Promise<void>;
-}
-
-/**
- * Serialized, optimistic writer for `default_home_agents`.
- *
- * Both the home board and the manage-home drawer mutate this same ordered list,
- * often via rapid clicks (add / remove / reorder). Three guarantees keep that
- * safe — and are why callers must go through here instead of touching the cache
- * and mutation directly:
- *  - each write derives its next id list from the *live* cache, never a
- *    render-time snapshot, so concurrent edits can't clobber each other;
- *  - writes run strictly in order (a per-instance promise chain), so two
- *    in-flight requests can't reach the server out of order and commit stale ids;
- *  - the cache is patched optimistically and rolled back if the write fails.
- */
-export function useHomeAgentsWriter(): HomeAgentsWriter {
-  const { org } = useProjectContext();
-  const update = useUpdateDefaultHomeAgents();
-  const queryClient = useQueryClient();
-  const chain = useRef<Promise<unknown>>(Promise.resolve());
-  const key = KEYS.organizationSettings(org.id);
-
-  const currentIds = (): string[] =>
-    queryClient.getQueryData<OrganizationSettings>(key)?.default_home_agents
-      ?.ids ?? [];
-
-  const apply = (
-    transform: (ids: string[]) => string[] | null,
-  ): Promise<void> => {
-    const run = chain.current.then(async () => {
-      const snapshot = queryClient.getQueryData<OrganizationSettings>(key);
-      const next = transform(snapshot?.default_home_agents?.ids ?? []);
-      if (next === null) return;
-      queryClient.setQueryData<OrganizationSettings | undefined>(key, (prev) =>
-        prev ? { ...prev, default_home_agents: { ids: next } } : prev,
-      );
-      try {
-        await update.mutateAsync({ ids: next });
-        await queryClient.refetchQueries({
-          queryKey: KEYS.homeNextActions(org.slug),
-          type: "active",
-        });
-      } catch (err) {
-        queryClient.setQueryData(key, snapshot);
-        throw err;
-      }
-    });
-    // Keep the chain alive even when a write rejects, so later writes still run.
-    chain.current = run.catch(() => {});
-    return run;
-  };
-
-  return { currentIds, apply };
-}
-
-/**
- * The org's "main agent" — the virtual MCP id the org lands on (`/$org`)
- * instead of the Super Agent, or null when unset. `isPending` lets the landing
- * resolver wait for the first read so it doesn't flash the Super Agent then
- * redirect. Once the shell prefetches org settings, reads resolve from cache.
- */
-export function useMainAgentId(): {
-  mainAgentId: string | null;
-  isPending: boolean;
-} {
-  const { data, isPending } = useOrganizationSettings(
-    (s) => s.main_agent_id ?? null,
-  );
-  return { mainAgentId: data ?? null, isPending };
-}
-
-/**
- * Writer for the org's main agent. Pass a virtual MCP id to set it, or null to
- * clear (fall back to the Super Agent). Org-scoped: applies to every member.
- */
-export function useSetMainAgent() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (id: string | null, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ main_agent_id: id }, options),
-    mutateAsync: (id: string | null, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ main_agent_id: id }, options),
-  };
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

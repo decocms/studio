@@ -40,7 +40,8 @@ Do NOT require review (requiresReview = false) when the changes are low-risk, su
 
 When unsure between the two, lean toward NOT requiring review for small frontend-only diffs, and toward requiring it for anything backend or large.
 
-Respond with the structured verdict and a short reason.`;
+Respond with ONLY a JSON object of this shape, and nothing else:
+{"requiresReview": true | false, "reason": "one short sentence, max ~120 chars"}`;
 
 /**
  * Map a UI locale to a language name for the model. The `reason` is shown to

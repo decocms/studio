@@ -20,28 +20,6 @@ export function agentHasClonableSource(metadata: unknown): boolean {
 }
 
 /**
- * Whether the org-wide "pin to sidebar" action applies to this agent. Coding
- * agents (clonable source) are auto-listed in the first-class sidebar already,
- * so pinning them is a no-op — the pin affordance is offered only for non-code
- * agents, which otherwise have no standing sidebar entry.
- */
-export function agentCanBePinned(agent: { metadata?: unknown }): boolean {
-  return !agentHasClonableSource(agent.metadata);
-}
-
-/**
- * True when an agent should render in the first-class sidebar as an org-pinned
- * entry: it carries the org-wide `pinned` flag AND is a non-code agent (coding
- * agents already list there, so this keeps them from double-rendering).
- */
-export function agentIsSidebarPinned(agent: {
-  pinned?: boolean | null;
-  metadata?: unknown;
-}): boolean {
-  return !!agent.pinned && agentCanBePinned(agent);
-}
-
-/**
  * True only when the virtual MCP has a GitHub repo with an attached
  * connection (i.e. authenticated github identity, not a public-clone
  * template). Gate the git tab on this predicate.
@@ -96,6 +74,11 @@ export function getDevAgentIds(
  *   the loaded list) — the partner is that dev agent.
  * - `null` when the agent is not part of a dev/live pair.
  * `targetId` is the OTHER agent in the pair — where the toggle navigates.
+ *
+ * Both directions are checked against `agents`: deleting a virtual MCP does
+ * not clear `liveAgentId` on the counterpart it leaves behind, so a dev agent
+ * can carry a `liveAgentId` pointing at an agent that no longer exists. Left
+ * unchecked, the toggle would still render and navigate to a dead id.
  */
 export function findDevPartner(
   agent: VirtualMCPEntity | null | undefined,
@@ -104,7 +87,8 @@ export function findDevPartner(
   if (!agent) return null;
   const liveId = agent.metadata?.liveAgentId;
   if (typeof liveId === "string" && liveId) {
-    return { mode: "dev", targetId: liveId };
+    const liveAgent = (agents ?? []).find((a) => a.id === liveId);
+    return liveAgent ? { mode: "dev", targetId: liveId } : null;
   }
   const devAgent = (agents ?? []).find(
     (a) => a.metadata?.liveAgentId === agent.id,

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -74,6 +75,11 @@ type daemon struct {
 	// grace/budget bookkeeping; devWatchMu guards it (kept off the hot d.mu).
 	devWatchMu sync.Mutex
 	devTracker *devwatch.Tracker
+	// Longest successful `starting`→`running` this process has seen, in ms. It
+	// sizes the watchdog's post-restart window (see restartGraceForBoot). Held
+	// separately from the tracker because a boot can finish before devWatchLoop
+	// has constructed one — the loop replays this value on startup.
+	observedBootMs atomic.Int64
 
 	broadcaster  *events.Broadcaster
 	sniffer      *proc.PortSniffer
@@ -83,6 +89,7 @@ type daemon struct {
 	phases       *proc.PhaseManager
 	tasks        *proc.TaskManager
 	branchStatus *gitx.BranchStatusMonitor
+	autosave     *gitx.Autosaver
 	orchestrator *setup.Orchestrator
 	prober       *probe.Prober
 	proxyHandler *proxy.Handler
@@ -158,6 +165,18 @@ func (d *daemon) getDevPort() int {
 		}
 	}
 	return 0
+}
+
+// devTaskRunning reports whether a dev-script task (`dev`/`start`) is alive
+// right now — the evidence that a serving port belongs to this sandbox's dev
+// server rather than to something that merely outlived it.
+func (d *daemon) devTaskRunning() bool {
+	for _, t := range d.tasks.List([]string{proc.StatusRunning}) {
+		if proc.IsWellKnownStarter(t.LogName) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *daemon) getActiveTasks() []events.ActiveTaskSummary {
@@ -241,13 +260,31 @@ func (d *daemon) onProbeChange(s probe.State) {
 		d.mu.Lock()
 		isCrashedRecovery := phase == events.PhaseCrashed && s.Port == d.lastRunningPort
 		d.mu.Unlock()
-		if phase != events.PhaseStarting && phase != events.PhaseRunning && !isCrashedRecovery {
+		// `start-failed` is a verdict, not a fact, and a serving dev server
+		// refutes it — but only OUR dev server does. The watchdog reaches that
+		// phase by giving up after a bounded number of restarts, so the last
+		// respawn is still booting when it fires; when that boot finally
+		// serves — as it did on the sandbox this branch exists for, five
+		// minutes later — the sandbox is working and the UI must stop saying
+		// "Blocos indisponíveis". Without this the phase latches for the life
+		// of the pod and only an explicit RestartDev clears it, throwing away
+		// the very server that just proved itself and paying for another cold
+		// boot.
+		//
+		// The dev-task check is what keeps this from being credulous: the probe
+		// falls back to the *configured* application.port (getDevPort), which
+		// some unrelated or stale process can be sitting on long after the dev
+		// script died. A terminal verdict is only overturned while a dev task
+		// is actually alive to own the port.
+		startFailedRecovery := phase == events.PhaseStartFailed && d.devTaskRunning()
+		recovered := startFailedRecovery || isCrashedRecovery
+		if phase != events.PhaseStarting && phase != events.PhaseRunning && !recovered {
 			return
 		}
 		d.mu.Lock()
 		d.lastRunningPort = s.Port
 		d.mu.Unlock()
-		wasDown := phase == events.PhaseStarting || phase == events.PhaseCrashed
+		wasDown := phase != events.PhaseRunning
 		d.lifecycle.Transition(events.LifecycleState{
 			Phase: events.PhaseRunning, Port: s.Port, HtmlSupport: s.HtmlSupport,
 		})
@@ -285,6 +322,84 @@ func (d *daemon) onProbeChange(s probe.State) {
 	}
 }
 
+// How much of a dead dev server's output reaches the pod log. Enough for a
+// stack trace or a compiler error, small enough that a crash-loop cannot flood
+// the log pipeline.
+const deadDevTailBytes = 4000
+
+// logDeadDevServer writes the tail of a dev server's own output to the daemon's
+// stdout when it dies unexpectedly.
+//
+// Task chunks are broadcast with Tee:false, so a dev server's stdout/stderr
+// goes to SSE subscribers and a pod-local log file and nowhere else. When the
+// montecarlo sandbox's dev server died mid-session there was consequently no
+// record anywhere of WHY — the pod log jumped straight from the last proxied
+// request to "connection refused", and the log file died with the pod. The
+// process's last words are exactly what a postmortem needs, so they go to
+// stdout, where the cluster's log pipeline can keep them.
+//
+// Intentional kills (our own restarts, an install stopping the dev task) are
+// skipped: those are expected exits and say nothing.
+func (d *daemon) logDeadDevServer(s proc.TaskSummary, label string, exitCode int) {
+	if s.Intentional || !proc.IsWellKnownStarter(s.LogName) {
+		return
+	}
+	out, ok := d.tasks.Output(s.ID)
+	if !ok {
+		return
+	}
+	slog.Error("dev server exited",
+		"task", label,
+		"status", s.Status,
+		"exit_code", exitCode,
+		"timed_out", s.TimedOut,
+		"stderr_tail", tailBytes(out.Stderr, deadDevTailBytes),
+		"stdout_tail", tailBytes(out.Stdout, deadDevTailBytes),
+	)
+}
+
+// tailBytes returns the last n bytes of s, marked when it truncated.
+func tailBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return "…" + s[len(s)-n:]
+}
+
+// restartGraceForBoot converts an observed `starting`→`running` duration into
+// the window a respawn should get. Doubling is not tuning for its own sake: a
+// restart re-runs the same work the measured boot did, on a machine that is now
+// also serving a user and possibly an agent, so the honest expectation is "at
+// least as long, probably longer". Under-waiting kills a healthy boot; the only
+// cost of over-waiting is that a genuinely broken dev server takes longer to
+// surface its terminal error, which is the far cheaper mistake.
+func restartGraceForBoot(bootMs int64) time.Duration {
+	return time.Duration(bootMs) * time.Millisecond * 2
+}
+
+// noteBootDuration records a successful boot and widens the watchdog's
+// post-restart window to match. Safe before devWatchLoop has built a tracker:
+// the value is kept on the daemon and replayed when the loop starts.
+func (d *daemon) noteBootDuration(ms int64) {
+	if ms <= 0 {
+		return
+	}
+	for {
+		prev := d.observedBootMs.Load()
+		if ms <= prev {
+			break
+		}
+		if d.observedBootMs.CompareAndSwap(prev, ms) {
+			break
+		}
+	}
+	d.devWatchMu.Lock()
+	defer d.devWatchMu.Unlock()
+	if d.devTracker != nil {
+		d.devTracker.RaiseRestartGrace(restartGraceForBoot(ms))
+	}
+}
+
 // restartablePhase reports the phases where a dev server is meant to be up, so
 // the watchdog respawns a dead one there but never interrupts a legitimate
 // build (installing/cloning/checking-out) or loops on a terminal *-failed.
@@ -306,9 +421,13 @@ func (d *daemon) devWatchLoop() {
 	d.devWatchMu.Lock()
 	d.devTracker = devwatch.NewTracker(devwatch.Config{
 		Grace:        envDuration("SANDBOX_DEV_WATCH_GRACE_MS", devwatch.DefaultGracePeriod, time.Second),
+		RestartGrace: envDuration("SANDBOX_DEV_WATCH_RESTART_GRACE_MS", devwatch.DefaultRestartGrace, time.Second),
 		StableWindow: envDuration("SANDBOX_DEV_WATCH_STABLE_MS", devwatch.DefaultStableWindow, time.Second),
 		MaxRestarts:  envInt("SANDBOX_DEV_WATCH_MAX_RESTARTS", devwatch.DefaultMaxRestarts, 1),
 	})
+	if ms := d.observedBootMs.Load(); ms > 0 {
+		d.devTracker.RaiseRestartGrace(restartGraceForBoot(ms))
+	}
 	d.devWatchMu.Unlock()
 	for {
 		time.Sleep(tick)
@@ -584,6 +703,11 @@ func (d *daemon) shutdown() {
 
 	d.tasks.Shutdown()
 	d.branchStatus.Stop()
+	// Before the sync below: Stop waits out an in-flight checkpoint, so the two
+	// publishes cannot interleave on the tree lock.
+	if d.autosave != nil {
+		d.autosave.Stop()
+	}
 	// Before the publish, and unconditionally: a running harness holds CLIs that
 	// would otherwise keep writing into the tree the publish is about to commit.
 	d.dispatchReg.CancelAll()
@@ -794,6 +918,9 @@ func main() {
 	d.lifecycle = lifecycle.New(d.broadcaster)
 	d.lifecycle.OnStartPhase = func(status string, durationMs int64) {
 		telemetry.RecordPhase(context.Background(), "start", status, durationMs)
+		if status == "done" {
+			d.noteBootDuration(durationMs)
+		}
 	}
 	d.lifecycle.OnTransition = func(prev, next events.LifecycleState) {
 		if prev.Phase == events.PhaseRunning && next.Phase != events.PhaseRunning {
@@ -857,7 +984,14 @@ func main() {
 		if label == "" {
 			label = s.ID
 		}
-		slog.Info("task exit", "task", label, "status", s.Status, "exit_code", s.ExitCode)
+		// ExitCode is a *int; logging it directly printed the pointer address
+		// ("exit_code=0xc0027f06a0") for every task exit in production.
+		exitCode := -1
+		if s.ExitCode != nil {
+			exitCode = *s.ExitCode
+		}
+		slog.Info("task exit", "task", label, "status", s.Status, "exit_code", exitCode)
+		d.logDeadDevServer(s, label, exitCode)
 	})
 
 	// The watcher is what makes edits the daemon did not perform itself visible —
@@ -923,6 +1057,43 @@ func main() {
 	)
 
 	d.dispatchReg = dispatch.NewRegistry()
+	// Checkpoint a running agent's tree to its own branch every couple of
+	// minutes. Without it, a pod killed with no grace period (OOM, node loss)
+	// loses everything the agent had not committed itself — the shutdown sync
+	// below only runs on SIGTERM.
+	//
+	// AUTOSAVE_DISABLED is the kill switch: this runs unattended on every
+	// sandbox's boot/dispatch path and pushes to the user's remote, so a
+	// surprise (e.g. GitHub rate-limiting the fleet, an unwanted branch
+	// history) needs to be turned off fleet-wide without a daemon redeploy.
+	if os.Getenv("AUTOSAVE_DISABLED") == "" {
+		d.autosave = gitx.NewAutosaver(gitx.AutosaveDeps{
+			Publish: gitx.PublishDeps{
+				RepoDir: repoDir,
+				GetCloneUrl: func() string {
+					if cfg := d.store.Read(); cfg != nil {
+						return cfg.CloneUrl()
+					}
+					return ""
+				},
+				GetOperator: d.operatorIdentity,
+				// Same disposition as the shutdown sync: one invalid block must not
+				// cost the user every other change in the checkpoint.
+				OnInvalidBlock: gitx.InvalidBlockSkip,
+				// Never force-push from a checkpoint. Losing one checkpoint beats
+				// clobbering a concurrent writer's commit.
+				ReconcileRemote: false,
+			},
+			Lock: &d.treeLock,
+			Configured: func() bool {
+				cfg := d.store.Read()
+				return cfg != nil && cfg.Branch() != ""
+			},
+			RunActive: func() bool { return d.dispatchReg.HasActiveRuns() },
+			Dirty:     func() bool { return gitx.IsDirty(repoDir) },
+		})
+		d.autosave.Start()
+	}
 	d.dispatchDeps = dispatch.Deps{
 		DaemonToken:      d.getToken,
 		AppRoot:          appRoot,
@@ -930,9 +1101,11 @@ func main() {
 		// The tenant env Studio pushed on the config channel — the harness's model
 		// credential lives there, and it reaches the harness as its spawn
 		// environment, so it dies with the run.
-		// Plus GH_TOKEN, so the harness can open the pull request its prompt asks
-		// for: `git push` already works off the credentialed `origin`, but `gh`
-		// reads a token from the environment and there is none in the pod.
+		// Plus the provider CLI's token (GH_TOKEN for `gh`, GITLAB_TOKEN +
+		// GITLAB_HOST for `glab`), so the harness can open the pull/merge request
+		// its prompt asks for: `git push` already works off the credentialed
+		// `origin`, but the CLIs read a token from the environment and there is
+		// none in the pod.
 		//
 		// Read back from the clone URL rather than pushed separately, so it cannot
 		// drift from what the working tree pushes with, and it grants the harness
@@ -942,9 +1115,9 @@ func main() {
 			if cfg == nil {
 				return nil
 			}
-			env := make(map[string]string, len(cfg.Env)+2)
-			if token := config.TokenFromCloneUrl(cfg.CloneUrl()); token != "" {
-				env["GH_TOKEN"] = token
+			env := make(map[string]string, len(cfg.Env)+3)
+			for k, v := range config.CliEnvFromCloneUrl(cfg.CloneUrl()) {
+				env[k] = v
 			}
 			// The org's prefetched skills, as a local plugin the harness loads by
 			// absolute path. Empty until a sync published something, so a pod with
@@ -952,7 +1125,7 @@ func main() {
 			if dir := d.orgFsLinks.SkillPluginDir(); dir != "" {
 				env["CLAUDE_CODE_PLUGIN_DIRS"] = dir
 			}
-			// Tenant env last: an explicit GH_TOKEN from Studio wins.
+			// Tenant env last: an explicit provider token from Studio wins.
 			for k, v := range cfg.Env {
 				env[k] = v
 			}
@@ -968,6 +1141,10 @@ func main() {
 		// fail — it answers wrongly and silently, which is the worse outcome. See
 		// `WaitHomeReady` for why this one place waits where the rest fail open.
 		BeforeRun: func(info dispatch.RunInfo) {
+			// `glab` cannot authenticate from the environment for an OAuth token
+			// (see CliEnvFromCloneUrl), so the credential goes in its config file
+			// instead — refreshed per run, because the clone URL's token rotates.
+			writeGlabConfig(d.store.Read())
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved
 			// Claude Code session is restored from, and what the user-scope skills
@@ -1149,4 +1326,34 @@ func main() {
 	}
 	slog.Error("http server exited", "err", server.ListenAndServe())
 	os.Exit(1)
+}
+
+// writeGlabConfig puts the git credential where `glab` reads it, for a GitLab
+// checkout. Best-effort and silent: the CLI is a convenience for the harness,
+// and the clone/push path does not depend on it — a failure here must never
+// fail a run. No-op (and removes a stale file) for any non-GitLab remote, so a
+// pod that switches repos cannot leave another provider's token behind.
+//
+// ⚠️ SECURITY: the file embeds a live token — 0600, and never logged.
+func writeGlabConfig(cfg *config.Enriched) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	path := config.GlabConfigPath(home)
+	content := ""
+	if cfg != nil {
+		content = config.GlabConfigFromCloneUrl(cfg.CloneUrl())
+	}
+	if content == "" {
+		os.Remove(path)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return
+	}
+	// Remove first: WriteFile's mode applies only on create, so writing over a
+	// leftover would inherit its permissions. glab refuses anything but 0600.
+	os.Remove(path)
+	os.WriteFile(path, []byte(content), 0o600)
 }

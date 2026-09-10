@@ -31,6 +31,8 @@ export const common = {
     "{orgName} foi deletada ou não está mais disponível.",
   "common.archivedOrgScreen.goHome": "Ir para home",
   "common.archivedOrgScreen.orgUnavailable": "Organização indisponível",
+  "common.blockedOrgScreen.goToBilling": "Ir para faturamento",
+  "common.blockedOrgScreen.switchOrg": "Trocar de organização",
   "common.authEntry.autoLoginFailed": "Falha no auto-login",
   "common.authEntry.autoLoginFailedWithError": "Falha no auto-login: {error}",
   "common.authEntry.browserOnlyCta": "Continuar no seu navegador",
@@ -85,11 +87,11 @@ export const common = {
     "Esta ação não pode ser desfeita. Isso excluirá permanentemente",
   "common.deleteConnectionDialogs.forceDeleteDescription": "A conexão",
   "common.deleteConnectionDialogs.forceDeleteTitle":
-    "Conexão Usada por Agentes",
+    "Conexão Usada por Projetos",
   "common.deleteConnectionDialogs.forceDeleteWarning":
-    "Excluir esta conexão a removerá desses agentes, o que pode impactar fluxos de trabalho existentes que dependem deles.",
+    "Excluir esta conexão a removerá desses projetos, o que pode impactar fluxos de trabalho existentes que dependem deles.",
   "common.deleteConnectionDialogs.isUsedByAgents":
-    "está sendo usada pelos seguintes agente(s):",
+    "está sendo usada pelos seguintes projeto(s):",
   "common.deleteConnectionDialogs.title": "Excluir Conexão?",
   "common.errorBoundary.newVersionAvailable": "Nova versão disponível",
   "common.errorBoundary.newVersionDeployed":
@@ -98,6 +100,22 @@ export const common = {
   "common.errorBoundary.somethingWentWrong": "Algo deu errado",
   "common.errorBoundary.tryAgain": "Tentar novamente",
   "common.errorBoundary.unexpectedError": "Um erro inesperado ocorreu",
+  "common.repositoryPicker.description":
+    "Escolha uma conta para buscar seus repositórios.",
+  "common.repositoryPicker.searchMore":
+    "Nenhum resultado nos repositórios carregados. Carregue mais para continuar a busca.",
+  "common.repositoryPicker.loadMore": "Carregar mais repositórios",
+  "common.repositoryPicker.linkedSection": "Repositórios vinculados",
+  "common.repositoryPicker.browseSection": "Navegar por uma conta",
+  "common.repositoryPicker.searchPlaceholder": "Buscar repositórios",
+  "common.repositoryPicker.searchEmpty": "Nenhum repositório encontrado",
+  "common.repositoryPicker.searchFailed": "Não foi possível buscar nesta conta",
+  "common.repositoryPicker.linkFailed":
+    "Não foi possível vincular o repositório",
+  "common.repositoryPicker.createAgentFailed":
+    "Não foi possível criar o agente",
+  "common.repositoryPicker.agentDescription": "Importado de {path}",
+  "common.repositoryPicker.back": "Voltar",
   "common.githubRepoPicker.accountNotListed": "Conta não listada?",
   "common.githubRepoPicker.addRepo": "Adicionar repositório",
   "common.githubRepoPicker.addedRepo": "Adicionado {name}",
@@ -121,8 +139,8 @@ export const common = {
     "Falha ao reconectar GitHub: {error}",
   "common.githubRepoPicker.forkBadge": "Fork",
   "common.githubRepoPicker.githubConnected": "GitHub conectado",
-  "common.githubRepoPicker.importFromGitHub": "Importar do GitHub",
-  "common.githubRepoPicker.importedRepo": "Importado {name} do GitHub",
+  "common.githubRepoPicker.importFromGitHub": "Importar reposit\u00f3rio",
+  "common.githubRepoPicker.importedRepo": "Importado {name}",
   "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
   "common.githubRepoPicker.installingGitHubConnection":
     "Instalando a conexão com GitHub...",
@@ -164,9 +182,9 @@ export const common = {
   "common.importFromDecoDialog.failedToConnectGithub":
     "Falha ao conectar GitHub",
   "common.importFromDecoDialog.failedToCreateAgent":
-    "Falha ao criar o agente importado",
-  "common.importFromDecoDialog.failedToCreateConnection":
-    "Falha ao criar conexão",
+    "Falha ao criar o projeto importado",
+  "common.importFromDecoDialog.failedToPrepareImport":
+    "Falha ao preparar a importação da deco.cx",
   "common.importFromDecoDialog.githubNotConnected":
     "GitHub não está conectado. Conclua a configuração do GitHub e tente novamente.",
   "common.importFromDecoDialog.goBack": "Voltar",
@@ -176,9 +194,8 @@ export const common = {
   "common.importFromDecoDialog.importing": "Importando...",
   "common.importFromDecoDialog.installGithubApp":
     'Instale o aplicativo GitHub na organização "{owner}" para importar este site. {installUrl}',
+  "common.loading": "Carregando",
   "common.importFromDecoDialog.loadingSites": "Carregando sites...",
-  "common.importFromDecoDialog.noConnectionId":
-    "O servidor não retornou um ID de conexão",
   "common.importFromDecoDialog.noSitesFound":
     "Nenhum site encontrado para esta conta.",
   "common.importFromDecoDialog.noSitesMatch":
@@ -270,11 +287,6 @@ export const common = {
   "common.tagMultiSelect.noTagsFound": "Nenhuma tag encontrada.",
   "common.tagMultiSelect.searchOrCreate": "Pesquisar ou criar...",
   "common.tagMultiSelect.selected": "Selecionado",
-  "common.toolInputForm.enterPlaceholder": "Digite {fieldKey}…",
-  "common.toolInputForm.false": "falso",
-  "common.toolInputForm.jsonPlaceholder": "Digite {fieldKey} como JSON…",
-  "common.toolInputForm.selectPlaceholder": "Selecione…",
-  "common.toolInputForm.true": "verdadeiro",
   "common.toolSetSelector.filterAll": "Todos",
   "common.toolSetSelector.filterSelected": "Selecionados",
   "common.toolSetSelector.filterUnselected": "Não selecionados",
@@ -288,23 +300,25 @@ export const common = {
   "common.toolSetSelector.searchPlaceholder": "Pesquisar servidores MCP...",
   "common.toolSetSelector.selectConnection":
     "Selecione uma conexão para visualizar suas ferramentas",
-  "common.useStartThreadFromPrompt.failedToStartChat":
-    "Falha ao iniciar o chat. Tente novamente.",
-  "common.useStartThreadFromPrompt.mcpClientNotAvailable":
-    "Cliente MCP não disponível",
   "common.createAgentDropdown.createFromScratch": "Criar do zero",
-  "common.createAgentDropdown.importFromGitHub": "Importar do GitHub",
+  "common.createAgentDropdown.importFromGitHub": "Importar reposit\u00f3rio",
   "common.createAgentDropdown.importFromDeco": "Importar do deco.cx",
-  "common.mainPanelTabs.overview": "Visão Geral",
   "common.mainPanelTabs.preview": "Visualização",
   "common.mainPanelTabs.code": "Código",
   "common.mainPanelTabs.content": "Conteúdo",
   "common.mainPanelTabs.assets": "Assets",
   "common.mainPanelTabs.reviewChanges": "Revisar alterações",
-  "common.mainPanelTabs.automations": "Automações",
-  "common.mainPanelTabs.settings": "Configurações",
-  "common.mainPanelTabs.report": "Relatório",
+  "common.mainPanelTabs.hosting": "Hospedagem",
+  "common.mainPanelTabs.e2e": "E2E",
+  "common.mainPanelTabs.analytics": "Deco Analytics",
+  "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
   "common.openExternalFailed": "Não foi possível abrir este link no navegador.",
+  "common.taskStatus.requiresAction": "Requer revisão",
+  "common.taskStatus.failed": "Falhou",
+  "common.taskStatus.expired": "Expirou",
+  "common.taskStatus.inProgress": "Em execução",
+  "common.taskStatus.completed": "Concluído",
+  "common.taskStatus.unknown": "Desconhecido",
 } satisfies Record<keyof typeof commonEn, string>;

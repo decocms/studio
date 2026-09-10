@@ -6,7 +6,7 @@
  * telemetry directly from this cluster assembler:
  *
  *   - the in-process virtual-MCP passthrough client + the full cluster tool set
- *     (web_search / update_interests / Browserless built-ins) + the per-run
+ *     (web_search / update_interests / the portable built-ins) + the per-run
  *     HTML-artifact buffer/watcher, plus the ctx-coupled `runAgentLoop` engine.
  */
 

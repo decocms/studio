@@ -8,6 +8,7 @@ import {
   createBillingPortalSession,
   StripeApiError,
 } from "../../billing/stripe-api";
+import { orgSettingsPath } from "@decocms/shared/organization-paths";
 import { getPublicUrl } from "../../core/server-constants";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -45,7 +46,7 @@ export const ORGANIZATION_BILLING_PORTAL = defineTool({
         customerId: billing.stripeCustomerId,
         // getPublicUrl: the browser follows this from Stripe's domain, so it
         // must be externally reachable, never a localhost fallback.
-        returnUrl: `${getPublicUrl()}/${encodeURIComponent(org.slug)}/members`,
+        returnUrl: `${getPublicUrl()}${orgSettingsPath(org.slug, "members")}`,
       });
     } catch (err) {
       if (err instanceof StripeApiError) throw new Error(err.message);
