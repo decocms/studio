@@ -58,6 +58,8 @@ interface DeploymentAdminOrg {
   memberCount: number;
   /** The org's live billing notice, or null — see `organization_notices`. */
   notice: AdminOrgNotice | null;
+  /** True when the org is soft-deleted (`metadata.archived`). */
+  archived: boolean;
 }
 
 interface FlagsResponse {
@@ -1047,8 +1049,15 @@ export default function AdminOrgsPage() {
       header: t("admin.orgs.organization"),
       render: (org) => (
         <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground truncate">
-            {org.name}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground truncate">
+              {org.name}
+            </span>
+            {org.archived ? (
+              <Badge variant="outline" className="shrink-0">
+                {t("admin.orgs.archived")}
+              </Badge>
+            ) : null}
           </div>
           <div className="text-sm text-muted-foreground truncate">
             {org.slug}

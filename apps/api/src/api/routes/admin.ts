@@ -28,6 +28,7 @@ import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
+import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import {
@@ -320,6 +321,8 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name as name",
         "organization.slug as slug",
         "organization.createdAt as createdAt",
+        // Soft-delete lives in metadata.archived — surface it to badge the row.
+        "organization.metadata as metadata",
       ])
       .select((eb) => eb.fn.count<string>("member.id").as("memberCount"));
 
@@ -339,6 +342,7 @@ export function createAdminRoutes(): Hono<Env> {
         "organization.name",
         "organization.slug",
         "organization.createdAt",
+        "organization.metadata",
       ])
       .orderBy("organization.createdAt", "desc")
       .limit(limit)
@@ -351,10 +355,11 @@ export function createAdminRoutes(): Hono<Env> {
     );
 
     return c.json({
-      organizations: rows.map((row) => ({
+      organizations: rows.map(({ metadata, ...row }) => ({
         ...row,
         memberCount: Number(row.memberCount || 0),
         notice: notices.get(row.id) ?? null,
+        archived: isOrgArchived({ metadata }),
       })),
     });
   });
