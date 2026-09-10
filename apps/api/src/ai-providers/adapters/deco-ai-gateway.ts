@@ -195,8 +195,20 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
   },
 
   async listPlans(studioJwt: string, organizationId: string) {
+    // Same identification as the entitlements and balance reads, and the only
+    // sibling that was missing it. The gateway's `/plans` route grew the
+    // service-key bypass precisely so this call would stop taking the
+    // `canAccessOrg` path — which reaches back over a PER-USER gateway-OAuth
+    // token most users have never minted, throws `mesh_token_expired`, and
+    // surfaces as a 401 that renders the plan picker as an empty catalog
+    // forever. Optional, like the other reads: a self-hosted deployment with no
+    // key simply falls back to the membership check.
+    const serviceKey = getSettings().studioProvisionSecretKey;
     const res = await fetch(`${getBase()}/api/teams/${organizationId}/plans`, {
-      headers: { Authorization: `Bearer ${studioJwt}` },
+      headers: {
+        Authorization: `Bearer ${studioJwt}`,
+        ...(serviceKey ? { "X-Provision-Key": serviceKey } : {}),
+      },
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw await refusal(res, "Failed to fetch plans");
