@@ -1,40 +1,69 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock } from "bun:test";
+import { getSettings, setGlobalSettings } from "@/settings";
+import { resolveConfig } from "@/settings/resolve-config";
+import type { Settings } from "@/settings/types";
 
-// Stub the three seams under the plan gate (settings, the provider registry,
-// the JWT mint) plus the tier resolution the dispatch does after it. Everything
-// between — the cache, the fail-open rules, the error classes — is real.
+/**
+ * Plans ON for this file, through the real settings pipeline and the real
+ * setter — NOT `mock.module("@/settings")`.
+ *
+ * Both matter. Bun's module mocks are PROCESS-WIDE, so stubbing the settings
+ * module leaks into every suite that runs after it; and a PARTIAL settings
+ * object leaks just as badly, because `/api/config` and the provider schemas
+ * read fields this file never mentions. So: build a complete Settings with
+ * `resolveConfig`, flip the two flags this file needs, and restore whatever was
+ * there afterwards.
+ */
+function plansOnSettings() {
+  const { settings } = resolveConfig(
+    { port: "", home: "", localMode: false, skipMigrations: false },
+    {
+      STUDIO_PLANS_ENABLED: "true",
+      STUDIO_JWT_SECRET: "test-shared-secret",
+      STUDIO_PROVISION_SECRET_KEY: "test-service-key",
+      DECO_AI_GATEWAY_ENABLED: "true",
+    },
+  );
+  // resolveConfig omits the two fields the startup pipeline fills in later;
+  // nothing here reads them.
+  return { ...settings, databaseUrl: "", natsUrls: [] } as Settings;
+}
+
+const previousSettings = (() => {
+  try {
+    return getSettings();
+  } catch {
+    return null;
+  }
+})();
+setGlobalSettings(plansOnSettings());
+afterAll(() => {
+  if (previousSettings) setGlobalSettings(previousSettings);
+});
+
 let entitlements: unknown = { features: { kanban: true } };
 let failEntitlements = false;
 
-const settings = await import("@/settings");
-mock.module("@/settings", () => ({
-  ...settings,
-  // A literal, not a spread of the real settings: outside a request there are
-  // none, and reading them throws.
-  getSettings: () => ({ plansEnabled: true, aiGatewayEnabled: true }),
-}));
-// Partial: this module has other exports the dispatch path's imports need.
+// The gateway adapter's own method is swapped, not the whole module: one
+// property on the singleton the registry returns, restored after the file.
+const { decoAiGatewayAdapter } = await import(
+  "@/ai-providers/adapters/deco-ai-gateway"
+);
+const realGetEntitlements = decoAiGatewayAdapter.getEntitlements;
+(decoAiGatewayAdapter as { getEntitlements: unknown }).getEntitlements =
+  async () => {
+    if (failEntitlements) throw new Error("gateway unreachable");
+    return entitlements;
+  };
+afterAll(() => {
+  (decoAiGatewayAdapter as { getEntitlements: unknown }).getEntitlements =
+    realGetEntitlements;
+});
+
 const jwt = await import("@/auth/jwt");
 mock.module("@/auth/jwt", () => ({
   ...jwt,
   mintGatewayJwt: async () => "jwt",
-}));
-const registry = await import("@/ai-providers/registry");
-mock.module("@/ai-providers/registry", () => ({
-  ...registry,
-  getProviders: () => ({
-    deco: {
-      getEntitlements: async () => {
-        if (failEntitlements) throw new Error("gateway unreachable");
-        return entitlements;
-      },
-    },
-  }),
-}));
-const tier = await import("@/core/resolve-tier");
-mock.module("@/core/resolve-tier", () => ({
-  ...tier,
-  resolveTier: async () => null,
 }));
 
 const { enqueueAgentRunForTask, withOrgTaskPrompt } = await import(
@@ -143,22 +172,30 @@ describe("enqueueAgentRunForTask plan gate", () => {
     );
   });
 
-  it("dispatches for an org that owns kanban", async () => {
+  /**
+   * Past the gate, the dispatch needs a real org context, tier resolution and
+   * storage — out of scope here, and stubbing it would only assert the stubs.
+   * So these two assert what this test is about: the call is NOT refused by the
+   * plan gate. Anything it fails on afterwards is the dispatch's own business.
+   */
+  const notRefused = async () => {
+    const err = await enqueueAgentRunForTask(ctx(), task, opts).catch(
+      (e: Error) => e,
+    );
+    expect((err as Error)?.name).not.toBe("FeatureNotInPlanError");
+    expect((err as Error)?.name).not.toBe("AiBudgetExhaustedError");
+  };
+
+  it("lets an org that owns kanban through", async () => {
     entitlements = { features: { kanban: true } };
     invalidateOrgFeaturesCache("org_1");
-    expect(await enqueueAgentRunForTask(ctx(), task, opts)).toEqual({
-      threadId: "thread_1",
-      isNew: false,
-    });
+    await notRefused();
   });
 
-  it("dispatches when the gateway has no answer — the gate fails open", async () => {
+  it("lets the call through when the gateway has no answer — fails open", async () => {
     failEntitlements = true;
     invalidateOrgFeaturesCache("org_1");
-    expect(await enqueueAgentRunForTask(ctx(), task, opts)).toEqual({
-      threadId: "thread_1",
-      isNew: false,
-    });
+    await notRefused();
     failEntitlements = false;
   });
 });

@@ -13,33 +13,74 @@
  * mint. The cache, the stale rules, the error classes and the throw sites are
  * the real code under test.
  */
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { getSettings, setGlobalSettings } from "../settings";
+import { resolveConfig } from "../settings/resolve-config";
+import type { Settings } from "../settings/types";
 import { z } from "zod";
 import type { StudioContext } from "./studio-context";
 
 let entitlements: unknown = { features: { cms: true } };
 let fail: Error | null = null;
 
-mock.module("../settings", () => ({
-  getSettings: () => ({ plansEnabled: true, aiGatewayEnabled: true }),
-}));
-mock.module("../auth/jwt", () => ({ mintGatewayJwt: async () => "jwt" }));
-// The org-block gate runs first in the same wrapper and reads the database.
-// Not what these tests are about; stub it open.
-mock.module("./org-notice-gate", () => ({
-  isOrgBlocked: async () => false,
-  isToolAllowedWhileBlocked: () => false,
-  OrgBlockedError: class OrgBlockedError extends Error {},
-}));
-mock.module("../ai-providers/registry", () => ({
-  getProviders: () => ({
-    deco: {
-      getEntitlements: async () => {
-        if (fail) throw fail;
-        return entitlements;
-      },
+/**
+ * Plans ON for this file, through the real settings pipeline and the real
+ * setter — NOT `mock.module("@/settings")`.
+ *
+ * Both matter. Bun's module mocks are PROCESS-WIDE, so stubbing the settings
+ * module leaks into every suite that runs after it; and a PARTIAL settings
+ * object leaks just as badly, because `/api/config` and the provider schemas
+ * read fields this file never mentions. So: build a complete Settings with
+ * `resolveConfig`, flip the two flags this file needs, and restore whatever was
+ * there afterwards.
+ */
+function plansOnSettings() {
+  const { settings } = resolveConfig(
+    { port: "", home: "", localMode: false, skipMigrations: false },
+    {
+      STUDIO_PLANS_ENABLED: "true",
+      STUDIO_JWT_SECRET: "test-shared-secret",
+      STUDIO_PROVISION_SECRET_KEY: "test-service-key",
+      DECO_AI_GATEWAY_ENABLED: "true",
     },
-  }),
+  );
+  // resolveConfig omits the two fields the startup pipeline fills in later;
+  // nothing here reads them.
+  return { ...settings, databaseUrl: "", natsUrls: [] } as Settings;
+}
+
+const previousSettings = (() => {
+  try {
+    return getSettings();
+  } catch {
+    return null;
+  }
+})();
+setGlobalSettings(plansOnSettings());
+afterAll(() => {
+  if (previousSettings) setGlobalSettings(previousSettings);
+});
+
+// The gateway adapter's own method, swapped on the singleton the registry
+// returns and restored after the file — one property, not a whole module.
+const { decoAiGatewayAdapter } = await import(
+  "../ai-providers/adapters/deco-ai-gateway"
+);
+const realGetEntitlements = decoAiGatewayAdapter.getEntitlements;
+(decoAiGatewayAdapter as { getEntitlements: unknown }).getEntitlements =
+  async () => {
+    if (fail) throw fail;
+    return entitlements;
+  };
+afterAll(() => {
+  (decoAiGatewayAdapter as { getEntitlements: unknown }).getEntitlements =
+    realGetEntitlements;
+});
+
+const jwtModule = await import("../auth/jwt");
+mock.module("../auth/jwt", () => ({
+  ...jwtModule,
+  mintGatewayJwt: async () => "jwt",
 }));
 
 const { invalidateOrgFeaturesCache, FeatureNotInPlanError } = await import(
@@ -75,7 +116,19 @@ function ctx(): StudioContext {
           end: () => {},
         }),
     },
-    db: {} as never,
+    // The org-block gate runs first in the same wrapper and reads
+    // `organization_notices`. Answered here rather than by mocking that module:
+    // bun's `mock.module` is process-wide, and stubbing it broke
+    // org-notice-gate's own suite when both ran in the same process.
+    db: {
+      selectFrom: () => ({
+        selectAll: () => ({
+          where: () => ({
+            where: () => ({ executeTakeFirst: async () => undefined }),
+          }),
+        }),
+      }),
+    } as never,
     storage: {} as never,
   } as unknown as StudioContext;
 }

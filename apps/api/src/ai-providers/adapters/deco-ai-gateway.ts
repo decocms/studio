@@ -124,6 +124,13 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
     amountCents: number,
     currency: "usd" | "brl" = "usd",
   ) {
+    // DEAD FALLBACK: the gateway retired /api/credits/checkout — studio owns
+    // the top-up flow now — so this 404s, on this branch and on the gateway's
+    // main. `getTopUpUrl` in tools/ai-providers prefers mesh's own Stripe and
+    // only reaches here when that is unconfigured, which is why the 404 has
+    // been read as "Stripe absent" rather than "route gone". Kept, and
+    // labelled, because deleting it is a product decision about whether the
+    // gateway ever serves checkout again.
     const res = await fetch(`${getBase()}/api/credits/checkout`, {
       method: "POST",
       headers: {
@@ -141,10 +148,19 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
   },
 
   async getCreditsBalance(studioJwt: string, organizationId: string) {
+    // Same identification as the entitlements read: the gateway now checks
+    // membership on this route (it did not, which let any signed-in user read
+    // any org's balance), and that check runs over a PER-USER gateway-OAuth
+    // token most users have never minted. The service key says "mesh's server
+    // is asking about an org it owns" and skips that callback.
+    const serviceKey = getSettings().studioProvisionSecretKey;
     const res = await fetch(
       `${getBase()}/api/teams/${organizationId}/balance`,
       {
-        headers: { Authorization: `Bearer ${studioJwt}` },
+        headers: {
+          Authorization: `Bearer ${studioJwt}`,
+          ...(serviceKey ? { "X-Provision-Key": serviceKey } : {}),
+        },
         signal: AbortSignal.timeout(10_000),
       },
     );
