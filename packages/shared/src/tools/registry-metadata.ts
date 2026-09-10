@@ -55,6 +55,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
+  "ORGANIZATION_HAS_SITE",
   "BRAND_CONTEXT_LIST",
   "BRAND_CONTEXT_GET",
   "BRAND_CONTEXT_CREATE",
@@ -1545,6 +1546,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
       "BRAND_CONTEXT_LIST",
+      // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
+      "ORGANIZATION_HAS_SITE",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless

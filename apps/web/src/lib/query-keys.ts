@@ -305,6 +305,9 @@ export const KEYS = {
   infraBillingSites: (organizationId: string) =>
     ["infra-billing-sites", organizationId] as const,
 
+  orgHasSite: (organizationId: string) =>
+    ["org-has-site", organizationId] as const,
+
   infraBilling: (organizationId: string, siteSlug: string, period: string) =>
     ["infra-billing", organizationId, siteSlug, period] as const,
 
