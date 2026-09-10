@@ -48,6 +48,7 @@ export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: unknown[] | null;
   enabled_plugins: string[] | null;
+  coding_agent_mcp_excluded: string[] | null;
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
@@ -60,6 +61,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   organizationId: "",
   sidebar_items: null,
   enabled_plugins: null,
+  coding_agent_mcp_excluded: null,
   registry_config: null,
   simple_mode: null,
   default_home_agents: null,
@@ -143,6 +145,7 @@ type OrgSettingsUpdateInput = Partial<
     OrganizationSettings,
     | "sidebar_items"
     | "enabled_plugins"
+    | "coding_agent_mcp_excluded"
     | "registry_config"
     | "simple_mode"
     | "default_home_agents"
@@ -359,6 +362,24 @@ export function useSetOrgFlag() {
       value: boolean,
       options?: OrgSettingsMutateOptions,
     ) => mutation.mutateAsync({ flags: { [flag]: value } }, options),
+  };
+}
+
+/**
+ * Connections a coding-agent run must not mount, even with
+ * `coding_agent_org_mcps` on. The full list is stored, so a write replaces it.
+ */
+export function useCodingAgentExcludedMcps(): string[] {
+  const { data } = useOrganizationSettings((s) => s.coding_agent_mcp_excluded);
+  return data ?? [];
+}
+
+export function useSetCodingAgentExcludedMcps() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutate: (ids: string[], options?: OrgSettingsMutateOptions) =>
+      mutation.mutate({ coding_agent_mcp_excluded: ids }, options),
   };
 }
 

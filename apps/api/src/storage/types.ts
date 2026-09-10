@@ -181,6 +181,9 @@ export interface OrganizationSettingsTable {
   organizationId: string;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   enabled_plugins: JsonArray<string[]> | null;
+  // Connection ids a coding-agent run must not mount, even with
+  // `coding_agent_org_mcps` on. See migration 212.
+  coding_agent_mcp_excluded: JsonArray<string[]> | null;
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
@@ -196,6 +199,7 @@ export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: SidebarItem[] | null;
   enabled_plugins: string[] | null;
+  coding_agent_mcp_excluded: string[] | null;
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;

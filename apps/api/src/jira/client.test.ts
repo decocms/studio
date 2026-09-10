@@ -7,6 +7,7 @@ import {
   textToAdf,
   JiraClient,
   JiraUserDirectory,
+  mediaUuidFromLocation,
 } from "./client";
 
 describe("normalizeSiteUrl", () => {
@@ -944,5 +945,39 @@ describe("JiraClient issue reads", () => {
         expect(calls.at(-1)).toContain("nextPageToken=tok-2");
       },
     );
+  });
+});
+
+/**
+ * An ADF `media` node addresses the media-services uuid, NOT the numeric
+ * attachment id — Jira answers a comment carrying the id with
+ * `ATTACHMENT_VALIDATION_ERROR`. The uuid is only available as the last path
+ * segment of the 303 the content endpoint answers with, so this parse is the
+ * single point where an inline screenshot is won or lost.
+ */
+describe("mediaUuidFromLocation", () => {
+  const uuid = "509aa4a2-390d-4c7a-bfac-aeab2f6a596b";
+
+  it("reads the uuid out of the media CDN redirect", () => {
+    expect(
+      mediaUuidFromLocation(
+        `https://api.media.atlassian.com/file/${uuid}/binary?token=x`,
+      ),
+    ).toBe(uuid);
+    expect(mediaUuidFromLocation(`https://cdn.example/file/${uuid}`)).toBe(
+      uuid,
+    );
+  });
+
+  it("is null when there is no redirect or no uuid in it", () => {
+    for (const location of [
+      null,
+      "",
+      "https://example.com/file/not-a-uuid/binary",
+      "https://example.com/",
+      "509aa4a2390d4c7abfacaeab2f6a596b",
+    ]) {
+      expect(mediaUuidFromLocation(location)).toBeNull();
+    }
   });
 });

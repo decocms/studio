@@ -14,6 +14,7 @@ const MAX_SIDEBAR_ITEMS = 50;
 const MAX_BLOCKED_MCPS = 500;
 const MAX_DEFAULT_HOME_AGENTS = 100;
 const MAX_ENABLED_PLUGINS = 200;
+const MAX_EXCLUDED_MCPS = 500;
 const MAX_REGISTRIES = 200;
 const MAX_STRING_LENGTH = 500;
 
@@ -35,6 +36,13 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .array(z.string().max(MAX_STRING_LENGTH))
       .max(MAX_ENABLED_PLUGINS)
       .optional(),
+    coding_agent_mcp_excluded: z
+      .array(z.string().max(MAX_STRING_LENGTH))
+      .max(MAX_EXCLUDED_MCPS)
+      .optional()
+      .describe(
+        "Connection ids a coding-agent run must not mount, even with `coding_agent_org_mcps` on. Replaces the stored list; pass [] to clear it.",
+      ),
     registry_config: RegistryConfigSchema.extend({
       registries: z
         .record(
@@ -68,6 +76,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).nullable().optional(),
     enabled_plugins: z.array(z.string()).nullable().optional(),
+    coding_agent_mcp_excluded: z.array(z.string()).nullable().optional(),
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
@@ -94,6 +103,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       {
         sidebar_items: input.sidebar_items,
         enabled_plugins: input.enabled_plugins,
+        coding_agent_mcp_excluded: input.coding_agent_mcp_excluded,
         registry_config: input.registry_config,
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,

@@ -17,8 +17,12 @@ import {
   mintAttachmentToken,
 } from "@/jira/attachment-token";
 import { JiraClient } from "@/jira/client";
+import { uploadCommentImages } from "@/jira/comment-images";
 import { loadIssueForPrompt, renderIssueForPrompt } from "@/jira/issue-prompt";
-import { requireTaskRunContext } from "@/tools/task-board/task-run-context";
+import {
+  requireTaskRunContext,
+  taskRunContextStore,
+} from "@/tools/task-board/task-run-context";
 import type { OrgJiraIntegration } from "@/storage/types";
 
 const MAX_COMMENT_LENGTH = 50_000;
@@ -104,17 +108,72 @@ export const JIRA_COMMENT_ADD = defineTool({
   name: "JIRA_COMMENT_ADD",
   description:
     "Post a comment on the Jira issue this run is working on. Markdown is " +
-    "rendered as Jira rich text. Leave one when you finish: what you did, " +
-    "and any pull request link.",
+    "rendered as Jira rich text, tables included. Leave one when you finish: " +
+    "what you did, and any pull request link. To show evidence, write the " +
+    "image to `org/output/<name>.png` in your working pod and reference it as " +
+    "`![what it shows](org/output/<name>.png)` — it is uploaded to the issue " +
+    "and rendered inline. Any other URL stays a plain link.",
   inputSchema: z.object({
     body: z.string().min(1).max(MAX_COMMENT_LENGTH),
   }),
-  outputSchema: z.object({ commentId: z.string() }),
+  outputSchema: z.object({
+    commentId: z.string(),
+    /** Screenshots that made it onto the issue, by markdown target. */
+    embeddedImages: z.array(z.string()),
+  }),
   handler: async (input, ctx) => {
     await ctx.access.check();
     const { client, issueId } = await resolveRunIssue(ctx);
-    const { id } = await client.addComment(issueId, input.body);
-    return { commentId: id };
+    const media = await uploadCommentImages({
+      client,
+      orgFs: ctx.orgFs,
+      issueIdOrKey: issueId,
+      threadId: taskRunContextStore.getStore()?.threadId ?? null,
+      markdown: input.body,
+    });
+    const { id } = await client.addComment(issueId, input.body, { media });
+    return { commentId: id, embeddedImages: [...media.keys()] };
+  },
+});
+
+export const JIRA_REMOTE_LINK_ADD = defineTool({
+  name: "JIRA_REMOTE_LINK_ADD",
+  description:
+    "Put a link on the Jira issue this run is working on — its pull request, " +
+    "its deploy preview. A link on the card is what a person clicks; the same " +
+    "URL inside a comment is not. Posting the same `key` again updates that " +
+    "link instead of adding a second.",
+  inputSchema: z.object({
+    url: z.string().min(1),
+    title: z.string().min(1).max(255),
+    summary: z.string().max(1000).optional(),
+    key: z
+      .string()
+      .max(255)
+      .optional()
+      .describe("Stable id for this link, e.g. `pull-request` or `preview`."),
+  }),
+  outputSchema: z.object({ linkId: z.number() }),
+  handler: async (input, ctx) => {
+    await ctx.access.check();
+    const { client, issueId, issueKey } = await resolveRunIssue(ctx);
+    let url: URL;
+    try {
+      url = new URL(input.url);
+    } catch {
+      throw new Error(`"${input.url}" is not an absolute URL`);
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new Error(`${url.protocol} is not a linkable scheme`);
+    }
+    const { id } = await client.addRemoteLink(issueId, {
+      url: url.toString(),
+      title: input.title,
+      ...(input.summary ? { summary: input.summary } : {}),
+      // Scoped to the issue so two issues' "preview" links never collide.
+      ...(input.key ? { globalId: `studio-${issueKey}-${input.key}` } : {}),
+    });
+    return { linkId: id };
   },
 });
 
