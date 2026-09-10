@@ -20,12 +20,12 @@ import {
 import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
-import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import {
   useEntitlements,
   useFeature,
+  usePlansEnabled,
 } from "@/hooks/use-entitlements";
 
 /**
@@ -170,10 +170,7 @@ export function PlanUsageCard() {
   const [preferences] = usePreferences();
   const [changeOpen, setChangeOpen] = useState(false);
 
-  // Suspending, like the hero next to it: the optional hook reads `undefined`
-  // as plans-off, so this card was absent for the first frame and then popped
-  // in above the hero.
-  const plansEnabled = usePublicConfig().plansEnabled === true;
+  const plansEnabled = usePlansEnabled();
   // Free cannot top up: its allowance is a ceiling and the only way past it is
   // a plan. That changes both the copy and whether a credits row belongs here.
   const canBuyCredits = useFeature("credits");

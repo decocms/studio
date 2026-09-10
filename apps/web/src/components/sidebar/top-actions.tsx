@@ -10,8 +10,7 @@ import { Coins04, Lightning01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
-import { useEntitlements } from "@/hooks/use-entitlements";
-import { usePublicConfig } from "@/hooks/use-public-config";
+import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
@@ -135,13 +134,7 @@ function UsageChip() {
 }
 
 function TopChip() {
-  // Suspends on the public config — there is a boundary directly above — rather
-  // than reading the non-suspending hook, which cannot tell "not loaded" from
-  // "plans off". On a plans-ON deployment that painted CreditChip's DOLLAR
-  // amount first and swapped it for the percent chip, which is the money
-  // flicker the pricing model specifically does not want (and it shifted every
-  // sidebar item below it, one line becoming two).
-  return usePublicConfig().plansEnabled === true ? <UsageChip /> : <CreditChip />;
+  return usePlansEnabled() ? <UsageChip /> : <CreditChip />;
 }
 
 export function SidebarTopActions() {
