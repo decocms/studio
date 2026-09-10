@@ -13,6 +13,7 @@ import {
 } from "@decocms/ui/components/toggle-group.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Moon01, Monitor01, Play, Sun } from "@untitledui/icons";
+import { useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -43,6 +44,71 @@ const LANGUAGE_OPTIONS: { value: Locale; label: string }[] = [
   { value: "en", label: "English" },
   { value: "pt-BR", label: "Português (Brasil)" },
 ];
+
+// Mirrors MAX_INLINE_AVATAR_LENGTH in apps/api/src/auth/index.ts: the base64 data URL is stored on user.image, so validate the encoded length, not file.size.
+const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
+
+function AvatarUpload({ url, fallback }: { url?: string; fallback: string }) {
+  const t = useT();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (inputRef.current) inputRef.current.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+
+    const image = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(null);
+      reader.onloadend = () =>
+        resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsDataURL(file);
+    });
+
+    if (!image) {
+      toast.error(t("settings.profile.avatarReadError"));
+      return;
+    }
+
+    if (image.length > MAX_INLINE_AVATAR_LENGTH) {
+      toast.error(t("settings.profile.avatarTooLarge"));
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      await authClient.updateUser({ image });
+      track("profile_updated", { fields: ["image"] });
+      toast.success(t("settings.profile.avatarUpdateSuccess"));
+    } catch {
+      toast.error(t("settings.profile.avatarUpdateError"));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => inputRef.current?.click()}
+      disabled={isUploading}
+      className="rounded-full overflow-hidden hover:ring-2 hover:ring-border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      aria-label={t("settings.profile.avatarUploadLabel")}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFile}
+        className="hidden"
+        disabled={isUploading}
+      />
+      <Avatar url={url} fallback={fallback} shape="circle" size="base" />
+    </button>
+  );
+}
 
 function ProfileSection() {
   const t = useT();
@@ -91,14 +157,7 @@ function ProfileSection() {
       <SettingsCard>
         <SettingsCardItem
           title={t("settings.profile.avatar")}
-          action={
-            <Avatar
-              url={userImage}
-              fallback={user?.name ?? "U"}
-              shape="circle"
-              size="base"
-            />
-          }
+          action={<AvatarUpload url={userImage} fallback={user?.name ?? "U"} />}
         />
         <SettingsCardItem
           title={t("settings.profile.displayName")}

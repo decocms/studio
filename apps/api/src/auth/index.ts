@@ -446,11 +446,7 @@ export function getTrustedOrigins(): string[] {
 
 const settings = getSettings();
 
-// Hard cap on inline base64 avatars stored in `user.image`. Avatar upload is
-// disabled in the UI, so `image` should only ever be a short OAuth provider
-// URL; this cap is a backstop against direct API callers. Oversized data: URLs
-// bloat every /get-session response and previously broke login via the
-// set-auth-jwt header.
+// Hard cap on inline base64 `user.image` avatars (source of truth; the profile UI validates against it too). Oversized data: URLs bloat every /get-session response and previously broke login via the set-auth-jwt header.
 const MAX_INLINE_AVATAR_LENGTH = 256 * 1024;
 
 // Falling back to a fixed string baked into this open-source repo would let
@@ -666,9 +662,7 @@ export const auth = betterAuth({
         },
       },
       update: {
-        // Defense in depth: never persist an oversized base64 avatar. Upload
-        // is disabled in the UI, but a direct API caller could still send a
-        // multi-megabyte data: URL. See MAX_INLINE_AVATAR_LENGTH.
+        // Defense in depth: reject an oversized base64 avatar even if a caller bypasses the profile UI's check. See MAX_INLINE_AVATAR_LENGTH.
         before: async (data) => {
           const image = (data as { image?: unknown }).image;
           if (

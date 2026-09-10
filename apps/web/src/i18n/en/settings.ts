@@ -219,6 +219,12 @@ export const settings = {
   "settings.nav.backToHome": "Back to home",
   "settings.nav.signOut": "Sign Out",
   "settings.profile.avatar": "Avatar",
+  "settings.profile.avatarUploadLabel": "Change avatar",
+  "settings.profile.avatarTooLarge":
+    "Image is too large. Please choose a smaller one (around 190KB or less).",
+  "settings.profile.avatarReadError": "Failed to read image",
+  "settings.profile.avatarUpdateSuccess": "Avatar updated successfully",
+  "settings.profile.avatarUpdateError": "Failed to update avatar",
   "settings.profile.displayName": "Display name",
   "settings.profile.displayNamePlaceholder": "Your name",
   "settings.profile.email": "Email",

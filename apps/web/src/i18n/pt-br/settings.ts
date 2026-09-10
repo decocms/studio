@@ -226,6 +226,12 @@ export const settings = {
   "settings.nav.backToHome": "Voltar para o início",
   "settings.nav.signOut": "Sair",
   "settings.profile.avatar": "Avatar",
+  "settings.profile.avatarUploadLabel": "Alterar avatar",
+  "settings.profile.avatarTooLarge":
+    "Imagem muito grande. Escolha uma menor (cerca de 190KB ou menos).",
+  "settings.profile.avatarReadError": "Falha ao ler a imagem",
+  "settings.profile.avatarUpdateSuccess": "Avatar atualizado com sucesso",
+  "settings.profile.avatarUpdateError": "Falha ao atualizar o avatar",
   "settings.profile.displayName": "Nome de exibição",
   "settings.profile.displayNamePlaceholder": "Seu nome",
   "settings.profile.email": "E-mail",
