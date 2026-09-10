@@ -432,6 +432,22 @@ export function resolveConfig(
     );
   }
 
+  // The provision key has the IDENTICAL consequence and had no check. Without
+  // it the gateway cannot recognise mesh's server, so `/entitlements` falls
+  // back to a per-user membership callback over a gateway-OAuth token most
+  // users have never minted — that answers 401, the gate reads "no answer",
+  // and every unlinked user owns every gated feature. Same failure, same
+  // refusal.
+  if (settings.plansEnabled && !settings.studioProvisionSecretKey) {
+    throw new Error(
+      "STUDIO_PLANS_ENABLED requires STUDIO_PROVISION_SECRET_KEY, set to the " +
+        "same value as the gateway's STUDIO_PROVISION_KEY. Without it the " +
+        "gateway cannot identify this server, falls back to a per-user " +
+        "membership callback that 401s for any user who never completed the " +
+        "gateway OAuth flow, and every feature gate then fails OPEN.",
+    );
+  }
+
   return {
     settings,
     externalDatabaseUrl: externalUrlOrNull(envVars.DATABASE_URL),

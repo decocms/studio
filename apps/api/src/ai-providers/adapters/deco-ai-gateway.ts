@@ -31,6 +31,48 @@ interface EntitlementsWire {
 }
 
 /**
+ * A refusal the gateway names with a `code`, carried through instead of being
+ * flattened into "Failed to change plan: 503".
+ *
+ * The gateway emits two of these on the plan routes — `plans_disabled` (its own
+ * PLANS_ENABLED is off, which is a deliberate dormant state and not an outage)
+ * and `service_key_required`. Both used to surface to the user as an opaque
+ * HTTP 500 carrying a status number: an operator mid-rollout, with mesh's flag
+ * on and the gateway's still off, saw "Couldn't change plan: Failed to change
+ * plan: 503" and no way to tell that from the gateway being down.
+ */
+export class GatewayRefusalError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GatewayRefusalError";
+  }
+}
+
+/** The gateway's `{error, code}` body, when it sent one. */
+async function refusal(
+  res: Response,
+  what: string,
+): Promise<GatewayRefusalError> {
+  const body = (await res.json().catch(() => null)) as {
+    error?: string;
+    code?: string;
+  } | null;
+  const code = typeof body?.code === "string" ? body.code : null;
+  const plans = code === "plans_disabled";
+  return new GatewayRefusalError(
+    res.status,
+    code,
+    plans
+      ? "Plans are not enabled on the AI gateway yet."
+      : (body?.error ?? `${what}: ${res.status}`),
+  );
+}
+
+/**
  * A failed entitlements read, carrying the status so the gate can tell a
  * DEFINITIVE refusal from an outage.
  *
@@ -141,7 +183,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       headers: { Authorization: `Bearer ${studioJwt}` },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) throw new Error(`Failed to fetch plans: ${res.status}`);
+    if (!res.ok) throw await refusal(res, "Failed to fetch plans");
     const data = (await res.json()) as {
       plans: { id: string; name: string; features: Record<string, boolean> }[];
     };
@@ -167,7 +209,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       body: JSON.stringify({ planId }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) throw new Error(`Failed to change plan: ${res.status}`);
+    if (!res.ok) throw await refusal(res, "Failed to change plan");
     return toPlanEntitlements((await res.json()) as EntitlementsWire);
   },
 

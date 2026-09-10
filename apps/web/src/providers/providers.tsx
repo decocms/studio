@@ -40,10 +40,15 @@ import { useT } from "@/i18n/use-t";
 function notifyPlanRefusal(error: unknown): void {
   const refusal = planRefusalOf(error);
   if (!refusal) return;
+  // The fallbacks are load-bearing, not defensive dressing: this copy is filled
+  // in during SdkTranslationInitializer's render, and a refusal from a query
+  // that started above it toasts whatever is here — which was `""`, an empty
+  // toast, strictly worse than the generic error it replaces.
   const message =
     refusal === PLAN_REFUSAL_CODES.aiBudgetExhausted
-      ? planRefusalCopy.budget
-      : planRefusalCopy.feature;
+      ? planRefusalCopy.budget || "This organization's AI allowance is used up."
+      : planRefusalCopy.feature ||
+        "This organization's plan does not include that.";
   // Deduped by id: one refusal per kind on screen, not one per failed query in
   // a prefetch batch.
   toast.error(message, { id: `plan-refusal:${refusal}` });

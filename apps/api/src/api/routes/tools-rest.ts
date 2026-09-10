@@ -14,6 +14,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
+import { GatewayRefusalError } from "../../ai-providers/adapters/deco-ai-gateway";
 import { OrgBlockedError } from "../../core/org-notice-gate";
 import { TOOL_BY_NAME } from "../../tools";
 import { getToolRegistration } from "../../tools/management-registration";
@@ -90,7 +91,28 @@ export const createToolsRestRoutes = () => {
         return c.json({ error: error.message, code: error.code }, 403);
       }
       if (error instanceof ForbiddenError) {
-        return c.json({ error: error.message }, 403);
+        // Carry `code` when the refusal has one. `FeatureNotInPlanError` and
+        // `AiBudgetExhaustedError` also extend ForbiddenError, so this branch
+        // was stripping the very field the client reads to tell a PLAN refusal
+        // from a permission error — which made the paywall, the "never retry a
+        // plan refusal" rule and the whole notifyPlanRefusal path inert for
+        // every gated tool. A plain ForbiddenError still has no code.
+        const code = (error as { code?: unknown }).code;
+        return c.json(
+          typeof code === "string"
+            ? { error: error.message, code }
+            : { error: error.message },
+          403,
+        );
+      }
+      // A refusal the AI gateway named, not a mesh failure: keep its status
+      // and its code so the client can say "plans are not enabled yet" instead
+      // of showing an HTTP number inside a 500.
+      if (error instanceof GatewayRefusalError) {
+        return c.json(
+          { error: error.message, ...(error.code ? { code: error.code } : {}) },
+          error.status === 503 ? 503 : 403,
+        );
       }
       const message = error instanceof Error ? error.message : "Tool failed";
       return c.json({ error: message }, 500);

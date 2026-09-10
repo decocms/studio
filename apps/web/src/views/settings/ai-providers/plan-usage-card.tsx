@@ -213,7 +213,15 @@ export function PlanUsageCard() {
     );
   }
 
-  const percent = data.usage ? Math.round(data.usage.percent * 100) : null;
+  // Clamped and finite-checked: the wire is 0..1 but a NaN or a negative
+  // arriving here produced `translateX(-NaN%)`, an invalid declaration the
+  // browser drops — which renders the indicator FULL and untranslated, i.e. a
+  // bad number reads as "you have used everything".
+  const rawPercent = data.usage ? Math.round(data.usage.percent * 100) : null;
+  const percent =
+    rawPercent !== null && Number.isFinite(rawPercent)
+      ? Math.min(100, Math.max(0, rawPercent))
+      : null;
   const state = data.usage?.state ?? "ok";
   // A plan with no chat has no AI envelope at all, so a full red bar would
   // read as "you burned through it" on an org that never had any.
@@ -275,10 +283,20 @@ export function PlanUsageCard() {
                     : `${percent}%`}
                 </span>
               </div>
-              <Progress
-                value={percent ?? 0}
-                className={cn(percent !== null && BAR_STYLES[state])}
-              />
+              {/* No bar at all when consumption is UNKNOWN. `value={percent ??
+                  0}` rendered a full-width EMPTY track, which is the one
+                  reading this card's own docstring forbids: an empty bar says
+                  "nothing used", and the honest answer is "we could not read
+                  it". The label above already says Unavailable; this is a
+                  placeholder track with no fill, not a measurement. */}
+              {percent === null ? (
+                <div
+                  className="h-2 w-full rounded-full bg-muted/60"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Progress value={percent} className={cn(BAR_STYLES[state])} />
+              )}
               <p className="text-xs text-muted-foreground">
                 {state === "exhausted"
                   ? canBuyCredits

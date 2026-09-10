@@ -96,7 +96,13 @@ function UsageChip() {
   // No answer and no envelope both mean there is no honest bar to draw.
   if (!data?.usage || !data.features.chat) return null;
 
-  const percent = Math.round(data.usage.percent * 100);
+  // Clamped and finite-checked before it reaches a width: `width: NaN%` is an
+  // invalid declaration, the browser drops it, and a `block` span with no width
+  // fills its parent — so a bad number painted a FULL bar, in the exhausted
+  // colour if the state said so.
+  const raw = Math.round(data.usage.percent * 100);
+  if (!Number.isFinite(raw)) return null;
+  const percent = Math.min(100, Math.max(0, raw));
   return (
     <SidebarMenu>
       <SidebarMenuItem>

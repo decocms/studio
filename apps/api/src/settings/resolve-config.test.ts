@@ -558,11 +558,25 @@ describe("resolveConfig plans gateway JWT secret", () => {
       const result = resolveConfig(flags, {
         STUDIO_PLANS_ENABLED: "true",
         [name]: "shared-with-the-gateway",
+        STUDIO_PROVISION_SECRET_KEY: "shared-service-key",
       });
 
       expect(result.settings.studioJwtSecret).toBe("shared-with-the-gateway");
     },
   );
+
+  it("refuses to boot with plans on and no provision key", () => {
+    // Same consequence as a missing JWT secret: the gateway cannot identify
+    // this server, falls back to a per-user membership callback that 401s for
+    // anyone who never completed the gateway OAuth flow, and every gate then
+    // fails OPEN. Only the JWT half had a check.
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        STUDIO_JWT_SECRET: "shared-with-the-gateway",
+      }),
+    ).toThrow(/requires STUDIO_PROVISION_SECRET_KEY/);
+  });
 
   it("does not require it while plans are off — that path 401s loudly, it does not open a gate", () => {
     expect(() => resolveConfig(flags, {})).not.toThrow();

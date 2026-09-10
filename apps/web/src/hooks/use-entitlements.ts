@@ -101,6 +101,12 @@ export function useFeaturesSettled(): boolean {
   // A disabled query is `pending` forever with fetchStatus "idle" — that is
   // "nothing to wait for", not "still loading".
   if (fetchStatus === "idle") return true;
+  // Offline, React Query's default `networkMode: "online"` parks an enabled
+  // query at `fetchStatus: "paused"` with `isPending` true — neither idle nor
+  // loading, and no answer is coming until the connection returns. Waiting on
+  // that is how a gated tab body became a permanent skeleton while every
+  // ungated tab rendered. Treat it as settled and let the gates fail open.
+  if (fetchStatus === "paused") return true;
   return !isPending;
 }
 

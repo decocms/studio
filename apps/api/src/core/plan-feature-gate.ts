@@ -52,6 +52,20 @@ export class FeatureNotInPlanError extends ForbiddenError {
 const FEATURES_CACHE_TTL_MS = 60_000;
 
 /**
+ * How long a STALE entry may still be served after refreshes start failing.
+ *
+ * Serving stale is the right answer to a blip — but a cached `features` map is
+ * authoritative and an absent key DENIES, so serving stale is fail-CLOSED
+ * whenever the stale value is a deny. Sequence that bites: an org is cached as
+ * Free, an operator upgrades it through the gateway's admin route (which does
+ * not invalidate this cache), the gateway then becomes unreachable, and the org
+ * is locked out of the CMS it just paid for — with no ceiling, because the
+ * failure path never advances `at`. After this, the entry is dropped and the
+ * caller falls through to null, which fails OPEN.
+ */
+const MAX_STALE_MS = 10 * 60_000;
+
+/**
  * What the gateway last said about an org: which surfaces its plan includes,
  * and how full its AI envelope is. One fetch answers both, so the budget stop
  * costs no extra round trip on top of the feature gate.
@@ -161,6 +175,15 @@ async function getOrgPlanState(
     const jwt = await mintGatewayJwt(userId);
     const { features, usage, modelPins, credits } =
       await adapter.getEntitlements(jwt, organizationId);
+    // The wire body is an unchecked cast, so a 200 whose `features` is absent
+    // or not an object used to become `undefined` here — which
+    // `isFeatureAllowed` reads as "no answer" and ALLOWS, and which was then
+    // written to the cache, so every gate opened for the full TTL with no log
+    // line at all. `{}` is a legitimate body (an org entitled to nothing); a
+    // missing map is a broken one, and it is treated as a failed read.
+    if (!features || typeof features !== "object") {
+      throw new EntitlementsFetchError(502);
+    }
     const state: OrgPlanState = {
       features,
       modelPins,
@@ -200,6 +223,12 @@ async function getOrgPlanState(
         "[Plans] entitlements lookup failed (gateway unreachable) — gates fail OPEN",
         detail,
       );
+    }
+    // A stale entry has a ceiling. Past it, the honest answer is "no answer",
+    // which fails open — see MAX_STALE_MS.
+    if (hit && Date.now() - hit.at >= MAX_STALE_MS) {
+      planStateCache.delete(organizationId);
+      return null;
     }
     return hit?.state ?? null;
   }
