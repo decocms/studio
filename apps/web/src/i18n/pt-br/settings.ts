@@ -137,6 +137,24 @@ export const settings = {
     "Use um token de acesso pessoal, de projeto ou de grupo.",
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
+  "settings.repositories.githubSelectTitle": "Selecionar repositórios",
+  "settings.repositories.githubSelectedShareHint":
+    "Membros com permissão de repositórios em {organization} poderão usar os repositórios que você autorizar aqui.",
+  "settings.repositories.githubSelectHint":
+    "Escolha até 500 repositórios para este workspace.",
+  "settings.repositories.githubReplaceHint":
+    "Salvar substitui o acesso atual desta conta no workspace pela sua seleção. Repositórios removidos deixam de receber novas credenciais. Credenciais já emitidas podem funcionar até expirarem.",
+  "settings.repositories.githubFilterRepos": "Filtrar repositórios carregados",
+  "settings.repositories.githubNoRepos":
+    "Nenhum repositório disponível para autorizar.",
+  "settings.repositories.githubAccessChanged":
+    "Alguém alterou o acesso desta conta. Volte e revise os repositórios antes de salvar.",
+  "settings.repositories.githubMoreRepos": "Carregar mais repositórios",
+  "settings.repositories.githubBack": "Voltar às contas",
+  "settings.repositories.githubSaveOneRepo": "Autorizar 1 repositório",
+  "settings.repositories.githubSaveRepos": "Autorizar {count} repositórios",
+  "settings.repositories.githubEditWorkspaceAccess":
+    "Alterar acesso do workspace",
   "settings.repositories.githubShareHint":
     "Escolha sua conta pessoal do GitHub, ou uma organização onde você administra repositórios, para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
   "settings.repositories.githubInstallHint":
@@ -229,6 +247,15 @@ export const settings = {
   "settings.profile.displayName": "Nome de exibição",
   "settings.profile.displayNamePlaceholder": "Seu nome",
   "settings.profile.email": "E-mail",
+  "settings.profile.avatarUpload": "Trocar sua foto",
+  "settings.profile.avatarDialogTitle": "Foto de perfil",
+  "settings.profile.avatarDialogDescription":
+    "Arraste para reposicionar e role para dar zoom. Só a foto em uso fica visível para outras pessoas.",
+  "settings.profile.avatarDeleted": "Foto excluída",
+  "settings.profile.avatarRemove": "Remover",
+  "settings.profile.avatarRemoved": "Foto removida",
+  "settings.profile.avatarUpdated": "Foto atualizada",
+  "settings.profile.avatarUploadError": "Falha ao atualizar a foto",
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
@@ -626,6 +653,26 @@ export const settings = {
     "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
   "settings.agentTools.orgMcpsDescription":
     "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+  "settings.agentTools.orgMcpsPickTitle":
+    "Conex\u00f5es que os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickDescription":
+    "Desligue uma para mant\u00ea-la fora dos runs de coding agent. \u00datil para uma conex\u00e3o que duplica uma ferramenta que o run j\u00e1 tem \u2014 um MCP do mesmo tracker em que o run reporta, por exemplo. Um MCP conectado depois come\u00e7a ligado.",
+  "settings.agentTools.orgMcpsPickAriaLabel":
+    "Deixar os runs alcan\u00e7arem {name}",
+  "settings.agentTools.orgMcpsPickEmpty":
+    "Esta organiza\u00e7\u00e3o ainda n\u00e3o tem conex\u00f5es MCP",
+  "settings.agentTools.orgMcpsPickFailed":
+    "N\u00e3o foi poss\u00edvel salvar quais conex\u00f5es os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickSearch": "Buscar conex\u00f5es\u2026",
+  "settings.agentTools.orgMcpsPickEnableAll": "Ligar todas",
+  "settings.agentTools.orgMcpsPickDisableAll": "Desligar todas",
+  "settings.agentTools.orgMcpsPickNoMatch":
+    "Nenhuma conex\u00e3o corresponde a essa busca",
+  "settings.agentTools.orgMcpsPickSave": "Salvar",
+  "settings.agentTools.orgMcpsPickSaving": "Salvando\u2026",
+  "settings.agentTools.orgMcpsPickDiscard": "Descartar",
+  "settings.agentTools.orgMcpsPickSaved":
+    "Conex\u00f5es que os runs alcan\u00e7am salvas",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

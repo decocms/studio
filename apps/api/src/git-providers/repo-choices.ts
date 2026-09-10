@@ -126,7 +126,16 @@ export async function listOrgRepoChoices(
     const account = repository.accountId
       ? accountById.get(repository.accountId)
       : undefined;
-    return account !== undefined && accountIsServable(account);
+    if (!account || !accountIsServable(account)) return false;
+    if (
+      account.authKind === "github_app" &&
+      account.installationRepositoryIds !== null
+    ) {
+      return account.installationRepositoryIds.includes(
+        Number(repository.externalId),
+      );
+    }
+    return true;
   });
   return mergeRepoChoices(servable, await listLegacyRepoChoices(ctx, orgId));
 }

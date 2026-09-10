@@ -305,6 +305,9 @@ export const KEYS = {
   infraBillingSites: (organizationId: string) =>
     ["infra-billing-sites", organizationId] as const,
 
+  orgHasSite: (organizationId: string) =>
+    ["org-has-site", organizationId] as const,
+
   infraBilling: (organizationId: string, siteSlug: string, period: string) =>
     ["infra-billing", organizationId, siteSlug, period] as const,
 
@@ -557,6 +560,9 @@ export const KEYS = {
   orgFsStat: (orgId: string, volume: string, path: string) =>
     ["org-fs", orgId, volume, "stat", path] as const,
   orgFsPublicSets: (orgId: string) => ["org-fs-public-sets", orgId] as const,
+
+  // The signed-in user's stored profile pictures (instance-level, org-free).
+  userAvatars: () => ["user-avatars"] as const,
   orgRepoSyncs: (orgId: string) => ["org-repo-syncs", orgId] as const,
 
   // First-class git repositories (Settings → Repositories)
@@ -564,6 +570,11 @@ export const KEYS = {
     ["git-provider-capabilities", orgId] as const,
   githubConnectFlow: (orgId: string, flowId: string) =>
     ["github-connect-flow", orgId, flowId] as const,
+  githubConnectRepositories: (
+    orgId: string,
+    flowId: string,
+    installationId: number,
+  ) => ["github-connect-repositories", orgId, flowId, installationId] as const,
   gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
   /** Omit `accountId` for the whole org's list — that key is also the prefix a
    *  mutation invalidates to refresh every per-account listing with it. */

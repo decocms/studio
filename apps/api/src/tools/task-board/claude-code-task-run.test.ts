@@ -30,6 +30,98 @@ describe("buildClaudeCodeTaskPrompt", () => {
     expect(prompt).toContain("acme/web is already cloned");
   });
 
+  // The rule's own prompt was dropped on this path entirely — only the
+  // Decopilot builder read it — so every Jira status rule and every by-hand
+  // test run silently got the generic lead instead, on any org with a repo.
+  test("leads with the caller's instruction when there is one", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+      instruction: "Reproduce the bug, then fix it.",
+    });
+    expect(prompt.startsWith("Reproduce the bug, then fix it.")).toBe(true);
+    expect(prompt).not.toContain("You've been assigned this task.");
+  });
+
+  test("falls back to the generic lead with no instruction", () => {
+    expect(buildClaudeCodeTaskPrompt(task, repo)).toContain(
+      "You've been assigned this task.",
+    );
+  });
+
+  describe("a Jira-triggered run", () => {
+    const jira = {
+      source: {
+        kind: "jira" as const,
+        issueKey: "ABC-1",
+        title: "Jira ABC-1: x",
+        body: "# ABC-1",
+      },
+    };
+
+    // It has no board tools (`JIRA_RUN_TOOL_NAMES`). Naming them sent the
+    // first production run hunting for `TASK_BOARD_COMMENT_CREATE`, which its
+    // endpoint does not serve.
+    test("is never told to use a board tool", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).not.toContain("TASK_BOARD_");
+    });
+
+    // Prefixed the way the sandbox harness actually sees them: bare names cost
+    // the run a tool search before it could report anything.
+    test("is told to report on the issue, with namespaced tool names", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("mcp__studio__JIRA_COMMENT_ADD");
+      expect(prompt).toContain("mcp__studio__JIRA_ISSUE_TRANSITION");
+    });
+
+    // The coding half is unchanged — a Jira run still opens a pull request.
+    test("still opens a pull request from its own branch", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("open a pull request");
+      expect(prompt).toContain("from the branch you were given");
+    });
+
+    // Inverted from the board rule. A Jira run's reviewer writes its verdict to
+    // the hidden anchor card, so "a reviewer checks the preview after you hand
+    // over" reports to nobody — this run is the only one that can check it.
+    test("is told to verify on the deploy preview, not only locally", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("DEPLOY PREVIEW");
+      expect(prompt).not.toContain("Do NOT wait for, or verify against");
+    });
+
+    test("is told how to get evidence onto the issue", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("org/output/");
+      expect(prompt).toContain("mcp__studio__JIRA_REMOTE_LINK_ADD");
+      expect(prompt).toContain("qa-screenshot");
+    });
+
+    // With no rule prompt the board's "you've been assigned this task" lead is
+    // wrong: there is no task, there is an issue.
+    test("leads with the Jira default when the rule has no prompt", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt.startsWith("A Jira issue was moved into a column")).toBe(
+        true,
+      );
+    });
+
+    test("a rule's own prompt still wins over that default", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+        ...jira,
+        instruction: "Only review, do not change code.",
+      });
+      expect(prompt.startsWith("Only review, do not change code.")).toBe(true);
+    });
+  });
+
+  test("a board run keeps its board tools and its local-only verification", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo);
+    expect(prompt).toContain("mcp__studio__TASK_BOARD_COMMENT_CREATE");
+    expect(prompt).not.toContain("JIRA_");
+    expect(prompt).toContain("Do NOT wait for, or verify against");
+    expect(prompt).not.toContain("DEPLOY PREVIEW");
+  });
+
   test("omits the description block when there is none", () => {
     const prompt = buildClaudeCodeTaskPrompt(
       { ...task, description: null },

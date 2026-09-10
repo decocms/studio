@@ -1,5 +1,10 @@
-import { useSyncExternalStore } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useSyncExternalStore } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { z } from "zod";
 import { ArrowRight, LinkExternal01, RefreshCw01 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -12,6 +17,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
+import { Input } from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { useGitProviderCapabilities } from "@/hooks/use-git-providers";
@@ -30,6 +37,18 @@ const flowSchema = z.object({
     }),
   ),
 });
+
+const repositoryPageSchema = z.object({
+  repositories: z.array(z.object({ id: z.number(), name: z.string() })),
+  hasMore: z.boolean(),
+  accountVersion: z.string().nullable(),
+});
+
+type RepositoryGrant = {
+  installationId: number;
+  repositoryIds: number[];
+  accountVersion: string | null;
+};
 
 class FlowError extends Error {
   constructor(readonly status: number) {
@@ -63,6 +82,9 @@ export function GithubConnectDialog({
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
+  const [selectedInstallation, setSelectedInstallation] = useState<
+    number | null
+  >(null);
   const capabilities = useGitProviderCapabilities();
   const path = `/api/${encodeURIComponent(org.slug)}/git-providers/github/flows/${encodeURIComponent(flowId)}`;
   const channelName = `github-connect:${org.id}:${flowId}`;
@@ -78,6 +100,9 @@ export function GithubConnectDialog({
   function finish() {
     void queryClient.invalidateQueries({ queryKey: KEYS.gitAccounts(org.id) });
     void queryClient.invalidateQueries({ queryKey: KEYS.repositories(org.id) });
+    void queryClient.invalidateQueries({
+      queryKey: KEYS.providerRepoSearch(org.id, "", "").slice(0, 2),
+    });
     onClose();
   }
 
@@ -112,20 +137,25 @@ export function GithubConnectDialog({
   );
 
   const connect = useMutation({
-    mutationFn: async (installationId: number) =>
+    mutationFn: async (grant: RepositoryGrant) =>
       requestFlow(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ installationId }),
+        body: JSON.stringify(grant),
       }),
     onSuccess: () => {
       broadcast(channelName, "complete");
       toast.success(t("settings.repositories.githubConnected"));
       finish();
     },
-    onError: () => {
-      void flow.refetch();
-      toast.error(t("settings.repositories.oauthFailed"));
+    onError: (error) => {
+      toast.error(
+        t(
+          error instanceof FlowError && error.status === 409
+            ? "settings.repositories.githubAccessChanged"
+            : "settings.repositories.oauthFailed",
+        ),
+      );
     },
   });
   const cancel = useMutation({
@@ -155,108 +185,303 @@ export function GithubConnectDialog({
       <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-4 py-4 border-b border-border">
           <DialogTitle>
-            {t("settings.repositories.addGithubAccount")}
+            {t(
+              selectedInstallation === null
+                ? "settings.repositories.addGithubAccount"
+                : "settings.repositories.githubSelectTitle",
+            )}
           </DialogTitle>
           <DialogDescription>
-            {t("settings.repositories.githubShareHint", {
-              organization: org.name,
-            })}
+            {t(
+              selectedInstallation === null
+                ? "settings.repositories.githubShareHint"
+                : "settings.repositories.githubSelectedShareHint",
+              {
+                organization: org.name,
+              },
+            )}
           </DialogDescription>
         </DialogHeader>
-        <div className="max-h-80 overflow-y-auto">
-          {flow.isPending ? (
-            <div className="p-4">
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ) : flow.isError ? (
-            <p role="alert" className="p-4 text-sm text-destructive">
-              {t(
-                expired
-                  ? "settings.repositories.oauthExpired"
-                  : "settings.repositories.githubRefreshFailed",
-              )}
-            </p>
-          ) : flow.data.installations.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-muted-foreground">
-              {t("settings.repositories.githubInstallHint")}
-            </div>
-          ) : (
-            flow.data.installations.map((installation) => (
-              <Button
-                key={installation.installationId}
-                variant="ghost"
-                disabled={busy || flow.isFetching}
-                className="w-full h-auto rounded-none justify-start gap-3 px-4 py-3"
-                onClick={() => connect.mutate(installation.installationId)}
-              >
-                <Avatar
-                  url={installation.avatarUrl ?? undefined}
-                  fallback={<GitHubIcon size={16} />}
-                  size="sm"
-                  shape="circle"
-                  muted
-                />
-                <span className="flex-1 min-w-0 text-left">
-                  <span className="block truncate">{installation.login}</span>
-                  {installation.repositoryCount !== null && (
-                    <span className="block truncate text-xs text-muted-foreground font-normal">
-                      {t(
-                        installation.repositoryCount === 1
-                          ? "settings.repositories.githubAdministeredOne"
-                          : "settings.repositories.githubAdministered",
-                        { count: String(installation.repositoryCount) },
-                      )}
-                    </span>
-                  )}
-                </span>
-                <ArrowRight size={16} />
-              </Button>
-            ))
-          )}
-        </div>
-        <div className="border-t border-border px-4 py-3 flex flex-wrap gap-2">
-          {!expired && installUrl && (
-            <Button variant="outline" size="sm" asChild disabled={busy}>
-              <a
-                href={busy ? undefined : installUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-disabled={busy}
-              >
-                <LinkExternal01 size={14} />
-                {t("settings.repositories.installGithubAccount")}
-              </a>
-            </Button>
-          )}
-          {!expired && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy || flow.isFetching}
-              onClick={() => void flow.refetch()}
-            >
-              <RefreshCw01 size={14} />
-              {t("settings.repositories.checkGithubAccess")}
-            </Button>
-          )}
-          {restartUrl && (
-            <Button variant="ghost" size="sm" asChild disabled={busy}>
-              <a href={busy ? undefined : restartUrl} aria-disabled={busy}>
+        {selectedInstallation !== null ? (
+          <RepositoryGrantPicker
+            key={selectedInstallation}
+            path={path}
+            orgId={org.id}
+            flowId={flowId}
+            installationId={selectedInstallation}
+            busy={busy}
+            changed={
+              connect.error instanceof FlowError && connect.error.status === 409
+            }
+            onConnect={(grant) => connect.mutate(grant)}
+            onBack={() => {
+              setSelectedInstallation(null);
+              connect.reset();
+            }}
+          />
+        ) : (
+          <div className="max-h-80 overflow-y-auto">
+            {flow.isPending ? (
+              <div className="p-4">
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : flow.isError ? (
+              <p role="alert" className="p-4 text-sm text-destructive">
                 {t(
                   expired
-                    ? "settings.repositories.tryAgain"
-                    : "settings.repositories.switchGithubUser",
+                    ? "settings.repositories.oauthExpired"
+                    : "settings.repositories.githubRefreshFailed",
                 )}
-              </a>
-            </Button>
-          )}
-        </div>
-        {!expired && (
+              </p>
+            ) : flow.data.installations.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-muted-foreground">
+                {t("settings.repositories.githubInstallHint")}
+              </div>
+            ) : (
+              flow.data.installations.map((installation) => (
+                <Button
+                  key={installation.installationId}
+                  variant="ghost"
+                  disabled={busy || flow.isFetching}
+                  className="w-full h-auto rounded-none justify-start gap-3 px-4 py-3"
+                  onClick={() =>
+                    setSelectedInstallation(installation.installationId)
+                  }
+                >
+                  <Avatar
+                    url={installation.avatarUrl ?? undefined}
+                    fallback={<GitHubIcon size={16} />}
+                    size="sm"
+                    shape="circle"
+                    muted
+                  />
+                  <span className="flex-1 min-w-0 text-left">
+                    <span className="block truncate">{installation.login}</span>
+                    {installation.repositoryCount !== null && (
+                      <span className="block truncate text-xs text-muted-foreground font-normal">
+                        {t(
+                          installation.repositoryCount === 1
+                            ? "settings.repositories.githubAdministeredOne"
+                            : "settings.repositories.githubAdministered",
+                          { count: String(installation.repositoryCount) },
+                        )}
+                      </span>
+                    )}
+                  </span>
+                  <ArrowRight size={16} />
+                </Button>
+              ))
+            )}
+          </div>
+        )}
+        {selectedInstallation === null && (
+          <div className="border-t border-border px-4 py-3 flex flex-wrap gap-2">
+            {!expired && installUrl && (
+              <Button variant="outline" size="sm" asChild disabled={busy}>
+                <a
+                  href={busy ? undefined : installUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-disabled={busy}
+                >
+                  <LinkExternal01 size={14} />
+                  {t("settings.repositories.installGithubAccount")}
+                </a>
+              </Button>
+            )}
+            {!expired && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy || flow.isFetching}
+                onClick={() => void flow.refetch()}
+              >
+                <RefreshCw01 size={14} />
+                {t("settings.repositories.checkGithubAccess")}
+              </Button>
+            )}
+            {restartUrl && (
+              <Button variant="ghost" size="sm" asChild disabled={busy}>
+                <a href={busy ? undefined : restartUrl} aria-disabled={busy}>
+                  {t(
+                    expired
+                      ? "settings.repositories.tryAgain"
+                      : "settings.repositories.switchGithubUser",
+                  )}
+                </a>
+              </Button>
+            )}
+          </div>
+        )}
+        {!expired && selectedInstallation === null && (
           <p className="px-4 pb-4 text-xs text-muted-foreground">
             {t("settings.repositories.githubReturnHint")}
           </p>
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function RepositoryGrantPicker({
+  path,
+  orgId,
+  flowId,
+  installationId,
+  busy,
+  changed,
+  onConnect,
+  onBack,
+}: {
+  path: string;
+  orgId: string;
+  flowId: string;
+  installationId: number;
+  busy: boolean;
+  changed: boolean;
+  onConnect: (grant: RepositoryGrant) => void;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const [selected, setSelected] = useState<number[]>([]);
+  const [query, setQuery] = useState("");
+  const repositories = useInfiniteQuery({
+    queryKey: KEYS.githubConnectRepositories(orgId, flowId, installationId),
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) =>
+      repositoryPageSchema.parse(
+        await (
+          await requestFlow(
+            `${path}/repositories?installationId=${installationId}&page=${pageParam}`,
+          )
+        ).json(),
+      ),
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.hasMore ? pages.length + 1 : undefined,
+    retry: false,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const first = repositories.data?.pages[0];
+  const choices = [
+    ...new Map(
+      repositories.data?.pages
+        .flatMap((page) => page.repositories)
+        .map((repo) => [repo.id, repo]),
+    ).values(),
+  ];
+  return (
+    <div className="p-4 space-y-3">
+      <p className="text-sm text-muted-foreground">
+        {t("settings.repositories.githubSelectHint")}
+      </p>
+      {first?.accountVersion && (
+        <p className="text-sm text-muted-foreground">
+          {t("settings.repositories.githubReplaceHint")}
+        </p>
+      )}
+      <Input
+        aria-label={t("settings.repositories.githubFilterRepos")}
+        placeholder={t("settings.repositories.githubFilterRepos")}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {repositories.isPending ? (
+        <Skeleton className="h-20 w-full" />
+      ) : (
+        <div className="max-h-64 overflow-y-auto space-y-2">
+          {choices
+            .filter((repo) =>
+              repo.name.toLowerCase().includes(query.trim().toLowerCase()),
+            )
+            .map((repo) => (
+              <label
+                key={repo.id}
+                className="flex items-center gap-2 text-sm py-1"
+              >
+                <Checkbox
+                  checked={selected.includes(repo.id)}
+                  disabled={
+                    busy ||
+                    (!selected.includes(repo.id) && selected.length >= 500)
+                  }
+                  onCheckedChange={(checked) =>
+                    setSelected((current) =>
+                      checked === true
+                        ? [...current, repo.id]
+                        : current.filter((id) => id !== repo.id),
+                    )
+                  }
+                />
+                <span className="break-all">{repo.name}</span>
+              </label>
+            ))}
+          {choices.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              {t("settings.repositories.githubNoRepos")}
+            </p>
+          )}
+        </div>
+      )}
+      {(repositories.isError || changed) && (
+        <p role="alert" className="text-sm text-destructive">
+          {t(
+            changed
+              ? "settings.repositories.githubAccessChanged"
+              : "settings.repositories.githubRefreshFailed",
+          )}
+        </p>
+      )}
+      {repositories.isError && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void repositories.refetch()}
+        >
+          {t("settings.repositories.tryAgain")}
+        </Button>
+      )}
+      {repositories.hasNextPage && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={repositories.isFetching || busy}
+          onClick={() => void repositories.fetchNextPage()}
+        >
+          {t("settings.repositories.githubMoreRepos")}
+        </Button>
+      )}
+      <div className="flex flex-wrap justify-between gap-2">
+        <Button variant="outline" disabled={busy} onClick={onBack}>
+          {t("settings.repositories.githubBack")}
+        </Button>
+        <Button
+          disabled={
+            busy ||
+            changed ||
+            !first ||
+            repositories.isError ||
+            selected.length === 0
+          }
+          onClick={() => {
+            if (first)
+              onConnect({
+                installationId,
+                repositoryIds: selected,
+                accountVersion: first.accountVersion,
+              });
+          }}
+        >
+          {t(
+            selected.length === 1
+              ? "settings.repositories.githubSaveOneRepo"
+              : "settings.repositories.githubSaveRepos",
+            {
+              count: String(selected.length),
+            },
+          )}
+        </Button>
+      </div>
+    </div>
   );
 }

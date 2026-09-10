@@ -31,6 +31,11 @@ import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
 import {
+  JIRA_DEFAULT_LEAD,
+  jiraRunFinishInstructions,
+  jiraRunVerifyInstructions,
+} from "./jira-run-prompt";
+import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
 } from "./description-uploads";
@@ -191,8 +196,15 @@ export function buildClaudeCodeTaskPrompt(
    * checkout is stated separately — see MIXED_PROVIDER_NOTE.
    */
   const cli = providerCli(repo?.provider ?? "github");
+  // A column rule's own instruction, when the caller passed one. Dropping it
+  // here (the Decopilot builder never did) silently ignored every Jira status
+  // rule's prompt on any org with a repo to work in.
+  const jiraRun = opts?.source?.kind === "jira";
   const lines: string[] = [
-    `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`,
+    opts?.instruction?.trim() ||
+      (jiraRun
+        ? JIRA_DEFAULT_LEAD
+        : `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`),
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
       "completion yourself. Make reasonable decisions and move on; do not stop " +
@@ -283,7 +295,14 @@ export function buildClaudeCodeTaskPrompt(
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    // A Jira run is the only one that CAN check the preview: the reviewer of
+    // one writes its verdict to the hidden anchor card, so handing over
+    // "for a reviewer to check" reports to nobody.
+    ...(jiraRun
+      ? jiraRunVerifyInstructions()
+      : [
+          `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+        ]),
     // The sandbox's state — installed or not, dev server or not — is NOT
     // stated here. It is decided by the claim, minutes after this string is
     // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
@@ -294,6 +313,14 @@ export function buildClaudeCodeTaskPrompt(
     // is open the PR from some other branch. Replaces asking the run to report
     // it, which a run that died right after `gh pr create` could never do.
     `- Open the ${cli.changeRequest} from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.`,
+  );
+
+  if (jiraRun) {
+    lines.push(...jiraRunFinishInstructions("mcp__studio__"), "");
+    return lines.join("\n");
+  }
+
+  lines.push(
     // A tool call, NOT a line in the PR body: the first version of this read
     // the body back, and one hand-edited body lost the routes silently.
     `- If your change adds or edits pages a person can open, report their paths with \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` (id "${task.id}", \`previewRoutes: ["/some-page"]\`) — paths only, no host. The card joins them onto the deploy preview so a reviewer opens the page directly. Skip it when the change has no visible route.`,

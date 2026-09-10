@@ -685,14 +685,18 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     blocksEditingEnabled &&
     editingMode === "blocks";
   const pinnedDraftUrlRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the value pinned/latched last render before deciding whether to re-pin
+  let pinnedDraftUrl = pinnedDraftUrlRef.current;
   if (!inPlaceRenderActive) {
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- track the live draft URL while not editing in place; pin it while editing
     pinnedDraftUrlRef.current = draftPreviewUrl;
+  } else if (pinnedDraftUrl === null && draftPreviewUrl !== null) {
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- latch the first draft URL once (panel opened before the grant loaded), then freeze: re-tracking would reload the frame on every save's new @sha
+    pinnedDraftUrl = pinnedDraftUrlRef.current = draftPreviewUrl;
   }
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the value pinned during this same render (written just above when inactive)
-  const pinnedDraftUrl = pinnedDraftUrlRef.current;
+  // Frozen while editing in place (no live fallback), so autosave version bumps don't reload the frame; a null pin keeps iframeSrc on the base URL until the latch above.
   const effectiveDraftPreviewUrl = inPlaceRenderActive
-    ? (pinnedDraftUrl ?? draftPreviewUrl)
+    ? pinnedDraftUrl
     : draftPreviewUrl;
 
   const iframeSrc = withDecoFBT(

@@ -126,23 +126,13 @@ export class GitProviderAccountStorage {
             avatar_url: params.avatarUrl ?? null,
             installation_id: params.installationId ?? null,
             installation_authorized_by: params.installationAuthorizedBy ?? null,
-            // Grants add up: a second person who administers other
-            // repositories widens what this organization can reach, and an
-            // owner connecting the account widens it to everything. A row
-            // that was revoked or never authorized starts over from the
-            // incoming grant instead of reviving the old one.
-            installation_repository_ids: sql<string | null>`CASE
-              WHEN git_provider_accounts.status != 'active'
-                OR git_provider_accounts.installation_authorized_by IS NULL
-                THEN excluded.installation_repository_ids
-              WHEN excluded.installation_repository_ids IS NULL
-                OR git_provider_accounts.installation_repository_ids IS NULL THEN NULL
-              ELSE (SELECT jsonb_agg(DISTINCT value) FROM jsonb_array_elements(
-                git_provider_accounts.installation_repository_ids || excluded.installation_repository_ids
-              )) END`,
+            // Reconnecting replaces the workspace grant, including an old unrestricted one.
+            installation_repository_ids: params.installationRepositoryIds
+              ? JSON.stringify(params.installationRepositoryIds)
+              : null,
             credential_connection_id: null,
             status: "active",
-            updated_at: now,
+            updated_at: sql<Date>`GREATEST(${now}, git_provider_accounts.updated_at + interval '1 millisecond')`,
           }),
       )
       .returningAll()
