@@ -242,6 +242,7 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_COMMENT_ADD,
   JiraTools.JIRA_ISSUE_TRANSITION,
   JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
+  JiraTools.JIRA_REMOTE_LINK_ADD,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

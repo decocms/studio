@@ -475,6 +475,7 @@ export class SandboxDispatchClient {
       organizationId: organization.id,
       orgWide,
       ownIds,
+      excludedIds: new Set(settings?.coding_agent_mcp_excluded ?? []),
       connections: items,
     });
   }
@@ -1200,11 +1201,20 @@ export function selectRunConnections<
   orgWide: boolean;
   /** Connections aggregated on the agent itself; always mounted. */
   ownIds: ReadonlySet<string>;
+  /**
+   * Connections the org excluded from coding-agent runs
+   * (`coding_agent_mcp_excluded`). Wins over BOTH other reasons to mount one:
+   * the org-wide opt-in is what it exists to narrow, and an exclusion someone
+   * set explicitly must not be silently reinstated because the connection also
+   * happens to be aggregated on the agent.
+   */
+  excludedIds?: ReadonlySet<string>;
   connections: readonly T[];
 }): T[] {
   return args.connections.filter(
     (connection) =>
       (args.orgWide || args.ownIds.has(connection.id)) &&
+      !args.excludedIds?.has(connection.id) &&
       // A connection Studio already knows is erroring only costs the session
       // a failed connect at startup.
       connection.status === "active" &&

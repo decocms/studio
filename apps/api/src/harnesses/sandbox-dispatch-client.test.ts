@@ -103,6 +103,48 @@ describe("selectRunConnections", () => {
       }).map((c) => c.id),
     ).toEqual(["conn_github", "conn_vtex"]);
   });
+
+  // The point of the exclusion list: the org-wide opt-in is all-or-nothing,
+  // and some connections are the wrong tool for a coding run even so.
+  test("an excluded connection is not mounted under the org-wide flag", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: true,
+        ownIds: new Set<string>(),
+        excludedIds: new Set(["conn_vtex"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_github"]);
+  });
+
+  // An exclusion someone set explicitly must not be silently reinstated
+  // because the connection also happens to be aggregated on the agent.
+  test("an exclusion outranks the agent's own aggregation", () => {
+    expect(
+      selectRunConnections({
+        organizationId,
+        orgWide: false,
+        ownIds: new Set(["conn_github", "conn_vtex"]),
+        excludedIds: new Set(["conn_github"]),
+        connections,
+      }).map((c) => c.id),
+    ).toEqual(["conn_vtex"]);
+  });
+
+  test("an empty or absent exclusion list changes nothing", () => {
+    for (const excludedIds of [undefined, new Set<string>()]) {
+      expect(
+        selectRunConnections({
+          organizationId,
+          orgWide: true,
+          ownIds: new Set<string>(),
+          excludedIds,
+          connections,
+        }).map((c) => c.id),
+      ).toEqual(["conn_github", "conn_vtex"]);
+    }
+  });
 });
 
 describe("harnessRunsInSandbox", () => {
