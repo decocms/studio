@@ -639,6 +639,15 @@ export const settings = {
     "This organization has no MCP connections yet",
   "settings.agentTools.orgMcpsPickFailed":
     "Could not save which connections runs can reach",
+  "settings.agentTools.orgMcpsPickSearch": "Search connections\u2026",
+  "settings.agentTools.orgMcpsPickEnableAll": "Enable all",
+  "settings.agentTools.orgMcpsPickDisableAll": "Disable all",
+  "settings.agentTools.orgMcpsPickNoMatch": "No connection matches that search",
+  "settings.agentTools.orgMcpsPickSave": "Save",
+  "settings.agentTools.orgMcpsPickSaving": "Saving\u2026",
+  "settings.agentTools.orgMcpsPickDiscard": "Discard",
+  "settings.agentTools.orgMcpsPickSaved":
+    "Saved which connections runs can reach",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
