@@ -158,16 +158,14 @@ export function PostEditor({
             type="button"
             variant="outline"
             size="sm"
-            disabled={!previewUrl || hasErrors}
+            disabled={!previewUrl}
             title={
-              hasErrors
-                ? missingLabel
-                : previewUrl
-                  ? t("sandbox.postEditor.previewTooltip")
-                  : t("sandbox.postEditor.previewRequiresSlugAndCategory")
+              previewUrl
+                ? t("sandbox.postEditor.previewTooltip")
+                : t("sandbox.postEditor.previewRequiresSlugAndCategory")
             }
             onClick={() => {
-              if (previewUrl && !hasErrors) {
+              if (previewUrl) {
                 window.open(previewUrl, "_blank", "noopener,noreferrer");
               }
             }}
