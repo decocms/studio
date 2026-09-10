@@ -28,7 +28,8 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useFeature, usePlansEnabled } from "@/hooks/use-entitlements";
+import { useFeature } from "@/hooks/use-entitlements";
+import { usePublicConfig } from "@/hooks/use-public-config";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 
@@ -233,8 +234,11 @@ export function DecoCreditsHero() {
   const queryClient = useQueryClient();
   const allKeys = useAiProviderKeys();
   const decoKey = allKeys.find((k) => k.providerId === "deco");
-  // With plans on, the balance lives on PlanUsageCard instead.
-  const plansEnabled = usePlansEnabled();
+  // With plans on, the balance lives on PlanUsageCard instead. Suspending, not
+  // optional: `undefined` config reads as plans-off, which rendered a $xx.xx at
+  // text-3xl for a frame on a plans-on deployment and fired the credits query
+  // the plans path does not want.
+  const plansEnabled = usePublicConfig().plansEnabled === true;
   const canBuyCredits = useFeature("credits");
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
