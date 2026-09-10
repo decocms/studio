@@ -17,6 +17,7 @@ describe("isServiceTokenPath", () => {
         "/api/org_1/internal/commerce-diagnostic/share-invite",
       ),
     ).toBe(true);
+    expect(isServiceTokenPath("/api/org_1/internal/finance/notice")).toBe(true);
   });
 
   it("rejects everything else", () => {

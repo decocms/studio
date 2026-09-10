@@ -56,6 +56,21 @@ describe("isBlockableOrgRequest", () => {
     ).toBe(false);
   });
 
+  it("lets finance reactivate only through its exact notice route", () => {
+    expect(
+      isBlockableOrgRequest("DELETE", "/api/acme/internal/finance/notice"),
+    ).toBe(false);
+    expect(
+      isBlockableOrgRequest(
+        "POST",
+        "/api/acme/internal/finance/notice/anything",
+      ),
+    ).toBe(true);
+    expect(
+      isBlockableOrgRequest("POST", "/api/acme/internal/anything-else"),
+    ).toBe(true);
+  });
+
   it("ignores a path with no route under the org segment", () => {
     expect(isBlockableOrgRequest("POST", "/api/acme")).toBe(false);
     expect(isBlockableOrgRequest("POST", "/api/acme/")).toBe(false);

@@ -401,6 +401,9 @@ secret:
   # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
+  # Dedicated bearer for deCommand's finance-owned organization notices.
+  # Leave unset to disable the internal finance notice API.
+  # FINANCE_SERVICE_TOKEN: ""
   # Optional internal NATS credentials. Prefer secret.secretName or
   # externalSecret for production GitOps so credentials are not stored in
   # plain values files.
