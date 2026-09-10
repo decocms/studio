@@ -100,12 +100,16 @@ export function PostEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
-  const [post, setPost] = useAutosave(initial, (next) => {
-    save.mutate({
-      blockKey,
-      data: buildBlogBlock(blockKey, "posts", stampPostModified(next)),
-    });
-  });
+  const [post, setPost] = useAutosave(
+    initial,
+    (next) => {
+      save.mutate({
+        blockKey,
+        data: buildBlogBlock(blockKey, "posts", stampPostModified(next)),
+      });
+    },
+    { isSaving: save.isPending },
+  );
 
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
