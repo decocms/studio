@@ -663,6 +663,16 @@ export const settings = {
     "Esta organiza\u00e7\u00e3o ainda n\u00e3o tem conex\u00f5es MCP",
   "settings.agentTools.orgMcpsPickFailed":
     "N\u00e3o foi poss\u00edvel salvar quais conex\u00f5es os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickSearch": "Buscar conex\u00f5es\u2026",
+  "settings.agentTools.orgMcpsPickEnableAll": "Ligar todas",
+  "settings.agentTools.orgMcpsPickDisableAll": "Desligar todas",
+  "settings.agentTools.orgMcpsPickNoMatch":
+    "Nenhuma conex\u00e3o corresponde a essa busca",
+  "settings.agentTools.orgMcpsPickSave": "Salvar",
+  "settings.agentTools.orgMcpsPickSaving": "Salvando\u2026",
+  "settings.agentTools.orgMcpsPickDiscard": "Descartar",
+  "settings.agentTools.orgMcpsPickSaved":
+    "Conex\u00f5es que os runs alcan\u00e7am salvas",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":
