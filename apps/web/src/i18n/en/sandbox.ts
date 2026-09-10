@@ -147,6 +147,7 @@ export const sandbox = {
     "No CMS button in the preview and no Content tab. The site still previews, and the agent can still edit content.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.collectionsSidebar.actions": "Actions",
+  "sandbox.collectionsSidebar.advanced": "Advanced",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendar",

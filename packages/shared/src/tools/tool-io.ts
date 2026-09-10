@@ -150,6 +150,7 @@ export interface StudioToolIO {
         | { title: string; url: string; icon: string }[]
         | undefined;
       enabled_plugins?: string[] | undefined;
+      coding_agent_mcp_excluded?: string[] | undefined;
       registry_config?:
         | {
             registries: Record<string, { enabled: boolean }>;
@@ -224,6 +225,7 @@ export interface StudioToolIO {
         | null
         | undefined;
       enabled_plugins?: string[] | null | undefined;
+      coding_agent_mcp_excluded?: string[] | null | undefined;
       registry_config?:
         | {
             registries: Record<string, { enabled: boolean }>;
@@ -5607,7 +5609,10 @@ export interface StudioToolIO {
     input: { [x: string]: never };
     output: { key: string; url: string; status: string; markdown: string };
   };
-  JIRA_COMMENT_ADD: { input: { body: string }; output: { commentId: string } };
+  JIRA_COMMENT_ADD: {
+    input: { body: string };
+    output: { commentId: string; embeddedImages: string[] };
+  };
   JIRA_ISSUE_TRANSITION: {
     input: { toStatus: string };
     output: { status: string };
@@ -5620,6 +5625,15 @@ export interface StudioToolIO {
       expiresAt: string;
       command: string;
     };
+  };
+  JIRA_REMOTE_LINK_ADD: {
+    input: {
+      url: string;
+      title: string;
+      summary?: string | undefined;
+      key?: string | undefined;
+    };
+    output: { linkId: number };
   };
   LIST_OBJECTS: {
     input: {

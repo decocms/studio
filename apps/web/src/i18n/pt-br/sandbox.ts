@@ -151,6 +151,7 @@ export const sandbox = {
     "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.collectionsSidebar.actions": "Ações",
+  "sandbox.collectionsSidebar.advanced": "Avançado",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.blog": "Blog",
   "sandbox.collectionsSidebar.calendar": "Calendário",

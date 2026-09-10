@@ -30,7 +30,11 @@ import {
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
-import { jiraRunFinishInstructions } from "./jira-run-prompt";
+import {
+  JIRA_DEFAULT_LEAD,
+  jiraRunFinishInstructions,
+  jiraRunVerifyInstructions,
+} from "./jira-run-prompt";
 import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
@@ -195,9 +199,12 @@ export function buildClaudeCodeTaskPrompt(
   // A column rule's own instruction, when the caller passed one. Dropping it
   // here (the Decopilot builder never did) silently ignored every Jira status
   // rule's prompt on any org with a repo to work in.
+  const jiraRun = opts?.source?.kind === "jira";
   const lines: string[] = [
     opts?.instruction?.trim() ||
-      `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`,
+      (jiraRun
+        ? JIRA_DEFAULT_LEAD
+        : `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`),
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
       "completion yourself. Make reasonable decisions and move on; do not stop " +
@@ -276,8 +283,6 @@ export function buildClaudeCodeTaskPrompt(
     );
   }
 
-  const jiraRun = opts?.source?.kind === "jira";
-
   lines.push(
     "How to finish:",
     "- Make the change, commit it, push the branch, and open a pull request" +
@@ -290,7 +295,14 @@ export function buildClaudeCodeTaskPrompt(
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+    // A Jira run is the only one that CAN check the preview: the reviewer of
+    // one writes its verdict to the hidden anchor card, so handing over
+    // "for a reviewer to check" reports to nobody.
+    ...(jiraRun
+      ? jiraRunVerifyInstructions()
+      : [
+          `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
+        ]),
     // The sandbox's state — installed or not, dev server or not — is NOT
     // stated here. It is decided by the claim, minutes after this string is
     // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends

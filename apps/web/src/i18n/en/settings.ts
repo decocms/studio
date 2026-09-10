@@ -631,6 +631,23 @@ export const settings = {
   "settings.agentTools.orgMcpsTitle": "Give runs this org's MCP connections",
   "settings.agentTools.orgMcpsDescription":
     "Every MCP you have connected becomes available to the Super Agent and the reviewers, on top of the task tools they always get. Tools load only when the agent looks for one, so connecting more does not crowd its context.",
+  "settings.agentTools.orgMcpsPickTitle": "Connections runs can reach",
+  "settings.agentTools.orgMcpsPickDescription":
+    "Turn one off to keep it away from coding-agent runs. Useful for a connection that duplicates a tool a run already has \u2014 an MCP for the same tracker the run reports to, say. A newly connected MCP starts on.",
+  "settings.agentTools.orgMcpsPickAriaLabel": "Let runs reach {name}",
+  "settings.agentTools.orgMcpsPickEmpty":
+    "This organization has no MCP connections yet",
+  "settings.agentTools.orgMcpsPickFailed":
+    "Could not save which connections runs can reach",
+  "settings.agentTools.orgMcpsPickSearch": "Search connections\u2026",
+  "settings.agentTools.orgMcpsPickEnableAll": "Enable all",
+  "settings.agentTools.orgMcpsPickDisableAll": "Disable all",
+  "settings.agentTools.orgMcpsPickNoMatch": "No connection matches that search",
+  "settings.agentTools.orgMcpsPickSave": "Save",
+  "settings.agentTools.orgMcpsPickSaving": "Saving\u2026",
+  "settings.agentTools.orgMcpsPickDiscard": "Discard",
+  "settings.agentTools.orgMcpsPickSaved":
+    "Saved which connections runs can reach",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Run Code Agent chats with Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

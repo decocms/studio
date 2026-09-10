@@ -217,7 +217,12 @@ export class JiraClient {
         headers: {
           Authorization: this.authHeader,
           Accept: "application/json",
-          ...(init?.body ? { "Content-Type": "application/json" } : {}),
+          // Only a string body is JSON. A FormData body must keep the boundary
+          // `fetch` computes for it — naming the type here truncates the upload.
+          ...(typeof init?.body === "string"
+            ? { "Content-Type": "application/json" }
+            : {}),
+          ...(init?.headers as Record<string, string> | undefined),
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -562,6 +567,93 @@ export class JiraClient {
       console.warn(`[jira] comment rejected as ADF, posting flat: ${err}`);
       return post(textToAdf(header ? `${header}\n${markdown}` : markdown));
     }
+  }
+
+  /**
+   * Upload one file to the issue.
+   *
+   * `X-Atlassian-Token: no-check` is required — Jira rejects a multipart
+   * attachment POST without it as XSRF, whatever the credential.
+   */
+  async uploadAttachment(
+    issueIdOrKey: string,
+    filename: string,
+    bytes: Uint8Array,
+    contentType = "application/octet-stream",
+  ): Promise<JiraAttachment> {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([bytes as BlobPart], { type: contentType }),
+      filename,
+    );
+    const created = await this.request<JiraAttachment[]>(
+      `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/attachments`,
+      {
+        method: "POST",
+        body: form,
+        headers: { "X-Atlassian-Token": "no-check" },
+      },
+      // A retried upload would leave a duplicate attachment on the issue.
+      { idempotent: false },
+    );
+    const attachment = created[0];
+    if (!attachment) {
+      throw new Error(
+        `Jira accepted the upload of ${filename} but named no attachment`,
+      );
+    }
+    return attachment;
+  }
+
+  /**
+   * The media-services uuid of an attachment — what an ADF `media` node
+   * addresses. The numeric attachment id is NOT it; Jira answers a comment
+   * carrying one with `ATTACHMENT_VALIDATION_ERROR`.
+   *
+   * The content endpoint answers 303 to the media CDN and the uuid is the last
+   * path segment of that `Location`. Read WITHOUT following the redirect: the
+   * hop is a file download, and the platform drops Authorization across it
+   * anyway (see `downloadAttachment`).
+   */
+  async attachmentMediaUuid(attachmentId: string): Promise<string | null> {
+    const response = await fetch(
+      `${this.baseUrl}/rest/api/3/attachment/content/${encodeURIComponent(attachmentId)}`,
+      {
+        headers: { Authorization: this.authHeader },
+        redirect: "manual",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
+    return mediaUuidFromLocation(response.headers.get("location"));
+  }
+
+  /**
+   * A remote link on the issue — how a pull request and a deploy preview get
+   * onto the card as links a person can click, rather than buried in a comment.
+   *
+   * `globalId` makes it idempotent: posting the same one twice updates that
+   * link instead of adding a second.
+   */
+  async addRemoteLink(
+    issueIdOrKey: string,
+    link: { url: string; title: string; summary?: string; globalId?: string },
+  ): Promise<{ id: number }> {
+    return this.request<{ id: number }>(
+      `/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/remotelink`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(link.globalId ? { globalId: link.globalId } : {}),
+          object: {
+            url: link.url,
+            title: link.title,
+            ...(link.summary ? { summary: link.summary } : {}),
+          },
+        }),
+      },
+      { idempotent: false },
+    );
   }
 
   /** Attachments on the issue. */
@@ -919,4 +1011,20 @@ export class JiraUserDirectory {
     }
     return resolved;
   }
+}
+
+/**
+ * The media uuid out of the `Location` the attachment-content endpoint
+ * redirects to, or null when the header is absent or shaped differently.
+ *
+ * Pure, so the parse is unit-tested: the uuid is what an ADF `media` node
+ * addresses, and getting it wrong makes Jira reject the whole comment.
+ */
+export function mediaUuidFromLocation(location: string | null): string | null {
+  if (!location) return null;
+  const match =
+    /\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?]|$)/i.exec(
+      location,
+    );
+  return match?.[1] ?? null;
 }
