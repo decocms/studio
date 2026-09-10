@@ -52,6 +52,7 @@ async function grantAccess(
     }>;
     identityStatus?: number;
     membershipsStatus?: number;
+    repositoryDelayMs?: number;
   },
 ) {
   const result = await request.post(`${fixtureOrigin}/__admin/github-users`, {
@@ -70,6 +71,7 @@ async function grantAccess(
           })),
       identityStatus: identity?.identityStatus,
       membershipsStatus: identity?.membershipsStatus,
+      repositoryDelayMs: identity?.repositoryDelayMs,
     },
   });
   expect(result.ok()).toBe(true);
@@ -728,6 +730,69 @@ test("an organization member shares only the repositories they administer", asyn
   } finally {
     await db.end();
   }
+});
+
+test("organization permission checks overlap with bounded concurrency", async ({
+  authedPage,
+}) => {
+  const { page } = authedPage;
+  const installations = Array.from({ length: 9 }, (_, index) =>
+    installation(`member-org-${index}`, "Organization", [
+      { id: 8000 + index, permissions: { admin: true } },
+    ]),
+  );
+  const flow = await seedFlow(authedPage, installations);
+  await grantAccess(page.request, flow.token, installations, {
+    memberships: [],
+    repositoryDelayMs: 100,
+  });
+  const response = await page.request.get(flow.path);
+  expect(response.status()).toBe(200);
+  expect(
+    (await response.json()).installations.map(
+      (item: { login: string }) => item.login,
+    ),
+  ).toEqual(installations.map((item) => item.account.login));
+  const stats = await (
+    await page.request.get(`${fixtureOrigin}/__admin/github-user-requests`, {
+      headers: { Authorization: `Bearer ${flow.token}` },
+    })
+  ).json();
+  expect(stats.peak).toBeGreaterThan(1);
+  expect(stats.peak).toBeLessThanOrEqual(4);
+});
+
+test("connecting checks repositories only for the selected organization", async ({
+  authedPage,
+}) => {
+  const { page } = authedPage;
+  const installations = Array.from({ length: 6 }, (_, index) =>
+    installation(`connect-org-${index}`, "Organization", [
+      { id: 9000 + index, permissions: { admin: true } },
+    ]),
+  );
+  const flow = await seedFlow(authedPage, installations);
+  await grantAccess(page.request, flow.token, installations, {
+    memberships: [],
+  });
+  const selected = installations[3]!;
+  expect(
+    (
+      await page.request.post(flow.path, {
+        data: { installationId: selected.id },
+      })
+    ).status(),
+  ).toBe(200);
+  const stats = await (
+    await page.request.get(`${fixtureOrigin}/__admin/github-user-requests`, {
+      headers: { Authorization: `Bearer ${flow.token}` },
+    })
+  ).json();
+  expect(
+    stats.paths.filter((path: string) => path.includes("/repositories?")),
+  ).toEqual([
+    `/user/installations/${selected.id}/repositories?per_page=100&page=1`,
+  ]);
 });
 
 test("grants add up between connectors and an owner widens them to the whole installation", async ({
