@@ -39,6 +39,53 @@ describe("findBlogPageSlug", () => {
     };
     expect(findBlogPageSlug(decofile)).toBeNull();
   });
+
+  it("falls back to the blog post Page block when the app omits pageSlug", () => {
+    // Bagaggio shape: app block has no route props; the route is a Page block.
+    const decofile = {
+      "deco-blog": { __resolveType: "site/apps/deco/blog.ts" },
+      "pages-blog-slug-66284": {
+        __resolveType: "website/pages/Page.tsx",
+        name: "Blog Post",
+        path: "/blog/:slug",
+        sections: [
+          { __resolveType: "site/sections/Blog/BlogPostPage.tsx" },
+          { __resolveType: "blog/loaders/BlogPostItem.ts" },
+        ],
+      },
+    };
+    expect(findBlogPageSlug(decofile)).toBe("/blog/:slug");
+  });
+
+  it("prefers the app's pageSlug over the Page block fallback", () => {
+    const decofile = {
+      blog: {
+        __resolveType: "site/apps/deco/blog.ts",
+        pageSlug: "/blogteste/:slug",
+      },
+      "pages-blog-slug-66284": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/blog/:slug",
+        sections: [{ __resolveType: "site/sections/Blog/BlogPostPage.tsx" }],
+      },
+    };
+    expect(findBlogPageSlug(decofile)).toBe("/blogteste/:slug");
+  });
+
+  it("does not treat the category page as the post page", () => {
+    const decofile = {
+      "deco-blog": { __resolveType: "site/apps/deco/blog.ts" },
+      "pages-Blog Categoria-929386": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/blog/categoria/:categoria",
+        sections: [
+          { __resolveType: "site/sections/Blog/BlogCategoryPage.tsx" },
+          { __resolveType: "site/sections/Blog/BlogCategoryHeader.tsx" },
+        ],
+      },
+    };
+    expect(findBlogPageSlug(decofile)).toBeNull();
+  });
 });
 
 describe("findBlogCategorySlug", () => {
@@ -62,6 +109,27 @@ describe("findBlogCategorySlug", () => {
     };
     expect(findBlogCategorySlug(decofile)).toBeNull();
   });
+
+  it("falls back to the category Page block, skipping the paginated variant", () => {
+    const decofile = {
+      "deco-blog": { __resolveType: "site/apps/deco/blog.ts" },
+      "pages-Blog Categoria-929386": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/blog/categoria/:categoria",
+        sections: [
+          { __resolveType: "site/sections/Blog/BlogCategoryPage.tsx" },
+        ],
+      },
+      "pages-Blog Categoria Paginada-803419": {
+        __resolveType: "website/pages/Page.tsx",
+        path: "/blog/categoria/:categoria/page/:page",
+        sections: [
+          { __resolveType: "site/sections/Blog/BlogCategoryPage.tsx" },
+        ],
+      },
+    };
+    expect(findBlogCategorySlug(decofile)).toBe("/blog/categoria/:categoria");
+  });
 });
 
 describe("applyBlogCategorySlug", () => {
@@ -75,6 +143,12 @@ describe("applyBlogCategorySlug", () => {
     );
     expect(applyBlogCategorySlug("/blog/:categorySlug?", "news")).toBe(
       "/blog/news",
+    );
+  });
+
+  it("substitutes the pt-BR :categoria param", () => {
+    expect(applyBlogCategorySlug("/blog/categoria/:categoria", "moda")).toBe(
+      "/blog/categoria/moda",
     );
   });
 
@@ -254,6 +328,25 @@ describe("buildBlogPostPreviewUrl", () => {
         previewBaseUrl: "https://abc.preview.example.com",
       }),
     ).toBeNull();
+  });
+
+  it("builds the url from the Page block when the app omits pageSlug", () => {
+    expect(
+      buildBlogPostPreviewUrl({
+        decofile: {
+          "deco-blog": { __resolveType: "site/apps/deco/blog.ts" },
+          "pages-blog-slug-66284": {
+            __resolveType: "website/pages/Page.tsx",
+            path: "/blog/:slug",
+            sections: [
+              { __resolveType: "site/sections/Blog/BlogPostPage.tsx" },
+            ],
+          },
+        },
+        post: { slug: "my-post", categories: [] },
+        previewBaseUrl: "https://abc.preview.example.com",
+      }),
+    ).toBe("https://abc.preview.example.com/blog/my-post");
   });
 
   it("returns null when there is no blog app block", () => {
