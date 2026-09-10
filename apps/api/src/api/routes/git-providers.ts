@@ -209,7 +209,10 @@ export const createGitProviderRoutes = () => {
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     try {
       const userToken = await ctx.vault.decrypt(flow.encrypted_access_token);
-      const access = await appAuth.listAuthorizedInstallations(userToken);
+      const access = await appAuth.listAuthorizedInstallations(
+        userToken,
+        input.data.installationId,
+      );
       const installation = access.installations.find(
         (item) => item.installationId === input.data.installationId,
       );
@@ -269,6 +272,7 @@ export const createGitProviderRoutes = () => {
     try {
       access = await appAuth.listAuthorizedInstallations(
         await ctx.vault.decrypt(flow.encrypted_access_token),
+        input.data.installationId,
       );
     } catch {
       return c.json({ error: "github_unavailable" }, 502);

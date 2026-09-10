@@ -22,7 +22,8 @@ import {
   type RepoContentClient,
   type TreeEntry,
 } from "@/git-providers";
-import { mapBounded, resolveOrCreateHead } from "./read-decofile";
+import { mapBounded } from "@decocms/shared/std";
+import { resolveOrCreateHead } from "./read-decofile";
 
 const DIFF_MAX_FILES = 200;
 const DIFF_FETCH_CONCURRENCY = 12;
