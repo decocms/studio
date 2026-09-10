@@ -21,6 +21,7 @@ import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useGitProviderCapabilities } from "@/hooks/use-git-providers";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
@@ -345,14 +346,20 @@ function RepositoryGrantPicker({
   const t = useT();
   const [selected, setSelected] = useState<number[]>([]);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const repositories = useInfiniteQuery({
-    queryKey: KEYS.githubConnectRepositories(orgId, flowId, installationId),
+    queryKey: KEYS.githubConnectRepositories(
+      orgId,
+      flowId,
+      installationId,
+      debouncedQuery,
+    ),
     initialPageParam: 1,
     queryFn: async ({ pageParam }) =>
       repositoryPageSchema.parse(
         await (
           await requestFlow(
-            `${path}/repositories?installationId=${installationId}&page=${pageParam}`,
+            `${path}/repositories?installationId=${installationId}&page=${pageParam}${debouncedQuery ? `&query=${encodeURIComponent(debouncedQuery)}` : ""}`,
           )
         ).json(),
       ),
@@ -390,35 +397,37 @@ function RepositoryGrantPicker({
         <Skeleton className="h-20 w-full" />
       ) : (
         <div className="max-h-64 overflow-y-auto space-y-2">
-          {choices
-            .filter((repo) =>
-              repo.name.toLowerCase().includes(query.trim().toLowerCase()),
-            )
-            .map((repo) => (
-              <label
-                key={repo.id}
-                className="flex items-center gap-2 text-sm py-1"
-              >
-                <Checkbox
-                  checked={selected.includes(repo.id)}
-                  disabled={
-                    busy ||
-                    (!selected.includes(repo.id) && selected.length >= 500)
-                  }
-                  onCheckedChange={(checked) =>
-                    setSelected((current) =>
-                      checked === true
-                        ? [...current, repo.id]
-                        : current.filter((id) => id !== repo.id),
-                    )
-                  }
-                />
-                <span className="break-all">{repo.name}</span>
-              </label>
-            ))}
+          {choices.map((repo) => (
+            <label
+              key={repo.id}
+              className="flex items-center gap-2 text-sm py-1"
+            >
+              <Checkbox
+                checked={selected.includes(repo.id)}
+                disabled={
+                  busy ||
+                  (!selected.includes(repo.id) && selected.length >= 500)
+                }
+                onCheckedChange={(checked) =>
+                  setSelected((current) =>
+                    checked === true
+                      ? [...current, repo.id]
+                      : current.filter((id) => id !== repo.id),
+                  )
+                }
+              />
+              <span className="break-all">{repo.name}</span>
+            </label>
+          ))}
           {choices.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              {t("settings.repositories.githubNoRepos")}
+              {t(
+                repositories.hasNextPage
+                  ? "settings.repositories.githubSearchMore"
+                  : debouncedQuery
+                    ? "settings.repositories.githubSearchNoMatches"
+                    : "settings.repositories.githubNoRepos",
+              )}
             </p>
           )}
         </div>
