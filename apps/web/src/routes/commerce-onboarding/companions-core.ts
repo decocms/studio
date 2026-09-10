@@ -111,6 +111,15 @@ export function isCompanionConfigured(args: {
     case "shopify":
       // The token is on connection_token — storeDomain is the visible signal.
       return isMeaningfulConfigValue(companionConfig?.storeDomain);
+    case "wake":
+      // Wake mints STATIC tokens in the merchant's panel, so both live in
+      // configuration state — and the two gate different lanes independently
+      // (storefrontToken ⇒ catalog, apiToken ⇒ orders). Either one alone makes
+      // the connection useful, which is why this is an OR and not an AND.
+      return (
+        isMeaningfulConfigValue(companionConfig?.storefrontToken) ||
+        isMeaningfulConfigValue(companionConfig?.apiToken)
+      );
     case "google-analytics":
       return isMeaningfulConfigValue(companionConfig?.propertyId);
     case "google-search-console":
@@ -140,6 +149,10 @@ function getConnectedDetail(args: {
     case "shopify":
       return typeof companionConfig?.storeDomain === "string"
         ? companionConfig.storeDomain
+        : null;
+    case "wake":
+      return typeof companionConfig?.account === "string"
+        ? companionConfig.account
         : null;
     case "google-analytics":
       return typeof companionConfig?.propertyId === "string"
@@ -197,13 +210,14 @@ export function parseBindingRequirements(
  *
  * `fieldKey` is the CD `configuration_state` key and `bindingType` is the
  * binding `__type` (== the curated COMMERCE_COMPANION_MCPS key). Kept in sync
- * with commerce-discovery's CONNECTION_PROVIDERS (vtex/ga4/gsc/github); if the
+ * with commerce-discovery's CONNECTION_PROVIDERS (vtex/shopify/wake/ga4/gsc/github); if the
  * CD schema gains a binding it still appears via the live schema — this
  * fallback only applies when the schema is unreachable.
  */
 export const FALLBACK_COMPANION_REQUIREMENTS: BindingRequirement[] = [
   { fieldKey: "vtex", bindingType: "vtex" },
   { fieldKey: "shopify", bindingType: "shopify" },
+  { fieldKey: "wake", bindingType: "wake" },
   { fieldKey: "ga4", bindingType: "google-analytics" },
   { fieldKey: "gsc", bindingType: "google-search-console" },
   { fieldKey: "github", bindingType: "github" },

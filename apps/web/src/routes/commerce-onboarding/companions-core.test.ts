@@ -229,6 +229,41 @@ describe("isCompanionConfigured", () => {
       }),
     ).toBe(true);
   });
+  it("accepts a Wake connection carrying only the storefront token", () => {
+    // The two Wake tokens gate different lanes independently (catalog vs
+    // orders), so either alone is usable — commerce-discovery's
+    // WakeStudioVaultState refines on the same OR.
+    expect(
+      isCompanionConfigured({
+        bindingType: "wake",
+        boundVia: "oauth",
+        companionConfig: { storefrontToken: "tcs_abc" },
+        cdConfig: null,
+      }),
+    ).toBe(true);
+  });
+  it("accepts a Wake connection carrying only the admin token", () => {
+    expect(
+      isCompanionConfigured({
+        bindingType: "wake",
+        boundVia: "oauth",
+        companionConfig: { apiToken: "basic_abc" },
+        cdConfig: null,
+      }),
+    ).toBe(true);
+  });
+  it("refuses a Wake connection with neither token (linked ≠ usable)", () => {
+    // Before `case "wake"` existed this fell to `default: true`, so a linked
+    // Wake with no credentials read as "connected".
+    expect(
+      isCompanionConfigured({
+        bindingType: "wake",
+        boundVia: "oauth",
+        companionConfig: { account: "example-store" },
+        cdConfig: null,
+      }),
+    ).toBe(false);
+  });
   it("requires a VTEX account name (linked ≠ usable)", () => {
     expect(
       isCompanionConfigured({
