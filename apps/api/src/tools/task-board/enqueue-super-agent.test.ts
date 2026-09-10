@@ -19,6 +19,26 @@ const CONTINUE_LEAD = "already has an open pull request";
 const OPEN_A_PR = "commit on a new branch, push, and open a pull request";
 
 describe("buildSuperAgentTaskPrompt", () => {
+  // Decopilot registers the issue tools as built-ins, so they are named bare
+  // here and namespaced in the sandbox builder. Same instruction, two spellings
+  // — a run told the wrong one spends a turn searching for the tool.
+  it("a Jira-triggered run is told to report on the issue, unprefixed", () => {
+    const p = buildSuperAgentTaskPrompt(task, {
+      source: {
+        kind: "jira",
+        issueKey: "ABC-1",
+        title: "Jira ABC-1: x",
+        body: "# ABC-1",
+      },
+    });
+    expect(p).toContain("`JIRA_COMMENT_ADD`");
+    expect(p).not.toContain("mcp__studio__");
+  });
+
+  it("a board run is told nothing about Jira", () => {
+    expect(buildSuperAgentTaskPrompt(task)).not.toContain("JIRA_");
+  });
+
   it("a fresh attempt has no lead block, and opens a PR", () => {
     const p = buildSuperAgentTaskPrompt(task);
     expect(p).not.toContain(CONFLICT_LEAD);

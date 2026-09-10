@@ -8,6 +8,7 @@
  * lists are distinguished by the thread title the board itself assigned.
  */
 import { describe, expect, test } from "bun:test";
+import { runKeyPermissions } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import {
   REVIEW_RUN_TOOL_NAMES,
   JIRA_RUN_TOOL_NAMES,
@@ -89,5 +90,54 @@ describe("resolveTaskRunToolNames", () => {
         metadata: { source: "jira" },
       }),
     ).toEqual(JIRA_RUN_TOOL_NAMES);
+  });
+});
+
+/**
+ * The run's KEY has to authorize everything the run's SERVER serves.
+ *
+ * These are two independent halves and they drifted: the key was minted from a
+ * hardcoded `REVIEW_RUN_TOOL_NAMES` on the reasoning that it was a superset of
+ * every run kind, which stopped being true the moment the Jira kind existed.
+ * The endpoint served `JIRA_COMMENT_ADD`, the key did not authorize it, and the
+ * first production Jira run did all its work and then got
+ * "Access denied to: JIRA_COMMENT_ADD" on the one call that reports back.
+ *
+ * Asserted over every kind rather than for Jira alone, so a FOURTH kind cannot
+ * reintroduce it.
+ */
+describe("a run's key covers the surface its endpoint serves", () => {
+  const threads = {
+    worker: { title: "Super Agent: Add an H1" },
+    reviewer: { title: "Reviewer: Add an H1" },
+    jira: { title: "Jira ABC-1: x", metadata: { source: "jira" as const } },
+  };
+
+  for (const [kind, thread] of Object.entries(threads)) {
+    test(`${kind}`, () => {
+      const served = resolveTaskRunToolNames(thread);
+      const authorized = runKeyPermissions({
+        toolNames: served,
+        grants: {},
+      }).self;
+      for (const tool of served) expect(authorized).toContain(tool);
+    });
+  }
+
+  // The half that actually broke, stated on its own so the reason survives.
+  test("a Jira run may comment on its issue", () => {
+    expect(
+      runKeyPermissions({
+        toolNames: resolveTaskRunToolNames(threads.jira),
+        grants: {},
+      }).self,
+    ).toContain("JIRA_COMMENT_ADD");
+  });
+
+  // Inverted: the reviewer list is no longer a superset of every kind, so
+  // nothing may mint a key from it again.
+  test("the reviewer list does not cover a Jira run", () => {
+    expect(REVIEW_RUN_TOOL_NAMES).not.toContain("JIRA_COMMENT_ADD");
+    expect(JIRA_RUN_TOOL_NAMES).toContain("JIRA_COMMENT_ADD");
   });
 });

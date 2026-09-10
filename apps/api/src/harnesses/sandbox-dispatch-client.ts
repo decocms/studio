@@ -65,7 +65,7 @@ import { hasAdminRole } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
 import type { Permission } from "@/storage/types";
 import { connectionGrantsFor, rolesOf } from "@/harnesses/org-mcp-grants";
-import { REVIEW_RUN_TOOL_NAMES } from "@/tools/task-board/task-run-context";
+import { resolveTaskRunToolNames } from "@/tools/task-board/task-run-context";
 import { getPublicUrl } from "@/core/server-constants";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
 import { getSettings } from "@/settings";
@@ -358,12 +358,24 @@ export class SandboxDispatchClient {
       // Studio surface exposes, plus the connections it was given.
       //
       // `self` is the resource key management tools are checked under (see
-      // AccessControl's default `connectionId`); the reviewer superset covers
-      // both run kinds, and which of them a given run can actually call is
-      // already decided by the server it talks to (`toolSubsetMCP`). Each
-      // connection is its own resource key, `"*"` because a run that was given
-      // a connection was given the whole connection.
-      runKeyPermissions({ toolNames: REVIEW_RUN_TOOL_NAMES, grants }),
+      // AccessControl's default `connectionId`). Read from the run THREAD via
+      // the same resolver the endpoint itself uses, so the key and the server
+      // can never name different surfaces. Each connection is its own resource
+      // key, `"*"` because a run that was given a connection was given the
+      // whole connection.
+      //
+      // This was the reviewer list, hardcoded, on the reasoning that it was a
+      // superset of "both run kinds". A third kind (Jira) whose tools are not
+      // in it made that false: its endpoint served `JIRA_COMMENT_ADD` while its
+      // key did not authorize it, so the first production run did the work,
+      // opened its pull request, and got "Access denied to: JIRA_COMMENT_ADD"
+      // on the one call that reports back. Deriving it removes the class.
+      runKeyPermissions({
+        toolNames: resolveTaskRunToolNames(
+          await this.ctx.storage.threads.get(threadId),
+        ),
+        grants,
+      }),
     );
     if (connections.length === 0 || !organization.slug) return { mcp };
     const orgMcps = orgMcpServers({
