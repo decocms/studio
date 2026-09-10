@@ -9,6 +9,7 @@ export const admin = {
   "admin.layout.restrictedToDashboard":
     "This dashboard is restricted to deployment admins.",
   "admin.layout.usersTab": "Users",
+  "admin.orgs.archived": "Archived",
   "admin.orgs.notice": "Notice",
   "admin.orgs.noticeFor": "Billing notice for {org}",
   "admin.orgs.noticeDescription":
