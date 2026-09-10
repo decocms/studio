@@ -2,6 +2,7 @@ import {
   BookOpen01,
   Calendar,
   CalendarDate,
+  ChevronDown,
   CornerUpRight,
   Database01,
   File02,
@@ -9,14 +10,23 @@ import {
   Grid01,
   LayoutAlt01,
   Settings01,
+  Sliders02,
   Tag01,
   CreditCardSearch,
   Users01,
   Zap,
 } from "@untitledui/icons";
+import { useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@decocms/ui/components/collapsible.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import type { CollectionCounts, CollectionId } from "./content-browser";
+
+const ADVANCED_IDS = ["sections", "apps", "loaders", "actions"] as const;
 
 export function CollectionsSidebar({
   active,
@@ -47,22 +57,6 @@ export function CollectionsSidebar({
           onSelect={onSelect}
         />
         <CollectionRow
-          id="sections"
-          icon={Globe02}
-          label={t("sandbox.collectionsSidebar.sections")}
-          count={counts.sections}
-          active={active === "sections"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="apps"
-          icon={Grid01}
-          label={t("sandbox.collectionsSidebar.apps")}
-          count={counts.apps}
-          active={active === "apps"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
           id="redirects"
           icon={CornerUpRight}
           label={t("sandbox.collectionsSidebar.redirects")}
@@ -70,22 +64,7 @@ export function CollectionsSidebar({
           active={active === "redirects"}
           onSelect={onSelect}
         />
-        <CollectionRow
-          id="loaders"
-          icon={Database01}
-          label={t("sandbox.collectionsSidebar.loaders")}
-          count={counts.loaders}
-          active={active === "loaders"}
-          onSelect={onSelect}
-        />
-        <CollectionRow
-          id="actions"
-          icon={Zap}
-          label={t("sandbox.collectionsSidebar.actions")}
-          count={counts.actions}
-          active={active === "actions"}
-          onSelect={onSelect}
-        />
+        <AdvancedGroup active={active} counts={counts} onSelect={onSelect} />
         <CollectionRow
           id="site"
           icon={Settings01}
@@ -151,6 +130,82 @@ export function CollectionsSidebar({
   );
 }
 
+function AdvancedGroup({
+  active,
+  counts,
+  onSelect,
+}: {
+  active: CollectionId;
+  counts: CollectionCounts;
+  onSelect: (id: CollectionId) => void;
+}) {
+  const t = useT();
+  const activeIsAdvanced = (ADVANCED_IDS as readonly string[]).includes(active);
+  const [userOpen, setUserOpen] = useState(false);
+  // Stay open while an item inside is active, so the active row is never hidden.
+  const open = userOpen || activeIsAdvanced;
+  return (
+    <Collapsible open={open} onOpenChange={setUserOpen}>
+      <CollapsibleTrigger
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+          "text-muted-foreground hover:bg-muted hover:text-foreground",
+        )}
+      >
+        <Sliders02 size={16} className="shrink-0" />
+        <span className="flex-1 truncate">
+          {t("sandbox.collectionsSidebar.advanced")}
+        </span>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "shrink-0 text-muted-foreground/70 transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">
+        <CollectionRow
+          id="sections"
+          icon={Globe02}
+          label={t("sandbox.collectionsSidebar.sections")}
+          count={counts.sections}
+          active={active === "sections"}
+          onSelect={onSelect}
+          indent
+        />
+        <CollectionRow
+          id="apps"
+          icon={Grid01}
+          label={t("sandbox.collectionsSidebar.apps")}
+          count={counts.apps}
+          active={active === "apps"}
+          onSelect={onSelect}
+          indent
+        />
+        <CollectionRow
+          id="loaders"
+          icon={Database01}
+          label={t("sandbox.collectionsSidebar.loaders")}
+          count={counts.loaders}
+          active={active === "loaders"}
+          onSelect={onSelect}
+          indent
+        />
+        <CollectionRow
+          id="actions"
+          icon={Zap}
+          label={t("sandbox.collectionsSidebar.actions")}
+          count={counts.actions}
+          active={active === "actions"}
+          onSelect={onSelect}
+          indent
+        />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function CollectionRow({
   id,
   icon: Icon,
@@ -158,6 +213,7 @@ function CollectionRow({
   count,
   active,
   onSelect,
+  indent,
 }: {
   id: CollectionId;
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -165,6 +221,7 @@ function CollectionRow({
   count?: number;
   active: boolean;
   onSelect: (id: CollectionId) => void;
+  indent?: boolean;
 }) {
   return (
     <button
@@ -172,6 +229,7 @@ function CollectionRow({
       onClick={() => onSelect(id)}
       className={cn(
         "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+        indent && "pl-6",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
