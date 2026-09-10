@@ -564,6 +564,11 @@ export const KEYS = {
     ["git-provider-capabilities", orgId] as const,
   githubConnectFlow: (orgId: string, flowId: string) =>
     ["github-connect-flow", orgId, flowId] as const,
+  githubConnectRepositories: (
+    orgId: string,
+    flowId: string,
+    installationId: number,
+  ) => ["github-connect-repositories", orgId, flowId, installationId] as const,
   gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
   /** Omit `accountId` for the whole org's list — that key is also the prefix a
    *  mutation invalidates to refresh every per-account listing with it. */

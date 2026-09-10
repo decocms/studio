@@ -3,7 +3,16 @@ import type { Database } from "./types";
 import {
   GitProviderAccountStorage,
   type UpsertGitProviderAccountParams,
+  type GitProviderAccountRecord,
 } from "./git-provider-accounts";
+
+export class GithubAccountChangedError extends Error {}
+
+export function githubAccountVersion(
+  account: GitProviderAccountRecord | null,
+): string | null {
+  return account ? `${account.id}:${account.updatedAt}` : null;
+}
 
 type FlowOwner = { organizationId: string; userId: string };
 
@@ -87,8 +96,16 @@ export class GithubConnectFlowStorage {
     id: string,
     owner: FlowOwner,
     account: UpsertGitProviderAccountParams,
+    expectedAccountVersion: string | null,
   ) {
     return this.db.transaction().execute(async (trx) => {
+      // Also serialize first connections, where there is no account row to lock yet.
+      await trx
+        .selectFrom("organization")
+        .select("id")
+        .where("id", "=", owner.organizationId)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
       const flow = await trx
         .deleteFrom("github_connect_flows")
         .where("id", "=", id)
@@ -98,7 +115,19 @@ export class GithubConnectFlowStorage {
         .returning("id")
         .executeTakeFirst();
       if (!flow) return null;
-      return new GitProviderAccountStorage(trx).upsert({
+      const accounts = new GitProviderAccountStorage(trx);
+      const current = await accounts.findByExternalId({
+        organizationId: owner.organizationId,
+        host: account.host,
+        externalAccountId: account.externalAccountId,
+      });
+      if (githubAccountVersion(current) !== expectedAccountVersion) {
+        // Roll back the flow consumption too, so the user can review and retry.
+        throw new GithubAccountChangedError(
+          "GitHub repository access changed. Review the selection again.",
+        );
+      }
+      return accounts.upsert({
         ...account,
         organizationId: owner.organizationId,
         createdBy: owner.userId,
