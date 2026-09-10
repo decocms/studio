@@ -22,6 +22,7 @@ import { APP_BUDGET_OWNER, rememberBudgetOwner } from "./budget-owner";
 import { type GithubAppConfig, readGithubAppConfig } from "./env";
 import type { GitProviderCapability } from "../types";
 import { GitProviderError } from "../types";
+import { matchesRepoQuery } from "./client";
 import {
   githubApiBaseUrl,
   githubErrorMessage,
@@ -531,11 +532,18 @@ export class GithubAppAuth {
     };
   }
 
-  /** Repository choices use the temporary user grant, never an installation token. */
+  /**
+   * Repository choices use the temporary user grant, never an installation
+   * token. An optional `query` narrows by `owner/name` substring server-side so
+   * the picker searches every installed repository, not only the pages the
+   * client happens to have loaded. `hasMore` reflects the raw page length, so
+   * the query filter never hides the remaining provider pages.
+   */
   async listRepositoryChoices(
     userToken: string,
     installation: AuthorizedInstallation,
     page: number,
+    query?: string,
   ) {
     const result = z
       .object({
@@ -561,6 +569,7 @@ export class GithubAppAuth {
             installation.repositoryIds === null ||
             repo.permissions?.admin === true,
         )
+        .filter((repo) => matchesRepoQuery(repo.full_name, query))
         .map((repo) => ({ id: repo.id, name: repo.full_name })),
       hasMore: result.repositories.length === 100,
     };
