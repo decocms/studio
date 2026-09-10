@@ -30,6 +30,7 @@ import {
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
+import { jiraRunFinishInstructions } from "./jira-run-prompt";
 import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
@@ -191,8 +192,12 @@ export function buildClaudeCodeTaskPrompt(
    * checkout is stated separately — see MIXED_PROVIDER_NOTE.
    */
   const cli = providerCli(repo?.provider ?? "github");
+  // A column rule's own instruction, when the caller passed one. Dropping it
+  // here (the Decopilot builder never did) silently ignored every Jira status
+  // rule's prompt on any org with a repo to work in.
   const lines: string[] = [
-    `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`,
+    opts?.instruction?.trim() ||
+      `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`,
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
       "completion yourself. Make reasonable decisions and move on; do not stop " +
@@ -271,6 +276,8 @@ export function buildClaudeCodeTaskPrompt(
     );
   }
 
+  const jiraRun = opts?.source?.kind === "jira";
+
   lines.push(
     "How to finish:",
     "- Make the change, commit it, push the branch, and open a pull request" +
@@ -294,6 +301,14 @@ export function buildClaudeCodeTaskPrompt(
     // is open the PR from some other branch. Replaces asking the run to report
     // it, which a run that died right after `gh pr create` could never do.
     `- Open the ${cli.changeRequest} from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.`,
+  );
+
+  if (jiraRun) {
+    lines.push(...jiraRunFinishInstructions("mcp__studio__"), "");
+    return lines.join("\n");
+  }
+
+  lines.push(
     // A tool call, NOT a line in the PR body: the first version of this read
     // the body back, and one hand-edited body lost the routes silently.
     `- If your change adds or edits pages a person can open, report their paths with \`mcp__studio__TASK_BOARD_ITEM_UPDATE\` (id "${task.id}", \`previewRoutes: ["/some-page"]\`) — paths only, no host. The card joins them onto the deploy preview so a reviewer opens the page directly. Skip it when the change has no visible route.`,

@@ -107,16 +107,6 @@ export type TriggerOutcome = "started" | "no_rule" | "duplicate" | "disabled";
 const DEFAULT_JIRA_INSTRUCTION =
   "A Jira issue was moved into a column you are responsible for. Work the issue.";
 
-/** Appended to every Jira-triggered run: the board tools are absent on
- *  purpose, and the issue is the thing to keep up to date. */
-const JIRA_RUN_FOOTER = [
-  "This run was started by a Jira issue, not a board card. Keep the ISSUE up to date, not a Studio card:",
-  "- `JIRA_ISSUE_GET` re-reads the issue (description, comments, attachments).",
-  "- `JIRA_COMMENT_ADD` posts a comment on it (markdown). Leave one when you finish, with what you did and any pull request link.",
-  "- `JIRA_ISSUE_TRANSITION` moves it to another status when your work warrants it.",
-  "- `JIRA_ATTACHMENT_DOWNLOAD` fetches an attachment into the sandbox by its id.",
-].join("\n");
-
 function jiraRunTitle(issue: { key: string; summary: string }): string {
   return `Jira ${issue.key}: ${issue.summary}`;
 }
@@ -239,7 +229,11 @@ async function dispatchJiraRun(
         kind: "jira",
         issueKey: issue.key,
         title: jiraRunTitle(issue),
-        body: `${renderIssueForPrompt(issue)}\n\n${JIRA_RUN_FOOTER}`,
+        // The issue only. How to report back is the prompt builder's job — it
+        // is the half that knows how this harness namespaces the tools, and it
+        // puts the instruction where the model weights it (the end) instead of
+        // in the middle of the issue body.
+        body: renderIssueForPrompt(issue),
       },
     });
   } catch (err) {
