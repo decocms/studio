@@ -113,12 +113,16 @@ export function PostEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
-  const [post, setPost, syncPost] = useAutosave(initial, (next) => {
-    save.mutate({
-      blockKey,
-      data: buildPostBlock(blockKey, stampPostModified(next)),
-    });
-  });
+  const [post, setPost, syncPost] = useAutosave(
+    initial,
+    (next) => {
+      save.mutate({
+        blockKey,
+        data: buildPostBlock(blockKey, stampPostModified(next)),
+      });
+    },
+    { isSaving: save.isPending },
+  );
 
   // A move renamed the block, so drop a pending write aimed at the retired key.
   const [seenBlockKey, setSeenBlockKey] = useState(blockKey);
@@ -245,16 +249,14 @@ export function PostEditor({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!previewUrl || hasErrors}
+                  disabled={!previewUrl}
                   title={
-                    hasErrors
-                      ? missingLabel
-                      : previewUrl
-                        ? t("sandbox.postEditor.previewTooltip")
-                        : t("sandbox.postEditor.previewRequiresSlugAndCategory")
+                    previewUrl
+                      ? t("sandbox.postEditor.previewTooltip")
+                      : t("sandbox.postEditor.previewRequiresSlugAndCategory")
                   }
                   onClick={() => {
-                    if (previewUrl && !hasErrors) {
+                    if (previewUrl) {
                       window.open(previewUrl, "_blank", "noopener,noreferrer");
                     }
                   }}

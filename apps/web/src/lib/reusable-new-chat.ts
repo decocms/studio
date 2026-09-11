@@ -42,19 +42,14 @@ export function findReusableNewChat(
 }
 
 export interface AgentEntryOpts {
-  /** Production ∪ named-release branches — the versions a legacy thread can resume to. */
-  knownBranches?: ReadonlySet<string>;
-  /** Drafts mode resumes the last thread on any editable draft (never production), else nothing (caller mints a fresh draft thread). */
-  draftsMode?: boolean;
-  /** Production branch, excluded from drafts-mode resume so entry never lands there. */
+  /** Production branch, excluded from drafts resume so entry never lands there. */
   baseBranch?: string;
 }
 
 /**
  * Thread to land on when *entering* an agent.
  *
- * `draftsMode`: resume the last thread on any draft branch (never `baseBranch`), else `undefined`.
- * Legacy `hasBranch`: prefer the last thread on `knownBranches`, then the raw last, then the empty chat.
+ * With a branch (repo agent): resume the last draft, never `baseBranch` (production), else `undefined` — the caller mints a fresh draft.
  * Branchless: resume the last thread (empty or not), never piling up empty chats.
  */
 export function findAgentEntryThread(
@@ -71,32 +66,13 @@ export function findAgentEntryThread(
       undefined
     );
   }
-  if (opts?.draftsMode) {
-    return (
-      findLastThreadForAgent(
-        threads,
-        agentId,
-        userId,
-        expectedRuntime,
-        undefined,
-        opts?.baseBranch,
-      ) ?? undefined
-    );
-  }
-  const known = opts?.knownBranches;
-  const onNamedVersion =
-    known && known.size > 0
-      ? (findLastThreadForAgent(
-          threads,
-          agentId,
-          userId,
-          expectedRuntime,
-          known,
-        ) ?? undefined)
-      : undefined;
   return (
-    onNamedVersion ??
-    findLastThreadForAgent(threads, agentId, userId, expectedRuntime) ??
-    findReusableNewChat(threads, agentId, userId, expectedRuntime)
+    findLastThreadForAgent(
+      threads,
+      agentId,
+      userId,
+      expectedRuntime,
+      opts?.baseBranch,
+    ) ?? undefined
   );
 }

@@ -11,6 +11,7 @@ export const admin = {
   "admin.layout.restrictedToDashboard":
     "Este painel é restrito a administradores de implantação.",
   "admin.layout.usersTab": "Usuários",
+  "admin.orgs.archived": "Arquivada",
   "admin.orgs.notice": "Aviso",
   "admin.orgs.noticeFor": "Aviso de cobrança de {org}",
   "admin.orgs.noticeDescription":

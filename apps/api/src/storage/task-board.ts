@@ -1316,6 +1316,38 @@ export class TaskBoardStorage {
     return rows.map((r) => r.threadId);
   }
 
+  /**
+   * Of `ids`, the ones the BOARD manages — the ones with no `source`.
+   *
+   * An item WITH a source (today, a Jira issue's) is a run handle, not a card:
+   * it is hidden from the board, its lanes and review cycle are read by nobody,
+   * and the issue is where its run reports. So no board reaction may move it,
+   * link a pull request to it, or hand it to a reviewer. One query rather than
+   * a `getById` per id, so the reaction path stays a single round trip.
+   *
+   * Deliberately NOT a filter inside `linkedTaskIds`: that one answers "which
+   * items is this thread linked to", and the Jira run tools ask it to find the
+   * issue their run is bound to (`resolveRunIssue`). Filtering there would take
+   * every Jira tool offline.
+   */
+  async boardManagedIds(
+    ids: readonly string[],
+    organizationId: string,
+  ): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select("id")
+      .where("id", "in", [...ids])
+      .where("organization_id", "=", organizationId)
+      .where("source", "is", null)
+      .execute();
+    const managed = new Set(rows.map((row) => row.id));
+    // Caller order preserved: `resolveAdvanceTargets` puts the run's own item
+    // first and callers act on that order.
+    return ids.filter((id) => managed.has(id));
+  }
+
   async linkedTaskIds(
     threadId: string,
     organizationId: string,
@@ -1449,6 +1481,12 @@ export class TaskBoardStorage {
     for (const taskId of await this.linkedTaskIds(threadId, organizationId)) {
       const item = await this.getById(taskId, organizationId);
       if (!item) continue;
+      // Not a card the board manages (a Jira issue's anchor): advancing it to
+      // In Review is what enqueues a reviewer, and a reviewer on such an item
+      // rules on a hidden card nobody reads. Observed doing worse than nothing
+      // — it read a pull request from a PRIOR run of the same issue, requested
+      // changes because that one was closed, and unassigned the agent.
+      if (item.source) continue;
       // A LINKED PR is the whole test. It used to be `item.repo != null && …`,
       // as a cheap way to skip the query for a card that could not have one —
       // but `repo` is only stamped on a card created against a repository, and
