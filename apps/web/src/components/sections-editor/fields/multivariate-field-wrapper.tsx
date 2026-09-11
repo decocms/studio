@@ -69,14 +69,15 @@ export function MultivariateFieldWrapper({
 
   if (!isMultivariateWrapper(value)) {
     return (
-      <div className="relative grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
+      <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        {renderInnerField(props)}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-0 top-0 size-6 text-muted-foreground hover:text-foreground"
+              className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
               aria-label={t(
                 "sectionsEditor.multivariateFieldWrapper.addVariant",
               )}
@@ -92,7 +93,6 @@ export function MultivariateFieldWrapper({
             {t("sectionsEditor.multivariateFieldWrapper.addVariant")}
           </TooltipContent>
         </Tooltip>
-        {renderInnerField(props)}
       </div>
     );
   }
