@@ -22,6 +22,7 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { readLastLocation, saveLastLocation } from "@/lib/last-location";
 import { promoteLegacyTaskParam } from "@/lib/legacy-route-translation";
 import { isKnownPanelSegment } from "@/layouts/main-panel-tabs/panel-route";
+import { contentSearchParams } from "@/components/sandbox/content/content-search-params";
 
 const rootRoute = createRootRoute({
   /** No `<Providers>` here: each entry (`index.web.tsx`, `index.native.tsx`)
@@ -415,13 +416,8 @@ const unifiedChatSearchSchema = z.object({
    *  carried in the URL (same context as `/commerce-onboarding?siteUrl=…`) so the
    *  modal is self-describing. Falls back to the connection's stored metadata. */
   siteUrl: z.string().optional(),
-  /** Storefront "." deep-link: preselect a page in the content editor. Set by
-   *  `/choose-editor`; consumed by ContentBrowser. `contentPageId` is the CMS
-   *  page id; `contentPath`/`contentPathTemplate` are the concrete URL and its
-   *  route template (page.path in the decofile stores the template). */
-  contentPageId: z.string().optional(),
-  contentPath: z.string().optional(),
-  contentPathTemplate: z.string().optional(),
+  /** Content editor deep-links — declared in `content-search-params.ts`. */
+  ...contentSearchParams,
   /** Task board view state (`main=board`) — persisted in the URL so a refresh
    *  or a shared link keeps the layout and filters. See `filters-search.ts`. */
   view: z.string().optional(),
@@ -565,10 +561,8 @@ const agentsRoute = createRoute({
     /** Commerce onboarding hand-off (see `/$org/reports`). */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
-    /** Storefront "." deep-link: preselect a page in the content editor. */
-    contentPageId: z.string().optional(),
-    contentPath: z.string().optional(),
-    contentPathTemplate: z.string().optional(),
+    /** Content editor deep-links — declared in `content-search-params.ts`. */
+    ...contentSearchParams,
   }),
   component: () => null,
 });
