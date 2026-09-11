@@ -64,10 +64,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.live": "No ar",
   "mainPanelTabs.hostingTab.permanent": "301 permanente",
   "mainPanelTabs.hostingTab.temporary": "307 temporário",
-  "mainPanelTabs.hostingTab.dnsSetup": "Configuração DNS",
   "mainPanelTabs.hostingTab.dnsSetupTitle": "DNS no registrador",
-  "mainPanelTabs.hostingTab.dnsSetupDescription":
-    "Para ativar este redirecionamento, adicione estes registros no seu provedor de DNS para {host}.",
   "mainPanelTabs.hostingTab.dnsRedirectIntent":
     "Isto faz {from} redirecionar para o destino assim que o DNS de {from} apontar para a Deco. Adicione os registros abaixo no seu registrador.",
   "mainPanelTabs.hostingTab.dnsActiveHint":
@@ -158,7 +155,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.colAction": "Ação",
   "mainPanelTabs.hostingTab.colDate": "Data",
   "mainPanelTabs.hostingTab.production": "Produção",
-  "mainPanelTabs.hostingTab.showBuildMessage": "Mostrar mensagem do build",
   "mainPanelTabs.hostingTab.deployHistory": "Histórico de implantações",
   "mainPanelTabs.hostingTab.noDeployHistory":
     "Nenhum histórico de implantação ainda.",
@@ -209,6 +205,23 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.toastDomainDeleted": "Domínio removido",
   "mainPanelTabs.hostingTab.domainHostPlaceholder": "www.suamarca.com",
   "mainPanelTabs.hostingTab.errorDomainHostRequired": "Informe um host",
+  "mainPanelTabs.hostingTab.deploymentsDescription":
+    "Builds de {site}, do mais recente ao mais antigo. O que está live é o que a produção serve.",
+  "mainPanelTabs.hostingTab.deployHistoryDescription":
+    "Cada deploy, redeploy e rollback, e quem disparou.",
+  "mainPanelTabs.hostingTab.showMoreHistory": "Mostrar mais {count}",
+  "mainPanelTabs.hostingTab.envDescription":
+    "Configuração em texto puro para o build e para o site rodando. Qualquer pessoa com acesso a este projeto lê estes valores.",
+  "mainPanelTabs.hostingTab.codeVarsToggle":
+    "{count} variáveis declaradas no código",
+  "mainPanelTabs.hostingTab.secretsDescription":
+    "Valores só de escrita. O Studio lista os nomes e nunca mostra um valor de novo.",
+  "mainPanelTabs.hostingTab.domainsDescription":
+    "Hostnames que servem este site. Anexe um e depois adicione os registros DNS pedidos.",
+  "mainPanelTabs.hostingTab.redirectsDescription":
+    "Mande um caminho ou um host inteiro para outro lugar, permanentemente (301) ou temporariamente (307).",
+  "mainPanelTabs.hostingTab.showDetails": "Mostrar detalhes",
+  "mainPanelTabs.hostingTab.hideDetails": "Ocultar detalhes",
   "mainPanelTabs.e2eTab.title": "E2E",
   "mainPanelTabs.e2eTab.subtitle": "Verificações ponta a ponta de {site}",
   "mainPanelTabs.e2eTab.helpTitle": "Como funcionam os testes E2E",

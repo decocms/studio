@@ -966,7 +966,7 @@ const server = Bun.serve({
             commitSha: sha,
             shortCommit: sha.slice(0, 7),
             phase: failed ? "failed" : i === 0 ? "ready" : "superseded",
-            up: !failed,
+            up: i === 0,
             production: i === 0,
             servingUrl:
               i === 0 ? `https://${host}` : `https://dpl-${1200 - i}.deco.site`,

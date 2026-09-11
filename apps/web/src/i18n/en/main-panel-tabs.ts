@@ -56,10 +56,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.live": "Live",
   "mainPanelTabs.hostingTab.permanent": "301 permanent",
   "mainPanelTabs.hostingTab.temporary": "307 temporary",
-  "mainPanelTabs.hostingTab.dnsSetup": "DNS setup",
   "mainPanelTabs.hostingTab.dnsSetupTitle": "Registrar DNS",
-  "mainPanelTabs.hostingTab.dnsSetupDescription":
-    "To activate this redirect, add these records at your DNS provider for {host}.",
   "mainPanelTabs.hostingTab.dnsRedirectIntent":
     "This makes {from} redirect to its target once {from}'s DNS points at Deco. Add the records below at your registrar.",
   "mainPanelTabs.hostingTab.dnsActiveHint":
@@ -148,7 +145,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.colAction": "Action",
   "mainPanelTabs.hostingTab.colDate": "Date",
   "mainPanelTabs.hostingTab.production": "Production",
-  "mainPanelTabs.hostingTab.showBuildMessage": "Show build message",
   "mainPanelTabs.hostingTab.deployHistory": "Deploy history",
   "mainPanelTabs.hostingTab.noDeployHistory": "No deploy history yet.",
   "mainPanelTabs.hostingTab.deployHistoryError":
@@ -195,6 +191,23 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.toastDomainDeleted": "Domain detached",
   "mainPanelTabs.hostingTab.domainHostPlaceholder": "www.yourbrand.com",
   "mainPanelTabs.hostingTab.errorDomainHostRequired": "Enter a host",
+  "mainPanelTabs.hostingTab.deploymentsDescription":
+    "Builds of {site}, newest first. The live one is what production serves.",
+  "mainPanelTabs.hostingTab.deployHistoryDescription":
+    "Every deploy, redeploy and rollback, and who triggered it.",
+  "mainPanelTabs.hostingTab.showMoreHistory": "Show {count} more",
+  "mainPanelTabs.hostingTab.envDescription":
+    "Plain-text configuration for the build and the running site. Anyone with access to this project can read these values.",
+  "mainPanelTabs.hostingTab.codeVarsToggle":
+    "{count} variables declared in code",
+  "mainPanelTabs.hostingTab.secretsDescription":
+    "Write-only values. Studio lists the names and never shows a value again.",
+  "mainPanelTabs.hostingTab.domainsDescription":
+    "Hostnames that serve this site. Attach one, then add the DNS records it asks for.",
+  "mainPanelTabs.hostingTab.redirectsDescription":
+    "Send a path or a whole host somewhere else, permanently (301) or temporarily (307).",
+  "mainPanelTabs.hostingTab.showDetails": "Show details",
+  "mainPanelTabs.hostingTab.hideDetails": "Hide details",
   "mainPanelTabs.e2eTab.title": "E2E",
   "mainPanelTabs.e2eTab.subtitle": "End-to-end checks for {site}",
   "mainPanelTabs.e2eTab.helpTitle": "How E2E tests work",
