@@ -14,7 +14,6 @@ export const sandbox = {
     "Save as global section",
   "sandbox.autonomous.noAiProvider":
     "This organization has no AI provider connected — connect one in Settings → AI Providers to use this",
-  "sandbox.autonomous.title": "Autonomous content",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
   "sandbox.blockPicker.insertBlockButton": "Insert block",
@@ -49,12 +48,10 @@ export const sandbox = {
   "sandbox.blogBrand.extractFilled": "Filled {count} empty field(s)",
   "sandbox.blogBrand.extractHint":
     "Reads {count} block(s) from this site — existing posts first, since that's the brand actually writing posts.",
-  "sandbox.blogBrand.extractLabel": "Fill from this site's own content",
   "sandbox.blogBrand.extractNoContent":
     "No content to read yet. Write a post, or fill the fields below by hand.",
   "sandbox.blogBrand.extractNothingEmpty":
     "Nothing to fill — every field already has a value. Clear a field to refill it.",
-  "sandbox.blogBrand.extracting": "Reading…",
   "sandbox.blogBrand.languageLabel": "Writing language",
   "sandbox.blogBrand.noCompetitorsFound":
     "No competitors found. Add them by hand, or configure a web search model for this organization.",
@@ -62,13 +59,10 @@ export const sandbox = {
   "sandbox.blogBrand.phaseReading": "Reading this site's content…",
   "sandbox.blogBrand.phaseSearching": "Searching the web for competitors…",
   "sandbox.blogBrand.removeItem": "Remove item",
-  "sandbox.blogBrand.subtitle":
-    "The voice and rules every generated post is written against. Saved to this site's own files.",
   "sandbox.blogBrand.tabBasics": "Basics",
   "sandbox.blogBrand.tabDos": "Generation rules",
   "sandbox.blogBrand.tabExtra": "Extra context",
   "sandbox.blogBrand.tabGuardrails": "Guardrails",
-  "sandbox.blogBrand.title": "Brand context",
   "sandbox.blogBrand.toneLabel": "Tone of voice",
   "sandbox.blogBrand.toneHint":
     "How the brand writes: how it addresses the reader, sentence rhythm, humor, jargon level.",
@@ -134,17 +128,11 @@ export const sandbox = {
   "sandbox.categoryEditor.slugPlaceholder": "my-category",
   "sandbox.categoryEditor.untitledCategory": "Untitled category",
   "sandbox.categoryEditor.untitledPost": "Untitled post",
-  "sandbox.cmsSettings.contentEditing.auto": "Auto",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "The preview opens the CMS as soon as it can edit content.",
   "sandbox.cmsSettings.contentEditing.description":
-    "Whether this agent offers a CMS, and where the preview lands when it does.",
-  "sandbox.cmsSettings.contentEditing.manual": "Enabled",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Editors open the CMS from the preview when they need it.",
+    "Whether this project offers a CMS.",
   "sandbox.cmsSettings.contentEditing.off": "Disabled",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "No CMS button in the preview and no Content tab. The site still previews, and the agent can still edit content.",
+    "No Content view or Blocks form in the Site Editor. The site still previews, and the project can still edit content.",
   "sandbox.cmsSettings.contentEditing.title": "Content editing",
   "sandbox.collectionsSidebar.actions": "Actions",
   "sandbox.collectionsSidebar.advanced": "Advanced",
@@ -761,7 +749,6 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "The Site Editor offers Content and opens Blocks beside Preview on desktop.",
-  "sandbox.cmsUnavailable.title": "This chat can't preview your site",
   "sandbox.cmsUnavailable.noPreviewServer":
     "It's a CMS session, but this project has no preview server configured.",
   "sandbox.cmsUnavailable.noRepo":

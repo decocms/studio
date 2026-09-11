@@ -17,7 +17,6 @@ export const sandbox = {
     "Salvar como seção global",
   "sandbox.autonomous.noAiProvider":
     "Esta organização não tem provedor de IA conectado — conecte um em Configurações → Provedores de IA para usar isto",
-  "sandbox.autonomous.title": "Conteúdo autônomo",
   "sandbox.blockPicker.blocksLabel": "Blocos",
   "sandbox.blockPicker.customBlocksLabel": "Blocos personalizados",
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
@@ -52,13 +51,10 @@ export const sandbox = {
   "sandbox.blogBrand.extractFilled": "{count} campo(s) vazio(s) preenchido(s)",
   "sandbox.blogBrand.extractHint":
     "Lê {count} bloco(s) deste site — posts existentes primeiro, porque é a marca escrevendo post de verdade.",
-  "sandbox.blogBrand.extractLabel":
-    "Preencher a partir do conteúdo do próprio site",
   "sandbox.blogBrand.extractNoContent":
     "Ainda não há conteúdo para ler. Escreva um post, ou preencha os campos abaixo à mão.",
   "sandbox.blogBrand.extractNothingEmpty":
     "Nada a preencher — todos os campos já têm valor. Limpe um campo para preenchê-lo novamente.",
-  "sandbox.blogBrand.extracting": "Lendo…",
   "sandbox.blogBrand.languageLabel": "Idioma de escrita",
   "sandbox.blogBrand.noCompetitorsFound":
     "Nenhum concorrente encontrado. Adicione à mão, ou configure um modelo de busca na web para esta organização.",
@@ -66,13 +62,10 @@ export const sandbox = {
   "sandbox.blogBrand.phaseReading": "Lendo o conteúdo deste site…",
   "sandbox.blogBrand.phaseSearching": "Buscando concorrentes na web…",
   "sandbox.blogBrand.removeItem": "Remover item",
-  "sandbox.blogBrand.subtitle":
-    "A voz e as regras que orientam todo post gerado. Salvo nos arquivos do próprio site.",
   "sandbox.blogBrand.tabBasics": "Dados básicos",
   "sandbox.blogBrand.tabDos": "Instruções de geração",
   "sandbox.blogBrand.tabExtra": "Contexto extra",
   "sandbox.blogBrand.tabGuardrails": "Guardrails",
-  "sandbox.blogBrand.title": "Contexto da marca",
   "sandbox.blogBrand.toneLabel": "Tom de voz",
   "sandbox.blogBrand.toneHint":
     "Como a marca escreve: como trata o leitor, ritmo das frases, humor, nível de jargão.",
@@ -138,17 +131,11 @@ export const sandbox = {
   "sandbox.categoryEditor.slugPlaceholder": "minha-categoria",
   "sandbox.categoryEditor.untitledCategory": "Categoria sem título",
   "sandbox.categoryEditor.untitledPost": "Post sem título",
-  "sandbox.cmsSettings.contentEditing.auto": "Automático",
-  "sandbox.cmsSettings.contentEditing.autoDescription":
-    "O preview abre o CMS assim que for possível editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.description":
-    "Se este agente oferece um CMS e onde o preview abre quando oferece.",
-  "sandbox.cmsSettings.contentEditing.manual": "Ativado",
-  "sandbox.cmsSettings.contentEditing.manualDescription":
-    "Quem edita abre o CMS pelo preview quando precisa.",
+    "Se este projeto oferece um CMS.",
   "sandbox.cmsSettings.contentEditing.off": "Desativado",
   "sandbox.cmsSettings.contentEditing.offDescription":
-    "Sem botão CMS no preview e sem aba Conteúdo. O site continua sendo pré-visualizado, e o agente ainda pode editar o conteúdo.",
+    "Sem a visão Conteúdo nem o formulário de Blocos no Editor do Site. O site continua sendo pré-visualizado, e o projeto ainda pode editar o conteúdo.",
   "sandbox.cmsSettings.contentEditing.title": "Edição de conteúdo",
   "sandbox.collectionsSidebar.actions": "Ações",
   "sandbox.collectionsSidebar.advanced": "Avançado",
@@ -785,8 +772,6 @@ export const sandbox = {
   "sandbox.cmsSettings.contentEditing.on": "Ativado",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "O Editor do Site oferece Conteúdo e abre Blocos ao lado do Preview no desktop.",
-  "sandbox.cmsUnavailable.title":
-    "Este chat não consegue pré-visualizar seu site",
   "sandbox.cmsUnavailable.noPreviewServer":
     "É uma sessão de CMS, mas este projeto não tem servidor de preview configurado.",
   "sandbox.cmsUnavailable.noRepo":
