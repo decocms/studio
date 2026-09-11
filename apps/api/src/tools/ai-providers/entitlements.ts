@@ -26,6 +26,10 @@ export const AI_PLAN_ENTITLEMENTS = defineTool({
       .object({
         percent: z.number(),
         state: z.enum(["ok", "warn", "exhausted"]),
+        // The bar's numerator and denominator, for the client's optimistic
+        // bump after a turn. Never rendered — see PlanEntitlements.usage.
+        usedMicros: z.number().nullable(),
+        limitMicros: z.number().nullable(),
       })
       .nullable(),
     // The wallet, in dollars — deliberately the ONE amount on this payload.

@@ -105,7 +105,23 @@ export interface ProviderAdapter {
 export interface PlanEntitlements {
   plan: { id: string; name: string };
   features: Record<string, boolean>;
-  usage: { percent: number; state: "ok" | "warn" | "exhausted" } | null;
+  /**
+   * The AI usage bar. `percent` is a fraction 0–1 and is what gets rendered.
+   *
+   * `usedMicros`/`limitMicros` are its numerator and denominator, and exist for
+   * ONE job: letting the browser advance the percent by a turn's cost the
+   * instant the turn ends. The provider's usage counter settles asynchronously,
+   * so the refetch after a message routinely returns the pre-turn number and a
+   * bar that never visibly moves. They are arithmetic, NEVER rendered — §1
+   * still holds, the bar is a percent and the only amount an org is shown is a
+   * wallet top-up. Null when the gateway predates the fields.
+   */
+  usage: {
+    percent: number;
+    state: "ok" | "warn" | "exhausted";
+    usedMicros: number | null;
+    limitMicros: number | null;
+  } | null;
   /**
    * Money the org bought and has not spent, in dollars. The second pool: the
    * bar is the plan's monthly envelope as a percent and money cannot move it;

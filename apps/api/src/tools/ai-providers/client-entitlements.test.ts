@@ -5,7 +5,12 @@ import type { PlanEntitlements } from "../../ai-providers/types";
 const FULL: PlanEntitlements = {
   plan: { id: "pro", name: "Pro" },
   features: { chat: true, model_choice: false },
-  usage: { percent: 0.5, state: "ok" },
+  usage: {
+    percent: 0.5,
+    state: "ok",
+    usedMicros: 10_000_000,
+    limitMicros: 20_000_000,
+  },
   credits: { remainingUsd: 12.5 },
   modelPins: { fast: "z-ai/glm-4.6", smart: "z-ai/glm-4.6" },
   tasks: { allowed: true, remaining: 3, denyReason: null },

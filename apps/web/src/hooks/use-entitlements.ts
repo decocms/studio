@@ -6,11 +6,68 @@
  * deploy. One query, shared by the billing card and by every gate.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
+import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { KEYS } from "@/lib/query-keys";
 import { callStudioTool } from "@/lib/studio-tools";
 import { useProjectContextOptional } from "@/sdk";
 import { usePublicConfigOptional } from "@/hooks/use-public-config";
+
+type Entitlements = StudioToolIO["AI_PLAN_ENTITLEMENTS"]["output"];
+
+/** Dollars to the micro-dollars the bar's numerator and denominator are in. */
+const MICROS_PER_USD = 1_000_000;
+
+/**
+ * Advance the usage bar by a turn's own cost, without waiting for the provider.
+ *
+ * The bar's numerator is OpenRouter's per-key usage counter, and that counter
+ * settles asynchronously: a refetch the instant a turn ends routinely returns
+ * the PRE-turn number. Invalidating there therefore did nothing visible — the
+ * bar sat at the same percentage through a whole session and read as broken,
+ * which is the bug this exists for. The turn's cost is already known here (it
+ * is what the per-message cost pill renders), so the client can move the bar
+ * itself and let the next natural refetch replace the estimate with the
+ * gateway's truth.
+ *
+ * Does nothing without a denominator — an older gateway omits it, and a
+ * gateway that could not read usage sends `usage: null`, which must stay
+ * unknown rather than become a number we made up.
+ *
+ * ponytail: the reconcile can step the bar BACK a little if the provider is
+ * still settling when it lands. Acceptable against a bar that never moved at
+ * all; if the flicker bites, make the merge monotonic per `periodStart` rather
+ * than adding a timer.
+ */
+export function bumpUsageOptimistically(
+  queryClient: QueryClient,
+  orgId: string,
+  spentUsd: number,
+): void {
+  if (!(spentUsd > 0)) return;
+  queryClient.setQueryData(
+    KEYS.aiPlanEntitlements(orgId),
+    (prev: Entitlements | undefined): Entitlements | undefined => {
+      if (!prev?.usage) return prev;
+      const usage = prev.usage;
+      if (!usage.limitMicros || usage.usedMicros === null) return prev;
+      const usedMicros = usage.usedMicros + spentUsd * MICROS_PER_USD;
+      const percent = Math.min(1, usedMicros / usage.limitMicros);
+      return {
+        ...prev,
+        usage: {
+          ...usage,
+          usedMicros,
+          percent,
+          // Mirrors the gateway's own thresholds (computeUsageBar): an estimate
+          // that crosses into warn must LOOK like warn, or the colour and the
+          // number disagree until the next read.
+          state: percent >= 1 ? "exhausted" : percent >= 0.8 ? "warn" : "ok",
+        },
+      };
+    },
+  );
+}
 
 /**
  * Whether this deployment has tiered plans switched on at all

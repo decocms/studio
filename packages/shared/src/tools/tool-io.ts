@@ -5121,7 +5121,12 @@ export interface StudioToolIO {
     output: {
       plan: { id: string; name: string };
       features: Record<string, boolean>;
-      usage: { percent: number; state: "warn" | "ok" | "exhausted" } | null;
+      usage: {
+        percent: number;
+        state: "warn" | "ok" | "exhausted";
+        usedMicros: number | null;
+        limitMicros: number | null;
+      } | null;
       credits: { remainingUsd: number } | null;
       tasks: {
         allowed: boolean;

@@ -14,7 +14,16 @@ function getBase(): string {
 interface EntitlementsWire {
   plan: { id: string; name: string };
   features: Record<string, boolean>;
-  usage: { percent: number; state: "ok" | "warn" | "exhausted" } | null;
+  usage: {
+    percent: number;
+    state: "ok" | "warn" | "exhausted";
+    /** The bar's own numerator and denominator. Arithmetic for the client's
+     *  optimistic bump, never rendered — see PlanEntitlements.usage. Optional
+     *  because a gateway older than this field simply omits them, and the
+     *  bump is then skipped rather than dividing by undefined. */
+    used_micros?: number;
+    limit_micros?: number;
+  } | null;
   credits: { remaining_usd: number } | null;
   /** Server-only: the gateway sends it only to a caller holding the service
    *  key, or to an org that owns `model_choice`. */
@@ -112,7 +121,17 @@ function toPlanEntitlements(data: EntitlementsWire): PlanEntitlements {
   return {
     plan: data.plan,
     features: data.features,
-    usage: data.usage,
+    usage: data.usage
+      ? {
+          percent: data.usage.percent,
+          state: data.usage.state,
+          // camelCased here rather than passed through, so an older gateway's
+          // absent fields land as null (one branch for the client) instead of
+          // undefined (two).
+          usedMicros: data.usage.used_micros ?? null,
+          limitMicros: data.usage.limit_micros ?? null,
+        }
+      : null,
     credits: data.credits ? { remainingUsd: data.credits.remaining_usd } : null,
     modelPins: data.model_pins ?? null,
     tasks: data.tasks,
