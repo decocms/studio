@@ -52,7 +52,7 @@ const AppViewContent = lazy(() =>
 // locale data), so lazy-load them: users without access never download them.
 // TabBody renders inside MainPanelContent's Suspense boundary.
 const HostingTab = lazy(() =>
-  import("./hosting-tab").then((m) => ({ default: m.HostingTab })),
+  import("./hosting").then((m) => ({ default: m.HostingTab })),
 );
 const E2eTab = lazy(() =>
   import("./e2e-tab").then((m) => ({ default: m.E2eTab })),

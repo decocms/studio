@@ -1,0 +1,8 @@
+# Fingerprints of confirmed false positives, one per line (see gitleaks docs).
+# Each entry needs a comment explaining why it's safe to ignore.
+
+# Synthetic placeholder analytics key in the local dev fixture mock server
+# (scripts/dev-hosting-mock.ts), removed entirely in a later commit on this
+# branch — never a real credential, just a fake response value for the
+# in-memory control-plane/analytics stand-in.
+ca3ca7032226a4a746382ec75674859d1c51b5bf:scripts/dev-hosting-mock.ts:generic-api-key:1313
