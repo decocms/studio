@@ -110,6 +110,7 @@ import {
   scanBlogEntries,
   stampPostModified,
 } from "./blog/blog-data";
+import type { ContentSearchParams } from "./content-search-params";
 import {
   rescheduleToDay,
   scheduledPostPayload,
@@ -362,10 +363,7 @@ function ContentBrowserReady({
   // record. Read once via a lazy initializer (not an effect) — normal
   // navigation takes over afterwards, same one-shot shape as the storefront
   // "." deep-link below.
-  const contentDeepLink = useSearch({ strict: false }) as {
-    contentCollection?: string;
-    contentItem?: string;
-  };
+  const contentDeepLink = useSearch({ strict: false }) as ContentSearchParams;
   const [activeCollection, setActiveCollection] = useState<CollectionId>(
     () =>
       (contentDeepLink.contentCollection &&
