@@ -315,7 +315,8 @@ export function BranchPicker({
           />
         ) : (
           <>
-            <div className="flex flex-col">
+            {/* Scroll the list, not the popover: the rows below must stay reachable. */}
+            <div className="flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
               {unlisted &&
                 value &&
                 (editing === value ? (
