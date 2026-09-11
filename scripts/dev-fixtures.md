@@ -33,6 +33,30 @@ one). Everything is idempotent, so re-running is the fix for drift.
    BFFs answer 404 and the rows stay hidden). Local mode passes the per-view
    rollout gate, so no org flag is needed.
 
+## One command
+
+```bash
+bun run dev                              # in this workspace
+bun run scripts/dev-fixtures.ts --detach # in another terminal
+```
+
+That writes the upstream vars into `.env` (only the keys you do not already
+have), starts the ClickHouse container and seeds it, starts both mock servers,
+finds the dev home **this** workspace is running — each one gets its own
+Postgres and MinIO under `/tmp/decocms-dev-<workspace>` — and runs the seeds
+against it. Everything is idempotent, so re-run it whenever a page looks empty.
+
+Two things to know:
+
+- If it says it added env keys, restart `bun run dev`: `--hot` does not reload
+  process env, so the BFFs keep the old (absent) upstreams until you do.
+- With several workspaces open it picks by workspace name; when that is
+  ambiguous it lists the homes and takes `--home=<slug>`.
+
+Without `--detach` it stays in the foreground owning the two mock servers, so
+ctrl-c takes the fixture down with it. The steps below are the same thing by
+hand.
+
 ## Pieces
 
 | piece | what it is |
@@ -42,9 +66,11 @@ one). Everything is idempotent, so re-running is the fix for drift.
 | `scripts/dev-monitor-seed.ts` | Seeds a **real local ClickHouse** with the stats-lake tables the Monitor tab queries. No SQL is faked. |
 | `scripts/dev-mcp-app.ts` | An **MCP server with UI tools** (MCP Apps) on `:8789/mcp`, speaking streamable-HTTP JSON-RPC. Three tools carry a `ui://` resource (Pedidos por hora, Alertas de estoque, Funil de vendas) and one deliberately does not, so the views list proves it filters. Each app is a single HTML file that does the ext-apps postMessage handshake by hand and pulls its data back through `tools/call` — the injected CSP is `default-src 'none'`, so it cannot fetch a bundle. |
 | `scripts/dev-seed-mcp-app-connection.ts` | Attaches that server to the project as a real `HTTP` connection. Leaves `connections.tools` null so Studio fetches `tools/list` live. `--pin` also pins every view to the sidebar. |
-| `.env` | `CONTROLPLANE_*`, `ANALYTICS_*`, `CLICKHOUSE_ANALYTICS_*`. |
+| `dev-fixtures.ts` | The one command above: env, ClickHouse, mocks, seeds, in that order. |
+| `dev-seed-org.ts` | Which org the seeds write into: the first one that **has a member**, since a local DB also carries memberless system orgs. |
+| `.env` | `CONTROLPLANE_*`, `ANALYTICS_*`, `CLICKHOUSE_ANALYTICS_*` — gitignored, which is why a fresh workspace shows nothing until the script writes them. |
 
-## Bring it up
+## Bring it up by hand
 
 ```bash
 # 1. warehouse (once per boot)

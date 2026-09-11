@@ -22,6 +22,7 @@ import { CredentialVault } from "../apps/api/src/encryption/credential-vault";
 import { getSettings } from "../apps/api/src/settings";
 import { ConnectionStorage } from "../apps/api/src/storage/connection";
 import { VirtualMCPStorage } from "../apps/api/src/storage/virtual";
+import { resolveSeedOrg } from "./dev-seed-org";
 
 const args = new Map(
   process.argv
@@ -44,30 +45,8 @@ async function main() {
   const database = createDatabase(process.env.DATABASE_URL);
   const db = database.db;
 
-  const orgs = await db
-    .selectFrom("organization")
-    .select(["id", "name", "slug"])
-    .where("id", "!=", "org_orgfs_public_skills")
-    .execute();
-  const org = ORG_REF
-    ? orgs.find((o) => o.slug === ORG_REF || o.id === ORG_REF)
-    : orgs[0];
-  if (!org) {
-    throw new Error(
-      `organization not found (${ORG_REF ?? "first"}); have: ${orgs
-        .map((o) => o.slug)
-        .join(", ")}`,
-    );
-  }
-
-  const owner = await db
-    .selectFrom("member")
-    .innerJoin("user", "user.id", "member.userId")
-    .select(["user.id as id", "user.email as email"])
-    .where("member.organizationId", "=", org.id)
-    .orderBy("member.createdAt", "asc")
-    .executeTakeFirst();
-  if (!owner) throw new Error(`no member found for org ${org.slug}`);
+  const org = await resolveSeedOrg(db, ORG_REF);
+  const owner = org.owner;
 
   const project = await db
     .selectFrom("connections")
