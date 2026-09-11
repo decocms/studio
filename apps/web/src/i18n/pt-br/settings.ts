@@ -126,15 +126,17 @@ export const settings = {
     "Contas que o Studio usa para ler seus repositórios e enviar alterações em seu nome.",
   "settings.repositories.accountsEmptyTitle": "Nenhuma conta conectada",
   "settings.repositories.accountsEmptyDescription":
-    "Conecte uma conta do GitHub ou GitLab para navegar pelos seus repositórios e vincular os privados.",
+    "Conecte uma conta do GitHub, GitLab ou Bitbucket para navegar pelos seus repositórios e vincular os privados.",
   "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
   "settings.repositories.noProvidersDescription":
-    "Entrar com GitHub ou GitLab depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab com um token de acesso.",
+    "Entrar com GitHub, GitLab ou Bitbucket depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab ou do Bitbucket com um token de acesso.",
   "settings.repositories.githubUnavailable":
     "Peça a um administrador para habilitar o GitHub.",
   "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
   "settings.repositories.gitlabTokenHint":
     "Use um token de acesso pessoal, de projeto ou de grupo.",
+  "settings.repositories.bitbucketTokenHint":
+    "Use um token de acesso de workspace, de projeto ou de repositório.",
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
   "settings.repositories.githubSelectTitle": "Selecionar repositórios",
@@ -194,6 +196,9 @@ export const settings = {
     "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
   "settings.repositories.connectGitlab": "Conectar GitLab",
   "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
+  "settings.repositories.connectBitbucket": "Conectar Bitbucket",
+  "settings.repositories.connectBitbucketToken":
+    "Conectar Bitbucket com um token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Token pessoal",
@@ -208,10 +213,15 @@ export const settings = {
   "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
   "settings.repositories.tokenDialogDescription":
     "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.tokenDialogTitleBitbucket":
+    "Conectar o Bitbucket com um token",
+  "settings.repositories.tokenDialogDescriptionBitbucket":
+    "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests — os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
   "settings.repositories.tokenHostLabel": "Host",
   "settings.repositories.tokenHostPlaceholder": "gitlab.com",
   "settings.repositories.tokenLabel": "Token de acesso",
   "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.tokenPlaceholderBitbucket": "ATCTT…",
   "settings.repositories.connect": "Conectar",
   "settings.repositories.connecting": "Conectando…",
   "settings.repositories.connected": 'Conectado como "{login}"',
@@ -220,7 +230,7 @@ export const settings = {
     "Repositórios disponíveis para os agentes e automações desta organização.",
   "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
   "settings.repositories.reposEmptyDescription":
-    "Escolha um repositório de uma conta conectada do GitHub ou GitLab.",
+    "Escolha um repositório de uma conta conectada do GitHub, GitLab ou Bitbucket.",
   "settings.repositories.addRepository": "Adicionar repositório",
   "settings.repositories.unlink": "Desvincular",
   "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',

@@ -775,7 +775,7 @@ export async function refreshItemPrCards(
 export const TASK_BOARD_ITEM_PRS_GET = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
-    "Get the change requests (GitHub pull requests, GitLab merge requests) " +
+    "Get the change requests (GitHub and Bitbucket pull requests, GitLab merge requests) " +
     "linked to a task board item, each enriched with live state (title, " +
     "open/closed, draft, merged) fetched from its provider.",
   annotations: {

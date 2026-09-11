@@ -1,10 +1,10 @@
 /**
  * Pure helpers over a change request's identity — the provider-neutral name for
- * what GitHub calls a pull request and GitLab a merge request.
+ * what GitHub and Bitbucket call a pull request and GitLab a merge request.
  *
  * A change request is addressed by its repository plus a per-repository number
- * (GitHub's `number`, GitLab's `iid` — both 1-based and both scoped to the
- * project, which is why one field carries them). Every URL convention lives
+ * (GitHub's `number`, GitLab's `iid`, Bitbucket's `id` — all 1-based and all scoped to
+ * the repository, which is why one field carries them). Every URL convention lives
  * here so nothing outside this module hand-builds `github.com/.../pull/1`.
  */
 
@@ -13,7 +13,7 @@ import type { GitProviderKind, RepoRef } from "./types";
 
 export interface ChangeRequestRef {
   repo: RepoRef;
-  /** Per-repository number: GitHub's `number`, GitLab's `iid`. */
+  /** Per-repository number: GitHub's `number`, GitLab's `iid`, Bitbucket's `id`. */
   number: number;
   /** Canonical browser URL — the display and dedup key. */
   url: string;
@@ -23,6 +23,7 @@ export interface ChangeRequestRef {
 const WEB_SUFFIX: Record<GitProviderKind, string> = {
   github: "pull",
   gitlab: "-/merge_requests",
+  bitbucket: "pull-requests",
 };
 
 /** Canonical browser URL for a change request. */
@@ -46,6 +47,10 @@ const URL_PATTERNS: { re: RegExp; api?: boolean }[] = [
   { re: /https?:\/\/([^/\s"']+)\/([^\s"']+?)\/-\/merge_requests\/(\d+)/ },
   // https://<host>/<owner>/<repo>/pull/<number>
   { re: /https?:\/\/([^/\s"']+)\/([^/\s"']+\/[^/\s"']+)\/pull\/(\d+)/ },
+  // https://bitbucket.org/<workspace>/<repo>/pull-requests/<id>
+  {
+    re: /https?:\/\/([^/\s"']+)\/([^/\s"']+\/[^/\s"']+)\/pull-requests\/(\d+)/,
+  },
   // https://api.github.com/repos/<owner>/<repo>/pulls/<number>
   {
     re: /https?:\/\/([^/\s"']+)\/repos\/([^/\s"']+\/[^/\s"']+)\/pulls\/(\d+)/,
@@ -56,16 +61,27 @@ const URL_PATTERNS: { re: RegExp; api?: boolean }[] = [
     re: /https?:\/\/([^/\s"']+)\/api\/v4\/projects\/([^/\s"']+)\/merge_requests\/(\d+)/,
     api: true,
   },
+  // https://api.bitbucket.org/2.0/repositories/<workspace>/<repo>/pullrequests/<id>
+  {
+    re: /https?:\/\/([^/\s"']+)\/2\.0\/repositories\/([^/\s"']+\/[^/\s"']+)\/pullrequests\/(\d+)/,
+    api: true,
+  },
 ];
 
 /**
- * `api.github.com` addresses `github.com`'s repositories, and
- * `<host>/api/v4/...` addresses `<host>`'s — so an API match has to be mapped
- * back to the browser host before the repository can be identified.
+ * `api.github.com` addresses `github.com`'s repositories, `api.bitbucket.org`
+ * addresses `bitbucket.org`'s, and `<host>/api/v4/...` addresses `<host>`'s — so
+ * an API match has to be mapped back to the browser host before the
+ * repository can be identified.
  */
+const WEB_HOST_OF_API_HOST: Record<string, string> = {
+  "api.github.com": "github.com",
+  "api.bitbucket.org": "bitbucket.org",
+};
+
 function webHostOf(host: string): string {
   const h = host.toLowerCase();
-  return h === "api.github.com" ? "github.com" : h;
+  return WEB_HOST_OF_API_HOST[h] ?? h;
 }
 
 function refFrom(

@@ -11,17 +11,17 @@
  * - `credentials.ts` — which credential reaches which repository. Neutral.
  * - `clients.ts` — the composition root, and the one module that knows both
  *   providers exist.
- * - `github/`, `gitlab/` — one provider's own vocabulary, and the only place
+ * - `github/`, `gitlab/`, `bitbucket/` — one provider's own vocabulary, and the only place
  *   its name, hosts, endpoints and error prose appear.
  *
  * Two rules keep that honest, and both are about imports:
  *
- * 1. Nothing OUTSIDE this directory imports `github/` or `gitlab/`. If a
+ * 1. Nothing OUTSIDE this directory imports `github/`, `gitlab/` or `bitbucket/`. If a
  *    caller needs one provider specifically, it wants a capability this
  *    interface does not express yet — add it here rather than reaching past
  *    it. Two standing exceptions, both provider-specific *by construction*:
- *    `api/routes/git-providers.ts` (a GitHub App installation and a GitLab
- *    OAuth grant are different redirect dances, so there is no one flow to
+ *    `api/routes/git-providers.ts` (a GitHub App installation and a GitLab or
+ *    Bitbucket OAuth grant are different redirect dances, so there is no one flow to
  *    implement) and `tools/github/list-user-orgs.ts` (listing App
  *    installations has no counterpart to abstract over).
  * 2. Nothing INSIDE this directory imports this barrel. Implementations

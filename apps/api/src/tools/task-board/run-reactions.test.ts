@@ -226,6 +226,17 @@ describe("isPrCreateBashCommand", () => {
         "curl -X POST https://gitlab.com/api/v4/projects/group%2Fstore/merge_requests -d '{}'",
       ),
     ).toBe(true);
+    // Bitbucket has no CLI, so the REST POST is the only bash shape there.
+    expect(
+      isPrCreateBashCommand(
+        "curl -X POST -H \"Authorization: Bearer $BITBUCKET_TOKEN\" https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests -d '{}'",
+      ),
+    ).toBe(true);
+    expect(
+      isPrCreateBashCommand(
+        "curl https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests",
+      ),
+    ).toBe(false);
   });
 
   it("does not match unrelated gh / git / curl commands", () => {

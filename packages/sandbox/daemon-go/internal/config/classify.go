@@ -221,7 +221,9 @@ func TokenFromCloneUrl(rawUrl string) string {
 // the credential baked into a clone URL, keyed off the userinfo username Studio
 // chose for the provider: `x-access-token` is GitHub (`gh` reads GH_TOKEN, plus
 // GH_HOST off github.com), `oauth2` is GitLab (`glab` reads GITLAB_TOKEN and
-// GITLAB_HOST). Empty for an SSH, anonymous or unrecognised URL.
+// GITLAB_HOST), `x-token-auth` is Bitbucket, which has no CLI — BITBUCKET_TOKEN
+// is what an agent's `curl` against api.bitbucket.org sends as its bearer.
+// Empty for an SSH, anonymous or unrecognised URL.
 //
 // The GitLab entries are NOT sufficient on their own: glab sends an env token
 // as `PRIVATE-TOKEN`, which GitLab rejects for an OAuth access token (verified
@@ -254,6 +256,8 @@ func CliEnvFromCloneUrl(rawUrl string) map[string]string {
 			env["GITLAB_HOST"] = "https://" + host
 		}
 		return env
+	case "x-token-auth":
+		return map[string]string{"BITBUCKET_TOKEN": token}
 	}
 	return nil
 }

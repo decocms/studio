@@ -408,6 +408,17 @@ describe("the prompt speaks each checkout's own provider", () => {
     expect(openLine(prompt)).not.toContain("pull request");
   });
 
+  test("a Bitbucket run is told there is no CLI, and called a pull request", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, {
+      ...repo,
+      provider: "bitbucket",
+      url: "https://bitbucket.org/acme/site",
+    });
+    expect(prompt).toContain("hosted on Bitbucket, so `git` is authenticated");
+    expect(prompt).toContain("BITBUCKET_TOKEN");
+    expect(openLine(prompt)).toContain("pull request");
+  });
+
   test("a GitHub run keeps gh and pull-request wording", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo);
     expect(prompt).toContain("hosted on GitHub, so `git` and `gh`");

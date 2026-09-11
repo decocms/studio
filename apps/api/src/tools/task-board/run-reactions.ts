@@ -732,11 +732,12 @@ export function isPrCreateMcpTool(toolName: string): boolean {
  * aliases and script wrappers. The reliable path is the tool above.
  *
  * Both CLIs are in the sandbox image and the checkout's own credential decides
- * which one is authenticated, so a run can genuinely use either.
+ * which one is authenticated, so a run can genuinely use either. Bitbucket has
+ * no CLI, so there the REST POST is the only bash shape.
  */
 const CLI_CREATE = /\b(?:gh\s+pr|glab\s+mr)\s+create\b/;
 const REST_CHANGE_REQUESTS =
-  /\/(?:repos\/[^\s"']+\/pulls|projects\/[^\s"']+\/merge_requests)\b/;
+  /\/(?:repos\/[^\s"']+\/pulls|projects\/[^\s"']+\/merge_requests|repositories\/[^\s"']+\/pullrequests)\b/;
 const HTTP_POST = /(?:-X|--request)\s+POST/;
 
 /** True when a bash command opens a change request (either CLI, or a REST POST). */

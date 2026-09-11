@@ -19,14 +19,53 @@ import {
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { DEFAULT_HOSTS } from "@decocms/shared/git-providers";
+import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import {
   useGitProviderCapabilities,
   useConnectGitAccountToken,
 } from "@/hooks/use-git-providers";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
+
+/** The providers that accept a pasted access token (GitHub connects through its App). */
+type TokenProvider = "gitlab" | "bitbucket";
+
+type Key = Parameters<ReturnType<typeof useT>>[0];
+
+/**
+ * Per-provider copy for the token dialog. GitLab has self-managed hosts, so
+ * its dialog asks for one; Bitbucket is Cloud only, so the host is fixed.
+ */
+const TOKEN_COPY: Record<
+  TokenProvider,
+  {
+    action: Key;
+    hint: Key;
+    title: Key;
+    description: Key;
+    placeholder: Key;
+    askHost: boolean;
+  }
+> = {
+  gitlab: {
+    action: "settings.repositories.connectGitlabToken",
+    hint: "settings.repositories.gitlabTokenHint",
+    title: "settings.repositories.tokenDialogTitle",
+    description: "settings.repositories.tokenDialogDescription",
+    placeholder: "settings.repositories.tokenPlaceholder",
+    askHost: true,
+  },
+  bitbucket: {
+    action: "settings.repositories.connectBitbucketToken",
+    hint: "settings.repositories.bitbucketTokenHint",
+    title: "settings.repositories.tokenDialogTitleBitbucket",
+    description: "settings.repositories.tokenDialogDescriptionBitbucket",
+    placeholder: "settings.repositories.tokenPlaceholderBitbucket",
+    askHost: false,
+  },
+};
+
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -37,34 +76,44 @@ export function GitAccountConnect({
   layout?: "buttons" | "picker";
   disabled?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [tokenProvider, setTokenProvider] = useState<TokenProvider | null>(
+    null,
+  );
   return (
     <>
       <ConnectActions
         layout={layout}
         disabled={disabled}
-        onTokenDialog={() => setOpen(true)}
+        onTokenDialog={setTokenProvider}
       />
-      {open && <TokenConnectDialog open onOpenChange={setOpen} />}
+      {tokenProvider && (
+        <TokenConnectDialog
+          provider={tokenProvider}
+          onOpenChange={(open) => {
+            if (!open) setTokenProvider(null);
+          }}
+        />
+      )}
     </>
   );
 }
 function TokenConnectDialog({
-  open,
+  provider,
   onOpenChange,
 }: {
-  open: boolean;
+  provider: TokenProvider;
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useT();
+  const copy = TOKEN_COPY[provider];
   const connect = useConnectGitAccountToken();
-  const [host, setHost] = useState("gitlab.com");
+  const [host, setHost] = useState(DEFAULT_HOSTS[provider]);
   const [token, setToken] = useState("");
 
   function handleConnect() {
     if (!host.trim() || !token.trim()) return;
     connect.mutate(
-      { type: "gitlab", host: host.trim(), token: token.trim() },
+      { type: provider, host: host.trim(), token: token.trim() },
       {
         onSuccess: (account) => {
           toast.success(
@@ -80,38 +129,36 @@ function TokenConnectDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {t("settings.repositories.tokenDialogTitle")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("settings.repositories.tokenDialogDescription")}
-          </DialogDescription>
+          <DialogTitle>{t(copy.title)}</DialogTitle>
+          <DialogDescription>{t(copy.description)}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
+          {copy.askHost && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${provider}-host`}>
+                {t("settings.repositories.tokenHostLabel")}
+              </Label>
+              <Input
+                id={`${provider}-host`}
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                placeholder={t("settings.repositories.tokenHostPlaceholder")}
+              />
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="gitlab-host">
-              {t("settings.repositories.tokenHostLabel")}
-            </Label>
-            <Input
-              id="gitlab-host"
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              placeholder={t("settings.repositories.tokenHostPlaceholder")}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="gitlab-token">
+            <Label htmlFor={`${provider}-token`}>
               {t("settings.repositories.tokenLabel")}
             </Label>
             <Input
-              id="gitlab-token"
+              id={`${provider}-token`}
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder={t("settings.repositories.tokenPlaceholder")}
+              placeholder={t(copy.placeholder)}
               autoComplete="off"
             />
           </div>
@@ -214,7 +261,7 @@ function ConnectActions({
 }: {
   layout: "buttons" | "picker";
   disabled: boolean;
-  onTokenDialog: () => void;
+  onTokenDialog: (provider: TokenProvider) => void;
 }) {
   const t = useT();
   const capabilities = useGitProviderCapabilities();
@@ -230,9 +277,11 @@ function ConnectActions({
     );
   const github = capabilities.data?.github;
   const gitlab = capabilities.data?.gitlab;
+  const bitbucket = capabilities.data?.bitbucket;
 
   const githubConfigured = github?.configured === true;
   const gitlabConfigured = (gitlab?.oauthHosts.length ?? 0) > 0;
+  const bitbucketConfigured = (bitbucket?.oauthHosts.length ?? 0) > 0;
 
   if (capabilities.isPending) {
     return <Skeleton className="h-9 w-40" />;
@@ -253,7 +302,7 @@ function ConnectActions({
             ? "settings.repositories.browseAccount"
             : "settings.repositories.githubUnavailable",
         )}
-        icon={<GitHubIcon size={16} />}
+        icon={<GitProviderIcon provider="github" size={16} />}
         href={github?.connectPath ? connectUrl(github.connectPath) : undefined}
         disabled={disabled || !githubConfigured || !github?.connectPath}
       />
@@ -262,19 +311,32 @@ function ConnectActions({
           layout={layout}
           label={t("settings.repositories.connectGitlab")}
           description={t("settings.repositories.browseAccount")}
-          icon={<GitLabIcon size={16} />}
+          icon={<GitProviderIcon provider="gitlab" size={16} />}
           href={connectUrl(gitlab.connectPath)}
           disabled={disabled}
         />
       )}
-      <ConnectAction
-        layout={layout}
-        label={t("settings.repositories.connectGitlabToken")}
-        description={t("settings.repositories.gitlabTokenHint")}
-        icon={<GitLabIcon size={16} />}
-        onClick={onTokenDialog}
-        disabled={disabled}
-      />
+      {bitbucketConfigured && bitbucket?.connectPath && (
+        <ConnectAction
+          layout={layout}
+          label={t("settings.repositories.connectBitbucket")}
+          description={t("settings.repositories.browseAccount")}
+          icon={<GitProviderIcon provider="bitbucket" size={16} />}
+          href={connectUrl(bitbucket.connectPath)}
+          disabled={disabled}
+        />
+      )}
+      {(["gitlab", "bitbucket"] as const).map((provider) => (
+        <ConnectAction
+          key={provider}
+          layout={layout}
+          label={t(TOKEN_COPY[provider].action)}
+          description={t(TOKEN_COPY[provider].hint)}
+          icon={<GitProviderIcon provider={provider} size={16} />}
+          onClick={() => onTokenDialog(provider)}
+          disabled={disabled}
+        />
+      ))}
     </div>
   );
 }

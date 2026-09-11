@@ -7592,6 +7592,7 @@ export interface StudioToolIO {
         installPath: string | null;
       };
       gitlab: { oauthHosts: string[]; connectPath: string | null };
+      bitbucket: { oauthHosts: string[]; connectPath: string | null };
     };
   };
   GIT_ACCOUNT_LIST: {
@@ -7600,7 +7601,7 @@ export interface StudioToolIO {
       accounts: {
         id: string;
         organizationId: string;
-        type: "github" | "gitlab";
+        type: "github" | "gitlab" | "bitbucket";
         host: string;
         authKind: "token" | "oauth" | "github_app";
         externalAccountId: string;
@@ -7616,12 +7617,16 @@ export interface StudioToolIO {
     };
   };
   GIT_ACCOUNT_CONNECT_TOKEN: {
-    input: { type: "github" | "gitlab"; host: string; token: string };
+    input: {
+      type: "github" | "gitlab" | "bitbucket";
+      host: string;
+      token: string;
+    };
     output: {
       account: {
         id: string;
         organizationId: string;
-        type: "github" | "gitlab";
+        type: "github" | "gitlab" | "bitbucket";
         host: string;
         authKind: "token" | "oauth" | "github_app";
         externalAccountId: string;
@@ -7644,7 +7649,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         accountId: string | null;
-        provider: "github" | "gitlab";
+        provider: "github" | "gitlab" | "bitbucket";
         host: string;
         path: string;
         externalId: string | null;
@@ -7666,7 +7671,11 @@ export interface StudioToolIO {
     };
     output: {
       repositories: {
-        ref: { provider: "github" | "gitlab"; host: string; path: string };
+        ref: {
+          provider: "github" | "gitlab" | "bitbucket";
+          host: string;
+          path: string;
+        };
         externalId: string;
         defaultBranch: string | null;
         webUrl: string;
@@ -7684,7 +7693,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         accountId: string | null;
-        provider: "github" | "gitlab";
+        provider: "github" | "gitlab" | "bitbucket";
         host: string;
         path: string;
         externalId: string | null;
