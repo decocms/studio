@@ -21,8 +21,10 @@ import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
 import { SubscriptionLimitHighlight } from "./subscription-limit";
+import { PlanRefusedHighlight } from "./plan-refused";
 import { useHighlightFlags } from "./use-highlight-count";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
+import { useFeature } from "@/hooks/use-entitlements";
 import { parseErrorMessage } from "./parse-error-message";
 import type { UserAskToolPart } from "../types";
 
@@ -177,6 +179,7 @@ export function ChatHighlight() {
   const [preferences, setPreferences] = usePreferences();
   const { virtualMcpId, createTaskWithMessage } = useChatTask();
   const { chatMode, simpleModeTier } = useChatPrefs();
+  const canBuyCredits = useFeature("credits");
   const { mutate: subscribe } = useOpenBillingUrl(
     "ORGANIZATION_BILLING_CHECKOUT_START",
     "taskBoard.subscriptionPaywall.checkoutError",
@@ -304,7 +307,21 @@ export function ChatHighlight() {
   const flags = useHighlightFlags();
 
   if (flags.isCreditExhausted) {
-    return <CreditsExhaustedBanner onDismiss={clearError} />;
+    // A mid-stream 402 on a plan that cannot top up (Free's trial is a hard
+    // ceiling) has nothing to sell: the top-up dialog renders NOTHING for such
+    // an org, so the turn failed with no card, no message and no explanation at
+    // all — the exact state this fix exists for. Send them to the plan, which
+    // is the only way past it.
+    return canBuyCredits ? (
+      <CreditsExhaustedBanner onDismiss={clearError} />
+    ) : (
+      <div className="absolute bottom-full left-0 right-0">
+        <PlanRefusedHighlight
+          kind="ai_budget_exhausted"
+          onDismiss={clearError}
+        />
+      </div>
+    );
   }
 
   const { showError, showWarning, hasApprovals } = flags;
@@ -321,6 +338,9 @@ export function ChatHighlight() {
           onDismiss={clearError}
           onSubscribe={handleSubscribe}
         />
+      )}
+      {flags.planRefusal && (
+        <PlanRefusedHighlight kind={flags.planRefusal} onDismiss={clearError} />
       )}
       {showError && (
         <StatusHighlight

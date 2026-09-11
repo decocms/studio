@@ -498,7 +498,6 @@ export const settings = {
     "Generate a token on your own machine with",
   "settings.claudeSubscription.title": "Your Claude subscription",
   "settings.claudeSubscription.tokenPlaceholder": "Paste your token",
-  "settings.decoCreditsHero.accessModels": "Access to 100+ models",
   "settings.decoCreditsHero.add": "Add",
   "settings.decoCreditsHero.addCredits": "Add credits",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -516,6 +515,65 @@ export const settings = {
   "settings.decoCreditsHero.disconnectTitle": "Disconnect Deco AI Gateway",
   "settings.decoCreditsHero.refreshBalance": "Refresh balance",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
+  "settings.planUsage.title": "Plan",
+  "settings.planUsage.loadFailed": "Couldn't read this organization's plan.",
+  "settings.planUsage.retry": "Retry",
+  "settings.planUsage.currentPlan": "Current plan",
+  "settings.planUsage.aiUsage": "AI usage",
+  "settings.planUsage.usageUnavailable": "Unavailable",
+  "settings.planUsage.resetsOn": "Resets on {date}.",
+  "settings.planUsage.periodHint":
+    "Resets at the start of each billing period.",
+  "settings.planUsage.oneTimeHint":
+    "One-time free usage — this allowance doesn't reset.",
+  "settings.planUsage.exhaustedHint":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade or top up.",
+  "settings.planUsage.exhausted": "Limit reached",
+  "settings.planUsage.exhaustedHintOn":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade or top up. Resets on {date}.",
+  "settings.planUsage.exhaustedUpgradeOnly":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade. This plan's allowance can't be topped up.",
+  "settings.planUsage.exhaustedUpgradeOnlyOn":
+    "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade. This plan's allowance can't be topped up. Resets on {date}.",
+  "settings.planUsage.noAiIncluded":
+    "This plan includes no AI usage — pick a plan to get an AI envelope.",
+  "settings.planUsage.changePlan": "Change plan",
+  "settings.planUsage.changePlanDescription":
+    "Pick the plan for this organization. Everyone in the org shares its AI usage. Paid plans open secure checkout and start once payment completes.",
+  "settings.planUsage.current": "Current",
+  "settings.planUsage.subscribe": "Subscribe",
+  "settings.planUsage.downgrade": "Downgrade",
+  "settings.planUsage.changed": "Plan updated",
+  "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
+  "settings.planUsage.credits": "Credits: {amount}",
+  "settings.planUsage.creditsHint":
+    "Your monthly allowance is used up. Work now draws on your credits.",
+  "settings.planUsage.creditsEmpty":
+    "Your monthly allowance is used up and you have no credits left. Top up to keep going.",
+  "settings.planUsage.feature.cms": "CMS",
+  "settings.planUsage.feature.chat": "Superagent chat",
+  "settings.planUsage.feature.monitoring": "Monitoring",
+  "settings.planUsage.feature.kanban": "Kanban",
+  "settings.planUsage.feature.model_choice": "Choose your model",
+  "settings.planUsage.feature.trialChat": "Limited access to chat",
+  "settings.planUsage.feature.none": "Bring your own key",
+  "settings.planUsage.feature.credits": "Buy extra AI credits",
+  "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
+  "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
+  "settings.paywall.title": "{feature} is not in your plan",
+  "settings.paywall.description":
+    "This organization's plan doesn't include {feature}. Change the plan to unlock it for everyone in the org.",
+  "settings.paywall.seePlans": "See plans",
+  "settings.paywall.dismiss": "Not now",
+  // Shown when the SERVER refuses, which is what happens in every window the
+  // client's gate fails open — first paint, an org switch, a cross-pod skew
+  // right after an upgrade. Without these the refusal arrived as a generic
+  // error, indistinguishable from a bug.
+  "settings.paywall.serverRefusedFeature":
+    "Your plan does not include this. Ask an owner to upgrade, or see plans.",
+  "settings.paywall.serverRefusedBudget":
+    "This organization has used its monthly AI allowance. Chat and tasks pause until you upgrade or top up.",
+
   "settings.decoCreditsHero.topUpFailed": "Top-up failed: {message}",
   "settings.decoNudgeCard.connectDeco": "Connect Deco",
   "settings.decoNudgeCard.connecting": "Connecting…",

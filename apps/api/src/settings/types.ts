@@ -81,8 +81,23 @@ export interface Settings {
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
   /** The flat monthly org-subscription price (created in the Stripe
-   *  dashboard); quantity is always 1. */
+   *  dashboard); quantity is always 1. The fallback when a checkout names no
+   *  plan, and the price a deployment with no tiers subscribes on. */
   stripeOrgPriceId: string | undefined;
+  /**
+   * Which gateway plan each subscription Price grants, parsed from
+   * STRIPE_PLAN_PRICE_IDS (`price_abc=pro,price_def=ultra`).
+   *
+   * This is the join between money and entitlement, and without it a plan is
+   * something a user simply asks for: `AI_PLAN_SET` takes no payment, so an
+   * org admin could hand itself Ultra by clicking it. A price in this map is
+   * the only thing that can grant a paid tier, and a subscription leaving
+   * `active` takes it away again — see `planIdForStripe`.
+   *
+   * Empty → no plan is granted or revoked by Stripe, and paid tiers can only
+   * be placed by an operator through the gateway's admin API.
+   */
+  stripePlanPriceIds: Record<string, string>;
   /** The single catalog Product every top-up charge hangs off (created once in
    *  the Stripe dashboard). Top-up amounts are arbitrary, so the Price is
    *  ad-hoc per checkout — but it must point at THIS product, or Stripe's
@@ -91,6 +106,16 @@ export interface Settings {
   stripeTopupProductId: string | undefined;
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
+
+  /**
+   * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →
+   * `getOrgPlanState` answers nothing, so every feature gate is open, no model
+   * pin is honoured and no budget is enforced; the browser is told too (via
+   * /api/config) so it stops asking. Separate from `aiGatewayEnabled` on
+   * purpose: deco prod has a gateway and must keep behaving as it does today
+   * until this is set.
+   */
+  plansEnabled: boolean;
 
   // Task-execution quota (billing/task-quota.ts). Dormant unless enforced —
   // self-hosted deployments never turn it on.

@@ -8,12 +8,14 @@ import {
 } from "@/hooks/collections/use-ai-providers";
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
+import { PlanUsageCard } from "./plan-usage-card";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
 import { ClaudeSubscriptionCard } from "./claude-subscription-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
+import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -35,15 +37,32 @@ function OrgAiProvidersContent() {
     useState<ProviderSelection | null>(null);
 
   const aiProviders = useAiProviders();
-  const providers = aiProviders?.providers ?? [];
+  // Fails OPEN, so a gateway blip shows the BYO surfaces rather than hiding them.
+  const canChooseModels = useFeature("model_choice");
+  // ...but on a COLD cache that same fail-open paints the BYO surfaces for a
+  // frame before the answer arrives and removes them. This page is mostly
+  // plan-gated, so hold the whole body rather than let it rearrange itself.
+  const settled = useFeaturesSettled();
+  const allProviders = aiProviders?.providers ?? [];
+  // Every tile but Deco is a bring-your-own key.
+  const providers = canChooseModels
+    ? allProviders
+    : allProviders.filter((p) => p.id === "deco");
+
+  if (!settled) {
+    return <Skeleton className="h-64 w-full" />;
+  }
 
   if (!hasHostedProvider) {
     return (
       <>
+        {/* The plan is an org-level fact — it does not depend on which
+            provider keys the org happens to have connected. */}
+        <PlanUsageCard />
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
-          onShowAll={() => setConnectOpen(true)}
+          onShowAll={canChooseModels ? () => setConnectOpen(true) : undefined}
         />
         <ConnectProviderDialog
           open={pendingProvider !== null || connectOpen}
@@ -55,7 +74,7 @@ function OrgAiProvidersContent() {
           }}
           initialProvider={pendingProvider ?? undefined}
         />
-        {hasInventory ? (
+        {hasInventory && canChooseModels ? (
           <ConnectedProvidersSection
             onConnectClick={() => setConnectOpen(true)}
           />
@@ -66,13 +85,24 @@ function OrgAiProvidersContent() {
 
   return (
     <>
-      <Suspense fallback={<Skeleton className="h-16 w-full" />}>
-        <SimpleModeSection />
-      </Suspense>
-      {hasDeco ? <DecoCreditsHero /> : <DecoNudgeCard />}
-      <ClaudeSubscriptionCard />
-      <ConnectedProvidersSection onConnectClick={() => setConnectOpen(true)} />
-      <ConnectProviderDialog open={connectOpen} onOpenChange={setConnectOpen} />
+      <PlanUsageCard />
+      {hasDeco ? <DecoCreditsHero /> : null}
+      {canChooseModels ? (
+        <>
+          <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+            <SimpleModeSection />
+          </Suspense>
+          {hasDeco ? null : <DecoNudgeCard />}
+          <ClaudeSubscriptionCard />
+          <ConnectedProvidersSection
+            onConnectClick={() => setConnectOpen(true)}
+          />
+          <ConnectProviderDialog
+            open={connectOpen}
+            onOpenChange={setConnectOpen}
+          />
+        </>
+      ) : null}
     </>
   );
 }

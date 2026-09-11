@@ -27,6 +27,13 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
   },
   inputSchema: CommerceDiscoveryRunInputSchema,
   outputSchema: CommerceDiscoveryRunOutputSchema,
+  // This run IS the enriched report (see the description), and it is the step
+  // that spends. Free is the only plan without the flag, so a Free org can
+  // still connect its sources and see the basic diagnostic — it is stopped
+  // here, at the spend, which is also where the upsell belongs.
+  requiresFeature: "diagnostic_enriched",
+  // …and it is real token spend, so a spent envelope stops it too.
+  requiresAiBudget: true,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);

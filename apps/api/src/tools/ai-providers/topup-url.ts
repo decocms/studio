@@ -22,6 +22,10 @@ export const AI_PROVIDER_TOPUP_URL = defineTool({
   name: "AI_PROVIDER_TOPUP_URL",
   description:
     "Get a checkout URL to top up credits for a provider that supports it (e.g. Deco AI Gateway)",
+  // Free's $2 trial is a ceiling, not a floor: no top-up may raise it. Gated
+  // here as well as in the UI because a checkout URL is the thing that takes
+  // money, and hiding a button is not a control.
+  requiresFeature: "credits",
   inputSchema: z.object({
     providerId: z.enum(HOSTED_PROVIDER_IDS),
     amountCents: z

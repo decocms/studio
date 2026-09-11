@@ -13,6 +13,8 @@ export const AI_PROVIDER_OAUTH_EXCHANGE = defineTool({
   name: "AI_PROVIDER_OAUTH_EXCHANGE",
   description:
     "Exchange an OAuth authorization code for an API key. Completes the OAuth flow started by AI_PROVIDER_OAUTH_URL.",
+  // The other way to land a bring-your-own key; same gate as KEY_CREATE.
+  requiresFeature: "model_choice",
   inputSchema: z.object({
     providerId: z.enum(HOSTED_PROVIDER_IDS),
     code: z.string(),

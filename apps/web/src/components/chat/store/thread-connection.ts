@@ -58,6 +58,7 @@ import {
   parseRunStatusStageChunk,
   type RunStatusStage,
 } from "../run-status";
+import { chatPostErrorMessage } from "../chat-post-error";
 
 export { Store };
 
@@ -777,7 +778,7 @@ export class ThreadConnection {
     }
     if (!resp.ok) {
       const text = await resp.text().catch(() => "");
-      throw new Error(text || `POST /messages failed (${resp.status})`);
+      throw new Error(chatPostErrorMessage(text, resp.status));
     }
     // A queued (quiet) POST must not touch the running turn's status display.
     if (!quiet && this.runStatusStage.get() !== null) {

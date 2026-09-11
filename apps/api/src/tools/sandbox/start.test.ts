@@ -60,16 +60,22 @@ mock.module("../../sandbox/lifecycle", () => ({
   __resetSharedLifecyclesForTesting: () => {},
 }));
 
-let mockSettings: Record<string, unknown> = { nodeEnv: "test" };
-mock.module("../../settings", () => ({
-  getSettings: () => mockSettings,
-  // Bun keeps module mocks alive across test files in one shard. Preserve the
-  // real module's complete runtime surface so later settings-backed tests can
-  // replace and restore their configuration normally.
-  setGlobalSettings: (settings: Record<string, unknown>) => {
-    mockSettings = settings;
-  },
-}));
+// The settings module is NOT mocked. It used to be, and the mock escaped the
+// file — Bun keeps module mocks alive for the whole shard, and a top-level
+// `afterAll` runs at the end of the process, not the end of the file, so there
+// is no way to put it back. Every later file then saw a getSettings() returning
+// only `{ nodeEnv: "test" }`, so anything reading a flag read `undefined`, and
+// `undefined` at the plan feature gate means "no answer", which OPENS the gate:
+// a test written for those gates would pass whether or not the gate worked.
+// Two unrelated files were already failing on it outright
+// ("http://localhost:undefined" cannot be parsed as a URL).
+//
+// All this file ever needed was `nodeEnv: "test"`, and `bun test` already sets
+// NODE_ENV=test, so the real module's own auto-init produces exactly that. It
+// installs nothing: touching the global settings from a test file is the same
+// cross-file coupling as mocking the module, one step milder — it made
+// settings/index.test.ts fail, because that file's subject is the auto-init
+// this one would have pre-empted.
 
 const { DownstreamTokenStorage: RealDownstreamTokenStorage } = await import(
   "../../storage/downstream-token"

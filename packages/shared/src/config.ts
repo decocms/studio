@@ -71,6 +71,15 @@ export interface PublicConfig {
    */
   monitorGa?: boolean;
   /**
+   * Master switch for the tiered-plans feature (env `STUDIO_PLANS_ENABLED`,
+   * default OFF). Off → the client asks the gateway for nothing, every feature
+   * gate reads as open and the plan card is not rendered; the server-side gate
+   * is off too (`core/plan-feature-gate.ts`). It has to be a deployment flag,
+   * not just "no gateway configured": deco's own prod HAS a gateway, so
+   * shipping this code must not switch plans on with the deploy.
+   */
+  plansEnabled?: boolean;
+  /**
    * Whether the native CDN Monitor tab is available (the stats-lake ClickHouse
    * warehouse is wired). Independent of `hostingEnabled` — it reads the
    * warehouse directly, not the control-plane. GA: any org that owns the site

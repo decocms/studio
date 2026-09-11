@@ -23,12 +23,17 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
     idempotentHint: false,
     openWorldHint: true,
   },
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    /** The tier to buy. Its price must be in STRIPE_PLAN_PRICE_IDS, which is
+     *  what makes a paid tier purchasable rather than merely requestable —
+     *  `AI_PLAN_SET` takes no payment and refuses upgrades for that reason. */
+    planId: z.string().optional(),
+  }),
   outputSchema: z.object({
     url: z.string(),
   }),
 
-  handler: async (_input, ctx) => {
+  handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
     const organizationId = ctx.organization?.id;
@@ -59,11 +64,13 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
       organizationId,
       successUrl: `${membersUrl}?checkout=success`,
       cancelUrl: `${membersUrl}?checkout=canceled`,
+      ...(input.planId ? { planId: input.planId } : {}),
     });
     // Intent half of the funnel — completion (subscription_started) arrives via webhook.
     captureOrgEvent({
       event: "subscription_checkout_started",
       organizationId,
+      ...(input.planId ? { properties: { plan_id: input.planId } } : {}),
       ...(ctx.auth?.user?.id ? { userId: ctx.auth.user.id } : {}),
     });
     return { url };

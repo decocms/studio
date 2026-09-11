@@ -16,6 +16,7 @@ import {
   orgFlagEnabled,
   type SimpleModeTier,
 } from "@decocms/shared/organization/schema";
+import { agentSandboxEnabled } from "@/settings";
 import { posthog } from "@/posthog";
 import { consumeStream, createUIMessageStreamResponse } from "ai";
 import type { Context } from "hono";
@@ -46,6 +47,12 @@ import {
   buildDurableDispatchInput,
 } from "./dispatch-run";
 import { stringifyError } from "@/harnesses/lib/stream-error";
+import {
+  AiBudgetExhaustedError,
+  FeatureNotInPlanError,
+  assertAiBudget,
+  orgHasFeature,
+} from "@/core/plan-feature-gate";
 import { cancelHostedHarness, enqueueThreadRun } from "@/dispatch-queue";
 import {
   publishRunStatusStage,
@@ -335,6 +342,8 @@ async function resolveDefaultHarness(
   organizationId: string,
   agentId: string,
 ): Promise<HostedHarnessId> {
+  // Without a hosted sandbox, claude-code only fails later, at dispatch.
+  if (!agentSandboxEnabled()) return "decopilot";
   try {
     const settings = await ctx.storage.organizationSettings.get(organizationId);
     if (!orgFlagEnabled(settings?.flags, "coding_agents_claude_code")) {
@@ -623,6 +632,30 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
       const ctx = c.get("studioContext");
+
+      // The plan gate for chat. `requiresFeature` on defineTool cannot reach
+      // here — a turn is an HTTP POST, not a tool call — so this route
+      // declares it itself. Both checks share one cached entitlements read,
+      // and both fail OPEN when the gateway has no answer (plan-feature-gate).
+      //
+      // BEFORE `validate()`, which resolves the tier. An org whose allowance is
+      // spent has an unfunded gateway key, so its model catalog comes back
+      // empty and `resolveTier` throws `TierUnavailableError` first — the user
+      // was told "No model available for tier smart. Connect a provider" when
+      // the truth is "your allowance is used up, pick a plan". The org id is
+      // the route's own scope, so it needs no body parse to read.
+      const organizationId = ensureOrganization(c).id;
+      if (!(await orgHasFeature(ctx, organizationId, "chat"))) {
+        throw new FeatureNotInPlanError(
+          "This organization's plan does not include chat",
+          "chat",
+        );
+      }
+      // A turn is the largest single AI spend in the product, so it is the
+      // first place the exhausted bar has to mean something. Dormant unless
+      // STUDIO_PLANS_ENABLED.
+      await assertAiBudget(ctx, organizationId, "Chat");
+
       const input = await validate(c, c.req.param("threadId"));
       const taskId = input.taskId;
       if (!taskId) {
@@ -811,6 +844,17 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       );
       return c.json({ taskId }, 202);
     } catch (err) {
+      // Expected refusal, not an incident — logged as a warning below rather
+      // than through the error path.
+      if (
+        err instanceof FeatureNotInPlanError ||
+        err instanceof AiBudgetExhaustedError
+      ) {
+        console.warn("[decopilot:messages] refused by plan", {
+          code: err.code,
+        });
+        return c.json({ error: err.message, code: err.code }, 403);
+      }
       console.error("[decopilot:messages] Error", err);
       if (err instanceof TierUnavailableError) {
         return c.json({ error: err.message }, 400);

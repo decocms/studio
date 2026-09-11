@@ -63,6 +63,7 @@ app.get("/", (c) => {
       !!getSettings().clickhouseAnalyticsUrl &&
       !!getSettings().clickhouseAnalyticsPassword,
     monitorGa: getSettings().monitorGa,
+    plansEnabled: getSettings().plansEnabled,
     auth: buildAuthConfig(),
     posthog: buildPosthogConfig(),
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY?.trim() || null,

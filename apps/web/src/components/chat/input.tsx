@@ -67,6 +67,8 @@ import { authClient } from "@/lib/auth-client.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { useMembersQuery } from "@/hooks/use-members";
 import { track } from "@/lib/posthog-client";
+import { useAiBudgetExhausted, useFeature } from "@/hooks/use-entitlements";
+import { FeaturePaywall } from "@/components/feature-paywall";
 import { useSound } from "@/hooks/use-sound.ts";
 import { question004Sound } from "@/lib/sounds/question-004.ts";
 import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
@@ -560,6 +562,10 @@ export function ChatInput({
   // gate (concurrency=1 serializes the thread). Stop is offered only when
   // there's nothing to send. `canSubmit`/`showStopOrCancel` are kept as the
   // names the button/render logic below already references.
+  const chatIncluded = useFeature("chat");
+  const budgetExhausted = useAiBudgetExhausted();
+  const [chatPaywallOpen, setChatPaywallOpen] = useState(false);
+  const [budgetPaywallOpen, setBudgetPaywallOpen] = useState(false);
   const hasDraft = !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
   const composerAction = resolveComposerAction({
     hasDraft,
@@ -570,6 +576,21 @@ export function ChatInput({
   const showStopOrCancel = composerAction === "stop";
   const handleSubmit = (e?: FormEvent) => {
     e?.preventDefault();
+    // The chat gate. Here rather than on `canSubmit` so the click still
+    // EXPLAINS itself: a disabled button that opens nothing tells the user
+    // their message failed, not that their plan is the reason. The draft is
+    // left in the composer — it is worth keeping if they upgrade.
+    if (!chatIncluded) {
+      setChatPaywallOpen(true);
+      return;
+    }
+    // Same shape, same reason, for a spent allowance: the POST would refuse
+    // this turn (`assertAiBudget`), so stop it here and SAY so, instead of
+    // sending a message that comes back as an error under an empty reply.
+    if (budgetExhausted) {
+      setBudgetPaywallOpen(true);
+      return;
+    }
     if (composerAction === "send" && tiptapDoc) {
       track("chat_message_sent", {
         thread_id: taskId || null,
@@ -676,6 +697,22 @@ export function ChatInput({
 
   return (
     <>
+      {chatPaywallOpen && (
+        <FeaturePaywall
+          feature="chat"
+          onDismiss={() => setChatPaywallOpen(false)}
+        />
+      )}
+      {budgetPaywallOpen && (
+        <FeaturePaywall
+          feature="chat"
+          copy={{
+            title: t("chat.input.allowanceExhaustedTitle"),
+            description: t("chat.input.allowanceExhaustedDescription"),
+          }}
+          onDismiss={() => setBudgetPaywallOpen(false)}
+        />
+      )}
       <div className="flex flex-col w-full justify-end">
         <div className="relative rounded-2xl w-full flex flex-col">
           {/* Muted background for connections banner - peeks through form's bottom radius */}

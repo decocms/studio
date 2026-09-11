@@ -54,6 +54,7 @@ import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { resolveSubmitSettings } from "./resolve-submit-settings";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
 import {
+  getCostFromUsage,
   isDeepResearchModel,
   isQuickSearchModel,
   SELF_MCP_ALIAS_ID,
@@ -62,6 +63,7 @@ import {
   useVirtualMCPNonBlocking,
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
+import { bumpUsageOptimistically } from "@/hooks/use-entitlements";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t";
 
@@ -1078,6 +1080,25 @@ export function ActiveTaskProvider({
       },
       onFinish: (message, _messages, finishReason) => {
         const cb = cbRef.current;
+        // The turn just spent AI budget, and the usage bar is the one surface
+        // that shows it. Move it by this turn's own cost, then mark the query
+        // stale WITHOUT refetching: the bar's numerator is the provider's
+        // per-key counter, which settles asynchronously, so an immediate
+        // refetch here returns the pre-turn number and overwrites the estimate
+        // with the very staleness it was meant to hide. `refetchType: "none"`
+        // leaves the reconcile to the next natural read — a focus, a remount,
+        // or the 60s staleTime — by which point the provider has caught up.
+        // `onFinish` hands back a bare `UIMessage`, whose `metadata` is
+        // untyped — same reason `message.parts` is cast a few lines below.
+        bumpUsageOptimistically(
+          cb.queryClient,
+          cb.orgId,
+          getCostFromUsage((message.metadata as Metadata | undefined)?.usage),
+        );
+        void cb.queryClient.invalidateQueries({
+          queryKey: KEYS.aiPlanEntitlements(cb.orgId),
+          refetchType: "none",
+        });
         // Terminal event: the gate advanced — re-sync the queue so the
         // dequeued message drops and the next one surfaces.
         if (cb.taskId) void refreshMessageQueue(cb.orgSlug, cb.taskId);

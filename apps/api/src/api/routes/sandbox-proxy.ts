@@ -35,6 +35,7 @@ import {
 import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
 import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { assertAiBudget } from "../../core/plan-feature-gate";
 import {
   getUserId,
   requireAuth,
@@ -1169,6 +1170,18 @@ export const createSandboxRoutes = () => {
                     repoGitDiff(client, claim.branch),
                   ]);
                 })();
+        // These two routes are the only ones under /sandbox that spend real
+        // money: each is one `generateText` on the org's gateway credential,
+        // with a prompt the caller sizes (up to the body limit above). They
+        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
+        // them and an org whose bar reads `exhausted` could loop either one.
+        // Fails OPEN when the gateway has no answer, like every other gate.
+        await assertAiBudget(
+          ctx,
+          requireOrganization(ctx).id,
+          "suggesting a commit message",
+        );
+
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
         return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
@@ -1258,6 +1271,18 @@ export const createSandboxRoutes = () => {
                     repoGitDiff(client, claim.branch),
                   ]);
                 })();
+        // These two routes are the only ones under /sandbox that spend real
+        // money: each is one `generateText` on the org's gateway credential,
+        // with a prompt the caller sizes (up to the body limit above). They
+        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
+        // them and an org whose bar reads `exhausted` could loop either one.
+        // Fails OPEN when the gateway has no answer, like every other gate.
+        await assertAiBudget(
+          ctx,
+          requireOrganization(ctx).id,
+          "judging whether a change needs review",
+        );
+
         const verdict = await judgeRequiresReviewWithLlm(
           ctx,
           status,

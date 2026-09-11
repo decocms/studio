@@ -36,3 +36,26 @@ describe("parseErrorMessage", () => {
     expect(result.rawDetails).toBeNull();
   });
 });
+
+describe("JSON envelopes", () => {
+  test("renders the sentence, not the blob, and keeps the blob as detail", () => {
+    const raw =
+      '{"error":"No model available for tier \\"smart\\". Connect a provider or configure the tier in organization settings."}';
+    const { summary, rawDetails } = parseErrorMessage(raw);
+    expect(summary).toBe(
+      'No model available for tier "smart". Connect a provider or configure the tier in organization settings.',
+    );
+    expect(rawDetails).toBe(raw);
+  });
+
+  test("still classifies the unwrapped sentence", () => {
+    const { summary } = parseErrorMessage('{"error":"request timed out"}');
+    expect(summary).toBe("That took longer than expected. Try again.");
+  });
+
+  test("leaves a non-envelope body to the existing rules", () => {
+    expect(parseErrorMessage("plain failure").summary).toBe("plain failure");
+    expect(parseErrorMessage("{not json").summary).toBe("{not json");
+    expect(parseErrorMessage('{"code":"x"}').summary).toBe('{"code":"x"}');
+  });
+});

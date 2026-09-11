@@ -270,6 +270,9 @@ export const chat = {
     "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
     "Apenas leitura - este chat não aceita respostas",
+  "chat.input.allowanceExhaustedTitle": "Limite de IA esgotado",
+  "chat.input.allowanceExhaustedDescription":
+    "Esta organização usou 100% do seu limite de IA. Escolha um plano para continuar conversando - sua mensagem continua no campo de texto.",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -545,4 +548,11 @@ export const chat = {
   "chat.subscriptionLimit.runsTitle":
     "Esta task atingiu o limite de re-execuções. Crie uma nova task para continuar.",
   "chat.subscriptionLimit.subscribeButton": "Assinar",
+  "chat.planRefused.budgetLabel": "Limite de IA esgotado",
+  "chat.planRefused.budgetTitle":
+    "Esta organização usou 100% do seu limite de IA. Escolha um plano para continuar conversando.",
+  "chat.planRefused.featureLabel": "Fora deste plano",
+  "chat.planRefused.featureTitle":
+    "O plano desta organização não inclui chat. Escolha um plano para continuar conversando.",
+  "chat.planRefused.seePlans": "Ver planos",
 } satisfies Record<keyof typeof chatEn, string>;

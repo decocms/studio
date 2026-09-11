@@ -17,11 +17,18 @@ import { deriveCurrentTodos } from "./derive-current-todos";
 import { extractPendingApprovals } from "./extract-pending-approvals";
 import { extractPendingPlans } from "./extract-pending-plans";
 import { isCreditError } from "../is-credit-error";
+import { planRefusalKind, type PlanRefusalKind } from "../chat-post-error";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
 import { useChatStream } from "../context";
+import { useFeature } from "@/hooks/use-entitlements";
 
 export interface HighlightFlags {
   isCreditExhausted: boolean;
+  /** Non-null when the turn was refused by the org's PLAN — a spent AI
+   *  allowance, or a plan without chat. Its own card (with a "See plans" CTA)
+   *  rather than the raw-message error card: the user is being asked to buy
+   *  something, not shown a fault. */
+  planRefusal: PlanRefusalKind | null;
   /** Non-null when the run errored on the org's auto-task quota — e.g. a
    *  reviewer thread bouncing the task back to the Super Agent hit the
    *  org/task's execution limit. Renders inline, not as a sales paywall (this
@@ -49,6 +56,7 @@ export interface DeriveHighlightFlagsInput {
 
 const EMPTY_FLAGS: HighlightFlags = {
   isCreditExhausted: false,
+  planRefusal: null,
   subscriptionErrorKind: null,
   hasTodos: false,
   showError: false,
@@ -101,7 +109,9 @@ export function deriveHighlightFlags(
   // copy, no CTA — see SubscriptionLimitHighlight), not the generic raw-message
   // error card.
   const subKind = !isStreaming ? subscriptionErrorKind(error) : null;
-  const showError = !isStreaming && !!error && !subKind;
+  // Same rule, same reason, for a plan refusal: it has its own card below.
+  const planRefusal = !isStreaming ? planRefusalKind(error) : null;
+  const showError = !isStreaming && !!error && !subKind && !planRefusal;
   const hasApprovals =
     pendingApprovals.length > 0 || (isStreaming && isWaitingForApprovals);
   const hasPlans = pendingPlans.length > 0;
@@ -122,6 +132,7 @@ export function deriveHighlightFlags(
 
   return {
     isCreditExhausted: false,
+    planRefusal,
     subscriptionErrorKind: subKind,
     hasTodos: todos.length > 0,
     showError,
@@ -160,11 +171,15 @@ export function useHighlightFlags(): HighlightFlags {
  */
 export function useHighlightCount(): number {
   const flags = useHighlightFlags();
-  if (flags.isCreditExhausted) return 0;
+  const canBuyCredits = useFeature("credits");
+  // The modal reserves nothing — but a plan that cannot top up gets the plan
+  // card in the stack instead (see ChatHighlight), and that one takes a slot.
+  if (flags.isCreditExhausted) return canBuyCredits ? 0 : 1;
   return (
     Number(flags.hasTodos) +
     Number(flags.showError) +
     Number(!!flags.subscriptionErrorKind) +
+    Number(!!flags.planRefusal) +
     Number(flags.showWarning) +
     Number(flags.hasApprovals) +
     Number(flags.hasPlans) +

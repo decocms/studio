@@ -39,6 +39,16 @@ const WRITE_DEBOUNCE_MS = 1000;
 // is an authorization gate (a stale "you're a member" value would render the
 // org shell instead of the invite / no-access screen — see shell-layout.tsx),
 // and session state must always revalidate against the server.
+//
+// `ai-plan-entitlements` is deliberately NOT here either, for the same class
+// of reason. A hydrated entry restores with `status: "success"`, so
+// `useFeaturesSettled()` is immediately true and `useModelDisclosure()`
+// immediately `isSuccess` — from a decision that may be a day old. That paints
+// model names and per-message costs for an org that has since dropped off
+// Ultra, and paints `FeaturePaywall` at an org that paid ninety seconds ago,
+// on the first frame of every reload. The flicker this was added to remove is
+// already handled properly by the third-state skeleton in
+// `main-panel-tabs/index.tsx`.
 const PERSISTED_KEY_HEADS = new Set([
   "publicConfig",
   "ai-provider-keys",

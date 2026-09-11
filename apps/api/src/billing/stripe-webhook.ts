@@ -19,6 +19,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { invalidateOrgFeaturesCache } from "@/core/plan-feature-gate";
 import { getDb } from "@/database";
 import { captureOrgEvent, deterministicUuid } from "@/posthog";
 import {
@@ -26,7 +27,8 @@ import {
   type OrganizationBillingRow,
 } from "../storage/organization-billing";
 import { cancelSubscription, StripeApiError } from "./stripe-api";
-import { creditGatewayTopUp } from "./gateway-admin";
+import { creditGatewayTopUp, setGatewayOrgPlan } from "./gateway-admin";
+import { getSettings } from "../settings";
 
 const SIGNATURE_TOLERANCE_SEC = 300;
 
@@ -142,6 +144,50 @@ function invoiceSubscriptionId(
   );
 }
 
+/** The gateway plan id every price in a subscription's items maps to, or
+ *  undefined when none of them is a plan price. First match wins: a
+ *  subscription carrying one plan price plus add-on prices still resolves. */
+export function planIdForPrices(
+  obj: Record<string, unknown>,
+  map: Record<string, string>,
+): string | undefined {
+  const items = rec(obj.items)?.data;
+  if (!Array.isArray(items)) return undefined;
+  for (const item of items) {
+    const priceId = idOf(rec(item)?.price);
+    if (priceId && map[priceId]) return map[priceId];
+  }
+  return undefined;
+}
+
+/**
+ * Which gateway plan a subscription event should leave the org on, or
+ * undefined to leave the plan alone.
+ *
+ * The rule that answers "a non-renewed payment moves the org back to Free":
+ *
+ *  - `active` / `trialing` → the plan its price maps to. This is the ONLY way
+ *    a paid tier is granted, which is what makes a tier something bought
+ *    rather than something asked for.
+ *  - `past_due` → unchanged. Stripe is still dunning and the card may yet
+ *    clear; `task-quota.ts` already treats past_due as grace, and the two must
+ *    not disagree about what a delinquent org can do.
+ *  - anything else (canceled, unpaid, incomplete_expired, paused) → `free`.
+ *
+ * A subscription whose price is not in the map grants nothing on the way in —
+ * but still drops the org to free on the way out, because an org holding a
+ * paid tier must never keep it just because its price was later unmapped.
+ */
+export function planIdForStripe(
+  status: string,
+  obj: Record<string, unknown>,
+  map: Record<string, string>,
+): string | undefined {
+  if (status === "past_due") return undefined;
+  if (status !== "active") return "free";
+  return planIdForPrices(obj, map);
+}
+
 /** subscription → current period end; Basil moved it onto items.data[]. */
 function subscriptionPeriodEnd(obj: Record<string, unknown>): Date | null {
   const direct = epochToDate(obj.current_period_end);
@@ -192,6 +238,12 @@ export type HandledStripeEvent =
        *  credits it; a failure THROWS so Stripe redelivers — Stripe is the
        *  retry queue, the gateway referenceId dedupe makes replays no-ops). */
       topUp?: { creditCents: number; referenceId: string };
+      /** The gateway plan this event grants or revokes. Applied by the route
+       *  wrapper, and THROWS on failure like the top-up does, for the same
+       *  reason: an entitlement that silently fails to land is a customer
+       *  paying for a tier they do not have — or keeping one they stopped
+       *  paying for. Absent = leave the plan alone. */
+      planChange?: { planId: string; note: string };
     };
 
 /**
@@ -295,7 +347,25 @@ export async function applyStripeEvent(
         status: "active",
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return { handled: true, organizationId };
+      // The plan the buyer paid for, from the metadata OUR checkout creator
+      // wrote — a Checkout Session carries no line items unless expanded, so
+      // the price map cannot be consulted here. `customer.subscription.updated`
+      // fires for the same subscription with real items and resolves it again
+      // from the price, so a session with no planId is not a hole: it just
+      // grants nothing until that event lands.
+      const planId = s(rec(obj.metadata)?.planId);
+      return {
+        handled: true,
+        organizationId,
+        ...(planId
+          ? {
+              planChange: {
+                planId,
+                note: `stripe checkout ${s(obj.id) ?? ""}`.trim(),
+              },
+            }
+          : {}),
+      };
     }
 
     case "customer.subscription.updated":
@@ -317,7 +387,21 @@ export async function applyStripeEvent(
         ...(isDeleted && { stripeSubscriptionId: null }),
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return { handled: true, organizationId: billing.organizationId };
+      // This is where a lapsed payment becomes a lapsed entitlement. Without
+      // it the billing row said `canceled` and the org kept every paid feature
+      // and its full AI allowance, indefinitely.
+      const planId = planIdForStripe(
+        status,
+        obj,
+        getSettings().stripePlanPriceIds,
+      );
+      return {
+        handled: true,
+        organizationId: billing.organizationId,
+        ...(planId
+          ? { planChange: { planId, note: `stripe ${event.type} (${status})` } }
+          : {}),
+      };
     }
 
     case "invoice.paid": {
@@ -336,7 +420,21 @@ export async function applyStripeEvent(
         currentPeriodEnd: epochToDate(obj.period_end),
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return { handled: true, organizationId: billing.organizationId };
+      // The other half of the recovery: an org dropped to free by a failed
+      // payment has to get its tier BACK when the invoice settles, or the
+      // downgrade is one-way. An invoice's lines carry the price, so the map
+      // resolves here without fetching the subscription.
+      const planId = planIdForPrices(
+        { items: obj.lines },
+        getSettings().stripePlanPriceIds,
+      );
+      return {
+        handled: true,
+        organizationId: billing.organizationId,
+        ...(planId
+          ? { planChange: { planId, note: "stripe invoice.paid" } }
+          : {}),
+      };
     }
 
     default:
@@ -449,6 +547,24 @@ export async function processStripeEvent(
     });
     // Only now did the top-up actually succeed.
     captureSubscriptionEvent(event, result);
+  }
+  // Grant or revoke the tier the payment state implies. After the billing
+  // write and before the orphan cleanup, and NOT fail-soft: a throw 500s the
+  // route so Stripe redelivers, and placing a plan is idempotent at the
+  // gateway. Failing soft here would leave an org paying for a tier it does
+  // not have, or holding one it stopped paying for — both silently.
+  if (result.handled && result.planChange) {
+    await setGatewayOrgPlan({
+      organizationId: result.organizationId,
+      planId: result.planChange.planId,
+      note: result.planChange.note,
+    });
+    // Same courtesy `AI_PLAN_SET` does after a downgrade. Only this process —
+    // the cache is a per-pod Map and other pods wait out their 60s TTL — but
+    // the grant path did not invalidate at all, so a customer who had just
+    // paid could be refused their new features by the very pod that took the
+    // webhook.
+    invalidateOrgFeaturesCache(result.organizationId);
   }
   // Cancel a refused-but-paid subscription so it stops charging. NOT
   // fail-soft: a transient failure must 500 the route so Stripe redelivers

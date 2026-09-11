@@ -1,0 +1,390 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Button } from "@decocms/ui/components/button.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
+import { Progress } from "@decocms/ui/components/progress.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import {
+  SettingsCard,
+  SettingsSection,
+} from "@/components/settings/settings-section";
+import { useProjectContext } from "@/sdk";
+import { useStudioTools } from "@/lib/studio-tools";
+import { KEYS } from "@/lib/query-keys";
+import { useT } from "@/i18n/use-t.ts";
+import { usePreferences } from "@/hooks/use-preferences.ts";
+import {
+  useEntitlements,
+  useFeature,
+  usePlansEnabled,
+} from "@/hooks/use-entitlements";
+import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
+
+/**
+ * The org's plan and its AI usage bar.
+ *
+ * The bar is a PERCENT and nothing else — no dollars, no tokens (that is the
+ * pricing decision, not a shortcut): the only place money appears is a wallet
+ * top-up. `usage: null` means the gateway could not read consumption, which
+ * must read as unknown; an empty bar would tell the org it has spent nothing.
+ */
+
+const BAR_STYLES = {
+  ok: "[&>[data-slot=progress-indicator]]:bg-primary",
+  warn: "[&>[data-slot=progress-indicator]]:bg-warning",
+  exhausted: "[&>[data-slot=progress-indicator]]:bg-destructive",
+} as const;
+
+/** The features worth naming in a plan picker, in the order they read. */
+const HIGHLIGHT_FEATURES = [
+  "cms",
+  "chat",
+  "monitoring",
+  "kanban",
+  "model_choice",
+] as const;
+
+function ChangePlanDialog({
+  open,
+  onOpenChange,
+  currentPlanId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentPlanId: string;
+}) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  const { data: plans } = useQuery({
+    queryKey: KEYS.aiPlanCatalog(org.id),
+    enabled: open,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { plans } = await studio.call("AI_PLAN_LIST", {
+        providerId: "deco",
+      });
+      return plans;
+    },
+  });
+
+  // An UPGRADE is a purchase, so it goes to Stripe and the tier arrives from
+  // the webhook. This dialog used to call AI_PLAN_SET for every plan, and that
+  // tool took no payment — so anyone who could open this picker could click
+  // Ultra and receive every gated feature plus a $400 monthly AI allowance for
+  // nothing. AI_PLAN_SET only accepts 'free' now, which is the one transition
+  // that costs nothing and is the org's to make.
+  const { mutate: startCheckout, isPending: isCheckingOut } = useOpenBillingUrl(
+    "ORGANIZATION_BILLING_CHECKOUT_START",
+    "settings.planUsage.changeFailed",
+  );
+
+  const { mutate: dropToFree, isPending: isDropping } = useMutation({
+    mutationFn: async () => {
+      await studio.call("AI_PLAN_SET", { providerId: "deco", planId: "free" });
+      // The card is the source of truth for what the org is on — refetch it
+      // rather than reading the mutation's own response. A throw in onSuccess
+      // is caught by react-query and surfaced as a mutation ERROR, so trusting
+      // a response shape here turns a successful switch into "Couldn't change
+      // plan: Cannot read properties of undefined".
+      return await queryClient.invalidateQueries({
+        queryKey: KEYS.aiPlanEntitlements(org.id),
+      });
+    },
+    onSuccess: () => {
+      toast.success(t("settings.planUsage.changed"));
+      onOpenChange(false);
+    },
+    onError: (err: Error) => {
+      toast.error(
+        t("settings.planUsage.changeFailed", { message: err.message }),
+      );
+    },
+  });
+
+  const isPending = isCheckingOut || isDropping;
+  const choosePlan = (planId: string) =>
+    planId === "free" ? dropToFree() : startCheckout(planId);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("settings.planUsage.changePlan")}</DialogTitle>
+          <DialogDescription>
+            {t("settings.planUsage.changePlanDescription")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2">
+          {!plans
+            ? Array.from({ length: 3 }).map((_, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton
+                <Skeleton key={i} className="h-14 w-full" />
+              ))
+            : plans.map((plan) => {
+                const isCurrent = plan.id === currentPlanId;
+                const included = HIGHLIGHT_FEATURES.filter(
+                  (f) => plan.features[f],
+                );
+                // A plan without `credits` is capped at its allowance and
+                // cannot buy past it (Free). Listing "Chat" alongside the paid
+                // tiers reads as the same chat they get, so say what it is.
+                const subtitle = !plan.features.credits
+                  ? t("settings.planUsage.feature.trialChat")
+                  : included.length > 0
+                    ? included
+                        .map((f) => t(`settings.planUsage.feature.${f}`))
+                        .join(" \u00b7 ")
+                    : t("settings.planUsage.feature.none");
+                return (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    disabled={isCurrent || isPending}
+                    onClick={() => choosePlan(plan.id)}
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors",
+                      isCurrent
+                        ? "border-primary bg-primary/5 cursor-default"
+                        : "border-border hover:bg-muted/50",
+                      isPending && !isCurrent && "opacity-50",
+                    )}
+                  >
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium">{plan.name}</span>
+                      <span className="text-xs text-muted-foreground truncate">
+                        {subtitle}
+                      </span>
+                    </div>
+                    {isCurrent ? (
+                      <Badge variant="secondary">
+                        {t("settings.planUsage.current")}
+                      </Badge>
+                    ) : (
+                      // Say where the click goes. A paid tier opens Stripe in
+                      // a new tab and does not take effect until the payment
+                      // completes, which is a different promise from the
+                      // instant switch this dialog used to make.
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {plan.id === "free"
+                          ? t("settings.planUsage.downgrade")
+                          : t("settings.planUsage.subscribe")}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function PlanUsageCard() {
+  const t = useT();
+  const [preferences] = usePreferences();
+  const [changeOpen, setChangeOpen] = useState(false);
+
+  const plansEnabled = usePlansEnabled();
+  // Free cannot top up: its allowance is a ceiling and the only way past it is
+  // a plan. That changes both the copy and whether a credits row belongs here.
+  const canBuyCredits = useFeature("credits");
+  const { data, isLoading, isError, refetch } = useEntitlements();
+
+  // The "no plan surface here" case the error branch below excuses itself for:
+  // the deployment has plans switched off, so there is nothing to show and
+  // nothing failed. Not a hook, so it has to sit after the hooks above.
+  if (!plansEnabled) return null;
+
+  if (isLoading) {
+    return (
+      <SettingsSection title={t("settings.planUsage.title")}>
+        <SettingsCard>
+          <div className="px-5 py-5">
+            <Skeleton className="h-16 w-full" />
+          </div>
+        </SettingsCard>
+      </SettingsSection>
+    );
+  }
+
+  // A card that vanishes on failure is worse than one that says it failed: an
+  // org (or a developer) has no way to tell "no plan surface here" from "the
+  // read broke". Only a deployment with no gateway at all renders nothing.
+  if (isError || !data) {
+    return (
+      <SettingsSection title={t("settings.planUsage.title")}>
+        <SettingsCard>
+          <div className="px-5 py-5 flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              {t("settings.planUsage.loadFailed")}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              {t("settings.planUsage.retry")}
+            </Button>
+          </div>
+        </SettingsCard>
+      </SettingsSection>
+    );
+  }
+
+  // Clamped and finite-checked: the wire is 0..1 but a NaN or a negative
+  // arriving here produced `translateX(-NaN%)`, an invalid declaration the
+  // browser drops — which renders the indicator FULL and untranslated, i.e. a
+  // bad number reads as "you have used everything".
+  const rawPercent = data.usage ? Math.round(data.usage.percent * 100) : null;
+  const percent =
+    rawPercent !== null && Number.isFinite(rawPercent)
+      ? Math.min(100, Math.max(0, rawPercent))
+      : null;
+  const state = data.usage?.state ?? "ok";
+  // A plan with no chat has no AI envelope at all, so a full red bar would
+  // read as "you burned through it" on an org that never had any.
+  const hasAiEnvelope = data.features.chat;
+  // Dollars, localized. Read only inside the exhausted branch below, so an org
+  // that never fills its bar never sees an amount anywhere in the product.
+  const creditsUsd = data.credits?.remainingUsd ?? null;
+  // A real calendar date, from the gateway's own roll rule — not "next month".
+  // Guarded: a missing or unparseable date falls back to the generic hint
+  // rather than rendering the literal string "Invalid Date" at the user.
+  const periodEndAt = data.periodEnd ? new Date(data.periodEnd) : null;
+  // The gateway sends a period_end for free too, and free never refills.
+  const renews = data.plan.id !== "free";
+  const resetsOn =
+    renews && periodEndAt && !Number.isNaN(periodEndAt.getTime())
+      ? periodEndAt.toLocaleDateString(preferences.language, {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })
+      : null;
+
+  return (
+    <SettingsSection title={t("settings.planUsage.title")}>
+      <SettingsCard>
+        <div className="px-5 py-5 flex flex-col gap-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-1 min-w-0">
+              <span className="text-xs text-muted-foreground">
+                {t("settings.planUsage.currentPlan")}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-semibold leading-tight">
+                  {data.plan.name}
+                </span>
+                {hasAiEnvelope && state === "exhausted" && (
+                  <Badge variant="destructive">
+                    {t("settings.planUsage.exhausted")}
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setChangeOpen(true)}
+            >
+              {t("settings.planUsage.changePlan")}
+            </Button>
+          </div>
+
+          {hasAiEnvelope ? (
+            <div className="flex flex-col gap-2 pt-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("settings.planUsage.aiUsage")}
+                </span>
+                <span className="text-sm font-semibold tabular-nums">
+                  {percent === null
+                    ? t("settings.planUsage.usageUnavailable")
+                    : `${percent}%`}
+                </span>
+              </div>
+              {/* No bar at all when consumption is UNKNOWN. `value={percent ??
+                  0}` rendered a full-width EMPTY track, which is the one
+                  reading this card's own docstring forbids: an empty bar says
+                  "nothing used", and the honest answer is "we could not read
+                  it". The label above already says Unavailable; this is a
+                  placeholder track with no fill, not a measurement. */}
+              {percent === null ? (
+                <div
+                  className="h-2 w-full rounded-full bg-muted/60"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Progress value={percent} className={cn(BAR_STYLES[state])} />
+              )}
+              <p className="text-xs text-muted-foreground">
+                {state === "exhausted"
+                  ? canBuyCredits
+                    ? resetsOn
+                      ? t("settings.planUsage.exhaustedHintOn", {
+                          date: resetsOn,
+                        })
+                      : t("settings.planUsage.exhaustedHint")
+                    : resetsOn
+                      ? t("settings.planUsage.exhaustedUpgradeOnlyOn", {
+                          date: resetsOn,
+                        })
+                      : t("settings.planUsage.exhaustedUpgradeOnly")
+                  : resetsOn
+                    ? t("settings.planUsage.resetsOn", { date: resetsOn })
+                    : renews
+                      ? t("settings.planUsage.periodHint")
+                      : t("settings.planUsage.oneTimeHint")}
+              </p>
+              {/* The second pool, and the ONE amount this card may show. It
+                  appears only once the bar is full, because that is the only
+                  moment credits are what the org is spending — showing a
+                  balance alongside a half-empty bar is what made the two read
+                  as one number. */}
+              {state === "exhausted" &&
+                canBuyCredits &&
+                creditsUsd !== null && (
+                  <div className="flex items-baseline justify-between gap-2 pt-1 border-t border-border mt-1">
+                    <span className="text-xs text-muted-foreground">
+                      {creditsUsd > 0
+                        ? t("settings.planUsage.creditsHint")
+                        : t("settings.planUsage.creditsEmpty")}
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums shrink-0">
+                      {t("settings.planUsage.credits", {
+                        amount: creditsUsd.toLocaleString(
+                          preferences.language,
+                          {
+                            style: "currency",
+                            currency: "USD",
+                          },
+                        ),
+                      })}
+                    </span>
+                  </div>
+                )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground pt-1">
+              {t("settings.planUsage.noAiIncluded")}
+            </p>
+          )}
+        </div>
+      </SettingsCard>
+
+      <ChangePlanDialog
+        open={changeOpen}
+        onOpenChange={setChangeOpen}
+        currentPlanId={data.plan.id}
+      />
+    </SettingsSection>
+  );
+}

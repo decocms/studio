@@ -512,7 +512,6 @@ export const settings = {
     "Gere um token na sua pr\u00f3pria m\u00e1quina com",
   "settings.claudeSubscription.title": "Sua assinatura Claude",
   "settings.claudeSubscription.tokenPlaceholder": "Cole seu token",
-  "settings.decoCreditsHero.accessModels": "Acesso a 100+ modelos",
   "settings.decoCreditsHero.add": "Adicionar",
   "settings.decoCreditsHero.addCredits": "Adicionar cr\u00e9ditos",
   "settings.decoCreditsHero.amountPlaceholder": "50",
@@ -531,6 +530,63 @@ export const settings = {
   "settings.decoCreditsHero.disconnectTitle": "Desconectar Deco AI Gateway",
   "settings.decoCreditsHero.refreshBalance": "Atualizar saldo",
   "settings.decoCreditsHero.title": "Deco AI Gateway",
+  "settings.planUsage.title": "Plano",
+  "settings.planUsage.loadFailed":
+    "Não foi possível ler o plano desta organização.",
+  "settings.planUsage.retry": "Tentar novamente",
+  "settings.planUsage.currentPlan": "Plano atual",
+  "settings.planUsage.aiUsage": "Uso de IA",
+  "settings.planUsage.usageUnavailable": "Indisponível",
+  "settings.planUsage.resetsOn": "Reinicia em {date}.",
+  "settings.planUsage.periodHint":
+    "Reinicia no começo de cada ciclo de cobrança.",
+  "settings.planUsage.oneTimeHint":
+    "Uso gratuito de uma única vez — esta franquia não reinicia.",
+  "settings.planUsage.exhaustedHint":
+    "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos.",
+  "settings.planUsage.exhausted": "Limite atingido",
+  "settings.planUsage.exhaustedHintOn":
+    "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos. Reinicia em {date}.",
+  "settings.planUsage.exhaustedUpgradeOnly":
+    "O uso de IA acabou \u2014 o CMS continua funcionando, chat e tarefas pausam at\u00e9 voc\u00ea fazer upgrade. A cota deste plano n\u00e3o pode ser recarregada.",
+  "settings.planUsage.exhaustedUpgradeOnlyOn":
+    "O uso de IA acabou \u2014 o CMS continua funcionando, chat e tarefas pausam at\u00e9 voc\u00ea fazer upgrade. A cota deste plano n\u00e3o pode ser recarregada. Renova em {date}.",
+  "settings.planUsage.noAiIncluded":
+    "Este plano não inclui uso de IA — escolha um plano para ter uma cota.",
+  "settings.planUsage.changePlan": "Trocar plano",
+  "settings.planUsage.changePlanDescription":
+    "Escolha o plano desta organização. Todo mundo na org compartilha o uso de IA. Planos pagos abrem o checkout seguro e começam quando o pagamento é concluído.",
+  "settings.planUsage.current": "Atual",
+  "settings.planUsage.subscribe": "Assinar",
+  "settings.planUsage.downgrade": "Voltar ao gratuito",
+  "settings.planUsage.changed": "Plano atualizado",
+  "settings.planUsage.changeFailed":
+    "Não foi possível trocar o plano: {message}",
+  "settings.planUsage.credits": "Créditos: {amount}",
+  "settings.planUsage.creditsHint":
+    "Sua franquia mensal acabou. O uso agora consome seus créditos.",
+  "settings.planUsage.creditsEmpty":
+    "Sua franquia mensal acabou e você não tem mais créditos. Adicione créditos para continuar.",
+  "settings.planUsage.feature.cms": "CMS",
+  "settings.planUsage.feature.chat": "Chat superagent",
+  "settings.planUsage.feature.monitoring": "Monitoramento",
+  "settings.planUsage.feature.kanban": "Kanban",
+  "settings.planUsage.feature.model_choice": "Escolher o modelo",
+  "settings.planUsage.feature.trialChat": "Acesso limitado ao chat",
+  "settings.planUsage.feature.none": "Use sua própria chave",
+  "settings.planUsage.feature.credits": "Comprar cr\u00e9ditos extras de IA",
+  "settings.planUsage.feature.diagnostic": "Diagnóstico de commerce",
+  "settings.planUsage.feature.diagnostic_enriched": "Diagnóstico enriquecido",
+  "settings.paywall.title": "{feature} não está no seu plano",
+  "settings.paywall.description":
+    "O plano desta organização não inclui {feature}. Troque de plano para liberar para todo mundo na org.",
+  "settings.paywall.seePlans": "Ver planos",
+  "settings.paywall.dismiss": "Agora não",
+  "settings.paywall.serverRefusedFeature":
+    "Seu plano não inclui este recurso. Peça a um owner para fazer upgrade, ou veja os planos.",
+  "settings.paywall.serverRefusedBudget":
+    "Esta organização usou todo o limite mensal de IA. O chat e as tarefas ficam pausados até fazer upgrade ou adicionar créditos.",
+
   "settings.decoCreditsHero.topUpFailed": "Recarga falhou: {message}",
   "settings.decoNudgeCard.connectDeco": "Conectar Deco",
   "settings.decoNudgeCard.connecting": "Conectando\u2026",

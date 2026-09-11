@@ -25,6 +25,7 @@ import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useFeature } from "@/hooks/use-entitlements";
 import { useProjectContext } from "@/sdk";
 import { useNavigate } from "@tanstack/react-router";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
@@ -60,6 +61,13 @@ export function CreditsExhaustedBanner({
   const { decoKeyId } = useDecoCredits();
   const studio = useStudioTools();
   const t = useT();
+  // A plan without the `credits` feature cannot top up: `AI_PROVIDER_TOPUP_URL`
+  // declares `requiresFeature: "credits"`, which Free does not have, so every
+  // amount on this surface returned `403 feature_not_in_plan` — while the plan
+  // card in the same product said "This plan's allowance can't be topped up."
+  // Fails OPEN like every other access gate, so a gateway blip still lets an
+  // org that CAN pay, pay.
+  const canBuyCredits = useFeature("credits");
 
   const [customAmount, setCustomAmount] = useState("");
   const [showCustom, setShowCustom] = useState(false);
@@ -93,6 +101,8 @@ export function CreditsExhaustedBanner({
 
   const customNum = parseFloat(customAmount);
   const isCustomValid = !isNaN(customNum) && customNum >= 1;
+
+  if (!canBuyCredits) return null;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onDismiss?.()}>
