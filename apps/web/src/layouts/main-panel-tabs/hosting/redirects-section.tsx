@@ -151,8 +151,6 @@ export function RedirectsSection({
   return (
     <HostingSection
       title={t("mainPanelTabs.hostingTab.redirects")}
-      description={t("mainPanelTabs.hostingTab.redirectsDescription")}
-      count={redirects.length}
       actions={redirects.length > 0 ? addButton : undefined}
     >
       {isLoading ? (

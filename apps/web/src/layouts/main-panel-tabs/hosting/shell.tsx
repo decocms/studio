@@ -38,32 +38,15 @@ import type { EnvScope } from "./api";
 
 export function HostingSection({
   title,
-  description,
-  count,
   actions,
   children,
 }: {
   title: string;
-  description?: string;
-  count?: number;
   actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <SettingsSection
-      title={
-        <span className="inline-flex items-center gap-2">
-          {title}
-          {typeof count === "number" && count > 0 && (
-            <Badge variant="secondary" className="tabular-nums">
-              {count}
-            </Badge>
-          )}
-        </span>
-      }
-      description={description}
-      actions={actions}
-    >
+    <SettingsSection title={title} actions={actions}>
       {children}
     </SettingsSection>
   );

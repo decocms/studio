@@ -30,14 +30,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.fileTab.fileNotAvailable": "This file is no longer available.",
   "mainPanelTabs.fileTab.openInNewTab": "Open in new tab",
   "mainPanelTabs.hostingTab.title": "Hosting",
-  "mainPanelTabs.hostingTab.subtitle": "Infrastructure for {site}",
   "mainPanelTabs.hostingTab.deployments": "Deployments",
   "mainPanelTabs.hostingTab.env": "Environment variables",
   "mainPanelTabs.hostingTab.redirects": "Redirects",
   "mainPanelTabs.hostingTab.noDeployments": "No deployments yet.",
   "mainPanelTabs.hostingTab.noEnv": "No environment variables set.",
-  "mainPanelTabs.hostingTab.codeVarsHint":
-    "From wrangler.jsonc (read-only) — edit in code. A variable above with the same name overrides these at deploy.",
   "mainPanelTabs.hostingTab.noRedirects": "No redirects configured.",
   "mainPanelTabs.hostingTab.noSiteTitle": "No site linked",
   "mainPanelTabs.hostingTab.noSiteDescription":
@@ -91,6 +88,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.envValuePlaceholder": "value",
   "mainPanelTabs.hostingTab.editValue": "Edit value",
   "mainPanelTabs.hostingTab.deleteVariable": "Delete variable",
+  "mainPanelTabs.hostingTab.showValue": "Show value",
+  "mainPanelTabs.hostingTab.hideValue": "Hide value",
   "mainPanelTabs.hostingTab.confirmDeleteVariableTitle": "Delete variable?",
   "mainPanelTabs.hostingTab.confirmDeleteVariableDescription":
     "Delete {name}? This updates the site's environment.",
@@ -191,21 +190,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.toastDomainDeleted": "Domain detached",
   "mainPanelTabs.hostingTab.domainHostPlaceholder": "www.yourbrand.com",
   "mainPanelTabs.hostingTab.errorDomainHostRequired": "Enter a host",
-  "mainPanelTabs.hostingTab.deploymentsDescription":
-    "Builds of {site}, newest first. The live one is what production serves.",
-  "mainPanelTabs.hostingTab.deployHistoryDescription":
-    "Every deploy, redeploy and rollback, and who triggered it.",
   "mainPanelTabs.hostingTab.showMoreHistory": "Show {count} more",
-  "mainPanelTabs.hostingTab.envDescription":
-    "Plain-text configuration for the build and the running site. Anyone with access to this project can read these values.",
   "mainPanelTabs.hostingTab.codeVarsToggle":
     "{count} variables declared in code",
-  "mainPanelTabs.hostingTab.secretsDescription":
-    "Write-only values. Studio lists the names and never shows a value again.",
-  "mainPanelTabs.hostingTab.domainsDescription":
-    "Hostnames that serve this site. Attach one, then add the DNS records it asks for.",
-  "mainPanelTabs.hostingTab.redirectsDescription":
-    "Send a path or a whole host somewhere else, permanently (301) or temporarily (307).",
   "mainPanelTabs.hostingTab.showDetails": "Show details",
   "mainPanelTabs.hostingTab.hideDetails": "Hide details",
   "mainPanelTabs.e2eTab.title": "E2E",

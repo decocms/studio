@@ -122,8 +122,6 @@ export function SecretsSection({
   return (
     <HostingSection
       title={t("mainPanelTabs.hostingTab.secrets")}
-      description={t("mainPanelTabs.hostingTab.secretsDescription")}
-      count={secrets.length}
       actions={secrets.length > 0 ? addButton : undefined}
     >
       {isLoading ? (
@@ -151,8 +149,10 @@ export function SecretsSection({
               <ListRow key={`${s.name}:${scope}`}>
                 <Lock01 className="size-4 shrink-0 text-muted-foreground/60" />
                 <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <div className="w-20 shrink-0">
+                    <ScopeBadge scope={scope} />
+                  </div>
                   <span className="truncate font-mono text-xs">{s.name}</span>
-                  <ScopeBadge scope={scope} />
                   {s.origin === "worker" && (
                     <Badge variant="secondary">
                       {t("mainPanelTabs.hostingTab.secretOnWorker")}

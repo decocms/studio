@@ -160,8 +160,6 @@ export function DomainsSection({
   return (
     <HostingSection
       title={t("mainPanelTabs.hostingTab.domains")}
-      description={t("mainPanelTabs.hostingTab.domainsDescription")}
-      count={domains.length}
       actions={domains.length > 0 ? addButton : undefined}
     >
       {isLoading ? (

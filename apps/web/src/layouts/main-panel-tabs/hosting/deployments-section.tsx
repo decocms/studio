@@ -30,14 +30,14 @@ import {
 } from "@decocms/ui/components/alert-dialog.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@decocms/ui/components/dialog.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@decocms/ui/components/sheet.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Table,
@@ -257,9 +257,9 @@ function LogsButton({
   );
 }
 
-/** Build-logs dialog. Re-fetches on every open (staleTime/gcTime 0) because the
+/** Build-logs sheet. Re-fetches on every open (staleTime/gcTime 0) because the
  *  presigned `url` expires ~5min; the URL is never cached. */
-function BuildLogsDialog({
+function BuildLogsSheet({
   base,
   orgSlug,
   site,
@@ -269,7 +269,7 @@ function BuildLogsDialog({
   base: string;
   orgSlug: string;
   site: string;
-  /** The commit/env whose logs to show, or null when the dialog is closed. */
+  /** The commit/env whose logs to show, or null when the sheet is closed. */
   target: { commit: string; env: string } | null;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -296,85 +296,89 @@ function BuildLogsDialog({
   const data = logsQuery.data as BuildLogs | undefined;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-2xl">
+        <SheetHeader className="shrink-0 border-b border-border px-5 py-5 md:px-6">
+          <SheetTitle>
             {t("mainPanelTabs.hostingTab.buildLogsTitle")}
-          </DialogTitle>
-        </DialogHeader>
-        <p className="font-mono text-xs text-muted-foreground">
-          {t("mainPanelTabs.hostingTab.buildLogsCommit", {
-            commit: commit.slice(0, 7),
-          })}
-        </p>
+          </SheetTitle>
+          <p className="font-mono text-xs text-muted-foreground">
+            {t("mainPanelTabs.hostingTab.buildLogsCommit", {
+              commit: commit.slice(0, 7),
+            })}
+          </p>
+        </SheetHeader>
 
-        {isUnauthorized(logsQuery.error) ? (
-          <EmptyState
-            icon={<Server01 className="size-5" />}
-            title={t("mainPanelTabs.hostingTab.notConnectedTitle")}
-            description={t("mainPanelTabs.hostingTab.notConnectedDescription")}
-          />
-        ) : logsQuery.isLoading ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-          </div>
-        ) : logsQuery.error ? (
-          <ListMessage>
-            {t("mainPanelTabs.hostingTab.buildLogsError")}
-          </ListMessage>
-        ) : data && data.configured === false ? (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-8 text-center">
-            <AlertCircle className="size-5 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">
-              {t("mainPanelTabs.hostingTab.buildLogsNotWiredTitle")}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {data.reason ??
-                t("mainPanelTabs.hostingTab.buildLogsNotWiredDescription")}
-            </p>
-          </div>
-        ) : data?.text ? (
-          <div className="flex flex-col gap-2">
-            <pre className="max-h-[52vh] overflow-auto rounded-lg border border-border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
-              {data.text}
-            </pre>
-            {data.truncated && (
-              <p className="text-xs text-warning">
-                {t("mainPanelTabs.hostingTab.buildLogsTruncated")}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-6">
+          {isUnauthorized(logsQuery.error) ? (
+            <EmptyState
+              icon={<Server01 className="size-5" />}
+              title={t("mainPanelTabs.hostingTab.notConnectedTitle")}
+              description={t(
+                "mainPanelTabs.hostingTab.notConnectedDescription",
+              )}
+            />
+          ) : logsQuery.isLoading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ) : logsQuery.error ? (
+            <ListMessage>
+              {t("mainPanelTabs.hostingTab.buildLogsError")}
+            </ListMessage>
+          ) : data && data.configured === false ? (
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-8 text-center">
+              <AlertCircle className="size-5 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">
+                {t("mainPanelTabs.hostingTab.buildLogsNotWiredTitle")}
               </p>
-            )}
-            {data.url && (
-              <a
-                href={data.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex w-fit items-center gap-1.5 text-xs text-primary hover:underline"
-              >
-                <LinkExternal01 className="size-3.5" />
-                {t("mainPanelTabs.hostingTab.buildLogsOpenFull")}
-              </a>
-            )}
-          </div>
-        ) : data?.url ? (
-          <a
-            href={data.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
-          >
-            <LinkExternal01 className="size-4" />
-            {t("mainPanelTabs.hostingTab.buildLogsOpenFull")}
-          </a>
-        ) : (
-          <ListMessage>
-            {t("mainPanelTabs.hostingTab.buildLogsEmpty")}
-          </ListMessage>
-        )}
-      </DialogContent>
-    </Dialog>
+              <p className="text-xs text-muted-foreground">
+                {data.reason ??
+                  t("mainPanelTabs.hostingTab.buildLogsNotWiredDescription")}
+              </p>
+            </div>
+          ) : data?.text ? (
+            <div className="flex flex-col gap-2">
+              <pre className="overflow-auto font-mono text-[11px] leading-relaxed text-foreground/80 whitespace-pre-wrap break-words">
+                {data.text}
+              </pre>
+              {data.truncated && (
+                <p className="text-xs text-warning">
+                  {t("mainPanelTabs.hostingTab.buildLogsTruncated")}
+                </p>
+              )}
+              {data.url && (
+                <a
+                  href={data.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-fit items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <LinkExternal01 className="size-3.5" />
+                  {t("mainPanelTabs.hostingTab.buildLogsOpenFull")}
+                </a>
+              )}
+            </div>
+          ) : data?.url ? (
+            <a
+              href={data.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
+            >
+              <LinkExternal01 className="size-4" />
+              {t("mainPanelTabs.hostingTab.buildLogsOpenFull")}
+            </a>
+          ) : (
+            <ListMessage>
+              {t("mainPanelTabs.hostingTab.buildLogsEmpty")}
+            </ListMessage>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -428,13 +432,7 @@ export function DeploymentsSection({
 
   return (
     <>
-      <HostingSection
-        title={t("mainPanelTabs.hostingTab.deployments")}
-        description={t("mainPanelTabs.hostingTab.deploymentsDescription", {
-          site,
-        })}
-        count={deployments.length}
-      >
+      <HostingSection title={t("mainPanelTabs.hostingTab.deployments")}>
         {isLoading ? (
           <RowsSkeleton />
         ) : error ? (
@@ -455,7 +453,9 @@ export function DeploymentsSection({
           <Table>
             <TableHeader>
               <TableRow>
-                <Th>{t("mainPanelTabs.hostingTab.colCommit")}</Th>
+                <Th className="pl-4">
+                  {t("mainPanelTabs.hostingTab.colCommit")}
+                </Th>
                 <Th>{t("mainPanelTabs.hostingTab.colStatus")}</Th>
                 <Th>{t("mainPanelTabs.hostingTab.colFramework")}</Th>
                 <Th className="text-right">
@@ -551,11 +551,7 @@ export function DeploymentsSection({
         )}
       </HostingSection>
 
-      <HostingSection
-        title={t("mainPanelTabs.hostingTab.deployHistory")}
-        description={t("mainPanelTabs.hostingTab.deployHistoryDescription")}
-        count={history.length}
-      >
+      <HostingSection title={t("mainPanelTabs.hostingTab.deployHistory")}>
         {historyQuery.isLoading ? (
           <RowsSkeleton />
         ) : historyQuery.error ? (
@@ -579,6 +575,7 @@ export function DeploymentsSection({
                 <Th className="pl-4">
                   {t("mainPanelTabs.hostingTab.colAction")}
                 </Th>
+                <Th>{t("mainPanelTabs.hostingTab.colStatus")}</Th>
                 <Th>{t("mainPanelTabs.hostingTab.colCommit")}</Th>
                 <Th>{t("mainPanelTabs.hostingTab.colFramework")}</Th>
                 <Th>{t("mainPanelTabs.hostingTab.colActor")}</Th>
@@ -595,11 +592,9 @@ export function DeploymentsSection({
                 return (
                   <TableRow key={h.id}>
                     <TableCell className="pl-4">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {typeBadge(h.type, h.action, t)}
-                        {outcomeBadge(h.outcome, t)}
-                      </div>
+                      {typeBadge(h.type, h.action, t)}
                     </TableCell>
+                    <TableCell>{outcomeBadge(h.outcome, t)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-xs">
@@ -632,7 +627,7 @@ export function DeploymentsSection({
               })}
               {hiddenHistory > 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="p-2 text-center">
+                  <TableCell colSpan={7} className="p-2 text-center">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -650,7 +645,7 @@ export function DeploymentsSection({
         )}
       </HostingSection>
 
-      <BuildLogsDialog
+      <BuildLogsSheet
         base={base}
         orgSlug={orgSlug}
         site={site}

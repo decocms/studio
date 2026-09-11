@@ -34,14 +34,11 @@ export const mainPanelTabs = {
     "Este arquivo não está mais disponível.",
   "mainPanelTabs.fileTab.openInNewTab": "Abrir em nova aba",
   "mainPanelTabs.hostingTab.title": "Hospedagem",
-  "mainPanelTabs.hostingTab.subtitle": "Infraestrutura de {site}",
   "mainPanelTabs.hostingTab.deployments": "Implantações",
   "mainPanelTabs.hostingTab.env": "Variáveis de ambiente",
   "mainPanelTabs.hostingTab.redirects": "Redirecionamentos",
   "mainPanelTabs.hostingTab.noDeployments": "Nenhuma implantação ainda.",
   "mainPanelTabs.hostingTab.noEnv": "Nenhuma variável de ambiente definida.",
-  "mainPanelTabs.hostingTab.codeVarsHint":
-    "Do wrangler.jsonc (somente leitura) — edite no código. Uma variável acima com o mesmo nome as sobrescreve no deploy.",
   "mainPanelTabs.hostingTab.noRedirects":
     "Nenhum redirecionamento configurado.",
   "mainPanelTabs.hostingTab.noSiteTitle": "Nenhum site vinculado",
@@ -100,6 +97,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.envValuePlaceholder": "valor",
   "mainPanelTabs.hostingTab.editValue": "Editar valor",
   "mainPanelTabs.hostingTab.deleteVariable": "Excluir variável",
+  "mainPanelTabs.hostingTab.showValue": "Mostrar valor",
+  "mainPanelTabs.hostingTab.hideValue": "Ocultar valor",
   "mainPanelTabs.hostingTab.confirmDeleteVariableTitle": "Excluir variável?",
   "mainPanelTabs.hostingTab.confirmDeleteVariableDescription":
     "Excluir {name}? Isso atualiza o ambiente do site.",
@@ -205,21 +204,9 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.toastDomainDeleted": "Domínio removido",
   "mainPanelTabs.hostingTab.domainHostPlaceholder": "www.suamarca.com",
   "mainPanelTabs.hostingTab.errorDomainHostRequired": "Informe um host",
-  "mainPanelTabs.hostingTab.deploymentsDescription":
-    "Builds de {site}, do mais recente ao mais antigo. O que está live é o que a produção serve.",
-  "mainPanelTabs.hostingTab.deployHistoryDescription":
-    "Cada deploy, redeploy e rollback, e quem disparou.",
   "mainPanelTabs.hostingTab.showMoreHistory": "Mostrar mais {count}",
-  "mainPanelTabs.hostingTab.envDescription":
-    "Configuração em texto puro para o build e para o site rodando. Qualquer pessoa com acesso a este projeto lê estes valores.",
   "mainPanelTabs.hostingTab.codeVarsToggle":
     "{count} variáveis declaradas no código",
-  "mainPanelTabs.hostingTab.secretsDescription":
-    "Valores só de escrita. O Studio lista os nomes e nunca mostra um valor de novo.",
-  "mainPanelTabs.hostingTab.domainsDescription":
-    "Hostnames que servem este site. Anexe um e depois adicione os registros DNS pedidos.",
-  "mainPanelTabs.hostingTab.redirectsDescription":
-    "Mande um caminho ou um host inteiro para outro lugar, permanentemente (301) ou temporariamente (307).",
   "mainPanelTabs.hostingTab.showDetails": "Mostrar detalhes",
   "mainPanelTabs.hostingTab.hideDetails": "Ocultar detalhes",
   "mainPanelTabs.e2eTab.title": "E2E",
