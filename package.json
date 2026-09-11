@@ -8,7 +8,6 @@
     "@types/react-dom": "^19.2.3",
     "concurrently": "^9.2.1",
     "knip": "^6.29.0",
-    "kysely": "^0.28.12",
     "oxlint": "1.23.0",
     "react": "^19.2.6",
     "typescript": "^7.0.2",
