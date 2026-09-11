@@ -43,10 +43,17 @@ function CommandDialog({
   className?: string;
   /** Overrides cmdk's default fuzzy scorer (e.g. a stricter substring match). */
   filter?: React.ComponentProps<typeof CommandPrimitive>["filter"];
-  /** `false` when the LIST is already the answer — a server-side search whose
-   *  rows cmdk cannot score, because the text that matched (a task key, a
-   *  message body) is not in the item's `value`. Without it cmdk scores those
-   *  rows 0 and unmounts them, and a found result renders as "No results". */
+  /** `false` when EVERY row is already the answer — a dialog that renders a
+   *  server-side search and nothing else, whose rows cmdk cannot score because
+   *  the text that matched (a task key, a message body) is not in the item's
+   *  `value`.
+   *
+   *  Not for a dialog that MIXES server rows with local ones (destinations,
+   *  actions, a project list). This switch is list-wide, so turning it off to
+   *  save the server rows also stops the local ones from filtering, and every
+   *  one of them stays on screen no matter what is typed. Leave it on there
+   *  and give each server row `keywords={[searchTerm]}` instead — see
+   *  `command-filter.test.ts` and `command-palette.tsx`. */
   shouldFilter?: React.ComponentProps<typeof CommandPrimitive>["shouldFilter"];
 }) {
   return (

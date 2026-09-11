@@ -8,6 +8,7 @@ export const commandPalette = {
   "commandPalette.empty": "Nada encontrado.",
   "commandPalette.goTo": "Ir para",
   "commandPalette.projects": "Projetos",
+  "commandPalette.connections": "Conex\u00f5es",
   "commandPalette.actions": "A\u00e7\u00f5es",
   "commandPalette.results": "Resultados",
   "commandPalette.newProject": "Novo projeto",

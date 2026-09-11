@@ -21,6 +21,42 @@ describe("GLOBAL_SEARCH input schema", () => {
   });
 });
 
+describe("GLOBAL_SEARCH searchable types", () => {
+  it("accepts `connection` as a type filter", () => {
+    const result = GLOBAL_SEARCH.inputSchema.safeParse({
+      query: "stripe",
+      types: ["connection"],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("parses a connection row, and one with no slug", () => {
+    // `slug` is what `/$org/settings/connections/$appSlug` routes on, so the
+    // nullable branch is the contract the client's list fallback depends on.
+    const rows = [
+      {
+        type: "connection",
+        id: "conn_1",
+        title: "Stripe",
+        icon: null,
+        slug: "stripe",
+      },
+      {
+        type: "connection",
+        id: "conn_2",
+        title: "Legacy",
+        icon: null,
+        slug: null,
+      },
+    ];
+    const result = GLOBAL_SEARCH.outputSchema.safeParse({
+      items: rows,
+      totalCount: rows.length,
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("normalizeSearchQuery", () => {
   it("treats an empty string as no query", () => {
     expect(normalizeSearchQuery("")).toBeUndefined();

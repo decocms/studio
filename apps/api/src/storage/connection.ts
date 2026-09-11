@@ -42,6 +42,7 @@ import {
   recordDecryptFailure,
   recordDecryptSuccess,
 } from "./decrypt-failure-tracker";
+import { escapeLikePattern } from "./threads";
 import type { ConnectionStoragePort } from "./ports";
 import type { Database } from "./types";
 
@@ -399,6 +400,47 @@ export class ConnectionStorage implements ConnectionStoragePort {
     );
 
     return { items, totalCount };
+  }
+
+  /**
+   * Title search for the command palette.
+   *
+   * Deliberately NOT `list()`: that one runs every row through
+   * `deserializeConnection`, which decrypts the connection token, the
+   * configuration state, the OAuth config and every STDIO env var. A palette
+   * fires this on each keystroke and renders nothing but a name and an icon,
+   * so pulling live credentials into memory to answer it is both waste and
+   * needless exposure. Selects the display columns only — no vault call.
+   *
+   * VIRTUAL connections are excluded because they are projects/agents, which
+   * the palette already lists from its own client-side scope.
+   */
+  async searchByTitle(
+    organizationId: string,
+    search: string,
+    limit: number,
+  ): Promise<Array<Pick<ConnectionEntity, "id" | "title" | "icon" | "slug">>> {
+    let query = this.db
+      .selectFrom("connections")
+      .select(["id", "title", "icon", "slug"])
+      .where("organization_id", "=", organizationId)
+      .where("connection_type", "!=", "VIRTUAL");
+
+    if (search) {
+      query = query.where("title", "ilike", `%${escapeLikePattern(search)}%`);
+    }
+
+    const rows = await query
+      .orderBy("updated_at", "desc")
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title ?? "",
+      icon: row.icon ?? null,
+      slug: row.slug ?? null,
+    }));
   }
 
   async update(

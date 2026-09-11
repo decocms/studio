@@ -7895,7 +7895,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("task" | "thread")[] | undefined;
+      types?: ("connection" | "task" | "thread")[] | undefined;
     };
     output: {
       items: (
@@ -7918,6 +7918,13 @@ export interface StudioToolIO {
             key: string | null;
             status: string | null;
             repo: string | null;
+          }
+        | {
+            type: "connection";
+            id: string;
+            title: string;
+            icon: string | null;
+            slug: string | null;
           }
       )[];
       totalCount: number;
