@@ -46,6 +46,7 @@ import * as GitHubTools from "./github";
 import * as GitTools from "./git";
 import * as ChangeRequestTools from "./change-requests";
 import * as SearchTools from "./search";
+import * as BlogTools from "./blog";
 import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
 export const CORE_TOOLS = [
@@ -91,6 +92,11 @@ export const CORE_TOOLS = [
   OrganizationTools.BRAND_CONTEXT_UPDATE,
   OrganizationTools.BRAND_CONTEXT_DELETE,
   OrganizationTools.BRAND_CONTEXT_EXTRACT,
+  BlogTools.BLOG_BRAND_EXTRACT,
+  BlogTools.BLOG_PILLAR_SUGGEST,
+  BlogTools.BLOG_THEME_SUGGEST,
+  BlogTools.BLOG_FORMAT_SUGGEST,
+  BlogTools.BLOG_POST_DRAFT,
   OrganizationTools.BRAND_GET,
   OrganizationTools.BRAND_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,

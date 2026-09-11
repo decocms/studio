@@ -170,3 +170,61 @@ export function parseJsonArray<T>(value: unknown): T[] {
     return [];
   }
 }
+
+/** Single-choice chips. An empty value is a real choice, so it gets a chip too. */
+export function PickList({
+  options,
+  value,
+  emptyLabel,
+  onChange,
+}: {
+  options: string[];
+  value: string;
+  emptyLabel?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {emptyLabel && (
+        <Chip active={!value} onClick={() => onChange("")}>
+          {emptyLabel}
+        </Chip>
+      )}
+      {options.filter(Boolean).map((option) => (
+        <Chip
+          key={option}
+          active={option === value}
+          onClick={() => onChange(option)}
+        >
+          {option}
+        </Chip>
+      ))}
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-card hover:bg-muted",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
