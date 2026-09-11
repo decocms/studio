@@ -259,8 +259,10 @@ export function PlanUsageCard() {
   // Guarded: a missing or unparseable date falls back to the generic hint
   // rather than rendering the literal string "Invalid Date" at the user.
   const periodEndAt = data.periodEnd ? new Date(data.periodEnd) : null;
+  // The gateway sends a period_end for free too, and free never refills.
+  const renews = data.plan.id !== "free";
   const resetsOn =
-    periodEndAt && !Number.isNaN(periodEndAt.getTime())
+    renews && periodEndAt && !Number.isNaN(periodEndAt.getTime())
       ? periodEndAt.toLocaleDateString(preferences.language, {
           day: "numeric",
           month: "long",
@@ -338,7 +340,9 @@ export function PlanUsageCard() {
                       : t("settings.planUsage.exhaustedUpgradeOnly")
                   : resetsOn
                     ? t("settings.planUsage.resetsOn", { date: resetsOn })
-                    : t("settings.planUsage.periodHint")}
+                    : renews
+                      ? t("settings.planUsage.periodHint")
+                      : t("settings.planUsage.oneTimeHint")}
               </p>
               {/* The second pool, and the ONE amount this card may show. It
                   appears only once the bar is full, because that is the only

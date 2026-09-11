@@ -463,6 +463,8 @@ export const settings = {
   "settings.planUsage.resetsOn": "Reinicia em {date}.",
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
+  "settings.planUsage.oneTimeHint":
+    "Uso gratuito de uma única vez — esta franquia não reinicia.",
   "settings.planUsage.exhaustedHint":
     "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos.",
   "settings.planUsage.exhausted": "Limite atingido",

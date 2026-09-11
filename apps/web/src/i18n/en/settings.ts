@@ -450,6 +450,8 @@ export const settings = {
   "settings.planUsage.resetsOn": "Resets on {date}.",
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
+  "settings.planUsage.oneTimeHint":
+    "One-time free usage — this allowance doesn't reset.",
   "settings.planUsage.exhaustedHint":
     "AI usage is used up — the CMS keeps working, chat and tasks pause until you upgrade or top up.",
   "settings.planUsage.exhausted": "Limit reached",
