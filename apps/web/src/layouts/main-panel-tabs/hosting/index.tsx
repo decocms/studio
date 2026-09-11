@@ -129,23 +129,19 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
                 {framework && <Badge variant="secondary">{framework}</Badge>}
               </span>
             </Page.Title>
-            <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
-              {t("mainPanelTabs.hostingTab.subtitle", { site: siteSlug })}
-              {liveUrl && liveHost && (
-                <>
-                  <span aria-hidden>·</span>
-                  <a
-                    href={liveUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 font-mono text-xs text-foreground hover:underline"
-                  >
-                    {liveHost}
-                    <LinkExternal01 className="size-3" />
-                  </a>
-                </>
-              )}
-            </p>
+            {liveUrl && liveHost && (
+              <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+                <a
+                  href={liveUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-xs text-foreground hover:underline"
+                >
+                  {liveHost}
+                  <LinkExternal01 className="size-3" />
+                </a>
+              </p>
+            )}
           </div>
 
           <DeploymentsSection
