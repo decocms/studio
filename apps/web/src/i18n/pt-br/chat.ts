@@ -1,6 +1,13 @@
 import type { chat as chatEn } from "../en/chat.ts";
 
 export const chat = {
+  "chat.input.taskMode": "Tarefa",
+  "chat.input.startTask": "Iniciar tarefa",
+  "chat.input.taskPlaceholder":
+    "O que precisa ser corrigido? Cole um relato ou anexe uma captura de tela…",
+  "chat.input.taskHint":
+    "Vamos iniciar um agente e enviar um e-mail quando o PR estiver pronto para revisão.",
+
   "chat.agentCreate.agentCreated": "Projeto criado: {name}",
   "chat.agentCreate.cancelled": "Criação de projeto cancelada",
   "chat.agentCreate.couldntCreate": "Não foi possível criar o projeto",

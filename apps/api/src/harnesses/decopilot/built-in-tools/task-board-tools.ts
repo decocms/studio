@@ -24,9 +24,15 @@ import { TASK_BOARD_ITEM_LIST } from "@/tools/task-board/list";
 import { TASK_BOARD_ITEM_UPDATE } from "@/tools/task-board/update";
 import { TASK_BOARD_ITEM_DELETE } from "@/tools/task-board/delete";
 import { TASK_BOARD_ITEM_PRS_GET } from "@/tools/task-board/prs-get";
+import { REPOSITORY_LIST } from "@/tools/git";
 
 export function createTaskBoardTools(ctx: StudioContext): ToolSet {
   return {
+    REPOSITORY_LIST: tool({
+      description: REPOSITORY_LIST.description,
+      inputSchema: zodSchema(REPOSITORY_LIST.inputSchema),
+      execute: (input) => REPOSITORY_LIST.execute(input, ctx),
+    }),
     TASK_BOARD_ITEM_LIST: tool({
       description: TASK_BOARD_ITEM_LIST.description,
       inputSchema: zodSchema(TASK_BOARD_ITEM_LIST.inputSchema),

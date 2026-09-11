@@ -267,6 +267,20 @@ const choice = (
 });
 
 describe("pickSoleTaskRepo", () => {
+  test("binds the reported repo from several choices and refuses missing or ambiguous matches", () => {
+    const choices = [
+      choice("one", "acme", "web"),
+      choice("two", "acme", "api"),
+    ];
+    expect(pickSoleTaskRepo(choices, "ACME/API")?.id).toBe("two");
+    expect(pickSoleTaskRepo(choices, "other/repo")).toBeNull();
+    expect(
+      pickSoleTaskRepo(
+        [...choices, choice("three", "acme", "api")],
+        "acme/api",
+      ),
+    ).toBeNull();
+  });
   test("no clonable repo is not eligible", () => {
     expect(pickSoleTaskRepo([])).toBeNull();
   });

@@ -72,7 +72,19 @@ export interface TaskRepo {
  *
  * Pure, so the counting rule is unit-tested without a StudioContext.
  */
-export function pickSoleTaskRepo(choices: RepoChoice[]): TaskRepo | null {
+export function pickSoleTaskRepo(
+  choices: RepoChoice[],
+  /** The card's own `repo`, when it has one: narrow to it first, so a
+   *  multi-repo org still binds a checkout before dispatch. An unknown or
+   *  ambiguous name narrows to nothing and falls back to the mid-run pick. */
+  preferredRepo?: string,
+): TaskRepo | null {
+  if (preferredRepo)
+    choices = choices.filter(
+      (choice) =>
+        `${choice.owner}/${choice.name}`.toLowerCase() ===
+        preferredRepo.toLowerCase(),
+    );
   if (choices.length !== 1) return null;
   const chosen = choices[0]!;
   return {
@@ -125,6 +137,7 @@ export interface TaskRepoChoiceOption {
 export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
+  preferredRepo?: string,
 ): Promise<TaskRepoChoice> {
   if (!agentSandboxEnabled()) {
     console.warn(
@@ -135,7 +148,7 @@ export async function resolveTaskRepoChoice(
   }
   try {
     const choices = await listOrgRepoChoices(ctx, organizationId);
-    const repo = pickSoleTaskRepo(choices);
+    const repo = pickSoleTaskRepo(choices, preferredRepo);
     if (repo) return { repo };
     if (choices.length === 0) {
       console.warn(

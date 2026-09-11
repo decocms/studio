@@ -20,6 +20,8 @@ export const LOCALSTORAGE_KEYS = {
     `studio:chat:autosend:${locator}:${taskId}`,
   chatThreadIntent: (locator: ProjectLocator | string, taskId: string) =>
     `studio:chat:threadIntent:${locator}:${taskId}`,
+  homeTaskMode: (locator: ProjectLocator | string) =>
+    `home-task-mode:${locator}`,
   chatDraft: (locator: ProjectLocator | string, taskKey: string) =>
     `studio:chat:draft:${locator}:${taskKey}`,
   /** One entry per locator holding that org's recently-viewed task PR cards. */

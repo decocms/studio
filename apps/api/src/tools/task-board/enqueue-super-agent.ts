@@ -331,7 +331,13 @@ export async function enqueueSuperAgentForTask(
     // in — bound before dispatch when there's exactly one, otherwise chosen
     // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
     // no repos imported runs Decopilot exactly as before.
-    const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
+    // A card that already names its repo binds THAT one, so a multi-repo org
+    // doesn't spend a turn re-picking what the card already decided.
+    const choice = await resolveTaskRepoChoice(
+      ctx,
+      task.organizationId,
+      task.repo ?? undefined,
+    );
 
     // A run on an external issue reads the issue, not the card: the card's
     // description is empty on purpose, so the prompt gets the rendered issue.
