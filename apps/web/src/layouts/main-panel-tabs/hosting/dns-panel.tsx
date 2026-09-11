@@ -42,7 +42,7 @@ export function isHostRedirect(from: string): boolean {
   return v.length > 0 && !v.startsWith("/") && v.includes(".");
 }
 
-export function DnsRecordsTable({ records }: { records: DnsRecord[] }) {
+function DnsRecordsTable({ records }: { records: DnsRecord[] }) {
   const t = useT();
   return (
     <Table className="table-fixed">
