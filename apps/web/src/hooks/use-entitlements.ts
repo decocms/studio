@@ -210,3 +210,26 @@ export function modelDisclosureAllowed({
   if (!plansEnabled) return true;
   return isSuccess && modelChoice === true;
 }
+
+/**
+ * Whether the org's AI allowance is spent, with no wallet credit behind it.
+ *
+ * The client half of the server's `isUsageBlocked` (plan-feature-gate.ts) and
+ * deliberately the same two conditions, so the composer refuses exactly what
+ * the messages POST would refuse: a bar the gateway actually READ as
+ * `exhausted`, and no spendable credit left. `usage: null` is "the gateway
+ * could not read consumption", which is unknown, not empty — like every other
+ * gate here it fails OPEN, because a blip must not lock an org out of its own
+ * chat.
+ *
+ * `credits: null` is also unknown (a Free plan is never told a dollar figure at
+ * all), so it cannot manufacture a block either — but it cannot lift one:
+ * matching the server, only a credit balance we can SEE and that is positive
+ * keeps work going on a full bar.
+ */
+export function useAiBudgetExhausted(): boolean {
+  const { data } = useEntitlements();
+  if (data?.usage?.state !== "exhausted") return false;
+  const credits = data.credits?.remainingUsd ?? null;
+  return !(credits !== null && credits > 0);
+}

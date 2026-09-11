@@ -24,10 +24,18 @@ import type { Feature } from "@/hooks/use-entitlements";
 
 export function FeaturePaywall({
   feature,
+  copy,
   onDismiss,
   onSeePlans,
 }: {
   feature: Feature;
+  /**
+   * Override the "your plan doesn't include X" copy. One caller needs it: a
+   * spent AI allowance is not a missing feature — the org HAS chat, it has run
+   * out — and the dialog, the CTA and the plan card it lands on are otherwise
+   * identical. Cheaper than a second dialog that would drift from this one.
+   */
+  copy?: { title: string; description: string };
   /** "Not now", an outside click, Esc. */
   onDismiss?: () => void;
   /**
@@ -56,10 +64,11 @@ export function FeaturePaywall({
             <Lock01 size={18} className="text-muted-foreground" />
           </div>
           <DialogTitle>
-            {t("settings.paywall.title", { feature: name })}
+            {copy?.title ?? t("settings.paywall.title", { feature: name })}
           </DialogTitle>
           <DialogDescription>
-            {t("settings.paywall.description", { feature: name })}
+            {copy?.description ??
+              t("settings.paywall.description", { feature: name })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

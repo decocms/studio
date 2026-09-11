@@ -632,19 +632,20 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/threads/:threadId/messages", async (c) => {
     try {
       const ctx = c.get("studioContext");
-      const input = await validate(c, c.req.param("threadId"));
-      const taskId = input.taskId;
-      if (!taskId) {
-        // validate() always sets taskId from the URL param, so this is
-        // a structural invariant rather than a user-facing error.
-        throw new HTTPException(400, { message: "threadId is required" });
-      }
 
       // The plan gate for chat. `requiresFeature` on defineTool cannot reach
       // here — a turn is an HTTP POST, not a tool call — so this route
       // declares it itself. Both checks share one cached entitlements read,
       // and both fail OPEN when the gateway has no answer (plan-feature-gate).
-      if (!(await orgHasFeature(ctx, input.organizationId, "chat"))) {
+      //
+      // BEFORE `validate()`, which resolves the tier. An org whose allowance is
+      // spent has an unfunded gateway key, so its model catalog comes back
+      // empty and `resolveTier` throws `TierUnavailableError` first — the user
+      // was told "No model available for tier smart. Connect a provider" when
+      // the truth is "your allowance is used up, pick a plan". The org id is
+      // the route's own scope, so it needs no body parse to read.
+      const organizationId = ensureOrganization(c).id;
+      if (!(await orgHasFeature(ctx, organizationId, "chat"))) {
         throw new FeatureNotInPlanError(
           "This organization's plan does not include chat",
           "chat",
@@ -653,7 +654,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // A turn is the largest single AI spend in the product, so it is the
       // first place the exhausted bar has to mean something. Dormant unless
       // STUDIO_PLANS_ENABLED.
-      await assertAiBudget(ctx, input.organizationId, "Chat");
+      await assertAiBudget(ctx, organizationId, "Chat");
+
+      const input = await validate(c, c.req.param("threadId"));
+      const taskId = input.taskId;
+      if (!taskId) {
+        // validate() always sets taskId from the URL param, so this is
+        // a structural invariant rather than a user-facing error.
+        throw new HTTPException(400, { message: "threadId is required" });
+      }
 
       // Re-read the canonical row for its pin and message-storage version.
       // Only a real null uses the legacy create-on-send path. A storage error

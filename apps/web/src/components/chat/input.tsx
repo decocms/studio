@@ -67,7 +67,7 @@ import { authClient } from "@/lib/auth-client.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { useMembersQuery } from "@/hooks/use-members";
 import { track } from "@/lib/posthog-client";
-import { useFeature } from "@/hooks/use-entitlements";
+import { useAiBudgetExhausted, useFeature } from "@/hooks/use-entitlements";
 import { FeaturePaywall } from "@/components/feature-paywall";
 import { useSound } from "@/hooks/use-sound.ts";
 import { question004Sound } from "@/lib/sounds/question-004.ts";
@@ -563,7 +563,9 @@ export function ChatInput({
   // there's nothing to send. `canSubmit`/`showStopOrCancel` are kept as the
   // names the button/render logic below already references.
   const chatIncluded = useFeature("chat");
+  const budgetExhausted = useAiBudgetExhausted();
   const [chatPaywallOpen, setChatPaywallOpen] = useState(false);
+  const [budgetPaywallOpen, setBudgetPaywallOpen] = useState(false);
   const hasDraft = !isModelsLoading && !isTiptapDocEmpty(tiptapDoc);
   const composerAction = resolveComposerAction({
     hasDraft,
@@ -580,6 +582,13 @@ export function ChatInput({
     // left in the composer — it is worth keeping if they upgrade.
     if (!chatIncluded) {
       setChatPaywallOpen(true);
+      return;
+    }
+    // Same shape, same reason, for a spent allowance: the POST would refuse
+    // this turn (`assertAiBudget`), so stop it here and SAY so, instead of
+    // sending a message that comes back as an error under an empty reply.
+    if (budgetExhausted) {
+      setBudgetPaywallOpen(true);
       return;
     }
     if (composerAction === "send" && tiptapDoc) {
@@ -692,6 +701,16 @@ export function ChatInput({
         <FeaturePaywall
           feature="chat"
           onDismiss={() => setChatPaywallOpen(false)}
+        />
+      )}
+      {budgetPaywallOpen && (
+        <FeaturePaywall
+          feature="chat"
+          copy={{
+            title: t("chat.input.allowanceExhaustedTitle"),
+            description: t("chat.input.allowanceExhaustedDescription"),
+          }}
+          onDismiss={() => setBudgetPaywallOpen(false)}
         />
       )}
       <div className="flex flex-col w-full justify-end">
