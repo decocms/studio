@@ -2,6 +2,7 @@ import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Suspense, lazy, useState } from "react";
 import { type Query } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import {
   AlertCircle,
   CornerUpRight,
@@ -356,9 +357,27 @@ function ContentBrowserReady({
     { fetchEnabled: devServerReady },
   );
 
-  const [activeCollection, setActiveCollection] =
-    useState<CollectionId>("pages");
-  const [selection, setSelection] = useState<Selection>(null);
+  // Blog Manager's "Editar no Studio" redirect: ?contentCollection=posts&
+  // contentItem=<blockKey> pre-selects a blog collection and opens a specific
+  // record. Read once via a lazy initializer (not an effect) — normal
+  // navigation takes over afterwards, same one-shot shape as the storefront
+  // "." deep-link below.
+  const contentDeepLink = useSearch({ strict: false }) as {
+    contentCollection?: string;
+    contentItem?: string;
+  };
+  const [activeCollection, setActiveCollection] = useState<CollectionId>(
+    () =>
+      (contentDeepLink.contentCollection &&
+        isBlogKind(contentDeepLink.contentCollection as CollectionId) &&
+        (contentDeepLink.contentCollection as CollectionId)) ||
+      "pages",
+  );
+  const [selection, setSelection] = useState<Selection>(() =>
+    contentDeepLink.contentItem && isBlogKind(activeCollection)
+      ? { collection: activeCollection, key: contentDeepLink.contentItem }
+      : null,
+  );
   // Page that should open with the inline SEO form in SectionsEditor.
   const [openPageSeoKey, setOpenPageSeoKey] = useState<string | null>(null);
   // Storefront "." deep-link: open the visited page once the decofile loads. One-shot, so a later manual selection is never clobbered.
