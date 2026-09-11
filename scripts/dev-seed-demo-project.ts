@@ -7,9 +7,9 @@
  *     `metadata.githubRepo.url` (public-clone mode is enough for the rows).
  *   - Hosting / E2E / Deco Analytics / Monitor need the upstreams wired
  *     (CONTROLPLANE / ANALYTICS / CLICKHOUSE_ANALYTICS envs — see
- *     `scripts/dev-hosting-mock.ts` and `scripts/dev-monitor-seed.ts`), the
- *     project's `metadata.siteSlug`, and the org OWNING that slug in
- *     `org_sites` (else both BFFs answer 404 and the rows stay hidden).
+ *     `scripts/dev-monitor-seed.ts`), the project's `metadata.siteSlug`, and
+ *     the org OWNING that slug in `org_sites` (else both BFFs answer 404 and
+ *     the rows stay hidden).
  * Local mode passes the per-view rollout gate, so no org flag is needed here.
  *
  * Home and Tasks read the task board, so this also seeds a board: cards across

@@ -10,7 +10,7 @@
  *                   one means `bun run dev` has to be restarted, since `--hot`
  *                   does not reload process env.
  *   2. ClickHouse — the container the Monitor tab queries, then its seed.
- *   3. mocks      — the control-plane/analytics stand-in and the MCP app server.
+ *   3. mocks      — the MCP app server.
  *   4. seeds      — the project, board, assets and the MCP app connection,
  *                   against the dev home this workspace is actually running.
  *
@@ -18,8 +18,8 @@
  *   bun run scripts/dev-fixtures.ts [--org=<slug>] [--detach] [--env-only]
  *                                   [--home=<dev home slug>]
  *
- * Without `--detach` it stays in the foreground owning the two mock servers —
- * the fixture is only alive while they are.
+ * Without `--detach` it stays in the foreground owning the mock server —
+ * the fixture is only alive while it is.
  */
 
 import { spawn, spawnSync, type ChildProcess } from "child_process";
@@ -43,20 +43,11 @@ const DETACH = args.get("detach") === "true";
 const ENV_ONLY = args.get("env-only") === "true";
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
 
-const HOSTING_MOCK_PORT = 8788;
 const MCP_APP_PORT = 8789;
 const CLICKHOUSE_PORT = 8123;
 const CLICKHOUSE_CONTAINER = "deco-monitor-clickhouse";
 
 const ENV_BLOCK: [key: string, value: string, comment?: string][] = [
-  [
-    "CONTROLPLANE_REST_URL",
-    `http://localhost:${HOSTING_MOCK_PORT}/api/v1`,
-    "Hosting / E2E / Deco Analytics — scripts/dev-hosting-mock.ts",
-  ],
-  ["CONTROLPLANE_SERVICE_TOKEN", "dev-controlplane-token"],
-  ["ANALYTICS_URL", `http://localhost:${HOSTING_MOCK_PORT}/analytics`],
-  ["ANALYTICS_MASTER_TOKEN", "dev-analytics-token"],
   [
     "CLICKHOUSE_ANALYTICS_ADDRESS",
     `http://localhost:${CLICKHOUSE_PORT}`,
@@ -287,7 +278,6 @@ async function main() {
 
   step("3. mock upstreams");
   const children: ChildProcess[] = [];
-  await ensureMock("dev-hosting-mock.ts", HOSTING_MOCK_PORT, children);
   await ensureMock("dev-mcp-app.ts", MCP_APP_PORT, children);
 
   step("4. seeds");

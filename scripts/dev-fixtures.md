@@ -17,7 +17,7 @@ one). Everything is idempotent, so re-running is the fix for drift.
 | Tarefas (board) | real | 13 seeded cards across all 9 canonical lanes, 14 tags, comments, activity, due dates, assignees |
 | Editor do site | **blocked** | needs a sandbox. `agentSandboxEnabled()` is `!localMode && STUDIO_AGENT_SANDBOX_ENABLED`, and the hosted provider is Kubernetes (Pod + Sandbox CR watches). The local path is the native app (`bun run --cwd=apps/native dev`), whose local-api owns the sandbox |
 | Assets | real | `static` file config on the dev MinIO bucket (`studio-dev`) under a `demo-store/` prefix, seeded with 6 placeholder files. Uploads and listing work; previews need a public bucket (see Known gaps) |
-| Hospedagem / E2E / Deco Analytics | simulated upstream, real path | `scripts/dev-hosting-mock.ts` |
+| Hospedagem / E2E / Deco Analytics | needs the upstreams wired (`CONTROLPLANE_*` / `ANALYTICS_*`) | — |
 | Monitor | half real SQL | Performance reads the local ClickHouse (`scripts/dev-monitor-seed.ts`). Audience stays on the unconfigured state: it reads OneDollarStats, whose base URL is a hardcoded constant in the app, and redirecting it would mean editing `apps/api` |
 | Automações | real | empty until one is created |
 | Configurações | real | — |
@@ -28,10 +28,11 @@ one). Everything is idempotent, so re-running is the fix for drift.
 1. **Clonable source** — Início / Relatórios / Tarefas / Editor do site appear
    only when `metadata.githubRepo.url` is set (public-clone mode is enough).
 2. **Resource-backed** — Assets needs a file config owning the slug; Hosting /
-   E2E / Analytics / Monitor need the upstreams wired (env), the project's
-   `metadata.siteSlug`, AND the org owning that slug in `org_sites` (else both
-   BFFs answer 404 and the rows stay hidden). Local mode passes the per-view
-   rollout gate, so no org flag is needed.
+   E2E / Analytics / Monitor need the upstreams wired (env, pointing at a real
+   control-plane/analytics deployment), the project's `metadata.siteSlug`, AND
+   the org owning that slug in `org_sites` (else both BFFs answer 404 and the
+   rows stay hidden). Local mode passes the per-view rollout gate, so no org
+   flag is needed.
 
 ## One command
 
@@ -41,10 +42,11 @@ bun run scripts/dev-fixtures.ts --detach # in another terminal
 ```
 
 That writes the upstream vars into `.env` (only the keys you do not already
-have), starts the ClickHouse container and seeds it, starts both mock servers,
-finds the dev home **this** workspace is running — each one gets its own
-Postgres and MinIO under `/tmp/decocms-dev-<workspace>` — and runs the seeds
-against it. Everything is idempotent, so re-run it whenever a page looks empty.
+have), starts the ClickHouse container and seeds it, starts the mock app
+server, finds the dev home **this** workspace is running — each one gets its
+own Postgres and MinIO under `/tmp/decocms-dev-<workspace>` — and runs the
+seeds against it. Everything is idempotent, so re-run it whenever a page looks
+empty.
 
 Two things to know:
 
@@ -53,7 +55,7 @@ Two things to know:
 - With several workspaces open it picks by workspace name; when that is
   ambiguous it lists the homes and takes `--home=<slug>`.
 
-Without `--detach` it stays in the foreground owning the two mock servers, so
+Without `--detach` it stays in the foreground owning the mock server, so
 ctrl-c takes the fixture down with it. The steps below are the same thing by
 hand.
 
@@ -62,7 +64,6 @@ hand.
 | piece | what it is |
 | --- | --- |
 | `scripts/dev-seed-demo-project.ts` | Claims the slug, creates/updates the project (githubRepo + siteSlug + all sidebar rows), seeds the task board, and provisions the MinIO assets config + files. Idempotent. Lives at the repo root and imports `apps/api`'s storage classes — it changes nothing there. |
-| `scripts/dev-hosting-mock.ts` | Stateful stand-in for the **control-plane REST API** (`:8788/api/v1`) and the **Deco Analytics read surface** (`:8788/analytics`). Serves E2E artifacts as placeholder SVGs. |
 | `scripts/dev-monitor-seed.ts` | Seeds a **real local ClickHouse** with the stats-lake tables the Monitor tab queries. No SQL is faked. |
 | `scripts/dev-mcp-app.ts` | An **MCP server with UI tools** (MCP Apps) on `:8789/mcp`, speaking streamable-HTTP JSON-RPC. Three tools carry a `ui://` resource (Pedidos por hora, Alertas de estoque, Funil de vendas) and one deliberately does not, so the views list proves it filters. Each app is a single HTML file that does the ext-apps postMessage handshake by hand and pulls its data back through `tools/call` — the injected CSP is `default-src 'none'`, so it cannot fetch a bundle. |
 | `scripts/dev-seed-mcp-app-connection.ts` | Attaches that server to the project as a real `HTTP` connection. Leaves `connections.tools` null so Studio fetches `tools/list` live. `--pin` also pins every view to the sidebar. |
@@ -77,22 +78,19 @@ hand.
 docker start deco-monitor-clickhouse   # or the docker run in dev-monitor-seed.ts's header
 bun run scripts/dev-monitor-seed.ts    # (re)seed, or move the window forward
 
-# 2. upstream mock (keep running)
-bun run scripts/dev-hosting-mock.ts
-
-# 3. mcp app server, for the app-views half of the settings (keep running)
+# 2. mcp app server, for the app-views half of the settings (keep running)
 bun run scripts/dev-mcp-app.ts
 
-# 4. studio
+# 3. studio
 bun run dev
 
-# 5. the project — postgres and MinIO ports are per-boot, read them off the
+# 4. the project — postgres and MinIO ports are per-boot, read them off the
 #    dev log ("System Database URL", the minio --address)
 DATABASE_URL=postgresql://postgres:postgres@localhost:<pg>/postgres \
 S3_ENDPOINT=http://127.0.0.1:<minio> \
   bun run scripts/dev-seed-demo-project.ts
 
-# 6. the MCP app connection
+# 5. the MCP app connection
 DATABASE_URL=postgresql://postgres:postgres@localhost:<pg>/postgres \
   bun run scripts/dev-seed-mcp-app-connection.ts
 ```
@@ -112,11 +110,10 @@ Both seed scripts print the project's URLs when they finish. The shape is
 - **Real**: the whole Studio path (auth, org resolution, `org_sites` tenancy,
   both BFFs, the admin write gate, every UI component), the task board, the
   assets bucket, and every Monitor query against ClickHouse.
-- **Simulated**: the control-plane's and analytics read surface's *answers*.
-  Stateful in memory — env/secret/redirect/domain writes stick, a queued E2E run
-  walks pending → running → finished (~16s), analytics
-  register/config/disable/unregister flip the status the tab re-reads — so
-  restarting the mock resets to the seed.
+- **Real, but needs an upstream**: Hosting / E2E / Deco Analytics have no local
+  stand-in. Without `CONTROLPLANE_*` / `ANALYTICS_*` pointing at a real
+  control-plane and analytics deployment, those rows show their unconfigured
+  state.
 
 ## What this required in the app
 
