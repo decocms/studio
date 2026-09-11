@@ -8,6 +8,7 @@
  * disconnected.
  */
 
+import type { GitProviderKind } from "@decocms/shared/git-providers";
 import { GitAccountConnect } from "@/components/git-account-connect";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { useProjectContext } from "@/sdk";
@@ -36,8 +37,7 @@ import { Alert, AlertDescription } from "@decocms/ui/components/alert.tsx";
 
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 import { SettingsSection } from "@/components/settings/settings-section";
 import {
@@ -55,13 +55,15 @@ function ProviderIcon({
   provider,
   size = 16,
 }: {
-  provider: "github" | "gitlab";
+  provider: GitProviderKind;
   size?: number;
 }) {
-  return provider === "gitlab" ? (
-    <GitLabIcon size={size} className="text-muted-foreground" />
-  ) : (
-    <GitHubIcon size={size} className="text-muted-foreground" />
+  return (
+    <GitProviderIcon
+      provider={provider}
+      size={size}
+      className="text-muted-foreground"
+    />
   );
 }
 
@@ -265,7 +267,10 @@ function AccountsSection({
   const githubConfigured = capabilities.data?.github.configured === true;
   const gitlabConfigured =
     (capabilities.data?.gitlab.oauthHosts.length ?? 0) > 0;
-  const anyProviderConfigured = githubConfigured || gitlabConfigured;
+  const bitbucketConfigured =
+    (capabilities.data?.bitbucket.oauthHosts.length ?? 0) > 0;
+  const anyProviderConfigured =
+    githubConfigured || gitlabConfigured || bitbucketConfigured;
   if (accounts.isError) throw accounts.error;
   const rows = accounts.data ?? [];
 

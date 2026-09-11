@@ -73,8 +73,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     if (input.prUrl && !pr) {
       throw new Error(
         `Not a change request URL: ${input.prUrl} (expected ` +
-          "https://github.com/<owner>/<repo>/pull/<number> or " +
-          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid>)",
+          "https://github.com/<owner>/<repo>/pull/<number>, " +
+          "https://gitlab.com/<namespace>/<project>/-/merge_requests/<iid> or " +
+          "https://bitbucket.org/<workspace>/<repo>/pull-requests/<id>)",
       );
     }
 

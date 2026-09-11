@@ -162,7 +162,7 @@ export const ORG_REPO_SYNC_CREATE = defineTool({
   name: "ORG_REPO_SYNC_CREATE",
   description:
     "Keep a git repository mirrored into a new org-fs volume. Takes exactly " +
-    "one of repositoryId (a connected GitHub/GitLab repository) or " +
+    "one of repositoryId (a connected GitHub/GitLab/Bitbucket repository) or " +
     "connectionId (a legacy repo-scoped mcp-github connection), plus an " +
     "EMPTY volume name; the repo is synced every ~10 minutes (and on " +
     "ORG_REPO_SYNC_RUN). The volume is a mirror — files not in the repo are " +

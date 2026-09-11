@@ -183,7 +183,7 @@ export const CHANGE_REQUEST_LIST_OPEN = defineTool({
 export const CHANGE_REQUEST_CHECK_LOG = defineTool({
   name: "CHANGE_REQUEST_CHECK_LOG",
   description:
-    "Read one CI run's report — a GitHub check run's output markdown, or the tail of a GitLab job's trace.",
+    "Read one CI run's report — a GitHub check run's output markdown, or the tail of a GitLab job's trace. Bitbucket commit statuses carry no report, so this answers nothing there.",
   annotations: {
     title: "Read CI Run Report",
     readOnlyHint: true,

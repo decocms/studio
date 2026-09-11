@@ -16,7 +16,8 @@
  * The encrypted ten-minute user grant is deleted after selection; saved
  * accounts mint repository-restricted tokens using the App private key.
  *
- * GitLab: standard OAuth with a refreshable grant stored on the account.
+ * GitLab and Bitbucket: standard OAuth with a refreshable grant stored on the
+ * account.
  *
  * Every starter answers 503 when the deployment has no credentials for that
  * provider — the feature is dormant until configured.
@@ -42,6 +43,12 @@ import {
   githubAuthorizeUrl,
 } from "@/git-providers/github/oauth";
 import { gitlabCurrentUser } from "@/git-providers/gitlab/client";
+import { readBitbucketOAuthConfig } from "@/git-providers/bitbucket/env";
+import { bitbucketPrincipalForToken } from "@/git-providers/bitbucket/client";
+import {
+  bitbucketAuthorizeUrl,
+  exchangeBitbucketCode,
+} from "@/git-providers/bitbucket/oauth";
 import {
   exchangeGitlabCode,
   gitlabAuthorizeUrl,
@@ -64,7 +71,7 @@ export function sanitizeReturnTo(raw: string | undefined | null): string {
   return raw;
 }
 
-function callbackUrl(provider: "github" | "gitlab"): string {
+function callbackUrl(provider: GitProviderKind): string {
   return `${getPublicUrl()}/api/_git/${provider}/callback`;
 }
 
@@ -384,6 +391,34 @@ export const createGitProviderRoutes = () => {
     );
   });
 
+  /** Bitbucket Cloud: one host, so the query carries no `host`. */
+  app.get("/git-providers/bitbucket/connect", async (c) => {
+    const ctx = c.get("studioContext");
+    if (!ctx.auth.user) return c.json({ error: "Unauthorized" }, 401);
+    const config = readBitbucketOAuthConfig();
+    if (!config) {
+      return c.json(
+        {
+          error:
+            "No Bitbucket OAuth consumer is configured. Connect with an access token instead.",
+        },
+        503,
+      );
+    }
+    const state = await mintState(ctx, {
+      provider: "bitbucket",
+      host: config.host,
+      returnTo: sanitizeReturnTo(c.req.query("returnTo")),
+    });
+    return c.redirect(
+      bitbucketAuthorizeUrl({
+        clientId: config.clientId,
+        redirectUri: callbackUrl("bitbucket"),
+        state,
+      }),
+    );
+  });
+
   return app;
 };
 
@@ -539,6 +574,63 @@ gitProviderCallbackRoutes.get("/gitlab/callback", async (c) => {
     return c.redirect(finish(returnTo));
   } catch (error) {
     console.error("[git-providers] gitlab callback failed", {
+      host,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return c.redirect(finish(returnTo, "exchange_failed"));
+  }
+});
+
+gitProviderCallbackRoutes.get("/bitbucket/callback", async (c) => {
+  const ctx = await ContextFactory.create(c.req.raw);
+  const consumed = await consumeState(ctx, "bitbucket", c.req.query("state"));
+  if (!consumed.ok) {
+    return c.redirect(finish(consumed.returnTo, consumed.error));
+  }
+  const { returnTo, state } = consumed;
+  const { host } = state;
+  const config = readBitbucketOAuthConfig();
+  const code = c.req.query("code");
+  if (!config || config.host !== host) {
+    return c.redirect(finish(returnTo, "not_configured"));
+  }
+  if (!code) {
+    return c.redirect(finish(returnTo, c.req.query("error") ?? "denied"));
+  }
+  try {
+    const grant = await exchangeBitbucketCode({
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      code,
+      redirectUri: callbackUrl("bitbucket"),
+    });
+    const principal = await bitbucketPrincipalForToken(host, grant.accessToken);
+    const account = await ctx.storage.gitProviderAccounts.upsert({
+      organizationId: state.organizationId,
+      type: "bitbucket",
+      host,
+      authKind: "oauth",
+      externalAccountId: principal.externalAccountId,
+      login: principal.login,
+      avatarUrl: principal.avatarUrl,
+      createdBy: state.userId,
+    });
+    await ctx.storage.gitProviderAccountCredentials.upsert({
+      connectionId: account.id,
+      accessToken: grant.accessToken,
+      refreshToken: grant.refreshToken,
+      scope: grant.scope,
+      expiresAt:
+        grant.expiresIn !== null
+          ? new Date(Date.now() + grant.expiresIn * 1000)
+          : null,
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      tokenEndpoint: grant.tokenEndpoint,
+    });
+    return c.redirect(finish(returnTo));
+  } catch (error) {
+    console.error("[git-providers] bitbucket callback failed", {
       host,
       message: error instanceof Error ? error.message : String(error),
     });

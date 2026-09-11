@@ -28,7 +28,7 @@ interface Repository {
   id: string;
   organizationId: string;
   accountId: string | null;
-  provider: "github" | "gitlab";
+  provider: "github" | "gitlab" | "bitbucket";
   host: string;
   path: string;
   externalId: string | null;
@@ -247,6 +247,7 @@ test.describe("Git providers: repositories as an org entity", () => {
         installPath: string | null;
       };
       gitlab: { oauthHosts: string[]; connectPath: string | null };
+      bitbucket: { oauthHosts: string[]; connectPath: string | null };
     }>(ctx, orgSlug, "GIT_PROVIDER_CAPABILITIES", {});
 
     if (caps.github.configured) {
@@ -265,6 +266,14 @@ test.describe("Git providers: repositories as an org entity", () => {
     } else {
       expect(caps.gitlab.connectPath).toBe(
         `/api/${orgSlug}/git-providers/gitlab/connect`,
+      );
+    }
+    if (caps.bitbucket.oauthHosts.length === 0) {
+      expect(caps.bitbucket.connectPath).toBeNull();
+    } else {
+      expect(caps.bitbucket.oauthHosts).toEqual(["bitbucket.org"]);
+      expect(caps.bitbucket.connectPath).toBe(
+        `/api/${orgSlug}/git-providers/bitbucket/connect`,
       );
     }
   });

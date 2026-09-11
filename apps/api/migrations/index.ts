@@ -1,6 +1,7 @@
 import * as migration211userfsorg from "./211-user-fs-org";
 import * as migration210githubrepositoryauthorization from "./210-github-repository-authorization";
 import * as migration212codingagentmcpexcluded from "./212-coding-agent-mcp-excluded";
+import * as migration213bitbucketgitprovider from "./213-bitbucket-git-provider";
 import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
 import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
@@ -460,6 +461,7 @@ const migrations: Record<string, Migration> = {
     migration210githubrepositoryauthorization,
   "211-user-fs-org": migration211userfsorg,
   "212-coding-agent-mcp-excluded": migration212codingagentmcpexcluded,
+  "213-bitbucket-git-provider": migration213bitbucketgitprovider,
 };
 
 export default migrations;

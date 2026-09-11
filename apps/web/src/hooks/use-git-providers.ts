@@ -7,6 +7,7 @@
  * is also what a repository falls back to when its account is deleted.
  */
 
+import type { GitProviderKind } from "@decocms/shared/git-providers";
 import {
   useInfiniteQuery,
   type InfiniteData,
@@ -108,7 +109,7 @@ export function useConnectGitAccountToken() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: {
-      type: "github" | "gitlab";
+      type: GitProviderKind;
       host: string;
       token: string;
     }) => (await studio.call("GIT_ACCOUNT_CONNECT_TOKEN", input)).account,

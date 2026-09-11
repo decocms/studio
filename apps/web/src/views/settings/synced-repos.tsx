@@ -26,7 +26,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { GitBranch01 } from "@untitledui/icons";
 import { RepositoryPicker } from "@/components/repository-picker";
 import { useRepositories, type Repository } from "@/hooks/use-git-providers";
-import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -82,8 +82,12 @@ function SyncRow({
     <div className="flex items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
         <div className="size-9 rounded-md bg-muted flex items-center justify-center shrink-0">
-          {repository?.provider === "gitlab" ? (
-            <GitLabIcon size={16} className="text-muted-foreground" />
+          {repository ? (
+            <GitProviderIcon
+              provider={repository.provider}
+              size={16}
+              className="text-muted-foreground"
+            />
           ) : (
             <GitBranch01 size={16} className="text-muted-foreground" />
           )}

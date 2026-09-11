@@ -1,9 +1,9 @@
 /**
  * The composition root: from a repository to a client that can act on it.
  *
- * This is the ONE module that knows both providers exist. Everything above it
+ * This is the ONE module that knows every provider exists. Everything above it
  * speaks `RepoRef` and gets back an interface; everything below it is one
- * provider's own vocabulary, sealed in `github/` or `gitlab/`. The `switch`
+ * provider's own vocabulary, sealed in `github/`, `gitlab/` or `bitbucket/`. The `switch`
  * here is a registry, not knowledge — adding a provider is a case and a
  * directory.
  *
@@ -13,7 +13,7 @@
  * - the row matching the repository's identity, for records written before the
  *   id was captured;
  * - the legacy `mcp-github` connection, for orgs not migrated yet. GitHub
- *   only — GitLab never had one.
+ *   only — GitLab and Bitbucket never had one.
  *
  * The two capability factories differ deliberately in what they do when no
  * path works. A content client THROWS: every caller is about to read or write
@@ -52,6 +52,9 @@ import { resolveLegacyGithubConnection } from "./github/legacy-connection";
 import { GitlabChangeRequestClient } from "./gitlab/change-requests";
 import { gitlabCurrentUser } from "./gitlab/client";
 import { GitlabContentClient } from "./gitlab/content";
+import { BitbucketChangeRequestClient } from "./bitbucket/change-requests";
+import { bitbucketPrincipalForToken } from "./bitbucket/client";
+import { BitbucketContentClient } from "./bitbucket/content";
 import {
   GitProviderError,
   type GitTokenKind,
@@ -67,6 +70,8 @@ function contentClientFor({
       return new GithubContentClient({ repo: ref, tokenSource });
     case "gitlab":
       return new GitlabContentClient({ repo: ref, tokenSource });
+    case "bitbucket":
+      return new BitbucketContentClient({ repo: ref, tokenSource });
   }
 }
 
@@ -79,6 +84,8 @@ function changeRequestClientFor({
       return new GithubChangeRequestClient({ repo: ref, tokenSource });
     case "gitlab":
       return new GitlabChangeRequestClient({ repo: ref, tokenSource });
+    case "bitbucket":
+      return new BitbucketChangeRequestClient({ repo: ref, tokenSource });
   }
 }
 
@@ -276,12 +283,14 @@ export function principalForToken(
   switch (provider) {
     case "gitlab":
       return gitlabCurrentUser(host, token);
+    case "bitbucket":
+      return bitbucketPrincipalForToken(host, token);
     case "github":
       throw new GitProviderError({
         provider,
         status: 400,
         message:
-          "GitHub accounts connect through the GitHub App; tokens are accepted for GitLab only",
+          "GitHub accounts connect through the GitHub App; tokens are accepted for GitLab and Bitbucket only",
       });
   }
 }

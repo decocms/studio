@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { RepoRef } from "./types";
 import {
   changeRequestUrl,
   findChangeRequestUrl,
@@ -19,6 +20,12 @@ describe("changeRequestUrl", () => {
         7,
       ),
     ).toBe("https://gitlab.com/group/sub/site/-/merge_requests/7");
+    expect(
+      changeRequestUrl(
+        { provider: "bitbucket", host: "bitbucket.org", path: "acme/site" },
+        7,
+      ),
+    ).toBe("https://bitbucket.org/acme/site/pull-requests/7");
   });
 });
 
@@ -195,5 +202,42 @@ describe("findChangeRequestUrl", () => {
   test("nothing to find", () => {
     expect(findChangeRequestUrl("nothing here")).toBeNull();
     expect(findChangeRequestUrl("https://github.com/acme/site")).toBeNull();
+  });
+});
+
+describe("bitbucket pull requests", () => {
+  const repo: RepoRef = {
+    provider: "bitbucket",
+    host: "bitbucket.org",
+    path: "acme/site",
+  };
+  test("a browser url, with or without a trailing tab", () => {
+    expect(
+      parseChangeRequestUrl("https://bitbucket.org/acme/site/pull-requests/12"),
+    ).toEqual({
+      repo,
+      number: 12,
+      url: "https://bitbucket.org/acme/site/pull-requests/12",
+    });
+    expect(
+      parseChangeRequestUrl(
+        "https://bitbucket.org/acme/site/pull-requests/12/overview",
+      )?.number,
+    ).toBe(12);
+  });
+  test("the API url maps back to the browser host", () => {
+    expect(
+      parseChangeRequestUrl(
+        "https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests/12",
+      ),
+    ).toEqual({
+      repo,
+      number: 12,
+      url: "https://bitbucket.org/acme/site/pull-requests/12",
+    });
+  });
+  test("found inside a curl response body", () => {
+    const body = `{"id": 12, "links": {"html": {"href": "https://bitbucket.org/acme/site/pull-requests/12"}}}`;
+    expect(findChangeRequestUrl(body)?.number).toBe(12);
   });
 });

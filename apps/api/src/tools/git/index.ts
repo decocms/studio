@@ -108,6 +108,11 @@ export const GIT_PROVIDER_CAPABILITIES = defineTool({
       oauthHosts: z.array(z.string()),
       connectPath: z.string().nullable(),
     }),
+    bitbucket: z.object({
+      /** `["bitbucket.org"]` when an OAuth consumer is configured; tokens work either way. */
+      oauthHosts: z.array(z.string()),
+      connectPath: z.string().nullable(),
+    }),
   }),
   handler: async (_input, ctx) => {
     requireAuth(ctx);
@@ -125,6 +130,12 @@ export const GIT_PROVIDER_CAPABILITIES = defineTool({
         oauthHosts: capabilities.gitlab.hosts,
         connectPath: capabilities.gitlab.configured
           ? `${base}/gitlab/connect`
+          : null,
+      },
+      bitbucket: {
+        oauthHosts: capabilities.bitbucket.hosts,
+        connectPath: capabilities.bitbucket.configured
+          ? `${base}/bitbucket/connect`
           : null,
       },
     };
@@ -158,7 +169,7 @@ export const GIT_ACCOUNT_LIST = defineTool({
 export const GIT_ACCOUNT_CONNECT_TOKEN = defineTool({
   name: "GIT_ACCOUNT_CONNECT_TOKEN",
   description:
-    "Connect a git provider account with a personal, project or group access token. Validates the token against the provider before storing it encrypted. Use this for self-managed GitLab instances (no OAuth application) or when OAuth is not wanted.",
+    "Connect a git provider account with an access token: a GitLab personal, project or group token, or a Bitbucket Cloud workspace, project or repository access token. Validates the token against the provider before storing it encrypted. Use this for self-managed GitLab instances (no OAuth application) or when OAuth is not wanted.",
   annotations: {
     title: "Connect git account with a token",
     readOnlyHint: false,
@@ -169,12 +180,14 @@ export const GIT_ACCOUNT_CONNECT_TOKEN = defineTool({
   _meta: { ui: { visibility: "app" } },
   inputSchema: z.object({
     type: GitProviderKindSchema.describe(
-      "Provider; only gitlab accepts tokens today",
+      "Provider; gitlab and bitbucket accept tokens (GitHub connects through the App)",
     ),
     host: z
       .string()
       .min(1)
-      .describe("Provider host, e.g. gitlab.com or gitlab.acme.com"),
+      .describe(
+        "Provider host, e.g. gitlab.com, gitlab.acme.com or bitbucket.org",
+      ),
     token: z.string().min(1).describe("Access token with api scope"),
   }),
   outputSchema: z.object({ account: AccountOutputSchema }),
@@ -350,7 +363,7 @@ export const REPOSITORY_LINK = defineTool({
       const ref = parseRepoUrl(input.url);
       if (!ref) {
         throw new Error(
-          "Could not recognise the repository URL. Use a full https URL from GitHub or GitLab.",
+          "Could not recognise the repository URL. Use a full https URL from GitHub, GitLab or Bitbucket.",
         );
       }
       const repository = await ctx.storage.repositories.upsert({
