@@ -12,7 +12,6 @@ describe("createTaskBoardTools", () => {
     const tools = createTaskBoardTools({} as never);
 
     expect(Object.keys(tools).sort()).toEqual([
-      "REPOSITORY_LIST",
       "TASK_BOARD_ITEM_CREATE",
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_ITEM_LIST",

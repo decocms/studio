@@ -38,7 +38,6 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   get_thread: { readOnly: true, destructive: false },
   list_thread_messages: { readOnly: true, destructive: false },
   TASK_BOARD_ITEM_LIST: { readOnly: true, destructive: false },
-  REPOSITORY_LIST: { readOnly: true, destructive: false },
   TASK_BOARD_ITEM_CREATE: { readOnly: false, destructive: false },
   TASK_BOARD_ITEM_UPDATE: { readOnly: false, destructive: false },
   TASK_BOARD_ITEM_DELETE: { readOnly: false, destructive: true },

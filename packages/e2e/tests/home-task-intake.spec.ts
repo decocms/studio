@@ -62,7 +62,7 @@ test("Start task sends the report and the start-task guide in one message", asyn
   // guide that tells the agent to find a repo and delegate.
   const payload = JSON.stringify((await sent).postDataJSON());
   expect(payload).toContain(report);
-  expect(payload).toContain("REPOSITORY_LIST");
+  expect(payload).toContain("TASK_BOARD_ITEM_LIST");
   expect(payload).toContain("TASK_BOARD_ITEM_CREATE");
   expect(payload).toContain("super-agent");
 
