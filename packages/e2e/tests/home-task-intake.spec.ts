@@ -65,4 +65,12 @@ test("Start task sends the report and the start-task guide in one message", asyn
   expect(payload).toContain("REPOSITORY_LIST");
   expect(payload).toContain("TASK_BOARD_ITEM_CREATE");
   expect(payload).toContain("super-agent");
+
+  // `sidepanel` is retained across navigation: submitting from a collapsed
+  // Home used to land on the new thread with the chat closed, so the report
+  // was invisible behind "Show chat". The hand-off must force it open.
+  await page.waitForURL((url) => url.searchParams.get("sidepanel") === "true", {
+    timeout: 30_000,
+  });
+  await expect(page.getByText(report)).toBeVisible({ timeout: 30_000 });
 });

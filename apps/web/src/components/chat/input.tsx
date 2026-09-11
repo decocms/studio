@@ -349,10 +349,18 @@ function useHomeSubmit() {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
     }
-    const search: Record<string, string> = {
+    const search: Record<string, string | boolean> = {
       virtualmcpid: targetVmcp,
       autosend: AUTOSEND_QUERY_VALUE,
     };
+    // `sidepanel` is retained across navigation, so submitting from a Home
+    // whose chat panel is collapsed would land on the new thread with the
+    // report invisible behind "Show chat". Task mode is a hand-off — show the
+    // work, and only the work.
+    if (taskIntake) {
+      search.sidepanel = true;
+      search.mainpanel = false;
+    }
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId: newId },
