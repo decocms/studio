@@ -9,10 +9,12 @@ description: >-
 inputs:
   image:
     description: MinIO container image — single source of truth for the pinned version.
-    # Docker Hub, not quay.io: same official image/tags, but quay.io
-    # intermittently times out in CI, and GitHub-hosted runners are exempt
-    # from Docker Hub rate limits for public images.
-    default: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # quay.io, not Docker Hub: `minio/minio` no longer EXISTS on Docker Hub
+    # (the pull fails "repository does not exist", not a rate limit), so the
+    # old preference for it — same tags, no runner rate limit — is moot. quay
+    # is MinIO's own registry and carries the identical tag;
+    # tests/multi-pod/docker-compose.yml has pulled from it since #4748.
+    default: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
   port:
     description: Host port to publish and probe for readiness.
     default: "9000"

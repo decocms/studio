@@ -28,6 +28,22 @@ describe("cmdk default filter", () => {
     expect(score("Home", "", undefined)).toBeGreaterThan(0);
   });
 
+  test("narrows a project list to the ones that match", () => {
+    // The reported bug, in the shape the palette actually renders: project
+    // rows carry a `project ` prefix in their `value`, so the prefix must not
+    // swallow the match — and a project that does NOT match has to disappear
+    // alongside the destinations.
+    const row = (title: string) => `project ${title}`;
+
+    expect(
+      score(row("investor-relations"), "invest", undefined),
+    ).toBeGreaterThan(0);
+    expect(score(row("Acme Investors"), "invest", undefined)).toBeGreaterThan(
+      0,
+    );
+    expect(score(row("my-shop"), "invest", undefined)).toBe(0);
+  });
+
   test("drops a server-matched row whose value lacks the search text", () => {
     // The failure mode: GLOBAL_SEARCH matched this card on its key, which is
     // not in `value`, so cmdk scores it 0 and a found result renders as
