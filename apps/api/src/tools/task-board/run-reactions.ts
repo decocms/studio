@@ -33,6 +33,7 @@ import type { OrganizationBillingStorage } from "@/storage/organization-billing"
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { findChangeRequestIn } from "./change-request-extract";
+import { emailReporterPrReady } from "./pr-ready-email";
 import { invalidatePrCards } from "./prs-get";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -590,6 +591,8 @@ export async function parkReviewedCardForHuman(
       })
       .catch(() => {});
     emitTaskBoardUpdated(item.organizationId, parked);
+    // "It is your turn" is exactly what the reporter asked to be told about.
+    await emailReporterPrReady(ctx, parked);
   } catch (err) {
     console.error(`[task-board] parking ${item.id} for review failed`, err);
   }

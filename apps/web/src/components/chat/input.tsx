@@ -1,3 +1,6 @@
+import { withTaskIntake } from "./task-intake";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { calculateUsageStats } from "@/lib/usage-utils.ts";
 import { AUTOSEND_QUERY_VALUE, writeStoredAutosend } from "@/lib/autosend";
@@ -327,24 +330,37 @@ function useHomeSubmit() {
   return async ({
     tiptapDoc,
     virtualMcp,
+    taskIntake = false,
   }: {
     tiptapDoc: Metadata["tiptapDoc"];
     virtualMcp: VirtualMCPInfo | null;
+    taskIntake?: boolean;
   }) => {
     const newId = crypto.randomUUID();
     const targetVmcp =
       virtualMcp?.id ?? getWellKnownDecopilotVirtualMCP(org.id).id;
-    writeStoredAutosend(sessionStorage, locator, newId, { tiptapDoc });
+    writeStoredAutosend(sessionStorage, locator, newId, {
+      tiptapDoc:
+        taskIntake && tiptapDoc ? withTaskIntake(tiptapDoc) : tiptapDoc,
+    });
     try {
       await create({ id: newId, virtual_mcp_id: targetVmcp });
     } catch {
       // Toast already surfaced by the store; navigate anyway — the route's
       // ensure-fallback will retry if the row is missing.
     }
-    const search: Record<string, string> = {
+    const search: Record<string, string | boolean> = {
       virtualmcpid: targetVmcp,
       autosend: AUTOSEND_QUERY_VALUE,
     };
+    // `sidepanel` is retained across navigation, so submitting from a Home
+    // whose chat panel is collapsed would land on the new thread with the
+    // report invisible behind "Show chat". Task mode is a hand-off — show the
+    // work, and only the work.
+    if (taskIntake) {
+      search.sidepanel = true;
+      search.mainpanel = false;
+    }
     navigate({
       to: "/$org/$taskId",
       params: { org: org.slug, taskId: newId },
@@ -356,9 +372,11 @@ function useHomeSubmit() {
 export function ChatInput({
   onOpenContextPanel,
   showConnectionsBanner = false,
+  homeTaskComposer = false,
 }: {
   onOpenContextPanel?: () => void;
   showConnectionsBanner?: boolean;
+  homeTaskComposer?: boolean;
 }) {
   const t = useT();
   const stream = useOptionalChatStream();
@@ -386,6 +404,13 @@ export function ChatInput({
   const userId = session?.user?.id;
 
   const { org, locator } = useProjectContext();
+  // Task mode is the Home default — reporting something is why people land
+  // here. Turning it off gives an ordinary chat, and the choice sticks.
+  const [taskMode, setTaskMode] = useLocalStorage(
+    LOCALSTORAGE_KEYS.homeTaskMode(locator),
+    true,
+  );
+  const taskIntake = homeTaskComposer && taskMode;
   const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
   const selectedVm = useVirtualMCP(selectedVirtualMcp?.id);
   const fastPreviewActive = useSessionRuntime(selectedVm?.id).runtime === "cms";
@@ -590,7 +615,14 @@ export function ChatInput({
         }
         void stream.sendMessage(tiptapDoc);
       } else {
-        homeSubmit({ tiptapDoc, virtualMcp: selectedVirtualMcp });
+        if (taskIntake) track("task_report_submitted", { source: "home" });
+        // Task mode needs Decopilot's task-board tools, whatever the
+        // composer's selector says.
+        void homeSubmit({
+          tiptapDoc,
+          virtualMcp: taskIntake ? null : selectedVirtualMcp,
+          taskIntake,
+        });
       }
       clearChatDraft(sessionStorage, locator, draftKey);
       setTiptapDoc(undefined);
@@ -676,7 +708,7 @@ export function ChatInput({
 
   return (
     <>
-      <div className="flex flex-col w-full justify-end">
+      <div className="flex flex-col w-full justify-end text-left">
         <div className="relative rounded-2xl w-full flex flex-col">
           {/* Muted background for connections banner - peeks through form's bottom radius */}
           {showConnectionsBanner && (
@@ -696,7 +728,11 @@ export function ChatInput({
             setTiptapDoc={setTiptapDoc}
             disabled={voice.status === "recording"}
             enterToSubmit={true}
-            placeholder={t("chat.input.placeholder")}
+            placeholder={
+              taskIntake
+                ? t("chat.input.taskPlaceholder")
+                : t("chat.input.placeholder")
+            }
             onSubmit={handleSubmit}
             suggestionOpenRef={suggestionOpenRef}
           >
@@ -756,6 +792,18 @@ export function ChatInput({
                   <>
                     {/* Left Actions (+, Tools, active tool pills, stats) */}
                     <div className="flex items-center gap-1.5 min-w-0">
+                      {homeTaskComposer && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={taskMode ? "secondary" : "ghost"}
+                          aria-pressed={taskMode}
+                          onClick={() => setTaskMode(!taskMode)}
+                          className="h-8 rounded-lg"
+                        >
+                          {t("chat.input.taskMode")}
+                        </Button>
+                      )}
                       <ToolsPopover
                         disabled={false}
                         onOpenConnections={() => {
@@ -863,10 +911,12 @@ export function ChatInput({
                         variant={
                           canSubmit || showStopOrCancel ? "default" : "ghost"
                         }
-                        size="icon"
+                        size={taskIntake ? "sm" : "icon"}
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
-                          "size-8 rounded-lg transition-all",
+                          taskIntake
+                            ? "h-8 px-3 rounded-lg transition-all"
+                            : "size-8 rounded-lg transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
                             "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",
@@ -876,20 +926,27 @@ export function ChatInput({
                             ? isStreaming
                               ? t("chat.input.stopGenerating")
                               : t("chat.input.cancelRun")
-                            : t("chat.input.sendMessageEnter")
+                            : taskIntake
+                              ? t("chat.input.startTask")
+                              : t("chat.input.sendMessageEnter")
                         }
                         aria-label={
                           composerAction === "stop"
                             ? isStreaming
                               ? t("chat.input.stopGenerating")
                               : t("chat.input.cancelRun")
-                            : t("chat.input.sendMessage")
+                            : taskIntake
+                              ? t("chat.input.startTask")
+                              : t("chat.input.sendMessage")
                         }
                       >
                         {showStopOrCancel ? (
                           <Stop size={20} />
                         ) : (
-                          <ArrowUp size={20} />
+                          <>
+                            {taskIntake && t("chat.input.startTask")}
+                            <ArrowUp size={20} />
+                          </>
                         )}
                       </Button>
                     </div>
@@ -898,6 +955,12 @@ export function ChatInput({
               </div>
             </form>
           </TiptapProvider>
+
+          {homeTaskComposer && taskIntake && (
+            <p className="px-3 pt-3 text-left text-xs text-muted-foreground">
+              {t("chat.input.taskHint")}
+            </p>
+          )}
 
           {/* Connections Banner Footer - always visible on home */}
           {showConnectionsBanner && (

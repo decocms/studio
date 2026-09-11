@@ -1703,7 +1703,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const automationContextFactory = createAutomationContextFactory({
     db: database.db,
   });
-
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():
   // it only writes a module-level pointer, no DBOS API calls.
   // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
@@ -1718,6 +1717,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // needs a `dispatchRunFn` or a status-poll cap. Wiring happens before
   // `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
     studioContextFactory: automationContextFactory,
     deps: {
       runRegistry,
