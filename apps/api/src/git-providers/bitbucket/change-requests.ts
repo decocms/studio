@@ -223,11 +223,6 @@ export function isConflictRefusal(message: string): boolean {
   return /conflict/i.test(message);
 }
 
-/** A pull request opened on a source/destination pair that already has one. */
-export function isDuplicateRefusal(message: string): boolean {
-  return /already (?:an? )?open|already exists/i.test(message);
-}
-
 export class BitbucketChangeRequestClient implements ChangeRequestClient {
   readonly repo: RepoRef;
   private readonly tokenSource: TokenSource;
@@ -302,6 +297,7 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
       updatedAt: pr.updated_on ?? null,
       base: pr.destination?.branch?.name ?? "main",
       head: pr.source?.branch?.name ?? "",
+      // 12-char short hash on this payload; every commit endpoint accepts it.
       headSha: pr.source?.commit?.hash ?? "",
       // The source repository is on the payload; absent means the fork is gone.
       headRepoPath: pr.source?.repository?.full_name ?? null,
@@ -403,7 +399,21 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
     return best;
   }
 
+  /**
+   * Bitbucket does not refuse a second pull request for a source/destination
+   * pair that already has an open one: `POST /pullrequests` UPDATES it in
+   * place, title and description included (verified against bitbucket.org).
+   * So the duplicate is detected here, before anything is sent, and reported
+   * as {@link ChangeRequestExists} the way the other providers' refusals are.
+   */
   async open(params: OpenChangeRequestParams): Promise<ChangeRequest> {
+    const existing = await this.openFor(params.head, params.base);
+    if (existing) {
+      throw new ChangeRequestExists(
+        `Bitbucket already has an open pull request from ${params.head} to ${params.base}: #${existing.number}`,
+        existing,
+      );
+    }
     const res = await bitbucketFetch(
       `${this.repoBase}/pullrequests`,
       await this.token(),
@@ -418,14 +428,22 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
       },
     );
     if (res.ok) return this.map((await res.json()) as RawPullRequest);
-    const failure = await bitbucketFailure(res);
-    if (isDuplicateRefusal(failure.message)) {
-      throw new ChangeRequestExists(
-        failure.message,
-        await this.readForBranch(params.head).catch(() => null),
-      );
-    }
-    throw failure;
+    throw await bitbucketFailure(res);
+  }
+
+  /** The open pull request proposing `head` onto `base`, if any. */
+  private async openFor(
+    head: string,
+    base: string,
+  ): Promise<ChangeRequest | null> {
+    const params = new URLSearchParams({
+      state: "OPEN",
+      q: `source.branch.name = ${bbqString(head)} AND destination.branch.name = ${bbqString(base)}`,
+      pagelen: "1",
+    });
+    const rows = await this.values<RawPullRequest>(`/pullrequests?${params}`);
+    const first = rows?.[0];
+    return first ? this.map(first) : null;
   }
 
   /** Bitbucket's update requires the title alongside, so the current one rides along. */

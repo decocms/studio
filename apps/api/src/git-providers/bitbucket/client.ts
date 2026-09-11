@@ -135,12 +135,10 @@ const BitbucketWorkspaceSchema = z.object({
  * Who a token authenticates as. The routes call this to validate a pasted
  * access token and to seed the account row (`externalAccountId`, `login`).
  *
- * Three answers are tried because Bitbucket's tokens are not all users: an
+ * Two answers are tried because Bitbucket's tokens are not all users: an
  * OAuth grant or a user-level token answers `/user`; a workspace or project
  * access token is refused there (it has no user) but can list its own
- * workspace; a repository access token can do neither and is identified by
- * the workspace of the repository it belongs to. The last refusal is the one
- * surfaced when nothing works.
+ * workspace. A repository access token can do neither, so it is refused.
  */
 export async function bitbucketPrincipalForToken(
   host: string,
@@ -157,32 +155,24 @@ export async function bitbucketPrincipalForToken(
     };
   }
   const workspaces = await tryJson(
-    `${BITBUCKET_API_BASE}/workspaces?pagelen=1`,
+    `${BITBUCKET_API_BASE}/user/workspaces?pagelen=1`,
     token,
   );
   if (workspaces.ok) {
-    const first = (workspaces.json as BitbucketPage<unknown>).values?.[0];
-    if (first !== undefined) return workspacePrincipal(first);
-  }
-  const repositories = await tryJson(
-    `${BITBUCKET_API_BASE}/repositories?role=member&pagelen=1`,
-    token,
-  );
-  if (repositories.ok) {
-    const first = (repositories.json as BitbucketPage<{ workspace?: unknown }>)
+    const first = (workspaces.json as BitbucketPage<{ workspace?: unknown }>)
       .values?.[0];
     if (first?.workspace !== undefined) {
       return workspacePrincipal(first.workspace);
     }
   }
-  throw repositories.ok
+  throw workspaces.ok
     ? new GitProviderError({
         provider: "bitbucket",
         status: 401,
         message:
-          "Bitbucket did not recognise the token as a user, a workspace or a repository member",
+          "Bitbucket did not recognise the token as a user or a workspace member. Connect through OAuth, or use a workspace or project access token; a repository access token cannot be identified.",
       })
-    : repositories.failure;
+    : workspaces.failure;
 }
 
 function workspacePrincipal(json: unknown): ProviderPrincipal {
@@ -246,38 +236,78 @@ export class BitbucketProviderClient implements GitProviderClient {
 
   /**
    * Repositories the token can reach as a member, newest activity first.
-   * Bitbucket filters server-side with its query language; `name ~ "x"` is
-   * a case-insensitive substring match on the repository name.
+   *
+   * Bitbucket retired the workspace-less `/repositories` listing (changelog
+   * CHANGE-2770; it answers 410), so this lists the token's workspaces and
+   * reads one page per workspace, merged newest-first. With one workspace —
+   * the common case — that is exactly Bitbucket's own paging; with several, a
+   * page is the union of each workspace's page `n` trimmed to `perPage`,
+   * which over-delivers on later pages rather than skipping anything.
+   * `name ~ "x"` is a case-insensitive substring match on the name.
    */
   async listRepos(
     opts: ListReposOptions = {},
   ): Promise<{ repositories: RepoSummary[]; hasMore: boolean }> {
+    const perPage = Math.min(
+      MAX_PER_PAGE,
+      Math.max(1, opts.perPage ?? DEFAULT_PER_PAGE),
+    );
     const params = new URLSearchParams({
       role: "member",
       sort: "-updated_on",
-      pagelen: String(
-        Math.min(MAX_PER_PAGE, Math.max(1, opts.perPage ?? DEFAULT_PER_PAGE)),
-      ),
+      pagelen: String(perPage),
       page: String(Math.max(1, opts.page ?? 1)),
     });
     const query = opts.query?.trim();
     if (query) params.set("q", `name ~ ${bbqString(query)}`);
-    const res = await this.get(`/repositories?${params}`);
-    if (!res) return { repositories: [], hasMore: false };
-    const page = await bitbucketJson<BitbucketPage<unknown>>(res, "list_repos");
-    if (!Array.isArray(page.values)) {
-      throw new GitProviderError({
-        provider: "bitbucket",
-        status: 502,
-        message: "Bitbucket /repositories returned no values array",
-      });
-    }
+
+    const workspaces = await this.workspaceSlugs();
+    const pages = await Promise.all(
+      workspaces.map(async (slug): Promise<BitbucketPage<unknown>> => {
+        const res = await this.get(
+          `/repositories/${encodeURIComponent(slug)}?${params}`,
+        );
+        if (!res) return { values: [], next: null };
+        const page = await bitbucketJson<BitbucketPage<unknown>>(
+          res,
+          "list_repos",
+        );
+        if (!Array.isArray(page.values)) {
+          throw new GitProviderError({
+            provider: "bitbucket",
+            status: 502,
+            message: `Bitbucket /repositories/${slug} returned no values array`,
+          });
+        }
+        return page;
+      }),
+    );
+    const merged = pages
+      .flatMap((page) => page.values ?? [])
+      .map((repository) => mapBitbucketRepository(repository, this.host))
+      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
+    const single = workspaces.length <= 1;
     return {
-      repositories: page.values.map((repository) =>
-        mapBitbucketRepository(repository, this.host),
-      ),
-      hasMore: !!page.next,
+      repositories: single ? merged : merged.slice(0, perPage),
+      hasMore:
+        pages.some((page) => !!page.next) ||
+        (!single && merged.length > perPage),
     };
+  }
+
+  /**
+   * Slugs of the workspaces the token is a member of. `/user/workspaces` is
+   * the one listing Bitbucket still serves; `/workspaces` answers 404.
+   */
+  private async workspaceSlugs(): Promise<string[]> {
+    const res = await this.get(`/user/workspaces?pagelen=${MAX_PER_PAGE}`);
+    if (!res) return [];
+    const page = await bitbucketJson<
+      BitbucketPage<{ workspace?: { slug?: string | null } | null }>
+    >(res, "list_workspaces");
+    return (page.values ?? []).flatMap((access) =>
+      typeof access.workspace?.slug === "string" ? [access.workspace.slug] : [],
+    );
   }
 
   async readFile(

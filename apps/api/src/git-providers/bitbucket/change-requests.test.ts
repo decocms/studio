@@ -3,7 +3,6 @@ import {
   conflictFromDiffstat,
   countUnresolved,
   isConflictRefusal,
-  isDuplicateRefusal,
   mapComments,
   mapCommitStatus,
   mapState,
@@ -188,12 +187,5 @@ describe("refusal prose", () => {
   test("a conflict names itself", () => {
     expect(isConflictRefusal("There are merge conflicts")).toBe(true);
     expect(isConflictRefusal("You need two approvals")).toBe(false);
-  });
-  test("a duplicate pull request", () => {
-    expect(
-      isDuplicateRefusal("There is already an open pull request from x to y"),
-    ).toBe(true);
-    expect(isDuplicateRefusal("A pull request already exists")).toBe(true);
-    expect(isDuplicateRefusal("source branch not found")).toBe(false);
   });
 });

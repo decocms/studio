@@ -953,30 +953,15 @@ export class BitbucketContentClient implements RepoContentClient {
    * listing — callers treat "no `.deco/` yet" as normal.
    */
   private async listTree(treeish: string, path: string): Promise<TreeEntry[]> {
-    const out: TreeEntry[] = [];
     const dir = path ? `${encodeSrcPath(path)}/` : "";
-    let page = 1;
-    for (let visited = 0; visited < MAX_PAGES; visited++) {
-      const listing = await this.json<BitbucketPage<BitbucketSrcEntry>>(
-        `${this.repoBase}/src/${encodeRef(treeish)}/${dir}?pagelen=${PAGE_SIZE}&page=${page}`,
-      );
-      if (listing === null) return out;
-      if (!Array.isArray(listing.values)) {
-        throw new GitProviderError({
-          provider: "bitbucket",
-          status: 502,
-          message: "Bitbucket /src returned no values array",
-        });
-      }
-      for (const row of listing.values) {
-        const entry = mapSrcEntry(row, treeish);
-        if (entry) out.push(entry);
-      }
-      const next = nextPageNumber(listing);
-      if (next === null || next <= page) break;
-      page = next;
-    }
-    return out;
+    const rows = await this.pages<BitbucketSrcEntry>(
+      `${this.repoBase}/src/${encodeRef(treeish)}/${dir}?pagelen=${PAGE_SIZE}`,
+    );
+    if (rows === null) return [];
+    return rows.flatMap((row) => {
+      const entry = mapSrcEntry(row, treeish);
+      return entry ? [entry] : [];
+    });
   }
 
   /**
@@ -988,32 +973,25 @@ export class BitbucketContentClient implements RepoContentClient {
     from: string,
     exclude: string,
   ): Promise<Array<{ hash: string; message?: string | null }>> {
-    const out: Array<{ hash: string; message?: string | null }> = [];
-    let page = 1;
-    for (let visited = 0; visited < MAX_PAGES; visited++) {
-      const listing = await this.json<
-        BitbucketPage<{ hash?: string | null; message?: string | null }>
-      >(
-        `${this.repoBase}/commits/${encodeRef(from)}?exclude=${encodeRef(exclude)}` +
-          `&pagelen=${PAGE_SIZE}&page=${page}&fields=values.hash,values.message,next`,
-      );
-      if (listing === null) {
-        throw new GitProviderError({
-          provider: "bitbucket",
-          status: 404,
-          message: `Bitbucket cannot compare ${exclude}...${from} in ${this.repo.path}`,
-        });
-      }
-      for (const row of listing.values ?? []) {
-        if (typeof row.hash === "string") {
-          out.push({ hash: row.hash, message: row.message });
-        }
-      }
-      const next = nextPageNumber(listing);
-      if (next === null || next <= page) break;
-      page = next;
+    const rows = await this.pages<{
+      hash?: string | null;
+      message?: string | null;
+    }>(
+      `${this.repoBase}/commits/${encodeRef(from)}?exclude=${encodeRef(exclude)}` +
+        `&pagelen=${PAGE_SIZE}&fields=values.hash,values.message,next`,
+    );
+    if (rows === null) {
+      throw new GitProviderError({
+        provider: "bitbucket",
+        status: 404,
+        message: `Bitbucket cannot compare ${exclude}...${from} in ${this.repo.path}`,
+      });
     }
-    return out;
+    return rows.flatMap((row) =>
+      typeof row.hash === "string"
+        ? [{ hash: row.hash, message: row.message }]
+        : [],
+    );
   }
 
   /**
@@ -1025,18 +1003,39 @@ export class BitbucketContentClient implements RepoContentClient {
     source: string,
     destination: string,
   ): Promise<BitbucketDiffstatEntry[]> {
-    const out: BitbucketDiffstatEntry[] = [];
     const spec = `${encodeRef(source)}..${encodeRef(destination)}`;
-    let page = 1;
-    for (let visited = 0; visited < MAX_PAGES; visited++) {
-      const listing = await this.json<BitbucketPage<BitbucketDiffstatEntry>>(
-        `${this.repoBase}/diffstat/${spec}?topic=true&pagelen=${PAGE_SIZE}&page=${page}`,
-      );
-      if (listing === null) return out;
-      out.push(...(listing.values ?? []));
-      const next = nextPageNumber(listing);
-      if (next === null || next <= page) break;
-      page = next;
+    return (
+      (await this.pages<BitbucketDiffstatEntry>(
+        `${this.repoBase}/diffstat/${spec}?topic=true&pagelen=${PAGE_SIZE}`,
+      )) ?? []
+    );
+  }
+
+  /**
+   * Every row of a paginated listing, following the `next` URLs Bitbucket
+   * hands back. Those are the only way to page some listings — `src` pages by
+   * an opaque cursor and refuses `page=2` — so no page number is ever built
+   * here. Null when the first page is a 404; bounded by `MAX_PAGES`.
+   */
+  private async pages<T>(firstPathAndQuery: string): Promise<T[] | null> {
+    const out: T[] = [];
+    let url: string | null = `${BITBUCKET_API_BASE}${firstPathAndQuery}`;
+    for (let visited = 0; url !== null && visited < MAX_PAGES; visited++) {
+      const listing: BitbucketPage<T> | null = await this.jsonAt(url);
+      if (listing === null) return visited === 0 ? null : out;
+      if (!Array.isArray(listing.values)) {
+        throw new GitProviderError({
+          provider: "bitbucket",
+          status: 502,
+          message: `Bitbucket listing returned no values array: ${url}`,
+        });
+      }
+      out.push(...listing.values);
+      // Only Bitbucket's own API is followed, whatever a payload says.
+      url =
+        listing.next && listing.next.startsWith(BITBUCKET_API_BASE)
+          ? listing.next
+          : null;
     }
     return out;
   }
@@ -1053,13 +1052,21 @@ export class BitbucketContentClient implements RepoContentClient {
     return (await this.provider.tokenForRepo(this.repo)).token;
   }
 
-  private async json<T>(
-    pathAndQuery: string,
-    init?: CallInit,
-  ): Promise<T | null> {
-    const res = await this.call(pathAndQuery, init);
+  private json<T>(pathAndQuery: string, init?: CallInit): Promise<T | null> {
+    return this.jsonAt(`${BITBUCKET_API_BASE}${pathAndQuery}`, init);
+  }
+
+  private async jsonAt<T>(url: string, init?: CallInit): Promise<T | null> {
+    const res = await this.callAt(url, init);
     if (res === null) return null;
     return (await res.json()) as T;
+  }
+
+  private call(
+    pathAndQuery: string,
+    init: CallInit = {},
+  ): Promise<Response | null> {
+    return this.callAt(`${BITBUCKET_API_BASE}${pathAndQuery}`, init);
   }
 
   /**
@@ -1067,15 +1074,11 @@ export class BitbucketContentClient implements RepoContentClient {
    * try/catch; every other non-2xx becomes a `GitProviderError`, carrying a
    * wait hint when Bitbucket rate-limited us.
    */
-  private async call(
-    pathAndQuery: string,
+  private async callAt(
+    url: string,
     init: CallInit = {},
   ): Promise<Response | null> {
-    const res = await bitbucketFetch(
-      `${BITBUCKET_API_BASE}${pathAndQuery}`,
-      await this.token(),
-      init,
-    );
+    const res = await bitbucketFetch(url, await this.token(), init);
     if (res.status === 404) {
       await res.body?.cancel().catch(() => {});
       return null;
