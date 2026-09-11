@@ -828,6 +828,15 @@ async function requireOwnedSite(
   if (!site) {
     return c.json({ error: "site is required" }, 400);
   }
+  // Ownership FIRST, then the plan. The other order answered 403
+  // "plan does not include monitoring" for a slug the org does not own, which
+  // both leaks that the plan gate exists to an unowned-slug probe and costs a
+  // gateway round trip to refuse a request that was a 404 anyway.
+  const slug = site.toLowerCase();
+  const owned = await ctx.storage.orgSites.isOwnedBy(slug, org.id);
+  if (!owned) {
+    return c.json({ error: "Site not found in organization" }, 404);
+  }
   if (!(await orgHasFeature(ctx, org.id, "monitoring"))) {
     return c.json(
       {
@@ -836,11 +845,6 @@ async function requireOwnedSite(
       },
       403,
     );
-  }
-  const slug = site.toLowerCase();
-  const owned = await ctx.storage.orgSites.isOwnedBy(slug, org.id);
-  if (!owned) {
-    return c.json({ error: "Site not found in organization" }, 404);
   }
   return { slug };
 }

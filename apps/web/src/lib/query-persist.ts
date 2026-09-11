@@ -26,13 +26,6 @@ const WRITE_DEBOUNCE_MS = 1000;
 //   - publicConfig          theme/styling — identical for every user
 //   - ai-provider-keys      AI_PROVIDER_KEY_LIST — metadata only, never secrets
 //   - organization-settings ORGANIZATION_SETTINGS_GET — sidebar/plugins/config
-//   - ai-plan-entitlements  the org's plan + feature gates. Persisted because
-//                           every gate FAILS OPEN while the query is in
-//                           flight, so a cold cache paints the ungated UI
-//                           (model picker, BYO-key surfaces) for one frame and
-//                           then swaps — a visible flicker on every refresh.
-//                           Org-scoped, non-secret; enforcement is server-side
-//                           regardless of what this cache says.
 //   - home-next-actions     the home grid's tiles + prompt chips. Plain (non-
 //                           suspense) query with staleTime 0, so without
 //                           hydration HomeGrid shows PromptChipsRowSkeleton and
@@ -46,9 +39,18 @@ const WRITE_DEBOUNCE_MS = 1000;
 // is an authorization gate (a stale "you're a member" value would render the
 // org shell instead of the invite / no-access screen — see shell-layout.tsx),
 // and session state must always revalidate against the server.
+//
+// `ai-plan-entitlements` is deliberately NOT here either, for the same class
+// of reason. A hydrated entry restores with `status: "success"`, so
+// `useFeaturesSettled()` is immediately true and `useModelDisclosure()`
+// immediately `isSuccess` — from a decision that may be a day old. That paints
+// model names and per-message costs for an org that has since dropped off
+// Ultra, and paints `FeaturePaywall` at an org that paid ninety seconds ago,
+// on the first frame of every reload. The flicker this was added to remove is
+// already handled properly by the third-state skeleton in
+// `main-panel-tabs/index.tsx`.
 const PERSISTED_KEY_HEADS = new Set([
   "publicConfig",
-  "ai-plan-entitlements",
   "ai-provider-keys",
   "organization-settings",
   "home-next-actions",

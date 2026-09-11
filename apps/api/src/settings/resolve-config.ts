@@ -100,6 +100,33 @@ function toPositiveIntegerOrDefault(
 
 /** Like `toPositiveIntegerOrDefault`, but 0 is a valid value (e.g. a fee a
  *  self-hosted deployment wants to disable outright). */
+/**
+ * `price_abc=pro,price_def=ultra` → `{price_abc: 'pro', price_def: 'ultra'}`.
+ *
+ * Malformed entries are dropped with a warning rather than throwing: this map
+ * decides what a payment BUYS, and a deployment must not fail to boot over one
+ * bad pair — but it must also not silently grant the wrong tier, so anything
+ * unparseable is left out and an unmapped price grants nothing.
+ */
+function parsePlanPriceIds(value: string | undefined): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const pair of (value ?? "").split(",")) {
+    const trimmed = pair.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf("=");
+    const priceId = eq > 0 ? trimmed.slice(0, eq).trim() : "";
+    const planId = eq > 0 ? trimmed.slice(eq + 1).trim() : "";
+    if (!priceId || !planId) {
+      console.warn(
+        `STRIPE_PLAN_PRICE_IDS: ignoring unparseable entry "${trimmed}" — expected price_xxx=planId`,
+      );
+      continue;
+    }
+    map[priceId] = planId;
+  }
+  return map;
+}
+
 function toNonNegativeIntegerOrDefault(
   name: string,
   value: string | undefined,
@@ -264,6 +291,7 @@ export function resolveConfig(
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
+    stripePlanPriceIds: parsePlanPriceIds(envVars.STRIPE_PLAN_PRICE_IDS),
     stripeTopupProductId: envVars.STRIPE_TOPUP_PRODUCT_ID,
     // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
     // that would silently more-than-double every top-up charge. 0 is valid —
@@ -445,6 +473,44 @@ export function resolveConfig(
         "gateway cannot identify this server, falls back to a per-user " +
         "membership callback that 401s for any user who never completed the " +
         "gateway OAuth flow, and every feature gate then fails OPEN.",
+    );
+  }
+
+  // Third door to the same room. `plansEnabled` and `aiGatewayEnabled` are
+  // independent booleans and only the first had a guard, so plans-on +
+  // gateway-off opened every gate on both halves: `planStateFor` returns null
+  // before any network call, `isFeatureAllowed` reads a null features map as
+  // true, and on the client the `deco` adapter is never registered so
+  // `AI_PLAN_ENTITLEMENTS` throws and `useFeature` returns true for
+  // everything. The chart ships `DECO_AI_GATEWAY_ENABLED: "false"` as an
+  // active default, so flipping only the plans flag — which is what the chart
+  // documents — reaches it.
+  if (settings.plansEnabled && !settings.aiGatewayEnabled) {
+    throw new Error(
+      "STUDIO_PLANS_ENABLED requires DECO_AI_GATEWAY_ENABLED=true. Plans are " +
+        "read from the gateway; with it disabled there is no adapter to ask, " +
+        "so every feature gate fails OPEN on both server and client and the " +
+        "paid product is free fleet-wide.",
+    );
+  }
+
+  // Selling without being able to deliver. The Stripe webhook is the ONLY way
+  // a paid tier is granted, and it places the tier through the gateway's admin
+  // API — so a price map with no admin token takes money for an entitlement
+  // that cannot land. `setGatewayOrgPlan` now throws rather than returning
+  // quietly, which makes Stripe the retry queue; this stops the deployment
+  // from getting that far.
+  if (
+    settings.plansEnabled &&
+    Object.keys(settings.stripePlanPriceIds).length > 0 &&
+    !settings.aiGatewayAdminToken
+  ) {
+    throw new Error(
+      "STRIPE_PLAN_PRICE_IDS is set but DECO_AI_GATEWAY_ADMIN_TOKEN is not. " +
+        "The Stripe webhook places the paid tier through the gateway's admin " +
+        "API, so without the token a customer is charged and the entitlement " +
+        "is never granted — and AI_PLAN_SET cannot repair it, it accepts only " +
+        "'free'.",
     );
   }
 

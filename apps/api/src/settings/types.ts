@@ -81,8 +81,23 @@ export interface Settings {
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
   /** The flat monthly org-subscription price (created in the Stripe
-   *  dashboard); quantity is always 1. */
+   *  dashboard); quantity is always 1. The fallback when a checkout names no
+   *  plan, and the price a deployment with no tiers subscribes on. */
   stripeOrgPriceId: string | undefined;
+  /**
+   * Which gateway plan each subscription Price grants, parsed from
+   * STRIPE_PLAN_PRICE_IDS (`price_abc=pro,price_def=ultra`).
+   *
+   * This is the join between money and entitlement, and without it a plan is
+   * something a user simply asks for: `AI_PLAN_SET` takes no payment, so an
+   * org admin could hand itself Ultra by clicking it. A price in this map is
+   * the only thing that can grant a paid tier, and a subscription leaving
+   * `active` takes it away again — see `planIdForStripe`.
+   *
+   * Empty → no plan is granted or revoked by Stripe, and paid tiers can only
+   * be placed by an operator through the gateway's admin API.
+   */
+  stripePlanPriceIds: Record<string, string>;
   /** The single catalog Product every top-up charge hangs off (created once in
    *  the Stripe dashboard). Top-up amounts are arbitrary, so the Price is
    *  ad-hoc per checkout — but it must point at THIS product, or Stripe's

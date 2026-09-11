@@ -1261,7 +1261,7 @@ export interface StudioToolIO {
     };
   };
   ORGANIZATION_BILLING_CHECKOUT_START: {
-    input: { [x: string]: never };
+    input: { planId?: string | undefined };
     output: { url: string };
   };
   ORGANIZATION_BILLING_PORTAL: {
@@ -5128,8 +5128,8 @@ export interface StudioToolIO {
         remaining: number | null;
         denyReason: string | null;
       };
-      periodStart: string;
-      periodEnd: string;
+      periodStart: string | null;
+      periodEnd: string | null;
     };
   };
   AI_PLAN_LIST: {
@@ -5155,7 +5155,7 @@ export interface StudioToolIO {
         | "openrouter"
         | "llmapi"
         | "openai-compatible";
-      planId: string;
+      planId: "free";
     };
     output: {
       plan: { id: string; name: string };

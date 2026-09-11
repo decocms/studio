@@ -132,9 +132,14 @@ export interface PlanEntitlements {
     remaining: number | null;
     denyReason: string | null;
   };
-  periodStart: string;
-  /** When the usage bar resets — a real date, from the same rule that rolls. */
-  periodEnd: string;
+  /** Null in TRIAL mode (a plan whose allowance is 0). The bar is then
+   *  lifetime spend over lifetime deposits, so there is no period in it and
+   *  nothing resets — see the gateway's `getEntitlements`. */
+  periodStart: string | null;
+  /** When the usage bar resets, or null when it never does. Rendering "Resets
+   *  on {date}" beside "chat pauses until you upgrade" is a promise the trial
+   *  cannot keep. */
+  periodEnd: string | null;
 }
 
 export interface OpenRouterAPIModel {

@@ -152,6 +152,17 @@ export function invalidateOrgFeaturesCache(organizationId: string): void {
  * must not take an org's CMS down. It is only when nothing was ever cached that
  * this returns null, and the caller then allows — see `orgHasFeature`.
  */
+/**
+ * One in-flight read per org, shared by every concurrent caller.
+ *
+ * Without it N concurrent gated requests for one org are N gateway round
+ * trips, and the failure path never writes the cache — so a stalled gateway
+ * meant every request paid the full 10s timeout, forever, with no
+ * short-circuit. The map holds a promise only while the fetch is running, so
+ * there is nothing to evict and no stale answer to serve from it.
+ */
+const inFlightPlanState = new Map<string, Promise<OrgPlanState | null>>();
+
 async function getOrgPlanState(
   ctx: StudioContext,
   organizationId: string,
@@ -165,6 +176,21 @@ async function getOrgPlanState(
   const hit = planStateCache.get(organizationId);
   if (hit && Date.now() - hit.at < FEATURES_CACHE_TTL_MS) return hit.state;
 
+  const existing = inFlightPlanState.get(organizationId);
+  if (existing) return existing;
+
+  const pending = fetchOrgPlanState(ctx, organizationId, hit).finally(() => {
+    inFlightPlanState.delete(organizationId);
+  });
+  inFlightPlanState.set(organizationId, pending);
+  return pending;
+}
+
+async function fetchOrgPlanState(
+  ctx: StudioContext,
+  organizationId: string,
+  hit: { state: OrgPlanState; at: number } | undefined,
+): Promise<OrgPlanState | null> {
   const adapter = getProviders().deco;
   if (!adapter?.getEntitlements) return null;
 
@@ -207,13 +233,20 @@ async function getOrgPlanState(
     // fail-open, but the incident to page for is a different one.
     const definitive =
       err instanceof EntitlementsFetchError && err.isDefinitive;
+    // `plans_disabled` is the gateway's own flag being off — a state the
+    // rollout runbook creates deliberately (gateway deploys first, the flags
+    // flip after) and the rollback lever returns to. Failing open is right;
+    // logging it as an outage, per gated call per org, is not.
+    const dormant = err instanceof EntitlementsFetchError && err.isDormant;
     const detail = {
       organizationId,
       servedStale: !!hit,
       status: err instanceof EntitlementsFetchError ? err.status : null,
       error: err instanceof Error ? err.message : String(err),
     };
-    if (definitive) {
+    if (dormant) {
+      // Nothing to page for, and nothing to say per request either.
+    } else if (definitive) {
       console.error(
         "[Plans] entitlements REFUSED by the gateway — gates fail OPEN for every org until this is fixed (check STUDIO_JWT_SECRET and STUDIO_PROVISION_SECRET_KEY against the gateway's MESH_JWT_SECRET and STUDIO_PROVISION_KEY)",
         detail,

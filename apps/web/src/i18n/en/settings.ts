@@ -463,8 +463,10 @@ export const settings = {
     "This plan includes no AI usage — pick a plan to get an AI envelope.",
   "settings.planUsage.changePlan": "Change plan",
   "settings.planUsage.changePlanDescription":
-    "Pick the plan for this organization. Everyone in the org shares its AI usage.",
+    "Pick the plan for this organization. Everyone in the org shares its AI usage. Paid plans open secure checkout and start once payment completes.",
   "settings.planUsage.current": "Current",
+  "settings.planUsage.subscribe": "Subscribe",
+  "settings.planUsage.downgrade": "Downgrade",
   "settings.planUsage.changed": "Plan updated",
   "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
   "settings.planUsage.credits": "Credits: {amount}",

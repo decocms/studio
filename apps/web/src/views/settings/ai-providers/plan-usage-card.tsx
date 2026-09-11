@@ -27,6 +27,7 @@ import {
   useFeature,
   usePlansEnabled,
 } from "@/hooks/use-entitlements";
+import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 
 /**
  * The org's plan and its AI usage bar.
@@ -78,9 +79,20 @@ function ChangePlanDialog({
     },
   });
 
-  const { mutate: choosePlan, isPending } = useMutation({
-    mutationFn: async (planId: string) => {
-      await studio.call("AI_PLAN_SET", { providerId: "deco", planId });
+  // An UPGRADE is a purchase, so it goes to Stripe and the tier arrives from
+  // the webhook. This dialog used to call AI_PLAN_SET for every plan, and that
+  // tool took no payment — so anyone who could open this picker could click
+  // Ultra and receive every gated feature plus a $400 monthly AI allowance for
+  // nothing. AI_PLAN_SET only accepts 'free' now, which is the one transition
+  // that costs nothing and is the org's to make.
+  const { mutate: startCheckout, isPending: isCheckingOut } = useOpenBillingUrl(
+    "ORGANIZATION_BILLING_CHECKOUT_START",
+    "settings.planUsage.changeFailed",
+  );
+
+  const { mutate: dropToFree, isPending: isDropping } = useMutation({
+    mutationFn: async () => {
+      await studio.call("AI_PLAN_SET", { providerId: "deco", planId: "free" });
       // The card is the source of truth for what the org is on — refetch it
       // rather than reading the mutation's own response. A throw in onSuccess
       // is caught by react-query and surfaced as a mutation ERROR, so trusting
@@ -100,6 +112,10 @@ function ChangePlanDialog({
       );
     },
   });
+
+  const isPending = isCheckingOut || isDropping;
+  const choosePlan = (planId: string) =>
+    planId === "free" ? dropToFree() : startCheckout(planId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -151,10 +167,20 @@ function ChangePlanDialog({
                         {subtitle}
                       </span>
                     </div>
-                    {isCurrent && (
+                    {isCurrent ? (
                       <Badge variant="secondary">
                         {t("settings.planUsage.current")}
                       </Badge>
+                    ) : (
+                      // Say where the click goes. A paid tier opens Stripe in
+                      // a new tab and does not take effect until the payment
+                      // completes, which is a different promise from the
+                      // instant switch this dialog used to make.
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {plan.id === "free"
+                          ? t("settings.planUsage.downgrade")
+                          : t("settings.planUsage.subscribe")}
+                      </span>
                     )}
                   </button>
                 );

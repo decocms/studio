@@ -39,17 +39,31 @@ export const AI_PLAN_LIST = defineTool({
 });
 
 /**
- * Moves the org onto a plan. NOTE: no payment is taken and no contract is
- * signed here — this is the mechanical half of a plan change, exposed so the
- * tier can be switched while the billing flow around it is still being built.
+ * Drops the org back to the free tier. It cannot grant a paid one.
+ *
+ * This took ANY plan id once, and took no payment for it — so an org admin
+ * could open the plan picker, click Ultra, and receive every gated feature and
+ * a $400 monthly AI allowance for nothing. The gateway route behind it says as
+ * much in its own comment ("mesh owns the role check and the payment that must
+ * precede this call"); mesh owned the role check and never the payment.
+ *
+ * A paid tier is now granted by exactly one thing: a Stripe subscription whose
+ * price is in STRIPE_PLAN_PRICE_IDS, applied by the webhook. Upgrades go
+ * through ORGANIZATION_BILLING_CHECKOUT_START, and an operator placing a plan
+ * by hand goes through the gateway's admin API, which is admin-token gated.
+ *
+ * Downgrading is refused too while a subscription is bound: cancelling at the
+ * gateway would strip the features while Stripe kept charging for them. That
+ * cancellation belongs in Stripe's customer portal, and its
+ * `subscription.deleted` comes back here as a plan change to free.
  */
 export const AI_PLAN_SET = defineTool({
   name: "AI_PLAN_SET",
   description:
-    "Change the organization's plan ('free' drops back to the free tier). Does not take payment.",
+    "Drop the organization back to the free tier. Paid plans are granted by subscribing (ORGANIZATION_BILLING_CHECKOUT_START), never here.",
   inputSchema: z.object({
     providerId: z.enum(HOSTED_PROVIDER_IDS),
-    planId: z.string(),
+    planId: z.literal("free"),
   }),
   outputSchema: z.object({
     plan: z.object({ id: z.string(), name: z.string() }),
@@ -62,6 +76,15 @@ export const AI_PLAN_SET = defineTool({
 
     const userId = getUserId(ctx);
     if (!userId) throw new Error("Unable to determine user ID");
+
+    // A live subscription is Stripe's to end. Dropping the plan here would
+    // take the features away and leave the card being charged for them.
+    const billing = await ctx.storage.organizationBilling.getBilling(org.id);
+    if (billing?.stripeSubscriptionId) {
+      throw new Error(
+        "This organization has an active subscription — cancel it in billing first; the plan drops to free when it ends.",
+      );
+    }
 
     const adapter = getProviders()[input.providerId];
     if (!adapter?.setPlan) {

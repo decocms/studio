@@ -141,10 +141,28 @@ export async function createOrgCheckoutSession(input: {
   organizationId: string;
   successUrl: string;
   cancelUrl: string;
+  /** The gateway plan being bought. Its price comes from the plan price map,
+   *  and it rides the session metadata so the webhook can grant the tier on
+   *  completion. Omitted → the flat STRIPE_ORG_PRICE_ID and no tier. */
+  planId?: string;
 }): Promise<{ url: string }> {
-  const priceId = getSettings().stripeOrgPriceId;
+  const settings = getSettings();
+  // The plan's own price, or the flat subscription price for a deployment
+  // with no tiers configured. A plan the operator has not priced cannot be
+  // sold — refusing here is what stops a tier being handed out for a payment
+  // that was never taken.
+  const priceId = input.planId
+    ? Object.entries(settings.stripePlanPriceIds).find(
+        ([, planId]) => planId === input.planId,
+      )?.[0]
+    : settings.stripeOrgPriceId;
   if (!priceId) {
-    throw new StripeApiError(503, "billing is not configured");
+    throw new StripeApiError(
+      503,
+      input.planId
+        ? `plan '${input.planId}' has no Stripe price configured`
+        : "billing is not configured",
+    );
   }
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
     params: {
@@ -156,8 +174,16 @@ export async function createOrgCheckoutSession(input: {
       cancel_url: input.cancelUrl,
       // orgId on BOTH the session (checkout.session.completed) and the
       // subscription (defense in depth for subscription-keyed lookups).
-      metadata: { orgId: input.organizationId },
-      subscription_data: { metadata: { orgId: input.organizationId } },
+      metadata: {
+        orgId: input.organizationId,
+        ...(input.planId ? { planId: input.planId } : {}),
+      },
+      subscription_data: {
+        metadata: {
+          orgId: input.organizationId,
+          ...(input.planId ? { planId: input.planId } : {}),
+        },
+      },
     },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");

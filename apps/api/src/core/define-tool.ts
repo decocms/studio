@@ -207,6 +207,21 @@ export function defineTool<
                   );
                 }
 
+                // A gated tool with no resolvable org runs UNGATED below, and
+                // silently. Harmless today — all five declared tools call
+                // `requireOrganization` in their own handler and throw there —
+                // but that is a coincidence, not a guarantee: the first gated
+                // tool that tolerates a missing org is silently ungated. Say
+                // so, once per call, rather than leaving it invisible.
+                if (
+                  (definition.requiresFeature || definition.requiresAiBudget) &&
+                  !organizationId
+                ) {
+                  console.warn(
+                    `[Plans] ${definition.name} declares a plan gate but no organization is in scope — running UNGATED`,
+                  );
+                }
+
                 // The org's plan has to include this tool's feature. Fails
                 // OPEN when the gateway has no answer at all — see
                 // plan-feature-gate.

@@ -48,11 +48,15 @@ export function useEntitlements() {
     // allows — so the flag needs no second check at any call site.
     enabled: !!orgSlug && plansEnabled,
     staleTime: 60_000,
-    // No retries. Every gate fails OPEN, so a failed read costs nothing but a
-    // moment of ungated UI — while RETRYING costs seconds of `isPending`, and
-    // `useFeaturesSettled` holds a render on that. Three backed-off retries of
-    // a 403 turned Billing & AI into a hanging page. Fail open, fast.
-    retry: false,
+    // One retry, not three and not none. Every ACCESS gate fails open, so a
+    // failed read costs little there — but `useModelDisclosure` fails CLOSED on
+    // `isSuccess`, and this query is invalidated after every assistant turn
+    // (chat-context `onFinish`), so with no retry at all a single blip stripped
+    // model names, the per-message cost pill and the session cost from a
+    // paying Ultra org's screen mid-thread. Three backed-off retries is what
+    // turned Billing & AI into a hanging page, because `useFeaturesSettled`
+    // holds a render on `isPending`; one is a single extra round trip.
+    retry: 1,
     // `callStudioTool` rather than `useStudioTools()`: that hook requires the
     // project context this one deliberately treats as optional.
     // Deliberately NOT swallowed into `null`: a failure has to stay a failure

@@ -476,8 +476,10 @@ export const settings = {
     "Este plano não inclui uso de IA — escolha um plano para ter uma cota.",
   "settings.planUsage.changePlan": "Trocar plano",
   "settings.planUsage.changePlanDescription":
-    "Escolha o plano desta organização. Todo mundo na org compartilha o uso de IA.",
+    "Escolha o plano desta organização. Todo mundo na org compartilha o uso de IA. Planos pagos abrem o checkout seguro e começam quando o pagamento é concluído.",
   "settings.planUsage.current": "Atual",
+  "settings.planUsage.subscribe": "Assinar",
+  "settings.planUsage.downgrade": "Voltar ao gratuito",
   "settings.planUsage.changed": "Plano atualizado",
   "settings.planUsage.changeFailed":
     "Não foi possível trocar o plano: {message}",

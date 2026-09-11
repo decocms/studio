@@ -24,8 +24,8 @@ interface EntitlementsWire {
     remaining: number | null;
     denyReason: string | null;
   };
-  period_start: string;
-  period_end: string;
+  period_start: string | null;
+  period_end: string | null;
   /** Emitted by the gateway; not yet used for revalidation. */
   etag?: string;
 }
@@ -84,7 +84,15 @@ async function refusal(
  * momentary hiccup.
  */
 export class EntitlementsFetchError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    /** The gateway's own `code`, when it sent one. `plans_disabled` is the
+     *  important one: it is the gateway's flag being off, which the rollout
+     *  runbook CREATES (gateway deploys first, flags flip after), not an
+     *  outage. Without it every gated call on every org logged "gateway
+     *  unreachable" throughout the intended dormant window. */
+    readonly code: string | null = null,
+  ) {
     super(`Failed to fetch plan entitlements: ${status}`);
     this.name = "EntitlementsFetchError";
   }
@@ -92,6 +100,11 @@ export class EntitlementsFetchError extends Error {
   /** A definitive answer from a reachable gateway — not an outage. */
   get isDefinitive(): boolean {
     return this.status >= 400 && this.status < 500;
+  }
+
+  /** The gateway answering "plans are off here" — a deliberate state. */
+  get isDormant(): boolean {
+    return this.code === "plans_disabled";
   }
 }
 
@@ -189,7 +202,16 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       },
     );
     if (!res.ok) {
-      throw new EntitlementsFetchError(res.status);
+      // Read the `code` the way `refusal()` does for the two sibling routes.
+      // This one used to discard the body, so the gate could not tell the
+      // gateway's own kill switch from an outage.
+      const body = (await res.json().catch(() => null)) as {
+        code?: string;
+      } | null;
+      throw new EntitlementsFetchError(
+        res.status,
+        typeof body?.code === "string" ? body.code : null,
+      );
     }
     return toPlanEntitlements((await res.json()) as EntitlementsWire);
   },

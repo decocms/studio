@@ -37,8 +37,8 @@ export const AI_PLAN_ENTITLEMENTS = defineTool({
       remaining: z.number().nullable(),
       denyReason: z.string().nullable(),
     }),
-    periodStart: z.string(),
-    periodEnd: z.string(),
+    periodStart: z.string().nullable(),
+    periodEnd: z.string().nullable(),
   }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
