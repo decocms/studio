@@ -139,9 +139,13 @@ export const settings = {
     "Choose up to 500 repositories for this workspace.",
   "settings.repositories.githubReplaceHint":
     "Saving replaces this account’s existing workspace access with your selection. Removed repositories stop receiving new credentials. Previously issued credentials may work until they expire.",
-  "settings.repositories.githubFilterRepos": "Filter loaded repositories",
+  "settings.repositories.githubFilterRepos": "Search repositories",
   "settings.repositories.githubNoRepos":
     "No repositories available to authorize.",
+  "settings.repositories.githubSearchNoMatches":
+    "No repositories match your search.",
+  "settings.repositories.githubSearchMore":
+    "Load more to keep searching your repositories.",
   "settings.repositories.githubAccessChanged":
     "Someone changed this account’s access. Go back and review the repositories again before saving.",
   "settings.repositories.githubMoreRepos": "Load more repositories",

@@ -193,6 +193,7 @@ export const createGitProviderRoutes = () => {
       .object({
         installationId: z.coerce.number().int().positive().safe(),
         page: z.coerce.number().int().positive().safe().default(1),
+        query: z.string().trim().max(256).optional(),
       })
       .safeParse(c.req.query());
     if (!input.success) return c.json({ error: "Invalid installation" }, 400);
@@ -222,6 +223,7 @@ export const createGitProviderRoutes = () => {
         userToken,
         installation,
         input.data.page,
+        input.data.query,
       );
       const account = await ctx.storage.gitProviderAccounts.findByExternalId({
         organizationId: owner.organizationId,

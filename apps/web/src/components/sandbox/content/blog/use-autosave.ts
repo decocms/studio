@@ -9,7 +9,7 @@ const AUTOSAVE_DELAY = 700;
  *
  * External re-seeding: when `initial` changes by reference (e.g. a batch
  * mutation patched this block's payload in the shared cache while it's open),
- * the draft re-seeds from it — but only when there's no pending local edit, so
+ * the draft re-seeds from it — but only once edits settle (no timer pending and no save in flight), so
  * we never clobber what the user is currently typing. This is the "adjust
  * state during render" pattern, same as the collection-switch reset upstream.
  *
@@ -21,8 +21,10 @@ const AUTOSAVE_DELAY = 700;
 export function useAutosave<T>(
   initial: T,
   save: (value: T) => void,
-  delay = AUTOSAVE_DELAY,
+  opts?: { delay?: number; isSaving?: boolean },
 ): readonly [T, (next: T) => void, (next: T) => void] {
+  const delay = opts?.delay ?? AUTOSAVE_DELAY;
+  const isSaving = opts?.isSaving ?? false;
   const [draft, setDraft] = useState<T>(initial);
   const [seeded, setSeeded] = useState<T>(initial);
   // `pending` mirrors "a debounced save is scheduled" as state so the re-seed
@@ -31,10 +33,10 @@ export function useAutosave<T>(
   const [pending, setPending] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Re-seed from an external change to `initial` when no local edit is pending.
+  // Re-seed from external `initial` only once edits settle — not while a save is in flight, whose older echo would revert a newer edit.
   if (initial !== seeded) {
     setSeeded(initial);
-    if (!pending) setDraft(initial);
+    if (!pending && !isSaving) setDraft(initial);
   }
 
   const update = (next: T) => {

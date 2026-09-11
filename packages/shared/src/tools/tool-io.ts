@@ -2228,7 +2228,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2490,7 +2489,6 @@ export interface StudioToolIO {
                   }[]
                 | null
                 | undefined;
-              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
               enabled_plugins?: string[] | null | undefined;
             }
@@ -2681,7 +2679,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2913,7 +2910,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3136,7 +3132,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3363,7 +3358,6 @@ export interface StudioToolIO {
                   }[]
                 | null
                 | undefined;
-              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
               enabled_plugins?: string[] | null | undefined;
             }
@@ -3562,7 +3556,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3783,7 +3776,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -4874,7 +4866,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<

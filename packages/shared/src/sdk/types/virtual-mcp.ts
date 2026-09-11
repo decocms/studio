@@ -834,14 +834,6 @@ const releasesMetadataField = z
     "Curated list of named, branch-backed releases shown in the version switcher. The base branch ('No ar') is derived, not stored here.",
   );
 
-const draftsModeMetadataField = z
-  .boolean()
-  .nullable()
-  .optional()
-  .describe(
-    "Draft & Releases mode: gates the drafts UX (releases switcher, read-only production, publish-to-production). Off (default) keeps the classic branch/PR picker and post-publish behavior.",
-  );
-
 /**
  * Shared metadata definition for VirtualMCP entity. Used in VirtualMCPEntitySchema,
  * VirtualMCPCreateDataSchema, and VirtualMCPUpdateDataSchema to avoid duplication.
@@ -923,7 +915,6 @@ const VirtualMcpMetadataFields = {
     ),
   fastPreview: fastPreviewMetadataField,
   releases: releasesMetadataField,
-  draftsMode: draftsModeMetadataField,
   fastPreviewInPlace: fastPreviewInPlaceMetadataField,
 } as const satisfies z.ZodRawShape;
 

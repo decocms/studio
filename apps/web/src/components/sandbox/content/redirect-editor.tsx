@@ -48,9 +48,13 @@ export function RedirectEditor({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const initial = getRedirectPayload(block);
 
-  const [payload, setPayload] = useAutosave(initial, (next) => {
-    save.mutate({ blockKey, data: buildRedirectBlock(next) });
-  });
+  const [payload, setPayload] = useAutosave(
+    initial,
+    (next) => {
+      save.mutate({ blockKey, data: buildRedirectBlock(next) });
+    },
+    { isSaving: save.isPending },
+  );
 
   const setField = (patch: Partial<RedirectPayload>) =>
     setPayload({ ...payload, ...patch });
