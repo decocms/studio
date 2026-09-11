@@ -102,7 +102,7 @@ describe("image slot", () => {
     const defaults = pickSimpleModeDefaults([decoKey], {
       [decoKey.id]: [
         orModel("openrouter/auto-beta", ["text", "vision", "image"]),
-        orModel("z-ai/glm-5.2", ["text", "tools"]),
+        orModel("z-ai/glm-5.2", ["text"]),
       ],
     });
 
