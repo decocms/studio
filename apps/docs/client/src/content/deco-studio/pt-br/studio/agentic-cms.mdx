@@ -52,6 +52,28 @@ Se você está vindo do deco.cx, o Agentic CMS é a mesma linha de produto — o
 
 Projetos deco.cx existentes continuam funcionando. A migração adiciona a camada de agents; ela não substitui sua base de código.
 
+## Editor de sections
+
+A aba **Content** no workspace do agent é o editor visual para as sections e páginas que compõem o seu storefront. Ela exibe dois grupos — **Saved sections** (blocos globais reutilizáveis) e **Available sections** (todos os componentes do catálogo do manifesto) — com busca em uma única caixa de texto.
+
+### Variantes
+
+Cada section ou página pode ter múltiplas **variantes** — configurações alternativas com props diferentes ou condições controladas por matchers (testes A/B, segmentos de audiência, janelas de datas, localização geográfica). As variantes aparecem como uma lista abaixo da section pai no editor.
+
+Você pode:
+
+- **Reordenar variantes** arrastando-as para cima ou para baixo na lista. A ordem controla a prioridade de avaliação quando múltiplos matchers podem se aplicar.
+- **Visualizar uma variante específica** clicando nela — o painel de preview aplica imediatamente aquela variante, para que você veja exatamente o que um visitante que corresponde àquela condição veria.
+- **Salvar como section global** para persistir uma variante configurada como um bloco reutilizável disponível em todo o seu storefront.
+
+<Callout type="tip">
+  A posição de scroll no preview é preservada ao trocar de variante ou salvar alterações, para que você possa manter o foco na section que está editando sem perder o lugar na página.
+</Callout>
+
+<Callout type="tip">
+  Para **matchers de Location**, o campo de área-alvo (`includeLocations`/`excludeLocations`) é exibido como um mapa interativo — arraste para mover o centro e redimensione o círculo para definir o raio, em vez de digitar coordenadas manualmente. O mapa exige uma chave de API do Google Maps configurada no servidor; se ela não estiver definida, o campo mostra um aviso de "indisponível" e volta para a entrada manual.
+</Callout>
+
 ## Primeiros passos
 
 Abra o Studio, encontre o agent **deco Site Editor** e aponte-o para o seu site.
