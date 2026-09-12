@@ -8,7 +8,7 @@ import type { RegistryItem } from "@/components/store/types";
 // ---------------------------------------------------------------------------
 
 export type ConnectionProviderHint = {
-  id: "github" | "perplexity" | "registry";
+  id: "github" | "perplexity" | "youcom" | "registry";
   title?: string;
   description?: string | null;
   token?: {
@@ -94,6 +94,23 @@ export function inferHardcodedProviderHint(params: {
       title: "Perplexity",
       description: "Perplexity MCP Server",
       envVarKeys: ["PERPLEXITY_API_KEY"],
+    };
+  }
+
+  // You.com MCP (hardcoded)
+  if (
+    (uiType === "HTTP" || uiType === "SSE" || uiType === "Websocket") &&
+    normalized === normalizeConnectionUrl("https://api.you.com/mcp")
+  ) {
+    return {
+      id: "youcom",
+      title: "You.com",
+      description: "You.com MCP Server for web search, content extraction, and research",
+      token: {
+        label: "You.com API Key (optional)",
+        placeholder: "your_api_key_here",
+        helperText: "Optional API key for authenticated access. Leave blank for keyless operation (100 searches/day)",
+      },
     };
   }
 
