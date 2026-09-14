@@ -192,8 +192,9 @@ export function validateHostname(hostname: string): string | null {
 
   if (!host) return null;
 
-  // Must contain at least one dot (at least 2 labels)
-  const labels = host.split(".").filter(Boolean);
+  // Must contain at least one dot (at least 2 labels); unfiltered so an empty label fails below.
+  const withoutRoot = host.endsWith(".") ? host.slice(0, -1) : host;
+  const labels = withoutRoot.split(".");
   if (labels.length < 2) return "Domain must include a TLD (e.g., example.com)";
 
   // Total length: max 253 chars

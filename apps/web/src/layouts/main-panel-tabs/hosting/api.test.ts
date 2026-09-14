@@ -55,4 +55,13 @@ describe("validateHostname", () => {
     expect(validateHostname("example123.com")).toBeNull();
     expect(validateHostname("123example.com")).toBeNull();
   });
+
+  it("rejects consecutive/leading/trailing dots", () => {
+    expect(validateHostname("example..com")).not.toBeNull();
+    expect(validateHostname(".example.com")).not.toBeNull();
+  });
+
+  it("accepts a single trailing root dot", () => {
+    expect(validateHostname("example.com.")).toBeNull();
+  });
 });
