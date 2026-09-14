@@ -96,7 +96,10 @@ export const googleAdapter: ProviderAdapter = {
         // uses this same header for the sibling Gemini API.
         const res = await fetch(
           "https://generativelanguage.googleapis.com/v1beta/models",
-          { headers: { "x-goog-api-key": apiKey } },
+          {
+            headers: { "x-goog-api-key": apiKey },
+            signal: AbortSignal.timeout(15_000),
+          },
         );
         if (!res.ok) {
           throw new Error(`Google listModels failed: ${res.status}`);
