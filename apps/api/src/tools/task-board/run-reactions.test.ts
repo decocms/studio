@@ -268,6 +268,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     type: "chore",
     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
     assignedBy: null,
+    virtualMcpId: null,
     repo: null,
     repositoryId: null,
     dueDate: null,

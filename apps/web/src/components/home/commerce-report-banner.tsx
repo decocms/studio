@@ -1,6 +1,7 @@
 /**
  * Home report banner — surfaces the Commerce Discovery diagnostic on the
- * Overview for orgs that onboarded a store, and opens the report app.
+ * Overview for projects that own an onboarded store report, and opens the
+ * project's canonical Reports destination.
  *
  * A miniature report page bleeds out of the banner's clipped bottom edge,
  * slightly tilted, and straightens on hover. While the run is live the page
@@ -19,11 +20,9 @@ import { ArrowRight } from "@untitledui/icons";
 import { useProjectContext } from "@/sdk";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { track } from "@/lib/posthog-client";
-import {
-  commerceReportNavTarget,
-  useCommerceDiagnostic,
-} from "@/hooks/use-commerce-diagnostic";
+import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
 import {
   type CommerceReportBannerStatus,
   deriveCommerceReportBannerStatus,
@@ -104,10 +103,10 @@ function BannerShell({
   );
 }
 
-function CommerceReportBannerInner() {
+function CommerceReportBannerInner({ projectId }: { projectId: string }) {
   const { org } = useProjectContext();
   const navigate = useNavigate();
-  const { diagnostic, isSuccess, host, connectionId } = useCommerceDiagnostic();
+  const { diagnostic, isSuccess, host } = useCommerceDiagnostic(projectId);
 
   const status = isSuccess
     ? deriveCommerceReportBannerStatus(diagnostic)
@@ -117,19 +116,24 @@ function CommerceReportBannerInner() {
   const openReport = () => {
     track("home_report_banner_clicked", {
       organization_id: org.id,
+      project_id: projectId,
       status,
       domain: host ?? undefined,
     });
-    navigate(commerceReportNavTarget(org, connectionId));
+    navigate({
+      to: PROJECT_ROUTE.reports,
+      params: { org: org.slug, agentId: projectId },
+      search: {},
+    });
   };
 
   return <BannerShell status={status} host={host} onOpen={openReport} />;
 }
 
-export function CommerceReportBanner() {
+export function CommerceReportBanner({ projectId }: { projectId: string }) {
   return (
     <ErrorBoundary fallback={null}>
-      <CommerceReportBannerInner />
+      <CommerceReportBannerInner projectId={projectId} />
     </ErrorBoundary>
   );
 }

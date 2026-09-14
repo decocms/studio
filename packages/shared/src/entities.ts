@@ -163,6 +163,9 @@ export interface TaskBoardItem {
   type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
+  /** Exact virtual MCP/project ownership. Null for organization-level cards
+   *  and legacy rows whose project must still be inferred. */
+  virtualMcpId: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
   dueDate: string | null;

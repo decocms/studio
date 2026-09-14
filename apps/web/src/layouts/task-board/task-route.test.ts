@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   findTaskByKeyOrId,
+  shouldRedirectMissingTask,
   taskRouteSegment,
   taskSharePath,
 } from "./task-route";
@@ -30,6 +31,38 @@ describe("taskRouteSegment", () => {
         item.id,
       );
     }
+  });
+});
+
+describe("shouldRedirectMissingTask", () => {
+  test("waits for dev/live project aliases before rejecting a deep link", () => {
+    expect(
+      shouldRedirectMissingTask({
+        taskKey: "DECO-01",
+        taskFound: false,
+        tasksPending: false,
+        projectAliasesPending: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("redirects only after tasks and project aliases have both settled", () => {
+    expect(
+      shouldRedirectMissingTask({
+        taskKey: "DECO-01",
+        taskFound: false,
+        tasksPending: false,
+        projectAliasesPending: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRedirectMissingTask({
+        taskKey: "DECO-01",
+        taskFound: false,
+        tasksPending: true,
+        projectAliasesPending: false,
+      }),
+    ).toBe(false);
   });
 });
 

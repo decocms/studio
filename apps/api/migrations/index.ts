@@ -215,6 +215,8 @@ import * as migration202redactbase64threadparts from "./202-redact-base64-thread
 import * as migration203taskboardpreviewroutes from "./203-task-board-preview-routes.ts";
 import * as migration204gitprovideraccountsandrepositories from "./204-git-provider-accounts-and-repositories.ts";
 import * as migration205repositoryreferences from "./205-repository-references.ts";
+import * as migration217taskboardprojectowner from "./217-task-board-project-owner.ts";
+import * as migration218commercediscoveryreportruns from "./218-commerce-discovery-report-runs.ts";
 
 /**
  * Core migrations for the Studio application.
@@ -468,6 +470,8 @@ const migrations: Record<string, Migration> = {
   "214-connections-sanitized-id-idx": migration214connectionssanitizedididx,
   "215-commerce-discovery-repository": migration215commercediscoveryrepository,
   "216-github-cli-auth": migration216githubcliauth,
+  "217-task-board-project-owner": migration217taskboardprojectowner,
+  "218-commerce-discovery-report-runs": migration218commercediscoveryreportruns,
 };
 
 export default migrations;

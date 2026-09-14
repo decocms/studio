@@ -23,9 +23,11 @@ export type GithubRepoMeta = {
  * Look up a virtual MCP by id and confirm it belongs to `organizationId`.
  * `findById`'s organizationId param only resolves well-known synthetic ids
  * (decopilot, brand-context-setup) — for a normal row it does NOT filter by
- * org, so existence alone doesn't prove the vMCP is ours. Throws (rather than
- * returning null) so a thread create/update can't silently no-op against a
- * missing vMCP.
+ * org, so existence alone doesn't prove the vMCP is ours. Synthetic lookup
+ * can also resolve a differently suffixed id into the current organization,
+ * so exact id equality is part of the ownership boundary. Throws (rather than
+ * returning null) so a thread or task create/update can't silently no-op
+ * against a missing vMCP.
  */
 export async function requireOwnedVirtualMcp(
   virtualMcps: VirtualMCPStoragePort,
@@ -33,7 +35,11 @@ export async function requireOwnedVirtualMcp(
   organizationId: string,
 ): Promise<VirtualMCPEntity> {
   const vmcp = await virtualMcps.findById(virtualMcpId, organizationId);
-  if (!vmcp || vmcp.organization_id !== organizationId) {
+  if (
+    !vmcp ||
+    vmcp.id !== virtualMcpId ||
+    vmcp.organization_id !== organizationId
+  ) {
     throw new Error(`Virtual MCP not found: ${virtualMcpId}`);
   }
   return vmcp;

@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
   matchesTaskKey,
+  resolveTaskBoardProjectAssignment,
+  resolveTaskBoardProjectScope,
   taskMatchesFilters,
+  taskMatchesProjectScope,
   EMPTY_FILTERS,
 } from "./task-filters";
 import { buildProjectIndex, NO_PROJECT_FILTER } from "@/lib/project-index";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import type { TaskBoardItem } from "./config";
+import { getWellKnownDecopilotVirtualMCP } from "@decocms/shared/sdk";
 
 const SITE = {
   id: "vir_site",
@@ -25,6 +29,51 @@ const SITE = {
  *  see `useProjectIndex`. */
 const INDEX = buildProjectIndex([SITE], ["acme/other"]);
 
+const SIBLING = {
+  ...SITE,
+  id: "vir_sibling",
+  title: "Acme Site sibling",
+  created_at: "2026-01-02T00:00:00Z",
+} as unknown as VirtualMCPEntity;
+
+const SHARED_REPO_INDEX = buildProjectIndex([SITE, SIBLING]);
+
+describe("resolveTaskBoardProjectAssignment", () => {
+  const selected = {
+    title: "Task",
+    virtualMcpId: SIBLING.id,
+    repo: "acme/site",
+  };
+
+  test("keeps an org-level editor's exact project assignment", () => {
+    expect(resolveTaskBoardProjectAssignment(selected)).toBe(selected);
+  });
+
+  test("makes route ownership authoritative over stale editor values", () => {
+    expect(
+      resolveTaskBoardProjectAssignment(selected, {
+        projectId: SITE.id,
+        repo: "acme/canonical",
+      }),
+    ).toEqual({
+      virtualMcpId: SITE.id,
+      repo: "acme/canonical",
+    });
+  });
+
+  test("clears a stale execution repo for a repository-less route project", () => {
+    expect(
+      resolveTaskBoardProjectAssignment(selected, {
+        projectId: "vir_no_repo",
+        repo: null,
+      }),
+    ).toEqual({
+      virtualMcpId: "vir_no_repo",
+      repo: null,
+    });
+  });
+});
+
 function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
   return {
     id: "item-1",
@@ -35,6 +84,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     priority: "none",
     assigneeId: null,
     assignedBy: null,
+    virtualMcpId: null,
     dueDate: null,
     threads: [],
     tags: [],
@@ -366,6 +416,283 @@ describe("taskMatchesFilters — project", () => {
         INDEX,
       ),
     ).toBe(false);
+  });
+});
+
+describe("taskMatchesProjectScope", () => {
+  const siteScope = { projectId: SITE.id, repo: "acme/site" };
+
+  test("matches an unrun task stamped with the project's repository", () => {
+    expect(
+      taskMatchesProjectScope(item({ repo: "Acme/Site" }), siteScope, INDEX),
+    ).toBe(true);
+  });
+
+  test("rejects a task stamped for another repository", () => {
+    expect(
+      taskMatchesProjectScope(item({ repo: "acme/other" }), siteScope, INDEX),
+    ).toBe(false);
+  });
+
+  test("an exact linked run wins even when the card names another repo", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/other",
+          threads: [{ virtualMcpId: SITE.id }] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("an exact second project run wins over the first linked project", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/other",
+          threads: [
+            { virtualMcpId: SIBLING.id },
+            { virtualMcpId: SITE.id },
+          ] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("a hidden dev partner's run belongs to its visible live project", () => {
+    const resolved = resolveTaskBoardProjectScope(siteScope, [
+      {
+        id: "vir_dev",
+        metadata: { liveAgentId: SITE.id },
+      },
+      {
+        id: "vir_unrelated_dev",
+        metadata: { liveAgentId: SIBLING.id },
+      },
+    ]);
+
+    expect(resolved.relatedProjectIds).toEqual(["vir_dev"]);
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [{ virtualMcpId: "vir_dev" }] as TaskBoardItem["threads"],
+        }),
+        resolved,
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("a development route includes its visible live partner", () => {
+    const liveProjectId = "vir_live";
+    const devProjectId = "vir_dev";
+    const scope = resolveTaskBoardProjectScope(
+      { projectId: devProjectId, repo: "deco/store" },
+      [
+        { id: liveProjectId },
+        { id: devProjectId, metadata: { liveAgentId: liveProjectId } },
+      ],
+    );
+
+    expect(scope.relatedProjectIds).toEqual([liveProjectId]);
+    expect(
+      taskMatchesProjectScope(
+        item({
+          threads: [
+            { virtualMcpId: liveProjectId },
+          ] as TaskBoardItem["threads"],
+        }),
+        scope,
+        buildProjectIndex([]),
+      ),
+    ).toBe(true);
+  });
+
+  test("a sibling project's linked run defeats their shared repository", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [{ virtualMcpId: SIBLING.id }] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(false);
+  });
+
+  test("persisted ownership isolates projects that pin the same repository", () => {
+    const task = item({ repo: "acme/site", virtualMcpId: SITE.id });
+    expect(taskMatchesProjectScope(task, siteScope, SHARED_REPO_INDEX)).toBe(
+      true,
+    );
+    expect(
+      taskMatchesProjectScope(
+        task,
+        { projectId: SIBLING.id, repo: "acme/site" },
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(false);
+  });
+
+  test("repo inference remains only for legacy owner-null cards", () => {
+    const task = item({ repo: "acme/site", virtualMcpId: null });
+    expect(taskMatchesProjectScope(task, siteScope, SHARED_REPO_INDEX)).toBe(
+      true,
+    );
+    expect(
+      taskMatchesProjectScope(
+        task,
+        { projectId: SIBLING.id, repo: "acme/site" },
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("persisted ownership outranks a sibling run and repository", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          virtualMcpId: SITE.id,
+          repo: "acme/site",
+          threads: [{ virtualMcpId: SIBLING.id }] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("persisted ownership recognizes the route's dev/live alias", () => {
+    const scope = resolveTaskBoardProjectScope(siteScope, [
+      { id: "vir_dev", metadata: { liveAgentId: SITE.id } },
+    ]);
+    expect(
+      taskMatchesProjectScope(
+        item({ virtualMcpId: "vir_dev", repo: "acme/other" }),
+        scope,
+        SHARED_REPO_INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("org-wide Super Agent threads do not erase repository attribution", () => {
+    const decopilotId = getWellKnownDecopilotVirtualMCP("org-1").id;
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [{ virtualMcpId: decopilotId }] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("other synthetic agent threads do not look like cold sibling projects", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [
+            { virtualMcpId: "site-diagnostics_org-1" },
+          ] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        buildProjectIndex([]),
+      ),
+    ).toBe(true);
+  });
+
+  test("the explicit route repo prevents a cold-index visibility flash", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({ repo: "acme/site" }),
+        siteScope,
+        buildProjectIndex([]),
+      ),
+    ).toBe(true);
+  });
+
+  test("a cold index never flashes a sibling project's linked task", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [{ virtualMcpId: SIBLING.id }] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        buildProjectIndex([]),
+      ),
+    ).toBe(false);
+  });
+
+  test("an unlisted sibling project cannot leak through a shared repo", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [{ virtualMcpId: SIBLING.id }] as TaskBoardItem["threads"],
+        }),
+        siteScope,
+        INDEX,
+      ),
+    ).toBe(false);
+  });
+
+  test("an unlisted scoped project still shares repo-only cards honestly", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({ repo: "acme/site" }),
+        { projectId: SIBLING.id, repo: "acme/site" },
+        INDEX,
+      ),
+    ).toBe(true);
+  });
+
+  test("an indexed sibling run beats an unlisted scope's shared repo", () => {
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: "acme/site",
+          threads: [{ virtualMcpId: SITE.id }] as TaskBoardItem["threads"],
+        }),
+        { projectId: SIBLING.id, repo: "acme/site" },
+        INDEX,
+      ),
+    ).toBe(false);
+  });
+
+  test("a repo-less project admits its owned tasks and exact legacy runs", () => {
+    const scope = { projectId: "vir_repoless", repo: null };
+    expect(taskMatchesProjectScope(item({ repo: null }), scope, INDEX)).toBe(
+      false,
+    );
+    expect(
+      taskMatchesProjectScope(
+        item({ repo: null, virtualMcpId: scope.projectId }),
+        scope,
+        INDEX,
+      ),
+    ).toBe(true);
+    expect(
+      taskMatchesProjectScope(
+        item({
+          repo: null,
+          threads: [
+            { virtualMcpId: scope.projectId },
+          ] as TaskBoardItem["threads"],
+        }),
+        scope,
+        INDEX,
+      ),
+    ).toBe(true);
   });
 });
 

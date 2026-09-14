@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { COLLECTION_THREADS_CREATE } from "./create";
 import { COLLECTION_THREADS_UPDATE } from "./update";
 import { buildThreadTestContext, type ThreadTestEnv } from "./test-helpers";
+import { getWellKnownDecopilotVirtualMCP } from "@decocms/shared/sdk";
 
 describe("COLLECTION_THREADS_UPDATE", () => {
   let env: ThreadTestEnv;
@@ -122,6 +123,25 @@ describe("COLLECTION_THREADS_UPDATE", () => {
         env.ctx,
       ),
     ).rejects.toThrow(/Virtual MCP not found/i);
+  });
+
+  it("rejects a foreign synthetic virtual_mcp_id without mutating the thread", async () => {
+    const ownId = getWellKnownDecopilotVirtualMCP(env.orgId).id;
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: ownId, title: "synthetic owner" } },
+      env.ctx,
+    );
+    const foreignId = getWellKnownDecopilotVirtualMCP("org_foreign").id;
+
+    await expect(
+      COLLECTION_THREADS_UPDATE.handler(
+        { id: created.item.id, data: { virtual_mcp_id: foreignId } },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/Virtual MCP not found/i);
+
+    const unchanged = await env.ctx.storage.threads.get(created.item.id);
+    expect(unchanged?.virtual_mcp_id).toBe(ownId);
   });
 
   it("preserves the immutable runtime stamp across an unrelated metadata write", async () => {

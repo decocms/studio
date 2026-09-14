@@ -61,3 +61,24 @@ export function findTaskByKeyOrId<T extends TaskRouteItem>(
     items.find((item) => item.id === raw)
   );
 }
+
+/** Whether an unresolved task segment is known to be stale.
+ *
+ * Project aliases load independently from the task list. A task owned by a
+ * hidden development project is absent from the visible scope until that
+ * alias request settles, so routing must wait for both sources before
+ * replacing the deep link with the board index.
+ */
+export function shouldRedirectMissingTask(input: {
+  taskKey: string | undefined;
+  taskFound: boolean;
+  tasksPending: boolean;
+  projectAliasesPending: boolean;
+}): boolean {
+  return (
+    !!input.taskKey &&
+    !input.taskFound &&
+    !input.tasksPending &&
+    !input.projectAliasesPending
+  );
+}

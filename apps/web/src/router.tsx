@@ -536,7 +536,7 @@ const projectTasksRoute = createRoute({
   }),
   beforeLoad: ({ params, search }) => {
     const promoted = promoteLegacyTaskParam(params.taskKey, search);
-    if (!promoted) return;
+    if (!promoted && search.repo === undefined) return;
     throw redirect({
       to: "/$org/projects/$agentId/tasks/{-$taskKey}",
       params: {
@@ -544,7 +544,9 @@ const projectTasksRoute = createRoute({
         agentId: params.agentId,
         taskKey: promoted?.taskKey ?? params.taskKey,
       },
-      search: promoted.search,
+      /** Project identity is structural here; a second, clearable project
+       * filter in search would make the URL lie about what the route can show. */
+      search: { ...(promoted?.search ?? search), repo: undefined },
       hash: true,
       replace: true,
     });

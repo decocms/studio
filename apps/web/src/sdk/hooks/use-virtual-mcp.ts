@@ -87,7 +87,7 @@ export function useVirtualMCPsNonBlocking(
  * list from a list whose self client or collection request is still pending;
  * otherwise a cold deep link can be rejected before dev/live aliases resolve.
  */
-function useVirtualMCPsNonBlockingState(
+export function useVirtualMCPsNonBlockingState(
   options: UseVirtualMCPsOptions = {},
   enabled = true,
 ): { items: VirtualMCPEntity[]; pending: boolean; error: Error | null } {

@@ -1718,6 +1718,9 @@ export interface TaskBoardItemTable {
   type: ColumnType<TaskBoardItemType, TaskBoardItemType | undefined, string>;
   assignee_id: string | null;
   assigned_by: string | null;
+  /** The virtual MCP/project that owns this card. Null only for legacy and
+   *  organization-level cards. Kept even if that project is later deleted. */
+  virtual_mcp_id: string | null;
   repo: string | null;
   /** First-class repository (migration 204); null until backfilled/linked. */
   repository_id: ColumnType<
@@ -1853,6 +1856,15 @@ export interface TaskBoardColumnAutomationTable {
 export interface TaskBoardImportRunTable {
   organization_id: string;
   run_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
+/** Immutable site/project ownership captured when a report run originates. */
+export interface CommerceDiscoveryReportRunTable {
+  organization_id: string;
+  run_id: string;
+  site_url: string;
+  virtual_mcp_id: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
@@ -2016,6 +2028,9 @@ export interface TaskBoardItem {
   type: TaskBoardItemType;
   assigneeId: string | null;
   assignedBy: string | null;
+  /** Exact virtual MCP/project ownership. Null for organization-level cards
+   *  and rows created before project ownership was persisted. */
+  virtualMcpId: string | null;
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
    *  created org-wide (no site context) carry none. */
   repo: string | null;
@@ -2464,6 +2479,7 @@ export interface Database extends PrivateRegistryDatabase {
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
   task_board_import_runs: TaskBoardImportRunTable;
+  commerce_discovery_report_runs: CommerceDiscoveryReportRunTable;
 
   // Jira integration
   org_jira_integrations: OrgJiraIntegrationTable;
