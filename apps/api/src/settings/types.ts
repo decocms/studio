@@ -76,6 +76,12 @@ export interface Settings {
    *  top-up tool falls back to the gateway's own checkout. */
   aiGatewayAdminToken: string | undefined;
 
+  // WhatsApp Concierge (top-of-funnel bot) — notified on signup conversion.
+  conciergeUrl: string;
+  /** Bearer for the Concierge's /event endpoint. Absent → conversion notify
+   *  is a no-op (self-hosted deployments have no Concierge). */
+  conciergeAuthToken: string | undefined;
+
   // Stripe (per-org subscription + AI-credit top-ups). Absent → webhook
   // 503s, no checkout.
   stripeWebhookSecret: string | undefined;

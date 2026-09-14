@@ -52,6 +52,7 @@ import {
   GENERIC_EMAIL_DOMAINS,
 } from "./org-assurance-policy";
 import { ensureUserOrganization } from "./ensure-user-organization";
+import { notifyConciergeSignup } from "../notifications/concierge-signup";
 import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
 import { rejectOrganizationSlugChange } from "./reject-slug-change";
 
@@ -578,6 +579,16 @@ export const auth = betterAuth({
               ...(signupSrc ? { signup_src: signupSrc } : {}),
             },
           });
+
+          // Closes the WhatsApp → signup loop for the Concierge bot; never blocks signup.
+          if (signupRef) {
+            notifyConciergeSignup(signupRef).catch((error) => {
+              console.warn(
+                "[auth] concierge signup notify failed:",
+                error instanceof Error ? error.message : error,
+              );
+            });
+          }
 
           const allowCreate =
             getConfig().autoCreateOrganizationOnSignup !== false;
