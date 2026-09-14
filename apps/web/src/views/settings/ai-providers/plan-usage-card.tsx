@@ -181,7 +181,7 @@ export function PlanUsageCard() {
               <div className="flex items-baseline gap-2">
                 <span
                   className={cn(
-                    "text-6xl font-semibold leading-none tracking-tighter tabular-nums",
+                    "text-5xl font-semibold leading-none tracking-tight tabular-nums",
                     NUMERAL_STYLES[state],
                   )}
                 >
