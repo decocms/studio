@@ -206,12 +206,12 @@ export function BranchPicker({
   const saveUnlistedName = () => {
     const next = editName.trim();
     if (next && value) {
-      void createRelease({
+      createRelease({
         branch: value,
         name: next,
         color: nextReleaseColor(releases.length),
         createdAt: new Date().toISOString(),
-      });
+      }).catch(reportReleaseError);
     }
     setEditing(null);
     setEditName("");
