@@ -78,3 +78,19 @@ export function preservedOtherBranchFields(
     Object.entries(obj).filter(([k]) => !active.has(k)),
   );
 }
+
+/**
+ * Build the value to store after editing the active branch's form: the
+ * preserved hidden-branch fields, the new form data on top, then the active
+ * branch's const discriminators re-asserted last so the branch tag survives.
+ * Shared by every branch-editor onChange so none of them can forget to
+ * preserve — {@link preservedOtherBranchFields}'s whole point is lost if only
+ * some callers apply it.
+ */
+export function mergeInlineUnionUpdate(
+  preserved: Record<string, unknown>,
+  next: Record<string, unknown>,
+  discriminators: Record<string, string | number | boolean> | undefined,
+): Record<string, unknown> {
+  return { ...preserved, ...next, ...(discriminators ?? {}) };
+}

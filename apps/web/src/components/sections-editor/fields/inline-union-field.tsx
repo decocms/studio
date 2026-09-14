@@ -14,6 +14,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import {
   inferInlineUnionIndex,
+  mergeInlineUnionUpdate,
   preservedOtherBranchFields,
 } from "./inline-union-value";
 import { LocationField } from "./location-field";
@@ -136,26 +137,28 @@ export function InlineUnionField(props: FieldProps) {
             {...props}
             schema={activeBranch.schema as SchemaProperty}
             onChange={(loc) =>
-              // Preserve the other branch's fields and re-assert the active
-              // branch's const discriminators so the branch tag survives edits.
-              onChange({
-                ...preserved,
-                ...(loc as Record<string, unknown>),
-                ...(activeBranch.discriminators ?? {}),
-              })
+              onChange(
+                mergeInlineUnionUpdate(
+                  preserved,
+                  loc as Record<string, unknown>,
+                  activeBranch.discriminators,
+                ),
+              )
             }
           />
         ) : formSchema ? (
           <SchemaForm
             schema={formSchema}
             value={value}
-            // Const discriminators are stripped from the rendered form, so
-            // re-apply them on every update to keep the branch tag.
+            // Re-apply the branch's stripped discriminators, same as LocationField.
             onChange={(next) =>
-              onChange({
-                ...(next as Record<string, unknown>),
-                ...(activeBranch.discriminators ?? {}),
-              })
+              onChange(
+                mergeInlineUnionUpdate(
+                  preserved,
+                  next as Record<string, unknown>,
+                  activeBranch.discriminators,
+                ),
+              )
             }
             basePath={path}
             breadcrumbPath={props.breadcrumbPath}

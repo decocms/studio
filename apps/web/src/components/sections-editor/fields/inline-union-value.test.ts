@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   inferInlineUnionIndex,
+  mergeInlineUnionUpdate,
   preservedOtherBranchFields,
 } from "./inline-union-value";
 
@@ -111,6 +112,28 @@ describe("preservedOtherBranchFields – legacy combined entries", () => {
 
   test("handles non-object values", () => {
     expect(preservedOtherBranchFields(null, ["coordinates"])).toEqual({});
+  });
+});
+
+describe("mergeInlineUnionUpdate – branch edit merges", () => {
+  test("keeps the hidden branch's preserved fields alongside the new form data", () => {
+    expect(
+      mergeInlineUnionUpdate(
+        { coordinates: "-23,-46,2000" },
+        { city: "Sao Paulo" },
+        undefined,
+      ),
+    ).toEqual({ coordinates: "-23,-46,2000", city: "Sao Paulo" });
+  });
+
+  test("re-asserts the active branch's discriminators over the form data", () => {
+    expect(
+      mergeInlineUnionUpdate(
+        {},
+        { name: "stale", value: 5 },
+        { name: "max-age" },
+      ),
+    ).toEqual({ name: "max-age", value: 5 });
   });
 });
 
