@@ -12,6 +12,8 @@
  */
 
 import { createPrivateKey, sign } from "node:crypto";
+import { z } from "zod";
+import { mapBounded } from "@decocms/shared/std";
 import {
   isPermissionRejected,
   OPTIONAL_MINT_PERMISSIONS,
@@ -20,7 +22,9 @@ import { APP_BUDGET_OWNER, rememberBudgetOwner } from "./budget-owner";
 import { type GithubAppConfig, readGithubAppConfig } from "./env";
 import type { GitProviderCapability } from "../types";
 import { GitProviderError } from "../types";
+import { matchesRepoQuery } from "./client";
 import {
+  githubApiBaseUrl,
   githubErrorMessage,
   githubFailure,
   githubFailureFromBody,
@@ -88,9 +92,17 @@ export function nextPermissionSet(
   return rest;
 }
 
+/** GitHub mints an installation token for at most this many repositories. */
+export const MAX_TOKEN_REPOSITORIES = 500;
+
 export interface InstallationTokenOptions {
   /** Repository names (without owner) the token is restricted to. Omit for every repo. */
   repositories?: string[];
+  /**
+   * Repository ids the token is restricted to, for a scope that has to survive
+   * a rename. Mutually exclusive with `repositories`; omit both for every repo.
+   */
+  repositoryIds?: number[];
   /** Permissions to request; omit for everything the installation grants. */
   permissions?: Record<string, string>;
   /** Re-mint when less than this many ms of life remain. */
@@ -107,13 +119,45 @@ export interface InstallationToken {
 }
 
 /**
+ * Why this token scope cannot be minted, or null when it can.
+ *
+ * The empty list is the dangerous case. GitHub reads it as "no restriction"
+ * and answers with a token for every repository of the installation, so a
+ * caller whose scope computed down to nothing must fail rather than be
+ * silently widened past what it asked for.
+ */
+export function invalidTokenScope(
+  opts: Pick<InstallationTokenOptions, "repositories" | "repositoryIds">,
+): string | null {
+  const { repositories, repositoryIds } = opts;
+  if (repositories && repositoryIds) {
+    return "A GitHub installation token is scoped by repository name or by id, never both";
+  }
+  const size = repositories?.length ?? repositoryIds?.length;
+  if (size !== undefined && (size === 0 || size > MAX_TOKEN_REPOSITORIES)) {
+    return `A GitHub installation token covers 1 to ${MAX_TOKEN_REPOSITORIES} repositories, not ${size}`;
+  }
+  if (repositoryIds?.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+    return "A GitHub repository id must be a positive integer";
+  }
+  return null;
+}
+
+/**
  * Cache key for an installation token request. Order-insensitive: the same
  * set of repositories and permissions must hit the same entry however the
  * caller spelled them. GitHub matches repository names case-insensitively.
+ *
+ * A scope by id is a different token from the same scope spelled as names, and
+ * both differ from the unrestricted one, so the ids get their own segment with
+ * a marker for "no id restriction".
  */
 export function installationCacheKey(
   installationId: number,
-  opts: Pick<InstallationTokenOptions, "repositories" | "permissions">,
+  opts: Pick<
+    InstallationTokenOptions,
+    "repositories" | "repositoryIds" | "permissions"
+  >,
 ): string {
   const repositories = (opts.repositories ?? [])
     .map((r) => r.toLowerCase())
@@ -121,7 +165,10 @@ export function installationCacheKey(
   const permissions = Object.entries(opts.permissions ?? {})
     .map(([k, v]) => `${k}=${v}`)
     .sort();
-  return `${installationId}|${repositories.join(",")}|${permissions.join(",")}`;
+  const ids = opts.repositoryIds
+    ? `ids:${[...opts.repositoryIds].sort((a, b) => a - b).join(",")}`
+    : "all";
+  return `${installationId}|${repositories.join(",")}|${ids}|${permissions.join(",")}`;
 }
 
 /**
@@ -152,6 +199,27 @@ export interface GithubInstallation {
   /** "User" or "Organization". */
   accountType: string;
 }
+
+/**
+ * An installation the user may choose repositories from.
+ *
+ * `repositoryIds: null` means the user owns the account and may choose any
+ * installed repository. A list identifies repositories they administer.
+ * The persisted workspace grant is always a separate, explicit selection.
+ */
+export interface AuthorizedInstallation extends GithubInstallation {
+  repositoryIds: number[] | null;
+}
+
+/** `GET /user/installations/{id}/repositories`, as the grant walk reads it. */
+const InstallationRepositoriesSchema = z.object({
+  repositories: z.array(
+    z.object({
+      id: z.number().int().positive().safe(),
+      permissions: z.object({ admin: z.boolean().optional() }).optional(),
+    }),
+  ),
+});
 
 interface InstallationJson {
   id?: unknown;
@@ -253,6 +321,16 @@ export class GithubAppAuth {
     installationId: number,
     opts: InstallationTokenOptions = {},
   ): Promise<InstallationToken> {
+    const invalidScope = invalidTokenScope(opts);
+    if (invalidScope) {
+      return Promise.reject(
+        new GitProviderError({
+          provider: "github",
+          status: 403,
+          message: invalidScope,
+        }),
+      );
+    }
     const key = installationCacheKey(installationId, opts);
     const bufferMs = opts.bufferMs ?? DEFAULT_TOKEN_BUFFER_MS;
 
@@ -306,6 +384,7 @@ export class GithubAppAuth {
         token: this.appJwt(),
         body: {
           ...(repositories && { repositories }),
+          ...(opts.repositoryIds && { repository_ids: opts.repositoryIds }),
           ...(permissions && { permissions }),
         },
         operation,
@@ -370,10 +449,200 @@ export class GithubAppAuth {
   }
 
   /**
+   * The installations this user may delegate from. This is their authority
+   * ceiling; the connect route separately validates the selected repositories.
+   *
+   * GitHub lists an installation whenever the user can see a single repository
+   * in it, and seeing a repository is not authority over the rest of the
+   * account. So the answer is narrowed to what the user can actually authorize:
+   *
+   * - their own personal account (`repositoryIds: null`);
+   * - an organization they own, where they may choose any installed repo;
+   * - otherwise, only the repositories of that installation they administer,
+   *   which is exactly the set GitHub would let them install the App on.
+   *
+   * An installation where none of that holds is left out entirely.
+   */
+  async listAuthorizedInstallations(
+    userToken: string,
+    installationId?: number,
+  ): Promise<{
+    userId: string;
+    installations: AuthorizedInstallation[];
+  }> {
+    const user = z
+      .object({ id: z.number().int().positive().safe() })
+      .parse(await this.userGet("/user", userToken, "get_connecting_user"));
+    // A connect revalidates only the selected installation, using fresh user access.
+    const installations = (await this.listUserInstallations(userToken)).filter(
+      (item) =>
+        installationId === undefined || item.installationId === installationId,
+    );
+    const ownedOrganizations = new Set<string>();
+    if (installations.some((item) => item.accountType === "Organization")) {
+      for (let page = 1; ; page++) {
+        // Unlike the per-org membership endpoint, this requires no extra App permissions.
+        const memberships = z
+          .array(
+            z.object({
+              state: z.string(),
+              role: z.string(),
+              organization: z.object({
+                id: z.number().int().positive().safe(),
+              }),
+            }),
+          )
+          .parse(
+            await this.userGet(
+              `/user/memberships/orgs?state=active&per_page=100&page=${page}`,
+              userToken,
+              "list_connecting_user_memberships",
+            ),
+          );
+        for (const membership of memberships) {
+          if (membership.state === "active" && membership.role === "admin") {
+            ownedOrganizations.add(String(membership.organization.id));
+          }
+        }
+        if (memberships.length < 100) break;
+      }
+    }
+    const authorized = await mapBounded(
+      installations,
+      4,
+      async (item): Promise<AuthorizedInstallation | null> => {
+        if (item.accountType === "User") {
+          return item.externalAccountId === String(user.id)
+            ? { ...item, repositoryIds: null }
+            : null;
+        }
+        if (ownedOrganizations.has(item.externalAccountId)) {
+          return { ...item, repositoryIds: null };
+        }
+        const repositoryIds = await this.administeredRepositories(
+          userToken,
+          item.installationId,
+        );
+        return repositoryIds.length > 0 ? { ...item, repositoryIds } : null;
+      },
+    );
+    return {
+      userId: String(user.id),
+      installations: authorized.filter((item) => item !== null),
+    };
+  }
+
+  /**
+   * Repository choices use the temporary user grant, never an installation
+   * token. An optional `query` narrows by `owner/name` substring server-side so
+   * the picker searches every installed repository, not only the pages the
+   * client happens to have loaded. `hasMore` reflects the raw page length, so
+   * the query filter never hides the remaining provider pages.
+   */
+  async listRepositoryChoices(
+    userToken: string,
+    installation: AuthorizedInstallation,
+    page: number,
+    query?: string,
+  ) {
+    const result = z
+      .object({
+        repositories: z.array(
+          z.object({
+            id: z.number().int().positive().safe(),
+            full_name: z.string().min(1),
+            permissions: z.object({ admin: z.boolean().optional() }).optional(),
+          }),
+        ),
+      })
+      .parse(
+        await this.userGet(
+          `/user/installations/${installation.installationId}/repositories?per_page=100&page=${page}`,
+          userToken,
+          "list_repository_choices",
+        ),
+      );
+    return {
+      repositories: result.repositories
+        .filter(
+          (repo) =>
+            installation.repositoryIds === null ||
+            repo.permissions?.admin === true,
+        )
+        .filter((repo) => matchesRepoQuery(repo.full_name, query))
+        .map((repo) => ({ id: repo.id, name: repo.full_name })),
+      hasMore: result.repositories.length === 100,
+    };
+  }
+
+  /** Recheck every selected id against current installation membership and admin access. */
+  async canAuthorizeRepositories(
+    userToken: string,
+    installation: AuthorizedInstallation,
+    repositoryIds: number[],
+  ): Promise<boolean> {
+    const remaining = new Set(repositoryIds);
+    for (let page = 1; ; page++) {
+      const choices = await this.listRepositoryChoices(
+        userToken,
+        installation,
+        page,
+      );
+      for (const repo of choices.repositories) remaining.delete(repo.id);
+      if (remaining.size === 0) return true;
+      if (!choices.hasMore) return false;
+    }
+  }
+
+  /**
+   * The repositories of one installation the user administers, by id.
+   *
+   * Ids rather than names because the grant outlives a rename. The walk stops
+   * at `MAX_TOKEN_REPOSITORIES`: a token cannot be minted for more than that
+   * anyway. Repository selection and validation paginate independently, so
+   * this preview count never limits which repositories the user can select.
+   */
+  private async administeredRepositories(
+    userToken: string,
+    installationId: number,
+  ): Promise<number[]> {
+    const perPage = 100;
+    const administered: number[] = [];
+    for (let page = 1; ; page++) {
+      const { repositories } = InstallationRepositoriesSchema.parse(
+        await this.userGet(
+          `/user/installations/${installationId}/repositories?per_page=${perPage}&page=${page}`,
+          userToken,
+          "list_connecting_user_repositories",
+        ),
+      );
+      for (const repository of repositories) {
+        if (repository.permissions?.admin !== true) continue;
+        administered.push(repository.id);
+        if (administered.length === MAX_TOKEN_REPOSITORIES) return administered;
+      }
+      if (repositories.length < perPage) return administered;
+    }
+  }
+
+  private async userGet(
+    path: string,
+    token: string,
+    operation: string,
+  ): Promise<unknown> {
+    const response = await githubFetch(`${this.apiBaseUrl}${path}`, {
+      token,
+      operation,
+    });
+    if (!response.ok) throw await githubFailure(response, operation);
+    return githubJson<unknown>(response, operation);
+  }
+
+  /**
    * Every installation of this App the user can access, via their
    * user-to-server token: `GET /user/installations`, paginated.
    */
-  async listUserInstallations(
+  private async listUserInstallations(
     userToken: string,
   ): Promise<GithubInstallation[]> {
     const operation = "list_user_installations";
@@ -416,7 +685,11 @@ export function getGithubAppAuth(): GithubAppAuth | null {
   if (appAuthSingleton === undefined) {
     const config = readGithubAppConfig();
     appAuthSingleton =
-      config && usableAppKey(config) ? new GithubAppAuth(config) : null;
+      config && usableAppKey(config)
+        ? new GithubAppAuth(config, {
+            apiBaseUrl: githubApiBaseUrl("github.com"),
+          })
+        : null;
   }
   return appAuthSingleton;
 }

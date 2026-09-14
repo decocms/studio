@@ -63,7 +63,6 @@ import {
 } from "./sandbox-git-api.ts";
 import { useChecks, useLastPublishedPr, usePrByBranch } from "./use-pr-data.ts";
 import { useReleases } from "./use-releases";
-import { draftsModeEnabled } from "./use-version-gate";
 import { usePrReviews } from "./use-pr-reviews.ts";
 import { authClient } from "@/lib/auth-client.ts";
 import {
@@ -237,7 +236,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    *  still settling. */
   const publishCompletion = useMutation({
     mutationFn: async () => {
-      const published = draftsModeEnabled(vm) ? branch : null;
+      const published = branch;
       await setCurrentTaskBranch(
         generateBranchName(branchUserLabel(session?.user)),
       );

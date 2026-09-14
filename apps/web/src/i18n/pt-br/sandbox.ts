@@ -86,6 +86,7 @@ export const sandbox = {
   "sandbox.categoryEditor.untitledCategory": "Categoria sem título",
   "sandbox.categoryEditor.untitledPost": "Post sem título",
   "sandbox.collectionsSidebar.actions": "Ações",
+  "sandbox.collectionsSidebar.advanced": "Avançado",
   "sandbox.collectionsSidebar.apps": "Apps",
   "sandbox.collectionsSidebar.authors": "Autores",
   "sandbox.collectionsSidebar.blog": "Blog",

@@ -329,11 +329,12 @@ function fmtMetric(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return formatCell(value);
-  if (/(pct|rate|bounce|ratio)/i.test(key)) return `${Math.round(n)}%`;
+  // Durations first: "du-ratio-n" would match the percentage test below.
   if (/(_s$|duration|seconds)/i.test(key)) {
     const m = Math.floor(n / 60);
     return m ? `${m}m ${Math.round(n % 60)}s` : `${Math.round(n)}s`;
   }
+  if (/(pct|rate|bounce|ratio)/i.test(key)) return `${Math.round(n)}%`;
   return formatNumber(n);
 }
 

@@ -181,6 +181,9 @@ export interface OrganizationSettingsTable {
   organizationId: string;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   enabled_plugins: JsonArray<string[]> | null;
+  // Connection ids a coding-agent run must not mount, even with
+  // `coding_agent_org_mcps` on. See migration 212.
+  coding_agent_mcp_excluded: JsonArray<string[]> | null;
   registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
@@ -196,6 +199,7 @@ export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: SidebarItem[] | null;
   enabled_plugins: string[] | null;
+  coding_agent_mcp_excluded: string[] | null;
   registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
@@ -2248,11 +2252,25 @@ export interface NotificationTable {
 
 // ============================== Git providers ===============================
 
-export type GitProviderKindColumn = "github" | "gitlab";
+export type GitProviderKindColumn = "github" | "gitlab" | "bitbucket";
 export type GitAuthKindColumn = "github_app" | "oauth" | "token";
 export type GitAccountStatusColumn = "active" | "revoked";
 
 export interface GitProviderAccountTable {
+  /**
+   * The granted repositories of the installation, by id. Null is the whole
+   * installation; an empty list would grant nothing and is never written.
+   */
+  installation_repository_ids: ColumnType<
+    number[] | null,
+    string | null | undefined,
+    string | null
+  >;
+  installation_authorized_by: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   id: ColumnType<string, string | undefined, never>;
   organization_id: string;
   type: GitProviderKindColumn;
@@ -2421,6 +2439,13 @@ export interface Database extends PrivateRegistryDatabase {
   git_provider_accounts: GitProviderAccountTable;
   git_provider_account_credentials: GitProviderAccountCredentialTable;
   git_provider_oauth_states: GitProviderOAuthStateTable;
+  github_connect_flows: {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    encrypted_access_token: string;
+    expires_at: ColumnType<Date, Date, never>;
+  };
   repositories: RepositoryTable;
   task_board_items: TaskBoardItemTable;
   task_board_column_automations: TaskBoardColumnAutomationTable;

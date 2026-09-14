@@ -106,7 +106,10 @@ export async function exchangeGithubCode(params: {
 }): Promise<GithubOAuthTokens> {
   let res: Response;
   try {
-    res = await fetch(GITHUB_OAUTH_TOKEN_URL, {
+    // Keep the code exchange on the external HTTP fixture in end-to-end tests.
+    const tokenUrl =
+      process.env.GITHUB_OAUTH_TOKEN_URL ?? GITHUB_OAUTH_TOKEN_URL;
+    res = await fetch(tokenUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",

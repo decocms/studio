@@ -90,9 +90,13 @@ export function RecordEditor({
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, kind);
 
-  const [payload, setPayload] = useAutosave(initial, (next) => {
-    save.mutate({ blockKey, data: buildBlogBlock(blockKey, kind, next) });
-  });
+  const [payload, setPayload] = useAutosave(
+    initial,
+    (next) => {
+      save.mutate({ blockKey, data: buildBlogBlock(blockKey, kind, next) });
+    },
+    { isSaving: save.isPending },
+  );
 
   const setField = (key: string, value: unknown) =>
     setPayload({ ...payload, [key]: value });

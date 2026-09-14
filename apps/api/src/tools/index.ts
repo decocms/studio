@@ -56,6 +56,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
@@ -238,11 +239,13 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_AUTOMATION_LIST,
   JiraTools.JIRA_AUTOMATION_UPSERT,
   JiraTools.JIRA_AUTOMATION_DELETE,
+  JiraTools.JIRA_RUN_START,
   // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
   JiraTools.JIRA_ISSUE_GET,
   JiraTools.JIRA_COMMENT_ADD,
   JiraTools.JIRA_ISSUE_TRANSITION,
   JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
+  JiraTools.JIRA_REMOTE_LINK_ADD,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

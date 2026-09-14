@@ -20,18 +20,6 @@ mock.module("../../thread/github/branch-picker", () => ({
   ),
 }));
 
-mock.module("../../thread/github/branch-picker-legacy", () => ({
-  BranchPickerLegacy: ({ spawnsNewChat }: { spawnsNewChat?: boolean }) => (
-    <button
-      type="button"
-      data-testid="legacy"
-      data-spawns-new-chat={spawnsNewChat ? "true" : "false"}
-    >
-      branch-picker-legacy
-    </button>
-  ),
-}));
-
 import { ChatModeRowPure } from "./chat-mode-row";
 import { BranchPill } from "./branch-pill";
 
@@ -63,7 +51,6 @@ describe("ChatModeRowPure", () => {
 });
 
 const BRANCH_PILL_PROPS = {
-  draftsMode: true,
   orgId: "org-1",
   orgSlug: "my-org",
   userId: "user-1",
@@ -95,10 +82,10 @@ describe("BranchPill", () => {
     );
   });
 
-  it("renders the classic picker when draftsMode is off", () => {
-    const { getByTestId } = renderWithQueryClient(
-      <BranchPill {...BRANCH_PILL_PROPS} draftsMode={false} locked={false} />,
+  it("always renders the releases switcher (BranchPicker)", () => {
+    const { getByRole } = renderWithQueryClient(
+      <BranchPill {...BRANCH_PILL_PROPS} locked={false} />,
     );
-    expect(getByTestId("legacy")).toBeInTheDocument();
+    expect(getByRole("button")).toHaveTextContent("branch-picker");
   });
 });

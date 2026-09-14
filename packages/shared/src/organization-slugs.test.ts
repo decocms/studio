@@ -9,6 +9,7 @@ describe("reserved organization slugs", () => {
     expect([...RESERVED_ORGANIZATION_SLUGS]).toEqual([
       ".well-known",
       "_admin",
+      "_users",
       "api",
       "auth",
       "choose-editor",
@@ -29,6 +30,7 @@ describe("reserved organization slugs", () => {
     ]);
     expect(isReservedOrganizationSlug(" Report ")).toBe(true);
     expect(isReservedOrganizationSlug("API")).toBe(true);
+    expect(isReservedOrganizationSlug("_users")).toBe(true);
   });
 
   test("does not reject similar organization slugs", () => {

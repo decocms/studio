@@ -40,11 +40,12 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
   let threads: SqlThreadStorage;
 
   /** A card In Progress with one finished, message-carrying run linked. */
-  const cardWithFinishedRun = async (title: string) => {
+  const cardWithFinishedRun = async (title: string, source?: "jira") => {
     const task = await taskBoard.create({
       organizationId: ORG,
       title,
       status: "in_progress",
+      ...(source ? { source } : {}),
       by: USER,
     });
     const thread = await threads.create({
@@ -312,6 +313,48 @@ describe("advanceToReviewIfInProgress (real Postgres)", () => {
     const after = await taskBoard.getById(task.id, ORG);
     expect(after?.status).toBe("in_progress");
     expect(after?.reviewCycleStartedAt).not.toBeNull();
+  });
+
+  /**
+   * A Jira run's anchor is not a card the board manages: advancing it to In
+   * Review is what enqueues a reviewer, and that reviewer rules on a card
+   * nobody reads. Observed doing worse than nothing — it read a pull request
+   * from a PRIOR run of the same issue, requested changes because that one was
+   * closed, and unassigned the agent.
+   */
+  it("never advances an item the board does not manage, PR or not", async () => {
+    const { task, thread } = await cardWithFinishedRun("jira anchor", "jira");
+    await taskBoard.linkPr({
+      taskBoardItemId: task.id,
+      organizationId: ORG,
+      url: "https://github.com/acme/site/pull/9",
+      prNumber: 9,
+      repo: { provider: "github", host: "github.com", path: "acme/site" },
+    });
+
+    const moved = await taskBoard.advanceLinkedTasksToReviewOnThreadFinish(
+      thread.id,
+      ORG,
+    );
+
+    expect(moved.map((m) => m.id)).not.toContain(task.id);
+    const after = await taskBoard.getById(task.id, ORG);
+    expect(after?.status).toBe("in_progress");
+    // No cycle opened either — that is the other half of what a reviewer reads.
+    expect(after?.reviewCycleStartedAt).toBeNull();
+  });
+
+  it("boardManagedIds keeps ordinary cards and drops sourced anchors", async () => {
+    const card = await cardWithFinishedRun("ordinary");
+    const anchor = await cardWithFinishedRun("anchored", "jira");
+    expect(
+      await taskBoard.boardManagedIds([anchor.task.id, card.task.id], ORG),
+    ).toEqual([card.task.id]);
+    // Order is the caller's, and another org sees neither.
+    expect(
+      await taskBoard.boardManagedIds([card.task.id], "org_other"),
+    ).toEqual([]);
+    expect(await taskBoard.boardManagedIds([], ORG)).toEqual([]);
   });
 
   // The backstop must never move a card that is already mid-review, whatever

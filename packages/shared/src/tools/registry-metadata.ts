@@ -55,6 +55,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
+  "ORGANIZATION_HAS_SITE",
   "BRAND_CONTEXT_LIST",
   "BRAND_CONTEXT_GET",
   "BRAND_CONTEXT_CREATE",
@@ -200,10 +201,12 @@ const ALL_TOOL_NAMES = [
   "JIRA_AUTOMATION_LIST",
   "JIRA_AUTOMATION_UPSERT",
   "JIRA_AUTOMATION_DELETE",
+  "JIRA_RUN_START",
   "JIRA_ISSUE_GET",
   "JIRA_COMMENT_ADD",
   "JIRA_ISSUE_TRANSITION",
   "JIRA_ATTACHMENT_DOWNLOAD",
+  "JIRA_REMOTE_LINK_ADD",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -973,6 +976,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Jira",
   },
   {
+    name: "JIRA_RUN_START",
+    description: "Run the agent on one Jira issue now, to try a rule out",
+    category: "Jira",
+  },
+  {
     name: "JIRA_ISSUE_GET",
     description: "Re-read the Jira issue a run is working on",
     category: "Jira",
@@ -991,6 +999,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
       "Get a short-lived download URL for an attachment of the run's Jira issue",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_REMOTE_LINK_ADD",
+    description:
+      "Link a pull request or deploy preview on the run's Jira issue",
     category: "Jira",
   },
   {
@@ -1564,6 +1578,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "ORGANIZATION_SETTINGS_GET",
       "USER_GET",
       "BRAND_CONTEXT_LIST",
+      // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
+      "ORGANIZATION_HAS_SITE",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -1638,6 +1654,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "JIRA_AUTOMATION_LIST",
       "JIRA_AUTOMATION_UPSERT",
       "JIRA_AUTOMATION_DELETE",
+      "JIRA_RUN_START",
     ],
   },
   {

@@ -138,7 +138,7 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
 
   test("renders a picker with both orgs and joins the one the user picks", async ({
     page,
-  }) => {
+  }, testInfo) => {
     const { userId } = await signUpCorporateUserOnTestDomain(page);
 
     // After undoing the auto-created org, hitting "/" runs the home
@@ -173,7 +173,7 @@ test.describe("Onboarding: multi-org auto-join picker", () => {
     expect(otherCheck.rows[0]!.count).toBe("0");
 
     await page.screenshot({
-      path: "screenshots/auto-domain-join-multi-org.png",
+      path: testInfo.outputPath("auto-domain-join-multi-org.png"),
       fullPage: true,
     });
   });

@@ -25,6 +25,9 @@ function makeCtx(opts: {
   orgId?: string;
   metadataItemId?: string;
   linked?: string[];
+  /** Ids the board manages. Omitted means "all of them" — the ordinary card
+   *  case. Set it to exclude an anchor the board does not manage (Jira's). */
+  boardManaged?: string[];
 }) {
   const linkPrCalls: LinkPrCall[] = [];
   const ctx = {
@@ -38,12 +41,22 @@ function makeCtx(opts: {
           linkPrCalls.push(p);
         },
         linkedTaskIds: async () => opts.linked ?? [],
+        boardManagedIds: async (ids: readonly string[]) =>
+          opts.boardManaged
+            ? ids.filter((id) => opts.boardManaged?.includes(id))
+            : [...ids],
       },
     },
   } as never;
   return { ctx, linkPrCalls };
 }
 
+/**
+ * The PR link is what a later reviewer reads. On a Jira run's anchor it pointed
+ * at a hidden card, and a reviewer picked up a PR from a PRIOR run of the same
+ * issue, requested changes because that one was closed, and unassigned the
+ * agent. The Jira run puts its PR on the ISSUE instead.
+ */
 const MCP_RESULT = {
   structuredContent: { id: 1, url: "https://github.com/acme/site/pull/42" },
 };
@@ -114,6 +127,27 @@ describe("capturePrForRun", () => {
     const { ctx, linkPrCalls } = makeCtx({ orgId: "org-1", linked: [] });
     await capturePrForRun(ctx, MCP_RESULT, null, "thr-x");
     expect(linkPrCalls).toEqual([]);
+  });
+  // The disconnect: an anchor the board does not manage gets no PR link, so no
+  // later reviewer can read one off it.
+  it("links nothing for a run whose only task is not board-managed", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      linked: ["anchor-jira"],
+      boardManaged: [],
+    });
+    await capturePrForRun(ctx, MCP_RESULT, null, "thr-1");
+    expect(linkPrCalls).toHaveLength(0);
+  });
+
+  it("still links for an ordinary card alongside one that is not managed", async () => {
+    const { ctx, linkPrCalls } = makeCtx({
+      orgId: "org-1",
+      linked: ["anchor-jira", "card-1"],
+      boardManaged: ["card-1"],
+    });
+    await capturePrForRun(ctx, MCP_RESULT, null, "thr-1");
+    expect(linkPrCalls.map((c) => c.taskBoardItemId)).toEqual(["card-1"]);
   });
 });
 
@@ -192,6 +226,17 @@ describe("isPrCreateBashCommand", () => {
         "curl -X POST https://gitlab.com/api/v4/projects/group%2Fstore/merge_requests -d '{}'",
       ),
     ).toBe(true);
+    // Bitbucket has no CLI, so the REST POST is the only bash shape there.
+    expect(
+      isPrCreateBashCommand(
+        "curl -X POST -H \"Authorization: Bearer $BITBUCKET_TOKEN\" https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests -d '{}'",
+      ),
+    ).toBe(true);
+    expect(
+      isPrCreateBashCommand(
+        "curl https://api.bitbucket.org/2.0/repositories/acme/site/pullrequests",
+      ),
+    ).toBe(false);
   });
 
   it("does not match unrelated gh / git / curl commands", () => {

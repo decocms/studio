@@ -536,6 +536,28 @@ export function SectionsEditor({
     onVariantPreviewOverride(params.length > 0 ? params : null);
   };
 
+  // Seed the override on page load so the iframe opens on the selected variant.
+  const pageVariantSeedKey =
+    onVariantPreviewOverride &&
+    activePageKey &&
+    pageIsMultivariate &&
+    hasMultipleVariants &&
+    !decofileLoading &&
+    !metaLoading
+      ? activePageKey
+      : null;
+  const [prevPageVariantSeedKey, setPrevPageVariantSeedKey] = useState<
+    string | null
+  >(null);
+  if (pageVariantSeedKey !== prevPageVariantSeedKey) {
+    setPrevPageVariantSeedKey(pageVariantSeedKey);
+    if (pageVariantSeedKey) {
+      const seedVariants = pageVariants.map((v) => ({ rule: v.rule }));
+      const seedIndex = safeVariantIndex;
+      queueMicrotask(() => emitPageVariantOverride(seedVariants, seedIndex));
+    }
+  }
+
   const syncVariantPreviewOverride = (
     mvObj: Record<string, unknown> | null,
     sectionIndex: number,

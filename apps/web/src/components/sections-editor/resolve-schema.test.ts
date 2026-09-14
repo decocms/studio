@@ -762,6 +762,86 @@ describe("resolveSchema – plainSchema on block-ref", () => {
     expect(image?.plainSchema?.format).toBe("image-uri");
   });
 
+  test("resolves the deepest leaf of a mega-menu of Resolvable-wrapped arrays", () => {
+    // A real storefront's header (zeedog): departmentMenus → menu → submenuColumns → submenuGroups → submenuGroupItems, five nested arrays each emitted as `anyOf: [Resolvable loader, array]` with no `__resolveType` boundary to reset depth. The old structural cap (8) nulled `items`/`properties` a couple levels in, so drilling to the deepest item rendered a blank form panel.
+    const loaderBranch = (rt: string) => ({
+      type: "object",
+      properties: {
+        __resolveType: { type: "string", enum: [rt], default: rt },
+      },
+    });
+    // A navigation array as deco emits it: pick a loader, or inline the array.
+    const wrappedArray = (
+      itemsSchema: Record<string, unknown>,
+      rt: string,
+    ) => ({
+      anyOf: [loaderBranch(rt), { type: "array", items: itemsSchema }],
+    });
+
+    const menuItem = {
+      type: "object",
+      title: "IMenuItem",
+      properties: {
+        text: { type: "string", title: "Text" },
+        url: { type: "string", title: "URL" },
+        imgsrc: {
+          type: "object",
+          properties: { desktop: { type: "string", format: "image-uri" } },
+        },
+      },
+    };
+    const submenuGroup = {
+      type: "object",
+      properties: {
+        submenuGroupItems: wrappedArray(menuItem, "site/loaders/items.ts"),
+      },
+    };
+    const submenuColumn = {
+      type: "object",
+      properties: {
+        submenuGroups: wrappedArray(submenuGroup, "site/loaders/groups.ts"),
+      },
+    };
+    const menu = {
+      type: "object",
+      properties: {
+        submenuColumns: wrappedArray(submenuColumn, "site/loaders/columns.ts"),
+      },
+    };
+    const departmentMenu = {
+      type: "object",
+      properties: { menu: wrappedArray(menu, "site/loaders/menu.ts") },
+    };
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        departmentMenus: wrappedArray(
+          departmentMenu,
+          "site/loaders/departments.ts",
+        ),
+      },
+    });
+
+    // A Resolvable-wrapped array resolves to an `array` field (loader branch dropped) — or a block-ref carrying the array as `plainSchema`; accept either.
+    const arrayItems = (field: SchemaProperty | undefined) =>
+      field?.items ?? field?.plainSchema?.items;
+
+    const resolved = resolveSchema("site/sections/Test.tsx", meta);
+    const departmentMenu2 = arrayItems(resolved?.properties?.departmentMenus);
+    const menu2 = arrayItems(departmentMenu2?.properties?.menu);
+    const submenuColumn2 = arrayItems(menu2?.properties?.submenuColumns);
+    const submenuGroup2 = arrayItems(submenuColumn2?.properties?.submenuGroups);
+    const menuItem2 = arrayItems(submenuGroup2?.properties?.submenuGroupItems);
+
+    // The leaf (IMenuItem) and its fields resolve — no blank panel.
+    expect(menuItem2?.type).toBe("object");
+    expect(menuItem2?.properties?.text?.type).toBe("string");
+    expect(menuItem2?.properties?.url?.type).toBe("string");
+    expect(menuItem2?.properties?.imgsrc?.properties?.desktop?.format).toBe(
+      "image-uri",
+    );
+  });
+
   test("plainSchema is undefined when all branches are loaders", () => {
     const meta = metaWithSchema({
       type: "object",

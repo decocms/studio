@@ -81,6 +81,21 @@ export const settings = {
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
+  "settings.jira.testRunLabel": "Testar em uma issue",
+  "settings.jira.testRunDescription":
+    "Rode o agente em uma única issue agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
+  "settings.jira.testRunIssuePlaceholder": "ABC-123 ou um link",
+  "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
+  "settings.jira.testRunPromptAriaLabel": "Instrução para este teste",
+  "settings.jira.testRun": "Rodar agente",
+  "settings.jira.testRunRunning": "Iniciando\u2026",
+  "settings.jira.testRunStarted": "Agente iniciado em {issueKey}",
+  "settings.jira.testRunTookOver":
+    "Agente reiniciado em {issueKey} \u2014 o run que já estava nela foi interrompido",
+  "settings.jira.testRunFailed": "Não foi possível iniciar o run",
+  "settings.jira.testRunHelp":
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Deixe a instrução vazia para usar a do próprio agente.",
+  "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.syncedRepos.pageDescription":
     "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",
@@ -111,21 +126,66 @@ export const settings = {
     "Contas que o Studio usa para ler seus repositórios e enviar alterações em seu nome.",
   "settings.repositories.accountsEmptyTitle": "Nenhuma conta conectada",
   "settings.repositories.accountsEmptyDescription":
-    "Conecte uma conta do GitHub ou GitLab para navegar pelos seus repositórios e vincular os privados.",
+    "Conecte uma conta do GitHub, GitLab ou Bitbucket para navegar pelos seus repositórios e vincular os privados.",
   "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
   "settings.repositories.noProvidersDescription":
-    "Entrar com GitHub ou GitLab depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab com um token de acesso.",
+    "Entrar com GitHub, GitLab ou Bitbucket depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab ou do Bitbucket com um token de acesso.",
   "settings.repositories.githubUnavailable":
     "Peça a um administrador para habilitar o GitHub.",
   "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
   "settings.repositories.gitlabTokenHint":
     "Use um token de acesso pessoal, de projeto ou de grupo.",
-  "settings.repositories.connectGithub": "Conectar GitHub",
-  "settings.repositories.manageGithub": "Gerenciar acesso no GitHub",
-  "settings.repositories.manageGithubHint":
-    "Instale ou configure o app nas suas contas e organizações do GitHub.",
+  "settings.repositories.bitbucketTokenHint":
+    "Use um token de acesso de workspace, de projeto ou de repositório.",
+  "settings.repositories.addGithubAccount":
+    "Adicionar conta ou organização do GitHub",
+  "settings.repositories.githubSelectTitle": "Selecionar repositórios",
+  "settings.repositories.githubSelectedShareHint":
+    "Membros com permissão de repositórios em {organization} poderão usar os repositórios que você autorizar aqui.",
+  "settings.repositories.githubSelectHint":
+    "Escolha até 500 repositórios para este workspace.",
+  "settings.repositories.githubReplaceHint":
+    "Salvar substitui o acesso atual desta conta no workspace pela sua seleção. Repositórios removidos deixam de receber novas credenciais. Credenciais já emitidas podem funcionar até expirarem.",
+  "settings.repositories.githubFilterRepos": "Buscar repositórios",
+  "settings.repositories.githubNoRepos":
+    "Nenhum repositório disponível para autorizar.",
+  "settings.repositories.githubSearchNoMatches":
+    "Nenhum repositório corresponde à sua busca.",
+  "settings.repositories.githubSearchMore":
+    "Carregue mais para continuar buscando nos seus repositórios.",
+  "settings.repositories.githubAccessChanged":
+    "Alguém alterou o acesso desta conta. Volte e revise os repositórios antes de salvar.",
+  "settings.repositories.githubMoreRepos": "Carregar mais repositórios",
+  "settings.repositories.githubBack": "Voltar às contas",
+  "settings.repositories.githubSaveOneRepo": "Autorizar 1 repositório",
+  "settings.repositories.githubSaveRepos": "Autorizar {count} repositórios",
+  "settings.repositories.githubEditWorkspaceAccess":
+    "Alterar acesso do workspace",
+  "settings.repositories.githubShareHint":
+    "Escolha sua conta pessoal do GitHub, ou uma organização onde você administra repositórios, para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
+  "settings.repositories.githubInstallHint":
+    "Ainda não há nada seu para compartilhar. Instale o app do GitHub na sua conta pessoal ou nos repositórios que você administra, ou peça ao dono da conta para conectá-la ao Studio. Um repositório em que você só colabora não é seu para compartilhar.",
+  "settings.repositories.githubAdministered":
+    "{count} repositórios que você administra",
+  "settings.repositories.githubAdministeredOne":
+    "1 repositório que você administra",
+  "settings.repositories.installGithubAccount": "Instalar em outra conta",
+  "settings.repositories.checkGithubAccess": "Verificar acesso",
+  "settings.repositories.switchGithubUser": "Usar outro login do GitHub",
+  "settings.repositories.githubReturnHint":
+    "O GitHub abre em uma nova aba. Depois de salvar o acesso, volte aqui para escolher a conta. Se ela não aparecer, use Verificar acesso.",
+  "settings.repositories.githubRefreshFailed":
+    "Não foi possível verificar o acesso no GitHub. Tente novamente sem sair desta janela.",
+  "settings.repositories.githubConnected": "Conta do GitHub conectada",
+  "settings.repositories.manageRepositoryAccess":
+    "Gerenciar acesso aos repositórios",
+  "settings.repositories.connectedBy": "Conectado por {name}",
+  "settings.repositories.connectedByUnknown":
+    "Conectado por um usuário indisponível",
+  "settings.repositories.dismiss": "Dispensar",
+  "settings.repositories.tryAgain": "Tentar novamente",
   "settings.repositories.oauthNoInstallations":
-    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Use Gerenciar acesso no GitHub para instalar o app ou solicitar acesso a um administrador da organização. Depois, conecte novamente.",
+    "A autorização no GitHub foi concluída, mas nenhuma instalação do app está disponível para este usuário. Adicione uma conta ou organização do GitHub para concluir a configuração.",
   "settings.repositories.oauthDenied":
     "A autorização foi cancelada. Conecte novamente quando quiser.",
   "settings.repositories.oauthExpired":
@@ -136,6 +196,9 @@ export const settings = {
     "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
   "settings.repositories.connectGitlab": "Conectar GitLab",
   "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
+  "settings.repositories.connectBitbucket": "Conectar Bitbucket",
+  "settings.repositories.connectBitbucketToken":
+    "Conectar Bitbucket com um token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Token pessoal",
@@ -150,10 +213,15 @@ export const settings = {
   "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
   "settings.repositories.tokenDialogDescription":
     "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.tokenDialogTitleBitbucket":
+    "Conectar o Bitbucket com um token",
+  "settings.repositories.tokenDialogDescriptionBitbucket":
+    "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests — os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
   "settings.repositories.tokenHostLabel": "Host",
   "settings.repositories.tokenHostPlaceholder": "gitlab.com",
   "settings.repositories.tokenLabel": "Token de acesso",
   "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.tokenPlaceholderBitbucket": "ATCTT…",
   "settings.repositories.connect": "Conectar",
   "settings.repositories.connecting": "Conectando…",
   "settings.repositories.connected": 'Conectado como "{login}"',
@@ -162,7 +230,7 @@ export const settings = {
     "Repositórios disponíveis para os agentes e automações desta organização.",
   "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
   "settings.repositories.reposEmptyDescription":
-    "Escolha um repositório de uma conta conectada do GitHub ou GitLab.",
+    "Escolha um repositório de uma conta conectada do GitHub, GitLab ou Bitbucket.",
   "settings.repositories.addRepository": "Adicionar repositório",
   "settings.repositories.unlink": "Desvincular",
   "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',
@@ -193,6 +261,15 @@ export const settings = {
   "settings.profile.displayName": "Nome de exibição",
   "settings.profile.displayNamePlaceholder": "Seu nome",
   "settings.profile.email": "E-mail",
+  "settings.profile.avatarUpload": "Trocar sua foto",
+  "settings.profile.avatarDialogTitle": "Foto de perfil",
+  "settings.profile.avatarDialogDescription":
+    "Arraste para reposicionar e role para dar zoom. Só a foto em uso fica visível para outras pessoas.",
+  "settings.profile.avatarDeleted": "Foto excluída",
+  "settings.profile.avatarRemove": "Remover",
+  "settings.profile.avatarRemoved": "Foto removida",
+  "settings.profile.avatarUpdated": "Foto atualizada",
+  "settings.profile.avatarUploadError": "Falha ao atualizar a foto",
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
@@ -646,6 +723,26 @@ export const settings = {
     "Dar aos runs as conex\u00f5es MCP desta organiza\u00e7\u00e3o",
   "settings.agentTools.orgMcpsDescription":
     "Cada MCP conectado fica dispon\u00edvel para o Super Agent e para os revisores, al\u00e9m das ferramentas de tarefa que eles sempre recebem. As ferramentas carregam s\u00f3 quando o agente procura por uma, ent\u00e3o conectar mais n\u00e3o ocupa o contexto dele.",
+  "settings.agentTools.orgMcpsPickTitle":
+    "Conex\u00f5es que os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickDescription":
+    "Desligue uma para mant\u00ea-la fora dos runs de coding agent. \u00datil para uma conex\u00e3o que duplica uma ferramenta que o run j\u00e1 tem \u2014 um MCP do mesmo tracker em que o run reporta, por exemplo. Um MCP conectado depois come\u00e7a ligado.",
+  "settings.agentTools.orgMcpsPickAriaLabel":
+    "Deixar os runs alcan\u00e7arem {name}",
+  "settings.agentTools.orgMcpsPickEmpty":
+    "Esta organiza\u00e7\u00e3o ainda n\u00e3o tem conex\u00f5es MCP",
+  "settings.agentTools.orgMcpsPickFailed":
+    "N\u00e3o foi poss\u00edvel salvar quais conex\u00f5es os runs alcan\u00e7am",
+  "settings.agentTools.orgMcpsPickSearch": "Buscar conex\u00f5es\u2026",
+  "settings.agentTools.orgMcpsPickEnableAll": "Ligar todas",
+  "settings.agentTools.orgMcpsPickDisableAll": "Desligar todas",
+  "settings.agentTools.orgMcpsPickNoMatch":
+    "Nenhuma conex\u00e3o corresponde a essa busca",
+  "settings.agentTools.orgMcpsPickSave": "Salvar",
+  "settings.agentTools.orgMcpsPickSaving": "Salvando\u2026",
+  "settings.agentTools.orgMcpsPickDiscard": "Descartar",
+  "settings.agentTools.orgMcpsPickSaved":
+    "Conex\u00f5es que os runs alcan\u00e7am salvas",
   "settings.agentTools.codingAgentsClaudeCodeTitle":
     "Rodar chats de Code Agent com o Claude Code",
   "settings.agentTools.codingAgentsClaudeCodeDescription":

@@ -19,7 +19,7 @@ import {
 test.describe("Org access gate", () => {
   test("shows the not-found screen when the org slug doesn't exist", async ({
     page,
-  }) => {
+  }, testInfo) => {
     await signUp(page);
     await waitForPostSignupRedirect(page);
 
@@ -33,7 +33,7 @@ test.describe("Org access gate", () => {
       page.getByRole("button", { name: "Go to home" }),
     ).toBeVisible();
     await page.screenshot({
-      path: "screenshots/not-found.png",
+      path: testInfo.outputPath("not-found.png"),
       fullPage: true,
     });
   });
@@ -41,7 +41,7 @@ test.describe("Org access gate", () => {
   test("shows the no-access screen for an existing org the user isn't in", async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
     // User A — creates their own org (auto-created at signup).
     await signUp(page);
     await waitForPostSignupRedirect(page);
@@ -61,7 +61,7 @@ test.describe("Org access gate", () => {
       timeout: 10_000,
     });
     await page.screenshot({
-      path: "screenshots/no-access.png",
+      path: testInfo.outputPath("no-access.png"),
       fullPage: true,
     });
   });
@@ -69,7 +69,7 @@ test.describe("Org access gate", () => {
   test("shows the pending-invite screen and accepting it lands in the org", async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
     // User A — creates org A.
     await signUp(page);
     await waitForPostSignupRedirect(page);
@@ -94,7 +94,7 @@ test.describe("Org access gate", () => {
       timeout: 10_000,
     });
     await page.screenshot({
-      path: "screenshots/pending-invite.png",
+      path: testInfo.outputPath("pending-invite.png"),
       fullPage: true,
     });
 

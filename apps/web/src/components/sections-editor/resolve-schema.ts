@@ -92,8 +92,28 @@ type RawSchema = Record<string, unknown>;
 /** Max `$ref` / `allOf` hops while flattening top-level properties. */
 const MAX_COLLECT_PROPS_DEPTH = 12;
 
-/** Max recursion while building nested field schemas. */
+/**
+ * Max recursion while eagerly materializing a multi-branch union's nested
+ * branch schemas ({@link eagerBranchSchema}). Kept low because that path is the
+ * combinatorial one: a `__SECTION_REF__` selector lists every section, many of
+ * which point back at the same union, so materializing each branch's subtree at
+ * depth explodes. The cycle guard (`seen`) and {@link MAX_ANYOF_EAGER_SCHEMA_BRANCHES}
+ * bound the width; this bounds the depth.
+ */
 const MAX_BUILD_PROPERTY_DEPTH = 8;
+
+/**
+ * Max recursion for plain structural descent — an object's `properties`, an
+ * array's `items`, and inline plain-data unions (`A | B`). Unlike union-branch
+ * materialization above, this path is cycle-free (a `$ref` cycle is caught by
+ * `seen` regardless of depth; inline nesting is a finite tree) and linear in the
+ * schema's node count, so it gets a far higher cap. Without it, deeply-nested
+ * data structures — e.g. a mega-menu of `departmentMenus → menu → submenuColumns
+ * → submenuGroups → submenuGroupItems`, ~5 nested arrays with no `__resolveType`
+ * boundary to reset depth — resolve their leaf `items`/`properties` to
+ * `undefined` past depth 8, and the Content editor renders a blank form panel.
+ */
+const MAX_STRUCTURE_DEPTH = 32;
 
 /**
  * Above this branch count, a block-ref union (e.g. the `__SECTION_REF__`
@@ -842,8 +862,7 @@ export function resolveSchema(
         };
         // allOf is merged as an object earlier, so this block only sees choice unions.
         const isPlainDataUnion =
-          depth < MAX_BUILD_PROPERTY_DEPTH &&
-          nonNull.every(branchIsPlainDataObject);
+          depth < MAX_STRUCTURE_DEPTH && nonNull.every(branchIsPlainDataObject);
 
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");
@@ -1003,12 +1022,10 @@ export function resolveSchema(
       type = "object";
     }
 
-    // Nested properties for object types. Bumped past depth 3 because real
-    // deco sections nest images at depth 4+ (`images[].desktop.src`); the
-    // old cap left those leaves un-resolved and stripped their `format`.
+    // Nested properties for object types (see MAX_STRUCTURE_DEPTH).
     let nestedProperties: Record<string, SchemaProperty> | undefined;
     let requiredKeys: string[] | undefined;
-    if (depth < MAX_BUILD_PROPERTY_DEPTH) {
+    if (depth < MAX_STRUCTURE_DEPTH) {
       const nestedRaw = collectProps(resolved);
       const nestedRequired = asStringArray(nestedRaw.__required);
       if (nestedRequired.length > 0) requiredKeys = nestedRequired;
@@ -1031,7 +1048,7 @@ export function resolveSchema(
     let itemsSchema: SchemaProperty | undefined;
     if (
       (type === "array" || resolved.type === "array") &&
-      depth < MAX_BUILD_PROPERTY_DEPTH
+      depth < MAX_STRUCTURE_DEPTH
     ) {
       let rawItems = resolved.items as RawSchema | undefined;
       if (rawItems) {

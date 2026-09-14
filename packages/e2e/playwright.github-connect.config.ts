@@ -2,8 +2,8 @@ import { generateKeyPairSync } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 import base from "./playwright.config";
 
-// This key belongs to no registered app. These tests stop at redirects and
-// never exchange codes or mint installation tokens with GitHub.
+// This key belongs to no registered app. GitHub API requests go to the local
+// fixture; OAuth redirects are checked without authorizing a real account.
 const privateKey = generateKeyPairSync("rsa", {
   modulusLength: 2048,
   privateKeyEncoding: { type: "pkcs8", format: "pem" },
@@ -28,6 +28,8 @@ export default defineConfig({
       ...server.env,
       ...(server.cwd === "../../apps/api"
         ? {
+            ENCRYPTION_KEY: "github-connect-e2e-encryption-key",
+            GITHUB_OAUTH_TOKEN_URL: `http://localhost:${process.env.GITHUB_STUB_PORT ?? "4102"}/login/oauth/access_token`,
             GITHUB_APP_ID: "1",
             GITHUB_APP_SLUG: "studio-e2e",
             GITHUB_APP_CLIENT_ID: "Iv1.studio-e2e",

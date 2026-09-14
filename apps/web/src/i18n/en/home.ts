@@ -9,6 +9,11 @@ export const home = {
   "home.orgHome.greetingAfternoonBare": "Good afternoon!",
   "home.orgHome.greetingEveningBare": "Good evening!",
   "home.orgHome.searchPlaceholder": "Search projects, chats and tasks\u2026",
+  "home.orgHome.trainingEyebrow": "CMS training",
+  "home.orgHome.trainingTitle": "Learn to use the Site Editor",
+  "home.orgHome.trainingDescription":
+    "A short video playlist to help you and your team get the most out of the CMS.",
+  "home.orgHome.trainingThumbnailAlt": "deco CMS training playlist",
   "home.projects.heading": "Projects",
   "home.projects.seeAll": "See all",
   "home.projectFeed.heading": "Feed",

@@ -1,5 +1,13 @@
+/**
+ * Everything the project's views need, once.
+ *
+ * State and writers for the Views card: which views this project can open,
+ * which are pinned, and where it lands. The renderer stays dumb, and the hook
+ * is called ONCE by the settings view — two copies would each stage their own
+ * optimistic revision.
+ */
+
 import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
-import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { KEYS } from "@/lib/query-keys";
@@ -10,39 +18,11 @@ import {
   normalizePanelSegment,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { useT } from "@/i18n/use-t.ts";
-import { Card, CardContent } from "@decocms/ui/components/card.tsx";
-import { Input } from "@decocms/ui/components/input.tsx";
-import { Label } from "@decocms/ui/components/label.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
-import { Switch } from "@decocms/ui/components/switch.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCP } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
-import {
-  BarChartSquare02,
-  CheckDone01,
-  Columns03,
-  Globe02,
-  Home02,
-  Image01,
-  Lightning01,
-  Monitor01,
-  Server01,
-} from "@untitledui/icons";
-import { SimpleIconPicker } from "../../components/simple-icon-picker";
-import type { VirtualMcpFormReturn } from "./types";
+import type { VirtualMcpFormReturn } from "../types";
+import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import {
   availableProjectSidebarViews,
@@ -77,14 +57,14 @@ interface UITool {
   resourceUri: string;
 }
 
-interface PinnedView {
+export interface PinnedView {
   connectionId: string;
   toolName: string;
   label: string;
   icon?: string | null;
 }
 
-interface ConnectionWithTools {
+export interface ConnectionWithTools {
   fetchOk: boolean;
   id: string;
   title: string;
@@ -92,20 +72,9 @@ interface ConnectionWithTools {
   uiTools: UITool[];
 }
 
-function SidebarViewIcon({ viewId }: { viewId: ProjectSidebarViewId }) {
-  if (viewId === "overview") return <Home02 size={16} />;
-  if (viewId === "reports") return <BarChartSquare02 size={16} />;
-  if (viewId === "board") return <Columns03 size={16} />;
-  if (viewId === "site-editor") return <Monitor01 size={16} />;
-  if (viewId === "assets") return <Image01 size={16} />;
-  if (viewId === "hosting") return <Server01 size={16} />;
-  if (viewId === "e2e") return <CheckDone01 size={16} />;
-  if (viewId === "analytics") return <BarChartSquare02 size={16} />;
-  if (viewId === "cdn") return <Globe02 size={16} />;
-  return <Lightning01 size={16} />;
-}
+export type ProjectViews = ReturnType<typeof useProjectViews>;
 
-export function LayoutTabContent({
+export function useProjectViews({
   virtualMcpId,
   form,
   flushAndSave,
@@ -116,6 +85,7 @@ export function LayoutTabContent({
 }) {
   const t = useT();
   const studio = useStudioTools();
+  const { openPanel } = usePanelNavigate();
 
   const virtualMcp = useVirtualMCP(virtualMcpId);
   const nativeViews = useProjectNativeViewPresence(virtualMcp);
@@ -183,9 +153,11 @@ export function LayoutTabContent({
     ...DESTINATION_MAIN_VIEWS,
   ]);
 
-  // Layout state lives in the parent form under metadata.ui.{pinnedViews, layout}.
-  // form.watch subscribes the component to changes from any source — direct user
-  // edits, the orphan-pin reconciliation below, or a server refetch.
+  /**
+   * Layout state lives in the parent form under metadata.ui.{pinnedViews, layout}.
+   * form.watch subscribes the component to changes from any source — direct user
+   * edits, the orphan-pin reconciliation below, or a server refetch.
+   */
   const pinnedViews = form.watch("metadata.ui.pinnedViews") ?? [];
   const layoutMeta = form.watch("metadata.ui.layout") ?? null;
   const currentDefaultMain = layoutMeta?.defaultMainView ?? null;
@@ -197,9 +169,11 @@ export function LayoutTabContent({
     }),
     form.watch("metadata.sidebarViewsVersion"),
   );
-  // A Settings panel can remount while its previous instance is still saving.
-  // Pending edits and the item cache outlive that form, so they remain the
-  // switch authority instead of stale remounted defaults.
+  /**
+   * A Settings panel can remount while its previous instance is still saving.
+   * Pending edits and the item cache outlive that form, so they remain the
+   * switch authority instead of stale remounted defaults.
+   */
   const sidebarViews =
     pendingSidebarViews ??
     (virtualMcp
@@ -210,8 +184,10 @@ export function LayoutTabContent({
       : formSidebarViews);
   /** No main view: the chat is the whole workspace, so its switch is forced on
    *  and locked. This was the old `chat` main view, which no longer exists. */
-  // Convert the stored {type, id, toolName} object into the string composite
-  // key used by the <Select> UI. Legacy tab types fold into "settings".
+  /**
+   * Convert the stored {type, id, toolName} object into the string composite
+   * key used by the <Select> UI. Legacy tab types fold into "settings".
+   */
   const defaultMainView = (() => {
     /** Chat is retired as a main view. An agent still stored on it — or on
      *  nothing — selects no option, so the trigger shows its placeholder rather
@@ -265,10 +241,12 @@ export function LayoutTabContent({
     );
   };
 
-  // Reconcile orphaned pinned views once tool data is available.
-  // Drop pins whose connection is detached from the agent, or which fetched
-  // OK but no longer expose the pinned tool. Pins for attached connections
-  // that failed to fetch are kept to survive transient errors.
+  /**
+   * Reconcile orphaned pinned views once tool data is available.
+   * Drop pins whose connection is detached from the agent, or which fetched
+   * OK but no longer expose the pinned tool. Pins for attached connections
+   * that failed to fetch are kept to survive transient errors.
+   */
   const reconciledRef = useRef(false);
   if (
     connectionsWithTools &&
@@ -297,8 +275,10 @@ export function LayoutTabContent({
     if (validPinned.length !== pinnedViews.length) {
       writePinned(validPinned);
 
-      // If the default view was an ext-app that got removed, use the permanent
-      // Settings view instead.
+      /**
+       * If the default view was an ext-app that got removed, use the permanent
+       * Settings view instead.
+       */
       if (
         currentDefaultMain?.type === "ext-apps" &&
         !validPinned.some(
@@ -404,18 +384,18 @@ export function LayoutTabContent({
     if (nextDefaultMain !== currentDefaultMain) {
       writeLayout({ defaultMainView: nextDefaultMain });
     }
-    // The parent form subscription coalesces rapid adjacent switch changes and
-    // flushes the latest value on unmount. Starting a full metadata write for
-    // every click would let out-of-order responses revert the newest choice.
+    /**
+     * The parent form subscription coalesces rapid adjacent switch changes and
+     * flushes the latest value on unmount. Starting a full metadata write for
+     * every click would let out-of-order responses revert the newest choice.
+     */
   };
 
-  const noConnections = connectionIds.length === 0;
-  const noInteractiveTools =
-    connectionsWithTools && connectionsData.length === 0;
-
-  // Preview is available whenever the agent has a clonable source —
-  // either a Start Website template or a connected GitHub repo — matching
-  // the gating in `use-main-panel-tabs.ts`.
+  /**
+   * Preview is available whenever the agent has a clonable source —
+   * either a Start Website template or a connected GitHub repo — matching
+   * the gating in `use-main-panel-tabs.ts`.
+   */
   const hasClonableSource = agentHasClonableSource(virtualMcp?.metadata);
   const sidebarViewPresence = projectSidebarViewPresence(
     hasClonableSource,
@@ -449,8 +429,10 @@ export function LayoutTabContent({
    */
   const defaultMainOptions: { value: string; label: string }[] = [];
   for (const viewId of enabledSidebarViews) {
-    // Pinned app rows sit before Automations in the actual sidebar, so append
-    // that final project row after the pinned-view loop below.
+    /**
+     * Pinned app rows sit before Automations in the actual sidebar, so append
+     * that final project row after the pinned-view loop below.
+     */
     if (viewId === "automations") continue;
     defaultMainOptions.push({
       value: viewId,
@@ -474,229 +456,32 @@ export function LayoutTabContent({
     label: t("virtualMcp.layoutTabContent.settings"),
   });
 
-  const hasSidebarContent =
-    availableSidebarViews.length > 0 ||
-    connectionsData.length > 0 ||
-    noConnections ||
-    noInteractiveTools;
+  const openView = (tabId: string) =>
+    openPanel(tabId, { virtualmcpid: virtualMcpId });
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-medium text-foreground">
-          {t("virtualMcp.layoutTabContent.layout")}
-        </h2>
-      </div>
-      <Card className="p-6 gap-5">
-        <CardContent className="p-0 space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-0.5 min-w-0">
-              <Label className="font-normal text-foreground">
-                {t("virtualMcp.layoutTabContent.mainView")}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {t("virtualMcp.layoutTabContent.mainViewDescription")}
-              </p>
-            </div>
-            <Select
-              value={defaultMainView}
-              onValueChange={handleDefaultMainViewChange}
-            >
-              <SelectTrigger className="w-44 h-8 text-sm capitalize shrink-0">
-                <SelectValue
-                  placeholder={t("virtualMcp.layoutTabContent.noMainView")}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {defaultMainOptions.map((opt) => (
-                  <SelectItem
-                    key={opt.value}
-                    value={opt.value}
-                    className="capitalize"
-                  >
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-0.5 min-w-0">
-              <Label className="font-normal text-foreground">
-                {t("virtualMcp.layoutTabContent.showChat")}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {t("virtualMcp.layoutTabContent.showChatDescription")}
-              </p>
-            </div>
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <span className="shrink-0">
-                  <Switch
-                    checked={noMainView ? true : chatDefaultOpen}
-                    disabled={noMainView}
-                    onCheckedChange={(checked) => {
-                      writeLayout({ chatDefaultOpen: checked });
-                      flushAndSave();
-                    }}
-                  />
-                </span>
-              </TooltipTrigger>
-              {noMainView && (
-                <TooltipContent side="top">
-                  {t("virtualMcp.layoutTabContent.chatAlwaysShown")}
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </div>
-        </CardContent>
-
-        {hasSidebarContent && (
-          <>
-            <div className="border-t border-border -mx-6" />
-            <CardContent className="p-0 space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5 min-w-0">
-                  <Label className="font-normal text-foreground">
-                    {t("virtualMcp.layoutTabContent.sidebarViews")}
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {t("virtualMcp.layoutTabContent.sidebarViewsDescription")}
-                  </p>
-                </div>
-              </div>
-              {availableSidebarViews.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  {availableSidebarViews.map((viewId) => {
-                    const switchId = `sidebar-view-${viewId}`;
-                    return (
-                      <div
-                        key={viewId}
-                        className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-border"
-                      >
-                        <Label
-                          htmlFor={switchId}
-                          className="min-w-0 flex flex-1 items-center gap-2 font-normal text-foreground"
-                        >
-                          <SidebarViewIcon viewId={viewId} />
-                          <span className="truncate">
-                            {sidebarViewLabels[viewId]}
-                          </span>
-                        </Label>
-                        <Switch
-                          id={switchId}
-                          checked={sidebarViews.includes(viewId)}
-                          onCheckedChange={(enabled) =>
-                            handleSidebarViewChange(viewId, enabled)
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {availableSidebarViews.length > 0 &&
-                (noConnections ||
-                  noInteractiveTools ||
-                  connectionsData.length > 0) && (
-                  <div className="border-t border-border -mx-6" />
-                )}
-              {noConnections && (
-                <p className="text-xs text-muted-foreground">
-                  {t("virtualMcp.layoutTabContent.addConnectionMessage")}
-                </p>
-              )}
-              {noInteractiveTools && !noConnections && (
-                <p className="text-xs text-muted-foreground">
-                  {t("virtualMcp.layoutTabContent.noInteractiveTools")}
-                </p>
-              )}
-              {connectionsData.length > 0 && (
-                <div className="space-y-4 pt-1">
-                  {connectionsData.map((conn, connIdx) => (
-                    <div key={conn.id}>
-                      {connIdx > 0 && (
-                        <div className="border-t border-border -mx-6 mb-4" />
-                      )}
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <IntegrationIcon
-                          icon={conn.icon}
-                          name={conn.title}
-                          size="xs"
-                          className="shrink-0"
-                        />
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {conn.title}
-                        </span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {conn.uiTools.map((tool) => {
-                          const pinned = pinnedViews.some(
-                            (v) =>
-                              v.connectionId === conn.id &&
-                              v.toolName === tool.name,
-                          );
-                          const pinnedView = pinnedViews.find(
-                            (v) =>
-                              v.connectionId === conn.id &&
-                              v.toolName === tool.name,
-                          );
-                          return (
-                            <div
-                              key={tool.name}
-                              className={cn(
-                                "flex items-center justify-between gap-3 px-3 py-2 rounded-lg border transition-colors",
-                                pinned
-                                  ? "bg-accent/40 border-border"
-                                  : "bg-transparent border-border",
-                              )}
-                            >
-                              <div className="min-w-0 flex-1 flex items-center gap-2">
-                                <SimpleIconPicker
-                                  value={pinnedView?.icon ?? null}
-                                  onChange={(icon) =>
-                                    handleIconChange(conn.id, tool.name, icon)
-                                  }
-                                  disabled={!pinned}
-                                />
-                                <Input
-                                  value={
-                                    pinned && pinnedView
-                                      ? pinnedView.label
-                                      : (tool.title ?? toTitleCase(tool.name))
-                                  }
-                                  onChange={(e) =>
-                                    handleLabelChange(
-                                      conn.id,
-                                      tool.name,
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={handleLabelBlur}
-                                  className="h-7 text-sm w-40"
-                                  disabled={!pinned}
-                                  readOnly={!pinned}
-                                />
-                              </div>
-                              <Switch
-                                checked={pinned}
-                                onCheckedChange={() =>
-                                  handleTogglePin(conn.id, tool.name)
-                                }
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </>
-        )}
-      </Card>
-    </div>
-  );
+  return {
+    /** Every view this project can open, in sidebar order. */
+    projectViews: availableSidebarViews,
+    labels: sidebarViewLabels,
+    pinned: (viewId: ProjectSidebarViewId) => sidebarViews.includes(viewId),
+    isMainView: (value: string) => defaultMainView === value,
+    defaultMainView,
+    defaultMainOptions,
+    noMainView,
+    chatDefaultOpen,
+    connectionsData,
+    pinnedAppViews: pinnedViews,
+    openView,
+    togglePin: (viewId: ProjectSidebarViewId, next: boolean) =>
+      handleSidebarViewChange(viewId, next),
+    setMainView: handleDefaultMainViewChange,
+    setChatDefaultOpen: (checked: boolean) => {
+      writeLayout({ chatDefaultOpen: checked });
+      flushAndSave();
+    },
+    toggleAppViewPin: handleTogglePin,
+    setAppViewIcon: handleIconChange,
+    setAppViewLabel: handleLabelChange,
+    commitAppViewLabel: handleLabelBlur,
+  };
 }

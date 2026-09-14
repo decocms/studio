@@ -24,13 +24,3 @@ export function useBaseBranch(
     }).data?.base ?? "main"
   );
 }
-
-/**
- * Per-agent "Draft & Releases mode" flag. Off (default) keeps the classic
- * branch/PR picker and post-publish behavior; on gates the drafts UX.
- */
-export function draftsModeEnabled(
-  virtualMcp: VirtualMCPEntity | null | undefined,
-): boolean {
-  return virtualMcp?.metadata?.draftsMode === true;
-}

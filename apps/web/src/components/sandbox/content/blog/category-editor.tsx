@@ -87,12 +87,16 @@ export function CategoryEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "categories");
 
-  const [category, setCategory, syncCategory] = useAutosave(initial, (next) => {
-    save.mutate({
-      blockKey,
-      data: buildBlogBlock(blockKey, "categories", next),
-    });
-  });
+  const [category, setCategory, syncCategory] = useAutosave(
+    initial,
+    (next) => {
+      save.mutate({
+        blockKey,
+        data: buildBlogBlock(blockKey, "categories", next),
+      });
+    },
+    { isSaving: save.isPending },
+  );
 
   const setField = (key: string, value: unknown) =>
     setCategory({ ...category, [key]: value });

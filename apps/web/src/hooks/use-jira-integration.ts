@@ -117,3 +117,16 @@ export function useSetJiraAutomation() {
       queryClient.invalidateQueries({ queryKey: KEYS.jiraAutomations(org.id) }),
   });
 }
+
+/**
+ * Run the agent on one issue, now — the way a rule is tried before it is
+ * turned on for a whole column. Needs no rule and works with the integration
+ * disabled, so nothing has to move on the real board to see what it does.
+ */
+export function useStartJiraRun() {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: (input: StudioToolIO["JIRA_RUN_START"]["input"]) =>
+      studio.call("JIRA_RUN_START", input),
+  });
+}

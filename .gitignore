@@ -99,6 +99,8 @@ apps/web/ct/playwright/.cache/
 apps/web/screenshots/
 packages/e2e/test-results/
 packages/e2e/playwright-report/
+packages/e2e/screenshots/
+.github/screenshots/
 
 # Generated docs (root-level only, not apps/docs/). Use /docs/* not /docs
 # so we can un-ignore specific subdirs below — git won't traverse into an

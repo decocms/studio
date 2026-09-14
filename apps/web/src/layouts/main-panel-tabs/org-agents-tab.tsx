@@ -9,6 +9,12 @@
  *  (`AgentListGroup`), not the Settings › Agents card grid: this page exists to
  *  get you somewhere, that one to manage what you have. */
 
+import { ChatInput } from "@/components/chat/input";
+import {
+  ChatPrefsProvider,
+  DetachedChatContext,
+} from "@/components/chat/context";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { Suspense, useState, type ReactNode } from "react";
 import { SearchLg } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -25,6 +31,7 @@ import {
   useOrgTasksSuspense,
 } from "@/components/org-home/project-feed";
 import { ProjectRoster } from "@/components/org-home/project-roster";
+import { TrainingCard } from "@/components/org-home/training-card";
 import { buildProjectIndex } from "@/lib/project-index";
 import { useCapability } from "@/hooks/use-capability";
 import { scopableProjects } from "@/hooks/use-project-scope";
@@ -170,6 +177,7 @@ function OrgHomeBody({
 
 export function OrgAgentsTab() {
   const t = useT();
+  const taskIntakeEnabled = useOrgFlag("home_task_intake_enabled");
   const { data: session } = authClient.useSession();
 
   const [githubPickerOpen, setGithubPickerOpen] = useState(false);
@@ -210,13 +218,26 @@ export function OrgAgentsTab() {
         >
           <div className="flex flex-col items-center gap-12 text-center">
             <ConnectPill />
+            {/* Shown only for orgs that own a legacy site — the training is about
+                that CMS. Self-hides via useOrgHasSite, so it costs nothing here. */}
+            <TrainingCard />
             {/* Greeting and search are one unit; the pill is a separate offer,
                 so the space between them is larger than the space within. */}
             <div className="flex w-full flex-col items-center gap-5">
               <h1 className="text-3xl font-medium tracking-tight text-foreground">
                 {name ? t(greeting.named, { name }) : t(greeting.bare)}
               </h1>
-              <HomeSearch />
+              {taskIntakeEnabled ? (
+                <Suspense fallback={<OrgHomeBodyFallback />}>
+                  <DetachedChatContext>
+                    <ChatPrefsProvider>
+                      <ChatInput homeTaskComposer />
+                    </ChatPrefsProvider>
+                  </DetachedChatContext>
+                </Suspense>
+              ) : (
+                <HomeSearch />
+              )}
             </div>
           </div>
 

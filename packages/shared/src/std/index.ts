@@ -10,3 +10,5 @@ export { exponentialBackoffWithJitter } from "./backoff";
 // just `delay`. Prefer this over `Bun.sleep` (Bun-only) or a hand-rolled
 // `new Promise(r => setTimeout(r, ms))`.
 export { delay as sleep } from "./delay";
+
+export { mapBounded } from "./map-bounded";

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { type IssueForPrompt, renderIssueForPrompt } from "./issue-prompt";
 
 const base: IssueForPrompt = {
+  id: "10012",
   key: "EX-12",
   url: "https://example.atlassian.net/browse/EX-12",
   summary: "Fix the checkout button",

@@ -18,7 +18,7 @@ for (const width of [1280, 390]) {
       }),
     ).toBeVisible();
     await expect(
-      dialog.getByText("Connect GitHub", { exact: true }),
+      dialog.getByText("Add GitHub account or organization", { exact: true }),
     ).toBeVisible();
     await expect(dialog.getByLabel("Repository URL")).toHaveCount(0);
     await page.screenshot({

@@ -1,3 +1,4 @@
+import { mapBounded } from "@decocms/shared/std";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
@@ -113,27 +114,6 @@ function countSkippedBlocks(n: number): void {
     unit: "{blocks}",
   });
   skippedBlocksCounter.add(n);
-}
-
-export async function mapBounded<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let next = 0;
-  const workers = Array.from(
-    { length: Math.min(limit, items.length) },
-    async () => {
-      for (;;) {
-        const i = next++;
-        if (i >= items.length) return;
-        out[i] = await fn(items[i] as T);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return out;
 }
 
 /** Repo-relative directory holding block sources for a (possibly nested) project. */

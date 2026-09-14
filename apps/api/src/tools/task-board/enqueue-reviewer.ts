@@ -779,7 +779,7 @@ async function enqueueReviewerForTask(
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab; Bitbucket has no CLI — use the REST API with \`curl\` and \`$BITBUCKET_TOKEN\`) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
             pinnedRepo

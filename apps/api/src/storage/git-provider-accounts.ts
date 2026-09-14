@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 import type {
   GitAuthKind,
   GitProviderAccount,
@@ -26,9 +26,12 @@ type Row = {
   login: string;
   avatar_url: string | null;
   installation_id: string | number | null;
+  installation_authorized_by: string | null;
+  installation_repository_ids: number[] | null;
   credential_connection_id: string | null;
   status: "active" | "revoked";
   created_by: string | null;
+  connected_by_name?: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -36,6 +39,10 @@ type Row = {
 /** Entity plus the server-only bridge to a legacy `mcp-github` connection. */
 export interface GitProviderAccountRecord extends GitProviderAccount {
   credentialConnectionId: string | null;
+  connectedBy: { name: string } | null;
+  installationAuthorizedBy: string | null;
+  /** Null grants the whole installation; a list grants only those repositories. */
+  installationRepositoryIds: number[] | null;
 }
 
 function toEntity(row: Row): GitProviderAccountRecord {
@@ -54,7 +61,10 @@ function toEntity(row: Row): GitProviderAccountRecord {
     avatarUrl: row.avatar_url,
     installationId: Number.isFinite(installationId) ? installationId : null,
     status: row.status,
+    installationAuthorizedBy: row.installation_authorized_by ?? null,
+    installationRepositoryIds: row.installation_repository_ids ?? null,
     credentialConnectionId: row.credential_connection_id,
+    connectedBy: row.connected_by_name ? { name: row.connected_by_name } : null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -69,6 +79,8 @@ export interface UpsertGitProviderAccountParams {
   login: string;
   avatarUrl?: string | null;
   installationId?: number | null;
+  installationAuthorizedBy?: string | null;
+  installationRepositoryIds?: number[] | null;
   createdBy?: string | null;
 }
 
@@ -96,6 +108,10 @@ export class GitProviderAccountStorage {
         login: params.login,
         avatar_url: params.avatarUrl ?? null,
         installation_id: params.installationId ?? null,
+        installation_authorized_by: params.installationAuthorizedBy ?? null,
+        installation_repository_ids: params.installationRepositoryIds
+          ? JSON.stringify(params.installationRepositoryIds)
+          : null,
         credential_connection_id: null,
         status: "active",
         created_by: params.createdBy ?? null,
@@ -109,9 +125,14 @@ export class GitProviderAccountStorage {
             login: params.login,
             avatar_url: params.avatarUrl ?? null,
             installation_id: params.installationId ?? null,
+            installation_authorized_by: params.installationAuthorizedBy ?? null,
+            // Reconnecting replaces the workspace grant, including an old unrestricted one.
+            installation_repository_ids: params.installationRepositoryIds
+              ? JSON.stringify(params.installationRepositoryIds)
+              : null,
             credential_connection_id: null,
             status: "active",
-            updated_at: now,
+            updated_at: sql<Date>`GREATEST(${now}, git_provider_accounts.updated_at + interval '1 millisecond')`,
           }),
       )
       .returningAll()
@@ -145,11 +166,17 @@ export class GitProviderAccountStorage {
   async listByOrg(organizationId: string): Promise<GitProviderAccountRecord[]> {
     const rows = await this.db
       .selectFrom("git_provider_accounts")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .orderBy("created_at", "asc")
+      .leftJoin(
+        "user as connector",
+        "connector.id",
+        "git_provider_accounts.created_by",
+      )
+      .selectAll("git_provider_accounts")
+      .select("connector.name as connected_by_name")
+      .where("git_provider_accounts.organization_id", "=", organizationId)
+      .orderBy("git_provider_accounts.created_at", "asc")
       .execute();
-    return (rows as Row[]).map(toEntity);
+    return rows.map(toEntity);
   }
 
   async findByExternalId(params: {

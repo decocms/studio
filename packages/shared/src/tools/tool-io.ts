@@ -119,6 +119,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -150,6 +151,7 @@ export interface StudioToolIO {
         | { title: string; url: string; icon: string }[]
         | undefined;
       enabled_plugins?: string[] | undefined;
+      coding_agent_mcp_excluded?: string[] | undefined;
       registry_config?:
         | {
             registries: Record<string, { enabled: boolean }>;
@@ -195,6 +197,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -224,6 +227,7 @@ export interface StudioToolIO {
         | null
         | undefined;
       enabled_plugins?: string[] | null | undefined;
+      coding_agent_mcp_excluded?: string[] | null | undefined;
       registry_config?:
         | {
             registries: Record<string, { enabled: boolean }>;
@@ -271,6 +275,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -292,6 +297,10 @@ export interface StudioToolIO {
         | null
         | undefined;
     };
+  };
+  ORGANIZATION_HAS_SITE: {
+    input: { [x: string]: never };
+    output: { hasSite: boolean };
   };
   NOTIFICATION_LIST: {
     input: { cursor?: string | undefined; limit?: number | undefined };
@@ -2222,7 +2231,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2484,7 +2492,6 @@ export interface StudioToolIO {
                   }[]
                 | null
                 | undefined;
-              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
               enabled_plugins?: string[] | null | undefined;
             }
@@ -2675,7 +2682,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -2907,7 +2913,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3130,7 +3135,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3357,7 +3361,6 @@ export interface StudioToolIO {
                   }[]
                 | null
                 | undefined;
-              draftsMode?: boolean | null | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
               enabled_plugins?: string[] | null | undefined;
             }
@@ -3556,7 +3559,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -3777,7 +3779,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -4868,7 +4869,6 @@ export interface StudioToolIO {
               }[]
             | null
             | undefined;
-          draftsMode?: boolean | null | undefined;
           fastPreviewInPlace?: boolean | null | undefined;
           sandboxMap?:
             | Record<
@@ -5504,11 +5504,23 @@ export interface StudioToolIO {
     input: { jiraStatus: string };
     output: { removed: boolean };
   };
+  JIRA_RUN_START: {
+    input: { issueKey: string; prompt?: string | null | undefined };
+    output: {
+      issueKey: string;
+      issueUrl: string;
+      itemId: string;
+      supersededThreadIds: string[];
+    };
+  };
   JIRA_ISSUE_GET: {
     input: { [x: string]: never };
     output: { key: string; url: string; status: string; markdown: string };
   };
-  JIRA_COMMENT_ADD: { input: { body: string }; output: { commentId: string } };
+  JIRA_COMMENT_ADD: {
+    input: { body: string };
+    output: { commentId: string; embeddedImages: string[] };
+  };
   JIRA_ISSUE_TRANSITION: {
     input: { toStatus: string };
     output: { status: string };
@@ -5521,6 +5533,15 @@ export interface StudioToolIO {
       expiresAt: string;
       command: string;
     };
+  };
+  JIRA_REMOTE_LINK_ADD: {
+    input: {
+      url: string;
+      title: string;
+      summary?: string | undefined;
+      key?: string | undefined;
+    };
+    output: { linkId: number };
   };
   LIST_OBJECTS: {
     input: {
@@ -7633,6 +7654,7 @@ export interface StudioToolIO {
         installPath: string | null;
       };
       gitlab: { oauthHosts: string[]; connectPath: string | null };
+      bitbucket: { oauthHosts: string[]; connectPath: string | null };
     };
   };
   GIT_ACCOUNT_LIST: {
@@ -7641,7 +7663,7 @@ export interface StudioToolIO {
       accounts: {
         id: string;
         organizationId: string;
-        type: "github" | "gitlab";
+        type: "github" | "gitlab" | "bitbucket";
         host: string;
         authKind: "token" | "oauth" | "github_app";
         externalAccountId: string;
@@ -7652,16 +7674,21 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        connectedBy: { name: string } | null;
       }[];
     };
   };
   GIT_ACCOUNT_CONNECT_TOKEN: {
-    input: { type: "github" | "gitlab"; host: string; token: string };
+    input: {
+      type: "github" | "gitlab" | "bitbucket";
+      host: string;
+      token: string;
+    };
     output: {
       account: {
         id: string;
         organizationId: string;
-        type: "github" | "gitlab";
+        type: "github" | "gitlab" | "bitbucket";
         host: string;
         authKind: "token" | "oauth" | "github_app";
         externalAccountId: string;
@@ -7672,6 +7699,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        connectedBy: { name: string } | null;
       };
     };
   };
@@ -7683,7 +7711,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         accountId: string | null;
-        provider: "github" | "gitlab";
+        provider: "github" | "gitlab" | "bitbucket";
         host: string;
         path: string;
         externalId: string | null;
@@ -7705,7 +7733,11 @@ export interface StudioToolIO {
     };
     output: {
       repositories: {
-        ref: { provider: "github" | "gitlab"; host: string; path: string };
+        ref: {
+          provider: "github" | "gitlab" | "bitbucket";
+          host: string;
+          path: string;
+        };
         externalId: string;
         defaultBranch: string | null;
         webUrl: string;
@@ -7723,7 +7755,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         accountId: string | null;
-        provider: "github" | "gitlab";
+        provider: "github" | "gitlab" | "bitbucket";
         host: string;
         path: string;
         externalId: string | null;
@@ -7925,7 +7957,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("task" | "thread")[] | undefined;
+      types?: ("connection" | "task" | "thread")[] | undefined;
     };
     output: {
       items: (
@@ -7948,6 +7980,13 @@ export interface StudioToolIO {
             key: string | null;
             status: string | null;
             repo: string | null;
+          }
+        | {
+            type: "connection";
+            id: string;
+            title: string;
+            icon: string | null;
+            slug: string | null;
           }
       )[];
       totalCount: number;

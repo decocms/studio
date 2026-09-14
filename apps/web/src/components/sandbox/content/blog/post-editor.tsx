@@ -100,12 +100,16 @@ export function PostEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
-  const [post, setPost] = useAutosave(initial, (next) => {
-    save.mutate({
-      blockKey,
-      data: buildBlogBlock(blockKey, "posts", stampPostModified(next)),
-    });
-  });
+  const [post, setPost] = useAutosave(
+    initial,
+    (next) => {
+      save.mutate({
+        blockKey,
+        data: buildBlogBlock(blockKey, "posts", stampPostModified(next)),
+      });
+    },
+    { isSaving: save.isPending },
+  );
 
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
@@ -154,16 +158,14 @@ export function PostEditor({
             type="button"
             variant="outline"
             size="sm"
-            disabled={!previewUrl || hasErrors}
+            disabled={!previewUrl}
             title={
-              hasErrors
-                ? missingLabel
-                : previewUrl
-                  ? t("sandbox.postEditor.previewTooltip")
-                  : t("sandbox.postEditor.previewRequiresSlugAndCategory")
+              previewUrl
+                ? t("sandbox.postEditor.previewTooltip")
+                : t("sandbox.postEditor.previewRequiresSlugAndCategory")
             }
             onClick={() => {
-              if (previewUrl && !hasErrors) {
+              if (previewUrl) {
                 window.open(previewUrl, "_blank", "noopener,noreferrer");
               }
             }}

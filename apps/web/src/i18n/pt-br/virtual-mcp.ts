@@ -109,8 +109,6 @@ export const virtualMcp = {
   "virtualMcp.filesSection.selectSkill": "Selecionar skill",
   "virtualMcp.filesSection.uploadFile": "Enviar arquivo",
   "virtualMcp.layoutTabContent.noMainView": "Sem visão principal",
-  "virtualMcp.layoutTabContent.addConnectionMessage":
-    "Adicione uma conexão acima para configurar visualizações de apps.",
   "virtualMcp.layoutTabContent.automations": "Automações",
   "virtualMcp.layoutTabContent.chatAlwaysShown":
     "O Chat sempre aparece quando é a visualização padrão",
@@ -118,16 +116,33 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.mainView": "Visualização principal",
   "virtualMcp.layoutTabContent.mainViewDescription":
     "O que os usuários veem quando abrem este projeto pela primeira vez.",
-  "virtualMcp.layoutTabContent.noInteractiveTools":
-    "Nenhum dos servidores conectados expõe ferramentas interativas.",
-  "virtualMcp.layoutTabContent.sidebarViews": "Visualizações da barra lateral",
-  "virtualMcp.layoutTabContent.sidebarViewsDescription":
-    "Escolha quais visualizações disponíveis aparecem na barra lateral deste projeto.",
   "virtualMcp.layoutTabContent.settings": "Configurações",
   "virtualMcp.layoutTabContent.showChat": "Mostrar chat",
   "virtualMcp.layoutTabContent.showChatDescription":
     "Exibir Chat no painel lateral junto com a visualização principal.",
   "virtualMcp.layoutTabContent.siteEditor": "Editor do site",
+  "virtualMcp.settings.general.title": "Geral",
+  "virtualMcp.settings.general.description":
+    "Instruções, arquivos anexados e para quem este projeto pode delegar.",
+  "virtualMcp.settings.site.title": "Site e sandbox",
+  "virtualMcp.settings.site.description":
+    "Como as edições chegam ao site e o repositório de onde ele roda.",
+  "virtualMcp.settings.backToSettings": "Configurações",
+  "virtualMcp.settings.groups.advanced": "Avançado",
+  "virtualMcp.settings.connections.title": "Conexões",
+  "virtualMcp.settings.connections.description":
+    "Os servidores MCP que este projeto reúne.",
+  "virtualMcp.settings.views.projectViews": "Visualizações",
+  "virtualMcp.settings.views.open": "Abrir",
+  "virtualMcp.settings.views.pin": "Fixar na barra lateral",
+  "virtualMcp.settings.views.unpin": "Remover da barra lateral",
+  "virtualMcp.settings.views.setMainView":
+    "Definir como visualização principal",
+  "virtualMcp.settings.views.rowActions": "Opções da visualização",
+  "virtualMcp.settings.value.notLinked": "Sem repositório",
+  "virtualMcp.settings.value.connectionOne": "1 conexão",
+  "virtualMcp.settings.value.connectionMany": "{count} conexões",
+  "virtualMcp.settings.value.inSidebar": "{count} na barra lateral",
   "virtualMcp.subAgentsSection.addSubAgent": "Adicionar sub-projeto",
   "virtualMcp.subAgentsSection.anyAgent": "Qualquer projeto",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
@@ -202,9 +217,6 @@ Defina passo a passo como o agente deve tratar as solicitações.
 3. Resumir o resultado e propor próximos passos.
 4. Pedir confirmação antes de fazer qualquer alteração.
 </workflows>`,
-  "virtualMcp.virtualMcp.draftsModeTitle": "Modo Rascunhos & Versões",
-  "virtualMcp.virtualMcp.draftsModeDescription":
-    "Troca a picker de branch/PR por rascunhos nomeados: switcher de versões, produção somente leitura e publicar para produção.",
   "virtualMcp.virtualMcp.publishing": "Publicação",
   "virtualMcp.virtualMcp.publishingDescription":
     "Controle quando as alterações deste projeto podem ser publicadas diretamente, sem revisão por pull request.",

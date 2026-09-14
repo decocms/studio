@@ -117,6 +117,7 @@ describe("Connection Tools", () => {
         orgRepoSyncs: null as never,
         gitProviderAccounts: null as never,
         gitProviderAccountCredentials: null as never,
+        githubConnectFlows: null as never,
         gitProviderOAuthStates: null as never,
         repositories: null as never,
         jiraIntegrations: null as never,

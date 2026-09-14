@@ -27,7 +27,7 @@ import {
   findChangeRequestIn,
 } from "./change-request-extract";
 import { invalidatePrCards } from "./prs-get";
-import { resolveRunTaskTargets, emitTaskBoardUpdated } from "./run-reactions";
+import { resolveRunLinkedTaskIds, emitTaskBoardUpdated } from "./run-reactions";
 
 // Cap on cards sent to the LLM prompt, so a large backlog doesn't inflate cost per PR-open.
 const MAX_OPEN_CARDS_FOR_DECISION = 50;
@@ -235,7 +235,11 @@ export async function reactToPrOpenedForBoard(
   const userId = ctx.auth?.user?.id;
   if (!orgId || !userId || !threadId) return;
   try {
-    const alreadyLinked = await resolveRunTaskTargets(ctx, orgId, threadId);
+    // The UNFILTERED links on purpose: a Jira run's anchor is not a card the
+    // board manages, but its work IS tracked (on the issue). Asking the
+    // filtered question here would read as "nothing tracks this" and open a
+    // visible card for every Jira run's pull request.
+    const alreadyLinked = await resolveRunLinkedTaskIds(ctx, orgId, threadId);
     if (alreadyLinked.length > 0) return;
 
     const pr = findChangeRequestIn(source);

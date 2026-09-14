@@ -4,13 +4,14 @@
  * Two modes, picked by the options union:
  * - installation: Studio's GitHub App is installed on the account and tokens
  *   are minted per call through `GithubAppAuth` — repo-scoped for pushes,
- *   read-only account-wide for listing and reading.
+ *   read-only account-wide for listing and reading. When the account carries a
+ *   partial grant (`repositoryIds`), account-wide means grant-wide: every
+ *   token, and so every listing and read, stops at those repositories.
  * - token: a user OAuth grant or personal access token supplied by a
  *   `TokenSource`; the same token serves every call.
  */
 
 import {
-  apiBaseUrlFor,
   type RepoRef,
   repoName,
   splitOwnerName,
@@ -29,6 +30,7 @@ import {
 } from "../types";
 import type { GithubAppAuth } from "./app-auth";
 import {
+  githubApiBaseUrl,
   type GithubFetchInit,
   githubFailure,
   githubFetch,
@@ -36,7 +38,16 @@ import {
 } from "./http";
 
 export type GithubProviderClientOptions =
-  | { host: string; installationId: number; appAuth: GithubAppAuth }
+  | {
+      host: string;
+      installationId: number;
+      /**
+       * The repositories of the installation this Studio organization was
+       * granted, by id. Null is the whole installation.
+       */
+      repositoryIds?: number[] | null;
+      appAuth: GithubAppAuth;
+    }
   | { host: string; tokenSource: TokenSource };
 
 /** Enough to list, inspect and read files in every repository of the installation. */
@@ -141,11 +152,15 @@ export class GithubProviderClient implements GitProviderClient {
   readonly host: string;
   private readonly apiBaseUrl: string;
   private readonly options: GithubProviderClientOptions;
+  /** Repository path → id, for the grant check. Per client, so per request. */
+  private readonly grantedIds = new Map<string, number>();
 
   constructor(options: GithubProviderClientOptions) {
     this.options = options;
     this.host = options.host.toLowerCase();
-    this.apiBaseUrl = apiBaseUrlFor("github", options.host);
+    // `githubApiBaseUrl`, not the bare host mapping: it is the one that honours
+    // `GITHUB_API_BASE_URL`, which is how e2e keeps this client off github.com.
+    this.apiBaseUrl = githubApiBaseUrl(options.host);
   }
 
   async tokenForRepo(
@@ -154,10 +169,18 @@ export class GithubProviderClient implements GitProviderClient {
   ): Promise<GitAccessToken> {
     const options = this.options;
     if ("appAuth" in options) {
+      const granted = options.repositoryIds ?? null;
       const minted = await options.appAuth.installationToken(
         options.installationId,
         {
-          repositories: [repoName(repo)],
+          // A name is enough when the whole installation is Studio's to use.
+          // Under a partial grant it is not: the installation may well cover
+          // repositories nobody here administers, and GitHub would mint for
+          // them just as readily. So the repository is resolved through the
+          // grant first and the token asks for that id and no other.
+          ...(granted
+            ? { repositoryIds: [await this.grantedRepositoryId(repo, granted)] }
+            : { repositories: [repoName(repo)] }),
           permissions: GITHUB_SCOPED_PERMISSIONS,
           bufferMs: opts.bufferMs,
           forceRefresh: opts.forceRefresh,
@@ -178,6 +201,9 @@ export class GithubProviderClient implements GitProviderClient {
       const minted = await options.appAuth.installationToken(
         options.installationId,
         {
+          ...(options.repositoryIds
+            ? { repositoryIds: options.repositoryIds }
+            : {}),
           permissions: ACCOUNT_READ_PERMISSIONS,
           bufferMs: opts.bufferMs,
           forceRefresh: opts.forceRefresh,
@@ -190,6 +216,33 @@ export class GithubProviderClient implements GitProviderClient {
       };
     }
     return this.sourceToken(options.tokenSource, opts);
+  }
+
+  /**
+   * The id of `repo` within a partial grant, or a 403.
+   *
+   * The lookup runs on the account token, which is itself minted for the
+   * granted ids, so a repository outside the grant answers 404 here and never
+   * reaches the mint. The id is memoized: `archiveTarball` asks twice when its
+   * first token turns out to be dead.
+   */
+  private async grantedRepositoryId(
+    repo: RepoRef,
+    granted: number[],
+  ): Promise<number> {
+    const key = repo.path.toLowerCase();
+    const memoized = this.grantedIds.get(key);
+    if (memoized !== undefined) return memoized;
+    const id = Number((await this.getRepo(repo))?.externalId);
+    if (!Number.isSafeInteger(id) || !granted.includes(id)) {
+      throw new GitProviderError({
+        provider: "github",
+        status: 403,
+        message: `${repo.path} is outside what this GitHub account authorized for Studio. Ask someone who administers it to connect it.`,
+      });
+    }
+    this.grantedIds.set(key, id);
+    return id;
   }
 
   private async sourceToken(

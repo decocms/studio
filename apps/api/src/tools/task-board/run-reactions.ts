@@ -33,6 +33,7 @@ import type { OrganizationBillingStorage } from "@/storage/organization-billing"
 import { TERMINAL_THREAD_STATUSES } from "@/storage/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import { findChangeRequestIn } from "./change-request-extract";
+import { emailReporterPrReady } from "./pr-ready-email";
 import { invalidatePrCards } from "./prs-get";
 import { retryBudgetFor } from "./transient-failure";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
@@ -132,7 +133,14 @@ export function resolveAdvanceTargets(
  * Shared by the advance-status and PR-capture reactions so both resolve a
  * subtask-opened action the same way.
  */
-export async function resolveRunTaskTargets(
+/**
+ * Every task the run is linked to, board-managed or not.
+ *
+ * This is the "is this run's work already tracked?" question, and a Jira run's
+ * anchor is a yes — its work is tracked, on the issue. Use
+ * `resolveRunTaskTargets` for the other question ("which cards may I move").
+ */
+export async function resolveRunLinkedTaskIds(
   ctx: StudioContext,
   orgId: string,
   threadId?: string,
@@ -143,6 +151,27 @@ export async function resolveRunTaskTargets(
       ? await ctx.storage.taskBoard.linkedTaskIds(threadId, orgId)
       : [];
   return resolveAdvanceTargets(metadataItemId, linkedIds);
+}
+
+/**
+ * The tasks a board reaction may ACT on: the run's links, minus the items the
+ * board does not manage (`boardManagedIds`).
+ *
+ * A run started by the Jira integration hangs off a hidden anchor, so every
+ * reaction that moves a lane, opens a review cycle or links a pull request
+ * would be writing where nobody reads — and the pull-request link in
+ * particular is what let a later reviewer rule on a stale PR. The Jira run
+ * reports on the issue itself instead.
+ */
+async function resolveRunTaskTargets(
+  ctx: StudioContext,
+  orgId: string,
+  threadId?: string,
+): Promise<string[]> {
+  return ctx.storage.taskBoard.boardManagedIds(
+    await resolveRunLinkedTaskIds(ctx, orgId, threadId),
+    orgId,
+  );
 }
 
 /**
@@ -390,6 +419,8 @@ export async function reactToFailedTaskRun(
     for (const itemId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(itemId, orgId);
       if (!item) continue;
+      // Not a card the board manages — see `boardManagedIds`.
+      if (item.source) continue;
       // The run moved the card itself and only THEN lost its stream. By rank, so
       // a card the merged-PR reconcile pushed further still counts as delivered
       // — as does one still In Progress with a review cycle open, which since
@@ -503,6 +534,8 @@ export async function refundUnproductiveTaskClaims(
     for (const taskId of await taskBoard.linkedTaskIds(threadId, orgId)) {
       const item = await taskBoard.getById(taskId, orgId);
       if (!item) continue;
+      // Not a card the board manages — see `boardManagedIds`.
+      if (item.source) continue;
       if (cardDelivered(item)) continue;
       const stillRunning = item.threads.some(
         (t) =>
@@ -558,6 +591,8 @@ export async function parkReviewedCardForHuman(
       })
       .catch(() => {});
     emitTaskBoardUpdated(item.organizationId, parked);
+    // "It is your turn" is exactly what the reporter asked to be told about.
+    await emailReporterPrReady(ctx, parked);
   } catch (err) {
     console.error(`[task-board] parking ${item.id} for review failed`, err);
   }
@@ -700,11 +735,12 @@ export function isPrCreateMcpTool(toolName: string): boolean {
  * aliases and script wrappers. The reliable path is the tool above.
  *
  * Both CLIs are in the sandbox image and the checkout's own credential decides
- * which one is authenticated, so a run can genuinely use either.
+ * which one is authenticated, so a run can genuinely use either. Bitbucket has
+ * no CLI, so there the REST POST is the only bash shape.
  */
 const CLI_CREATE = /\b(?:gh\s+pr|glab\s+mr)\s+create\b/;
 const REST_CHANGE_REQUESTS =
-  /\/(?:repos\/[^\s"']+\/pulls|projects\/[^\s"']+\/merge_requests)\b/;
+  /\/(?:repos\/[^\s"']+\/pulls|projects\/[^\s"']+\/merge_requests|repositories\/[^\s"']+\/pullrequests)\b/;
 const HTTP_POST = /(?:-X|--request)\s+POST/;
 
 /** True when a bash command opens a change request (either CLI, or a REST POST). */

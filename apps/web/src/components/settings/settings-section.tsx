@@ -144,6 +144,20 @@ export function SettingsCardItem({
   );
 }
 
+interface SettingsCardRowProps {
+  className?: string;
+  children: ReactNode;
+}
+
+/**
+ * A card row for content that already owns its label, description and control
+ * — the `*Field` components bound to a form. Same padding as
+ * `SettingsCardItem`, so a card can mix the two and still read as one list.
+ */
+export function SettingsCardRow({ className, children }: SettingsCardRowProps) {
+  return <div className={cn("px-4 py-4", className)}>{children}</div>;
+}
+
 interface SettingsCardActionsProps {
   children: ReactNode;
   className?: string;

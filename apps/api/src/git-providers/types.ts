@@ -1,7 +1,7 @@
 /**
  * Git provider client contract.
  *
- * One implementation per `GitProviderKind` (github, gitlab). The account row's
+ * One implementation per `GitProviderKind` (github, gitlab, bitbucket). The account row's
  * `type` picks the implementation (`registry.ts`); its `auth_kind` picks how
  * tokens are produced (`credentials.ts`). Nothing outside `git-providers/`
  * builds a provider URL, header or token — callers speak `RepoRef` and get

@@ -41,6 +41,10 @@ export function useSaveBlock({
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
+    // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
+    scope: {
+      id: decofileWriteMutationKey(orgSlug, virtualMcpId, branch).join(":"),
+    },
     mutationFn: async ({
       blockKey,
       data,
