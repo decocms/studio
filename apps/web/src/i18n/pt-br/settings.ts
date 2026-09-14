@@ -729,6 +729,8 @@ export const settings = {
     'Nenhuma permiss\u00e3o corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.noProjectsAvailable":
     "Nenhum projeto dispon\u00edvel",
+  "settings.orgRoleDetail.noProjectsMatch":
+    'Nenhum projeto corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.organizationPermissions":
     "Permiss\u00f5es da Organiza\u00e7\u00e3o",
   "settings.orgRoleDetail.owner": "Propriet\u00e1rio",

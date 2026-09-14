@@ -701,6 +701,7 @@ export const settings = {
   "settings.orgRoleDetail.noPermissionsMatch":
     'No permissions match "{searchQuery}"',
   "settings.orgRoleDetail.noProjectsAvailable": "No projects available",
+  "settings.orgRoleDetail.noProjectsMatch": 'No projects match "{searchQuery}"',
   "settings.orgRoleDetail.organizationPermissions": "Organization Permissions",
   "settings.orgRoleDetail.owner": "Owner",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
