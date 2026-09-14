@@ -15,7 +15,11 @@ import { ClaudeSubscriptionCard } from "./claude-subscription-card";
 import { ConnectProviderDialog } from "./connect-provider-dialog";
 import { ProviderGrid, type ProviderSelection } from "./provider-grid";
 import { getProviderInventoryState } from "./provider-inventory";
-import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
+import {
+  useFeature,
+  useFeaturesSettled,
+  usePlansEnabled,
+} from "@/hooks/use-entitlements";
 
 function ErrorFallback({ error }: { error: Error }) {
   return (
@@ -43,6 +47,12 @@ function OrgAiProvidersContent() {
   // frame before the answer arrives and removes them. This page is mostly
   // plan-gated, so hold the whole body rather than let it rearrange itself.
   const settled = useFeaturesSettled();
+  // With plans ON, PlanUsageCard owns the balance AND the top-up, so the
+  // gateway's own section has nothing left to say: on Free it rendered a
+  // titled card holding a logo and a Disconnect button. Plans OFF still needs
+  // it — that path has no plan card at all.
+  const plansEnabled = usePlansEnabled();
+  const showGatewaySection = hasDeco && !plansEnabled;
   const allProviders = aiProviders?.providers ?? [];
   // Every tile but Deco is a bring-your-own key.
   const providers = canChooseModels
@@ -86,7 +96,7 @@ function OrgAiProvidersContent() {
   return (
     <>
       <PlanUsageCard />
-      {hasDeco ? <DecoCreditsHero /> : null}
+      {showGatewaySection ? <DecoCreditsHero /> : null}
       {canChooseModels ? (
         <>
           <Suspense fallback={<Skeleton className="h-16 w-full" />}>

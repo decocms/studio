@@ -39,7 +39,13 @@ const TOP_UP_PRESETS = {
   brl: [50, 100, 500],
 } as const;
 
-function QuickTopUp() {
+/**
+ * The credit top-up control. Exported because with plans ON it renders inside
+ * PlanUsageCard rather than here: credits are the second of that card's two
+ * pools, so a separate titled section for them was a second place to look for
+ * one subject.
+ */
+export function QuickTopUp() {
   const t = useT();
   const studio = useStudioTools();
   const [preferences] = usePreferences();

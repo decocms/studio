@@ -21,6 +21,7 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { QuickTopUp } from "./deco-credits-hero";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import {
   useEntitlements,
@@ -376,6 +377,21 @@ export function PlanUsageCard() {
             <p className="text-xs text-muted-foreground pt-1">
               {t("settings.planUsage.noAiIncluded")}
             </p>
+          )}
+
+          {/* Credits live here rather than in a section of their own: they are
+              the second of this card's two pools, and a separate titled card
+              for them was a second place to look for one subject. Withheld
+              from a plan without `credits` (Free), whose allowance is a
+              ceiling. Fails OPEN like every other gate, so a gateway blip
+              still lets an org pay. */}
+          {canBuyCredits && (
+            <div className="flex flex-col gap-2.5 pt-4 border-t border-border/60">
+              <p className="text-xs font-medium text-muted-foreground">
+                {t("settings.decoCreditsHero.addCredits")}
+              </p>
+              <QuickTopUp />
+            </div>
           )}
         </div>
       </SettingsCard>
