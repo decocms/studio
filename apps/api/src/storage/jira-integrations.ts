@@ -1,5 +1,6 @@
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
+import { asJiraRunKind, type JiraRunKind } from "../jira/run-kind";
 import type { Database, OrgJiraIntegration } from "./types";
 
 /** The issue a run's anchor item stands for. */
@@ -10,10 +11,12 @@ export interface JiraIssueLink {
 }
 
 /** A rule on a Jira status: row existence is the switch, `prompt` null is the
- *  agent's own instruction. */
+ *  agent's own instruction, and `kind` is which half of the two-run process
+ *  this column is. */
 export interface JiraColumnAutomation {
   jiraStatus: string;
   prompt: string | null;
+  kind: JiraRunKind;
 }
 
 /**
@@ -229,11 +232,15 @@ export class JiraIntegrationStorage {
   ): Promise<JiraColumnAutomation[]> {
     const rows = await this.db
       .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt"])
+      .select(["jira_status", "prompt", "run_kind"])
       .where("organization_id", "=", organizationId)
       .orderBy("jira_status", "asc")
       .execute();
-    return rows.map((r) => ({ jiraStatus: r.jira_status, prompt: r.prompt }));
+    return rows.map((r) => ({
+      jiraStatus: r.jira_status,
+      prompt: r.prompt,
+      kind: asJiraRunKind(r.run_kind),
+    }));
   }
 
   async getAutomation(
@@ -242,17 +249,24 @@ export class JiraIntegrationStorage {
   ): Promise<JiraColumnAutomation | null> {
     const row = await this.db
       .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt"])
+      .select(["jira_status", "prompt", "run_kind"])
       .where("organization_id", "=", organizationId)
       .where("jira_status", "=", jiraStatus)
       .executeTakeFirst();
-    return row ? { jiraStatus: row.jira_status, prompt: row.prompt } : null;
+    return row
+      ? {
+          jiraStatus: row.jira_status,
+          prompt: row.prompt,
+          kind: asJiraRunKind(row.run_kind),
+        }
+      : null;
   }
 
   async upsertAutomation(
     organizationId: string,
     jiraStatus: string,
     prompt: string | null,
+    kind: JiraRunKind,
   ): Promise<JiraColumnAutomation> {
     await this.db
       .insertInto("org_jira_column_automations")
@@ -260,14 +274,15 @@ export class JiraIntegrationStorage {
         organization_id: organizationId,
         jira_status: jiraStatus,
         prompt,
+        run_kind: kind,
       })
       .onConflict((oc) =>
         oc
           .columns(["organization_id", "jira_status"])
-          .doUpdateSet({ prompt, updated_at: new Date() }),
+          .doUpdateSet({ prompt, run_kind: kind, updated_at: new Date() }),
       )
       .execute();
-    return { jiraStatus, prompt };
+    return { jiraStatus, prompt, kind };
   }
 
   /** Deleting IS the off switch. Returns whether there was a rule. */

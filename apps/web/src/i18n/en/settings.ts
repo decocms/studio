@@ -73,6 +73,11 @@ export const settings = {
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
     "Leave empty to use the agent's own instruction. The issue's description, comments and attachments are always included.",
+  "settings.jira.kindExecute": "Implement",
+  "settings.jira.kindReview": "Review",
+  "settings.jira.kindAriaLabel": "What the run in {status} does",
+  "settings.jira.kindReviewHelp":
+    "A review run does not open a pull request: it reviews the one a previous column's run left, QAs it on the deploy preview, and moves the issue on or back. Leave the instruction empty to use the agent's own.",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
@@ -81,6 +86,7 @@ export const settings = {
     "Run the agent on a single issue now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
   "settings.jira.testRunIssuePlaceholder": "ABC-123 or a link",
   "settings.jira.testRunIssueAriaLabel": "Jira issue key or link",
+  "settings.jira.testRunKindAriaLabel": "What this test run does",
   "settings.jira.testRunPromptAriaLabel": "Instruction for this test run",
   "settings.jira.testRun": "Run agent",
   "settings.jira.testRunRunning": "Starting\u2026",

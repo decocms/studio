@@ -5435,18 +5435,38 @@ export interface StudioToolIO {
   };
   JIRA_AUTOMATION_LIST: {
     input: { [x: string]: never };
-    output: { automations: { jiraStatus: string; prompt: string | null }[] };
+    output: {
+      automations: {
+        jiraStatus: string;
+        prompt: string | null;
+        kind: "review" | "execute";
+      }[];
+    };
   };
   JIRA_AUTOMATION_UPSERT: {
-    input: { jiraStatus: string; prompt?: string | null | undefined };
-    output: { automation: { jiraStatus: string; prompt: string | null } };
+    input: {
+      jiraStatus: string;
+      prompt?: string | null | undefined;
+      kind?: "review" | "execute" | undefined;
+    };
+    output: {
+      automation: {
+        jiraStatus: string;
+        prompt: string | null;
+        kind: "review" | "execute";
+      };
+    };
   };
   JIRA_AUTOMATION_DELETE: {
     input: { jiraStatus: string };
     output: { removed: boolean };
   };
   JIRA_RUN_START: {
-    input: { issueKey: string; prompt?: string | null | undefined };
+    input: {
+      issueKey: string;
+      prompt?: string | null | undefined;
+      kind?: "review" | "execute" | undefined;
+    };
     output: {
       issueKey: string;
       issueUrl: string;

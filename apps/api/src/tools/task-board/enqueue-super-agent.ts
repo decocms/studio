@@ -14,10 +14,8 @@ import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
-import {
-  JIRA_DEFAULT_LEAD,
-  jiraRunFinishInstructions,
-} from "./jira-run-prompt";
+import { jiraDefaultLead, jiraRunFinishInstructions } from "./jira-run-prompt";
+import type { JiraRunKind } from "@/jira/run-kind";
 import type { RunClass } from "@/dispatch-queue/run-priority";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import { fetchPrHeadRef } from "./prs-get";
@@ -87,7 +85,15 @@ export type SuperAgentPromptOpts = {
    *  card is only its anchor. `body` replaces the card's description in the
    *  prompt, `title` names the thread, and the thread is stamped so its tools
    *  and the monitoring filter can tell it apart. */
-  source?: { kind: "jira"; issueKey: string; title: string; body: string };
+  source?: {
+    kind: "jira";
+    issueKey: string;
+    title: string;
+    body: string;
+    /** Which half of the two-run process this column is — the thing that
+     *  decides whether the run opens a pull request or reviews one. */
+    runKind: JiraRunKind;
+  };
 };
 
 /**
@@ -112,8 +118,8 @@ export function buildSuperAgentTaskPrompt(
     // A column's rule supplies its own instruction; without one this is the
     // Super Agent's, which is what every run used before rules existed.
     opts?.instruction?.trim() ||
-      (opts?.source?.kind === "jira"
-        ? JIRA_DEFAULT_LEAD
+      (opts?.source
+        ? jiraDefaultLead(opts.source.runKind)
         : "You've been assigned this task. Complete it."),
     "",
     "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
@@ -177,8 +183,8 @@ export function buildSuperAgentTaskPrompt(
     "",
     // Bare names: on this path the issue tools are Decopilot built-ins, not
     // MCP tools behind a namespace.
-    ...(opts?.source?.kind === "jira"
-      ? [...jiraRunFinishInstructions(""), ""]
+    ...(opts?.source
+      ? [...jiraRunFinishInstructions("", opts.source.runKind), ""]
       : []),
     `(task id: ${task.id})`,
   ].join("\n");

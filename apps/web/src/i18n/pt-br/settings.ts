@@ -77,6 +77,11 @@ export const settings = {
   "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
   "settings.jira.promptHelp":
     "Deixe vazio para usar a instrução do próprio agente. A descrição, os comentários e os anexos da issue sempre vão junto.",
+  "settings.jira.kindExecute": "Implementar",
+  "settings.jira.kindReview": "Revisar",
+  "settings.jira.kindAriaLabel": "O que o run em {status} faz",
+  "settings.jira.kindReviewHelp":
+    "Um run de revisão não abre pull request: ele revisa o que o run da coluna anterior deixou, faz o QA no preview do deploy e move a issue para frente ou de volta. Deixe a instrução vazia para usar a do próprio agente.",
   "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
@@ -86,6 +91,7 @@ export const settings = {
     "Rode o agente em uma única issue agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
   "settings.jira.testRunIssuePlaceholder": "ABC-123 ou um link",
   "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
+  "settings.jira.testRunKindAriaLabel": "O que este teste faz",
   "settings.jira.testRunPromptAriaLabel": "Instrução para este teste",
   "settings.jira.testRun": "Rodar agente",
   "settings.jira.testRunRunning": "Iniciando\u2026",

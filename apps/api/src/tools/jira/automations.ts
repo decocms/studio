@@ -7,14 +7,24 @@
 
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
+import { JIRA_RUN_KINDS } from "@/jira/run-kind";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "@/tools/task-board/schema";
 
 const MAX_STATUS_NAME_LENGTH = 200;
 
+const kindSchema = z
+  .enum(JIRA_RUN_KINDS)
+  .describe(
+    "`execute` implements the issue and opens a pull request; `review` " +
+      "reviews the pull request a previous column's run left and QAs it on " +
+      "the deploy preview. Two columns, two runs — that is the process.",
+  );
+
 const AutomationSchema = z.object({
   jiraStatus: z.string(),
   prompt: z.string().nullable(),
+  kind: kindSchema,
 });
 
 export const JIRA_AUTOMATION_LIST = defineTool({
@@ -40,10 +50,11 @@ export const JIRA_AUTOMATION_UPSERT = defineTool({
   name: "JIRA_AUTOMATION_UPSERT",
   description:
     "Run the agent on every issue that enters a Jira status. Replaces the " +
-    "rule already on that status, if any. Omit `prompt` for the agent's own " +
-    "instruction; give one to say what it should do there. The issue itself " +
-    "is always in the run's message, so the prompt is the instruction, not " +
-    "the whole message.",
+    "rule already on that status, if any. `kind` says what the column is for " +
+    "— implementing the issue, or reviewing what a previous column's run " +
+    "built. Omit `prompt` for the agent's own instruction; give one to say " +
+    "what it should do there. The issue itself is always in the run's " +
+    "message, so the prompt is the instruction, not the whole message.",
   inputSchema: z.object({
     jiraStatus: z
       .string()
@@ -56,6 +67,9 @@ export const JIRA_AUTOMATION_UPSERT = defineTool({
       .nullable()
       .optional()
       .describe("What to do with an issue landing here; null for the default."),
+    kind: kindSchema
+      .optional()
+      .describe("What this column's run does. Defaults to `execute`."),
   }),
   outputSchema: z.object({ automation: AutomationSchema }),
   handler: async (input, ctx) => {
@@ -68,6 +82,7 @@ export const JIRA_AUTOMATION_UPSERT = defineTool({
         organization.id,
         input.jiraStatus.trim(),
         prompt,
+        input.kind ?? "execute",
       ),
     };
   },

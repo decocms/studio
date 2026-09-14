@@ -26,6 +26,7 @@ describe("buildSuperAgentTaskPrompt", () => {
     const p = buildSuperAgentTaskPrompt(task, {
       source: {
         kind: "jira",
+        runKind: "execute" as const,
         issueKey: "ABC-1",
         title: "Jira ABC-1: x",
         body: "# ABC-1",

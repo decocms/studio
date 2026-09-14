@@ -24,6 +24,10 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@decocms/ui/components/toggle-group.tsx";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -54,6 +58,7 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en";
 import {
   type JiraIntegration,
+  type JiraRunKind,
   useDeleteJiraIntegration,
   useJiraAutomations,
   useJiraBoardColumns,
@@ -336,8 +341,8 @@ function AutomationsRow({ boardId }: { boardId: string }) {
       </p>
     );
   } else {
-    const promptOf = new Map(
-      (automations.data ?? []).map((a) => [a.jiraStatus, a.prompt]),
+    const ruleOf = new Map(
+      (automations.data ?? []).map((a) => [a.jiraStatus, a]),
     );
     body = (
       <div className="flex w-full flex-col gap-3">
@@ -348,8 +353,9 @@ function AutomationsRow({ boardId }: { boardId: string }) {
               columnName={column.name}
               status={status}
               showStatus={status !== column.name || column.statuses.length > 1}
-              hasAutomation={promptOf.has(status)}
-              prompt={promptOf.get(status) ?? null}
+              hasAutomation={ruleOf.has(status)}
+              prompt={ruleOf.get(status)?.prompt ?? null}
+              kind={ruleOf.get(status)?.kind ?? "execute"}
             />
           )),
         )}
@@ -367,6 +373,45 @@ function AutomationsRow({ boardId }: { boardId: string }) {
   );
 }
 
+/**
+ * Which half of the two-run process a column is.
+ *
+ * The team's process is two columns, not one thread that implements and then
+ * signs off on its own work: a run in a review column takes over the pull
+ * request the implementing column left, and telling it to "open a pull
+ * request" would have it redo the work instead.
+ */
+function RunKindPicker({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: JiraRunKind;
+  onChange: (kind: JiraRunKind) => void;
+  ariaLabel: string;
+}) {
+  const t = useT();
+  return (
+    <ToggleGroup
+      type="single"
+      size="sm"
+      variant="outline"
+      value={value}
+      aria-label={ariaLabel}
+      // Radix clears the value when the active item is pressed again; a rule
+      // always has a kind, so an empty selection is not a state to store.
+      onValueChange={(next) => next && onChange(next as JiraRunKind)}
+    >
+      <ToggleGroupItem value="execute" className="text-xs">
+        {t("settings.jira.kindExecute")}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="review" className="text-xs">
+        {t("settings.jira.kindReview")}
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
+
 /** `prompt` null with `hasAutomation` true means the rule runs on the agent's
  *  own instruction; the status is absent from the automations list when there
  *  is no rule at all. */
@@ -376,12 +421,14 @@ function StatusAutomationCard({
   showStatus,
   hasAutomation,
   prompt,
+  kind,
 }: {
   columnName: string;
   status: string;
   showStatus: boolean;
   hasAutomation: boolean;
   prompt: string | null;
+  kind: JiraRunKind;
 }) {
   const t = useT();
   const setAutomation = useSetJiraAutomation();
@@ -393,9 +440,9 @@ function StatusAutomationCard({
     setDraft(prompt ?? "");
   }
 
-  const save = (next: string | null) =>
+  const save = (next: string | null, nextKind: JiraRunKind = kind) =>
     setAutomation.mutate(
-      { jiraStatus: status, prompt: next },
+      { jiraStatus: status, prompt: next, kind: nextKind },
       {
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
@@ -428,6 +475,11 @@ function StatusAutomationCard({
               <Trash01 size={14} />
             </Button>
           </div>
+          <RunKindPicker
+            value={kind}
+            ariaLabel={t("settings.jira.kindAriaLabel", { status })}
+            onChange={(next) => save(draft, next)}
+          />
           <Textarea
             value={draft}
             rows={2}
@@ -439,7 +491,9 @@ function StatusAutomationCard({
             data-jira-automation-prompt={status}
           />
           <p className="text-xs text-muted-foreground">
-            {t("settings.jira.promptHelp")}
+            {kind === "review"
+              ? t("settings.jira.kindReviewHelp")
+              : t("settings.jira.promptHelp")}
           </p>
         </div>
       ) : (
@@ -473,6 +527,7 @@ function TestRunRow() {
   const start = useStartJiraRun();
   const [issueKey, setIssueKey] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [kind, setKind] = useState<JiraRunKind>("execute");
   const canRun = issueKey.trim() !== "" && !start.isPending;
 
   const run = () => {
@@ -481,6 +536,7 @@ function TestRunRow() {
       {
         issueKey: issueKey.trim(),
         prompt: prompt.trim() === "" ? null : prompt.trim(),
+        kind,
       },
       {
         onSuccess: (result) =>
@@ -529,6 +585,11 @@ function TestRunRow() {
               : t("settings.jira.testRun")}
           </Button>
         </div>
+        <RunKindPicker
+          value={kind}
+          ariaLabel={t("settings.jira.testRunKindAriaLabel")}
+          onChange={setKind}
+        />
         <Textarea
           value={prompt}
           rows={2}

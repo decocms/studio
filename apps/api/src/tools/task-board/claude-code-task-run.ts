@@ -32,7 +32,8 @@ import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
 import {
-  JIRA_DEFAULT_LEAD,
+  jiraDefaultLead,
+  jiraReviewWorkInstructions,
   jiraRunFinishInstructions,
   jiraRunVerifyInstructions,
 } from "./jira-run-prompt";
@@ -186,6 +187,25 @@ export async function resolveTaskRepoChoice(
  * spends its first steps concluding the sandbox is broken.
  */
 /**
+ * How a run takes a screenshot. Every run that verifies anything visual needs
+ * it, implementing and reviewing alike, so it is stated once.
+ *
+ * The sandbox's own state — dependencies installed or not, dev server or
+ * not — is deliberately NOT here: it is decided by the claim, minutes after
+ * this string is built, and `sandboxStateInstruction`
+ * (sandbox-dispatch-client.ts) appends the true answer at dispatch.
+ */
+const BROWSER_NOTE =
+  "- A browser is installed globally, NOT in the repo's `node_modules` — " +
+  "don't go looking for playwright there. `qa-screenshot <url> <path>.png " +
+  "[--mobile] [--full] [--selector=<css>]` renders any URL (localhost " +
+  "included) in headless Chromium, runs the page's JS, and writes a file you " +
+  "must then `Read` — a screenshot you never opened is not verification. To " +
+  "INTERACT (click, fill, `document.elementFromPoint`), write a throwaway " +
+  'node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); ' +
+  'chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`.';
+
+/**
  * Repositories in one run can come from different providers, so the CLI is a
  * property of the checkout, not of the run. Stated as a rule rather than a
  * command because the agent is the one who knows which directory it is in.
@@ -216,11 +236,15 @@ export function buildClaudeCodeTaskPrompt(
   // A column rule's own instruction, when the caller passed one. Dropping it
   // here (the Decopilot builder never did) silently ignored every Jira status
   // rule's prompt on any org with a repo to work in.
-  const jiraRun = opts?.source?.kind === "jira";
+  const jiraSource = opts?.source;
+  const jiraRun = jiraSource !== undefined;
+  // A REVIEW column's run takes over the pull request the implementing column
+  // left. Every instruction below that says "open one" is wrong for it.
+  const jiraReview = jiraSource?.runKind === "review";
   const lines: string[] = [
     opts?.instruction?.trim() ||
-      (jiraRun
-        ? JIRA_DEFAULT_LEAD
+      (jiraSource
+        ? jiraDefaultLead(jiraSource.runKind)
         : `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`),
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
@@ -300,6 +324,21 @@ export function buildClaudeCodeTaskPrompt(
     );
   }
 
+  // A review column's run is the other half of the process: it takes over the
+  // pull request the implementing column left, and every line below about
+  // opening one, reaching the surface, and naming the branch is wrong for it.
+  if (jiraReview) {
+    lines.push(
+      ...jiraReviewWorkInstructions(cli.cli, jiraSource.issueKey),
+      ...jiraRunVerifyInstructions("review"),
+      BROWSER_NOTE,
+      "",
+      ...jiraRunFinishInstructions("mcp__studio__", "review"),
+      "",
+    );
+    return lines.join("\n");
+  }
+
   lines.push(
     "How to finish:",
     "- Make the change, commit it, push the branch, and open a pull request" +
@@ -316,15 +355,11 @@ export function buildClaudeCodeTaskPrompt(
     // one writes its verdict to the hidden anchor card, so handing over
     // "for a reviewer to check" reports to nobody.
     ...(jiraRun
-      ? jiraRunVerifyInstructions()
+      ? jiraRunVerifyInstructions("execute")
       : [
           `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
         ]),
-    // The sandbox's state — installed or not, dev server or not — is NOT
-    // stated here. It is decided by the claim, minutes after this string is
-    // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
-    // the true answer at dispatch.
-    '- A browser is installed globally, NOT in the repo\'s `node_modules` — don\'t go looking for playwright there. `qa-screenshot <url> <path>.png [--mobile] [--full] [--selector=<css>]` renders any URL (localhost included) in headless Chromium, runs the page\'s JS, and writes a file you must then `Read` — a screenshot you never opened is not verification. To INTERACT (click, fill, `document.elementFromPoint`), write a throwaway node script: `const { chromium } = require("/usr/local/lib/node_modules/playwright-core"); chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] })`.',
+    BROWSER_NOTE,
     // How the board finds the PR now: it looks GitHub up by the branch this
     // checkout is on (`pr-by-branch.ts`), so the one thing the run must not do
     // is open the PR from some other branch. Replaces asking the run to report
@@ -333,7 +368,7 @@ export function buildClaudeCodeTaskPrompt(
   );
 
   if (jiraRun) {
-    lines.push(...jiraRunFinishInstructions("mcp__studio__"), "");
+    lines.push(...jiraRunFinishInstructions("mcp__studio__", "execute"), "");
     return lines.join("\n");
   }
 

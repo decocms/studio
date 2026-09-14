@@ -19,6 +19,7 @@ import {
   requireOrganization,
 } from "@/core/studio-context";
 import { parseIssueKey } from "@/jira/issue-key";
+import { JIRA_RUN_KINDS } from "@/jira/run-kind";
 import { startJiraRunForIssue } from "@/jira/trigger";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "@/tools/task-board/schema";
 
@@ -32,8 +33,10 @@ export const JIRA_RUN_START = defineTool({
     "out before it runs on every issue entering that status. Needs no rule " +
     "for the issue's status and works with the integration disabled. " +
     "`prompt` is the instruction to try; omit it for the agent's own. The " +
-    "issue itself is always in the run's message. This is a real run on the " +
-    "real issue, and it takes over any run still working that issue.",
+    "issue itself is always in the run's message. `kind` picks which half of " +
+    "the two-run process to try: implementing the issue, or reviewing the " +
+    "pull request a previous run left. This is a real run on the real issue, " +
+    "and it takes over any run still working that issue.",
   inputSchema: z.object({
     issueKey: z
       .string()
@@ -46,6 +49,13 @@ export const JIRA_RUN_START = defineTool({
       .nullable()
       .optional()
       .describe("What to do with the issue; null for the agent's default."),
+    kind: z
+      .enum(JIRA_RUN_KINDS)
+      .optional()
+      .describe(
+        "`execute` (default) implements the issue and opens a pull request; " +
+          "`review` reviews the pull request already on it and QAs it.",
+      ),
   }),
   outputSchema: z.object({
     issueKey: z.string(),
@@ -85,6 +95,7 @@ export const JIRA_RUN_START = defineTool({
       issueKey,
       {
         instruction: input.prompt?.trim() ? input.prompt.trim() : null,
+        runKind: input.kind ?? "execute",
         actorId: userId,
       },
     );

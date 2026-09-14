@@ -26,6 +26,9 @@ export interface IssueForPrompt {
   description: string;
   comments: Array<{ author: string; created: string; body: string }>;
   attachments: Array<{ id: string; filename: string; size: number }>;
+  /** The card's web links. A review run's pull request is one of these —
+   *  the implementing run was told to put it there. */
+  links: Array<{ url: string; title: string }>;
 }
 
 /** Caps so one sprawling issue cannot crowd out the instruction. */
@@ -47,9 +50,14 @@ export async function loadIssueForPrompt(
   siteUrl: string,
   issueIdOrKey: string,
 ): Promise<IssueForPrompt> {
-  const [issue, comments] = await Promise.all([
+  const [issue, comments, links] = await Promise.all([
     client.getIssue(issueIdOrKey),
     client.listComments(issueIdOrKey),
+    // A card with no web links is normal, and a permission that forbids
+    // reading them must not cost the run the whole issue.
+    client
+      .listRemoteLinks(issueIdOrKey)
+      .catch(() => []),
   ]);
   const users = new JiraUserDirectory(client);
   const names = await users.resolve([
@@ -73,6 +81,7 @@ export async function loadIssueForPrompt(
       filename: a.filename,
       size: a.size,
     })),
+    links,
   };
 }
 
@@ -97,6 +106,12 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
       ? clip(issue.description, MAX_DESCRIPTION_CHARS)
       : "_(empty)_",
   ];
+  if (issue.links.length > 0) {
+    lines.push("", "## Web links");
+    for (const link of issue.links) {
+      lines.push(`- [${link.title}](${link.url})`);
+    }
+  }
   if (issue.attachments.length > 0) {
     lines.push("", "## Attachments");
     for (const a of issue.attachments) {

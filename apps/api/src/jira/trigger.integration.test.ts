@@ -112,14 +112,15 @@ describe("Jira trigger storage (real Postgres)", () => {
 
   it("stores a rule per Jira status, and deleting it is the off switch", async () => {
     expect(await jira.getAutomation(ORG, "Doing")).toBeNull();
-    await jira.upsertAutomation(ORG, "Doing", null);
+    await jira.upsertAutomation(ORG, "Doing", null, "execute");
     expect(await jira.getAutomation(ORG, "Doing")).toEqual({
       jiraStatus: "Doing",
       prompt: null,
+      kind: "execute",
     });
-    await jira.upsertAutomation(ORG, "Doing", "Fix it");
+    await jira.upsertAutomation(ORG, "Doing", "Fix it", "execute");
     expect((await jira.getAutomation(ORG, "Doing"))?.prompt).toBe("Fix it");
-    await jira.upsertAutomation(ORG, "QA", "Test it");
+    await jira.upsertAutomation(ORG, "QA", "Test it", "review");
     expect((await jira.listAutomations(ORG)).map((a) => a.jiraStatus)).toEqual([
       "Doing",
       "QA",

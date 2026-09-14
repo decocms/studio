@@ -48,14 +48,18 @@ describe("buildClaudeCodeTaskPrompt", () => {
   });
 
   describe("a Jira-triggered run", () => {
-    const jira = {
+    // Two columns, two runs: one implements the issue, a later one reviews
+    // what it left. The kind is what tells them apart.
+    const jiraRun = (runKind: "execute" | "review") => ({
       source: {
         kind: "jira" as const,
+        runKind,
         issueKey: "ABC-1",
         title: "Jira ABC-1: x",
         body: "# ABC-1",
       },
-    };
+    });
+    const jira = jiraRun("execute");
 
     // It has no board tools (`JIRA_RUN_TOOL_NAMES`). Naming them sent the
     // first production run hunting for `TASK_BOARD_COMMENT_CREATE`, which its
@@ -111,6 +115,49 @@ describe("buildClaudeCodeTaskPrompt", () => {
         instruction: "Only review, do not change code.",
       });
       expect(prompt.startsWith("Only review, do not change code.")).toBe(true);
+    });
+
+    // The review column is the other half of the process, and the execute
+    // half's instructions are actively wrong for it: told to "make the change
+    // and open a pull request", a reviewer redoes the work and leaves a second
+    // pull request on the issue for a human to clean up.
+    describe("in a review column", () => {
+      const review = jiraRun("review");
+
+      test("is told to review the existing pull request, not open one", () => {
+        const prompt = buildClaudeCodeTaskPrompt(task, repo, review);
+        expect(prompt).toContain("FIND the pull request first");
+        // The key it is standing on, not a placeholder to substitute.
+        expect(prompt).toContain('gh pr list --search "ABC-1"');
+        expect(prompt).toContain("do NOT open a pull request");
+        expect(prompt).not.toContain(
+          "Make the change, commit it, push the branch, and open a pull request",
+        );
+        expect(prompt).not.toContain("from the branch you were given");
+      });
+
+      test("still QAs on the deploy preview and reports on the issue", () => {
+        const prompt = buildClaudeCodeTaskPrompt(task, repo, review);
+        expect(prompt).toContain("deploy preview");
+        expect(prompt).toContain("qa-screenshot");
+        expect(prompt).toContain("mcp__studio__JIRA_COMMENT_ADD");
+        expect(prompt).not.toContain("TASK_BOARD_");
+      });
+
+      // Its transition IS the verdict, so it is told both directions —
+      // forward on a pass, back to the implementing column on a fail.
+      test("is told its transition carries the verdict", () => {
+        const prompt = buildClaudeCodeTaskPrompt(task, repo, review);
+        expect(prompt).toContain("mcp__studio__JIRA_ISSUE_TRANSITION");
+        expect(prompt).toContain("BACK to the column");
+      });
+
+      test("leads with the review default when the rule has no prompt", () => {
+        const prompt = buildClaudeCodeTaskPrompt(task, repo, review);
+        expect(
+          prompt.startsWith("A Jira issue was moved into a column you review."),
+        ).toBe(true);
+      });
     });
   });
 

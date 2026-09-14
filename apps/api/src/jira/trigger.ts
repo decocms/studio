@@ -23,6 +23,7 @@ import type { OrgJiraIntegration, TaskBoardItem } from "@/storage/types";
 import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
 import { supersedeLiveRuns } from "@/tools/task-board/rerun";
 import { JiraClient, type JiraChangelogHistory } from "./client";
+import type { JiraRunKind } from "./run-kind";
 import {
   type IssueForPrompt,
   issueUrl,
@@ -103,10 +104,6 @@ export function transitionsFromChangelog(
 
 export type TriggerOutcome = "started" | "no_rule" | "duplicate" | "disabled";
 
-/** What the run is told first when the rule has no prompt of its own. */
-const DEFAULT_JIRA_INSTRUCTION =
-  "A Jira issue was moved into a column you are responsible for. Work the issue.";
-
 function jiraRunTitle(issue: { key: string; summary: string }): string {
   return `Jira ${issue.key}: ${issue.summary}`;
 }
@@ -158,6 +155,7 @@ export async function triggerRunForTransition(
   // A dispatch failure past here leaves the claim standing: the transition is spent.
   await dispatchJiraRun(ctx, integration, item, issue, {
     instruction: rule.prompt,
+    runKind: rule.kind,
     actorId: integration.createdBy,
   });
   return "started";
@@ -178,7 +176,7 @@ export async function startJiraRunForIssue(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
   issueKey: string,
-  opts: { instruction: string | null; actorId: string },
+  opts: { instruction: string | null; runKind: JiraRunKind; actorId: string },
 ): Promise<{
   item: TaskBoardItem;
   issue: IssueForPrompt;
@@ -195,6 +193,7 @@ export async function startJiraRunForIssue(
   const supersededThreadIds = await supersedeLiveRuns(ctx, item);
   await dispatchJiraRun(ctx, integration, item, issue, {
     instruction: opts.instruction,
+    runKind: opts.runKind,
     actorId: opts.actorId,
     // A person asked for this run, like a card's Re-run.
     userInitiated: true,
@@ -210,6 +209,7 @@ async function dispatchJiraRun(
   issue: IssueForPrompt,
   opts: {
     instruction: string | null;
+    runKind: JiraRunKind;
     actorId: string;
     userInitiated?: boolean;
   },
@@ -223,11 +223,14 @@ async function dispatchJiraRun(
   );
   try {
     await enqueueSuperAgentForTask(ctx, delegated, {
-      instruction: opts.instruction ?? DEFAULT_JIRA_INSTRUCTION,
+      // No fallback here on purpose: the default lead depends on the run's
+      // KIND, and the prompt builder is the half that knows what a kind means.
+      ...(opts.instruction ? { instruction: opts.instruction } : {}),
       ...(opts.userInitiated ? { userInitiated: true } : {}),
       source: {
         kind: "jira",
         issueKey: issue.key,
+        runKind: opts.runKind,
         title: jiraRunTitle(issue),
         // The issue only. How to report back is the prompt builder's job — it
         // is the half that knows how this harness namespaces the tools, and it

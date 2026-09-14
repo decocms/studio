@@ -15,6 +15,11 @@ export type JiraIntegration = NonNullable<
   StudioToolIO["JIRA_INTEGRATION_GET"]["output"]["integration"]
 >;
 
+/** What a status rule's run does — see `JiraRunKind` on the server. Two
+ *  columns, two runs: one implements the issue, a later one reviews it. */
+export type JiraRunKind =
+  StudioToolIO["JIRA_AUTOMATION_LIST"]["output"]["automations"][number]["kind"];
+
 export function useJiraIntegration() {
   const { org } = useProjectContext();
   const studio = useStudioTools();
@@ -87,7 +92,7 @@ export function useJiraAutomations() {
 }
 
 /**
- * Turn a status rule on, off, or reword it.
+ * Turn a status rule on, off, reword it, or change what it does.
  *
  * `null` is off: the row is deleted rather than stored empty, so "no rule" has
  * one representation. An empty prompt is stored as no prompt, which means the
@@ -101,6 +106,7 @@ export function useSetJiraAutomation() {
     mutationFn: async (input: {
       jiraStatus: string;
       prompt: string | null;
+      kind: JiraRunKind;
     }) => {
       if (input.prompt === null) {
         await studio.call("JIRA_AUTOMATION_DELETE", {
@@ -111,6 +117,7 @@ export function useSetJiraAutomation() {
       await studio.call("JIRA_AUTOMATION_UPSERT", {
         jiraStatus: input.jiraStatus,
         prompt: input.prompt.trim() === "" ? undefined : input.prompt,
+        kind: input.kind,
       });
     },
     onSettled: () =>

@@ -2193,6 +2193,9 @@ export interface OrgJiraColumnAutomationTable {
   organization_id: string;
   jira_status: string;
   prompt: string | null;
+  /** `execute` | `review` — see `JiraRunKind`. Defaulted, so rules written
+   *  before the column read as the implement-and-open-a-PR behaviour. */
+  run_kind: ColumnType<string, string | undefined, string>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
