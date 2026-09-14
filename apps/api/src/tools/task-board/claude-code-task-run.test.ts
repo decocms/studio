@@ -281,6 +281,16 @@ describe("pickSoleTaskRepo", () => {
       ),
     ).toBeNull();
   });
+  /** The card's `repo` is free text, so it goes stale: a renamed repository, a
+   *  value from the github-connection era, a typo. It must narrow the choice,
+   *  never veto it — an org with exactly one repo bound that repo before this
+   *  parameter existed, and still has to. */
+  test("a preference that matches nothing falls back to the sole repo", () => {
+    const sole = [choice("one", "acme", "web")];
+    expect(pickSoleTaskRepo(sole, "acme/renamed-away")?.id).toBe("one");
+    expect(pickSoleTaskRepo(sole)?.id).toBe("one");
+  });
+
   test("no clonable repo is not eligible", () => {
     expect(pickSoleTaskRepo([])).toBeNull();
   });

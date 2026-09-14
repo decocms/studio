@@ -75,16 +75,23 @@ export interface TaskRepo {
 export function pickSoleTaskRepo(
   choices: RepoChoice[],
   /** The card's own `repo`, when it has one: narrow to it first, so a
-   *  multi-repo org still binds a checkout before dispatch. An unknown or
-   *  ambiguous name narrows to nothing and falls back to the mid-run pick. */
+   *  multi-repo org still binds a checkout before dispatch.
+   *
+   *  A HINT, never a veto. `repo` is free text that goes stale — a renamed
+   *  repository, a value from the github-connection era, a typo — and letting
+   *  a stale one empty the set would stop binding the sole repo of a
+   *  single-repo org, which this bound before the parameter existed. So a
+   *  preference that matches nothing is discarded, not honored. */
   preferredRepo?: string,
 ): TaskRepo | null {
-  if (preferredRepo)
-    choices = choices.filter(
+  if (preferredRepo) {
+    const narrowed = choices.filter(
       (choice) =>
         `${choice.owner}/${choice.name}`.toLowerCase() ===
         preferredRepo.toLowerCase(),
     );
+    if (narrowed.length > 0) choices = narrowed;
+  }
   if (choices.length !== 1) return null;
   const chosen = choices[0]!;
   return {
