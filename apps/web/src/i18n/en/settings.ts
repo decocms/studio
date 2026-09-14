@@ -674,6 +674,9 @@ export const settings = {
   "settings.orgRoleDetail.added": "Added",
   "settings.orgRoleDetail.allModels": "All models",
   "settings.orgRoleDetail.allOrgPermissions": "All organization permissions",
+  "settings.orgRoleDetail.allProjects": "All projects",
+  "settings.orgRoleDetail.allProjectsDescription":
+    "This role can access every project. Turn off to restrict it to specific projects.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Built-in role permissions cannot be changed",
   "settings.orgRoleDetail.cancel": "Cancel",
@@ -697,10 +700,12 @@ export const settings = {
   "settings.orgRoleDetail.noMembersMatch": 'No members match "{searchQuery}"',
   "settings.orgRoleDetail.noPermissionsMatch":
     'No permissions match "{searchQuery}"',
+  "settings.orgRoleDetail.noProjectsAvailable": "No projects available",
   "settings.orgRoleDetail.organizationPermissions": "Organization Permissions",
   "settings.orgRoleDetail.owner": "Owner",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "Owner membership cannot be changed",
+  "settings.orgRoleDetail.projects": "Projects",
   "settings.orgRoleDetail.removeMember": "Remove {name} from role",
   "settings.orgRoleDetail.roleCreatedSuccessfully":
     "Role created successfully!",
@@ -714,6 +719,7 @@ export const settings = {
   "settings.orgRoleDetail.searchMembers": "Search members...",
   "settings.orgRoleDetail.searchModels": "Search models...",
   "settings.orgRoleDetail.searchPermissions": "Search permissions...",
+  "settings.orgRoleDetail.searchProjects": "Search projects...",
   "settings.orgRoleDetail.selectMembersToAddToThisRole":
     "Select members to add to this role.",
   "settings.orgRoleDetail.showMore": "Show more ({remaining} remaining)",

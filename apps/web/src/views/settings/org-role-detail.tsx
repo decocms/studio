@@ -4,6 +4,11 @@ import {
   toggleCapabilityInTools,
   type PermissionCapability,
 } from "@decocms/shared/tools/registry-metadata";
+import {
+  getProjectScope,
+  PROJECT_SCOPE_KEY,
+  PROJECT_SCOPE_WILDCARD,
+} from "@decocms/shared/auth/project-scope";
 import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolSetSelector } from "@/components/tool-set-selector.tsx";
@@ -55,6 +60,9 @@ import { z } from "zod";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Page } from "@/components/page";
 import { IntegrationIcon } from "@/components/integration-icon";
+import { ProjectIcon } from "@/components/project-icon";
+import { useVirtualMCPsNonBlocking } from "@/sdk/hooks/use-virtual-mcp";
+import { scopableProjects } from "@/hooks/use-project-scope";
 import { type TFunction, useT } from "@/i18n/use-t.ts";
 import {
   SettingsCard,
@@ -94,6 +102,8 @@ const roleFormSchema = z.object({
   toolSet: z.record(z.string(), z.array(z.string())),
   allowAllModels: z.boolean(),
   modelSet: z.record(z.string(), z.array(z.string())),
+  allowAllProjects: z.boolean(),
+  projectSet: z.array(z.string()),
   memberIds: z.array(z.string()),
 });
 
@@ -716,6 +726,143 @@ function ModelsPermissionsTab({
   );
 }
 
+// Projects Permissions Tab — scope a role to a specific set of projects.
+interface ProjectsPermissionsTabProps {
+  allowAllProjects: boolean;
+  projectSet: string[];
+  onAllowAllChange: (allowAll: boolean) => void;
+  onProjectSetChange: (projectSet: string[]) => void;
+  readOnly?: boolean;
+  searchQuery: string;
+}
+
+function ProjectsPermissionsTab({
+  allowAllProjects,
+  projectSet,
+  onAllowAllChange,
+  onProjectSetChange,
+  readOnly = false,
+  searchQuery,
+}: ProjectsPermissionsTabProps) {
+  const t = useT();
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const virtualMcps = useVirtualMCPsNonBlocking();
+  const projects = scopableProjects(virtualMcps);
+
+  const q = deferredSearchQuery.trim().toLowerCase();
+  const filteredProjects = q
+    ? projects.filter((p) => p.title.toLowerCase().includes(q))
+    : projects;
+
+  const toggleProject = (projectId: string) => {
+    if (allowAllProjects) {
+      // Toggling while "all" is set switches to a specific list.
+      onAllowAllChange(false);
+      onProjectSetChange(
+        projects.map((p) => p.id).filter((id) => id !== projectId),
+      );
+      return;
+    }
+    if (projectSet.includes(projectId)) {
+      onProjectSetChange(projectSet.filter((id) => id !== projectId));
+    } else {
+      onProjectSetChange([...projectSet, projectId]);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-auto gap-6 p-4">
+      <div
+        className={cn(
+          "flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-card",
+          !readOnly && "hover:bg-muted/50 cursor-pointer",
+        )}
+        onClick={() => {
+          if (readOnly) return;
+          const newValue = !allowAllProjects;
+          onAllowAllChange(newValue);
+          if (newValue) onProjectSetChange([]);
+        }}
+      >
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">
+            {t("settings.orgRoleDetail.allProjects")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("settings.orgRoleDetail.allProjectsDescription")}
+          </span>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
+          {readOnly ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Switch
+                      checked={allowAllProjects}
+                      disabled
+                      onCheckedChange={() => {}}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    {t(
+                      "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged",
+                    )}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Switch
+              checked={allowAllProjects}
+              onCheckedChange={(checked) => {
+                onAllowAllChange(checked);
+                if (checked) onProjectSetChange([]);
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {projects.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          {t("settings.orgRoleDetail.noProjectsAvailable")}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {filteredProjects.map((project) => {
+            const checked = allowAllProjects || projectSet.includes(project.id);
+            return (
+              <label
+                key={project.id}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg border border-transparent",
+                  readOnly
+                    ? "cursor-default"
+                    : "hover:bg-muted/50 cursor-pointer",
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  disabled={readOnly}
+                  onCheckedChange={() => {
+                    if (readOnly) return;
+                    toggleProject(project.id);
+                  }}
+                />
+                <ProjectIcon icon={project.icon} name={project.title} />
+                <span className="text-sm truncate">{project.title}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ============================================================================
 // Add Member Dialog
 // ============================================================================
@@ -1068,6 +1215,8 @@ function loadBuiltinRoleIntoForm(
     toolSet: {},
     allowAllModels: true,
     modelSet: {},
+    allowAllProjects: true,
+    projectSet: [],
     memberIds: members.filter((m) => m.role === role).map((m) => m.id),
   };
 }
@@ -1086,7 +1235,8 @@ function convertRoleToFormData(
 
   const toolSet: Record<string, string[]> = {};
   for (const [key, tools] of Object.entries(permission)) {
-    if (key === "self" || key === "models") continue;
+    if (key === "self" || key === "models" || key === PROJECT_SCOPE_KEY)
+      continue;
     if (key === "*") {
       for (const conn of connections) {
         toolSet[conn.id] = tools.includes("*")
@@ -1118,6 +1268,13 @@ function convertRoleToFormData(
     }
   }
 
+  const projectScope = getProjectScope(permission);
+  const allowAllProjects =
+    projectScope === null || projectScope.includes(PROJECT_SCOPE_WILDCARD);
+  const projectSet = allowAllProjects
+    ? []
+    : projectScope.filter((id) => id !== PROJECT_SCOPE_WILDCARD);
+
   return {
     role: { id: role.id, slug: role.role, label: role.label },
     allowAllStaticPermissions: hasAllStaticPerms,
@@ -1125,6 +1282,8 @@ function convertRoleToFormData(
     toolSet,
     allowAllModels: hasAllModels,
     modelSet,
+    allowAllProjects,
+    projectSet,
     memberIds: members.filter((m) => m.role === role.role).map((m) => m.id),
   };
 }
@@ -1162,6 +1321,10 @@ function buildPermission(
     }
     if (modelEntries.length > 0) permission["models"] = modelEntries;
   }
+  // Omit key = all projects; present = scoped to these ids (project-scope.ts).
+  if (!data.allowAllProjects) {
+    permission[PROJECT_SCOPE_KEY] = data.projectSet;
+  }
   return permission;
 }
 
@@ -1188,6 +1351,8 @@ function getInitialFormValues(
     toolSet: {},
     allowAllModels: true,
     modelSet: {},
+    allowAllProjects: true,
+    projectSet: [],
     memberIds: [],
   };
 }
@@ -1293,7 +1458,7 @@ function RoleDetailPageInner({
   const isNew = target.kind === "new";
 
   const [activeTab, setActiveTab] = useState<
-    "mcp" | "org" | "models" | "members"
+    "mcp" | "org" | "models" | "projects" | "members"
   >(isBuiltin ? "org" : "mcp");
 
   const form = useForm<RoleFormData>({
@@ -1466,6 +1631,7 @@ function RoleDetailPageInner({
       label: t("settings.orgRoleDetail.organizationPermissions"),
     },
     { id: "models" as const, label: t("settings.orgRoleDetail.models") },
+    { id: "projects" as const, label: t("settings.orgRoleDetail.projects") },
     { id: "members" as const, label: t("settings.orgRoleDetail.members") },
   ];
 
@@ -1481,6 +1647,7 @@ function RoleDetailPageInner({
     mcp: t("settings.orgRoleDetail.searchMcpServers"),
     org: t("settings.orgRoleDetail.searchPermissions"),
     models: t("settings.orgRoleDetail.searchModels"),
+    projects: t("settings.orgRoleDetail.searchProjects"),
     members: t("settings.orgRoleDetail.searchMembers"),
   };
 
@@ -1598,6 +1765,7 @@ function RoleDetailPageInner({
             className={cn(
               activeTab !== "org" && "h-full overflow-hidden",
               activeTab !== "models" &&
+                activeTab !== "projects" &&
                 activeTab !== "org" &&
                 "border border-border rounded-xl bg-card",
             )}
@@ -1638,6 +1806,20 @@ function RoleDetailPageInner({
                 }
                 onModelSetChange={(v) =>
                   form.setValue("modelSet", v, { shouldDirty: true })
+                }
+                readOnly={isOwnerBuiltin}
+                searchQuery={searchQuery}
+              />
+            )}
+            {activeTab === "projects" && (
+              <ProjectsPermissionsTab
+                allowAllProjects={form.watch("allowAllProjects")}
+                projectSet={form.watch("projectSet")}
+                onAllowAllChange={(v) =>
+                  form.setValue("allowAllProjects", v, { shouldDirty: true })
+                }
+                onProjectSetChange={(v) =>
+                  form.setValue("projectSet", v, { shouldDirty: true })
                 }
                 readOnly={isOwnerBuiltin}
                 searchQuery={searchQuery}

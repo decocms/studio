@@ -10,8 +10,10 @@ import {
   type OrderByExpression,
   type WhereExpression,
 } from "@decocms/bindings/collections";
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { resolveCallerProjectScope } from "../../core/project-scope";
 import { requireOrganization } from "../../core/studio-context";
 import { type VirtualMCPEntity, VirtualMCPEntitySchema } from "./schema";
 
@@ -253,6 +255,12 @@ export const COLLECTION_VIRTUAL_MCP_LIST = defineTool({
       filtered = filtered.filter((vm) =>
         evaluateWhereExpression(vm, input.where!),
       );
+    }
+
+    // Restrict a project-scoped custom role to its allowlisted projects.
+    const projectScope = await resolveCallerProjectScope(ctx);
+    if (projectScope !== null) {
+      filtered = filtered.filter((vm) => isProjectAllowed(projectScope, vm.id));
     }
 
     // Apply orderBy if specified

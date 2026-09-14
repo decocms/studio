@@ -700,6 +700,9 @@ export const settings = {
   "settings.orgRoleDetail.allModels": "Todos os modelos",
   "settings.orgRoleDetail.allOrgPermissions":
     "Todas as permiss\u00f5es da organiza\u00e7\u00e3o",
+  "settings.orgRoleDetail.allProjects": "Todos os projetos",
+  "settings.orgRoleDetail.allProjectsDescription":
+    "Este papel pode acessar todos os projetos. Desative para restringi-lo a projetos espec\u00edficos.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Permiss\u00f5es de papel integrado n\u00e3o podem ser alteradas",
   "settings.orgRoleDetail.cancel": "Cancelar",
@@ -724,11 +727,14 @@ export const settings = {
     'Nenhum membro corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.noPermissionsMatch":
     'Nenhuma permiss\u00e3o corresponde a "{searchQuery}"',
+  "settings.orgRoleDetail.noProjectsAvailable":
+    "Nenhum projeto dispon\u00edvel",
   "settings.orgRoleDetail.organizationPermissions":
     "Permiss\u00f5es da Organiza\u00e7\u00e3o",
   "settings.orgRoleDetail.owner": "Propriet\u00e1rio",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "A associa\u00e7\u00e3o de propriet\u00e1rio n\u00e3o pode ser alterada",
+  "settings.orgRoleDetail.projects": "Projetos",
   "settings.orgRoleDetail.removeMember": "Remover {name} do papel",
   "settings.orgRoleDetail.roleCreatedSuccessfully": "Papel criado com sucesso!",
   "settings.orgRoleDetail.roleName": "Nome do papel",
@@ -742,6 +748,7 @@ export const settings = {
   "settings.orgRoleDetail.searchMembers": "Procurar membros...",
   "settings.orgRoleDetail.searchModels": "Procurar modelos...",
   "settings.orgRoleDetail.searchPermissions": "Procurar permiss\u00f5es...",
+  "settings.orgRoleDetail.searchProjects": "Procurar projetos...",
   "settings.orgRoleDetail.selectMembersToAddToThisRole":
     "Selecione membros para adicionar a este papel.",
   "settings.orgRoleDetail.showMore": "Mostrar mais ({remaining} restantes)",
