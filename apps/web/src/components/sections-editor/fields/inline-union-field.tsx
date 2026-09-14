@@ -9,7 +9,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { stripMustacheTokens } from "../array-item-display";
 import type { SchemaProperty } from "../resolve-schema";
-import { SchemaForm } from "../schema-form";
+import { renderField, SchemaForm } from "../schema-form";
 import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 import {
@@ -55,6 +55,7 @@ export function InlineUnionField(props: FieldProps) {
     branches.map((b) => ({
       discriminators: b.discriminators,
       propertyKeys: Object.keys(b.schema?.properties ?? {}),
+      isArray: b.schema?.type === "array",
     })),
   );
   const [selected, setSelected] = useState(inferred);
@@ -69,9 +70,12 @@ export function InlineUnionField(props: FieldProps) {
   const handleBranchChange = (next: string) => {
     const index = Number(next);
     setSelected(index);
-    // Reset to a fresh value for the chosen branch, seeded with its const
-    // discriminators (e.g. { name: "max-age" }).
-    onChange({ ...(branches[index]?.discriminators ?? {}) });
+    // Fresh value for the chosen branch: [] for an array branch, else an object seeded with its const discriminators (e.g. { name: "max-age" }).
+    onChange(
+      branches[index]?.schema?.type === "array"
+        ? []
+        : { ...(branches[index]?.discriminators ?? {}) },
+    );
   };
 
   if (branches.length === 0) return null;
@@ -105,7 +109,10 @@ export function InlineUnionField(props: FieldProps) {
           </SelectTrigger>
           <SelectContent>
             {branches.map((branch, index) => (
-              <SelectItem key={branch.title} value={String(index)}>
+              <SelectItem
+                key={`${index}-${branch.title ?? ""}`}
+                value={String(index)}
+              >
                 {stripMustacheTokens(branch.title) ||
                   t("sectionsEditor.inlineUnionField.branchFallback", {
                     index: index + 1,
@@ -117,7 +124,14 @@ export function InlineUnionField(props: FieldProps) {
       </div>
 
       {activeBranch &&
-        (isLocationShape(activeBranch.schema?.properties) ? (
+        (activeBranch.schema?.type === "array" ? (
+          renderField({
+            ...props,
+            schema: activeBranch.schema,
+            value: Array.isArray(value) ? value : [],
+            label: "",
+          })
+        ) : isLocationShape(activeBranch.schema?.properties) ? (
           <LocationField
             {...props}
             schema={activeBranch.schema as SchemaProperty}

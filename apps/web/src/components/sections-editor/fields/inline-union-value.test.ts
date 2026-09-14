@@ -68,6 +68,27 @@ describe("inferInlineUnionIndex – const discriminator (cache directives)", () 
   });
 });
 
+describe("inferInlineUnionIndex – array branch (PromoBarTitle[] | object | …)", () => {
+  const promoComponent = [
+    { propertyKeys: [], isArray: true },
+    { propertyKeys: ["svg"] },
+    { propertyKeys: ["ctaText"] },
+  ];
+
+  test("an array value selects the array branch", () => {
+    expect(inferInlineUnionIndex([{ title: "x" }], promoComponent)).toBe(0);
+    expect(inferInlineUnionIndex([], promoComponent)).toBe(0);
+  });
+
+  test("an object value still selects the matching object branch", () => {
+    expect(inferInlineUnionIndex({ ctaText: "Buy" }, promoComponent)).toBe(2);
+  });
+
+  test("an array value with no array branch falls back to the first branch", () => {
+    expect(inferInlineUnionIndex([1, 2], locationMap)).toBe(0);
+  });
+});
+
 describe("preservedOtherBranchFields – legacy combined entries", () => {
   test("keeps the hidden branch's fields when editing the visible one", () => {
     // Legacy entry combining a Location constraint (regionCode) with a Map one.

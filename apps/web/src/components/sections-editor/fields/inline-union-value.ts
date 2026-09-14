@@ -3,6 +3,8 @@ export interface InlineUnionBranchLike {
   discriminators?: Record<string, string | number | boolean>;
   /** All property keys of the branch object schema. */
   propertyKeys: string[];
+  /** True when the branch is an array (e.g. `PromoBarTitle[]`), not an object. */
+  isArray?: boolean;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -25,6 +27,13 @@ export function inferInlineUnionIndex(
   branches: readonly InlineUnionBranchLike[],
 ): number {
   if (branches.length === 0) return 0;
+
+  // An array value belongs to the first array branch (object branches can't hold one).
+  if (Array.isArray(value)) {
+    const arrayIndex = branches.findIndex((b) => b.isArray);
+    if (arrayIndex >= 0) return arrayIndex;
+  }
+
   const obj = asObject(value);
 
   for (let i = 0; i < branches.length; i++) {
