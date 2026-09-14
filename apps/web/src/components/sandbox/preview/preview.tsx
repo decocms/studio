@@ -231,6 +231,69 @@ export function resolvePreviewUrl(path: string, base: string): string | null {
   }
 }
 
+/** A pinned Fast Preview draft URL, tagged with the path it was latched at. */
+export interface PinnedDraft {
+  path: string;
+  url: string;
+}
+
+/**
+ * Fast Preview in-place pinning decision (pure; see the `pinnedDraftUrlRef`
+ * usage below).
+ *
+ * While editing in place the frame's URL is frozen so autosave version bumps
+ * (`?__draft=…@<sha>`) don't reload it mid-edit. But a real page switch changes
+ * the path, and that MUST re-latch: otherwise the frame stays frozen on the old
+ * page and the only thing left to show the new one is the heavy
+ * `/live/previews` in-place POST — which carries the whole decofile and hangs
+ * on large sites (farmrio), so the preview appears stuck on the first page.
+ *
+ * So: re-latch on the first grant AND on any path change; keep the pin for
+ * same-path version bumps. When not editing in place, track the live draft.
+ */
+export function resolveInPlaceDraftUrl(
+  prev: PinnedDraft | null,
+  input: {
+    inPlaceRenderActive: boolean;
+    draftPreviewUrl: string | null;
+    resolvedPath: string;
+  },
+): { pin: PinnedDraft | null; effective: string | null } {
+  if (!input.inPlaceRenderActive) {
+    const pin = input.draftPreviewUrl
+      ? { path: input.resolvedPath, url: input.draftPreviewUrl }
+      : null;
+    return { pin, effective: input.draftPreviewUrl };
+  }
+  if (input.draftPreviewUrl !== null && prev?.path !== input.resolvedPath) {
+    const pin = { path: input.resolvedPath, url: input.draftPreviewUrl };
+    return { pin, effective: pin.url };
+  }
+  return { pin: prev, effective: prev?.url ?? null };
+}
+
+/** In-place render signature: `nav` = which page/path, `content` = the decofile. */
+export interface RenderSig {
+  nav: string;
+  content: string;
+}
+
+/**
+ * Whether an in-place `/live/previews` render should fire (pure).
+ *
+ * A page/path switch (nav change) is shown by re-navigating the frame — see
+ * {@link resolveInPlaceDraftUrl} — so it must NOT POST a render. Only a content
+ * edit on the SAME page renders in place. The first observation and any nav
+ * change just establish a baseline.
+ */
+export function shouldInPlaceRender(
+  prev: RenderSig | null,
+  next: RenderSig,
+): boolean {
+  if (!prev || prev.nav !== next.nav) return false;
+  return prev.content !== next.content;
+}
+
 /**
  * Relevance score for a page-picker hit against a lowercased query `q`.
  * Higher is better; `0` means no match. Ranks closer/more-specific matches
@@ -684,20 +747,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     inPlaceRenderEnabled &&
     blocksEditingEnabled &&
     editingMode === "blocks";
-  const pinnedDraftUrlRef = useRef<string | null>(null);
-  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the value pinned/latched last render before deciding whether to re-pin
-  let pinnedDraftUrl = pinnedDraftUrlRef.current;
-  if (!inPlaceRenderActive) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- track the live draft URL while not editing in place; pin it while editing
-    pinnedDraftUrlRef.current = draftPreviewUrl;
-  } else if (pinnedDraftUrl === null && draftPreviewUrl !== null) {
-    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- latch the first draft URL once (panel opened before the grant loaded), then freeze: re-tracking would reload the frame on every save's new @sha
-    pinnedDraftUrl = pinnedDraftUrlRef.current = draftPreviewUrl;
-  }
-  // Frozen while editing in place (no live fallback), so autosave version bumps don't reload the frame; a null pin keeps iframeSrc on the base URL until the latch above.
-  const effectiveDraftPreviewUrl = inPlaceRenderActive
-    ? pinnedDraftUrl
-    : draftPreviewUrl;
+  // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
+  const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
+  const { pin: nextPinnedDraft, effective: effectiveDraftPreviewUrl } =
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read the pin latched last render before deciding whether to re-latch
+    resolveInPlaceDraftUrl(pinnedDraftUrlRef.current, {
+      inPlaceRenderActive,
+      draftPreviewUrl,
+      resolvedPath,
+    });
+  // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- persist the frozen/relatched pin for the next render's decision
+  pinnedDraftUrlRef.current = nextPinnedDraft;
 
   const iframeSrc = withDecoFBT(
     display.mode === "sandbox"
@@ -968,14 +1028,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     );
   };
 
-  /**
-   * Refresh the in-place render on a content or page/path change. The frame's
-   * `src` is pinned here, so a page switch can't navigate it — the signature
-   * folds in page + path to fire a render, deduped so onMutate + onSuccess
-   * render once.
-   */
-  const renderSigRef = useRef<string | null>(null);
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content/page change
+  /** Fire the in-place render on a content edit only — see shouldInPlaceRender. */
+  const renderSigRef = useRef<RenderSig | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative postMessage refresh of a cross-origin frame on content change
   useEffect(() => {
     if (
       !inPlaceRenderActive ||
@@ -987,18 +1042,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       renderSigRef.current = null;
       return;
     }
-    const sig = JSON.stringify({
-      page: currentPageKey,
-      path: resolvedPath,
-      pathTemplate: currentPath,
-      decofile,
-    });
-    if (renderSigRef.current === sig) return;
-    const isBaseline = renderSigRef.current === null;
+    const sig: RenderSig = {
+      nav: JSON.stringify({
+        page: currentPageKey,
+        path: resolvedPath,
+        pathTemplate: currentPath,
+      }),
+      content: JSON.stringify(decofile),
+    };
+    const render = shouldInPlaceRender(renderSigRef.current, sig);
     renderSigRef.current = sig;
-    // The frame already shows this content via its src; only edits after it render.
-    if (isBaseline) return;
-    renderPreviewInPlace();
+    if (render) renderPreviewInPlace();
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- renderPreviewInPlace reads live values; retrigger only on content/page change
   }, [
     decofile,
