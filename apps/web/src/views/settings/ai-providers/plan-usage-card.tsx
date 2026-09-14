@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Progress } from "@decocms/ui/components/progress.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -33,6 +32,12 @@ import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
  * below it (`plan-catalog.tsx`), so the card is the org's current state and
  * nothing else.
  */
+
+const NUMERAL_STYLES = {
+  ok: "text-foreground",
+  warn: "text-warning",
+  exhausted: "text-destructive",
+} as const;
 
 const BAR_STYLES = {
   ok: "[&>[data-slot=progress-indicator]]:bg-primary",
@@ -160,95 +165,92 @@ export function PlanUsageCard() {
       : t("settings.planUsage.oneTimeHint");
 
   return (
-    <SettingsSection title={t("settings.planUsage.title")}>
-      <SettingsCard>
-        <div className="px-5 py-5 flex flex-col gap-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col gap-1 min-w-0">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl font-semibold leading-none tracking-tight">
-                  {data.plan.name}
-                </span>
-                {hasAiEnvelope && state === "exhausted" && (
-                  <Badge variant="destructive">
-                    {t("settings.planUsage.exhausted")}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <ManageBillingButton />
-          </div>
+    <SettingsCard>
+      <div className="px-6 pt-6 pb-5 flex flex-col gap-6">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium">{data.plan.name}</span>
+          <ManageBillingButton />
+        </div>
 
-          {hasAiEnvelope ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm text-muted-foreground">
-                  {t("settings.planUsage.aiUsage")}
-                </span>
-                <span className="text-sm font-semibold tabular-nums">
+        {hasAiEnvelope ? (
+          <div className="flex flex-col gap-4">
+            {/* The number IS the card. Coloured by state so a full bar reads as
+                full from across the room; a badge saying so as well was a second
+                voice. */}
+            <div className="flex items-end justify-between gap-4">
+              <div className="flex items-baseline gap-2">
+                <span
+                  className={cn(
+                    "text-6xl font-semibold leading-none tracking-tighter tabular-nums",
+                    NUMERAL_STYLES[state],
+                  )}
+                >
                   {percent === null
                     ? t("settings.planUsage.usageUnavailable")
                     : `${percent}%`}
                 </span>
+                <span className="text-sm text-muted-foreground">
+                  {t("settings.planUsage.aiUsage")}
+                </span>
               </div>
-              {/* No bar at all when consumption is UNKNOWN. `value={percent ??
-                  0}` rendered a full-width EMPTY track, which is the one
-                  reading this card's own docstring forbids: an empty bar says
-                  "nothing used", and the honest answer is "we could not read
-                  it". The label above already says Unavailable; this is a
-                  placeholder track with no fill, not a measurement. */}
-              {percent === null ? (
-                <div
-                  className="h-2 w-full rounded-full bg-muted/60"
-                  aria-hidden="true"
-                />
-              ) : (
-                <Progress value={percent} className={cn(BAR_STYLES[state])} />
-              )}
-              <p className="text-xs text-muted-foreground">{hint}</p>
-              {/* The second pool, and the ONE amount this card may show. It
-                  appears only once the bar is full, because that is the only
-                  moment credits are what the org is spending — showing a
-                  balance alongside a half-empty bar is what made the two read
-                  as one number. */}
-              {state === "exhausted" &&
-                canBuyCredits &&
-                creditsUsd !== null && (
-                  <div className="flex items-baseline justify-between gap-2 pt-2 mt-1 border-t border-border">
-                    <span className="text-sm text-muted-foreground">
-                      {t("settings.planUsage.creditsLabel")}
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums shrink-0">
-                      {creditsUsd.toLocaleString(preferences.language, {
-                        style: "currency",
-                        currency: "USD",
-                      })}
-                    </span>
-                  </div>
-                )}
+              <span className="text-sm text-muted-foreground text-right">
+                {hint}
+              </span>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {t("settings.planUsage.noAiIncluded")}
-            </p>
-          )}
+            {/* No bar at all when consumption is UNKNOWN. `value={percent ??
+                0}` rendered a full-width EMPTY track, which is the one
+                reading this card's own docstring forbids: an empty bar says
+                "nothing used", and the honest answer is "we could not read
+                it". The label above already says Unavailable; this is a
+                placeholder track with no fill, not a measurement. */}
+            {percent === null ? (
+              <div
+                className="h-3 w-full rounded-full bg-muted/60"
+                aria-hidden="true"
+              />
+            ) : (
+              <Progress
+                value={percent}
+                className={cn("h-3 bg-muted", BAR_STYLES[state])}
+              />
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("settings.planUsage.noAiIncluded")}
+          </p>
+        )}
 
-          {/* Credits live here rather than in a section of their own: they are
-              the second of this card's two pools, and a separate titled card
-              for them was a second place to look for one subject. Withheld
-              from a plan without `credits` (Free), whose allowance is a
-              ceiling. Fails OPEN like every other gate, so a gateway blip
-              still lets an org pay. */}
-          {canBuyCredits && (
-            <div className="flex flex-col gap-2.5 pt-5 border-t border-border">
-              <p className="text-sm text-muted-foreground">
+        {/* Credits live here rather than in a section of their own: they are
+            the second of this card's two pools, and a separate titled card
+            for them was a second place to look for one subject. Withheld
+            from a plan without `credits` (Free), whose allowance is a
+            ceiling. Fails OPEN like every other gate, so a gateway blip
+            still lets an org pay. The balance is the ONE amount this card may
+            show, and only once the bar is full: that is the moment credits
+            are what the org is spending. */}
+        {canBuyCredits && (
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-5 border-t border-border">
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm text-muted-foreground">
                 {t("settings.decoCreditsHero.addCredits")}
-              </p>
-              <QuickTopUp />
+              </span>
+              {state === "exhausted" && creditsUsd !== null && (
+                <span className="text-sm font-medium tabular-nums">
+                  {creditsUsd.toLocaleString(preferences.language, {
+                    style: "currency",
+                    currency: "USD",
+                  })}{" "}
+                  <span className="text-muted-foreground font-normal">
+                    {t("settings.planUsage.creditsLeft")}
+                  </span>
+                </span>
+              )}
             </div>
-          )}
-        </div>
-      </SettingsCard>
-    </SettingsSection>
+            <QuickTopUp />
+          </div>
+        )}
+      </div>
+    </SettingsCard>
   );
 }

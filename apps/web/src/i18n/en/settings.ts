@@ -524,9 +524,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.oneTimeHint": "One-time allowance. Doesn't reset.",
-  "settings.planUsage.exhausted": "Limit reached",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
-  "settings.planUsage.creditsLabel": "Credits",
+  "settings.planUsage.creditsLeft": "left",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",

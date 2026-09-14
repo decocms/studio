@@ -540,9 +540,8 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
   "settings.planUsage.oneTimeHint": "Franquia única. Não reinicia.",
-  "settings.planUsage.exhausted": "Limite atingido",
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
-  "settings.planUsage.creditsLabel": "Créditos",
+  "settings.planUsage.creditsLeft": "restantes",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
     "Não foi possível abrir a cobrança: {message}",
