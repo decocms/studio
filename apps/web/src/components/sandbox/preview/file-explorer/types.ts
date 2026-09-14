@@ -15,3 +15,8 @@ export type FileBuffer = {
   editorValue: string;
   loaded: boolean;
 };
+
+export type FileOperationError = {
+  kind: "read" | "write";
+  message: string;
+};

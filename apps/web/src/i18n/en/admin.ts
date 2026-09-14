@@ -4,6 +4,7 @@ export const admin = {
   "admin.layout.emailVerificationRequired":
     "Verify your email address to access the admin dashboard.",
   "admin.layout.goHome": "Go home",
+  "admin.layout.navigation": "Admin sections",
   "admin.layout.organizationsTab": "Organizations",
   "admin.layout.promptsTab": "Agent prompts",
   "admin.layout.restrictedToDashboard":

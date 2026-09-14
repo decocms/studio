@@ -1,12 +1,5 @@
 import { useState, type ComponentType } from "react";
-import { cn } from "@decocms/ui/lib/utils.ts";
-import {
-  ArrowNarrowLeft,
-  CheckCircle,
-  Container,
-  Settings02,
-  Tool02,
-} from "@untitledui/icons";
+import { CheckCircle, Container, Settings02, Tool02 } from "@untitledui/icons";
 import { PLUGIN_ID } from "@decocms/shared/registry/constants";
 import { useBrokenMonitorsCount } from "@/hooks/registry/use-monitor";
 import {
@@ -14,6 +7,10 @@ import {
   useRegistryConfig,
 } from "@/hooks/registry/use-registry";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
+import { MainBreadcrumb } from "@/components/main-breadcrumb";
+import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
+import { useProjectContext } from "@/sdk";
 import RegistryItemsPage from "./registry-items-page";
 import RegistryRequestsPage from "./registry-requests-page";
 import RegistrySettingsPage from "./registry-settings-page";
@@ -27,59 +24,65 @@ type NavItem = {
   tab: "items" | "requests" | "qa" | "settings";
 };
 
-function HeaderTabs({
+function RegistryTabs({
   activeTab,
   onChange,
   items,
+  ariaLabel,
 }: {
   activeTab: NavItem["tab"];
   onChange: (tab: NavItem["tab"]) => void;
   items: NavItem[];
+  ariaLabel: string;
 }) {
   return (
-    <nav className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-      {items.map((item) => {
-        const active = activeTab === item.tab;
+    <CollectionTabs
+      ariaLabel={ariaLabel}
+      activeTab={activeTab}
+      onTabChange={(next) => {
+        if (
+          next === "items" ||
+          next === "requests" ||
+          next === "qa" ||
+          next === "settings"
+        ) {
+          onChange(next);
+        }
+      }}
+      tabs={items.map((item) => {
         const Icon = item.icon;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            className={cn(
-              "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex gap-1.5 items-center whitespace-nowrap",
-              active
-                ? "bg-accent border-border text-foreground"
-                : "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
-            )}
-            onClick={() => onChange(item.tab)}
-          >
-            <Icon size={14} />
-            <span>{item.label}</span>
-            {typeof item.count === "number" && item.count > 0 && (
-              <span className="min-w-4 h-4 px-1 inline-flex items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold">
-                {item.count}
-              </span>
-            )}
-          </button>
-        );
+        return {
+          id: item.tab,
+          count: item.count,
+          label: (
+            <>
+              <Icon aria-hidden="true" size={14} />
+              <span>{item.label}</span>
+            </>
+          ),
+        };
       })}
-    </nav>
+    />
   );
 }
 
-export default function RegistryLayout({ onBack }: { onBack?: () => void }) {
+export default function RegistryLayout({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: NavItem["tab"];
+  onTabChange: (tab: NavItem["tab"]) => void;
+}) {
   const t = useT();
-  const [activeTab, setActiveTab] = useState<NavItem["tab"]>("items");
+  const { org } = useProjectContext();
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const { registryName, registryIcon, acceptPublishRequests } =
     useRegistryConfig(PLUGIN_ID);
   const pendingQuery = usePublishRequestCount();
   const brokenMonitors = useBrokenMonitorsCount();
 
-  // If publish requests were disabled while viewing requests tab, redirect
-  if (!acceptPublishRequests && activeTab === "requests") {
-    setActiveTab("items");
-  }
+  const visibleTab =
+    !acceptPublishRequests && activeTab === "requests" ? "items" : activeTab;
 
   const pendingCount = pendingQuery.data?.pending ?? 0;
   const navItems: NavItem[] = [
@@ -118,55 +121,56 @@ export default function RegistryLayout({ onBack }: { onBack?: () => void }) {
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden">
-      <header className="shrink-0 w-full border-b border-border h-12 overflow-x-auto flex items-center justify-between gap-3 px-4 min-w-max">
-        <div className="flex items-center gap-3 min-w-0">
-          {onBack && (
-            <button
-              type="button"
-              className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
-              onClick={onBack}
-            >
-              <ArrowNarrowLeft size={16} />
-            </button>
-          )}
-          <button
-            type="button"
-            className="min-w-0 flex items-center gap-2 hover:opacity-90 transition-opacity cursor-pointer"
-            onClick={() => setActiveTab("settings")}
-          >
-            <div className="size-7 rounded-lg border border-border overflow-hidden bg-muted/20 flex items-center justify-center shrink-0">
-              {registryIcon ? (
-                <img
-                  src={registryIcon}
-                  alt={registryName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="text-[10px] font-semibold text-muted-foreground">
-                  {registryName.slice(0, 1).toUpperCase()}
-                </span>
-              )}
-            </div>
-            <span className="text-sm font-medium truncate max-w-[220px]">
-              {registryName}
-            </span>
-          </button>
-          <div className="h-6 w-px bg-border shrink-0" />
-          <HeaderTabs
-            activeTab={activeTab}
-            onChange={setActiveTab}
+      <MainBreadcrumb.Parent.Portal
+        item={{
+          id: "settings:store",
+          label: t("settings.nav.store"),
+          link: {
+            to: "/$org/settings/store",
+            params: { org: org.slug },
+          },
+        }}
+      />
+      <Main.Title.Portal>
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          {registryIcon ? (
+            <img
+              src={registryIcon}
+              alt=""
+              className="size-5 shrink-0 rounded object-cover"
+            />
+          ) : null}
+          <span className="truncate" title={registryName}>
+            {registryName}
+          </span>
+        </span>
+      </Main.Title.Portal>
+      <Main.Topbar.Center.Portal>
+        <div className="hidden md:block">
+          <RegistryTabs
+            activeTab={visibleTab}
+            onChange={onTabChange}
             items={navItems}
+            ariaLabel={t("registry.registryLayout.navigation")}
           />
         </div>
-      </header>
+      </Main.Topbar.Center.Portal>
+      <Main.Toolbar.Portal visibility="compact">
+        <RegistryTabs
+          activeTab={visibleTab}
+          onChange={onTabChange}
+          items={navItems}
+          ariaLabel={t("registry.registryLayout.navigation")}
+        />
+      </Main.Toolbar.Portal>
 
       <main className="flex-1 min-w-0 overflow-hidden">
-        {activeTab === "items" && <RegistryItemsPage />}
-        {activeTab === "requests" && acceptPublishRequests && (
+        {visibleTab === "items" && <RegistryItemsPage />}
+        {visibleTab === "requests" && acceptPublishRequests && (
           <RegistryRequestsPage />
         )}
-        {activeTab === "qa" && <RegistryMonitorPage />}
-        {activeTab === "settings" && (
+        {visibleTab === "qa" && <RegistryMonitorPage />}
+        {visibleTab === "settings" && (
           <RegistrySettingsPage
             revealedKey={revealedKey}
             onRevealedKeyChange={setRevealedKey}

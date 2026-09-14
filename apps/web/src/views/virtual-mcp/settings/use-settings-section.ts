@@ -1,11 +1,9 @@
 /**
  * The open settings section, as a URL parameter.
  *
- * `?section=` is the settings panel's payload, the same way `?main=content` is
- * the Site Editor's (see `panel-route.ts`) — WHICH view is the segment, and the
- * place inside it is search. It is registered in `PANEL_PAYLOAD_KEYS`, so
- * switching to any other view clears it; opening Settings from the sidebar
- * therefore always lands on the index.
+ * `?section=` belongs to the Settings route. Panel navigation carries only
+ * shell-owned search, so switching views clears it and opening Settings from
+ * the sidebar lands on the index.
  *
  * Drilling in is a real navigation (not `replace`), so Back returns to the
  * index instead of leaving the panel.
@@ -22,7 +20,8 @@ export function useProjectSettingsSection(): {
   openSection: (section: ProjectSettingsSectionKey | null) => void;
 } {
   const navigate = useNavigate();
-  const raw = (useSearch({ strict: false }) as { section?: string }).section;
+  const search = useSearch({ strict: false });
+  const raw = "section" in search ? search.section : undefined;
   const section = isProjectSettingsSectionKey(raw) ? raw : null;
 
   return {

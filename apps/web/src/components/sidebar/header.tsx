@@ -1,10 +1,5 @@
-/** The header strip both desktop sidebars carry: the org/project picker, then
- *  the collapse toggle. The picker took the org switcher's slot, so the one
- *  control naming both org and project sits where people already look for the
- *  org — and settings reads as the same product rather than a place you were
- *  teleported to. Collapsed, the shell stacks these two into the rail and the
- *  picker becomes its own mark: the rail is this header with the text dropped,
- *  never a second header rebuilt inside the body. */
+/** Shared sidebar header: the org/project picker, collapse control, and chat
+ *  toggle. The collapsed rail stacks the controls below the picker. */
 
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
@@ -18,6 +13,7 @@ import { useInSettings } from "@/hooks/use-in-settings";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 import { OrgProjectPicker } from "./org-project-picker";
+import { SidebarPanelToggle } from "./panel-toggle";
 
 const ICON_SIZE = 16;
 
@@ -30,7 +26,12 @@ export function SidebarPickerHeader() {
   return (
     <>
       <OrgProjectPicker collapsed={collapsed} />
-      {!inSettings && <CollapseToggle />}
+      {!inSettings && (
+        <>
+          <CollapseToggle />
+          <SidebarPanelToggle />
+        </>
+      )}
     </>
   );
 }

@@ -136,6 +136,7 @@ export const library = {
   "library.libraryViews.failedToLoad": "Falha ao carregar",
   "library.libraryViews.files": "Arquivos",
   "library.libraryViews.filesCount": "{count} arquivo(s)",
+  "library.libraryViews.folderLocation": "Local da pasta",
   "library.libraryViews.folders": "Pastas",
   "library.libraryViews.noFilesMatch":
     'Nenhum arquivo corresponde a "{query}".',

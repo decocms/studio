@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildMobileViewOptions,
-  MAIN_SURFACE_VALUE,
+  resolveMobileMainPanelSelection,
   resolveMobileMainPanelTabSelectLabel,
+  resolveMobileMainPanelTriggerOption,
+  resolveMobileMainPanelViewOptions,
+  restoreCurrentMobileMainSearch,
 } from "./mobile-main-panel-tab-select";
 import { en } from "@/i18n/en/index.ts";
 import type { TranslationKey } from "@/i18n/en/index.ts";
@@ -71,44 +73,210 @@ describe("resolveMobileMainPanelTabSelectLabel", () => {
   });
 });
 
-const icon = { kind: "component", Component: () => null } as const;
-const iconTabs = tabs.map((tab) => ({ ...tab, icon }));
-
-describe("buildMobileViewOptions", () => {
-  test("offers the main surface back when the route declares no tabs", () => {
+describe("resolveMobileMainPanelSelection", () => {
+  test("selects Chat when an explicit side panel wins over an open main panel", () => {
     expect(
-      buildMobileViewOptions({ tabs: [], overlayEnabled: false, t }).map(
-        (option) => option.value,
-      ),
-    ).toEqual(["chat", MAIN_SURFACE_VALUE]);
+      resolveMobileMainPanelSelection({
+        activeTab: "site-editor",
+        sidePanelOpen: true,
+        mainOpen: true,
+        sidePanelParamPresent: true,
+      }),
+    ).toEqual({ value: "chat", surface: "chat" });
   });
 
-  test("does not synthesize a main row when tabs already lead back", () => {
+  test("selects the route-owned view on the main surface", () => {
     expect(
-      buildMobileViewOptions({
-        tabs: iconTabs,
-        overlayEnabled: false,
-        t,
-      }).map((option) => option.value),
-    ).toEqual(["chat", "preview", "settings"]);
+      resolveMobileMainPanelSelection({
+        activeTab: "site-editor",
+        sidePanelOpen: true,
+        mainOpen: true,
+        sidePanelParamPresent: false,
+      }),
+    ).toEqual({ value: "site-editor", surface: "main" });
   });
 
-  test("adds the Tasks and Library overlays on a task route", () => {
+  test("restores the mounted Content route without dropping its deep link", () => {
     expect(
-      buildMobileViewOptions({ tabs: [], overlayEnabled: true, t }).map(
-        (option) => option.value,
-      ),
-    ).toEqual(["chat", MAIN_SURFACE_VALUE, "board", "files"]);
-  });
-
-  test("names the main row, so it is pickable rather than only a label", () => {
-    const options = buildMobileViewOptions({
-      tabs: [],
-      overlayEnabled: false,
-      t,
+      restoreCurrentMobileMainSearch({
+        thread: "thread-1",
+        sidepanel: true,
+        mainpanel: false,
+        contentPageId: "page-product-42",
+        contentPath: "/products/café?variant=blue",
+        contentPathTemplate: "/products/:slug",
+      }),
+    ).toEqual({
+      thread: "thread-1",
+      sidepanel: false,
+      mainpanel: true,
+      contentPageId: "page-product-42",
+      contentPath: "/products/café?variant=blue",
+      contentPathTemplate: "/products/:slug",
     });
+  });
+});
+
+describe("resolveMobileMainPanelTriggerOption", () => {
+  test("renders the controlled Chat option while Chat is visible", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "overview",
+      currentRouteTitle: "Project Alpha",
+      orgSlug: "acme",
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+    const selection = resolveMobileMainPanelSelection({
+      activeTab: "overview",
+      sidePanelOpen: true,
+      mainOpen: true,
+      sidePanelParamPresent: true,
+    });
+
+    expect(selection).toEqual({ value: "chat", surface: "chat" });
     expect(
-      options.find((option) => option.value === MAIN_SURFACE_VALUE)?.title,
-    ).toBe("Main view");
+      resolveMobileMainPanelTriggerOption({
+        options,
+        value: selection.value,
+      }),
+    ).toMatchObject({ value: "chat", title: "Chat" });
+  });
+});
+
+describe("resolveMobileMainPanelViewOptions", () => {
+  test("keeps Tasks and Library available after switching to Chat clears the thread", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "board",
+      orgSlug: "acme",
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options.map(({ value }) => value)).toEqual([
+      "chat",
+      "board",
+      "files",
+    ]);
+  });
+
+  test("hides organization destinations outside an organization", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "chat",
+      orgSlug: undefined,
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options.map(({ value }) => value)).toEqual(["chat"]);
+  });
+
+  test("omits the organization Library inside a project", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "board",
+      orgSlug: "acme",
+      projectScoped: true,
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options.map(({ value }) => value)).toEqual(["chat", "board"]);
+  });
+
+  test("keeps the current route selectable after switching to Chat", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "settings",
+      currentRouteTitle: "Settings",
+      orgSlug: "acme",
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options.map(({ value, title }) => ({ value, title }))).toEqual([
+      { value: "chat", title: "Chat" },
+      { value: "settings", title: "Settings" },
+      { value: "board", title: "Tasks" },
+      { value: "files", title: "Library" },
+    ]);
+  });
+
+  test("names a source-less Site Editor route with no surface tabs", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "site-editor",
+      currentRouteTitle: "Site Editor",
+      orgSlug: "acme",
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options[1]).toMatchObject({
+      value: "site-editor",
+      title: "Site Editor",
+    });
+  });
+
+  test("keeps a source-less agent Overview identified as the mounted route", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "overview",
+      currentRouteTitle: "Project Alpha",
+      orgSlug: "acme",
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options[1]).toMatchObject({
+      value: "overview",
+      title: "Project Alpha",
+    });
+  });
+
+  test("represents an unresolved deep link with a real selectable option", () => {
+    const options = resolveMobileMainPanelViewOptions({
+      tabs: [],
+      activeTab: "file",
+      orgSlug: "acme",
+      titles: {
+        chat: "Chat",
+        tasks: "Tasks",
+        library: "Library",
+        mainView: "Main view",
+      },
+    });
+
+    expect(options[1]).toMatchObject({ value: "file", title: "Main view" });
   });
 });

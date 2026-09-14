@@ -1,7 +1,3 @@
-import {
-  canonicalThreadRouteTarget,
-  navigateToTabRouteTarget,
-} from "@/layouts/main-panel-tabs/tab-route";
 import { withTaskIntake } from "./task-intake";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
@@ -354,6 +350,7 @@ function useHomeSubmit() {
       // ensure-fallback will retry if the row is missing.
     }
     const search: Record<string, string | boolean> = {
+      thread: newId,
       autosend: AUTOSEND_QUERY_VALUE,
     };
     // `sidepanel` is retained across navigation, so submitting from a Home
@@ -364,15 +361,11 @@ function useHomeSubmit() {
       search.sidepanel = true;
       search.mainpanel = false;
     }
-    navigateToTabRouteTarget(
-      navigate,
-      canonicalThreadRouteTarget({
-        org: org.slug,
-        agentId: targetVmcp,
-        superAgentId: getWellKnownDecopilotVirtualMCP(org.id).id,
-      }),
-      { search: () => ({ ...search, thread: newId }), replace: false },
-    );
+    navigate({
+      to: "/$org/projects/$agentId",
+      params: { org: org.slug, agentId: targetVmcp },
+      search,
+    });
   };
 }
 

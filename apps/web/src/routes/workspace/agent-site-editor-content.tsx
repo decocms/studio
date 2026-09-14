@@ -1,12 +1,12 @@
-import { AgentViewGuard } from "./agent-view-guard";
 import { ContentTab } from "@/layouts/main-panel-tabs/content-tab";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { AgentViewGuard } from "./agent-view-guard";
 
-export default function Route() {
-  const virtualMcpId = useRouteVirtualMcpId();
+export default function AgentSiteEditorContentRoute() {
+  const agentId = useRouteVirtualMcpId();
   return (
     <AgentViewGuard tabId="content">
-      <ContentTab virtualMcpId={virtualMcpId} />
+      <ContentTab virtualMcpId={agentId} />
     </AgentViewGuard>
   );
 }

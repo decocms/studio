@@ -25,15 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { Link, useSearch } from "@tanstack/react-router";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
+import { useSearch } from "@tanstack/react-router";
 import {
   AlertCircle,
   Box,
@@ -49,7 +41,6 @@ import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
-import { ViewLayout } from "./layout";
 import {
   OAuthAuthenticationState,
   ManualAuthRequiredState,
@@ -65,6 +56,9 @@ import {
 } from "@/sdk";
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
+import { Main } from "@/components/main";
+import { MainBreadcrumb } from "@/components/main-breadcrumb";
+import { connectionMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
 import { ToolAnnotationBadges } from "@/components/tools/tools-list.tsx";
 import {
   useOptionalChatStream,
@@ -81,12 +75,6 @@ export interface ToolDetailsViewProps {
   onBack: () => void;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
 }
-
-const beautifyToolName = (toolName: string) => {
-  return toolName
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toLocaleLowerCase());
-};
 
 function ToolDetailsContent({
   toolName,
@@ -366,45 +354,6 @@ function ToolDetailsAuthenticated({
     setExecutionError(null);
     setStats(null);
   };
-
-  const displayToolName = tool?.name ?? beautifyToolName(toolName);
-
-  const breadcrumb = (
-    <Breadcrumb>
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to="/$org/settings/connections" params={{ org: org.slug }}>
-              {t("details.tool.connections")}
-            </Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        {connection && (
-          <>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link
-                  to="/$org/settings/connections/$appSlug"
-                  params={{
-                    org: org.slug,
-                    appSlug: getConnectionSlug(connection),
-                  }}
-                  search={{ tab: "tools" }}
-                >
-                  {connection.title}
-                </Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-          </>
-        )}
-        <BreadcrumbItem>
-          <BreadcrumbPage>{displayToolName}</BreadcrumbPage>
-        </BreadcrumbItem>
-      </BreadcrumbList>
-    </Breadcrumb>
-  );
 
   const instanceSelector = siblings.length > 1 && (
     <Select value={connectionId} onValueChange={onSelectInstance}>
@@ -705,6 +654,7 @@ function ToolDetailsAuthenticated({
             <Button
               size="icon"
               variant="ghost"
+              aria-label={t("details.tool.copyResult")}
               className="absolute top-4 right-4 h-8 w-8 bg-background/80 hover:bg-background border border-border shadow-sm"
               onClick={() => {
                 navigator.clipboard.writeText(
@@ -727,76 +677,67 @@ function ToolDetailsAuthenticated({
   );
 
   return (
-    <ViewLayout breadcrumb={breadcrumb}>
-      <div className="flex flex-col h-full overflow-hidden @container">
-        {/* Header */}
-        <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
-          {/* Row 1: icon | title + status | selector */}
-          <div className="flex items-center gap-4">
-            <IntegrationIcon
-              icon={connection?.icon || null}
-              name={connection?.title || toolName}
-              size="xl"
-              className="shrink-0"
-            />
-            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
-              {toolName}
-            </h1>
-            {/* MCP Status */}
-            <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
-              {toolsQuery.isSuccess ? (
-                <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
-              ) : toolsQuery.isLoading ? (
-                <Spinner className="size-[10px] text-warning shrink-0" />
-              ) : (
-                <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
-              )}
-              <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
-                {toolsQuery.isSuccess
-                  ? "ready"
-                  : toolsQuery.isLoading
-                    ? "connecting"
-                    : "error"}
-              </span>
-            </div>
-            <ToolAnnotationBadges
-              annotations={tool?.annotations}
-              _meta={tool?._meta as Record<string, unknown> | undefined}
-            />
-            {/* Instance switcher — visible only on large containers */}
-            <div className="hidden @3xl:flex items-center ml-auto shrink-0">
-              {instanceSelector}
-            </div>
-          </div>
-          {/* Row 2: description */}
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {tool?.description || "No description available"}
-          </p>
-        </div>
-
-        {/* Instance switcher — visible only on small containers */}
-        {siblings.length > 1 && (
-          <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
-            <span className="text-xs font-medium text-muted-foreground shrink-0">
-              {t("details.tool.instance")}
+    <div className="@container flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border bg-background px-4 py-5 @3xl:px-8 @3xl:py-6">
+        <div className="flex items-center gap-4">
+          <IntegrationIcon
+            icon={connection?.icon || null}
+            name={connection?.title || toolName}
+            size="xl"
+            className="shrink-0"
+          />
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
+            {toolsQuery.isSuccess ? (
+              <div className="h-1.5 w-1.5 rounded-full bg-success animate-pulse shrink-0" />
+            ) : toolsQuery.isLoading ? (
+              <Spinner className="size-[10px] text-warning shrink-0" />
+            ) : (
+              <div className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
+            )}
+            <span className="font-mono text-xs capitalize text-muted-foreground leading-none">
+              {toolsQuery.isSuccess
+                ? t("details.tool.statusReady")
+                : toolsQuery.isLoading
+                  ? t("details.tool.statusConnecting")
+                  : t("details.tool.statusError")}
             </span>
+          </div>
+          <ToolAnnotationBadges
+            annotations={tool?.annotations}
+            _meta={tool?._meta as Record<string, unknown> | undefined}
+          />
+          {/* Instance switcher — visible only on large containers */}
+          <div className="hidden @3xl:flex items-center ml-auto shrink-0">
             {instanceSelector}
           </div>
-        )}
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {tool?.description || t("details.tool.noDescription")}
+        </p>
+      </div>
 
-        {/* Content area */}
-        <div className="flex-1 overflow-auto @3xl:overflow-hidden">
-          <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] @3xl:h-full @3xl:grid-rows-1">
-            {/* Parameters */}
-            <div className="@3xl:border-r border-border @3xl:overflow-auto">
-              {parametersSection}
-            </div>
-            {/* Result */}
-            {resultPanel}
+      {/* Instance switcher — visible only on small containers */}
+      {siblings.length > 1 && (
+        <div className="flex @3xl:hidden items-center gap-3 px-8 py-3 border-b border-border">
+          <span className="text-xs font-medium text-muted-foreground shrink-0">
+            {t("details.tool.instance")}
+          </span>
+          {instanceSelector}
+        </div>
+      )}
+
+      {/* Content area */}
+      <div className="flex-1 overflow-auto @3xl:overflow-hidden">
+        <div className="grid grid-cols-1 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,5fr)] @3xl:h-full @3xl:grid-rows-1">
+          {/* Parameters */}
+          <div className="@3xl:border-r border-border @3xl:overflow-auto">
+            {parametersSection}
           </div>
+          {/* Result */}
+          {resultPanel}
         </div>
       </div>
-    </ViewLayout>
+    </div>
   );
 }
 
@@ -806,6 +747,7 @@ export function ToolDetailsView({
   onBack,
 }: ToolDetailsViewProps) {
   const t = useT();
+  const { org } = useProjectContext();
   const [selectedConnectionId, setSelectedConnectionId] = useState(
     siblings[0]?.id ?? "",
   );
@@ -816,37 +758,60 @@ export function ToolDetailsView({
     "";
 
   const connection = useConnection(connectionId || undefined);
+  const titlePortal = (
+    <Main.Title.Portal>
+      <span title={toolName}>{toolName}</span>
+    </Main.Title.Portal>
+  );
+  const connectionParentPortal = connection ? (
+    <MainBreadcrumb.Parent.Portal
+      item={connectionMainBreadcrumbItem(
+        org.slug,
+        getConnectionSlug(connection),
+        connection,
+        "tools",
+      )}
+    />
+  ) : null;
 
   if (!connection || !connectionId) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <h3 className="text-lg font-semibold">
-            {t("details.tool.connectionNotFound")}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {t("details.tool.connectionNotFoundMessage")}
-          </p>
+      <>
+        {connectionParentPortal}
+        {titlePortal}
+        <div className="flex h-full items-center justify-center">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <h3 className="text-lg font-semibold">
+              {t("details.tool.connectionNotFound")}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {t("details.tool.connectionNotFoundMessage")}
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-full items-center justify-center">
-          <Spinner className="size-8 text-muted-foreground" />
-        </div>
-      }
-    >
-      <ToolDetailsContent
-        toolName={toolName}
-        connectionId={connectionId}
-        siblings={siblings}
-        onSelectInstance={setSelectedConnectionId}
-        onBack={onBack}
-      />
-    </Suspense>
+    <>
+      {connectionParentPortal}
+      {titlePortal}
+      <Suspense
+        fallback={
+          <div className="flex h-full items-center justify-center">
+            <Spinner className="size-8 text-muted-foreground" />
+          </div>
+        }
+      >
+        <ToolDetailsContent
+          toolName={toolName}
+          connectionId={connectionId}
+          siblings={siblings}
+          onSelectInstance={setSelectedConnectionId}
+          onBack={onBack}
+        />
+      </Suspense>
+    </>
   );
 }

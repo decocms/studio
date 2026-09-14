@@ -47,77 +47,68 @@ export function AutomationListRow({
     setConfirmOpen(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      onClick();
-    }
-  };
-
   return (
     <>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onClick}
-        onKeyDown={handleKeyDown}
-        className="group w-full flex items-center gap-3 px-4 py-3 border-b border-border text-left hover:bg-muted/50 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span
-          className={cn(
-            "inline-block size-2 rounded-full shrink-0",
-            automation.active && automation.trigger_count > 0
-              ? "bg-success"
-              : "bg-muted-foreground/40",
-          )}
-          aria-label={t(
-            automation.active && automation.trigger_count > 0
-              ? "automations.automationListRow.ariaActive"
-              : !automation.active
-                ? "automations.automationListRow.ariaPaused"
-                : "automations.automationListRow.ariaNoTriggers",
-          )}
-        />
-
-        {showAgent && (
-          <AgentAvatar
-            icon={agent?.icon ?? null}
-            name={agent?.title ?? automation.name}
-            size="xs"
-            className="shrink-0"
-          />
-        )}
-
-        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
-              {automation.name}
-            </span>
-            {showAgent && agent && (
-              <span className="text-xs text-muted-foreground truncate">
-                · {agent.title}
-              </span>
-            )}
-          </div>
-          <TriggerSummary
-            triggerCount={automation.trigger_count}
-            nextRunAt={automation.nearest_next_run_at}
-          />
-        </div>
-
-        <div
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          role="presentation"
-          className="shrink-0"
+      <div className="group flex w-full items-center border-b border-border transition-colors last:border-b-0 hover:bg-muted/50 focus-within:bg-muted/50">
+        <button
+          type="button"
+          onClick={onClick}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
+          <span
+            role="img"
+            className={cn(
+              "inline-block size-2 shrink-0 rounded-full",
+              automation.active && automation.trigger_count > 0
+                ? "bg-success"
+                : "bg-muted-foreground/40",
+            )}
+            aria-label={t(
+              automation.active && automation.trigger_count > 0
+                ? "automations.automationListRow.ariaActive"
+                : !automation.active
+                  ? "automations.automationListRow.ariaPaused"
+                  : "automations.automationListRow.ariaNoTriggers",
+            )}
+          />
+
+          {showAgent && (
+            <AgentAvatar
+              icon={agent?.icon ?? null}
+              name={agent?.title ?? automation.name}
+              size="xs"
+              className="shrink-0"
+            />
+          )}
+
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-medium text-foreground">
+                {automation.name}
+              </span>
+              {showAgent && agent && (
+                <span className="truncate text-xs text-muted-foreground">
+                  · {agent.title}
+                </span>
+              )}
+            </div>
+            <TriggerSummary
+              triggerCount={automation.trigger_count}
+              nextRunAt={automation.nearest_next_run_at}
+            />
+          </div>
+        </button>
+
+        <div className="shrink-0 pr-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+                aria-label={t("automations.automationListRow.actionsLabel", {
+                  name: automation.name,
+                })}
+                className="h-8 w-8 p-0 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 data-[state=open]:opacity-100"
               >
                 <DotsVertical size={16} />
               </Button>
@@ -125,10 +116,7 @@ export function AutomationListRow({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 variant="destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmOpen(true);
-                }}
+                onClick={() => setConfirmOpen(true)}
               >
                 <Trash01 size={16} />
                 {t("automations.automationListRow.delete")}

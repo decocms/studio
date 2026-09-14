@@ -57,7 +57,7 @@ export function BulkCategoryPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b px-6 @max-sm/cms-content:px-3">
         <span className="truncate text-sm font-medium">
           {t("sandbox.bulkCategoryPanel.selectedCount", {
             count: String(count),
@@ -83,7 +83,7 @@ export function BulkCategoryPanel({
       </div>
 
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl px-8 py-8">
+        <div className="mx-auto max-w-2xl px-8 py-8 @max-md/cms-content:px-4 @max-md/cms-content:py-5">
           <h2 className="text-2xl font-bold text-foreground">
             {t("sandbox.bulkCategoryPanel.title")}
           </h2>

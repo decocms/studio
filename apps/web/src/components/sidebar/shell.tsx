@@ -33,7 +33,8 @@ interface SidebarShellProps {
 
 /** The gutter a panel card puts above its own 48px `PanelHeader`
  *  (`WorkspacePanelGroup`'s `pt-1` plus `PanelCard`'s `p-0.5`). The sidebar has
- *  no card, so it repeats the inset here to start its header on the same line.
+ *  no card, so it repeats the inset here to start its header on the same line —
+ *  which is also what puts the two 48px strips' rules on one continuous line.
  *  Invisible: the gutter it exposes is `bg-sidebar`, same as the sidebar. */
 const SIDEBAR_TOP_INSET = "pt-1.5";
 
@@ -47,15 +48,15 @@ export function SidebarShell({
   const content = (
     <>
       {header && (
-        <>
-          <div className="flex h-12 shrink-0 flex-row items-center gap-2 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:py-2">
-            {header}
-          </div>
-          {/* `mt-1.5` mirrors the shell's top inset, so the header sits in an
-              even band instead of crowding the rule. On the strip itself it
-              would eat the 48px box and pull the mark off the panel header. */}
-          <div className="mt-1.5 h-px shrink-0 bg-sidebar-border" />
-        </>
+        /* The rule is this strip's own `border-b`, not a sibling 1px element.
+           `Main.Topbar` draws its rule the same way, and under `border-box` a
+           bottom border lives INSIDE the 48px box — so a sibling rule lands one
+           pixel lower than the topbar's and the two read as a visible step. The
+           two columns start on the same line (`SIDEBAR_TOP_INSET` mirrors the
+           panel card's gutter), so identical boxes put the rules on one line. */
+        <div className="flex h-12 shrink-0 flex-row items-center gap-2 border-b border-sidebar-border px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:py-2">
+          {header}
+        </div>
       )}
       {back && <div className="shrink-0 px-2">{back}</div>}
       <SidebarContent className="gap-0 overflow-y-auto px-2 pt-2 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">

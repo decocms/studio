@@ -1,20 +1,16 @@
-import { useParams } from "@tanstack/react-router";
-import { taskSharePath } from "./task-route";
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -154,6 +150,7 @@ import {
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
+import { taskSharePath } from "./task-route";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -368,6 +365,10 @@ interface TaskEditorProps {
   /** Dialog chrome only — a page is open by virtue of being mounted. */
   open?: boolean;
   onClose: () => void;
+  /** Restore focus to the board after page chrome is actually detached. */
+  onAfterPageUnmount?: () => void;
+  /** Preserve the current workspace in copied task URLs. */
+  routeProjectId?: string;
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
   /** In create mode, the status to start the new task in (e.g. the lane the
@@ -411,7 +412,7 @@ interface TaskEditorProps {
  * `dialog` is the create flow — a task with no id yet has no URL to live at,
  * so it stays a modal (the home page's "New task" opens the same one).
  * `page` is the edit flow: the board hands the panel over to it and the
- * breadcrumb, not a close button, is what leads back out.
+ * route-owned topbar breadcrumb, not a close button, is what leads back out.
  *
  * Everything between the header row and the footer is chrome-independent.
  */
@@ -419,6 +420,8 @@ function TaskBoardItemEditor({
   chrome,
   open = true,
   onClose,
+  onAfterPageUnmount,
+  routeProjectId,
   item,
   defaultStatus,
   defaultRepo,
@@ -434,7 +437,8 @@ function TaskBoardItemEditor({
 }: TaskEditorProps) {
   const t = useT();
   const { org } = useProjectContext();
-  const { agentId } = useParams({ strict: false });
+  /** The card's human key (`DECO-01`), the one identity a person can quote. */
+  const key = item ? taskKey(org.slug, item.keySeq) : null;
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
@@ -577,44 +581,50 @@ function TaskBoardItemEditor({
    * link out of the board. (Create mode never schedules one: `patch` writes
    * nothing until the row exists.)
    */
-  const flushOnUnmount = (el: HTMLElement | null) => {
+  const [pageLifecycleRef] = useState(() => (el: HTMLDivElement | null) => {
     if (!el) return;
-    return () => flush();
-  };
+    // `flush` only reads the stable form/timer/submit refs, so the callback
+    // can keep one identity for the page's entire mounted lifetime. React 19
+    // runs callback-ref cleanup when the ref identity changes as well as on
+    // unmount; a per-render callback would therefore defeat the debounce.
+    const focusFrame = requestAnimationFrame(() => {
+      if (el.isConnected && el.getClientRects().length > 0) el.focus();
+    });
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      flush();
+      onAfterPageUnmount?.();
+    };
+  });
 
   /**
    * Esc leaves the page, the way it would dismiss the dialog. A dialog has a
    * layer to close; a page only has the way it was entered, so this walks the
-   * breadcrumb back to the board.
+   * route-owned breadcrumb back to the board.
    *
    * It defers to whatever is nearer the user first: an open layer (a menu,
    * popover or dialog, which dismisses on the same key) and a field being typed
    * in (where Esc reverts or blurs). Both mean the *next* Esc navigates.
    */
-  const escapeToClose = (el: HTMLElement | null) => {
-    if (!el) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      if (
-        document.querySelector(
-          '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
-        )
+  const escapeToClose = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    if (
+      document.querySelector(
+        '[data-radix-popper-content-wrapper], [role="dialog"][data-state="open"]',
       )
-        return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target instanceof HTMLInputElement ||
-          target instanceof HTMLTextAreaElement)
-      ) {
-        target.blur();
-        return;
-      }
-      close();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    )
+      return;
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement)
+    ) {
+      target.blur();
+      return;
+    }
+    close();
   };
 
   const createAndSelectTag = async (name: string, color: string) => {
@@ -639,8 +649,6 @@ function TaskBoardItemEditor({
   const showRerun =
     item && onRerun && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
 
-  /** The card's human key (`DECO-01`), the one identity a person can quote. */
-  const key = item ? taskKey(org.slug, item.keySeq) : null;
   const assignee = members.find((m) => m.userId === assigneeId);
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
@@ -656,31 +664,9 @@ function TaskBoardItemEditor({
   const header = (
     <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
       {chrome === "page" ? (
-        /* The page's way back out. The key doubles as the trail's leaf, so
-             there is no separate id chip in this chrome. */
-        <Breadcrumb className="-ml-2">
-          <BreadcrumbList className="text-[15px]">
-            <BreadcrumbItem>
-              {/* A button, not an anchor: leaving flushes a pending autosave
-                    and the board it returns to is a search-param away, not a
-                    document to link to. */}
-              <BreadcrumbLink
-                asChild
-                className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
-              >
-                <button type="button" onClick={close}>
-                  {t("taskBoard.taskDetail.breadcrumbTasks")}
-                </button>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage className="px-2 py-1">
-                {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+        /* The route-owned topbar carries Tasks › key. This spacer preserves
+           the action row without repeating a second breadcrumb landmark. */
+        <span />
       ) : /* Null only for a card written before the key backfill, which has
               no key to show. */
       key ? (
@@ -745,7 +731,7 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}${taskSharePath(org.slug, item, agentId)}`,
+                  `${window.location.origin}${taskSharePath(org.slug, item, routeProjectId)}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}
@@ -1437,15 +1423,12 @@ function TaskBoardItemEditor({
   if (chrome === "page") {
     return (
       <div
-        ref={(el) => {
-          const stopEscape = escapeToClose(el);
-          const stopFlush = flushOnUnmount(el);
-          return () => {
-            stopEscape?.();
-            stopFlush?.();
-          };
-        }}
+        ref={pageLifecycleRef}
+        onKeyDown={escapeToClose}
         data-testid="task-detail"
+        role="region"
+        aria-label={key ? `${key}: ${title}` : title}
+        tabIndex={-1}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         {body}
@@ -1484,7 +1467,8 @@ export function TaskBoardItemDialog(
 
 /**
  * A task rendered in place of the board, reached by clicking its card. The
- * breadcrumb in its header is what leads back out; see {@link TaskBoardItemEditor}.
+ * breadcrumb in the route topbar is what leads back out; see
+ * {@link TaskBoardItemEditor}.
  */
 export function TaskBoardItemDetail(
   props: Omit<TaskEditorProps, "chrome" | "open" | "defaultStatus"> & {

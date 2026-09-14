@@ -46,6 +46,7 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 
 // Date presets, in display order. The CDN warehouse is DATE-granular (facts are
 // keyed by a `date` column, no timestamp), so sub-day presets (60m/24h/48h/72h)
@@ -1762,59 +1763,72 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   ];
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto p-4">
-      <div>
-        <h2 className="text-base font-semibold text-foreground">
-          {t("mainPanelTabs.cdnTab.title")}
-        </h2>
-        {hosts.length > 0 && (
-          <p className="font-mono text-xs text-muted-foreground">
-            {hosts[0]}
-            {hosts.length > 1 &&
-              ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
-                "{count}",
-                String(hosts.length - 1),
-              )}`}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
-          {sections.map((sec) => (
-            <button
-              key={sec.id}
-              type="button"
-              onClick={() => setSection(sec.id)}
-              className={cn(
-                "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                section === sec.id
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {sec.label}
-            </button>
-          ))}
+    <>
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 items-center justify-between gap-3 overflow-x-auto">
+          <div
+            role="group"
+            aria-label={t("mainPanelTabs.cdnTab.title")}
+            className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border p-0.5"
+          >
+            {sections.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={section === item.id}
+                onClick={() => setSection(item.id)}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  section === item.id
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="shrink-0">
+            <RangePicker value={sel} onChange={setSel} />
+          </div>
         </div>
-        <RangePicker value={sel} onChange={setSel} />
-      </div>
+      </Main.Toolbar.Portal>
 
-      {section === "performance" ? (
-        <PerformanceSection
-          base={base}
-          range={sel.range}
-          rangeExtra={rangeExtra}
-          enabled={enabled}
-        />
-      ) : (
-        <AudienceSection
-          base={base}
-          range={sel.range}
-          rangeExtra={rangeExtra}
-          compare={sel.compare}
-          enabled={enabled}
-        />
-      )}
-    </div>
+      <div className="h-full overflow-auto">
+        <Main.Container
+          width="wide"
+          padding="compact"
+          className="flex flex-col gap-4"
+        >
+          {hosts.length > 0 && (
+            <p className="font-mono text-xs text-muted-foreground">
+              {hosts[0]}
+              {hosts.length > 1 &&
+                ` ${t("mainPanelTabs.cdnTab.moreHostnames").replace(
+                  "{count}",
+                  String(hosts.length - 1),
+                )}`}
+            </p>
+          )}
+
+          {section === "performance" ? (
+            <PerformanceSection
+              base={base}
+              range={sel.range}
+              rangeExtra={rangeExtra}
+              enabled={enabled}
+            />
+          ) : (
+            <AudienceSection
+              base={base}
+              range={sel.range}
+              rangeExtra={rangeExtra}
+              compare={sel.compare}
+              enabled={enabled}
+            />
+          )}
+        </Main.Container>
+      </div>
+    </>
   );
 }

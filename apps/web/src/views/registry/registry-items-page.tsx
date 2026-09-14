@@ -31,9 +31,12 @@ import {
   DotsVertical,
   FilterLines,
   Globe01,
+  Plus,
   SearchMd,
+  Upload01,
 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { DeleteConfirmDialog } from "./delete-confirm-dialog";
 import { RegistryItemCard } from "./registry-item-card";
@@ -228,406 +231,423 @@ export default function RegistryItemsPage() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="shrink-0 border-b border-border">
-        <div className="h-12 px-4 md:px-6 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-medium">
-              {t("registry.registryItemsPage.items")}
-            </h2>
-            <Badge variant="secondary" className="text-xs">
-              {totalCount}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2 self-stretch">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={cn(toolbarButtonClass, "gap-1.5")}
-                >
-                  <FilterLines size={14} />
-                  {t("registry.registryItemsPage.filters")}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[260px]">
-                <DropdownMenuLabel>
-                  {t("registry.registryItemsPage.tags")}
-                </DropdownMenuLabel>
-                {tags.length > 0 ? (
-                  tags.map((tag) => (
-                    <DropdownMenuCheckboxItem
-                      key={tag.value}
-                      checked={selectedTags.includes(tag.value)}
-                      onCheckedChange={() =>
-                        setSelectedTags((current) =>
-                          toggleSelection(current, tag.value),
-                        )
-                      }
-                    >
-                      {tag.value} ({tag.count})
-                    </DropdownMenuCheckboxItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    {t("registry.registryItemsPage.noTagsAvailable")}
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>
-                  {t("registry.registryItemsPage.categories")}
-                </DropdownMenuLabel>
-                {categories.length > 0 ? (
-                  categories.map((category) => (
-                    <DropdownMenuCheckboxItem
-                      key={category.value}
-                      checked={selectedCategories.includes(category.value)}
-                      onCheckedChange={() =>
-                        setSelectedCategories((current) =>
-                          toggleSelection(current, category.value),
-                        )
-                      }
-                    >
-                      {category.value} ({category.count})
-                    </DropdownMenuCheckboxItem>
-                  ))
-                ) : (
-                  <DropdownMenuItem disabled>
-                    {t("registry.registryItemsPage.noCategoriesAvailable")}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <ToggleGroup
-              type="single"
-              value={viewMode}
-              onValueChange={(value) => {
-                if (value === "cards" || value === "table") {
-                  setViewMode(value);
-                }
-              }}
-              variant="outline"
-              className={toolbarButtonClass}
-            >
-              <ToggleGroupItem
-                value="cards"
-                aria-label={t("registry.registryItemsPage.cardsViewAriaLabel")}
-                className={toolbarButtonClass}
-              >
-                {t("registry.registryItemsPage.cards")}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="table"
-                aria-label={t("registry.registryItemsPage.tableViewAriaLabel")}
-                className={toolbarButtonClass}
-              >
-                {t("registry.registryItemsPage.table")}
-              </ToggleGroupItem>
-            </ToggleGroup>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className={toolbarButtonClass}
-              onClick={() => setCsvOpen(true)}
-            >
+    <>
+      <Main.Topbar.Right.Portal>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={t("registry.registryItemsPage.importCsv")}
+            onClick={() => setCsvOpen(true)}
+          >
+            <Upload01 aria-hidden="true" size={14} />
+            <span className="@max-sm/main-topbar:hidden">
               {t("registry.registryItemsPage.importCsv")}
-            </Button>
-            <Button
-              size="sm"
-              className={toolbarButtonClass}
-              onClick={() => setCreateOpen(true)}
-            >
+            </span>
+          </Button>
+          <Button
+            size="sm"
+            aria-label={t("registry.registryItemsPage.addMcpServers")}
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus aria-hidden="true" size={14} />
+            <span className="@max-sm/main-topbar:hidden">
               {t("registry.registryItemsPage.addMcpServers")}
-            </Button>
-          </div>
+            </span>
+          </Button>
         </div>
+      </Main.Topbar.Right.Portal>
 
-        <div className="border-t border-border h-12 px-4 md:px-6 flex items-center">
-          <label className="flex items-center gap-2.5 h-12 w-full cursor-text">
-            <SearchMd size={16} className="text-muted-foreground shrink-0" />
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <label className="relative min-w-48 flex-1 sm:max-w-md">
+            <span className="sr-only">
+              {t("registry.registryItemsPage.searchPlaceholder")}
+            </span>
+            <SearchMd
+              aria-hidden="true"
+              size={16}
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
+            />
             <Input
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder={t("registry.registryItemsPage.searchPlaceholder")}
-              className="flex-1 border-0 shadow-none focus-visible:ring-0 px-0 h-full text-sm placeholder:text-muted-foreground/50 bg-transparent"
+              className="h-8 pl-8"
             />
           </label>
+
+          <Badge variant="secondary" className="shrink-0 text-xs">
+            {t("registry.registryItemsPage.itemCount", { count: totalCount })}
+          </Badge>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(toolbarButtonClass, "shrink-0 gap-1.5")}
+              >
+                <FilterLines aria-hidden="true" size={14} />
+                {t("registry.registryItemsPage.filters")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[260px]">
+              <DropdownMenuLabel>
+                {t("registry.registryItemsPage.tags")}
+              </DropdownMenuLabel>
+              {tags.length > 0 ? (
+                tags.map((tag) => (
+                  <DropdownMenuCheckboxItem
+                    key={tag.value}
+                    checked={selectedTags.includes(tag.value)}
+                    onCheckedChange={() =>
+                      setSelectedTags((current) =>
+                        toggleSelection(current, tag.value),
+                      )
+                    }
+                  >
+                    {tag.value} ({tag.count})
+                  </DropdownMenuCheckboxItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>
+                  {t("registry.registryItemsPage.noTagsAvailable")}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>
+                {t("registry.registryItemsPage.categories")}
+              </DropdownMenuLabel>
+              {categories.length > 0 ? (
+                categories.map((category) => (
+                  <DropdownMenuCheckboxItem
+                    key={category.value}
+                    checked={selectedCategories.includes(category.value)}
+                    onCheckedChange={() =>
+                      setSelectedCategories((current) =>
+                        toggleSelection(current, category.value),
+                      )
+                    }
+                  >
+                    {category.value} ({category.count})
+                  </DropdownMenuCheckboxItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>
+                  {t("registry.registryItemsPage.noCategoriesAvailable")}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <ToggleGroup
+            type="single"
+            value={viewMode}
+            onValueChange={(value) => {
+              if (value === "cards" || value === "table") {
+                setViewMode(value);
+              }
+            }}
+            variant="outline"
+            className={cn(toolbarButtonClass, "shrink-0")}
+          >
+            <ToggleGroupItem
+              value="cards"
+              aria-label={t("registry.registryItemsPage.cardsViewAriaLabel")}
+              className={toolbarButtonClass}
+            >
+              {t("registry.registryItemsPage.cards")}
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="table"
+              aria-label={t("registry.registryItemsPage.tableViewAriaLabel")}
+              className={toolbarButtonClass}
+            >
+              {t("registry.registryItemsPage.table")}
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          {hasActiveFilters && (
+            <div className="flex basis-full flex-wrap items-center gap-2 border-t border-border/60 pt-2">
+              {selectedTags.map((tag) => (
+                <Badge key={`selected-tag-${tag}`} variant="default">
+                  #{tag}
+                </Badge>
+              ))}
+              {selectedCategories.map((category) => (
+                <Badge key={`selected-category-${category}`} variant="outline">
+                  {category}
+                </Badge>
+              ))}
+              {searchInput.trim() && (
+                <Badge variant="secondary" className="max-w-70 truncate">
+                  {t("registry.registryItemsPage.searchFilter", {
+                    search: searchInput,
+                  })}
+                </Badge>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-7"
+                onClick={() => {
+                  setSearchInput("");
+                  setSelectedTags([]);
+                  setSelectedCategories([]);
+                }}
+              >
+                {t("registry.registryItemsPage.clearFilters")}
+              </Button>
+            </div>
+          )}
+        </div>
+      </Main.Toolbar.Portal>
+
+      <div className="h-full flex flex-col">
+        <div className="flex-1 overflow-auto">
+          <Main.Container width="fluid" padding="compact">
+            {items.length === 0 ? (
+              <div className="min-h-[320px] rounded-xl border border-dashed border-border flex flex-col items-center justify-center gap-3 p-6 text-center">
+                {itemsQuery.isLoading ? (
+                  <>
+                    <Spinner className="size-5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      {t("registry.registryItemsPage.loadingItems")}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-base font-medium">
+                      {hasActiveFilters
+                        ? t("registry.registryItemsPage.noItemsFound")
+                        : t("registry.registryItemsPage.noMcpsInRegistry")}
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      {hasActiveFilters
+                        ? t("registry.registryItemsPage.tryRemovingFilters")
+                        : t("registry.registryItemsPage.addFirstMcpItem")}
+                    </p>
+                    {!hasActiveFilters && (
+                      <Button size="lg" onClick={() => setCreateOpen(true)}>
+                        {t("registry.registryItemsPage.addMcpServers")}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : viewMode === "cards" ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 @lg:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-4">
+                  {items.map((item) => (
+                    <RegistryItemCard
+                      key={item.id}
+                      item={item}
+                      onEdit={setEditingItem}
+                      onDelete={setDeletingItem}
+                      onToggleVerified={handleToggleVerified}
+                      onToggleOfficial={handleToggleOfficial}
+                    />
+                  ))}
+                </div>
+                {itemsQuery.hasNextPage && (
+                  <div ref={setLoadMoreSentinel} className="h-2" />
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="border rounded-lg overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[56px]">
+                          {t("registry.registryItemsPage.icon")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.registryItemsPage.title")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.registryItemsPage.id")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.registryItemsPage.tags")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.registryItemsPage.categories")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.registryItemsPage.remoteUrl")}
+                        </TableHead>
+                        <TableHead>
+                          {t("registry.registryItemsPage.visibility")}
+                        </TableHead>
+                        <TableHead className="text-right w-[68px]">
+                          {t("registry.registryItemsPage.actions")}
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <div className="size-8 rounded-md border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
+                              {item.server?.icons?.[0]?.src ? (
+                                <img
+                                  src={item.server.icons[0].src}
+                                  alt={item.title}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span className="text-[10px] font-semibold text-muted-foreground">
+                                  {item.title.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{item.title}</TableCell>
+                          <TableCell className="font-mono">{item.id}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {extractTags(item)
+                                .slice(0, 3)
+                                .map((tag) => (
+                                  <Badge
+                                    key={`${item.id}-tag-${tag}`}
+                                    variant="outline"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {extractCategories(item)
+                                .slice(0, 3)
+                                .map((category) => (
+                                  <Badge
+                                    key={`${item.id}-category-${category}`}
+                                    variant="outline"
+                                  >
+                                    {category}
+                                  </Badge>
+                                ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>{extractRemoteUrl(item)}</TableCell>
+                          <TableCell>
+                            {item.is_public ? (
+                              <Badge variant="default" className="gap-1">
+                                <Globe01 size={10} />
+                                {t("registry.registryItemsPage.public")}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary">
+                                {t("registry.registryItemsPage.private")}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  aria-label={t(
+                                    "registry.registryItemsPage.actionsFor",
+                                    { title: item.title },
+                                  )}
+                                >
+                                  <DotsVertical size={18} />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => setEditingItem(item)}
+                                >
+                                  {t("registry.registryItemsPage.edit")}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeletingItem(item)}
+                                >
+                                  {t("registry.registryItemsPage.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {itemsQuery.hasNextPage && (
+                  <div ref={setLoadMoreSentinel} className="h-2" />
+                )}
+              </div>
+            )}
+
+            {itemsQuery.isFetchingNextPage && (
+              <div className="py-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="size-4" />
+                {t("registry.registryItemsPage.loadingMoreItems")}
+              </div>
+            )}
+          </Main.Container>
         </div>
 
-        {hasActiveFilters && (
-          <div className="border-t border-border px-4 md:px-6 py-2 flex flex-wrap items-center gap-2">
-            {selectedTags.map((tag) => (
-              <Badge key={`selected-tag-${tag}`} variant="default">
-                #{tag}
-              </Badge>
-            ))}
-            {selectedCategories.map((category) => (
-              <Badge key={`selected-category-${category}`} variant="outline">
-                {category}
-              </Badge>
-            ))}
-            {searchInput.trim() && (
-              <Badge variant="secondary" className="max-w-[280px] truncate">
-                Search: {searchInput}
-              </Badge>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 ml-auto"
-              onClick={() => {
-                setSearchInput("");
-                setSelectedTags([]);
-                setSelectedCategories([]);
-              }}
-            >
-              {t("registry.registryItemsPage.clearFilters")}
-            </Button>
-          </div>
-        )}
+        <RegistryItemDialog
+          key={editingItem?.id ?? "create"}
+          open={createOpen || Boolean(editingItem)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setCreateOpen(false);
+              setEditingItem(null);
+            }
+          }}
+          item={editingItem}
+          availableTags={tags.map((tag) => tag.value)}
+          availableCategories={categories.map((category) => category.value)}
+          isSubmitting={createMutation.isPending || updateMutation.isPending}
+          onSubmit={handleCreateOrEdit}
+        />
+
+        <CsvImportDialog
+          open={csvOpen}
+          onOpenChange={setCsvOpen}
+          isImporting={bulkCreateMutation.isPending}
+          onImport={async (parsedItems) => {
+            try {
+              const result = await bulkCreateMutation.mutateAsync(parsedItems);
+              toast.success(
+                t("registry.registryItemsPage.importedItems", {
+                  count: result.created,
+                }),
+              );
+              return result;
+            } catch (error) {
+              toast.error(
+                error instanceof Error
+                  ? error.message
+                  : t("registry.registryItemsPage.failedToImportCsv"),
+              );
+              throw error;
+            }
+          }}
+        />
+
+        <DeleteConfirmDialog
+          open={Boolean(deletingItem)}
+          onOpenChange={(open) => {
+            if (!open) setDeletingItem(null);
+          }}
+          title={deletingItem?.title ?? deletingItem?.id ?? ""}
+          isDeleting={deleteMutation.isPending}
+          onConfirm={handleDelete}
+        />
       </div>
-
-      <div className="flex-1 overflow-auto px-4 md:px-6 py-4">
-        {items.length === 0 ? (
-          <div className="min-h-[320px] rounded-xl border border-dashed border-border flex flex-col items-center justify-center gap-3 p-6 text-center">
-            {itemsQuery.isLoading ? (
-              <>
-                <Spinner className="size-5 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  {t("registry.registryItemsPage.loadingItems")}
-                </p>
-              </>
-            ) : (
-              <>
-                <h3 className="text-base font-medium">
-                  {hasActiveFilters
-                    ? t("registry.registryItemsPage.noItemsFound")
-                    : t("registry.registryItemsPage.noMcpsInRegistry")}
-                </h3>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  {hasActiveFilters
-                    ? t("registry.registryItemsPage.tryRemovingFilters")
-                    : t("registry.registryItemsPage.addFirstMcpItem")}
-                </p>
-                {!hasActiveFilters && (
-                  <Button size="lg" onClick={() => setCreateOpen(true)}>
-                    {t("registry.registryItemsPage.addMcpServers")}
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        ) : viewMode === "cards" ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {items.map((item) => (
-                <RegistryItemCard
-                  key={item.id}
-                  item={item}
-                  onEdit={setEditingItem}
-                  onDelete={setDeletingItem}
-                  onToggleVerified={handleToggleVerified}
-                  onToggleOfficial={handleToggleOfficial}
-                />
-              ))}
-            </div>
-            {itemsQuery.hasNextPage && (
-              <div ref={setLoadMoreSentinel} className="h-2" />
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="border rounded-lg overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[56px]">
-                      {t("registry.registryItemsPage.icon")}
-                    </TableHead>
-                    <TableHead>
-                      {t("registry.registryItemsPage.title")}
-                    </TableHead>
-                    <TableHead>{t("registry.registryItemsPage.id")}</TableHead>
-                    <TableHead>
-                      {t("registry.registryItemsPage.tags")}
-                    </TableHead>
-                    <TableHead>
-                      {t("registry.registryItemsPage.categories")}
-                    </TableHead>
-                    <TableHead>
-                      {t("registry.registryItemsPage.remoteUrl")}
-                    </TableHead>
-                    <TableHead>
-                      {t("registry.registryItemsPage.visibility")}
-                    </TableHead>
-                    <TableHead className="text-right w-[68px]">
-                      {t("registry.registryItemsPage.actions")}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <div className="size-8 rounded-md border border-border bg-muted/20 overflow-hidden flex items-center justify-center">
-                          {item.server?.icons?.[0]?.src ? (
-                            <img
-                              src={item.server.icons[0].src}
-                              alt={item.title}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <span className="text-[10px] font-semibold text-muted-foreground">
-                              {item.title.charAt(0).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{item.title}</TableCell>
-                      <TableCell className="font-mono">{item.id}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {extractTags(item)
-                            .slice(0, 3)
-                            .map((tag) => (
-                              <Badge
-                                key={`${item.id}-tag-${tag}`}
-                                variant="outline"
-                              >
-                                {tag}
-                              </Badge>
-                            ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {extractCategories(item)
-                            .slice(0, 3)
-                            .map((category) => (
-                              <Badge
-                                key={`${item.id}-category-${category}`}
-                                variant="outline"
-                              >
-                                {category}
-                              </Badge>
-                            ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>{extractRemoteUrl(item)}</TableCell>
-                      <TableCell>
-                        {item.is_public ? (
-                          <Badge variant="default" className="gap-1">
-                            <Globe01 size={10} />
-                            {t("registry.registryItemsPage.public")}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            {t("registry.registryItemsPage.private")}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              aria-label={t(
-                                "registry.registryItemsPage.actionsFor",
-                                { title: item.title },
-                              )}
-                            >
-                              <DotsVertical size={18} />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => setEditingItem(item)}
-                            >
-                              {t("registry.registryItemsPage.edit")}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setDeletingItem(item)}
-                            >
-                              {t("registry.registryItemsPage.delete")}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {itemsQuery.hasNextPage && (
-              <div ref={setLoadMoreSentinel} className="h-2" />
-            )}
-          </div>
-        )}
-
-        {itemsQuery.isFetchingNextPage && (
-          <div className="py-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Spinner className="size-4" />
-            {t("registry.registryItemsPage.loadingMoreItems")}
-          </div>
-        )}
-      </div>
-
-      <RegistryItemDialog
-        key={editingItem?.id ?? "create"}
-        open={createOpen || Boolean(editingItem)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreateOpen(false);
-            setEditingItem(null);
-          }
-        }}
-        item={editingItem}
-        availableTags={tags.map((tag) => tag.value)}
-        availableCategories={categories.map((category) => category.value)}
-        isSubmitting={createMutation.isPending || updateMutation.isPending}
-        onSubmit={handleCreateOrEdit}
-      />
-
-      <CsvImportDialog
-        open={csvOpen}
-        onOpenChange={setCsvOpen}
-        isImporting={bulkCreateMutation.isPending}
-        onImport={async (parsedItems) => {
-          try {
-            const result = await bulkCreateMutation.mutateAsync(parsedItems);
-            toast.success(
-              t("registry.registryItemsPage.importedItems", {
-                count: result.created,
-              }),
-            );
-            return result;
-          } catch (error) {
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : t("registry.registryItemsPage.failedToImportCsv"),
-            );
-            throw error;
-          }
-        }}
-      />
-
-      <DeleteConfirmDialog
-        open={Boolean(deletingItem)}
-        onOpenChange={(open) => {
-          if (!open) setDeletingItem(null);
-        }}
-        title={deletingItem?.title ?? deletingItem?.id ?? ""}
-        isDeleting={deleteMutation.isPending}
-        onConfirm={handleDelete}
-      />
-    </div>
+    </>
   );
 }

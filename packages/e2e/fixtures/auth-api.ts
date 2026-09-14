@@ -48,7 +48,7 @@ export interface SignUpResult {
 export const TEST_PASSWORD = "Playwright123!";
 
 function generateTestUser(overrides?: { email?: string; name?: string }) {
-  const suffix = Date.now() + Math.floor(Math.random() * 100000);
+  const suffix = crypto.randomUUID();
   // The unique suffix must lead the name: the signup hook derives the default
   // org slug from the first name only, so a shared "Test" first name would
   // collapse every test org into a tiny shared slug namespace and collide.

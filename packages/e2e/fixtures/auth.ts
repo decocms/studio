@@ -2,10 +2,10 @@ import { type Page } from "@playwright/test";
 
 /**
  * Generates a unique test user for each test run.
- * Using a timestamp suffix avoids conflicts between parallel runs or re-runs.
+ * A UUID keeps parallel runs and re-runs in separate user/org namespaces.
  */
 function generateTestUser(overrides?: { email?: string }) {
-  const suffix = Date.now() + Math.floor(Math.random() * 1000);
+  const suffix = crypto.randomUUID();
   // The unique suffix must lead the name: the signup hook derives the default
   // org slug from the first name only, so a shared "Test" first name would
   // collapse every test org into a tiny shared slug namespace and collide.

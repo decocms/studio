@@ -21,6 +21,7 @@ import {
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { OrgNoticeBanner } from "@/components/org-notice-banner";
 import { StudioSidebar } from "@/components/sidebar";
+import { WorkspacePanelsProvider } from "@/layouts/workspace-panels-context";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
@@ -49,39 +50,44 @@ export default function OrgLayout() {
   const inSettings = useInSettings();
 
   return (
-    <SidebarProvider
-      open={inSettings || sidebarOpen}
-      onOpenChange={setSidebarOpen}
-    >
-      <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
-        <OrgNoticeBanner />
-        <SidebarLayout
-          ref={wrapperRef}
-          className="flex-1 bg-sidebar relative min-h-0"
-          style={
-            {
-              "--sidebar-width": `${width}px`,
-              "--sidebar-width-icon": SIDEBAR_ICON_WIDTH,
-            } as Record<string, string>
-          }
-        >
-          {!isMobile && (
-            <>
-              <StudioSidebar />
-              <SidebarResizeHandle
-                onPointerDown={onStartResize}
-                onDoubleClick={resetWidth}
-              />
-            </>
-          )}
-          <SidebarInset
-            className="flex flex-col min-h-0"
-            style={{ background: "transparent", containerType: "inline-size" }}
+    <WorkspacePanelsProvider>
+      <SidebarProvider
+        open={inSettings || sidebarOpen}
+        onOpenChange={setSidebarOpen}
+      >
+        <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
+          <OrgNoticeBanner />
+          <SidebarLayout
+            ref={wrapperRef}
+            className="flex-1 bg-sidebar relative min-h-0"
+            style={
+              {
+                "--sidebar-width": `${width}px`,
+                "--sidebar-width-icon": SIDEBAR_ICON_WIDTH,
+              } as Record<string, string>
+            }
           >
-            <Outlet />
-          </SidebarInset>
-        </SidebarLayout>
-      </div>
-    </SidebarProvider>
+            {!isMobile && (
+              <>
+                <StudioSidebar />
+                <SidebarResizeHandle
+                  onPointerDown={onStartResize}
+                  onDoubleClick={resetWidth}
+                />
+              </>
+            )}
+            <SidebarInset
+              className="flex flex-col min-h-0"
+              style={{
+                background: "transparent",
+                containerType: "inline-size",
+              }}
+            >
+              <Outlet />
+            </SidebarInset>
+          </SidebarLayout>
+        </div>
+      </SidebarProvider>
+    </WorkspacePanelsProvider>
   );
 }

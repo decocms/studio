@@ -60,6 +60,7 @@ import {
   formatSize,
   isImageKey,
 } from "@/components/file-picker/asset-utils";
+import { Main } from "@/components/main";
 
 export function AssetsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const entity = useVirtualMCP(virtualMcpId);
@@ -184,31 +185,60 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
   const isSearching =
     search !== debouncedSearch ||
     (objectsQuery.isFetching && !objectsQuery.isFetchingNextPage);
+  const uploadLabel = upload.isPending
+    ? t("filePicker.filePickerDialog.uploading")
+    : t("filePicker.filePickerDialog.dropFilesOrClick");
+
+  const uploadButton = (
+    <Button
+      type="button"
+      size="sm"
+      disabled={upload.isPending}
+      onClick={() => fileInputRef.current?.click()}
+      aria-label={uploadLabel}
+    >
+      {upload.isPending ? (
+        <Spinner className="size-3.5" />
+      ) : (
+        <Upload01 size={14} />
+      )}
+      <span className="@max-sm/main-topbar:hidden">{uploadLabel}</span>
+    </Button>
+  );
+
+  const searchInput = (
+    <SearchInput
+      value={search}
+      onChange={setSearch}
+      isSearching={isSearching}
+      placeholder={t("filePicker.filePickerDialog.searchFilesPlaceholder")}
+      className="w-[clamp(7rem,35cqw,23.4375rem)] shrink-0"
+    />
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{t("assets.browser.title")}</h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {t("assets.browser.bucketLabel", { name: config.name })}
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          disabled={upload.isPending}
-          onClick={() => fileInputRef.current?.click()}
+      <Main.Topbar.Center.Portal>
+        <div
+          data-responsive-focus-group="assets-search"
+          className="hidden md:block"
         >
-          {upload.isPending ? (
-            <Spinner className="size-3.5" />
-          ) : (
-            <Upload01 size={14} />
-          )}
-          {upload.isPending
-            ? t("filePicker.filePickerDialog.uploading")
-            : t("filePicker.filePickerDialog.dropFilesOrClick")}
-        </Button>
+          {searchInput}
+        </div>
+      </Main.Topbar.Center.Portal>
+      <Main.Toolbar.Portal visibility="compact">
+        <div
+          data-responsive-focus-group="assets-search"
+          className="w-full [&>*]:w-full"
+        >
+          {searchInput}
+        </div>
+      </Main.Toolbar.Portal>
+      <Main.Topbar.Right.Portal>{uploadButton}</Main.Topbar.Right.Portal>
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-xs text-muted-foreground">
+          {t("assets.browser.bucketLabel", { name: config.name })}
+        </p>
         <input
           ref={fileInputRef}
           type="file"
@@ -223,14 +253,6 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
         />
       </div>
 
-      <SearchInput
-        value={search}
-        onChange={setSearch}
-        isSearching={isSearching}
-        placeholder={t("filePicker.filePickerDialog.searchFilesPlaceholder")}
-        className="shrink-0"
-      />
-
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
@@ -239,6 +261,7 @@ function AssetsBrowser({ config }: { config: FileConfigInfo }) {
         onDrop={onDrop}
         className={cn(
           "flex shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border/60 p-4 text-center transition-colors",
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
           isDragging && "border-primary bg-primary/5",
           upload.isPending && "pointer-events-none opacity-60",
         )}

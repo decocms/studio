@@ -1,5 +1,7 @@
-import { Outlet } from "@tanstack/react-router";
+import { SiteEditorLayout } from "@/layouts/site-editor-layout";
+import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 
-export default function SiteEditorRoute() {
-  return <Outlet />;
+export default function AgentSiteEditorRoute() {
+  const agentId = useRouteVirtualMcpId();
+  return <SiteEditorLayout agentId={agentId} />;
 }

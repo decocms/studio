@@ -54,6 +54,9 @@ test.describe("Blocks preview mode", () => {
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
+    // Keep this gate test on the wide, simultaneous Blocks + canvas layout.
+    // Compact-stage navigation has dedicated coverage in cms-publish-surface.
+    await page.setViewportSize({ width: 1920, height: 1080 });
     const { agentId, threadId } = await createClonableAgent(
       page.context().request,
       orgSlug,
@@ -81,6 +84,8 @@ test.describe("Blocks preview mode", () => {
     await page
       .getByRole("button", { name: "Site Editor", exact: true })
       .click();
+    /* Agent identity and the Site Editor view are both structural route
+       segments; the compatibility-only query identity must be gone. */
     await expect(page).toHaveURL(
       (url) =>
         url.pathname === `/${orgSlug}/projects/${agentId}/site-editor` &&
@@ -147,7 +152,14 @@ test.describe("Blocks preview mode", () => {
     await expect(page).toHaveURL(/sidepanel=true/);
     await expect(page).toHaveURL(/mainpanel=false/);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
-    await expect(page.getByTestId("main-panel")).toHaveCount(0);
+    // Both route trees stay mounted so editor state survives the switch; the
+    // inactive surface leaves layout, focus order, and the accessibility tree.
+    await expect(page.getByTestId("main-panel")).toHaveCount(1);
+    await expect(page.getByTestId("main-panel")).toBeHidden();
+    await expect(page.getByTestId("main-panel")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
 
     // Pick Preview again: chat closes, the main panel returns.
     await viewSelect.click();

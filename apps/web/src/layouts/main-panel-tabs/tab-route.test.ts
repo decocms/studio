@@ -92,15 +92,15 @@ describe("tabRouteLocation", () => {
     });
   });
 
-  test("keeps Discover as its own organization destination", () => {
+  test("retires persisted Discover tabs to organization Home", () => {
     expect(tabRouteLocation("discover")).toEqual({
       kind: "org-destination",
-      destination: "discover",
+      destination: "home",
     });
     expect(
       tabRouteTarget({ org: "acme", agentId: "vir_1", tabId: "discover" }),
     ).toEqual({
-      to: "/$org/discover",
+      to: "/$org/home",
       params: { org: "acme" },
       search: {},
     });

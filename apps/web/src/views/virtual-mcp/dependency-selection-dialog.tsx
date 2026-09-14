@@ -158,6 +158,7 @@ function ConnectionDetailsContentTabs({
   return (
     <div className="flex items-center justify-between px-6 py-3 border-t border-border shrink-0">
       <CollectionTabs
+        ariaLabel={t("virtualMcp.connectionItem.configureResources")}
         tabs={[
           {
             id: "tools",

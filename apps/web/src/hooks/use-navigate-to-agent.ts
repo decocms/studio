@@ -32,7 +32,7 @@ const NO_THREADS: Task[] = [];
 
 interface NavigateToAgentOptions {
   /** Main view to land on, as a tab id. Resolved to its owning route. */
-  panel?: string;
+  view?: string;
   /** The runtime the landed-on session must be. A thread's runtime is stamped
    *  once at creation and immutable, so this both picks which empty chat can be
    *  reused and is parked as an intent for the create the route loader runs —
@@ -64,7 +64,7 @@ export function useNavigateToAgent() {
     options: NavigateToAgentOptions | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
-    const tabId = options?.panel ?? "overview";
+    const tabId = options?.view ?? "overview";
     /** Organization destinations do not belong to an agent session. Navigate
      * there without minting a thread whose identity the route cannot encode. */
     if (tabRouteLocation(tabId).kind === "org-destination") {
@@ -129,7 +129,7 @@ export function useNavigateToAgent() {
 
   return (virtualMcpId: string, options?: NavigateToAgentOptions) => {
     if (
-      tabRouteLocation(options?.panel ?? "overview").kind === "org-destination"
+      tabRouteLocation(options?.view ?? "overview").kind === "org-destination"
     ) {
       return go(virtualMcpId, options, undefined);
     }

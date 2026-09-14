@@ -28,7 +28,14 @@ import {
 } from "@/sdk";
 import type { CollectionListOutput } from "@decocms/bindings/collections";
 import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
-import { Check, CheckVerified02, Container, Plus } from "@untitledui/icons";
+import {
+  AlertCircle,
+  Check,
+  CheckVerified02,
+  Container,
+  Plus,
+  RefreshCcw01,
+} from "@untitledui/icons";
 import { useDeferredValue } from "react";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
@@ -233,6 +240,15 @@ export function ConnectionDialogContent({
       !getStudioMcpMetadata(item._meta)?.verified &&
       !item.meta?.verified,
   );
+  const catalogHealth = mergedDiscovery.health;
+  const catalogHasFailed =
+    showCatalog &&
+    !mergedDiscovery.isInitialLoading &&
+    catalogHealth.status !== "success";
+  const hasNoResults =
+    grouped.length === 0 &&
+    verifiedCatalogItems.length === 0 &&
+    otherCatalogItems.length === 0;
 
   // For connected apps: check if any instance is added to the agent
   const hasAddedInstance = (connections: ConnectionEntity[]) =>
@@ -447,6 +463,9 @@ export function ConnectionDialogContent({
       {!searchLower && (
         <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
           <CollectionTabs
+            ariaLabel={t(
+              "virtualMcp.connectionDialogContent.sectionAllConnections",
+            )}
             tabs={[
               {
                 id: "all",
@@ -482,6 +501,53 @@ export function ConnectionDialogContent({
           isSearchStale && "opacity-50 pointer-events-none",
         )}
       >
+        {catalogHasFailed && (
+          <div
+            role={catalogHealth.status === "error" ? "alert" : "status"}
+            className="mb-4 flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center"
+          >
+            <AlertCircle className="size-5 shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">
+                {catalogHealth.status === "error"
+                  ? t(
+                      "virtualMcp.connectionDialogContent.catalogUnavailableTitle",
+                    )
+                  : t(
+                      "virtualMcp.connectionDialogContent.catalogPartiallyUnavailableTitle",
+                    )}
+              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {catalogHealth.status === "error"
+                  ? t(
+                      "virtualMcp.connectionDialogContent.catalogUnavailableDescription",
+                    )
+                  : t(
+                      "virtualMcp.connectionDialogContent.catalogPartiallyUnavailableDescription",
+                    )}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                mergedDiscovery.isRetrying || mergedDiscovery.isLoadingMore
+              }
+              aria-busy={mergedDiscovery.isRetrying}
+              onClick={mergedDiscovery.retryFailures}
+            >
+              <RefreshCcw01
+                className={cn(
+                  "size-3.5",
+                  mergedDiscovery.isRetrying && "animate-spin",
+                )}
+              />
+              {t("virtualMcp.connectionDialogContent.retryCatalog")}
+            </Button>
+          </div>
+        )}
+
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
           {/* Connected apps — one card per app */}
           {grouped.map((item) => {
@@ -547,12 +613,20 @@ export function ConnectionDialogContent({
               <Spinner className="size-6 text-muted-foreground" />
             </div>
           )}
+          {showCatalog && mergedDiscovery.isInitialLoading && (
+            <div className="col-span-full flex justify-center py-6">
+              <Spinner
+                className="size-6 text-muted-foreground"
+                label={t("virtualMcp.connectionDialogContent.loadingCatalog")}
+              />
+            </div>
+          )}
         </div>
 
         {/* Empty states */}
-        {grouped.length === 0 &&
-          verifiedCatalogItems.length === 0 &&
-          otherCatalogItems.length === 0 && (
+        {hasNoResults &&
+          !mergedDiscovery.isInitialLoading &&
+          !catalogHasFailed && (
             <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">
               {search
                 ? t(

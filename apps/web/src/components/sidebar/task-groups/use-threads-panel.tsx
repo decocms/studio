@@ -118,10 +118,10 @@ export function useThreadsPanel({
   /** Route-aware: `$taskId` on the legacy route, `?thread=` on a destination. */
   const activeTaskId = useRouteThreadId();
   /**
-   * The recipient is the agent the ROUTE names — its `{-$project}` segment —
+   * The recipient is the agent the route names in `$agentId` —
    * falling back to the open thread's own agent on an org-level destination,
    * which names none. Reading `?virtualmcpid=` made this control hand a new
-   * chat to the Super Agent on every `/$org/agents/<project>`.
+   * chat to the Super Agent on every `/$org/projects/<project>`.
    */
   const activeAgentId = resolveActiveAgentId({
     routeAgentId,

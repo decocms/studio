@@ -13,7 +13,8 @@ import {
   resolveAutomationsPillClickTarget,
 } from "./tab-id";
 import { usePanelNavigate } from "./use-panel-navigate";
-import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
+import { useMainPanelTabs } from "./main-panel-tabs-context";
+import type { Tab } from "./use-main-panel-tabs";
 import { HeaderTabButton } from "./header-tab-button";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import type { TabIcon } from "./resolve-tab-icon";
@@ -33,19 +34,16 @@ type BarItem = {
 };
 
 export function MainPanelTabsBar({
-  virtualMcpId,
-  taskId,
   disableActiveMainToggle = false,
+  omitActiveTab = false,
 }: {
-  virtualMcpId: string;
-  taskId: string | null;
   disableActiveMainToggle?: boolean;
+  /** Route-owned titles already identify the active view; omit its duplicate pill. */
+  omitActiveTab?: boolean;
 }) {
   const { openPanel, closePanel } = usePanelNavigate();
-  const { tabs, activeTab, mainOpen, setActiveTab } = useMainPanelTabs({
-    virtualMcpId,
-    taskId,
-  });
+  const { virtualMcpId, tabs, activeTab, mainOpen, setActiveTab } =
+    useMainPanelTabs();
 
   const automationsActive = isAutomationsPillActive({ activeTab, mainOpen });
   const isTabActive = (tab: Tab) =>
@@ -73,15 +71,17 @@ export function MainPanelTabsBar({
   };
 
   // Library / Tasks are sidebar destinations, so only the view tabs show here.
-  const items: BarItem[] = tabs.map((tab) => ({
-    id: tab.id,
-    title: tab.title,
-    icon: tab.icon,
-    active: isTabActive(tab),
-    locked: disableActiveMainToggle && isTabActive(tab),
-    onSelect: () => selectTab(tab.id),
-    labelCollapse: tab.kind === "system" ? "sooner" : "later",
-  }));
+  const items: BarItem[] = tabs
+    .filter((tab) => !omitActiveTab || !isTabActive(tab))
+    .map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      icon: tab.icon,
+      active: isTabActive(tab),
+      locked: disableActiveMainToggle && isTabActive(tab),
+      onSelect: () => selectTab(tab.id),
+      labelCollapse: tab.kind === "system" ? "sooner" : "later",
+    }));
 
   /**
    * Every tab shows. Native and pinned-app project navigation moved to the
@@ -96,6 +96,8 @@ export function MainPanelTabsBar({
    */
   return (
     <div
+      data-route-focus-source="route"
+      data-responsive-focus-group="main-route-navigation"
       className="flex items-center min-w-0 gap-0.5 overflow-x-auto no-scrollbar"
       data-tour={LAYOUT_TOUR_ANCHORS.surfaceTabs}
     >

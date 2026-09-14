@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  destinationForThreadOwner,
   resolveActiveAgentId,
   resolveDestinationThreadSearch,
   routeThreadMatchesAgent,
@@ -117,6 +118,25 @@ describe("routeThreadMatchesAgent", () => {
       routeThreadMatchesAgent({ routeAgentId: "agent-a", threadAgentId: null }),
     ).toBe(true);
     expect(routeThreadMatchesAgent({ routeAgentId: "agent-a" })).toBe(true);
+  });
+});
+
+describe("destinationForThreadOwner", () => {
+  test("regular agents own an explicit workspace path", () => {
+    expect(destinationForThreadOwner("vir_agent_a")).toEqual({
+      kind: "agent",
+      agentId: "vir_agent_a",
+    });
+  });
+
+  test("the Super Agent owns the organization Home default", () => {
+    expect(destinationForThreadOwner("decopilot_org_a")).toEqual({
+      kind: "home",
+    });
+  });
+
+  test("a malformed empty owner fails closed to Home", () => {
+    expect(destinationForThreadOwner("   ")).toEqual({ kind: "home" });
   });
 });
 

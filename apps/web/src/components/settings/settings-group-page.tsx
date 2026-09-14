@@ -24,16 +24,22 @@
 
 import { Suspense, type ComponentProps, type ReactNode } from "react";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { SettingsPage } from "@/components/settings/settings-section";
 import { SettingsSubnav } from "@/components/settings/settings-subnav";
+import { useT } from "@/i18n/use-t";
 import type { SettingsGroupKey } from "./settings-tab-groups";
 
 /** Placeholder for the content region while a tab's data or chunk loads. */
 export function SettingsContentSkeleton() {
+  const t = useT();
   return (
-    <div data-testid="settings-content-loading" className="flex flex-col gap-4">
+    <div
+      role="status"
+      aria-label={t("common.loading")}
+      data-testid="settings-content-loading"
+      className="flex flex-col gap-4"
+    >
       <Skeleton className="h-32 w-full" />
       <Skeleton className="h-32 w-full" />
     </div>
@@ -59,20 +65,20 @@ export function SettingsGroupPage({
   children,
 }: SettingsGroupPageProps) {
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage className={className}>
-            <SettingsSubnav group={group} />
+    <>
+      <SettingsSubnav group={group} />
+      <div className="h-full overflow-y-auto">
+        <Main.Container width="standard">
+          <Main.Stack gap="spacious" className={className}>
             <ErrorBoundary fallback={errorFallback}>
               <Suspense fallback={fallback ?? <SettingsContentSkeleton />}>
                 {children}
               </Suspense>
             </ErrorBoundary>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+          </Main.Stack>
+        </Main.Container>
+      </div>
+    </>
   );
 }
 

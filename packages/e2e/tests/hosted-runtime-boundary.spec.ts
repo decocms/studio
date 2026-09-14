@@ -752,9 +752,9 @@ test.describe("hosted runtime boundary", () => {
       await expect(
         page.getByRole("button", { name: "Publish", exact: true }),
       ).toHaveCount(0);
-      await expect(
-        page.getByRole("button", { name: /^sandbox$/i }),
-      ).toHaveCount(0);
+      await expect(page.getByRole("tab", { name: /^sandbox$/i })).toHaveCount(
+        0,
+      );
       expect(workspaceMutationRequests).toEqual([]);
 
       const afterNavigation = await db.query(

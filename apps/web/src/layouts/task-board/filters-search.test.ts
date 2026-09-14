@@ -53,25 +53,6 @@ describe("board search params", () => {
 });
 
 /**
- * The ambient scope used to seed the board's own filter, which made the two
- * indistinguishable and — because that filter is exact-match — hid every
- * repo-less card the moment a project was picked. They are separate concepts
- * now: these tests are the inverted form of the ones that encoded the old
- * behaviour, and they still hold with the filter speaking projects.
- */
-describe("the ambient project scope does not touch the board's filter", () => {
-  test("a scoped route leaves filters.project null", () => {
-    expect(parseBoardSearch({}).filters.project).toBeNull();
-  });
-
-  test("an explicit ?repo= is still the only thing that sets it", () => {
-    expect(parseBoardSearch({ repo: "acme/other" }).filters.project).toBe(
-      "acme/other",
-    );
-  });
-});
-
-/**
  * The URL key stayed `repo` while its value domain widened to project index
  * bucket ids. Both routes' `validateSearch` enumerate their params and strip
  * anything else, and every `?repo=owner/name` link already shared has to keep
@@ -100,9 +81,9 @@ describe("visibleSelection", () => {
     expect(visibleSelection(new Set(["a"]), visible)).toEqual(new Set(["a"]));
   });
 
-  /** The load-bearing one: a scope change hides cards without touching the
-   *  selection state, and bulk delete must not reach them. */
-  test("drops ids a scope or filter change hid", () => {
+  /** A filter can hide cards without touching selection state; bulk delete
+   * must not reach them. */
+  test("drops ids a filter change hid", () => {
     expect(visibleSelection(new Set(["a", "hidden"]), visible)).toEqual(
       new Set(["a"]),
     );

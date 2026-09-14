@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { DomainSettings } from "@/components/settings/domain-settings";
 import { toast } from "sonner";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +13,7 @@ import {
 } from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
@@ -26,7 +27,6 @@ import {
   SettingsCard,
   SettingsCardActions,
   SettingsCardItem,
-  SettingsPage,
   SettingsSection,
 } from "@/components/settings/settings-section";
 import { Trash01 } from "@untitledui/icons";
@@ -35,7 +35,12 @@ import { track } from "@/lib/posthog-client";
 export function OrgSsoPage() {
   const t = useT();
   const { org } = useProjectContext();
-  const { data: ssoData, isLoading } = useOrgSsoConfig(org.id, org.slug);
+  const {
+    data: ssoData,
+    isLoading,
+    isError,
+    refetch,
+  } = useOrgSsoConfig(org.id, org.slug);
   const saveMutation = useSaveOrgSsoConfig(org.id, org.slug);
   const deleteMutation = useDeleteOrgSsoConfig(org.id, org.slug);
   const enforceMutation = useToggleSsoEnforcement(org.id, org.slug);
@@ -135,15 +140,30 @@ export function OrgSsoPage() {
   };
 
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <Page.Title>{t("settings.orgSso.securityTitle")}</Page.Title>
+    <>
+      <div className="h-full overflow-y-auto">
+        <Main.Container width="standard">
+          <Main.Stack gap="spacious">
             <DomainSettings />
             {isLoading ? (
-              <div className="text-sm text-muted-foreground">
-                {t("settings.orgSso.loading")}
+              <div role="status" aria-label={t("common.loading")}>
+                <Skeleton className="h-48 w-full" />
+              </div>
+            ) : isError ? (
+              <div
+                role="alert"
+                className="flex flex-col items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5"
+              >
+                <p className="text-sm font-medium text-destructive">
+                  {t("settings.orgSso.failedToLoad")}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refetch()}
+                >
+                  {t("settings.orgSso.retry")}
+                </Button>
               </div>
             ) : (
               <>
@@ -382,9 +402,9 @@ export function OrgSsoPage() {
                 )}
               </>
             )}
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
+          </Main.Stack>
+        </Main.Container>
+      </div>
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <AlertDialogContent>
@@ -407,6 +427,6 @@ export function OrgSsoPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Page>
+    </>
   );
 }

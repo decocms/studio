@@ -248,7 +248,7 @@ describe("translateLegacyThreadRoute", () => {
       ["files", "/$org/library"],
       ["reports", "/$org/projects/$agentId/reports"],
       ["overview", "/$org/home"],
-      ["discover", "/$org/discover"],
+      ["discover", "/$org/home"],
     ] as const;
 
     for (const [main, to] of rows) {

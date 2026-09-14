@@ -222,6 +222,8 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extracting brand context",
   "routes.onboarding.uploadOrgLogo": "Upload organization logo",
   "routes.onboarding.welcomeTitle": "Welcome to deco",
+  "routes.projectAppView.toolUnavailable":
+    'Tool "{toolName}" was not found or has no UI.',
   "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the report",
   "routes.reports.failedToLoadReportDescription":
     "Check your connection and try again.",

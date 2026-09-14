@@ -49,6 +49,11 @@ type FallbackType = ReactNode | ((props: ErrorFallbackProps) => ReactNode);
 interface Props {
   children: ReactNode;
   fallback?: FallbackType;
+  /**
+   * Clears a captured error when the rendered payload changes. Unlike a React
+   * `key`, changing this value preserves healthy descendants and their state.
+   */
+  resetKey?: string | number;
 }
 
 interface State {
@@ -78,6 +83,15 @@ class ErrorBoundaryImpl extends Component<
       component_stack: errorInfo.componentStack ?? null,
       route: typeof window !== "undefined" ? window.location.pathname : null,
     });
+  }
+
+  override componentDidUpdate(prevProps: Readonly<Props>) {
+    if (
+      this.state.hasError &&
+      !Object.is(prevProps.resetKey, this.props.resetKey)
+    ) {
+      this.resetError();
+    }
   }
 
   private resetError = () => {

@@ -28,12 +28,6 @@ export const BLOG_KINDS: readonly BlogKind[] = [
   "categories",
 ];
 
-export const BLOG_SINGULAR: Record<BlogKind, string> = {
-  posts: "post",
-  authors: "author",
-  categories: "category",
-};
-
 export function isBlogKind(id: string): id is BlogKind {
   return (BLOG_KINDS as readonly string[]).includes(id);
 }

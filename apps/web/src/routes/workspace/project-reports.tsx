@@ -1,5 +1,11 @@
 import { ReportsTab } from "@/layouts/main-panel-tabs/reports-tab";
+import { AgentRouteMain } from "./agent-route-main";
 
-export default function Route() {
-  return <ReportsTab />;
+/** Workspace entry for the organization's existing store diagnostic. */
+export default function ProjectReportsRoute() {
+  return (
+    <AgentRouteMain contentMode="canvas">
+      <ReportsTab />
+    </AgentRouteMain>
+  );
 }

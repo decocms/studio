@@ -12,9 +12,9 @@ import type { ReactNode } from "react";
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsPage,
   SettingsSection,
 } from "@/components/settings/settings-section";
+import { Main } from "@/components/main";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 export interface ProjectSettingsRowDef {
@@ -45,7 +45,7 @@ export function ProjectSettingsIndex({
   groups: ProjectSettingsGroupDef[];
 }) {
   return (
-    <SettingsPage>
+    <Main.Stack gap="spacious">
       {header}
       {groups
         .filter((group) => group.content || group.rows?.length)
@@ -89,6 +89,6 @@ export function ProjectSettingsIndex({
             </SettingsSection>
           ),
         )}
-    </SettingsPage>
+    </Main.Stack>
   );
 }

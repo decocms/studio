@@ -457,7 +457,7 @@ export function useProjectViews({
   });
 
   const openView = (tabId: string) =>
-    openPanel(tabId, { virtualmcpid: virtualMcpId });
+    openPanel(tabId, { agentId: virtualMcpId });
 
   return {
     /** Every view this project can open, in sidebar order. */

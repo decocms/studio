@@ -35,7 +35,7 @@ import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
 import type { TableColumn } from "@/components/collections/collection-table.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
@@ -156,7 +156,9 @@ function RolesPageContent() {
         error: error instanceof Error ? error.message : String(error),
       });
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete role",
+        error instanceof Error
+          ? error.message
+          : t("settings.roles.failedToDelete"),
       );
     },
   });
@@ -256,6 +258,7 @@ function RolesPageContent() {
     {
       id: "actions",
       header: "",
+      isAction: true,
       render: (row) => {
         if (row.kind === "builtin") return null;
         return (
@@ -265,6 +268,9 @@ function RolesPageContent() {
                 variant="ghost"
                 size="sm"
                 className="h-8 w-8 p-0"
+                aria-label={t("settings.roles.actionsLabel", {
+                  role: row.role.label,
+                })}
                 onClick={(e) => e.stopPropagation()}
               >
                 <DotsVertical size={16} />
@@ -316,78 +322,98 @@ function RolesPageContent() {
   }
 
   return (
-    <SettingsGroupPage group="members" className="gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder={t("settings.roles.searchPlaceholder")}
-          className="w-full md:w-[375px]"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setSearch("");
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-        />
-        <Button onClick={() => setActiveRole("new")}>
+    <>
+      <Main.Topbar.Right.Portal>
+        <Button
+          size="sm"
+          onClick={() => setActiveRole("new")}
+          aria-label={t("settings.roles.createRole")}
+        >
           <Plus size={16} />
-          {t("settings.roles.createRole")}
+          <span className="@max-sm/main-topbar:hidden">
+            {t("settings.roles.createRole")}
+          </span>
         </Button>
-      </div>
-      <CollectionTableWrapper
-        columns={columns}
-        data={allRows}
-        isLoading={false}
-        onRowClick={handleRowClick}
-        emptyState={
-          search ? (
-            <EmptyState
-              title={t("settings.roles.noRolesFound")}
-              description={t("settings.roles.noRolesMatchSearch", {
-                search,
-              })}
-            />
-          ) : (
-            <EmptyState
-              title={t("settings.roles.noRoles")}
-              description={t("settings.roles.createRoleGetStarted")}
-            />
-          )
-        }
-      />
-
-      <AlertDialog
-        open={roleToDelete !== null}
-        onOpenChange={(open) => !open && setRoleToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("settings.roles.deleteRoleTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("settings.roles.deleteRoleConfirm", {
-                role: roleToDelete?.label ?? "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("settings.roles.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (roleToDelete?.id)
-                  deleteRoleMutation.mutate(roleToDelete.id);
-                setRoleToDelete(null);
+      </Main.Topbar.Right.Portal>
+      <SettingsGroupPage group="members" className="gap-6">
+        <Main.Toolbar.Portal>
+          <div className="w-full md:max-w-[375px]">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder={t("settings.roles.searchPlaceholder")}
+              className="w-full"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearch("");
+                  (e.target as HTMLInputElement).blur();
+                }
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("settings.roles.delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </SettingsGroupPage>
+            />
+          </div>
+        </Main.Toolbar.Portal>
+        <CollectionTableWrapper
+          columns={columns}
+          data={allRows}
+          getRowId={(row) =>
+            row.kind === "builtin"
+              ? `builtin:${row.role.role}`
+              : `custom:${row.role.id}`
+          }
+          getRowActionLabel={(row) => row.role.label}
+          isLoading={false}
+          onRowClick={handleRowClick}
+          emptyState={
+            search ? (
+              <EmptyState
+                title={t("settings.roles.noRolesFound")}
+                description={t("settings.roles.noRolesMatchSearch", {
+                  search,
+                })}
+              />
+            ) : (
+              <EmptyState
+                title={t("settings.roles.noRoles")}
+                description={t("settings.roles.createRoleGetStarted")}
+              />
+            )
+          }
+        />
+
+        <AlertDialog
+          open={roleToDelete !== null}
+          onOpenChange={(open) => !open && setRoleToDelete(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("settings.roles.deleteRoleTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("settings.roles.deleteRoleConfirm", {
+                  role: roleToDelete?.label ?? "",
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("settings.roles.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (roleToDelete?.id)
+                    deleteRoleMutation.mutate(roleToDelete.id);
+                  setRoleToDelete(null);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {t("settings.roles.delete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SettingsGroupPage>
+    </>
   );
 }
 
@@ -399,23 +425,24 @@ function RolesPage() {
   return (
     <ErrorBoundary
       fallback={
-        <Page>
-          <div className="flex items-center justify-center h-full">
-            <div className="text-sm text-muted-foreground">
-              {t("settings.roles.failedToLoad")}
-            </div>
-          </div>
-        </Page>
+        <div
+          role="alert"
+          className="flex h-full items-center justify-center text-sm text-destructive"
+        >
+          <div>{t("settings.roles.failedToLoad")}</div>
+        </div>
       }
     >
       <Suspense
         fallback={
           roleParam ? (
-            <Page>
-              <div className="flex items-center justify-center h-full">
-                <Spinner className="size-8 text-muted-foreground" />
-              </div>
-            </Page>
+            <div
+              role="status"
+              aria-label={t("common.loading")}
+              className="flex h-full items-center justify-center"
+            >
+              <Spinner className="size-8 text-muted-foreground" />
+            </div>
           ) : (
             <SettingsGroupPage group="members" className="gap-6">
               <SettingsContentSkeleton />
@@ -430,10 +457,11 @@ function RolesPage() {
 }
 
 export default function RolesRoute() {
+  const t = useT();
   // Role-definition CRUD (listRoles/createRole/…) is owner/admin-only in Better
   // Auth, so gate on privilege rather than a grantable capability.
   return (
-    <RequirePrivileged area="roles">
+    <RequirePrivileged area={t("settings.roles.pageTitle")}>
       <RolesPage />
     </RequirePrivileged>
   );

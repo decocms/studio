@@ -99,11 +99,16 @@ test.describe("connections / agents / monitor gating", () => {
     // Agents page loads and the create CTA IS shown — the built-in user role
     // is granted agents:manage (USER_ROLE_CAPABILITY_IDS).
     await page.goto(`/${owner.orgSlug}/settings/agents`);
-    await expect(page.getByPlaceholder("Search for a project...")).toBeVisible({
-      timeout: 15_000,
-    });
+    // Responsive route chrome keeps one desktop and one compact search
+    // contributor mounted so crossing the breakpoint does not lose its value.
+    // Assert the active desktop slot instead of matching the hidden compact
+    // copy as well.
+    const settingsTopbar = page.locator('[data-slot="main-topbar"]');
     await expect(
-      page.getByRole("button", { name: "Create Project" }),
+      settingsTopbar.getByPlaceholder("Search for a project..."),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      settingsTopbar.getByRole("button", { name: "Create Project" }),
     ).toBeVisible();
 
     await ownerCtx.dispose();
