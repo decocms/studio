@@ -9,6 +9,7 @@ import {
 import { SimpleModeSection } from "./simple-mode-section";
 import { DecoCreditsHero } from "./deco-credits-hero";
 import { PlanUsageCard } from "./plan-usage-card";
+import { PlanCatalog } from "./plan-catalog";
 import { DecoNudgeCard } from "./deco-nudge-card";
 import { ConnectedProvidersSection } from "./connected-providers-section";
 import { ClaudeSubscriptionCard } from "./claude-subscription-card";
@@ -69,6 +70,7 @@ function OrgAiProvidersContent() {
         {/* The plan is an org-level fact — it does not depend on which
             provider keys the org happens to have connected. */}
         <PlanUsageCard />
+        <PlanCatalog />
         <ProviderGrid
           providers={providers}
           onSelect={setPendingProvider}
@@ -96,6 +98,7 @@ function OrgAiProvidersContent() {
   return (
     <>
       <PlanUsageCard />
+      <PlanCatalog />
       {showGatewaySection ? <DecoCreditsHero /> : null}
       {canChooseModels ? (
         <>

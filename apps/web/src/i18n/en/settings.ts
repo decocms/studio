@@ -537,10 +537,8 @@ export const settings = {
     "AI usage is used up. The CMS keeps working; chat and tasks pause until you upgrade. This plan's allowance can't be topped up. Resets on {date}.",
   "settings.planUsage.noAiIncluded":
     "This plan includes no AI usage. Pick a plan to get an AI envelope.",
-  "settings.planUsage.changePlan": "Change plan",
-  "settings.planUsage.changePlanDescription":
-    "Pick the plan for this organization. Everyone in the org shares its AI usage. Paid plans open secure checkout and start once payment completes.",
-  "settings.planUsage.current": "Current",
+  "settings.planUsage.manageBilling": "Manage billing",
+  "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
   "settings.planUsage.downgrade": "Downgrade",
   "settings.planUsage.changed": "Plan updated",
@@ -560,6 +558,18 @@ export const settings = {
   "settings.planUsage.feature.credits": "Buy extra AI credits",
   "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
   "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
+  "settings.plans.title": "Plans",
+  "settings.plans.loadFailed": "Couldn't load the plans.",
+  "settings.plans.currentPlan": "Current plan",
+  "settings.plans.blurb.free": "Try the chat with a one-time allowance.",
+  "settings.plans.blurb.pro": "The CMS and chat for a team shipping a site.",
+  "settings.plans.blurb.pro_plus": "Adds monitoring across your storefront.",
+  "settings.plans.blurb.ultra":
+    "Everything, plus Kanban and your choice of model.",
+  "settings.plans.downgradeTitle": "Downgrade to Free?",
+  "settings.plans.downgradeDescription":
+    "Your organization loses what {plan} includes right away. The free allowance is one-time and doesn't reset.",
+  "settings.plans.downgradeCancel": "Keep my plan",
   "settings.paywall.title": "{feature} is not in your plan",
   "settings.paywall.description":
     "This organization's plan doesn't include {feature}. Change the plan to unlock it for everyone in the org.",
