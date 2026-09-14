@@ -74,8 +74,9 @@ export function ProviderGrid({
   const CLOUD_ORDER: Record<string, number> = {
     openrouter: 0,
     llmapi: 1,
-    anthropic: 2,
-    google: 3,
+    orcarouter: 2,
+    anthropic: 3,
+    google: 4,
   };
   const cloud = providers
     .filter((p) => p.id !== "deco" && p.id !== "openai-compatible")

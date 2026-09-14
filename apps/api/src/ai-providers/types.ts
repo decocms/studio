@@ -103,3 +103,26 @@ export interface OpenRouterAPIModel {
   supported_parameters: string[];
   description: string;
 }
+
+export interface OrcaRouterAPIModel {
+  id: string;
+  name?: string;
+  description?: string;
+  context_length?: number;
+  max_completion_tokens?: number;
+  pricing?: {
+    prompt?: string;
+    completion?: string;
+    prompt_per_million?: string;
+    completion_per_million?: string;
+    input_cache_read?: string;
+  };
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
+  top_provider?: {
+    context_length?: number;
+    max_completion_tokens?: number;
+  };
+}
