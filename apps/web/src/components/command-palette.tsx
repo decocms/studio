@@ -14,9 +14,9 @@
  *             blocks on the network.
  *
  * cmdk does its own filtering over the rendered items, so the local groups are
- * rendered whole and it decides what matches. The remote group is fetched on
- * the deferred term and rendered with `value` set to the raw text so cmdk does
- * not filter server results a second time.
+ * rendered whole and it decides what matches. Remote rows carry the live term
+ * in `keywords` so that filter always scores them — the server already matched
+ * them, on text (a task key, a message body) that is not in their `value`.
  */
 
 import { useDeferredValue, useState } from "react";
@@ -41,6 +41,7 @@ import {
   CommandItem,
   CommandList,
 } from "@decocms/ui/components/command.tsx";
+import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectScope } from "@/hooks/use-project-scope";
@@ -61,7 +62,14 @@ type SearchHit =
       title: string;
       virtual_mcp_id: string | null;
     }
-  | { type: "task"; id: string; title: string; key: string | null };
+  | { type: "task"; id: string; title: string; key: string | null }
+  | {
+      type: "connection";
+      id: string;
+      title: string;
+      icon: string | null;
+      slug: string | null;
+    };
 
 /**
  * GLOBAL_SEARCH, on the deferred term.
@@ -143,6 +151,25 @@ export function CommandPalette({
    * nothing.
    */
   const openHit = (hit: SearchHit) => {
+    if (hit.type === "connection") {
+      /** `slug` is what the detail route keys on. A row without one has no
+       *  detail page, so it falls back to the connections list rather than
+       *  minting a URL that resolves to nothing — same rule as a keyless
+       *  card below. */
+      if (!hit.slug) {
+        navigate({
+          to: "/$org/settings/connections",
+          params: { org: org.slug },
+          search: { tab: "all" as const },
+        });
+        return;
+      }
+      navigate({
+        to: "/$org/settings/connections/$appSlug",
+        params: { org: org.slug, appSlug: hit.slug },
+      });
+      return;
+    }
     if (hit.type === "task") {
       navigate({
         to: DESTINATION_ROUTE.tasks,
@@ -159,6 +186,17 @@ export function CommandPalette({
       },
     });
   };
+
+  /** The one thing that keeps a server-matched row on screen: cmdk scores an
+   *  item over `value` PLUS `keywords`, so handing it the live term is an
+   *  exact match and a guaranteed non-zero score. Without it a hit matched on
+   *  a task key or a message body — text that is not in `value` — scores 0 and
+   *  cmdk unmounts it, and the server's answer renders as "No results". `term`,
+   *  not `deferredTerm`: cmdk filters against what is in the input right now. */
+  const remoteKeywords = [term];
+
+  const connectionHits = hits.filter((hit) => hit.type === "connection");
+  const resultHits = hits.filter((hit) => hit.type !== "connection");
 
   const orgParams = { org: org.slug };
 
@@ -206,12 +244,6 @@ export function CommandPalette({
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
       title={t("commandPalette.title")}
       description={t("commandPalette.description")}
-      /** GLOBAL_SEARCH already matched these rows — server-side, against the
-       *  task key and the message body. cmdk's own filter only sees the item
-       *  `value` (title + id), scores a hit like "ENG-42" at 0 and unmounts
-       *  it, so the server's answer renders as "No results". Same reason
-       *  `global-search-dialog.tsx` turns it off. */
-      shouldFilter={false}
     >
       <CommandInput
         placeholder={t("commandPalette.placeholder")}
@@ -342,14 +374,30 @@ export function CommandPalette({
           </CommandItem>
         </CommandGroup>
 
-        {hits.length > 0 && (
+        {connectionHits.length > 0 && (
+          <CommandGroup heading={t("commandPalette.connections")}>
+            {connectionHits.map((hit) => (
+              <CommandItem
+                key={`connection:${hit.id}`}
+                value={`${hit.title} ${hit.id}`}
+                keywords={remoteKeywords}
+                onSelect={() => go(() => openHit(hit), "connection")}
+              >
+                {/* 2xs matches ProjectIcon: one 16px mark for every named thing in the list. */}
+                <IntegrationIcon icon={hit.icon} name={hit.title} size="2xs" />
+                <span className="truncate">{hit.title}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        {resultHits.length > 0 && (
           <CommandGroup heading={t("commandPalette.results")}>
-            {hits.map((hit) => (
-              /** `value` is the raw title so cmdk does not re-filter what the
-               *  server already matched. */
+            {resultHits.map((hit) => (
               <CommandItem
                 key={`${hit.type}:${hit.id}`}
                 value={`${hit.title} ${hit.id}`}
+                keywords={remoteKeywords}
                 onSelect={() => go(() => openHit(hit), hit.type)}
               >
                 {hit.type === "thread" ? <MessageSquare01 /> : <Columns03 />}

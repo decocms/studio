@@ -7,6 +7,7 @@ import {
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
 import { SchemaForm } from "../schema-form";
+import { useObjectFieldExpansion } from "../object-field-expansion";
 
 export function ObjectField({
   schema,
@@ -25,7 +26,12 @@ export function ObjectField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
-  const [open, setOpen] = useState(false);
+  // Shared store persists group open state across drill-in/out; local is fallback.
+  const expansion = useObjectFieldExpansion();
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = expansion ? expansion.isExpanded(path) : localOpen;
+  const toggleOpen = () =>
+    expansion ? expansion.toggle(path) : setLocalOpen((prev) => !prev);
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const objValue =
     value != null && typeof value === "object" && !Array.isArray(value)
@@ -79,7 +85,7 @@ export function ObjectField({
         type="button"
         aria-expanded={isOpen}
         aria-controls={contentId}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={toggleOpen}
         className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:text-accent-foreground">

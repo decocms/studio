@@ -119,6 +119,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -197,6 +198,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -275,6 +277,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
             reviewer_enabled?: boolean | undefined;
@@ -7762,6 +7765,7 @@ export interface StudioToolIO {
         installPath: string | null;
       };
       gitlab: { oauthHosts: string[]; connectPath: string | null };
+      bitbucket: { oauthHosts: string[]; connectPath: string | null };
     };
   };
   GIT_ACCOUNT_LIST: {
@@ -7770,7 +7774,7 @@ export interface StudioToolIO {
       accounts: {
         id: string;
         organizationId: string;
-        type: "github" | "gitlab";
+        type: "github" | "gitlab" | "bitbucket";
         host: string;
         authKind: "token" | "oauth" | "github_app";
         externalAccountId: string;
@@ -7786,12 +7790,16 @@ export interface StudioToolIO {
     };
   };
   GIT_ACCOUNT_CONNECT_TOKEN: {
-    input: { type: "github" | "gitlab"; host: string; token: string };
+    input: {
+      type: "github" | "gitlab" | "bitbucket";
+      host: string;
+      token: string;
+    };
     output: {
       account: {
         id: string;
         organizationId: string;
-        type: "github" | "gitlab";
+        type: "github" | "gitlab" | "bitbucket";
         host: string;
         authKind: "token" | "oauth" | "github_app";
         externalAccountId: string;
@@ -7814,7 +7822,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         accountId: string | null;
-        provider: "github" | "gitlab";
+        provider: "github" | "gitlab" | "bitbucket";
         host: string;
         path: string;
         externalId: string | null;
@@ -7836,7 +7844,11 @@ export interface StudioToolIO {
     };
     output: {
       repositories: {
-        ref: { provider: "github" | "gitlab"; host: string; path: string };
+        ref: {
+          provider: "github" | "gitlab" | "bitbucket";
+          host: string;
+          path: string;
+        };
         externalId: string;
         defaultBranch: string | null;
         webUrl: string;
@@ -7854,7 +7866,7 @@ export interface StudioToolIO {
         id: string;
         organizationId: string;
         accountId: string | null;
-        provider: "github" | "gitlab";
+        provider: "github" | "gitlab" | "bitbucket";
         host: string;
         path: string;
         externalId: string | null;
@@ -8056,7 +8068,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("task" | "thread")[] | undefined;
+      types?: ("connection" | "task" | "thread")[] | undefined;
     };
     output: {
       items: (
@@ -8079,6 +8091,13 @@ export interface StudioToolIO {
             key: string | null;
             status: string | null;
             repo: string | null;
+          }
+        | {
+            type: "connection";
+            id: string;
+            title: string;
+            icon: string | null;
+            slug: string | null;
           }
       )[];
       totalCount: number;

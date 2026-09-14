@@ -625,6 +625,12 @@ export function resolveSchema(
         const arrayBranch = nonNull
           .map((branch) => unwrapRefAliases(branch))
           .find(isArraySchemaBranch);
+        // Collapse to the array editor only when the array's siblings are all module refs/loaders (app flag list + product-list loader); an inline data-object sibling makes this a branch selector, not a config array.
+        const arraySiblingsAreModuleRefs = nonNull
+          .filter((b) => !isArraySchemaBranch(unwrapRefAliases(b)))
+          .every(
+            (b) => typeof b.$ref === "string" || loaderBranches.includes(b),
+          );
         const hasPageMultivariateLoader = loaderBranches.some((branch) => {
           const rtEnum = (
             (branch.properties as RawSchema | undefined)?.__resolveType as
@@ -641,7 +647,11 @@ export function resolveSchema(
             arrayBranch,
             resolveRef,
           );
-          if (isConfigArray && nonNull.length > 1) {
+          if (
+            isConfigArray &&
+            nonNull.length > 1 &&
+            arraySiblingsAreModuleRefs
+          ) {
             const built = buildProperty(arrayBranch, depth + 1, unionSeen);
             return {
               ...built,
@@ -860,9 +870,19 @@ export function resolveSchema(
           const def = resolveBranchDef(branch);
           return def.type === "object" || Boolean(def.properties);
         };
-        // allOf is merged as an object earlier, so this block only sees choice unions.
+        // A plain-data array branch (e.g. `PromoBarTitle[]`) selectable alongside object branches — not a section/loader picker array.
+        const branchIsPlainDataArray = (branch: RawSchema): boolean => {
+          const def = unwrapRefAliases(branch);
+          if (!isArraySchemaBranch(def)) return false;
+          return !isSectionLoaderArrayBranch(def, resolveRef);
+        };
+        // allOf is merged as an object earlier, so this block only sees choice unions (objects, or objects mixed with plain-data arrays).
         const isPlainDataUnion =
-          depth < MAX_STRUCTURE_DEPTH && nonNull.every(branchIsPlainDataObject);
+          depth < MAX_STRUCTURE_DEPTH &&
+          nonNull.every(
+            (b) => branchIsPlainDataObject(b) || branchIsPlainDataArray(b),
+          ) &&
+          nonNull.some(branchIsPlainDataObject);
 
         // All branches are $refs to block/loader defs
         const allRefs = nonNull.every((a) => typeof a.$ref === "string");

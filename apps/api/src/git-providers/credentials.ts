@@ -33,6 +33,7 @@ import type { Database } from "@/storage/types";
 import { getGithubAppAuth } from "./github/app-auth";
 import { GithubProviderClient } from "./github/client";
 import { GitlabProviderClient } from "./gitlab/client";
+import { BitbucketProviderClient } from "./bitbucket/client";
 import {
   type GitProviderClient,
   GitProviderError,
@@ -162,6 +163,15 @@ export function clientForAccount(
     }
     case "gitlab":
       return new GitlabProviderClient({
+        host: account.host,
+        tokenSource: grantTokenSource(
+          credentials,
+          account.id,
+          grantKind(account.authKind),
+        ),
+      });
+    case "bitbucket":
+      return new BitbucketProviderClient({
         host: account.host,
         tokenSource: grantTokenSource(
           credentials,

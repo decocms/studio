@@ -1,4 +1,11 @@
 export const chat = {
+  "chat.input.taskMode": "Task",
+  "chat.input.startTask": "Start task",
+  "chat.input.taskPlaceholder":
+    "What needs fixing? Paste a report or attach a screenshot…",
+  "chat.input.taskHint":
+    "We’ll start an agent and email you when its PR is ready for review.",
+
   "chat.agentCreate.agentCreated": "Project created: {name}",
   "chat.agentCreate.cancelled": "Project creation cancelled",
   "chat.agentCreate.couldntCreate": "Couldn't create project",

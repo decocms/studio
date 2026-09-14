@@ -267,6 +267,20 @@ const choice = (
 });
 
 describe("pickSoleTaskRepo", () => {
+  test("binds the reported repo from several choices and refuses missing or ambiguous matches", () => {
+    const choices = [
+      choice("one", "acme", "web"),
+      choice("two", "acme", "api"),
+    ];
+    expect(pickSoleTaskRepo(choices, "ACME/API")?.id).toBe("two");
+    expect(pickSoleTaskRepo(choices, "other/repo")).toBeNull();
+    expect(
+      pickSoleTaskRepo(
+        [...choices, choice("three", "acme", "api")],
+        "acme/api",
+      ),
+    ).toBeNull();
+  });
   test("no clonable repo is not eligible", () => {
     expect(pickSoleTaskRepo([])).toBeNull();
   });
@@ -406,6 +420,17 @@ describe("the prompt speaks each checkout's own provider", () => {
     expect(prompt).toContain("hosted on GitLab, so `git` and `glab`");
     expect(openLine(prompt)).toContain("merge request");
     expect(openLine(prompt)).not.toContain("pull request");
+  });
+
+  test("a Bitbucket run is told there is no CLI, and called a pull request", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, {
+      ...repo,
+      provider: "bitbucket",
+      url: "https://bitbucket.org/acme/site",
+    });
+    expect(prompt).toContain("hosted on Bitbucket, so `git` is authenticated");
+    expect(prompt).toContain("BITBUCKET_TOKEN");
+    expect(openLine(prompt)).toContain("pull request");
   });
 
   test("a GitHub run keeps gh and pull-request wording", () => {

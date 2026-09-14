@@ -100,6 +100,6 @@ export interface OpenRouterAPIModel {
     context_length: number;
     max_completion_tokens: number;
   };
-  supported_parameters: string[];
+  supported_parameters?: string[];
   description: string;
 }

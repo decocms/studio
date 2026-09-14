@@ -64,7 +64,6 @@ export function CollectionsSidebar({
           active={active === "redirects"}
           onSelect={onSelect}
         />
-        <AdvancedGroup active={active} counts={counts} onSelect={onSelect} />
         <CollectionRow
           id="site"
           icon={Settings01}
@@ -86,6 +85,7 @@ export function CollectionsSidebar({
           active={active === "calendar"}
           onSelect={onSelect}
         />
+        <AdvancedGroup active={active} counts={counts} onSelect={onSelect} />
         {showBlog && (
           <>
             <div className="mt-3 flex items-center gap-1.5 px-2.5 pb-1 pt-1 text-xs font-medium text-muted-foreground/70">

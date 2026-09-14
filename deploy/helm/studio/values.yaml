@@ -401,6 +401,9 @@ secret:
   # If omitted, the server auto-generates a random key on each boot (breaks across restarts).
   # Generate with: openssl rand -base64 32
   ENCRYPTION_KEY: ""
+  # Dedicated bearer for the internal organization-notices API.
+  # Leave unset to disable service-managed organization notices.
+  # ORGANIZATION_NOTICES_API_KEY: ""
   # Optional internal NATS credentials. Prefer secret.secretName or
   # externalSecret for production GitOps so credentials are not stored in
   # plain values files.

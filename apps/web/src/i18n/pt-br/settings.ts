@@ -126,15 +126,17 @@ export const settings = {
     "Contas que o Studio usa para ler seus repositórios e enviar alterações em seu nome.",
   "settings.repositories.accountsEmptyTitle": "Nenhuma conta conectada",
   "settings.repositories.accountsEmptyDescription":
-    "Conecte uma conta do GitHub ou GitLab para navegar pelos seus repositórios e vincular os privados.",
+    "Conecte uma conta do GitHub, GitLab ou Bitbucket para navegar pelos seus repositórios e vincular os privados.",
   "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
   "settings.repositories.noProvidersDescription":
-    "Entrar com GitHub ou GitLab depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab com um token de acesso.",
+    "Entrar com GitHub, GitLab ou Bitbucket depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab ou do Bitbucket com um token de acesso.",
   "settings.repositories.githubUnavailable":
     "Peça a um administrador para habilitar o GitHub.",
   "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
   "settings.repositories.gitlabTokenHint":
     "Use um token de acesso pessoal, de projeto ou de grupo.",
+  "settings.repositories.bitbucketTokenHint":
+    "Use um token de acesso de workspace, de projeto ou de repositório.",
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
   "settings.repositories.githubSelectTitle": "Selecionar repositórios",
@@ -194,6 +196,9 @@ export const settings = {
     "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
   "settings.repositories.connectGitlab": "Conectar GitLab",
   "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
+  "settings.repositories.connectBitbucket": "Conectar Bitbucket",
+  "settings.repositories.connectBitbucketToken":
+    "Conectar Bitbucket com um token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Token pessoal",
@@ -208,10 +213,15 @@ export const settings = {
   "settings.repositories.tokenDialogTitle": "Conectar o GitLab com um token",
   "settings.repositories.tokenDialogDescription":
     "Use um token de acesso pessoal, de projeto ou de grupo com o escopo api — os agentes usam ele para dar push e abrir merge requests. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.tokenDialogTitleBitbucket":
+    "Conectar o Bitbucket com um token",
+  "settings.repositories.tokenDialogDescriptionBitbucket":
+    "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests — os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
   "settings.repositories.tokenHostLabel": "Host",
   "settings.repositories.tokenHostPlaceholder": "gitlab.com",
   "settings.repositories.tokenLabel": "Token de acesso",
   "settings.repositories.tokenPlaceholder": "glpat-…",
+  "settings.repositories.tokenPlaceholderBitbucket": "ATCTT…",
   "settings.repositories.connect": "Conectar",
   "settings.repositories.connecting": "Conectando…",
   "settings.repositories.connected": 'Conectado como "{login}"',
@@ -220,7 +230,7 @@ export const settings = {
     "Repositórios disponíveis para os agentes e automações desta organização.",
   "settings.repositories.reposEmptyTitle": "Nenhum repositório ainda",
   "settings.repositories.reposEmptyDescription":
-    "Escolha um repositório de uma conta conectada do GitHub ou GitLab.",
+    "Escolha um repositório de uma conta conectada do GitHub, GitLab ou Bitbucket.",
   "settings.repositories.addRepository": "Adicionar repositório",
   "settings.repositories.unlink": "Desvincular",
   "settings.repositories.unlinkTitle": 'Desvincular "{path}"?',
@@ -690,6 +700,9 @@ export const settings = {
   "settings.orgRoleDetail.allModels": "Todos os modelos",
   "settings.orgRoleDetail.allOrgPermissions":
     "Todas as permiss\u00f5es da organiza\u00e7\u00e3o",
+  "settings.orgRoleDetail.allProjects": "Todos os projetos",
+  "settings.orgRoleDetail.allProjectsDescription":
+    "Este papel pode acessar todos os projetos. Desative para restringi-lo a projetos espec\u00edficos.",
   "settings.orgRoleDetail.builtinRolePermissionsCannotBeChanged":
     "Permiss\u00f5es de papel integrado n\u00e3o podem ser alteradas",
   "settings.orgRoleDetail.cancel": "Cancelar",
@@ -714,11 +727,16 @@ export const settings = {
     'Nenhum membro corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.noPermissionsMatch":
     'Nenhuma permiss\u00e3o corresponde a "{searchQuery}"',
+  "settings.orgRoleDetail.noProjectsAvailable":
+    "Nenhum projeto dispon\u00edvel",
+  "settings.orgRoleDetail.noProjectsMatch":
+    'Nenhum projeto corresponde a "{searchQuery}"',
   "settings.orgRoleDetail.organizationPermissions":
     "Permiss\u00f5es da Organiza\u00e7\u00e3o",
   "settings.orgRoleDetail.owner": "Propriet\u00e1rio",
   "settings.orgRoleDetail.ownerMembershipCannotBeChanged":
     "A associa\u00e7\u00e3o de propriet\u00e1rio n\u00e3o pode ser alterada",
+  "settings.orgRoleDetail.projects": "Projetos",
   "settings.orgRoleDetail.removeMember": "Remover {name} do papel",
   "settings.orgRoleDetail.roleCreatedSuccessfully": "Papel criado com sucesso!",
   "settings.orgRoleDetail.roleName": "Nome do papel",
@@ -732,6 +750,7 @@ export const settings = {
   "settings.orgRoleDetail.searchMembers": "Procurar membros...",
   "settings.orgRoleDetail.searchModels": "Procurar modelos...",
   "settings.orgRoleDetail.searchPermissions": "Procurar permiss\u00f5es...",
+  "settings.orgRoleDetail.searchProjects": "Procurar projetos...",
   "settings.orgRoleDetail.selectMembersToAddToThisRole":
     "Selecione membros para adicionar a este papel.",
   "settings.orgRoleDetail.showMore": "Mostrar mais ({remaining} restantes)",

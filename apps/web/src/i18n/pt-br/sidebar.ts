@@ -37,7 +37,6 @@ export const sidebar = {
   "sidebar.picker.title": "Organiza\u00e7\u00f5es e projetos",
   "sidebar.picker.moreExist":
     "H\u00e1 mais projetos do que cabem aqui \u2014 continue digitando",
-  "sidebar.picker.verbLeaves": "\u00b7 sai de {name}",
   "sidebar.picker.verbTravel": "Abrir {name}",
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
   "sidebar.showMoreButton.loading": "Carregando…",

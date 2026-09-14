@@ -131,6 +131,12 @@ export type DefaultHomeAgentsConfig = z.infer<
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  home_task_intake_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Show Task mode on the Home composer and allow reports to start tasks.",
+    ),
   demo_mode: z
     .boolean()
     .optional()

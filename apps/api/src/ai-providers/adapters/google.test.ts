@@ -32,4 +32,23 @@ describe("googleAdapter.listModels", () => {
     expect(capturedUrl).not.toContain("secret-api-key");
     expect(capturedHeaders?.get("x-goog-api-key")).toBe("secret-api-key");
   });
+
+  test("bounds the request with a timeout, like every other adapter", async () => {
+    let capturedSignal: AbortSignal | null | undefined;
+    globalThis.fetch = (async (
+      _url: unknown,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      capturedSignal = init?.signal;
+      return new Response(JSON.stringify({ models: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+    await provider.listModels();
+
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+  });
 });

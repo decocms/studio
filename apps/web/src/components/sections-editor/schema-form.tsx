@@ -41,6 +41,10 @@ import {
   blockRefArrayItemSchemaFromRefs,
   inferBlockRefArrayItemSchema,
 } from "./block-ref-array-inference";
+import {
+  ObjectFieldExpansionProvider,
+  useHasObjectFieldExpansion,
+} from "./object-field-expansion";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -420,21 +424,7 @@ function renderMultivariateInnerField(
   );
 }
 
-export function SchemaForm({
-  schema,
-  value,
-  onChange,
-  basePath,
-  breadcrumbPath = [],
-  onBreadcrumbChange,
-  meta,
-  decofile,
-  onSaveReferencedBlock,
-  previewBaseUrl,
-  onAddSectionItem,
-  onRequestAddSection,
-  sandbox,
-}: {
+interface SchemaFormProps {
   schema: SchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
@@ -451,7 +441,39 @@ export function SchemaForm({
   onAddSectionItem?: FieldProps["onAddSectionItem"];
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
-}) {
+}
+
+/**
+ * Render a schema-driven form. The outermost instance provides the
+ * `ObjectField` expansion store so manually-expanded groups survive breadcrumb
+ * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
+ * `object-field-expansion.tsx`.
+ */
+export function SchemaForm(props: SchemaFormProps) {
+  const hasExpansionProvider = useHasObjectFieldExpansion();
+  if (hasExpansionProvider) return <SchemaFormBody {...props} />;
+  return (
+    <ObjectFieldExpansionProvider>
+      <SchemaFormBody {...props} />
+    </ObjectFieldExpansionProvider>
+  );
+}
+
+function SchemaFormBody({
+  schema,
+  value,
+  onChange,
+  basePath,
+  breadcrumbPath = [],
+  onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
+  previewBaseUrl,
+  onAddSectionItem,
+  onRequestAddSection,
+  sandbox,
+}: SchemaFormProps) {
   const t = useT();
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated

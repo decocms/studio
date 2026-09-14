@@ -34,7 +34,6 @@ export const sidebar = {
   "sidebar.picker.title": "Organizations and projects",
   "sidebar.picker.moreExist":
     "More projects than fit here \u2014 keep typing to narrow",
-  "sidebar.picker.verbLeaves": "\u00b7 leaves {name}",
   "sidebar.picker.verbTravel": "Open {name}",
   "sidebar.showMoreButton.ariaLabel": "Show more tasks",
   "sidebar.showMoreButton.loading": "Loading…",

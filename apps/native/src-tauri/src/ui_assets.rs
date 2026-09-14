@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use tauri::{AppHandle, AssetResolver, Wry};
 
@@ -7,7 +6,7 @@ use tauri::{AppHandle, AssetResolver, Wry};
 /// Tauri-independent static asset contract.
 pub struct TauriUiAssets {
     resolver: AssetResolver<Wry>,
-    known_paths: Arc<HashSet<String>>,
+    known_paths: HashSet<String>,
     index: local_api::UiAsset,
     content_security_policy: String,
 }
@@ -31,7 +30,7 @@ impl TauriUiAssets {
 
         Ok(Self {
             resolver,
-            known_paths: Arc::new(known_paths),
+            known_paths,
             index: convert_asset(index, "index.html"),
             content_security_policy,
         })

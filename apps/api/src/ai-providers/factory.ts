@@ -17,8 +17,9 @@ function stripProviderPrefix(id: string): string {
 }
 
 function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
-  const canTools = m.supported_parameters.includes("tools");
-  const canReasoning = m.supported_parameters.includes("reasoning");
+  // OpenRouter can omit `supported_parameters`; guard like adapters/openrouter.ts does.
+  const canTools = m.supported_parameters?.includes("tools") ?? false;
+  const canReasoning = m.supported_parameters?.includes("reasoning") ?? false;
   return {
     providerId: "openrouter",
     modelId: stripProviderPrefix(m.id),

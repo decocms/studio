@@ -1459,6 +1459,50 @@ describe("resolveSchema – inline object unions (A | B) render as a choice", ()
     expect(card?.type).toBe("block-ref");
     expect(card?.discriminatorKey).toBe("type");
   });
+
+  // zeedog PromoBar `PromoBarTitle[] | PromoBarSVG | PromoBarCTA | …`: an array branch mixed with object branches must offer all branches, not collapse to the array.
+  test("array branch mixed with object branches resolves to an inline-union", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        firstComponent: {
+          title: "FirstComponent",
+          anyOf: [
+            {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { title: { type: "string", title: "Title" } },
+              },
+            },
+            {
+              type: "object",
+              title: "PromoBarSVG",
+              properties: { svg: { type: "string", title: "Svg" } },
+            },
+            {
+              type: "object",
+              title: "PromoBarCTA",
+              properties: { ctaText: { type: "string", title: "CtaText" } },
+            },
+          ],
+        },
+      },
+    });
+    const firstComponent = resolveSchema("site/sections/Test.tsx", meta)
+      ?.properties?.firstComponent;
+    expect(firstComponent?.type).toBe("inline-union");
+    const branches = firstComponent?.inlineUnionBranches ?? [];
+    expect(branches).toHaveLength(3);
+    // The array branch keeps its item schema so it renders an array editor.
+    expect(branches[0]?.schema?.type).toBe("array");
+    expect(branches[0]?.schema?.items?.properties?.title?.title).toBe("Title");
+    // Object branches keep their type-name labels.
+    expect(branches.slice(1).map((b) => b.title)).toEqual([
+      "PromoBarSVG",
+      "PromoBarCTA",
+    ]);
+  });
 });
 
 describe("resolveSchema – inline object unions behind $refs (real deco shape)", () => {

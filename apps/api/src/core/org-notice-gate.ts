@@ -126,6 +126,15 @@ export function isBlockableOrgRequest(method: string, path: string): boolean {
     return false;
   }
   const segments = path.split("/").filter(Boolean);
+  // The notice service must be able to lift the restriction it owns. Keep this
+  // exemption exact: every other /internal write remains control plane.
+  if (
+    segments.length === 4 &&
+    segments[2] === "internal" &&
+    segments[3] === "organization-notices"
+  ) {
+    return false;
+  }
   // ["api", "<org>", "<first>", ...] — anything shorter has no route to block.
   const first = segments[2];
   if (!first) return false;

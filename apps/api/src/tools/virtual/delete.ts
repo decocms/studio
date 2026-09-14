@@ -5,12 +5,14 @@
  */
 
 import { z } from "zod";
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import {
   getRepoScope,
   isOrgSharedConnection,
 } from "@decocms/shared/github-repo-scope";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import { defineTool } from "../../core/define-tool";
+import { resolveCallerProjectScope } from "../../core/project-scope";
 import {
   getUserId,
   requireAuth,
@@ -69,6 +71,12 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
     if (existing.organization_id !== organization.id) {
+      throw new Error(`Virtual MCP not found: ${input.id}`);
+    }
+
+    // A project-scoped role may only delete projects in its allowlist.
+    const projectScope = await resolveCallerProjectScope(ctx);
+    if (!isProjectAllowed(projectScope, existing.id)) {
       throw new Error(`Virtual MCP not found: ${input.id}`);
     }
 

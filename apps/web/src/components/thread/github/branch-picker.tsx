@@ -206,12 +206,12 @@ export function BranchPicker({
   const saveUnlistedName = () => {
     const next = editName.trim();
     if (next && value) {
-      void createRelease({
+      createRelease({
         branch: value,
         name: next,
         color: nextReleaseColor(releases.length),
         createdAt: new Date().toISOString(),
-      });
+      }).catch(reportReleaseError);
     }
     setEditing(null);
     setEditName("");
@@ -315,7 +315,8 @@ export function BranchPicker({
           />
         ) : (
           <>
-            <div className="flex flex-col">
+            {/* Scroll the list, not the popover: the rows below must stay reachable. */}
+            <div className="flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
               {unlisted &&
                 value &&
                 (editing === value ? (

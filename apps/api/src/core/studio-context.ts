@@ -220,6 +220,19 @@ export interface StudioAuth {
     remaining?: number; // Remaining requests (rate limiting)
     expiresAt?: Date;
   };
+
+  /**
+   * Stored permission map resolved at authentication time (API key / MCP OAuth /
+   * Studio JWT). Undefined for browser sessions, which are authorized via Better
+   * Auth's hasPermission API and never fetch the raw map. Exposed so tools that
+   * need the raw grants (e.g. the project-scope allowlist) can reuse this instead
+   * of re-querying — but only when {@link permissionsOrganizationId} matches the
+   * org being served (a bearer credential can be bound to a different org).
+   */
+  permissions?: Permission;
+
+  /** Org the {@link permissions} map was resolved for (cross-org reuse guard). */
+  permissionsOrganizationId?: string;
 }
 
 // ============================================================================

@@ -24,6 +24,7 @@ import {
   type RepoChoice,
 } from "@/git-providers/repo-choices";
 import {
+  checkoutCommandFor,
   type GitProviderKind,
   providerCli,
 } from "@decocms/shared/git-providers";
@@ -71,7 +72,19 @@ export interface TaskRepo {
  *
  * Pure, so the counting rule is unit-tested without a StudioContext.
  */
-export function pickSoleTaskRepo(choices: RepoChoice[]): TaskRepo | null {
+export function pickSoleTaskRepo(
+  choices: RepoChoice[],
+  /** The card's own `repo`, when it has one: narrow to it first, so a
+   *  multi-repo org still binds a checkout before dispatch. An unknown or
+   *  ambiguous name narrows to nothing and falls back to the mid-run pick. */
+  preferredRepo?: string,
+): TaskRepo | null {
+  if (preferredRepo)
+    choices = choices.filter(
+      (choice) =>
+        `${choice.owner}/${choice.name}`.toLowerCase() ===
+        preferredRepo.toLowerCase(),
+    );
   if (choices.length !== 1) return null;
   const chosen = choices[0]!;
   return {
@@ -124,6 +137,7 @@ export interface TaskRepoChoiceOption {
 export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
+  preferredRepo?: string,
 ): Promise<TaskRepoChoice> {
   if (!agentSandboxEnabled()) {
     console.warn(
@@ -134,7 +148,7 @@ export async function resolveTaskRepoChoice(
   }
   try {
     const choices = await listOrgRepoChoices(ctx, organizationId);
-    const repo = pickSoleTaskRepo(choices);
+    const repo = pickSoleTaskRepo(choices, preferredRepo);
     if (repo) return { repo };
     if (choices.length === 0) {
       console.warn(
@@ -179,9 +193,12 @@ export async function resolveTaskRepoChoice(
 const MIXED_PROVIDER_NOTE =
   "Each checkout is authenticated for ITS OWN host: use `gh` inside a GitHub " +
   "repository and `glab` inside a GitLab one (`glab mr create` is the " +
-  "counterpart of `gh pr create`). A run can hold both at once, so pick the " +
-  "one that matches the repository you are standing in — check its remote " +
-  "with `git remote get-url origin` if you are unsure.";
+  "counterpart of `gh pr create`). Bitbucket has no CLI: inside a Bitbucket " +
+  "repository open pull requests through the Studio tools or the REST API with " +
+  '`curl -H "Authorization: Bearer $BITBUCKET_TOKEN"` against api.bitbucket.org. ' +
+  "A run can hold several at once, so pick the one that matches the repository " +
+  "you are standing in — check its remote with `git remote get-url origin` if " +
+  "you are unsure.";
 
 export function buildClaudeCodeTaskPrompt(
   task: { id: string; title: string; description: string | null },
@@ -223,7 +240,7 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     "",
     repo
-      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. It is hosted on ${repo.provider === "gitlab" ? "GitLab" : "GitHub"}, so \`git\` and \`${cli.cli}\` are authenticated there. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. It is hosted on ${cli.name}, so ${cli.cli ? `\`git\` and \`${cli.cli}\` are` : "`git` is"} authenticated there${cli.cli ? "" : " (Bitbucket has no CLI; `$BITBUCKET_TOKEN` is the bearer for its REST API)"}. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: this organization has several repositories, so " +
             "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
@@ -254,7 +271,7 @@ export function buildClaudeCodeTaskPrompt(
   if (opts?.resolveConflict && opts.pr) {
     lines.push(
       `Pull request #${opts.pr.number} (${opts.pr.url}) is approved but has a MERGE CONFLICT with its base branch.`,
-      `Check that branch out (\`${cli.checkoutCommand} ${opts.pr.number}\`), merge or rebase the base branch into it, resolve the conflicts, and push to update the SAME ${cli.changeRequest} — do NOT open a new one. Resolve by preserving BOTH sides' intent; never blindly discard either side, and change only what the conflict requires.`,
+      `Check that branch out (\`${checkoutCommandFor(repo?.provider ?? "github", opts.pr.number)}\`), merge or rebase the base branch into it, resolve the conflicts, and push to update the SAME ${cli.changeRequest} — do NOT open a new one. Resolve by preserving BOTH sides' intent; never blindly discard either side, and change only what the conflict requires.`,
       "",
     );
   } else if (opts?.feedback) {
@@ -268,7 +285,7 @@ export function buildClaudeCodeTaskPrompt(
         : "A reviewer requested changes on your previous work:",
       opts.feedback,
       opts.pr
-        ? `Check that branch out (\`${cli.checkoutCommand} ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME ${cli.changeRequest} — do NOT open a new one.`
+        ? `Check that branch out (\`${checkoutCommandFor(repo?.provider ?? "github", opts.pr.number)}\`) before editing, address the feedback, then push to update the SAME ${cli.changeRequest} — do NOT open a new one.`
         : "Address this feedback.",
       "",
     );

@@ -31,6 +31,7 @@ import { createSelfRoutes } from "./self";
 import { createTaskRunMcpRoutes } from "./task-run-mcp";
 import { createHomeNextActionsRoutes } from "./home-next-actions";
 import { createCommerceDiagnosticShareRoutes } from "./commerce-diagnostic-share";
+import { createOrganizationNoticeServiceRoutes } from "./organization-notices-service";
 import { createTaskBoardImportRoutes } from "./task-board-import";
 import { createObjectStorageRoutes } from "./object-storage";
 import { createThreadOutputsRoutes } from "./thread-outputs";
@@ -99,6 +100,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
   app.route("/", createCommerceDiagnosticShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
+  app.route("/", createOrganizationNoticeServiceRoutes()); // /api/:org/internal/organization-notices
   app.route("/", createThreadOutputsRoutes()); // /api/:org/threads/:threadId/outputs
   app.route("/tools", createToolsRestRoutes()); // /api/:org/tools[/:toolName] — REST builtin-tool dispatch
   app.route("/", createObjectStorageRoutes()); // /api/:org/object-storage/*
