@@ -186,6 +186,32 @@ export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Validate a hostname for domain attachment. Returns error message or null if valid. */
+export function validateHostname(hostname: string): string | null {
+  const host = hostname.trim();
+
+  if (!host) return null;
+
+  // Must contain at least one dot (at least 2 labels)
+  const labels = host.split(".").filter(Boolean);
+  if (labels.length < 2) return "Domain must include a TLD (e.g., example.com)";
+
+  // Total length: max 253 chars
+  if (host.length > 253) return "Domain name is too long (max 253 characters)";
+
+  // Validate each label
+  for (const label of labels) {
+    if (label.length > 63)
+      return `Label "${label}" is too long (max 63 characters)`;
+    // ponytail: regex checks format; server verifies DNS, registration status, etc.
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i.test(label)) {
+      return `Label "${label}" has invalid characters or format`;
+    }
+  }
+
+  return null;
+}
+
 function errorFromBody(body: unknown, status: number): string {
   return body && typeof body === "object" && "error" in body
     ? String((body as { error: unknown }).error)
