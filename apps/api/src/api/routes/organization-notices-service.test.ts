@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
-  financeSiteResolutionBodySchema,
-  isFinanceServiceToken,
-} from "./finance-notice";
+  isOrganizationNoticesApiKey,
+  organizationNoticeSiteResolutionBodySchema,
+} from "./organization-notices-service";
 
 const original = process.env.ORGANIZATION_NOTICES_API_KEY;
 
@@ -11,23 +11,23 @@ afterEach(() => {
   else process.env.ORGANIZATION_NOTICES_API_KEY = original;
 });
 
-describe("isFinanceServiceToken", () => {
+describe("isOrganizationNoticesApiKey", () => {
   it("fails closed when the service token is not configured", () => {
     delete process.env.ORGANIZATION_NOTICES_API_KEY;
-    expect(isFinanceServiceToken("anything")).toBe(false);
+    expect(isOrganizationNoticesApiKey("anything")).toBe(false);
   });
 
-  it("accepts only the configured finance token", () => {
+  it("accepts only the configured API key", () => {
     process.env.ORGANIZATION_NOTICES_API_KEY = "notices-secret";
-    expect(isFinanceServiceToken("notices-secret")).toBe(true);
-    expect(isFinanceServiceToken("wrong-secret")).toBe(false);
+    expect(isOrganizationNoticesApiKey("notices-secret")).toBe(true);
+    expect(isOrganizationNoticesApiKey("wrong-secret")).toBe(false);
   });
 });
 
-describe("financeSiteResolutionBodySchema", () => {
+describe("organizationNoticeSiteResolutionBodySchema", () => {
   it("normalizes and deduplicates valid site slugs", () => {
     expect(
-      financeSiteResolutionBodySchema.parse({
+      organizationNoticeSiteResolutionBodySchema.parse({
         siteSlugs: [" Store-One ", "store-one", "store-two"],
       }),
     ).toEqual({ siteSlugs: ["store-one", "store-two"] });
@@ -35,14 +35,16 @@ describe("financeSiteResolutionBodySchema", () => {
 
   it("rejects empty, malformed, and oversized site lists", () => {
     expect(
-      financeSiteResolutionBodySchema.safeParse({ siteSlugs: [] }).success,
-    ).toBe(false);
-    expect(
-      financeSiteResolutionBodySchema.safeParse({ siteSlugs: ["not/a/site"] })
+      organizationNoticeSiteResolutionBodySchema.safeParse({ siteSlugs: [] })
         .success,
     ).toBe(false);
     expect(
-      financeSiteResolutionBodySchema.safeParse({
+      organizationNoticeSiteResolutionBodySchema.safeParse({
+        siteSlugs: ["not/a/site"],
+      }).success,
+    ).toBe(false);
+    expect(
+      organizationNoticeSiteResolutionBodySchema.safeParse({
         siteSlugs: Array.from({ length: 501 }, (_, index) => `site-${index}`),
       }).success,
     ).toBe(false);

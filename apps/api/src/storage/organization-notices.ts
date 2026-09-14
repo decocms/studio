@@ -129,7 +129,7 @@ export class OrganizationNoticeStorage {
   /**
    * Set a live notice only when the current notice belongs to the same source.
    *
-   * Machine integrations use this instead of `setActive`: a finance sync may
+   * Machine integrations use this instead of `setActive`: a service may
    * refresh its own warning or escalate it to a block, but it must never replace
    * text an operator pinned manually. The conflict predicate makes that
    * ownership check atomic, including when a manual write races this one.

@@ -111,9 +111,9 @@ import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import { createEditorResolveRoutes } from "./routes/editor-resolve";
 import {
-  FINANCE_API_PREFIX,
-  createFinanceSiteResolutionRoutes,
-} from "./routes/finance-notice";
+  ORGANIZATION_NOTICES_API_PREFIX,
+  createOrganizationNoticeSiteResolutionRoutes,
+} from "./routes/organization-notices-service";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
@@ -2338,9 +2338,12 @@ export async function createApp(options: CreateAppOptions = {}) {
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
 
-  // deCommand's cross-org site ownership lookup. Dedicated service token,
-  // static prefix, and registered before the /api/:org catch-all.
-  app.route(FINANCE_API_PREFIX, createFinanceSiteResolutionRoutes());
+  // Cross-org site ownership lookup for the organization-notices service.
+  // Registered before the /api/:org catch-all under a static prefix.
+  app.route(
+    ORGANIZATION_NOTICES_API_PREFIX,
+    createOrganizationNoticeSiteResolutionRoutes(),
+  );
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());

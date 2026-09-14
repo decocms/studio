@@ -126,13 +126,12 @@ export function isBlockableOrgRequest(method: string, path: string): boolean {
     return false;
   }
   const segments = path.split("/").filter(Boolean);
-  // The finance service must be able to lift the restriction it owns. Keep
-  // this exemption exact: every other /internal write remains control plane.
+  // The notice service must be able to lift the restriction it owns. Keep this
+  // exemption exact: every other /internal write remains control plane.
   if (
-    segments.length === 5 &&
+    segments.length === 4 &&
     segments[2] === "internal" &&
-    segments[3] === "finance" &&
-    segments[4] === "notice"
+    segments[3] === "organization-notices"
   ) {
     return false;
   }

@@ -56,14 +56,17 @@ describe("isBlockableOrgRequest", () => {
     ).toBe(false);
   });
 
-  it("lets finance reactivate only through its exact notice route", () => {
+  it("lets the notice service reactivate only through its exact route", () => {
     expect(
-      isBlockableOrgRequest("DELETE", "/api/acme/internal/finance/notice"),
+      isBlockableOrgRequest(
+        "DELETE",
+        "/api/acme/internal/organization-notices",
+      ),
     ).toBe(false);
     expect(
       isBlockableOrgRequest(
         "POST",
-        "/api/acme/internal/finance/notice/anything",
+        "/api/acme/internal/organization-notices/anything",
       ),
     ).toBe(true);
     expect(

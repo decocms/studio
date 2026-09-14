@@ -9,21 +9,21 @@ import { posthog } from "@/posthog";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { bearerToken, safeEqual } from "./credential-vault";
 
-const FINANCE_NOTICE_SOURCE = "finance_ar";
-const FINANCE_NOTICE_ACTOR = "service:decommand-center";
-export const FINANCE_API_PREFIX = "/api/_finance";
+const NOTICE_SOURCE = "decommand_ar";
+const NOTICE_ACTOR = "service:decommand-center";
+export const ORGANIZATION_NOTICES_API_PREFIX = "/api/_organization-notices";
 
 type Variables = {
   studioContext: StudioContext;
 };
 
-/** A dedicated token keeps finance notice access separate from credential vault access. */
-export function isFinanceServiceToken(token: string): boolean {
+/** Keep organization-notice access separate from credential vault access. */
+export function isOrganizationNoticesApiKey(token: string): boolean {
   const expected = process.env.ORGANIZATION_NOTICES_API_KEY;
   return !!expected && safeEqual(token, expected);
 }
 
-export const financeSiteResolutionBodySchema = z.object({
+export const organizationNoticeSiteResolutionBodySchema = z.object({
   siteSlugs: z
     .array(z.string().trim().toLowerCase())
     .min(1)
@@ -34,22 +34,22 @@ export const financeSiteResolutionBodySchema = z.object({
     }),
 });
 
-async function requireFinanceServiceToken(
+async function requireOrganizationNoticesApiKey(
   c: Context<{ Variables: Variables }>,
   next: Next,
 ) {
   const token = bearerToken(c.req.header("authorization"));
-  if (!token || !isFinanceServiceToken(token)) {
+  if (!token || !isOrganizationNoticesApiKey(token)) {
     return c.json({ error: "Unauthorized" }, 401);
   }
   return next();
 }
 
-function auditFinanceNotice(
+function auditOrganizationNotice(
   action: "set" | "resolve" | "refused",
   props: Record<string, unknown>,
 ) {
-  console.log("finance_ar_notice_action", { action, ...props });
+  console.log("organization_notice_service_action", { action, ...props });
 }
 
 /**
@@ -57,18 +57,18 @@ function auditFinanceNotice(
  * Studio shell. The source is fixed server-side: deCommand can update or clear
  * only notices it created and can never overwrite a deployment-admin notice.
  */
-export const createFinanceNoticeRoutes = () => {
+export const createOrganizationNoticeServiceRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
-  app.use("/internal/finance/notice", async (c, next) => {
+  app.use("/internal/organization-notices", async (c, next) => {
     const token = bearerToken(c.req.header("authorization"));
-    if (!token || !isFinanceServiceToken(token)) {
+    if (!token || !isOrganizationNoticesApiKey(token)) {
       return c.json({ error: "Unauthorized" }, 401);
     }
     return next();
   });
 
-  app.get("/internal/finance/notice", async (c) => {
+  app.get("/internal/organization-notices", async (c) => {
     const ctx = c.get("studioContext");
     const organizationId = ctx.organization?.id;
     if (!organizationId) {
@@ -80,7 +80,7 @@ export const createFinanceNoticeRoutes = () => {
     return c.json({ notice });
   });
 
-  app.put("/internal/finance/notice", async (c) => {
+  app.put("/internal/organization-notices", async (c) => {
     const parsed = OrgNoticeInputSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -101,12 +101,12 @@ export const createFinanceNoticeRoutes = () => {
     const notice = await storage.setActiveForSource({
       organizationId,
       notice: parsed.data,
-      source: FINANCE_NOTICE_SOURCE,
-      by: FINANCE_NOTICE_ACTOR,
+      source: NOTICE_SOURCE,
+      by: NOTICE_ACTOR,
     });
     if (!notice) {
       const active = await storage.getActive(organizationId);
-      auditFinanceNotice("refused", {
+      auditOrganizationNotice("refused", {
         organization_id: organizationId,
         requested_severity: parsed.data.severity,
         active_source: active?.source ?? null,
@@ -123,25 +123,25 @@ export const createFinanceNoticeRoutes = () => {
     }
 
     invalidateOrgNoticeCache(organizationId);
-    auditFinanceNotice("set", {
+    auditOrganizationNotice("set", {
       organization_id: organizationId,
       severity: notice.severity,
-      source: FINANCE_NOTICE_SOURCE,
+      source: NOTICE_SOURCE,
     });
     posthog.capture({
-      distinctId: FINANCE_NOTICE_ACTOR,
-      event: "finance_ar_org_notice_set",
+      distinctId: NOTICE_ACTOR,
+      event: "organization_notice_service_set",
       groups: { organization: organizationId },
       properties: {
         organization_id: organizationId,
         severity: notice.severity,
-        source: FINANCE_NOTICE_SOURCE,
+        source: NOTICE_SOURCE,
       },
     });
     return c.json({ notice });
   });
 
-  app.delete("/internal/finance/notice", async (c) => {
+  app.delete("/internal/organization-notices", async (c) => {
     const ctx = c.get("studioContext");
     const organizationId = ctx.organization?.id;
     if (!organizationId) {
@@ -153,8 +153,8 @@ export const createFinanceNoticeRoutes = () => {
     if (!active) {
       return c.json({ error: "No active notice for this organization" }, 404);
     }
-    if (active.source !== FINANCE_NOTICE_SOURCE) {
-      auditFinanceNotice("refused", {
+    if (active.source !== NOTICE_SOURCE) {
+      auditOrganizationNotice("refused", {
         organization_id: organizationId,
         active_source: active.source,
         reason: "active_notice_owned_by_another_source",
@@ -162,7 +162,7 @@ export const createFinanceNoticeRoutes = () => {
       return c.json(
         {
           error:
-            "This notice belongs to another source and cannot be resolved by finance",
+            "This notice belongs to another source and cannot be resolved by this service",
           notice: active,
         },
         409,
@@ -171,8 +171,8 @@ export const createFinanceNoticeRoutes = () => {
 
     const resolved = await storage.resolveActiveForSource({
       organizationId,
-      source: FINANCE_NOTICE_SOURCE,
-      by: FINANCE_NOTICE_ACTOR,
+      source: NOTICE_SOURCE,
+      by: NOTICE_ACTOR,
     });
     if (!resolved) {
       return c.json(
@@ -182,17 +182,17 @@ export const createFinanceNoticeRoutes = () => {
     }
 
     invalidateOrgNoticeCache(organizationId);
-    auditFinanceNotice("resolve", {
+    auditOrganizationNotice("resolve", {
       organization_id: organizationId,
-      source: FINANCE_NOTICE_SOURCE,
+      source: NOTICE_SOURCE,
     });
     posthog.capture({
-      distinctId: FINANCE_NOTICE_ACTOR,
-      event: "finance_ar_org_notice_resolved",
+      distinctId: NOTICE_ACTOR,
+      event: "organization_notice_service_resolved",
       groups: { organization: organizationId },
       properties: {
         organization_id: organizationId,
-        source: FINANCE_NOTICE_SOURCE,
+        source: NOTICE_SOURCE,
       },
     });
     return c.json({ ok: true });
@@ -204,14 +204,14 @@ export const createFinanceNoticeRoutes = () => {
 /**
  * Cross-organization read used to map deCommand subscription repositories to
  * their Studio organizations in one request. `org_sites` is the ownership
- * source of truth; the dedicated finance token is the only principal allowed.
+ * source of truth; the dedicated API key is the only principal allowed.
  */
-export const createFinanceSiteResolutionRoutes = () => {
+export const createOrganizationNoticeSiteResolutionRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
-  app.use("*", requireFinanceServiceToken);
+  app.use("*", requireOrganizationNoticesApiKey);
 
   app.post("/site-organizations", async (c) => {
-    const parsed = financeSiteResolutionBodySchema.safeParse(
+    const parsed = organizationNoticeSiteResolutionBodySchema.safeParse(
       await c.req.json().catch(() => null),
     );
     if (!parsed.success) {

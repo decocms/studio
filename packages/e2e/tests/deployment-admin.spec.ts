@@ -38,8 +38,8 @@ const DEPLOYMENT_ADMIN_EMAIL_2 = "deployment-admin-2@e2e.local";
 // The sign-in fallback below must use the same password sign-up used when an
 // earlier `reuseExistingServer` run created the identity.
 const DEPLOYMENT_ADMIN_PASSWORD = TEST_PASSWORD;
-const FINANCE_SERVICE_HEADERS = {
-  Authorization: "Bearer e2e-finance-service-token",
+const ORGANIZATION_NOTICES_SERVICE_HEADERS = {
+  Authorization: "Bearer e2e-organization-notices-api-key",
 };
 
 /** Idempotent: signs up the reserved admin identity, or signs in if a prior
@@ -1151,7 +1151,7 @@ test.describe("/api/_admin/*", () => {
     await ownerCtx.dispose();
   });
 
-  test("finance notice service owns its lifecycle without replacing admin notices", async ({
+  test("organization notice service owns its lifecycle without replacing admin notices", async ({
     playwright,
   }) => {
     const adminCtx = await newApiContext(playwright);
@@ -1169,7 +1169,7 @@ test.describe("/api/_admin/*", () => {
     ).rows[0];
     if (!organization) throw new Error("Org not found after signup");
 
-    const siteSlug = `finance-notice-${crypto.randomUUID().slice(0, 8)}`;
+    const siteSlug = `service-notice-${crypto.randomUUID().slice(0, 8)}`;
     expect(
       (
         await adminCtx.post(`/api/_admin/orgs/${organization.id}/sites`, {
@@ -1179,15 +1179,18 @@ test.describe("/api/_admin/*", () => {
     ).toBe(200);
 
     const unauthorized = await serviceCtx.post(
-      "/api/_finance/site-organizations",
+      "/api/_organization-notices/site-organizations",
       { data: { siteSlugs: [siteSlug] } },
     );
     expect(unauthorized.status()).toBe(401);
 
-    const mapped = await serviceCtx.post("/api/_finance/site-organizations", {
-      headers: FINANCE_SERVICE_HEADERS,
-      data: { siteSlugs: [siteSlug, siteSlug] },
-    });
+    const mapped = await serviceCtx.post(
+      "/api/_organization-notices/site-organizations",
+      {
+        headers: ORGANIZATION_NOTICES_SERVICE_HEADERS,
+        data: { siteSlugs: [siteSlug, siteSlug] },
+      },
+    );
     expect(mapped.status()).toBe(200);
     expect(await mapped.json()).toEqual({
       sites: [
@@ -1202,9 +1205,9 @@ test.describe("/api/_admin/*", () => {
     });
 
     const warning = await serviceCtx.put(
-      `/api/${owner.orgSlug}/internal/finance/notice`,
+      `/api/${owner.orgSlug}/internal/organization-notices`,
       {
-        headers: FINANCE_SERVICE_HEADERS,
+        headers: ORGANIZATION_NOTICES_SERVICE_HEADERS,
         data: {
           severity: "warn",
           title: "Payment overdue",
@@ -1218,13 +1221,13 @@ test.describe("/api/_admin/*", () => {
         notice: { severity: string; source: string };
       },
     ).toMatchObject({
-      notice: { severity: "warn", source: "finance_ar" },
+      notice: { severity: "warn", source: "decommand_ar" },
     });
 
     const block = await serviceCtx.put(
-      `/api/${owner.orgSlug}/internal/finance/notice`,
+      `/api/${owner.orgSlug}/internal/organization-notices`,
       {
-        headers: FINANCE_SERVICE_HEADERS,
+        headers: ORGANIZATION_NOTICES_SERVICE_HEADERS,
         data: {
           severity: "block",
           title: "Workspace access restricted",
@@ -1238,14 +1241,16 @@ test.describe("/api/_admin/*", () => {
        WHERE organization_id = $1 AND resolved_at IS NULL`,
       [organization.id],
     );
-    expect(stored.rows).toEqual([{ severity: "block", source: "finance_ar" }]);
+    expect(stored.rows).toEqual([
+      { severity: "block", source: "decommand_ar" },
+    ]);
 
     // The same service route remains available after its block takes effect.
     expect(
       (
         await serviceCtx.delete(
-          `/api/${owner.orgSlug}/internal/finance/notice`,
-          { headers: FINANCE_SERVICE_HEADERS },
+          `/api/${owner.orgSlug}/internal/organization-notices`,
+          { headers: ORGANIZATION_NOTICES_SERVICE_HEADERS },
         )
       ).status(),
     ).toBe(200);
@@ -1264,21 +1269,24 @@ test.describe("/api/_admin/*", () => {
 
     expect(
       (
-        await serviceCtx.put(`/api/${owner.orgSlug}/internal/finance/notice`, {
-          headers: FINANCE_SERVICE_HEADERS,
-          data: {
-            severity: "block",
-            title: "Workspace access restricted",
-            message: "Settle the outstanding balance to restore access.",
+        await serviceCtx.put(
+          `/api/${owner.orgSlug}/internal/organization-notices`,
+          {
+            headers: ORGANIZATION_NOTICES_SERVICE_HEADERS,
+            data: {
+              severity: "block",
+              title: "Workspace access restricted",
+              message: "Settle the outstanding balance to restore access.",
+            },
           },
-        })
+        )
       ).status(),
     ).toBe(409);
     expect(
       (
         await serviceCtx.delete(
-          `/api/${owner.orgSlug}/internal/finance/notice`,
-          { headers: FINANCE_SERVICE_HEADERS },
+          `/api/${owner.orgSlug}/internal/organization-notices`,
+          { headers: ORGANIZATION_NOTICES_SERVICE_HEADERS },
         )
       ).status(),
     ).toBe(409);
