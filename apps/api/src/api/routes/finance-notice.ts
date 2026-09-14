@@ -19,7 +19,7 @@ type Variables = {
 
 /** A dedicated token keeps finance notice access separate from credential vault access. */
 export function isFinanceServiceToken(token: string): boolean {
-  const expected = process.env.FINANCE_SERVICE_TOKEN;
+  const expected = process.env.ORGANIZATION_NOTICES_API_KEY;
   return !!expected && safeEqual(token, expected);
 }
 

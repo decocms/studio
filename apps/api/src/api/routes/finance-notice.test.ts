@@ -4,22 +4,22 @@ import {
   isFinanceServiceToken,
 } from "./finance-notice";
 
-const original = process.env.FINANCE_SERVICE_TOKEN;
+const original = process.env.ORGANIZATION_NOTICES_API_KEY;
 
 afterEach(() => {
-  if (original === undefined) delete process.env.FINANCE_SERVICE_TOKEN;
-  else process.env.FINANCE_SERVICE_TOKEN = original;
+  if (original === undefined) delete process.env.ORGANIZATION_NOTICES_API_KEY;
+  else process.env.ORGANIZATION_NOTICES_API_KEY = original;
 });
 
 describe("isFinanceServiceToken", () => {
   it("fails closed when the service token is not configured", () => {
-    delete process.env.FINANCE_SERVICE_TOKEN;
+    delete process.env.ORGANIZATION_NOTICES_API_KEY;
     expect(isFinanceServiceToken("anything")).toBe(false);
   });
 
   it("accepts only the configured finance token", () => {
-    process.env.FINANCE_SERVICE_TOKEN = "finance-secret";
-    expect(isFinanceServiceToken("finance-secret")).toBe(true);
+    process.env.ORGANIZATION_NOTICES_API_KEY = "notices-secret";
+    expect(isFinanceServiceToken("notices-secret")).toBe(true);
     expect(isFinanceServiceToken("wrong-secret")).toBe(false);
   });
 });
