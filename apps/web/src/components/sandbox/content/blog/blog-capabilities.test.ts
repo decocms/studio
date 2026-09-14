@@ -7,6 +7,7 @@ import {
   blogSupport,
   compareSemver,
   parseSemver,
+  postStatusUnsupported,
   supportsPublishToggle,
   supportsScheduling,
 } from "./blog-capabilities";
@@ -311,5 +312,45 @@ describe("supportsPublishToggle / supportsScheduling", () => {
       expect(supportsPublishToggle(support)).toBe(pub);
       expect(supportsScheduling(support)).toBe(sched);
     }
+  });
+});
+
+describe("postStatusUnsupported", () => {
+  const outdated = { kind: "outdated", version: "0.160.0" } as const;
+  const publishOnly = { kind: "publish-only", version: "0.161.0" } as const;
+  const full = { kind: "full", version: "0.162.0" } as const;
+  const noRuntime = { kind: "unsupported-runtime" } as const;
+
+  it("never gates a non-live state — those blocks the site does not resolve", () => {
+    for (const support of [noRuntime, outdated, publishOnly, full]) {
+      for (const status of [
+        "draft",
+        "generating",
+        "awaiting_review",
+        "archived",
+      ] as const) {
+        expect(postStatusUnsupported(support, status)).toBeNull();
+      }
+    }
+  });
+
+  it("gates scheduled until the app can hold a go-live instant", () => {
+    expect(postStatusUnsupported(publishOnly, "scheduled")).toEqual({
+      required: APPS_SCHEDULING_VERSION,
+      version: "0.161.0",
+    });
+    expect(postStatusUnsupported(full, "scheduled")).toBeNull();
+  });
+
+  it("gates published until the app can read status at all", () => {
+    expect(postStatusUnsupported(outdated, "published")).toEqual({
+      required: APPS_STATUS_VERSION,
+      version: "0.160.0",
+    });
+    expect(postStatusUnsupported(publishOnly, "published")).toBeNull();
+  });
+
+  it("reports a null version on a site that is not Deno at all", () => {
+    expect(postStatusUnsupported(noRuntime, "published")?.version).toBeNull();
   });
 });
