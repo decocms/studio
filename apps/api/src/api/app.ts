@@ -2226,10 +2226,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
-  // Resolve the org from the URL before serving so the stable URL cannot drift
-  // to the session-active org when the path targets a different org.
-  app.use("/api/:org/files/*", resolveOrgFromPath);
+  // Stable file redirect endpoint; org resolution for this path is already registered above with decopilot/v1.
   app.route("/api", filesRoutes);
 
   // Thread outputs (model-shared files surfaced as download chips in the chat)
