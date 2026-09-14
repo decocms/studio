@@ -210,6 +210,12 @@ export function validateHostname(hostname: string): string | null {
     }
   }
 
+  // No registrar issues an all-numeric TLD, so e.g. "1.2.3.4" can never resolve.
+  const tld = labels[labels.length - 1] ?? "";
+  if (/^[0-9]+$/.test(tld)) {
+    return "Domain must include a valid TLD, not a number";
+  }
+
   return null;
 }
 

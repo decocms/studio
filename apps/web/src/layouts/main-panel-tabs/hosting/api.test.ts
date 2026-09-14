@@ -64,4 +64,13 @@ describe("validateHostname", () => {
   it("accepts a single trailing root dot", () => {
     expect(validateHostname("example.com.")).toBeNull();
   });
+
+  it("rejects an IPv4-literal-shaped hostname (all-numeric TLD)", () => {
+    expect(validateHostname("1.2.3.4")).not.toBeNull();
+    expect(validateHostname("192.168.0.1")).not.toBeNull();
+  });
+
+  it("accepts a TLD that mixes letters and digits", () => {
+    expect(validateHostname("example.co2")).toBeNull();
+  });
 });
