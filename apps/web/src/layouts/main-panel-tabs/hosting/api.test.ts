@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { validateHostname } from "./api";
+import { ApiError, isUnauthorized, validateHostname } from "./api";
 
 describe("validateHostname", () => {
   it("returns null for valid domains", () => {
@@ -72,5 +72,21 @@ describe("validateHostname", () => {
 
   it("accepts a TLD that mixes letters and digits", () => {
     expect(validateHostname("example.co2")).toBeNull();
+  });
+});
+
+describe("isUnauthorized", () => {
+  it("is true for a 401 ApiError regardless of its message wording", () => {
+    expect(isUnauthorized(new ApiError("Unauthorized", 401))).toBe(true);
+    expect(isUnauthorized(new ApiError("Site not connected", 401))).toBe(true);
+  });
+
+  it("is false for a non-401 status, even if the message mentions 401", () => {
+    expect(isUnauthorized(new ApiError("see error 401", 500))).toBe(false);
+  });
+
+  it("is false for a plain Error or non-error value", () => {
+    expect(isUnauthorized(new Error("unauthorized"))).toBe(false);
+    expect(isUnauthorized("unauthorized")).toBe(false);
   });
 });
