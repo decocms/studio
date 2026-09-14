@@ -6,12 +6,6 @@
 
 import { getSettings } from "../settings";
 
-/** Whether this deployment can reach the Concierge at all (self-hosted
- *  deployments have no Concierge and never set the token). */
-export function conciergeConfigured(): boolean {
-  return !!getSettings().conciergeAuthToken;
-}
-
 /**
  * POSTs the signup conversion for `ref` (the Concierge's opaque per-lead id,
  * captured as a first-party cookie by the web client on landing). Idempotent
