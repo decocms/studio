@@ -1584,6 +1584,10 @@ export async function createStudioContextFactory(
     const studioAuth: StudioContext["auth"] = {
       user: authResult.user,
       tokenOrganizationId: authResult.tokenOrganizationId,
+      permissions: authResult.permissions,
+      permissionsOrganizationId: authResult.permissions
+        ? authResult.organization?.id
+        : undefined,
     };
 
     if (authResult.apiKey) {

@@ -38,6 +38,14 @@ export async function resolveCallerProjectScope(
     return null;
   }
 
+  // Reuse the map already resolved at auth time when it's for this org (no requery).
+  if (
+    ctx.auth.permissions &&
+    ctx.auth.permissionsOrganizationId === organizationId
+  ) {
+    return getProjectScope(ctx.auth.permissions);
+  }
+
   // Built-in roles have no organizationRole row → undefined → unrestricted.
   const permission = await fetchRolePermissions(ctx.db, organizationId, role);
   return getProjectScope(permission);
