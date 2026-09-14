@@ -15,17 +15,20 @@ const NAMED: Record<string, string> = {
   nbsp: "\u00a0",
 };
 
+/** Highest scalar value `String.fromCodePoint` accepts (Unicode's max code point). */
+const MAX_CODE_POINT = 0x10ffff;
+
 export function decodeHtmlEntities(input: string | null | undefined): string {
   if (!input) return "";
   return input.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, body) => {
     if (body.startsWith("#x") || body.startsWith("#X")) {
       const cp = Number.parseInt(body.slice(2), 16);
-      if (!Number.isFinite(cp)) return match;
+      if (!Number.isFinite(cp) || cp > MAX_CODE_POINT) return match;
       return String.fromCodePoint(cp);
     }
     if (body.startsWith("#")) {
       const cp = Number.parseInt(body.slice(1), 10);
-      if (!Number.isFinite(cp)) return match;
+      if (!Number.isFinite(cp) || cp > MAX_CODE_POINT) return match;
       return String.fromCodePoint(cp);
     }
     return NAMED[body] ?? match;
