@@ -738,10 +738,7 @@ export function ChatInput({
       {budgetPaywallOpen && (
         <FeaturePaywall
           feature="chat"
-          copy={{
-            title: t("chat.input.allowanceExhaustedTitle"),
-            description: t("chat.input.allowanceExhaustedDescription"),
-          }}
+          copy={{ title: t("chat.input.allowanceExhaustedTitle") }}
           onDismiss={() => setBudgetPaywallOpen(false)}
         />
       )}

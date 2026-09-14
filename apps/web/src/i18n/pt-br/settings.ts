@@ -536,10 +536,12 @@ export const settings = {
   "settings.planUsage.retry": "Tentar novamente",
   "settings.planUsage.aiUsage": "Uso de IA",
   "settings.planUsage.usageUnavailable": "Indisponível",
-  "settings.planUsage.resetsOn": "Reinicia em {date}.",
+  "settings.planUsage.used": "usado",
+  "settings.plans.perMonth": "/ mês",
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
-  "settings.planUsage.oneTimeHint": "Franquia única. Não reinicia.",
+  "settings.planUsage.oneTimeHint":
+    "Crédito de teste único. Faça upgrade para uma franquia mensal.",
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
   "settings.planUsage.creditsLeft": "restantes",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
@@ -552,8 +554,8 @@ export const settings = {
     "Não foi possível trocar o plano: {message}",
   "settings.planUsage.feature.cms": "CMS",
   "settings.planUsage.feature.chat": "Chat superagent",
-  "settings.planUsage.feature.monitoring": "Monitoramento",
-  "settings.planUsage.feature.kanban": "Kanban",
+  "settings.planUsage.feature.monitoring": "Analytics do site",
+  "settings.planUsage.feature.kanban": "Kanban agêntico",
   "settings.planUsage.feature.model_choice": "Escolher o modelo",
   "settings.planUsage.feature.trialChat": "Acesso limitado ao chat",
   "settings.planUsage.feature.credits": "Créditos extras",
@@ -566,7 +568,24 @@ export const settings = {
   "settings.plans.downgradeDescription":
     "Os recursos do {plan} param imediatamente.",
   "settings.plans.downgradeCancel": "Manter meu plano",
-  "settings.paywall.title": "{feature} não está no seu plano",
+  "settings.paywall.bullets.kanban.1":
+    "Um board que o time inteiro compartilha",
+  "settings.paywall.bullets.kanban.2":
+    "Um board que o time inteiro compartilha",
+  "settings.paywall.bullets.kanban.3": "Colunas, tags e prioridades",
+  "settings.paywall.bullets.allowance.1": "Uma franquia mensal que reinicia",
+  "settings.paywall.bullets.allowance.2":
+    "Compre créditos extras quando quiser",
+  "settings.paywall.bullets.allowance.3": "Sua mensagem fica no composer",
+  "settings.paywall.bullets.cms.1": "Edite conteúdo e layout",
+  "settings.paywall.bullets.cms.2": "Preview ao vivo enquanto edita",
+  "settings.paywall.bullets.cms.3": "Publique quando estiver do jeito certo",
+  "settings.paywall.bullets.monitoring.1": "Pageviews, visitantes e origens",
+  "settings.paywall.bullets.monitoring.2": "Taxa de cache, latência e erros",
+  "settings.paywall.bullets.monitoring.3": "Tráfego por país e dispositivo",
+  "settings.paywall.upgradeTitle": "{feature} vem com o {plan}",
+  "settings.paywall.upgradeDescription":
+    "Libera para todo mundo na organização.",
   "settings.paywall.description":
     "O plano desta organização não inclui {feature}. Troque de plano para liberar para todo mundo na org.",
   "settings.paywall.seePlans": "Ver planos",

@@ -45,6 +45,10 @@ import { useScopeId } from "@/hooks/use-project-scope";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { useFeature, useFeaturesSettled } from "@/hooks/use-entitlements";
 import { FeaturePaywall } from "@/components/feature-paywall";
+import { PaywallBackdrop } from "@/components/paywall/paywall-backdrop";
+import { mockBoardAnswer } from "@/components/paywall/mock-board";
+import { KEYS } from "@/lib/query-keys";
+import { useProjectContext } from "@/sdk";
 import { usePanelNavigate } from "./use-panel-navigate";
 import { featureForTab } from "./tab-feature";
 
@@ -100,8 +104,8 @@ function TabBody({
   >["automationTabParsed"];
 }) {
   const controlPlaneViews = useControlPlaneViews();
-  const { closePanel } = usePanelNavigate();
-  // Dismissal is the URL's own `?mainpanel=false`, which is what closePanel
+  const { openPanel } = usePanelNavigate();
+  // Dismissal is the URL's own `?mainpanel=false`, which the panel writes
   // writes — it used to be component state, and TabBody is mounted once for
   // the life of the panel, so a dismissed feature stayed dismissed: every
   // later click on that tab rendered an EMPTY panel with no content, no
@@ -110,6 +114,7 @@ function TabBody({
   const { mainpanel } = useSearch({ strict: false }) as {
     mainpanel?: boolean;
   };
+  const { locator } = useProjectContext();
   const gatedFeature = featureForTab(activeTab);
   const featureAllowed = useFeature(gatedFeature);
   // The third state, kept as its own state instead of collapsed into either.
@@ -157,16 +162,29 @@ function TabBody({
 
   if (gatedFeature && !featureAllowed) {
     if (mainpanel === false) return null;
-    // Closing the panel on dismiss, rather than leaving a blank body behind
-    // the dialog: the view the URL names is one this org cannot open. "See
-    // plans" must NOT close it — that second navigation is what used to eat
-    // the CTA.
+    // Home, because the project's default view can be the gated surface itself.
     return (
-      <FeaturePaywall
-        feature={gatedFeature}
-        onDismiss={() => closePanel()}
-        onSeePlans={() => {}}
-      />
+      <div className="relative h-full min-h-0">
+        {gatedFeature === "kanban" && (
+          <PaywallBackdrop
+            seed={(client) =>
+              client.setQueryData(
+                KEYS.taskBoardItems(locator),
+                mockBoardAnswer(),
+              )
+            }
+          >
+            <div className="flex h-full min-h-0 flex-col overflow-hidden">
+              <TaskBoardPage />
+            </div>
+          </PaywallBackdrop>
+        )}
+        <FeaturePaywall
+          feature={gatedFeature}
+          onDismiss={() => openPanel("overview")}
+          onSeePlans={() => {}}
+        />
+      </div>
     );
   }
 

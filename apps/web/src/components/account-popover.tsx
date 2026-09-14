@@ -39,6 +39,7 @@ import {
 } from "@untitledui/icons";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
+import { SidebarFooterIcon } from "@/components/sidebar/footer/icon-slot";
 import { authClient } from "@/lib/auth-client";
 import { useProjectContext } from "@/sdk";
 import { track } from "@/lib/posthog-client";
@@ -584,13 +585,15 @@ export function AccountPopover() {
                 isImpersonating && "border-2 border-dashed border-warning",
               )}
             >
-              <Avatar
-                url={userImage}
-                fallback={user?.name ?? "U"}
-                shape="circle"
-                size="xs"
-                className="shrink-0"
-              />
+              <SidebarFooterIcon>
+                <Avatar
+                  url={userImage}
+                  fallback={user?.name ?? "U"}
+                  shape="circle"
+                  size="2xs"
+                  className="size-[18px] shrink-0"
+                />
+              </SidebarFooterIcon>
               <span className="truncate">
                 {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
               </span>

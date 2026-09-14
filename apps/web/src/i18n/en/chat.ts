@@ -270,8 +270,6 @@ export const chat = {
     "Read only - you're viewing {name}'s chat",
   "chat.input.readOnlyThread": "Read only - this chat takes no replies",
   "chat.input.allowanceExhaustedTitle": "AI allowance used up",
-  "chat.input.allowanceExhaustedDescription":
-    "This organization has used 100% of its AI allowance. Choose a plan to keep chatting - your message stays in the composer.",
   "chat.input.sendMessage": "Send message",
   "chat.input.sendMessageEnter": "Send message (Enter)",
   "chat.input.stillSendingPreviousMessage":

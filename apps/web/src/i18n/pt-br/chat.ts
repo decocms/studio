@@ -278,8 +278,6 @@ export const chat = {
   "chat.input.readOnlyThread":
     "Apenas leitura - este chat não aceita respostas",
   "chat.input.allowanceExhaustedTitle": "Limite de IA esgotado",
-  "chat.input.allowanceExhaustedDescription":
-    "Esta organização usou 100% do seu limite de IA. Escolha um plano para continuar conversando - sua mensagem continua no campo de texto.",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, Minus } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -22,6 +22,15 @@ import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
+import {
+  FEATURE_ROWS,
+  PlanPlant,
+  planPriceBrl,
+  PLAN_PRICE_CURRENCY,
+  usePlanCatalog,
+  type Plan,
+} from "./plan-ladder";
+import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 
 /**
@@ -33,23 +42,8 @@ import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
  * lines. Inline, every plan gets the same feature rows in the same order, so
  * what a tier adds is read down a column and across a row.
  *
- * Names and feature flags only, by design: allowances and prices never reach
- * this client (the gateway answers them per org), so nothing here is a number
- * an org could be misquoted on.
+ * Allowances stay on the gateway; the price is a placeholder (`planPriceBrl`).
  */
-
-/** Every gate a plan can hold, in the order the comparison reads. */
-const FEATURE_ROWS = [
-  "chat",
-  "cms",
-  "credits",
-  "monitoring",
-  "kanban",
-  "model_choice",
-  "diagnostic_enriched",
-] as const;
-
-type Plan = { id: string; name: string; features: Record<string, boolean> };
 
 export function PlanCatalog() {
   const t = useT();
@@ -60,22 +54,7 @@ export function PlanCatalog() {
   const { data: entitlements } = useEntitlements();
   const [confirmDowngrade, setConfirmDowngrade] = useState(false);
 
-  const {
-    data: plans,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: KEYS.aiPlanCatalog(org.id),
-    enabled: plansEnabled,
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const { plans } = await studio.call("AI_PLAN_LIST", {
-        providerId: "deco",
-      });
-      return plans;
-    },
-  });
+  const { data: plans, isLoading, isError, refetch } = usePlanCatalog();
 
   // An UPGRADE is a purchase, so it goes to Stripe and the tier arrives from
   // the webhook. `AI_PLAN_SET` takes no payment and only accepts 'free', which
@@ -136,10 +115,11 @@ export function PlanCatalog() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {plans.map((plan) => (
+          {plans.map((plan, index) => (
             <PlanCard
               key={plan.id}
               plan={plan}
+              index={index}
               isCurrent={plan.id === currentId}
               emphasis={plan.id === suggestedId}
               disabled={isPending}
@@ -190,27 +170,52 @@ export function PlanCatalog() {
 
 function PlanCard({
   plan,
+  index,
   isCurrent,
   emphasis,
   disabled,
   onChoose,
 }: {
   plan: Plan;
+  index: number;
   isCurrent: boolean;
   emphasis: boolean;
   disabled: boolean;
   onChoose: () => void;
 }) {
   const t = useT();
+  const [preferences] = usePreferences();
+  const price = planPriceBrl(plan.id);
 
   return (
     <Card
       className={cn(
-        "p-5 gap-5",
+        "p-6 gap-6",
         isCurrent && "ring-1 ring-primary shadow-none",
       )}
     >
-      <h3 className="text-base font-semibold leading-tight">{plan.name}</h3>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-3">
+          <h3 className="text-base font-medium leading-tight">{plan.name}</h3>
+          {/* Free renders "R$0" rather than nothing: an absent line on one
+              card alone would knock its button out of line with the rest. */}
+          {price !== undefined && (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xl font-semibold leading-none tracking-tight tabular-nums">
+                {price.toLocaleString(preferences.language, {
+                  style: "currency",
+                  currency: PLAN_PRICE_CURRENCY,
+                  maximumFractionDigits: 0,
+                })}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {t("settings.plans.perMonth")}
+              </span>
+            </div>
+          )}
+        </div>
+        <PlanPlant index={index} />
+      </div>
 
       {isCurrent ? (
         <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
@@ -229,7 +234,7 @@ function PlanCard({
         </Button>
       )}
 
-      <ul className="flex flex-col gap-2.5 pt-5 border-t border-border">
+      <ul className="flex flex-col gap-3 pt-6 border-t border-border">
         {FEATURE_ROWS.map((feature) => {
           const included = plan.features[feature] === true;
           // A plan without `credits` is capped at its allowance and cannot buy
@@ -248,7 +253,7 @@ function PlanCard({
               )}
             >
               {included ? (
-                <Check size={16} className="shrink-0 text-foreground" />
+                <Check size={16} className="shrink-0 text-success" />
               ) : (
                 <Minus
                   size={16}

@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { ChevronRight } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Progress } from "@decocms/ui/components/progress.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
@@ -20,6 +22,8 @@ import {
   usePlansEnabled,
 } from "@/hooks/use-entitlements";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
+import { useCapability } from "@/hooks/use-capability";
+import { PlanPlant, usePlanCatalog } from "./plan-ladder";
 
 /**
  * The org's plan and its AI usage bar.
@@ -41,7 +45,7 @@ const NUMERAL_STYLES = {
 } as const;
 
 const BAR_STYLES = {
-  ok: "[&>[data-slot=progress-indicator]]:bg-primary",
+  ok: "[&>[data-slot=progress-indicator]]:bg-brand-purple",
   warn: "[&>[data-slot=progress-indicator]]:bg-warning",
   exhausted: "[&>[data-slot=progress-indicator]]:bg-destructive",
 } as const;
@@ -79,6 +83,42 @@ function ManageBillingButton() {
   );
 }
 
+/**
+ * The bar's own label, and the door to the detail behind it.
+ *
+ * A percentage is a summary; Monitor is where the org sees what spent it. The
+ * label is the honest anchor for that link — the plan name in the header is a
+ * plan, not a usage report. Falls back to plain text rather than a dead link
+ * when the member has no `monitoring:view` (also the loading and the error
+ * answer, so a blip renders a label rather than a door to a 403).
+ *
+ * Deliberately NOT gated on the `monitoring` PLAN feature: that one sells the
+ * project's site analytics, and this link goes to the org's tool-call Monitor,
+ * which every plan has and only the role gates. Two different rooms that the
+ * navigation happens to call the same thing.
+ */
+function AiUsageLabel() {
+  const t = useT();
+  const { org } = useProjectContext();
+  const { granted } = useCapability("monitoring:view");
+  const label = t("settings.planUsage.aiUsage");
+
+  if (!granted) {
+    return <span className="text-sm text-muted-foreground">{label}</span>;
+  }
+  return (
+    <Link
+      to="/$org/settings/monitor"
+      params={{ org: org.slug }}
+      search={{ tab: "overview" }}
+      className="flex items-center gap-0.5 text-sm text-muted-foreground hover:text-foreground"
+    >
+      {label}
+      <ChevronRight size={14} />
+    </Link>
+  );
+}
+
 export function PlanUsageCard() {
   const t = useT();
   const [preferences] = usePreferences();
@@ -88,6 +128,8 @@ export function PlanUsageCard() {
   // a plan. That changes both the copy and whether a credits row belongs here.
   const canBuyCredits = useFeature("credits");
   const { data, isLoading, isError, refetch } = useEntitlements();
+  const { data: plans } = usePlanCatalog();
+  const planIndex = plans?.findIndex((p) => p.id === data?.plan.id) ?? -1;
 
   // The "no plan surface here" case the error branch below excuses itself for:
   // the deployment has plans switched off, so there is nothing to show and
@@ -142,35 +184,48 @@ export function PlanUsageCard() {
   // Dollars, localized. Read only inside the exhausted branch below, so an org
   // that never fills its bar never sees an amount anywhere in the product.
   const creditsUsd = data.credits?.remainingUsd ?? null;
-  // A real calendar date, from the gateway's own roll rule — not "next month".
-  // Guarded: a missing or unparseable date falls back to the generic hint
-  // rather than rendering the literal string "Invalid Date" at the user.
-  const periodEndAt = data.periodEnd ? new Date(data.periodEnd) : null;
   // The gateway sends a period_end for free too, and free never refills.
   const renews = data.plan.id !== "free";
-  const resetsOn =
-    renews && periodEndAt && !Number.isNaN(periodEndAt.getTime())
-      ? periodEndAt.toLocaleDateString(preferences.language, {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        })
+  /** A gateway date as "16 Aug", or null for anything we can't honestly date. */
+  const shortDate = (iso: string | null): string | null => {
+    if (!renews || !iso) return null;
+    const at = new Date(iso);
+    if (Number.isNaN(at.getTime())) return null;
+    return at.toLocaleDateString(preferences.language, {
+      day: "numeric",
+      month: "short",
+    });
+  };
+  const periodStartLabel = shortDate(data.periodStart);
+  const periodEndLabel = shortDate(data.periodEnd);
+  /** Both endpoints or neither — a lone date under a bar reads as a deadline. */
+  const periodRange =
+    periodStartLabel && periodEndLabel
+      ? { start: periodStartLabel, end: periodEndLabel }
       : null;
 
-  // One line under the bar, and it only says when the bar moves. Exhausted is
-  // the badge's job; the copy that used to repeat it here read as a paragraph.
-  const hint = resetsOn
-    ? t("settings.planUsage.resetsOn", { date: resetsOn })
-    : renews
-      ? t("settings.planUsage.periodHint")
-      : t("settings.planUsage.oneTimeHint");
+  // What the endpoints can't say: an undated plan, and Free's fixed ceiling.
+  const hint = renews
+    ? t("settings.planUsage.periodHint")
+    : t("settings.planUsage.oneTimeHint");
 
   return (
     <Card className="p-0 gap-0 overflow-hidden">
       <div className="px-6 py-6 flex flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium">{data.plan.name}</span>
-          <ManageBillingButton />
+          <div className="flex items-center gap-2">
+            {/* The same rung the catalog below draws for this tier, so the
+                card and its card agree. Absent until the ladder resolves —
+                the wrong plant then the right one is worse than none. */}
+            {planIndex >= 0 && (
+              <PlanPlant index={planIndex} className="size-6" />
+            )}
+            <span className="text-sm font-medium">{data.plan.name}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {hasAiEnvelope && <AiUsageLabel />}
+            <ManageBillingButton />
+          </div>
         </div>
 
         {hasAiEnvelope ? (
@@ -178,25 +233,24 @@ export function PlanUsageCard() {
             {/* The number IS the card. Coloured by state so a full bar reads as
                 full from across the room; a badge saying so as well was a second
                 voice. */}
-            <div className="flex items-end justify-between gap-4">
-              <div className="flex items-baseline gap-2">
-                <span
-                  className={cn(
-                    "text-5xl font-semibold leading-none tracking-tight tabular-nums",
-                    NUMERAL_STYLES[state],
-                  )}
-                >
-                  {percent === null
-                    ? t("settings.planUsage.usageUnavailable")
-                    : `${percent}%`}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {t("settings.planUsage.aiUsage")}
-                </span>
-              </div>
-              <span className="text-sm text-muted-foreground text-right">
-                {hint}
+            <div className="flex items-baseline gap-2">
+              <span
+                className={cn(
+                  "text-4xl font-semibold leading-none tracking-tight tabular-nums",
+                  NUMERAL_STYLES[state],
+                )}
+              >
+                {percent === null
+                  ? t("settings.planUsage.usageUnavailable")
+                  : `${percent}%`}
               </span>
+              {/* Only against a real number — "Unavailable used" is not a
+                  sentence. */}
+              {percent !== null && (
+                <span className="text-sm text-muted-foreground">
+                  {t("settings.planUsage.used")}
+                </span>
+              )}
             </div>
             {/* No bar at all when consumption is UNKNOWN. `value={percent ??
                 0}` rendered a full-width EMPTY track, which is the one
@@ -204,17 +258,33 @@ export function PlanUsageCard() {
                 "nothing used", and the honest answer is "we could not read
                 it". The label above already says Unavailable; this is a
                 placeholder track with no fill, not a measurement. */}
-            {percent === null ? (
-              <div
-                className="h-3 w-full rounded-full bg-muted/60"
-                aria-hidden="true"
-              />
-            ) : (
-              <Progress
-                value={percent}
-                className={cn("h-3 bg-muted", BAR_STYLES[state])}
-              />
-            )}
+            <div className="flex flex-col gap-2">
+              {percent === null ? (
+                <div
+                  className="h-3 w-full rounded-full bg-muted/60"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Progress
+                  value={percent}
+                  className={cn(
+                    // Shows at the fill's leading edge; the trailing one is translated off-track.
+                    "h-3 bg-muted [&>[data-slot=progress-indicator]]:rounded-full",
+                    BAR_STYLES[state],
+                  )}
+                />
+              )}
+              {/* The bar's axis: the period it measures, written as its two
+                  endpoints. */}
+              {periodRange ? (
+                <div className="flex items-baseline justify-between gap-4 text-xs text-muted-foreground tabular-nums">
+                  <span>{periodRange.start}</span>
+                  <span>{periodRange.end}</span>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">{hint}</span>
+              )}
+            </div>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -234,23 +304,26 @@ export function PlanUsageCard() {
           spending. */}
       {canBuyCredits && (
         <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4 border-t border-border bg-muted/30">
-          <div className="flex items-baseline gap-2">
+          {state === "exhausted" && creditsUsd !== null && (
+            <span className="text-sm font-medium tabular-nums">
+              {creditsUsd.toLocaleString(preferences.language, {
+                style: "currency",
+                currency: "USD",
+              })}{" "}
+              <span className="text-muted-foreground font-normal">
+                {t("settings.planUsage.creditsLeft")}
+              </span>
+            </span>
+          )}
+          {/* `ml-auto` rather than relying on `justify-between`: on a bar that
+              is not full there is no balance, and the controls still belong on
+              the right. */}
+          <div className="ml-auto flex flex-wrap items-center gap-3">
             <span className="text-sm text-muted-foreground">
               {t("settings.decoCreditsHero.addCredits")}
             </span>
-            {state === "exhausted" && creditsUsd !== null && (
-              <span className="text-sm font-medium tabular-nums">
-                {creditsUsd.toLocaleString(preferences.language, {
-                  style: "currency",
-                  currency: "USD",
-                })}{" "}
-                <span className="text-muted-foreground font-normal">
-                  {t("settings.planUsage.creditsLeft")}
-                </span>
-              </span>
-            )}
+            <QuickTopUp />
           </div>
-          <QuickTopUp />
         </div>
       )}
     </Card>

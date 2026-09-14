@@ -12,7 +12,16 @@ import { useProjectContext } from "@/sdk";
 import { useDecoCredits } from "@/hooks/use-deco-credits";
 import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import {
+  SidebarFooterIcon,
+  SIDEBAR_FOOTER_ICON_SIZE,
+} from "@/components/sidebar/footer/icon-slot";
+import {
+  PlanPlant,
+  usePlanCatalog,
+} from "@/views/settings/ai-providers/plan-ladder";
 
 class SilentErrorBoundary extends Component<
   { children: ReactNode },
@@ -77,9 +86,16 @@ function CreditChip() {
   );
 }
 
+/** The donut's arc, on the rail. Same three states as the bar below. */
+const RING_COLORS = {
+  ok: "stroke-brand-purple",
+  warn: "stroke-warning",
+  exhausted: "stroke-destructive",
+} as const;
+
 /** Mirrors the plan card's bar, which is the same number from the same read. */
 const BAR_COLORS = {
-  ok: "bg-primary",
+  ok: "bg-brand-purple",
   warn: "bg-warning",
   exhausted: "bg-destructive",
 } as const;
@@ -90,6 +106,7 @@ const BAR_COLORS = {
  */
 function UsageChip() {
   const t = useT();
+  const isCollapsed = useSidebarCollapsed();
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { data } = useEntitlements();
@@ -106,9 +123,11 @@ function UsageChip() {
   return (
     <SidebarMenu>
       <SidebarMenuItem>
+        {/* A card rather than a menu row: it is a readout, not a destination
+            that happens to have a bar. Still a button — it opens billing. */}
         <SidebarMenuButton
-          tooltip={`${t("settings.planUsage.aiUsage")}: ${percent}%`}
-          className="h-auto! py-1.5"
+          tooltip={`${data.plan.name} · ${t("settings.planUsage.aiUsage")} ${percent}%`}
+          className="h-auto! rounded-lg border border-border bg-card px-2 py-2 [&_svg]:opacity-100!"
           onClick={() =>
             navigate({
               to: "/$org/settings/ai-providers",
@@ -116,19 +135,26 @@ function UsageChip() {
             })
           }
         >
-          <Lightning01 />
-          <span className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="flex items-center justify-between gap-2">
-              <span className="truncate">
-                {t("settings.planUsage.aiUsage")}
-              </span>
+          <SidebarFooterIcon className={cn(!isCollapsed && "-ml-px")}>
+            {isCollapsed ? (
+              <UsageDonut percent={percent} state={data.usage.state} />
+            ) : (
+              <PlanIcon planId={data.plan.id} />
+            )}
+          </SidebarFooterIcon>
+          <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="truncate font-medium">{data.plan.name}</span>
               <span className="tabular-nums text-xs text-muted-foreground">
                 {percent}%
               </span>
             </span>
             <span className="block h-1 overflow-hidden rounded-full bg-muted">
               <span
-                className={cn("block h-full", BAR_COLORS[data.usage.state])}
+                className={cn(
+                  "block h-full rounded-full",
+                  BAR_COLORS[data.usage.state],
+                )}
                 style={{ width: `${percent}%` }}
               />
             </span>
@@ -136,6 +162,59 @@ function UsageChip() {
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
+  );
+}
+
+/** The tier's plant, or nothing until the ladder resolves — the wrong rung is
+ *  worse than a beat with no glyph. */
+function PlanIcon({ planId }: { planId: string }) {
+  const { data: plans } = usePlanCatalog();
+  const index = plans?.findIndex((p) => p.id === planId) ?? -1;
+  if (index < 0) return <Lightning01 className={SIDEBAR_FOOTER_ICON_SIZE} />;
+  return <PlanPlant index={index} className={SIDEBAR_FOOTER_ICON_SIZE} />;
+}
+
+/**
+ * The bar, as a ring — what the rail has room for.
+ *
+ * A collapsed sidebar drops the label and the bar, so the plant alone said
+ * which tier the org was on and nothing about what it had spent. The ring is
+ * the same number the bar draws, in the same three colours.
+ */
+function UsageDonut({
+  percent,
+  state,
+}: {
+  percent: number;
+  state: keyof typeof RING_COLORS;
+}) {
+  const radius = 8;
+  const circumference = 2 * Math.PI * radius;
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={cn("-rotate-90", SIDEBAR_FOOTER_ICON_SIZE)}
+      aria-hidden="true"
+    >
+      <circle
+        cx="10"
+        cy="10"
+        r={radius}
+        fill="none"
+        strokeWidth="3"
+        className="stroke-muted"
+      />
+      <circle
+        cx="10"
+        cy="10"
+        r={radius}
+        fill="none"
+        strokeWidth="3"
+        strokeLinecap="round"
+        className={RING_COLORS[state]}
+        strokeDasharray={`${(circumference * percent) / 100} ${circumference}`}
+      />
+    </svg>
   );
 }
 
