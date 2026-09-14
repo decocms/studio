@@ -33,6 +33,7 @@ import { commerceOnboarding } from "./commerce-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
 import { chat } from "./chat.ts";
+import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
@@ -78,6 +79,7 @@ export const ptBR = {
   ...collections,
   ...chooseEditor,
   ...chat,
+  ...credits,
   ...automations,
   ...agentShellLayout,
   ...admin,
