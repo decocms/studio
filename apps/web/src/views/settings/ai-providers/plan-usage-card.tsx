@@ -151,20 +151,13 @@ export function PlanUsageCard() {
         })
       : null;
 
-  const hint =
-    state === "exhausted"
-      ? canBuyCredits
-        ? resetsOn
-          ? t("settings.planUsage.exhaustedHintOn", { date: resetsOn })
-          : t("settings.planUsage.exhaustedHint")
-        : resetsOn
-          ? t("settings.planUsage.exhaustedUpgradeOnlyOn", { date: resetsOn })
-          : t("settings.planUsage.exhaustedUpgradeOnly")
-      : resetsOn
-        ? t("settings.planUsage.resetsOn", { date: resetsOn })
-        : renews
-          ? t("settings.planUsage.periodHint")
-          : t("settings.planUsage.oneTimeHint");
+  // One line under the bar, and it only says when the bar moves. Exhausted is
+  // the badge's job; the copy that used to repeat it here read as a paragraph.
+  const hint = resetsOn
+    ? t("settings.planUsage.resetsOn", { date: resetsOn })
+    : renews
+      ? t("settings.planUsage.periodHint")
+      : t("settings.planUsage.oneTimeHint");
 
   return (
     <SettingsSection title={t("settings.planUsage.title")}>
@@ -172,9 +165,6 @@ export function PlanUsageCard() {
         <div className="px-5 py-5 flex flex-col gap-6">
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1 min-w-0">
-              <span className="text-xs text-muted-foreground">
-                {t("settings.planUsage.currentPlan")}
-              </span>
               <div className="flex items-center gap-2.5">
                 <span className="text-2xl font-semibold leading-none tracking-tight">
                   {data.plan.name}
@@ -225,17 +215,13 @@ export function PlanUsageCard() {
                 canBuyCredits &&
                 creditsUsd !== null && (
                   <div className="flex items-baseline justify-between gap-2 pt-2 mt-1 border-t border-border">
-                    <span className="text-xs text-muted-foreground">
-                      {creditsUsd > 0
-                        ? t("settings.planUsage.creditsHint")
-                        : t("settings.planUsage.creditsEmpty")}
+                    <span className="text-sm text-muted-foreground">
+                      {t("settings.planUsage.creditsLabel")}
                     </span>
                     <span className="text-sm font-semibold tabular-nums shrink-0">
-                      {t("settings.planUsage.credits", {
-                        amount: creditsUsd.toLocaleString(
-                          preferences.language,
-                          { style: "currency", currency: "USD" },
-                        ),
+                      {creditsUsd.toLocaleString(preferences.language, {
+                        style: "currency",
+                        currency: "USD",
                       })}
                     </span>
                   </div>

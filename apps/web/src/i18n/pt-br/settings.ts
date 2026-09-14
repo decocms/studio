@@ -534,25 +534,15 @@ export const settings = {
   "settings.planUsage.loadFailed":
     "Não foi possível ler o plano desta organização.",
   "settings.planUsage.retry": "Tentar novamente",
-  "settings.planUsage.currentPlan": "Plano atual",
   "settings.planUsage.aiUsage": "Uso de IA",
   "settings.planUsage.usageUnavailable": "Indisponível",
   "settings.planUsage.resetsOn": "Reinicia em {date}.",
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
-  "settings.planUsage.oneTimeHint":
-    "Uso gratuito de uma única vez — esta franquia não reinicia.",
-  "settings.planUsage.exhaustedHint":
-    "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos.",
+  "settings.planUsage.oneTimeHint": "Franquia única. Não reinicia.",
   "settings.planUsage.exhausted": "Limite atingido",
-  "settings.planUsage.exhaustedHintOn":
-    "O uso de IA acabou — o CMS continua funcionando; chat e tarefas pausam até você fazer upgrade ou adicionar créditos. Reinicia em {date}.",
-  "settings.planUsage.exhaustedUpgradeOnly":
-    "O uso de IA acabou \u2014 o CMS continua funcionando, chat e tarefas pausam at\u00e9 voc\u00ea fazer upgrade. A cota deste plano n\u00e3o pode ser recarregada.",
-  "settings.planUsage.exhaustedUpgradeOnlyOn":
-    "O uso de IA acabou \u2014 o CMS continua funcionando, chat e tarefas pausam at\u00e9 voc\u00ea fazer upgrade. A cota deste plano n\u00e3o pode ser recarregada. Renova em {date}.",
-  "settings.planUsage.noAiIncluded":
-    "Este plano não inclui uso de IA — escolha um plano para ter uma cota.",
+  "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
+  "settings.planUsage.creditsLabel": "Créditos",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",
   "settings.planUsage.portalFailed":
     "Não foi possível abrir a cobrança: {message}",
@@ -561,31 +551,21 @@ export const settings = {
   "settings.planUsage.changed": "Plano atualizado",
   "settings.planUsage.changeFailed":
     "Não foi possível trocar o plano: {message}",
-  "settings.planUsage.credits": "Créditos: {amount}",
-  "settings.planUsage.creditsHint":
-    "Sua franquia mensal acabou. O uso agora consome seus créditos.",
-  "settings.planUsage.creditsEmpty":
-    "Sua franquia mensal acabou e você não tem mais créditos. Adicione créditos para continuar.",
   "settings.planUsage.feature.cms": "CMS",
   "settings.planUsage.feature.chat": "Chat superagent",
   "settings.planUsage.feature.monitoring": "Monitoramento",
   "settings.planUsage.feature.kanban": "Kanban",
   "settings.planUsage.feature.model_choice": "Escolher o modelo",
   "settings.planUsage.feature.trialChat": "Acesso limitado ao chat",
-  "settings.planUsage.feature.none": "Use sua própria chave",
-  "settings.planUsage.feature.credits": "Comprar cr\u00e9ditos extras de IA",
+  "settings.planUsage.feature.credits": "Créditos extras",
   "settings.planUsage.feature.diagnostic": "Diagnóstico de commerce",
   "settings.planUsage.feature.diagnostic_enriched": "Diagnóstico enriquecido",
   "settings.plans.title": "Planos",
   "settings.plans.loadFailed": "Não foi possível carregar os planos.",
   "settings.plans.currentPlan": "Plano atual",
-  "settings.plans.blurb.free": "Experimente o chat com uma franquia única.",
-  "settings.plans.blurb.pro": "CMS e chat para um time publicando um site.",
-  "settings.plans.blurb.pro_plus": "Adiciona monitoramento em toda a loja.",
-  "settings.plans.blurb.ultra": "Tudo, mais Kanban e a escolha do modelo.",
   "settings.plans.downgradeTitle": "Voltar ao gratuito?",
   "settings.plans.downgradeDescription":
-    "Sua organização perde o que o {plan} inclui imediatamente. A franquia gratuita é única e não reinicia.",
+    "Os recursos do {plan} param imediatamente.",
   "settings.plans.downgradeCancel": "Manter meu plano",
   "settings.paywall.title": "{feature} não está no seu plano",
   "settings.paywall.description":

@@ -21,7 +21,6 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 
@@ -36,7 +35,7 @@ import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
  *
  * Names and feature flags only, by design: allowances and prices never reach
  * this client (the gateway answers them per org), so nothing here is a number
- * an org could be misquoted on. The blurbs are copy about the tier, not terms.
+ * an org could be misquoted on.
  */
 
 /** Every gate a plan can hold, in the order the comparison reads. */
@@ -49,14 +48,6 @@ const FEATURE_ROWS = [
   "model_choice",
   "diagnostic_enriched",
 ] as const;
-
-/** One line per tier the product ships. A plan id not listed gets no blurb. */
-const BLURB_KEYS: Record<string, TranslationKey> = {
-  free: "settings.plans.blurb.free",
-  pro: "settings.plans.blurb.pro",
-  pro_plus: "settings.plans.blurb.pro_plus",
-  ultra: "settings.plans.blurb.ultra",
-};
 
 type Plan = { id: string; name: string; features: Record<string, boolean> };
 
@@ -211,7 +202,6 @@ function PlanCard({
   onChoose: () => void;
 }) {
   const t = useT();
-  const blurbKey = BLURB_KEYS[plan.id];
 
   return (
     <Card
@@ -220,13 +210,7 @@ function PlanCard({
         isCurrent && "ring-1 ring-primary shadow-none",
       )}
     >
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-base font-semibold leading-tight">{plan.name}</h3>
-        {/* Two lines reserved so the buttons across the row line up. */}
-        <p className="text-sm text-muted-foreground leading-snug min-h-[2.5rem]">
-          {blurbKey ? t(blurbKey) : null}
-        </p>
-      </div>
+      <h3 className="text-base font-semibold leading-tight">{plan.name}</h3>
 
       {isCurrent ? (
         <div className="flex h-8 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">

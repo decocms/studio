@@ -518,57 +518,35 @@ export const settings = {
   "settings.planUsage.title": "Plan",
   "settings.planUsage.loadFailed": "Couldn't read this organization's plan.",
   "settings.planUsage.retry": "Retry",
-  "settings.planUsage.currentPlan": "Current plan",
   "settings.planUsage.aiUsage": "AI usage",
   "settings.planUsage.usageUnavailable": "Unavailable",
   "settings.planUsage.resetsOn": "Resets on {date}.",
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
-  "settings.planUsage.oneTimeHint":
-    "One-time free usage. This allowance doesn't reset.",
-  "settings.planUsage.exhaustedHint":
-    "AI usage is used up. The CMS keeps working; chat and tasks pause until you upgrade or top up.",
+  "settings.planUsage.oneTimeHint": "One-time allowance. Doesn't reset.",
   "settings.planUsage.exhausted": "Limit reached",
-  "settings.planUsage.exhaustedHintOn":
-    "AI usage is used up. The CMS keeps working; chat and tasks pause until you upgrade or top up. Resets on {date}.",
-  "settings.planUsage.exhaustedUpgradeOnly":
-    "AI usage is used up. The CMS keeps working; chat and tasks pause until you upgrade. This plan's allowance can't be topped up.",
-  "settings.planUsage.exhaustedUpgradeOnlyOn":
-    "AI usage is used up. The CMS keeps working; chat and tasks pause until you upgrade. This plan's allowance can't be topped up. Resets on {date}.",
-  "settings.planUsage.noAiIncluded":
-    "This plan includes no AI usage. Pick a plan to get an AI envelope.",
+  "settings.planUsage.noAiIncluded": "No AI usage included.",
+  "settings.planUsage.creditsLabel": "Credits",
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
   "settings.planUsage.downgrade": "Downgrade",
   "settings.planUsage.changed": "Plan updated",
   "settings.planUsage.changeFailed": "Couldn't change plan: {message}",
-  "settings.planUsage.credits": "Credits: {amount}",
-  "settings.planUsage.creditsHint":
-    "Your monthly allowance is used up. Work now draws on your credits.",
-  "settings.planUsage.creditsEmpty":
-    "Your monthly allowance is used up and you have no credits left. Top up to keep going.",
   "settings.planUsage.feature.cms": "CMS",
   "settings.planUsage.feature.chat": "Superagent chat",
   "settings.planUsage.feature.monitoring": "Monitoring",
   "settings.planUsage.feature.kanban": "Kanban",
   "settings.planUsage.feature.model_choice": "Choose your model",
   "settings.planUsage.feature.trialChat": "Limited access to chat",
-  "settings.planUsage.feature.none": "Bring your own key",
-  "settings.planUsage.feature.credits": "Buy extra AI credits",
+  "settings.planUsage.feature.credits": "Extra credits",
   "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
   "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
   "settings.plans.title": "Plans",
   "settings.plans.loadFailed": "Couldn't load the plans.",
   "settings.plans.currentPlan": "Current plan",
-  "settings.plans.blurb.free": "Try the chat with a one-time allowance.",
-  "settings.plans.blurb.pro": "The CMS and chat for a team shipping a site.",
-  "settings.plans.blurb.pro_plus": "Adds monitoring across your storefront.",
-  "settings.plans.blurb.ultra":
-    "Everything, plus Kanban and your choice of model.",
   "settings.plans.downgradeTitle": "Downgrade to Free?",
-  "settings.plans.downgradeDescription":
-    "Your organization loses what {plan} includes right away. The free allowance is one-time and doesn't reset.",
+  "settings.plans.downgradeDescription": "{plan} features stop right away.",
   "settings.plans.downgradeCancel": "Keep my plan",
   "settings.paywall.title": "{feature} is not in your plan",
   "settings.paywall.description":
