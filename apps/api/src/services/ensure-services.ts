@@ -780,6 +780,10 @@ async function downloadMinio(home: string): Promise<string> {
   const binPath = minioBinaryPath(home);
   if (existsSync(binPath)) return binPath;
 
+  // Prefer a system `minio` (MinIO pulled its public binaries — see error below).
+  const onPath = Bun.which("minio");
+  if (onPath) return onPath;
+
   const binDir = join(servicesDir(home), "minio", "bin");
   ensureDir(binDir);
 
@@ -787,7 +791,11 @@ async function downloadMinio(home: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(
-      `Failed to download MinIO: ${response.status} ${response.statusText}`,
+      `Failed to download MinIO (${response.status} ${response.statusText}). ` +
+        `MinIO no longer publishes public binaries. Install it (macOS: ` +
+        `\`brew install minio\`; else see min.io/download), or set SKIP_MINIO=true ` +
+        `to run dev with the in-memory object-storage fallback, or point ` +
+        `S3_ENDPOINT at an external S3-compatible store.`,
     );
   }
 
@@ -1035,7 +1043,10 @@ export async function ensureServices(inputs: ServiceInputs): Promise<{
       process.env.S3_ACCESS_KEY_ID &&
       process.env.S3_SECRET_ACCESS_KEY,
   );
-  const skipMinio = inputs.skipMinio === true || externalS3;
+  const skipMinio =
+    inputs.skipMinio === true ||
+    externalS3 ||
+    process.env.SKIP_MINIO === "true";
 
   const pgInfo: ServiceInfo = skipPostgres
     ? {
