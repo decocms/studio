@@ -11,6 +11,7 @@ import {
 } from "@/hooks/use-automations";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { AutomationListRow } from "./automation-list-row";
+import { isAutomationsNotConfiguredError } from "./automations-error";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -21,7 +22,8 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const { create } = useAutomationActions();
   const [search, setSearch] = useState("");
 
-  if (error) {
+  // Only the missing-relation case gets the setup prompt; any other error keeps surfacing as an error.
+  if (error && isAutomationsNotConfiguredError(error)) {
     return (
       <Page>
         <Page.Content>
