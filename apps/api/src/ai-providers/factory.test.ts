@@ -65,13 +65,14 @@ describe("AIProviderFactory.listModels", () => {
   test("enriches from OpenRouter even when a model omits supported_parameters", async () => {
     globalThis.fetch = (async (url: unknown): Promise<Response> => {
       const u = String(url);
-      if (u.includes("generativelanguage.googleapis.com")) {
+      const parsed = new URL(u);
+      if (parsed.hostname === "generativelanguage.googleapis.com") {
         return new Response(JSON.stringify(GOOGLE_MODELS_BODY), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (u.includes("openrouter.ai/api/v1/models")) {
+      if (parsed.hostname === "openrouter.ai" && parsed.pathname === "/api/v1/models") {
         return new Response(JSON.stringify(OPENROUTER_MODELS_BODY), {
           status: 200,
           headers: { "Content-Type": "application/json" },
