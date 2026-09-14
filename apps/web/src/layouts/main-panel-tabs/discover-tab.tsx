@@ -112,11 +112,7 @@ function useSetupSteps(): SetupStep[] {
       icon: <Plus size={18} />,
       action: (
         <Button asChild variant="outline" size="sm">
-          <Link
-            to={DESTINATION_ROUTE.agents}
-            params={{ org: org.slug, panel: undefined }}
-            search={{ virtualmcpid: undefined }}
-          >
+          <Link to={DESTINATION_ROUTE.home} params={{ org: org.slug }}>
             {t("discover.setup.projectAction")}
           </Link>
         </Button>

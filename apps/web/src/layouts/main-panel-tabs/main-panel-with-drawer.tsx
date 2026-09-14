@@ -14,10 +14,8 @@ import { PreviewDrawerHost } from "./preview-drawer-host";
 
 export function MainPanelWithDrawer({
   virtualMcpId,
-  taskId,
 }: {
   virtualMcpId: string;
-  taskId: string | null;
 }) {
   const inset = useInsetContext();
   const { activeTask } = useChatTask();
@@ -40,7 +38,7 @@ export function MainPanelWithDrawer({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex-1 min-h-0 overflow-hidden">
-        <MainPanelContent taskId={taskId} virtualMcpId={virtualMcpId} />
+        <MainPanelContent />
       </div>
       {showDrawer && <PreviewDrawerHost />}
     </div>

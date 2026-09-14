@@ -162,7 +162,6 @@ export function WorkspacePanelGroup({
           <PanelCollapseToggle
             side="right"
             open={mainOpen}
-            disabled={!sidePanelOpen}
             onToggle={toggleMain}
           />
         )}
@@ -191,7 +190,7 @@ export function WorkspacePanelGroup({
         <MainControls
           virtualMcpId={virtualMcpId}
           taskId={taskId}
-          disableActiveMainToggle={!sidePanelOpen}
+          disableActiveMainToggle={false}
         />
       </div>
       {/* The page selector centers between the two side groups in this flex-1
@@ -230,7 +229,6 @@ export function WorkspacePanelGroup({
           <PanelCollapseToggle
             side="right"
             open={mainOpen}
-            disabled={!sidePanelOpen}
             onToggle={toggleMain}
           />
         </div>
@@ -292,7 +290,7 @@ export function WorkspacePanelGroup({
           className="min-w-0 overflow-hidden bg-sidebar"
         >
           <PanelCard testId="main-panel" header={mainOpen ? mainHeader : null}>
-            <MainPanelWithDrawer taskId={taskId} virtualMcpId={virtualMcpId} />
+            <MainPanelWithDrawer virtualMcpId={virtualMcpId} />
           </PanelCard>
         </ResizablePanel>
       </ResizablePanelGroup>

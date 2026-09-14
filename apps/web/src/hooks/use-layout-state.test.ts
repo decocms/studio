@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  canCloseWorkspacePanel,
   computeWorkspacePanelSizes,
   mobileSurfaceSearch,
   resolveDefaultPanelState,
@@ -231,26 +230,6 @@ describe("resolveDefaultPanelState", () => {
   });
 });
 
-describe("canCloseWorkspacePanel", () => {
-  test("allows closing either panel when both are open", () => {
-    const visibility = { sidePanelOpen: true, mainOpen: true };
-    expect(canCloseWorkspacePanel("side", visibility)).toBe(true);
-    expect(canCloseWorkspacePanel("main", visibility)).toBe(true);
-  });
-
-  test("does not allow closing the final open panel", () => {
-    expect(
-      canCloseWorkspacePanel("side", {
-        sidePanelOpen: true,
-        mainOpen: false,
-      }),
-    ).toBe(false);
-    expect(
-      canCloseWorkspacePanel("main", { sidePanelOpen: false, mainOpen: true }),
-    ).toBe(false);
-  });
-});
-
 describe("resolveWorkspacePanelAction", () => {
   test("opens Chat when only Main is visible", () => {
     expect(
@@ -281,7 +260,7 @@ describe("resolveWorkspacePanelAction", () => {
 
   /** INVERTED: opening Main used to have to NAME a view (`main=<tabId>`), which
    *  is why closing it erased one. Both directions are the boolean now. */
-  test("opens and closes Main with the final-panel guard", () => {
+  test("closing Main opens Chat even when Main was the only visible panel", () => {
     expect(
       resolveWorkspacePanelAction(
         { type: "toggleMain" },
@@ -293,13 +272,13 @@ describe("resolveWorkspacePanelAction", () => {
         { type: "toggleMain" },
         { sidePanelOpen: true, mainOpen: true },
       ),
-    ).toEqual({ mainpanel: false });
+    ).toEqual({ mainpanel: false, sidepanel: true });
     expect(
       resolveWorkspacePanelAction(
         { type: "toggleMain" },
         { sidePanelOpen: false, mainOpen: true },
       ),
-    ).toBeNull();
+    ).toEqual({ mainpanel: false, sidepanel: true });
   });
 
   test("openSidePanel is idempotent and opens Chat when it is closed", () => {

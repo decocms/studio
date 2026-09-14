@@ -66,8 +66,6 @@ export interface WorkspaceLayoutActions {
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
 
-export type WorkspacePanel = "side" | "main";
-
 export interface WorkspaceVisibility {
   sidePanelOpen: boolean;
   mainOpen: boolean;
@@ -108,17 +106,6 @@ export function resolveWorkspaceThread(input: {
     threadId: input.routeThreadId,
     providerKey: input.routeThreadId ?? input.fallbackKey,
   };
-}
-
-export function canCloseWorkspacePanel(
-  panel: WorkspacePanel,
-  visibility: WorkspaceVisibility,
-): boolean {
-  const openPanelCount =
-    Number(visibility.sidePanelOpen) + Number(visibility.mainOpen);
-
-  if (openPanelCount <= 1) return false;
-  return panel === "side" ? visibility.sidePanelOpen : visibility.mainOpen;
 }
 
 function withWorkspaceFallback(
@@ -177,14 +164,13 @@ export function resolveWorkspacePanelAction(
   switch (action.type) {
     case "toggleSidePanel":
       if (visibility.sidePanelOpen) {
-        if (!canCloseWorkspacePanel("side", visibility)) return null;
+        if (!visibility.mainOpen) return null;
         return { sidepanel: false };
       }
       return { sidepanel: true };
     case "toggleMain":
       if (visibility.mainOpen) {
-        if (!canCloseWorkspacePanel("main", visibility)) return null;
-        return { mainpanel: false };
+        return { mainpanel: false, sidepanel: true };
       }
       return { mainpanel: true };
     case "openSidePanel":
@@ -292,7 +278,7 @@ export function useWorkspaceLayoutState(
    *  search; every destination drops the key (`resolveDestinationThreadSearch`)
    *  because there the agent is the `{-$project}` segment. */
   const preserveVirtualMcp =
-    isAgentRoute && !routeParamsRaw.project
+    isAgentRoute && routeParamsRaw.taskId !== undefined
       ? { virtualmcpid: virtualMcpId }
       : {};
 

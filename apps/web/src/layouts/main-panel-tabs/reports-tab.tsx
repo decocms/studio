@@ -36,7 +36,6 @@ import { useCommerceDiagnostic } from "@/hooks/use-commerce-diagnostic";
 import { MiniReportPage } from "@/components/home/mini-report-page";
 import {
   COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
-  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   useProjectContext,
@@ -199,10 +198,9 @@ function StartDiagnostic({
     }
     // The connections step triggers the run and opens the report.
     navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: undefined },
+      to: DESTINATION_ROUTE.home,
+      params: { org: org.slug },
       search: {
-        virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
         connect: "1",
         siteUrl: normalized.value,
       },

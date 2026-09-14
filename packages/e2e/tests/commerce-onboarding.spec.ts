@@ -459,10 +459,11 @@ test.describe("Commerce onboarding route isolation", () => {
     // Agent and view are both path here; the view's param and layout stay search.
     await page.waitForURL(
       (url) =>
-        url.pathname === `/${user.orgSlug}/agents/app` &&
-        url.searchParams.get("virtualmcpid") === virtualMcpId &&
-        url.searchParams.get("connection") === connectionId &&
-        url.searchParams.get("tool") === "get_my_diagnostic" &&
+        url.pathname ===
+          `/${user.orgSlug}/projects/${virtualMcpId}/apps/${connectionId}/get_my_diagnostic` &&
+        !url.searchParams.has("virtualmcpid") &&
+        !url.searchParams.has("connection") &&
+        !url.searchParams.has("tool") &&
         url.searchParams.get("sidepanel") === "false",
       { timeout: 20_000 },
     );

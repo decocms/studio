@@ -155,7 +155,6 @@ import {
 import { ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import {
   findTaskByKeyOrId,
   taskRouteSegment,
@@ -978,8 +977,8 @@ export function TaskBoardPage() {
   const closeTask = () => {
     if (openTaskKey)
       navigate({
-        to: DESTINATION_ROUTE.tasks,
-        params: { org: org.slug, taskKey: undefined },
+        to: ".",
+        params: (prev) => ({ ...prev, taskKey: undefined }),
         search: (prev: Record<string, unknown>) => prev,
         replace: true,
       });
@@ -1089,8 +1088,11 @@ export function TaskBoardPage() {
    */
   const openTask = (item: TaskBoardItem) => {
     navigate({
-      to: DESTINATION_ROUTE.tasks,
-      params: { org: org.slug, taskKey: taskRouteSegment(org.slug, item) },
+      to: ".",
+      params: (prev) => ({
+        ...prev,
+        taskKey: taskRouteSegment(org.slug, item),
+      }),
       search: (prev: Record<string, unknown>) => prev,
     });
   };
@@ -1111,8 +1113,8 @@ export function TaskBoardPage() {
   if (staleTaskKey) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.tasks}
-        params={{ org: org.slug, taskKey: undefined }}
+        to="."
+        params={(prev) => ({ ...prev, taskKey: undefined })}
         search={(prev: Record<string, unknown>) => prev}
         replace
       />
@@ -1122,8 +1124,8 @@ export function TaskBoardPage() {
   if (canonicalKey && canonicalKey !== openTaskKey) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.tasks}
-        params={{ org: org.slug, taskKey: canonicalKey }}
+        to="."
+        params={(prev) => ({ ...prev, taskKey: canonicalKey })}
         search={(prev: Record<string, unknown>) => prev}
         replace
       />

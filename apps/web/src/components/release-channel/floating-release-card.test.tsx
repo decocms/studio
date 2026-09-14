@@ -77,17 +77,24 @@ const routeRef = {
   current: {
     fullPath: "/$org/home",
     search: {} as Record<string, unknown>,
-    /** The `{-$panel}` segment. `undefined` names no view. */
-    panel: undefined as string | undefined,
+    agentId: undefined as string | undefined,
+    mainView: undefined as string | undefined,
   },
 };
 mock.module("@tanstack/react-router", () => ({
   ...tanstackRouter,
   useNavigate: () => navigateMock,
-  useParams: () => ({ org: "acme", panel: routeRef.current.panel }),
+  useParams: () => ({ org: "acme", agentId: routeRef.current.agentId }),
   useSearch: () => routeRef.current.search,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
-    select({ matches: [{ fullPath: routeRef.current.fullPath }] }),
+    select({
+      matches: [
+        {
+          fullPath: routeRef.current.fullPath,
+          staticData: { mainView: routeRef.current.mainView },
+        },
+      ],
+    }),
 }));
 
 /** Stubbed so the test never pulls driver.js (and its CSS) into the bun
@@ -115,7 +122,8 @@ describe("FloatingReleaseCard", () => {
     routeRef.current = {
       fullPath: "/$org/home",
       search: {},
-      panel: undefined,
+      agentId: undefined,
+      mainView: undefined,
     };
     sessionRef.current = {
       user: {
@@ -218,12 +226,12 @@ describe("FloatingReleaseCard", () => {
         cta: { label: "Take the tour", action: "start-tour" },
       }),
     ];
-    // Scoped to a project, on the agents route with NO view named: project
-    // surfaces, but not the Site Editor's.
+    // The project overview has project controls, but no Site Editor controls.
     routeRef.current = {
-      fullPath: "/$org/agents/{-$panel}",
-      search: { virtualmcpid: "vir_1" },
-      panel: undefined,
+      fullPath: "/$org/projects/$agentId/",
+      search: {},
+      agentId: "vir_1",
+      mainView: "overview",
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 
@@ -246,9 +254,10 @@ describe("FloatingReleaseCard", () => {
       }),
     ];
     routeRef.current = {
-      fullPath: "/$org/agents/{-$panel}",
-      search: { virtualmcpid: "vir_1" },
-      panel: "site-editor",
+      fullPath: "/$org/projects/$agentId/site-editor/",
+      search: {},
+      agentId: "vir_1",
+      mainView: "site-editor",
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 

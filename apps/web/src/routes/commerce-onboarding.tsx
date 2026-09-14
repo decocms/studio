@@ -29,7 +29,6 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   getCommerceDiscoveryAgentId,
-  getWellKnownDecopilotVirtualMCP,
   SELF_MCP_ALIAS_ID,
   useMCPClient,
   WellKnownOrgMCPId,
@@ -912,10 +911,9 @@ function CommerceSetupContent({
   if (setupReady) {
     return (
       <Navigate
-        to="/$org/$taskId"
-        params={{ org: org.slug, taskId: crypto.randomUUID() }}
+        to="/$org/home"
+        params={{ org: org.slug }}
         search={{
-          virtualmcpid: getWellKnownDecopilotVirtualMCP(org.id).id,
           connect: "1",
           siteUrl: currentSiteUrl || undefined,
         }}

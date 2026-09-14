@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { findTaskByKeyOrId, taskRouteSegment } from "./task-route";
+import {
+  findTaskByKeyOrId,
+  taskRouteSegment,
+  taskSharePath,
+} from "./task-route";
 
 const items = [
   { id: "board_abc", keySeq: 1 },
@@ -26,6 +30,24 @@ describe("taskRouteSegment", () => {
         item.id,
       );
     }
+  });
+});
+
+describe("taskSharePath", () => {
+  test("keeps a project-owned task inside its canonical project route", () => {
+    expect(taskSharePath("acme", items[0]!, "vir_project")).toBe(
+      "/acme/projects/vir_project/tasks/ACME-01",
+    );
+  });
+
+  test("keeps an organization task on the organization board", () => {
+    expect(taskSharePath("acme", items[1]!)).toBe("/acme/tasks/ACME-12");
+  });
+
+  test("encodes every dynamic path segment", () => {
+    expect(
+      taskSharePath("acme store", { id: "task/one", keySeq: null }, "vir/a"),
+    ).toBe("/acme%20store/projects/vir%2Fa/tasks/task%2Fone");
   });
 });
 

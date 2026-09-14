@@ -50,7 +50,13 @@ import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { useThreadManager } from "@/components/chat/store/hooks";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
-import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import {
+  Navigate,
+  Outlet,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
 import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
@@ -82,9 +88,16 @@ import {
 } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useEnsureTask } from "@/hooks/use-ensure-task";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
-import { LegacyMainRedirect } from "@/layouts/legacy-main-redirect";
+import { LegacyAgentWorkspaceRedirect } from "@/layouts/legacy-agent-workspace-redirect";
+import { canonicalThreadRouteTarget } from "@/layouts/main-panel-tabs/tab-route";
+import { getWellKnownDecopilotVirtualMCP } from "@/sdk";
+import {
+  LegacyCanonicalNavigate,
+  LegacyMainRedirect,
+} from "@/layouts/legacy-main-redirect";
 import { LegacyThreadRedirect } from "@/layouts/legacy-thread-redirect";
 import {
+  routeThreadMatchesAgent,
   useRouteAgentId,
   useRouteThreadId,
   useRouteVirtualMcpId,
@@ -571,10 +584,7 @@ function MobileTaskWorkspace({
             >
               <MainPanelBoundary>
                 <div data-testid="main-panel" className="h-full">
-                  <MainPanelWithDrawer
-                    taskId={layout.threadId}
-                    virtualMcpId={virtualMcpId}
-                  />
+                  <MainPanelWithDrawer virtualMcpId={virtualMcpId} />
                 </div>
               </MainPanelBoundary>
             </ErrorBoundary>
@@ -602,9 +612,10 @@ function AgentInsetProvider() {
 
   const params = useParams({ strict: false });
   const orgSlug = params.org ?? "";
+  const workspaceSearch = useSearch({ strict: false });
 
   const routeThreadId = useRouteThreadId();
-  /** The agent is the `{-$project}` segment on a destination, `?virtualmcpid=` on the legacy route. */
+  /** The canonical project path owns agent identity; organization routes use the Super Agent. */
   const virtualMcpId = useRouteVirtualMcpId();
   /** Truthy only when the route names a SCOPED agent; `undefined` at org level
    *  (where `virtualMcpId` falls back to the Super Agent). Gates the threadless
@@ -684,6 +695,36 @@ function AgentInsetProvider() {
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, []);
+
+  const ensuredTask = ensureState.status === "ready" ? ensureState.task : null;
+  const ensuredTaskAgentId = ensuredTask?.virtual_mcp_id;
+  if (
+    ensuredTask &&
+    ensuredTaskAgentId &&
+    !routeThreadMatchesAgent({
+      routeAgentId: virtualMcpId,
+      threadAgentId: ensuredTaskAgentId,
+    })
+  ) {
+    const route = canonicalThreadRouteTarget({
+      org: orgSlug,
+      agentId: ensuredTaskAgentId,
+      superAgentId: getWellKnownDecopilotVirtualMCP(org.id).id,
+    });
+    return (
+      <LegacyCanonicalNavigate
+        target={{
+          route,
+          search: {
+            thread: ensuredTask.id,
+            sidepanel: workspaceSearch.sidepanel,
+            mainpanel: workspaceSearch.mainpanel,
+            autosend: workspaceSearch.autosend,
+          },
+        }}
+      />
+    );
+  }
 
   // Resolve a scoped agent's entry thread HERE, in project scope once loaded — useNavigateToAgent's cross-project manager can't see these threads (#6667); repo agents mint one if none resolves, branchless fall through to the lazy composer, org home (no routeAgentId) stays fresh.
   if (routeThreadId === null && routeAgentId && entity) {
@@ -885,16 +926,19 @@ function AgentInsetProvider() {
 // ---------------------------------------------------------------------------
 
 export default function AgentShellLayout() {
+  const params = useParams({ strict: false });
+  if (params.taskId !== undefined) return <LegacyThreadRedirect />;
+  if (params._splat !== undefined) return <Outlet />;
   return (
     <MainPanelBoundary>
-      {/* Rewrites a legacy `/$org/$taskId` URL into the first-class shape,
-          without unmounting anything below it. */}
-      <LegacyThreadRedirect />
-      <LegacyMainRedirect />
-      <OrgFileOpenProvider>
-        <AgentInsetProvider />
-        <OrgFilePreviewMount />
-      </OrgFileOpenProvider>
+      <LegacyAgentWorkspaceRedirect>
+        <LegacyMainRedirect>
+          <OrgFileOpenProvider>
+            <AgentInsetProvider />
+            <OrgFilePreviewMount />
+          </OrgFileOpenProvider>
+        </LegacyMainRedirect>
+      </LegacyAgentWorkspaceRedirect>
     </MainPanelBoundary>
   );
 }
