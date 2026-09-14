@@ -160,9 +160,21 @@ interface E2eRunDetailData {
 
 // --- helpers ----------------------------------------------------------------
 
+/** Thrown by {@link fetchJson}; carries the real HTTP status so callers don't
+ *  have to guess it back out of the error message. */
+class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/** Keyed on the actual status, not the error message — a BFF route can
+ *  phrase its 401 body however it likes without silently breaking this check. */
 function isUnauthorized(error: unknown): boolean {
-  const m = error instanceof Error ? error.message.toLowerCase() : "";
-  return m.includes("unauthorized") || m.includes("401");
+  return error instanceof ApiError && error.status === 401;
 }
 
 async function fetchJson(url: string): Promise<unknown> {
@@ -173,7 +185,7 @@ async function fetchJson(url: string): Promise<unknown> {
       body && typeof body === "object" && "error" in body
         ? String((body as { error: unknown }).error)
         : `request failed (${res.status})`;
-    throw new Error(err);
+    throw new ApiError(err, res.status);
   }
   return body;
 }
