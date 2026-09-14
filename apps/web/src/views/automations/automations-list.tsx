@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Zap } from "@untitledui/icons";
+import { Plus, Settings01, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Page } from "@/components/page";
@@ -17,9 +17,34 @@ import { useT } from "@/i18n/use-t.ts";
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const { data: automations = [] } = useAutomations(virtualMcpId);
+  const { data: automations = [], error } = useAutomations(virtualMcpId);
   const { create } = useAutomationActions();
   const [search, setSearch] = useState("");
+
+  if (error) {
+    return (
+      <Page>
+        <Page.Content>
+          <Page.Body>
+            <div className="flex items-center justify-center py-20">
+              <EmptyState
+                image={
+                  <Settings01 size={48} className="text-muted-foreground" />
+                }
+                title={t("automations.setupRequired.title")}
+                description={t("automations.setupRequired.description")}
+                actions={
+                  <Button size="sm" onClick={() => openPanel("settings")}>
+                    {t("automations.setupRequired.goToSetup")}
+                  </Button>
+                }
+              />
+            </div>
+          </Page.Body>
+        </Page.Content>
+      </Page>
+    );
+  }
 
   const lowerSearch = search.toLowerCase();
   const filtered = automations.filter((a) =>
