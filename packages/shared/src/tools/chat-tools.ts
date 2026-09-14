@@ -14,93 +14,13 @@ export interface StudioGenerateImageResult {
 }
 
 export type StudioChatTools = {
-  user_ask: {
-    input: {
-      prompt: string;
-      type: "text" | "choice" | "confirm";
-      options?: string[] | undefined;
-      default?: string | undefined;
-    };
-    output: { response: string };
-  };
-  todo_write: {
-    input: {
-      todos: {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        activeForm: string;
-      }[];
-    };
-    output: { ok: true; count: number };
-  };
-  propose_plan: { input: { plan: string }; output: { approved: boolean } };
-  update_interests: {
-    input: { interests: { title: string; summary: string }[] };
-    output: { ok: true; count: number };
-  };
-  subtask: {
-    input: { prompt: string; agent_id?: string | undefined };
-    output:
-      | { text: string; error?: undefined; finishReason?: undefined }
-      | { text: string; error: string | undefined; finishReason: string };
-  };
-  read_tool_output: {
-    input: { tool_call_id: string; pattern: string };
-    output: { result: string; matchCount: number; totalLines: number };
-  };
-  generate_image: {
-    input: {
-      prompt: string;
-      referenceImages?: { uri: string }[] | undefined;
-      aspectRatio?:
-        | "1:1"
-        | "16:9"
-        | "9:16"
-        | "4:3"
-        | "3:4"
-        | "3:2"
-        | "2:3"
-        | undefined;
-      n?: number | undefined;
-    };
-    output: StudioGenerateImageResult;
-  };
-  web_search: {
-    input: { query: string };
-    output:
-      | {
-          citations?: { url: string; title?: string }[] | undefined;
-          success: true;
-          uri: string;
-          preview: string;
-          query: string;
-          usage: { inputTokens: number; outputTokens: number };
-        }
-      | {
-          citations?: { url: string; title?: string }[] | undefined;
-          success: true;
-          content: string;
-          query: string;
-          usage: { inputTokens: number; outputTokens: number };
-        };
-  };
-  deep_research: {
-    input: { query: string };
-    output:
-      | {
-          citations?: { url: string; title?: string }[] | undefined;
-          success: true;
-          uri: string;
-          preview: string;
-          query: string;
-          usage: { inputTokens: number; outputTokens: number };
-        }
-      | {
-          citations?: { url: string; title?: string }[] | undefined;
-          success: true;
-          content: string;
-          query: string;
-          usage: { inputTokens: number; outputTokens: number };
-        };
-  };
+  "user_ask": { input: { prompt: string; type: "text" | "choice" | "confirm"; options?: string[] | undefined; default?: string | undefined; }; output: { response: string; } };
+  "todo_write": { input: { todos: { content: string; status: "pending" | "in_progress" | "completed"; activeForm: string; }[]; }; output: { ok: true; count: number; } };
+  "propose_plan": { input: { plan: string; }; output: { approved: boolean; } };
+  "update_interests": { input: { interests: { title: string; summary: string; }[]; }; output: { ok: true; count: number; } };
+  "subtask": { input: { prompt: string; agent_id?: string | undefined; }; output: { text: string; error?: undefined; finishReason?: undefined; } | { text: string; error: string | undefined; finishReason: string; } };
+  "read_tool_output": { input: { tool_call_id: string; pattern: string; }; output: { result: string; matchCount: number; totalLines: number; } };
+  "generate_image": { input: { prompt: string; referenceImages?: { uri: string; }[] | undefined; aspectRatio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | undefined; n?: number | undefined; }; output: StudioGenerateImageResult };
+  "web_search": { input: { query: string; }; output: { citations?: { url: string; title?: string; }[] | undefined; success: true; uri: string; preview: string; query: string; usage: { inputTokens: number; outputTokens: number; }; } | { citations?: { url: string; title?: string; }[] | undefined; success: true; content: string; query: string; usage: { inputTokens: number; outputTokens: number; }; } };
+  "deep_research": { input: { query: string; }; output: { citations?: { url: string; title?: string; }[] | undefined; success: true; uri: string; preview: string; query: string; usage: { inputTokens: number; outputTokens: number; }; } | { citations?: { url: string; title?: string; }[] | undefined; success: true; content: string; query: string; usage: { inputTokens: number; outputTokens: number; }; } };
 };
