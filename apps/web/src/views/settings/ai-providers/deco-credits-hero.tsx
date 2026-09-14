@@ -84,16 +84,16 @@ export function QuickTopUp() {
         <ToggleGroup
           type="single"
           variant="outline"
-          size="default"
+          size="sm"
           value={currency}
           onValueChange={(v) => {
             if (v) setCurrency(v as "usd" | "brl");
           }}
         >
-          <ToggleGroupItem value="usd" className="px-3.5 text-sm">
+          <ToggleGroupItem value="usd" className="h-8 px-3 text-sm">
             USD
           </ToggleGroupItem>
-          <ToggleGroupItem value="brl" className="px-3.5 text-sm">
+          <ToggleGroupItem value="brl" className="h-8 px-3 text-sm">
             BRL
           </ToggleGroupItem>
         </ToggleGroup>
@@ -103,7 +103,7 @@ export function QuickTopUp() {
               <Button
                 key={dollars}
                 variant="outline"
-                className="h-10 px-4 text-sm font-medium tabular-nums"
+                className="tabular-nums"
                 disabled={isPending}
                 onClick={() => topUp(dollars * 100)}
               >
@@ -113,7 +113,7 @@ export function QuickTopUp() {
             ))}
             <Button
               variant="ghost"
-              className="h-10 px-4 text-sm text-muted-foreground"
+              className="text-muted-foreground"
               onClick={() => setCustomOpen(true)}
               disabled={isPending}
             >
@@ -134,12 +134,11 @@ export function QuickTopUp() {
                 placeholder={t("settings.decoCreditsHero.amountPlaceholder")}
                 value={customAmount}
                 onChange={(e) => setCustomAmount(e.target.value)}
-                className="h-10 text-sm pl-7"
+                className="h-8 text-sm pl-7"
                 autoFocus
               />
             </div>
             <Button
-              className="h-10"
               disabled={!isCustomValid || isPending}
               onClick={() => topUp(Math.round(customNum * 100))}
             >
@@ -147,7 +146,7 @@ export function QuickTopUp() {
             </Button>
             <Button
               variant="ghost"
-              className="h-10 text-sm text-muted-foreground"
+              className="text-muted-foreground"
               onClick={() => {
                 setCustomOpen(false);
                 setCustomAmount("");
