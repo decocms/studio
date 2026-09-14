@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Progress } from "@decocms/ui/components/progress.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -165,8 +166,8 @@ export function PlanUsageCard() {
       : t("settings.planUsage.oneTimeHint");
 
   return (
-    <SettingsCard>
-      <div className="px-6 pt-6 pb-5 flex flex-col gap-6">
+    <Card className="p-0 gap-0 overflow-hidden">
+      <div className="px-6 py-6 flex flex-col gap-6">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm font-medium">{data.plan.name}</span>
           <ManageBillingButton />
@@ -220,37 +221,38 @@ export function PlanUsageCard() {
             {t("settings.planUsage.noAiIncluded")}
           </p>
         )}
-
-        {/* Credits live here rather than in a section of their own: they are
-            the second of this card's two pools, and a separate titled card
-            for them was a second place to look for one subject. Withheld
-            from a plan without `credits` (Free), whose allowance is a
-            ceiling. Fails OPEN like every other gate, so a gateway blip
-            still lets an org pay. The balance is the ONE amount this card may
-            show, and only once the bar is full: that is the moment credits
-            are what the org is spending. */}
-        {canBuyCredits && (
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 pt-5 border-t border-border">
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("settings.decoCreditsHero.addCredits")}
-              </span>
-              {state === "exhausted" && creditsUsd !== null && (
-                <span className="text-sm font-medium tabular-nums">
-                  {creditsUsd.toLocaleString(preferences.language, {
-                    style: "currency",
-                    currency: "USD",
-                  })}{" "}
-                  <span className="text-muted-foreground font-normal">
-                    {t("settings.planUsage.creditsLeft")}
-                  </span>
-                </span>
-              )}
-            </div>
-            <QuickTopUp />
-          </div>
-        )}
       </div>
-    </SettingsCard>
+
+      {/* Credits live here rather than in a section of their own: they are
+          the second of this card's two pools, and a separate titled card for
+          them was a second place to look for one subject. A real footer, edge
+          to edge, so the two pools read as one card with two floors. Withheld
+          from a plan without `credits` (Free), whose allowance is a ceiling.
+          Fails OPEN like every other gate, so a gateway blip still lets an
+          org pay. The balance is the ONE amount this card may show, and only
+          once the bar is full: that is the moment credits are what the org is
+          spending. */}
+      {canBuyCredits && (
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4 border-t border-border bg-muted/30">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm text-muted-foreground">
+              {t("settings.decoCreditsHero.addCredits")}
+            </span>
+            {state === "exhausted" && creditsUsd !== null && (
+              <span className="text-sm font-medium tabular-nums">
+                {creditsUsd.toLocaleString(preferences.language, {
+                  style: "currency",
+                  currency: "USD",
+                })}{" "}
+                <span className="text-muted-foreground font-normal">
+                  {t("settings.planUsage.creditsLeft")}
+                </span>
+              </span>
+            )}
+          </div>
+          <QuickTopUp />
+        </div>
+      )}
+    </Card>
   );
 }
