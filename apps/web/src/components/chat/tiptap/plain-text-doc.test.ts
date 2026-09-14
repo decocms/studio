@@ -29,4 +29,61 @@ describe("plain text ↔ tiptap doc", () => {
     expect(doc.content).toHaveLength(3);
     expect(doc.content[1]).toEqual({ type: "paragraph" });
   });
+
+  // The chat renders a skill mention with a label line and a
+  // `<skill-file path=…>` wrapper around each file. Right for a message, wrong
+  // for a prompt someone is about to read and edit — and the frontmatter is
+  // catalog metadata, not instructions to anyone.
+  it("bakes a skill as its body, without the chat envelope", () => {
+    const text = tiptapDocToPlainText({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "mention",
+              attrs: {
+                char: "/",
+                name: "jira-review",
+                kind: "skill",
+                metadata: {
+                  files: [
+                    {
+                      relPath: "SKILL.md",
+                      content:
+                        "---\nname: jira-review\ndescription: d\ndisable-model-invocation: true\n---\n\n# Review\n\nFind the pull request.\n",
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(text).toBe("# Review\n\nFind the pull request.");
+    expect(text).not.toContain("skill-file");
+    expect(text).not.toContain("disable-model-invocation");
+    expect(text).not.toContain("/jira-review");
+  });
+
+  // A prompt or resource mention has no content in the doc, so the label is
+  // the only honest thing to leave behind.
+  it("leaves a non-skill mention as its label", () => {
+    expect(
+      tiptapDocToPlainText({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "run " },
+              { type: "mention", attrs: { char: "/", name: "deploy" } },
+            ],
+          },
+        ],
+      }),
+    ).toBe("run /deploy");
+  });
 });
