@@ -72,7 +72,10 @@ describe("AIProviderFactory.listModels", () => {
           headers: { "Content-Type": "application/json" },
         });
       }
-      if (parsed.hostname === "openrouter.ai" && parsed.pathname === "/api/v1/models") {
+      if (
+        parsed.hostname === "openrouter.ai" &&
+        parsed.pathname === "/api/v1/models"
+      ) {
         return new Response(JSON.stringify(OPENROUTER_MODELS_BODY), {
           status: 200,
           headers: { "Content-Type": "application/json" },
