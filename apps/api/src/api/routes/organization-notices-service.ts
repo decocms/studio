@@ -60,13 +60,7 @@ function auditOrganizationNotice(
 export const createOrganizationNoticeServiceRoutes = () => {
   const app = new Hono<{ Variables: Variables }>();
 
-  app.use("/internal/organization-notices", async (c, next) => {
-    const token = bearerToken(c.req.header("authorization"));
-    if (!token || !isOrganizationNoticesApiKey(token)) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    return next();
-  });
+  app.use("/internal/organization-notices", requireOrganizationNoticesApiKey);
 
   app.get("/internal/organization-notices", async (c) => {
     const ctx = c.get("studioContext");
