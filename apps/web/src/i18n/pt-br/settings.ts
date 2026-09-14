@@ -76,7 +76,9 @@ export const settings = {
   "settings.jira.automationOn": "Automação ativa",
   "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
   "settings.jira.promptHelp":
-    "Deixe vazio para usar a instrução do próprio agente. A descrição, os comentários e os anexos da issue sempre vão junto.",
+    "Esta é a instrução inteira que o run recebe \u2014 não existe um padrão. Digite \u201c/\u201d para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
+  "settings.jira.promptSave": "Salvar",
+  "settings.jira.promptDiscard": "Descartar",
   "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
@@ -94,7 +96,7 @@ export const settings = {
     "Agente reiniciado em {issueKey} \u2014 o run que já estava nela foi interrompido",
   "settings.jira.testRunFailed": "Não foi possível iniciar o run",
   "settings.jira.testRunHelp":
-    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Deixe a instrução vazia para usar a do próprio agente.",
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite \u201c/\u201d para inserir a mesma skill que a regra da coluna usaria.",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.syncedRepos.pageDescription":
     "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",

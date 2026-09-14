@@ -10,6 +10,7 @@ const base: IssueForPrompt = {
   description: "The button is green.\n\nMake it blue.",
   comments: [],
   attachments: [],
+  links: [],
 };
 
 describe("renderIssueForPrompt", () => {

@@ -47,6 +47,10 @@ describe("buildClaudeCodeTaskPrompt", () => {
     );
   });
 
+  // A Jira run is told the issue, the pod's facts, and whatever its column
+  // rule says — nothing else. The "how to finish / how to report" script that
+  // used to be injected here is now two skills a person inserts into that
+  // rule's prompt, where they can read and edit it.
   describe("a Jira-triggered run", () => {
     const jira = {
       source: {
@@ -65,47 +69,45 @@ describe("buildClaudeCodeTaskPrompt", () => {
       expect(prompt).not.toContain("TASK_BOARD_");
     });
 
-    // Prefixed the way the sandbox harness actually sees them: bare names cost
-    // the run a tool search before it could report anything.
-    test("is told to report on the issue, with namespaced tool names", () => {
+    // Inverted: these lines used to be injected here. They now live in the
+    // `jira-execute` / `jira-review` skills, so a run whose rule inserted
+    // neither must not receive them anyway — that is the whole point of
+    // making the prompt explicit.
+    test("carries no built-in instruction on how to finish or report", () => {
       const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).not.toContain("How to finish:");
+      expect(prompt).not.toContain("open a pull request");
+      expect(prompt).not.toContain("JIRA_COMMENT_ADD` posts");
+      expect(prompt).not.toContain("qa-screenshot");
+      expect(prompt).not.toContain("org/output/");
+    });
+
+    // The one thing the author of that skill text cannot know: a skill names
+    // tools bare so it works on either harness, and this is what stops a bare
+    // name from costing the run a tool search.
+    test("is told the Studio tool namespace as a fact", () => {
+      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
+      expect(prompt).toContain("namespaced `mcp__studio__`");
       expect(prompt).toContain("mcp__studio__JIRA_COMMENT_ADD");
-      expect(prompt).toContain("mcp__studio__JIRA_ISSUE_TRANSITION");
     });
 
-    // The coding half is unchanged — a Jira run still opens a pull request.
-    test("still opens a pull request from its own branch", () => {
+    // The pod's own facts stay: nobody writing a column rule knows the repo,
+    // the working directory, or that the checkout is shallow.
+    test("still states the pod's facts", () => {
       const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
-      expect(prompt).toContain("open a pull request");
-      expect(prompt).toContain("from the branch you were given");
+      expect(prompt).toContain("already cloned at your working directory");
+      expect(prompt).toContain("SHALLOW");
     });
 
-    // Inverted from the board rule. A Jira run's reviewer writes its verdict to
-    // the hidden anchor card, so "a reviewer checks the preview after you hand
-    // over" reports to nobody — this run is the only one that can check it.
-    test("is told to verify on the deploy preview, not only locally", () => {
+    // Inverted: there used to be a default Jira lead. A rule with no prompt
+    // now gets no lead — the run reads the issue and its column's silence,
+    // which is a legible outcome rather than a hidden one.
+    test("has no lead of its own when the rule has no prompt", () => {
       const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
-      expect(prompt).toContain("DEPLOY PREVIEW");
-      expect(prompt).not.toContain("Do NOT wait for, or verify against");
+      expect(prompt.startsWith("You are running AUTONOMOUSLY")).toBe(true);
     });
 
-    test("is told how to get evidence onto the issue", () => {
-      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
-      expect(prompt).toContain("org/output/");
-      expect(prompt).toContain("mcp__studio__JIRA_REMOTE_LINK_ADD");
-      expect(prompt).toContain("qa-screenshot");
-    });
-
-    // With no rule prompt the board's "you've been assigned this task" lead is
-    // wrong: there is no task, there is an issue.
-    test("leads with the Jira default when the rule has no prompt", () => {
-      const prompt = buildClaudeCodeTaskPrompt(task, repo, jira);
-      expect(prompt.startsWith("A Jira issue was moved into a column")).toBe(
-        true,
-      );
-    });
-
-    test("a rule's own prompt still wins over that default", () => {
+    test("a rule's own prompt leads the run", () => {
       const prompt = buildClaudeCodeTaskPrompt(task, repo, {
         ...jira,
         instruction: "Only review, do not change code.",

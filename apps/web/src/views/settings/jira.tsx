@@ -22,7 +22,12 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
-import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import { TiptapInput, TiptapProvider } from "@/components/chat/tiptap/input";
+import {
+  plainTextToTiptapDoc,
+  tiptapDocToPlainText,
+} from "@/components/chat/tiptap/plain-text-doc";
+import type { TiptapDoc } from "@decocms/shared/tiptap";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -367,6 +372,49 @@ function AutomationsRow({ boardId }: { boardId: string }) {
   );
 }
 
+/**
+ * The prompt field, as the chat's composer.
+ *
+ * A Jira run is told the issue, the pod's facts, and this — nothing else. What
+ * used to be injected around it (how to finish, how to report, how to review)
+ * now lives in skills a person inserts here with `/`, which bakes the skill's
+ * markdown in as text. So the field shows the run's actual instructions, and
+ * cutting a line out of them is cutting a line out of a textarea.
+ *
+ * Stores a STRING, not the doc: the pill is how the text got here, not a
+ * reference the server would have to resolve later. Reopening shows the words
+ * the run will see.
+ */
+function PromptEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (text: string) => void;
+  placeholder: string;
+}) {
+  const [doc, setDoc] = useState<TiptapDoc | undefined>(() =>
+    plainTextToTiptapDoc(value),
+  );
+  return (
+    <TiptapProvider
+      tiptapDoc={doc}
+      setTiptapDoc={(next) => {
+        setDoc(next);
+        onChange(tiptapDocToPlainText(next));
+      }}
+      placeholder={placeholder}
+    >
+      <div className="rounded-lg border border-border bg-background">
+        {/* No agent here, so no MCP prompts/resources — the skill catalog the
+            "/" menu reads is org-scoped and lists regardless. */}
+        <TiptapInput virtualMcpId={null} className="max-h-64" />
+      </div>
+    </TiptapProvider>
+  );
+}
+
 /** `prompt` null with `hasAutomation` true means the rule runs on the agent's
  *  own instruction; the status is absent from the automations list when there
  *  is no rule at all. */
@@ -388,10 +436,15 @@ function StatusAutomationCard({
   // A draft, so typing is not a write per keystroke. Re-seeded on change.
   const [draft, setDraft] = useState(prompt ?? "");
   const [syncedWith, setSyncedWith] = useState(prompt);
+  // Bumped to discard: the editor seeds itself once, so remounting it is what
+  // puts the saved text back.
+  const [editorKey, setEditorKey] = useState(0);
   if (syncedWith !== prompt) {
     setSyncedWith(prompt);
     setDraft(prompt ?? "");
+    setEditorKey((n) => n + 1);
   }
+  const dirty = draft !== (prompt ?? "");
 
   const save = (next: string | null) =>
     setAutomation.mutate(
@@ -428,19 +481,38 @@ function StatusAutomationCard({
               <Trash01 size={14} />
             </Button>
           </div>
-          <Textarea
-            value={draft}
-            rows={2}
-            placeholder={t("settings.jira.promptPlaceholder")}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => {
-              if (draft !== (prompt ?? "")) save(draft);
-            }}
-            data-jira-automation-prompt={status}
-          />
+          <div data-jira-automation-prompt={status}>
+            <PromptEditor
+              key={editorKey}
+              value={prompt ?? ""}
+              onChange={setDraft}
+              placeholder={t("settings.jira.promptPlaceholder")}
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
             {t("settings.jira.promptHelp")}
           </p>
+          {dirty && (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDraft(prompt ?? "");
+                  setEditorKey((n) => n + 1);
+                }}
+              >
+                {t("settings.jira.promptDiscard")}
+              </Button>
+              <Button
+                size="sm"
+                disabled={setAutomation.isPending}
+                onClick={() => save(draft)}
+              >
+                {t("settings.jira.promptSave")}
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <Button
@@ -529,12 +601,10 @@ function TestRunRow() {
               : t("settings.jira.testRun")}
           </Button>
         </div>
-        <Textarea
-          value={prompt}
-          rows={2}
+        <PromptEditor
+          value=""
+          onChange={setPrompt}
           placeholder={t("settings.jira.promptPlaceholder")}
-          aria-label={t("settings.jira.testRunPromptAriaLabel")}
-          onChange={(e) => setPrompt(e.target.value)}
         />
         <p className="text-xs text-muted-foreground">
           {t("settings.jira.testRunHelp")}

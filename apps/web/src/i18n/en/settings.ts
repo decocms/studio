@@ -72,7 +72,9 @@ export const settings = {
   "settings.jira.automationOn": "Automation on",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
-    "Leave empty to use the agent's own instruction. The issue's description, comments and attachments are always included.",
+    "This is the whole instruction the run gets \u2014 there is no default. Type \u201c/\u201d to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
+  "settings.jira.promptSave": "Save",
+  "settings.jira.promptDiscard": "Discard",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
@@ -89,7 +91,7 @@ export const settings = {
     "Agent restarted on {issueKey} \u2014 the run already working it was stopped",
   "settings.jira.testRunFailed": "Could not start the run",
   "settings.jira.testRunHelp":
-    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Leave the instruction empty to use the agent's own.",
+    "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type \u201c/\u201d to insert the same skill the column rule would use.",
   "settings.jira.testRunWatch": "Watch runs in Monitor",
   "settings.syncedRepos.pageDescription":
     "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
