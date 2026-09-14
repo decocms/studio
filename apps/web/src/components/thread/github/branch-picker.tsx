@@ -48,7 +48,9 @@ import {
   GitBranch01,
   GitPullRequest,
   Plus,
+  SearchMd,
   Trash01,
+  XClose,
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import type { Release } from "@decocms/shared/sdk/types";
@@ -126,8 +128,18 @@ export function BranchPicker({
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  const [search, setSearch] = useState<string | null>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
+
+  /** A draft matches on its name or on the branch behind it, so pasting a
+   *  branch name finds the draft even when it was renamed to something else. */
+  const visible = releases.filter(
+    (r) =>
+      search === null ||
+      matchesBranchSearch(r.name, search) ||
+      matchesBranchSearch(r.branch, search),
+  );
 
   const isBase = !!value && value === baseBranch;
   const current = releases.find((r) => r.branch === value);
@@ -188,6 +200,7 @@ export function BranchPicker({
     setEditing(null);
     setEditName("");
     setAdvanced(false);
+    setSearch(null);
   };
 
   const startRename = (r: Release) => {
@@ -294,6 +307,19 @@ export function BranchPicker({
         align="start"
         // Don't steal focus onto the first row: it fires that row's branch tooltip.
         onOpenAutoFocus={(e) => e.preventDefault()}
+        /** Escape backs out of the transient mode first — renaming, then
+         *  filtering — and only closes the picker once neither is open. Radix
+         *  dismisses from a capture-phase listener on `document`, so a child's
+         *  `stopPropagation` never gets the chance; this is the only seam. */
+        onEscapeKeyDown={(e) => {
+          if (editing !== null) {
+            e.preventDefault();
+            cancelRename();
+          } else if (search !== null) {
+            e.preventDefault();
+            setSearch(null);
+          }
+        }}
       >
         {spawnsNewChat && (
           <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
@@ -315,16 +341,41 @@ export function BranchPicker({
           />
         ) : (
           <>
+            {releases.length > 0 &&
+              (search === null ? (
+                <div className="flex justify-end px-1 pb-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("thread.branchPicker.searchDraftsOpen")}
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() => setSearch("")}
+                  >
+                    <SearchMd className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <DraftSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  onClose={() => setSearch(null)}
+                />
+              ))}
             {/* Scroll the list, not the popover: the rows below must stay reachable. */}
             <div className="flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
               {unlisted &&
                 value &&
+                (search === null ||
+                  matchesBranchSearch(value, search) ||
+                  matchesBranchSearch(
+                    t("thread.branchPicker.defaultVersionName"),
+                    search,
+                  )) &&
                 (editing === value ? (
                   <RenameInput
                     value={editName}
                     onChange={setEditName}
                     onSave={saveUnlistedName}
-                    onCancel={cancelRename}
                   />
                 ) : (
                   <ReleaseRow
@@ -344,14 +395,13 @@ export function BranchPicker({
                     }}
                   />
                 ))}
-              {releases.map((r) =>
+              {visible.map((r) =>
                 editing === r.branch ? (
                   <RenameInput
                     key={r.branch}
                     value={editName}
                     onChange={setEditName}
                     onSave={() => saveRename(r.branch)}
-                    onCancel={cancelRename}
                   />
                 ) : (
                   <ReleaseRow
@@ -365,6 +415,11 @@ export function BranchPicker({
                     onDelete={() => setPendingDelete(r)}
                   />
                 ),
+              )}
+              {search !== null && visible.length === 0 && (
+                <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                  {t("thread.branchPicker.noDraftsFound")}
+                </p>
               )}
             </div>
             {(unlisted || releases.length > 0) && (
@@ -430,17 +485,54 @@ export function BranchPicker({
   );
 }
 
+/** Filter box over the draft list. Escape is owned by the popover (see its
+ *  `onEscapeKeyDown`), which backs out of filtering before closing. */
+function DraftSearchInput({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onClose: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-1 px-1 pb-1.5">
+      <div className="relative flex-1">
+        <SearchMd className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          // biome-ignore lint/a11y/noAutofocus: opened by an explicit click
+          autoFocus
+          aria-label={t("thread.branchPicker.searchDraftsOpen")}
+          placeholder={t("thread.branchPicker.searchDrafts")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-8 w-full rounded-md border bg-transparent pl-8 pr-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+        />
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t("thread.branchPicker.searchDraftsClose")}
+        className="h-7 w-7 shrink-0 text-muted-foreground"
+        onClick={onClose}
+      >
+        <XClose className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 /** Inline name editor shared by rename (a release) and adopt (an unlisted branch). */
 function RenameInput({
   value,
   onChange,
   onSave,
-  onCancel,
 }: {
   value: string;
   onChange: (next: string) => void;
   onSave: () => void;
-  onCancel: () => void;
 }) {
   const t = useT();
   return (
@@ -451,14 +543,10 @@ function RenameInput({
         aria-label={t("thread.branchPicker.rename")}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        // Escape is handled by the popover's `onEscapeKeyDown`, which is the
+        // only listener that runs before Radix dismisses the layer.
         onKeyDown={(e) => {
           if (e.key === "Enter") onSave();
-          if (e.key === "Escape") {
-            // Don't let Escape also close the popover behind it.
-            e.preventDefault();
-            e.stopPropagation();
-            onCancel();
-          }
         }}
         className="h-8 flex-1 rounded-md border bg-transparent px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
       />
