@@ -222,6 +222,8 @@
   --color-chart-5: var(--chart-5);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-brand-purple: var(--brand-purple-light);
+  --color-brand-blue: var(--brand-blue);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -578,6 +580,8 @@
   --brand-purple-dark: #151042;
   --brand-yellow-light: #ffc116;
   --brand-yellow-dark: #392b02;
+  /* #69daec. One value, no dark pair — it is light enough for both themes. */
+  --brand-blue: oklch(0.829 0.105 209.2);
 }
 
 @media only screen and (min-device-pixel-ratio: 2),
