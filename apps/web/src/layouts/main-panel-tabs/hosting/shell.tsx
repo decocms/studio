@@ -219,8 +219,14 @@ export function CopyValueButton({ value }: { value: string }) {
     <IconButton
       label={t("mainPanelTabs.hostingTab.dnsCopy")}
       onClick={() => {
-        void navigator.clipboard?.writeText(value);
-        toast.success(t("mainPanelTabs.hostingTab.dnsCopied"));
+        if (!navigator.clipboard) {
+          toast.error(t("mainPanelTabs.hostingTab.dnsCopyError"));
+          return;
+        }
+        navigator.clipboard.writeText(value).then(
+          () => toast.success(t("mainPanelTabs.hostingTab.dnsCopied")),
+          () => toast.error(t("mainPanelTabs.hostingTab.dnsCopyError")),
+        );
       }}
     >
       <Copy01 className="size-3.5" />

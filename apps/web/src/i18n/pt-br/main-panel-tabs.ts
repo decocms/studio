@@ -75,6 +75,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.dnsAwaiting": "Aguardando DNS",
   "mainPanelTabs.hostingTab.dnsCopy": "Copiar valor",
   "mainPanelTabs.hostingTab.dnsCopied": "Copiado",
+  "mainPanelTabs.hostingTab.dnsCopyError":
+    "Não foi possível copiar para a área de transferência",
   "mainPanelTabs.hostingTab.notConnectedTitle":
     "Hospedagem ainda não conectada",
   "mainPanelTabs.hostingTab.notConnectedDescription":
