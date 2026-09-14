@@ -28,6 +28,7 @@ import { deck } from "./deck.ts";
 import { discover } from "./discover.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
+import { experiments } from "./experiments.ts";
 import { common } from "./common.ts";
 import { commerceOnboarding } from "./commerce-onboarding.ts";
 import { collections } from "./collections.ts";
@@ -58,6 +59,7 @@ export const ptBR = {
   ...orgs,
   ...monitoring,
   ...mainPanelTabs,
+  ...experiments,
   ...markdownEditor,
   ...library,
   ...layouts,

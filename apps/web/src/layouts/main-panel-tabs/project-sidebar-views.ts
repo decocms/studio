@@ -12,6 +12,7 @@ export const PROJECT_SIDEBAR_VIEW_IDS = [
   "analytics",
   "cdn",
   "automations",
+  "experiments",
 ] as const satisfies readonly VirtualMcpSidebarView[];
 
 /** Initial selection for projects that have not explicitly saved sidebar
@@ -147,6 +148,7 @@ export function projectSidebarViewPresence(
     analytics: native.analytics,
     cdn: native.cdn,
     automations: true,
+    experiments: true,
   };
 }
 

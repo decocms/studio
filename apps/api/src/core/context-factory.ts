@@ -59,6 +59,7 @@ import {
 } from "../storage/registry";
 import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
+import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -1462,6 +1463,7 @@ export async function createStudioContextFactory(
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
+    experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(

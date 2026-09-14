@@ -60,6 +60,9 @@ const E2eTab = lazy(() =>
 const AnalyticsTab = lazy(() =>
   import("./analytics-tab").then((m) => ({ default: m.AnalyticsTab })),
 );
+const ExperimentsTab = lazy(() =>
+  import("./experiments-tab").then((m) => ({ default: m.ExperimentsTab })),
+);
 const CdnTab = lazy(() =>
   import("./cdn-tab").then((m) => ({ default: m.CdnTab })),
 );
@@ -164,6 +167,9 @@ function TabBody({
   }
   if (activeTab === "analytics" && controlPlaneViews.analytics) {
     return <AnalyticsTab virtualMcpId={virtualMcpId} />;
+  }
+  if (activeTab === "experiments" && controlPlaneViews.experiments) {
+    return <ExperimentsTab virtualMcpId={virtualMcpId} />;
   }
   if (activeTab === "cdn" && monitorEnabled && controlPlaneViews.monitor) {
     return <CdnTab virtualMcpId={virtualMcpId} />;

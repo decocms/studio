@@ -30,6 +30,7 @@ export type ToolCategory =
   | "Users"
   | "API Keys"
   | "Tags"
+  | "Experiments"
   | "AI Providers"
   | "Secrets"
   | "File Configs"
@@ -130,6 +131,13 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // Experiment tools
+  "EXPERIMENT_LIST",
+  "EXPERIMENT_GET",
+  "EXPERIMENT_CREATE",
+  "EXPERIMENT_UPDATE",
+  "EXPERIMENT_DELETE",
+  "EXPERIMENT_RESULTS",
   // Automation tools
   "AUTOMATION_CREATE",
   "AUTOMATION_GET",
@@ -698,6 +706,37 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete organization tag",
     category: "Tags",
     dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_LIST",
+    description: "List a site's A/B experiments",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_GET",
+    description: "Get one A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_CREATE",
+    description: "Create an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_UPDATE",
+    description: "Update an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_DELETE",
+    description: "Delete an A/B experiment",
+    category: "Experiments",
+    dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_RESULTS",
+    description: "A/B results for one experiment",
+    category: "Experiments",
   },
   {
     name: "MEMBER_TAGS_GET",
@@ -2045,6 +2084,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     Users: [],
     "API Keys": [],
     Tags: [],
+    Experiments: [],
     "AI Providers": [],
     Secrets: [],
     "File Configs": [],

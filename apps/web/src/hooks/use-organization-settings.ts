@@ -281,6 +281,7 @@ export interface ControlPlaneViews {
   analytics: boolean;
   e2e: boolean;
   monitor: boolean;
+  experiments: boolean;
 }
 
 /**
@@ -312,11 +313,13 @@ export function useControlPlaneViews(): ControlPlaneViews {
   const analyticsFlag = useOrgFlag("deco_analytics_enabled");
   const e2eFlag = useOrgFlag("e2e_enabled");
   const monitorFlag = useOrgFlag("monitor_enabled");
+  const experimentsFlag = useOrgFlag("experiments_enabled");
   return {
     hosting: staffOrLocal || controlPlaneGa || hostingFlag,
     analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
     e2e: staffOrLocal || controlPlaneGa || e2eFlag,
     monitor: staffOrLocal || monitorGa || monitorFlag,
+    experiments: staffOrLocal || controlPlaneGa || experimentsFlag,
   };
 }
 

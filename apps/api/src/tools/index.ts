@@ -22,6 +22,7 @@ import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
 import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
+import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
@@ -168,6 +169,12 @@ export const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+  ExperimentTools.EXPERIMENT_LIST,
+  ExperimentTools.EXPERIMENT_GET,
+  ExperimentTools.EXPERIMENT_CREATE,
+  ExperimentTools.EXPERIMENT_UPDATE,
+  ExperimentTools.EXPERIMENT_DELETE,
+  ExperimentTools.EXPERIMENT_RESULTS,
 
   // Automation tools
   AutomationTools.AUTOMATION_CREATE,
