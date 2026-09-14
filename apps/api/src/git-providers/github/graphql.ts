@@ -12,9 +12,12 @@
  * Nothing here decides WHICH token to send: callers pass a getter, which is
  * what lets one transport serve both a git provider account and a legacy
  * connection.
+ *
+ * Refusals carrying a status are `GitProviderError`, as in the REST transport.
  */
 
 import { retry, RetryError } from "@decocms/shared/std";
+import { GitProviderError } from "../types";
 import {
   countGithubRateLimited,
   githubRetryAfterMs,
@@ -181,17 +184,24 @@ export async function githubGraphqlRequest<T>(
     const waitMs = githubRetryAfterMs(res.headers);
     // Drain the unread body, same as every other discard-and-throw call site here.
     await res.body?.cancel().catch(() => {});
-    throw new Error(
-      `GitHub ${kind} rate limit reached${
+    throw new GitProviderError({
+      provider: "github",
+      status: res.status,
+      retryAfterMs: waitMs,
+      message: `GitHub ${kind} rate limit reached${
         waitMs === null ? "" : `; retry in ${Math.ceil(waitMs / 1000)}s`
       }`,
-    );
+    });
   }
 
   if (!res.ok) {
     // Drain the unread body, same as every other discard-and-throw call site here.
     await res.body?.cancel().catch(() => {});
-    throw new Error(`GitHub GraphQL ${args.label} failed: ${res.status}`);
+    throw new GitProviderError({
+      provider: "github",
+      status: res.status,
+      message: `GitHub GraphQL ${args.label} failed: ${res.status}`,
+    });
   }
 
   // GraphQL reports failures as 200 + `errors`, so an ok status isn't enough.
