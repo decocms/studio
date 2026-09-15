@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { serializeRunMetadataHeader, stripBindingMetadata } from "./headers";
+import {
+  sanitizeCustomHeaders,
+  serializeRunMetadataHeader,
+  stripBindingMetadata,
+} from "./headers";
 
 describe("stripBindingMetadata", () => {
   test("strips __binding from a top-level object value", () => {
@@ -98,5 +102,35 @@ describe("serializeRunMetadataHeader", () => {
   test("keeps metadata whose characters are all within the Latin-1 byte range", () => {
     const latin1 = { note: "café" };
     expect(serializeRunMetadataHeader(latin1)).toBe(JSON.stringify(latin1));
+  });
+});
+
+describe("sanitizeCustomHeaders", () => {
+  test("returns an empty object for undefined headers", () => {
+    expect(sanitizeCustomHeaders(undefined)).toEqual({});
+  });
+
+  test("keeps safe, small header values unchanged", () => {
+    expect(sanitizeCustomHeaders({ "X-Api-Key": "abc123" })).toEqual({
+      "X-Api-Key": "abc123",
+    });
+  });
+
+  test("drops a header value outside the HTTP header ByteString range", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "X-Api-Key": "abc123",
+        "X-Title": "日本語のタイトル",
+      }),
+    ).toEqual({ "X-Api-Key": "abc123" });
+  });
+
+  test("drops a header value exceeding the size cap", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "X-Api-Key": "abc123",
+        "X-Oversized": "x".repeat(9 * 1024),
+      }),
+    ).toEqual({ "X-Api-Key": "abc123" });
   });
 });
