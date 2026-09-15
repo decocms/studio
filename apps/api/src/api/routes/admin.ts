@@ -186,6 +186,15 @@ export function matchesAdminToken(
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+const MEMBER_ADD_PATH = /^\/orgs\/[^/]+\/members$/;
+
+/** Routes the shared admin token may reach: any GET, plus member-add. */
+export function tokenAllowsRoute(method: string, path: string): boolean {
+  if (method === "GET") return true;
+  const rel = path.slice(ADMIN_API_PREFIX.length);
+  return method === "POST" && MEMBER_ADD_PATH.test(rel);
+}
+
 function hasValidAdminToken(c: Context<Env>): boolean {
   return matchesAdminToken(
     c.req.header("x-deployment-admin-token"),
@@ -197,10 +206,7 @@ async function requireDeploymentAdmin(
   c: Context<Env>,
   next: () => Promise<void>,
 ) {
-  if (
-    c.req.path !== `${ADMIN_API_PREFIX}/impersonate` &&
-    hasValidAdminToken(c)
-  ) {
+  if (tokenAllowsRoute(c.req.method, c.req.path) && hasValidAdminToken(c)) {
     return next();
   }
 
