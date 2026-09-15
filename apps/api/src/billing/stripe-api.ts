@@ -148,33 +148,15 @@ export function taxAndAddressParams(
  * `?? {}` because a partially-mocked settings object is a crash here
  * otherwise, and "no prices configured" is the safe reading of a missing map.
  */
+/** Is this price one the operator mapped to a plan — i.e. a plan line rather
+ *  than an add-on sitting beside it on the same subscription. */
+export function isPlanPrice(priceId: string): boolean {
+  return Boolean((getSettings().stripePlanPriceIds ?? {})[priceId]);
+}
+
 export function priceIdForPlan(planId: string): string | undefined {
   const map = getSettings().stripePlanPriceIds ?? {};
   return Object.entries(map).find(([, id]) => id === planId)?.[0];
-}
-
-/**
- * The first instant of next month, UTC, as Stripe's unix seconds.
- *
- * The gateway meters every org's allowance per UTC calendar month
- * (`currentPeriod` in plans-shape.ts) and resets it on the 1st. Without an
- * anchor Stripe bills on the signup day instead, so an org that subscribes on
- * the 20th pays a full month and gets eleven days of allowance before the
- * reset. Anchoring the cycle to the 1st puts both clocks on the same day.
- *
- * Stripe requires the anchor to be in the future and no more than one billing
- * period out; the 1st of next month is always both, for the monthly prices
- * these plans use. Proration is left at Stripe's default
- * (`create_prorations`), so the partial first month is charged pro rata rather
- * than given away or billed in full.
- *
- * ponytail: monthly prices only — an annual price anchored here would bill a
- * year's proration into weeks. Gate on `price.recurring.interval` if a yearly
- * tier is ever sold.
- */
-export function firstOfNextMonthUnix(now: Date = new Date()): number {
-  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
-  return Math.floor(start / 1000);
 }
 
 /** First subscribe: Checkout collects + saves the card for the org's flat
@@ -219,9 +201,33 @@ export async function createOrgCheckoutSession(input: {
         ...(input.planId ? { planId: input.planId } : {}),
       },
       subscription_data: {
-        // Align the billing cycle with the allowance month — see
-        // firstOfNextMonthUnix.
-        billing_cycle_anchor: firstOfNextMonthUnix(),
+        /**
+         * Bill on the 1st, UTC midnight — the day the gateway resets every
+         * org's allowance (`currentPeriod` in plans-shape.ts). Without this
+         * Stripe anchors to the signup day, so an org subscribing on the 20th
+         * pays a full month and gets eleven days of allowance before the reset.
+         * Stripe's default proration then charges the partial first month pro
+         * rata rather than giving it away or billing it whole.
+         *
+         * Declarative rather than an absolute `billing_cycle_anchor` timestamp,
+         * and that is a correctness difference, not a style one: a Checkout
+         * Session lives 24h, but Stripe validates an absolute anchor when the
+         * subscription is CREATED — when the buyer clicks pay. A session opened
+         * at 23:50 UTC on the 31st and paid at 00:02 carries an anchor that is
+         * now in the past, and Stripe refuses the subscription outright. For a
+         * BR customer base that window is 21:00 BRT on the last day of the
+         * month, i.e. peak evening, every month. A day-of-month config cannot
+         * go stale. Verified to produce exactly 2026-10-01T00:00:00Z.
+         *
+         * ponytail: monthly prices only — a yearly tier would need its own
+         * anchoring story.
+         */
+        billing_cycle_anchor_config: {
+          day_of_month: 1,
+          hour: 0,
+          minute: 0,
+          second: 0,
+        },
         metadata: {
           orgId: input.organizationId,
           ...(input.planId ? { planId: input.planId } : {}),

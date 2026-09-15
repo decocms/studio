@@ -14,6 +14,7 @@ import { z } from "zod";
 import {
   createOrgCheckoutSession,
   createSubscriptionUpdateSession,
+  isPlanPrice,
   priceIdForPlan,
   retrieveSubscription,
   StripeApiError,
@@ -136,11 +137,24 @@ async function startPlanChange(input: {
     );
   }
   const subscription = await retrieveSubscription(input.subscriptionId);
-  const item = subscription.items?.data?.[0];
+  // The PLAN line, not item [0]. Stripe does not promise item ordering, and
+  // `planIdForPrices` already contemplates a subscription carrying add-on
+  // prices beside the plan — pinning the confirm flow to whichever item came
+  // first would rewrite an add-on to the Ultra price and leave the old plan
+  // line untouched, charging the org for both at once.
+  const planItems = (subscription.items?.data ?? []).filter((it) =>
+    it.price?.id ? isPlanPrice(it.price.id) : false,
+  );
+  const item = planItems[0];
+  if (planItems.length > 1) {
+    throw new Error(
+      "This organization's subscription has more than one plan line — change it in Stripe, not here.",
+    );
+  }
   if (!item?.id) {
     throw new StripeApiError(
       500,
-      "subscription has no item to move to another price",
+      "subscription has no plan line to move to another price",
     );
   }
   // Already there — a confirm screen offering the price it is on would read as

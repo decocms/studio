@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import {
   mapSubscriptionStatus,
   parseStripeEvent,
+  invoicePeriodEnd,
   planIdForPrices,
   planIdForStripe,
   subscriptionFunnelEvent,
@@ -324,6 +325,43 @@ describe("planIdForStripe", () => {
         MAP,
       ),
     ).toBeUndefined();
+  });
+
+  test("a proration invoice's period end is the period BOUGHT, not the gather window", () => {
+    // Real shape from a Pro -> Ultra upgrade: the invoice's own period_end is
+    // ~now (it gathered items over [last invoice, now]), while the lines carry
+    // the period actually paid for. Writing the former as current_period_end
+    // moves the renewal date into the past AND re-keys the task-quota bucket,
+    // handing out a fresh month of executions on every tier change.
+    const gatherWindowEnd = 1789495282; // 2026-09-15T18:01:22Z
+    const periodBought = 1792087280; // 2026-10-15T18:01:20Z
+    const invoice = {
+      period_end: gatherWindowEnd,
+      lines: {
+        data: [
+          {
+            amount: -25000,
+            period: { start: gatherWindowEnd, end: periodBought },
+          },
+          {
+            amount: 500000,
+            period: { start: gatherWindowEnd, end: periodBought },
+          },
+        ],
+      },
+    };
+    expect(invoicePeriodEnd(invoice)?.toISOString()).toBe(
+      new Date(periodBought * 1000).toISOString(),
+    );
+  });
+
+  test("an invoice whose lines carry no period falls back to its own", () => {
+    expect(
+      invoicePeriodEnd({
+        period_end: 1792087280,
+        lines: { data: [{}] },
+      })?.toISOString(),
+    ).toBe(new Date(1792087280 * 1000).toISOString());
   });
 
   test("subscription items still resolve — they carry no amount at all", () => {

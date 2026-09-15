@@ -145,6 +145,39 @@ function invoiceSubscriptionId(
 }
 
 /**
+ * When the period an invoice PAID FOR actually ends.
+ *
+ * Not `invoice.period_end`, which is the window invoice items were gathered
+ * over. For a cycle invoice the two coincide, which is why reading the invoice
+ * was fine until tier changes existed. A mid-cycle proration invoice
+ * (`billing_reason: subscription_update`) gathers over `[last invoice, now]`,
+ * so its `period_end` is NOW. Verified on a real upgrade:
+ *
+ *   invoice.period_end   2026-09-15T18:01:22Z   <- now
+ *   line[].period.end    2026-10-15T18:01:20Z   <- the period actually bought
+ *
+ * Writing the former as `current_period_end` moves the org's renewal date into
+ * the past, and `task-quota.ts` keys its monthly bucket off that exact value
+ * (`sub:${currentPeriodEnd.toISOString()}`) — so a tier change would hand out a
+ * brand-new, empty month of task executions, repeatably. The lines carry the
+ * real period, so read them and fall back to the invoice only when they do not.
+ */
+export function invoicePeriodEnd(obj: Record<string, unknown>): Date | null {
+  const lines = rec(obj.lines)?.data;
+  if (Array.isArray(lines)) {
+    let latest: number | null = null;
+    for (const line of lines) {
+      const end = rec(rec(line)?.period)?.end;
+      if (typeof end === "number" && (latest === null || end > latest)) {
+        latest = end;
+      }
+    }
+    if (latest !== null) return new Date(latest * 1000);
+  }
+  return epochToDate(obj.period_end);
+}
+
+/**
  * The gateway plan id every price in a subscription's items maps to, or
  * undefined when none of them is a plan price. First match wins: a
  * subscription carrying one plan price plus add-on prices still resolves.
@@ -440,7 +473,7 @@ export async function applyStripeEvent(
       // unpaid→paid recovery (a deleted subscription can't reach this).
       await storage.updateStripeState(billing.organizationId, {
         status: "active",
-        currentPeriodEnd: epochToDate(obj.period_end),
+        currentPeriodEnd: invoicePeriodEnd(obj),
         lastStripeEventAt: nextWatermark(event, billing),
       });
       // The other half of the recovery: an org dropped to free by a failed

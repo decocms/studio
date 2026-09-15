@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   computeTopUpChargeCents,
-  firstOfNextMonthUnix,
   taxAndAddressParams,
   toStripeForm,
 } from "./stripe-api";
@@ -93,44 +92,5 @@ describe("toUsdCreditCents (BRL top-up FX)", () => {
     expect(toUsdCreditCents(5500, "brl", 5.5)).toBe(1000); // R$55 @5.5 = $10
     expect(toUsdCreditCents(1000, "usd", 5.5)).toBe(1000);
     expect(toUsdCreditCents(999, "brl", 5.5)).toBe(182); // rounds
-  });
-});
-
-describe("firstOfNextMonthUnix", () => {
-  const asIso = (now: string) =>
-    new Date(firstOfNextMonthUnix(new Date(now)) * 1000).toISOString();
-
-  test("anchors to the 1st of next month, UTC midnight", () => {
-    // The case this exists for: subscribing on the 20th used to bill a full
-    // month against an allowance that resets on the 1st, eleven days later.
-    expect(asIso("2026-09-20T13:45:07.123Z")).toBe("2026-10-01T00:00:00.000Z");
-  });
-
-  test("rolls the year over in December", () => {
-    expect(asIso("2026-12-31T23:59:59.000Z")).toBe("2027-01-01T00:00:00.000Z");
-  });
-
-  test("a February subscribe anchors to March 1 regardless of month length", () => {
-    expect(asIso("2028-02-29T00:00:00.000Z")).toBe("2028-03-01T00:00:00.000Z");
-  });
-
-  test("is always in the future and at most one month out — Stripe rejects otherwise", () => {
-    const MONTH_MS = 31 * 24 * 60 * 60 * 1000;
-    for (const iso of [
-      "2026-01-01T00:00:00.000Z",
-      "2026-01-31T23:59:00.000Z",
-      "2026-06-15T12:00:00.000Z",
-      "2027-02-28T23:00:00.000Z",
-    ]) {
-      const now = new Date(iso);
-      const anchorMs = firstOfNextMonthUnix(now) * 1000;
-      expect(anchorMs).toBeGreaterThan(now.getTime());
-      expect(anchorMs - now.getTime()).toBeLessThanOrEqual(MONTH_MS);
-    }
-  });
-
-  test("is whole seconds — Stripe takes unix seconds, not millis", () => {
-    const anchor = firstOfNextMonthUnix(new Date("2026-09-20T13:45:07.123Z"));
-    expect(Number.isInteger(anchor)).toBe(true);
   });
 });

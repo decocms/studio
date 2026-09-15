@@ -38,7 +38,9 @@ type PlanPrice = z.infer<typeof priceSchema>;
  * this.
  */
 const CACHE_TTL_MS = 10 * 60_000;
-let cache: { at: number; prices: PlanPrice[] } | null = null;
+/** A read that came back short is held only long enough to stop a stampede. */
+const PARTIAL_CACHE_TTL_MS = 30_000;
+let cache: { at: number; prices: PlanPrice[]; ttlMs: number } | null = null;
 
 /** Exported for tests — a cached snapshot outlives a test's settings mock. */
 export function clearPlanPriceCache(): void {
@@ -46,9 +48,23 @@ export function clearPlanPriceCache(): void {
 }
 
 async function loadPlanPrices(): Promise<PlanPrice[]> {
-  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.prices;
+  if (cache && Date.now() - cache.at < cache.ttlMs) return cache.prices;
 
-  const entries = Object.entries(getSettings().stripePlanPriceIds ?? {});
+  // ONE price per plan, and specifically the one `priceIdForPlan` would sell.
+  // The map allows two prices for the same tier (a legacy price beside a
+  // current one). Checkout takes the first; the UI used to collapse the rows
+  // with Object.fromEntries, where the LAST wins — so an org could be quoted
+  // R$250 and charged R$1200, which is the exact divergence this tool exists to
+  // remove. Quoting only the sellable price makes the two agree by
+  // construction rather than by both sides happening to sort the same way.
+  const seen = new Set<string>();
+  const entries = Object.entries(getSettings().stripePlanPriceIds ?? {}).filter(
+    ([, planId]) => {
+      if (seen.has(planId)) return false;
+      seen.add(planId);
+      return true;
+    },
+  );
   const settled = await Promise.all(
     entries.map(async ([priceId, planId]): Promise<PlanPrice | null> => {
       try {
@@ -74,9 +90,19 @@ async function loadPlanPrices(): Promise<PlanPrice[]> {
     }),
   );
   const prices = settled.filter((p): p is PlanPrice => p !== null);
-  // Only cache a complete read. Caching a partial one would pin a half-empty
-  // catalog in memory for the whole TTL after a transient Stripe blip.
-  if (prices.length === entries.length) cache = { at: Date.now(), prices };
+  // A partial read is cached too, but briefly. Caching it for the full TTL
+  // would pin a half-empty catalog after a transient Stripe blip; NOT caching
+  // it at all was worse, because some gaps never close — a price with no fixed
+  // amount (metered/tiered) is dropped on every read, and a deleted or mistyped
+  // price id 404s for ever. Either one meant this tool, which sits on a page
+  // every org loads, hit Stripe N times per request indefinitely. Short TTL
+  // bounds that while still letting the gap heal on its own.
+  const complete = prices.length === entries.length;
+  cache = {
+    at: Date.now(),
+    prices,
+    ttlMs: complete ? CACHE_TTL_MS : PARTIAL_CACHE_TTL_MS,
+  };
   return prices;
 }
 
