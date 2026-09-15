@@ -1,4 +1,4 @@
-import { createContext, use, type ReactNode } from "react";
+import { createContext, use, useRef, type ReactNode } from "react";
 import type { ErrorComponentProps } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -8,6 +8,7 @@ import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type GroupImperativeHandle,
 } from "@/components/resizable";
 import {
   computeChatLayoutPanelSizes,
@@ -52,11 +53,35 @@ function useChatLayoutContext() {
 /** Places the thread beside routed content, or selects one region on mobile. */
 function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
   const isMobile = useIsMobile();
+  const groupRef = useRef<GroupImperativeHandle | null>(null);
   const [threadWidth, setThreadWidth] = useSidePanelWidth();
   const { threadOpen, contentOpen } = layout;
   const sizes = computeChatLayoutPanelSizes(layout);
   const threadSize = threadOpen && contentOpen ? threadWidth : sizes.side;
   const contentSize = 100 - threadSize;
+  const synchronizeLayout = (group: GroupImperativeHandle) => {
+    const current = group.getLayout();
+    const currentThreadSize = current[THREAD_PANEL_ID];
+    const currentContentSize = current[CONTENT_PANEL_ID];
+    // A lazy destination can register its content panel after the thread panel.
+    if (
+      typeof currentThreadSize !== "number" ||
+      typeof currentContentSize !== "number"
+    ) {
+      return;
+    }
+    // The library rounds panel percentages to three decimal places.
+    if (
+      Math.abs(currentThreadSize - threadSize) < 0.001 &&
+      Math.abs(currentContentSize - contentSize) < 0.001
+    ) {
+      return;
+    }
+    group.setLayout({
+      [THREAD_PANEL_ID]: threadSize,
+      [CONTENT_PANEL_ID]: contentSize,
+    });
+  };
   const value = {
     ...layout,
     isMobile,
@@ -78,19 +103,16 @@ function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
       ) : (
         <ResizablePanelGroup
           ref={(group) => {
+            groupRef.current = group;
             if (!group) return;
             let attached = true;
             // The library registers the group after attaching its imperative ref.
             queueMicrotask(() => {
-              if (attached) {
-                group.setLayout({
-                  [THREAD_PANEL_ID]: threadSize,
-                  [CONTENT_PANEL_ID]: contentSize,
-                });
-              }
+              if (attached) synchronizeLayout(group);
             });
             return () => {
               attached = false;
+              if (groupRef.current === group) groupRef.current = null;
             };
           }}
           defaultLayout={{
@@ -102,9 +124,13 @@ function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
           className="flex-1 min-h-0 pt-1 pb-1 pr-1 pl-0 [&>[data-chat-layout-panel-open]]:!min-w-[320px]"
           style={{ overflow: "visible" }}
           onLayoutChanged={(nextLayout, { isUserInteraction }) => {
+            if (!isUserInteraction) {
+              const group = groupRef.current;
+              if (group) synchronizeLayout(group);
+              return;
+            }
             const percentage = nextLayout[THREAD_PANEL_ID];
             if (
-              isUserInteraction &&
               threadOpen &&
               contentOpen &&
               typeof percentage === "number" &&
