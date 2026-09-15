@@ -2343,6 +2343,53 @@ export interface RepositoryTable {
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
 
+/** A/B experiments — per-site metadata (the traffic-split block lives in the
+ *  site's decofile, not here). */
+export interface ExperimentVariant {
+  id: string;
+  weight: number;
+  role?: "control" | "treatment" | null;
+}
+
+export interface ExperimentTable {
+  id: string;
+  organization_id: string;
+  /** Admin site slug the experiment belongs to. */
+  site: string;
+  /** Stable per-site key (also the decofile block key). */
+  key: string;
+  name: string;
+  /** draft | running | paused | ended. */
+  status: string;
+  goals: JsonObject<string[]>;
+  variants: JsonObject<ExperimentVariant[]>;
+  started_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  ended_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface Experiment {
+  id: string;
+  organizationId: string;
+  site: string;
+  key: string;
+  name: string;
+  status: "draft" | "running" | "paused" | "ended";
+  goals: string[];
+  variants: ExperimentVariant[];
+  startedAt: string | null;
+  endedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Database extends PrivateRegistryDatabase {
   // Core tables (all within organization scope)
   users: UserTable; // System users
@@ -2432,6 +2479,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org
   organization_notices: OrganizationNoticeTable;

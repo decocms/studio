@@ -493,6 +493,10 @@ export const KEYS = {
 
   // Tags (scoped by locator)
   tags: (locator: string) => [locator, "tags"] as const,
+  experiments: (locator: string, site: string) =>
+    [locator, "experiments", site] as const,
+  experimentResults: (locator: string, site: string, key: string) =>
+    [locator, "experiments", site, key, "results"] as const,
   memberTags: (locator: string, memberId: string) =>
     [locator, "member-tags", memberId] as const,
 
