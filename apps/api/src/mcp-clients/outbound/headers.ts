@@ -43,10 +43,21 @@ export function stripBindingMetadata(value: unknown): unknown {
 // Common HTTP servers/proxies reject a single header line above ~8-16KB.
 const MAX_RUN_METADATA_HEADER_BYTES = 8 * 1024;
 
+/** HTTP header values must be ByteStrings (code points 0-255) — `fetch`/undici
+ *  throws on anything outside that range instead of encoding it. Run metadata
+ *  can carry arbitrary webhook-supplied text (e.g. non-Latin issue titles), so
+ *  this must be checked before the value is ever handed to a request's headers. */
+function isHeaderSafe(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    if (value.charCodeAt(i) > 255) return false;
+  }
+  return true;
+}
+
 /**
  * Serialize run metadata for the outbound run-metadata header, dropping it
  * (rather than truncating, which would produce invalid JSON) when it's too
- * large to safely forward as a header.
+ * large, or unsafe, to forward as a header.
  */
 export function serializeRunMetadataHeader(
   runMetadata: Record<string, string> | undefined,
@@ -55,7 +66,8 @@ export function serializeRunMetadataHeader(
   const serialized = JSON.stringify(runMetadata);
   // Cap is in bytes, not UTF-16 code units, so measure the encoded size.
   const byteLength = new TextEncoder().encode(serialized).length;
-  return byteLength > MAX_RUN_METADATA_HEADER_BYTES ? null : serialized;
+  if (byteLength > MAX_RUN_METADATA_HEADER_BYTES) return null;
+  return isHeaderSafe(serialized) ? serialized : null;
 }
 
 /**
