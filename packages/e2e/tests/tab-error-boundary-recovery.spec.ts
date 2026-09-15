@@ -88,11 +88,15 @@ test.describe("tab error boundary recovers on tab switch", () => {
     await expect(page).toHaveURL(
       new RegExp(`/projects/${agentId}/site-editor`),
     );
+    await expect(page.getByRole("button", { name: /^sandbox$/i })).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByText(/something went wrong/i)).toBeHidden();
 
     // Switch back to settings — error UI reappears (state was reset on
     // remount via key={activeTab}, not memoized as healthy).
     await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${agentId}/settings`));
     await expect(page.getByText(/something went wrong/i)).toBeVisible({
       timeout: 15_000,
     });

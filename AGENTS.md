@@ -467,7 +467,7 @@ The web UI (`apps/web/src`) is internationalized by a zero-dependency module at
 
 - `*Layout` owns placement and shared providers; `WorkspaceLayout` owns the desktop split.
 - `Panel` owns a surface and `Panel.Topbar.Left/Center/Right` controls. Deep feature controls use the corresponding `.Target` / `.Portal` pair, scoped to the nearest panel.
-- `*Page` composes a route. Workspace routes use `WorkspacePage`; Site Editor children share `SiteEditorPage`. Keep suspending feature reads below the page's content boundary.
+- `*Page` composes a route. Workspace routes compose `WorkspacePage` directly, supplying their own actions and drawer as needed. Keep suspending feature reads below the page's content boundary.
 - `Page.Content` owns document scrolling; `Page.Container` owns width and spacing; `Page.Title` owns the heading. Canvas editors manage their own inner panes inside `Panel.Content`.
 - Read workspace state from `layouts/workspace/workspace-context`, without importing the shell implementation. See [the architecture guide](apps/web/docs/component-architecture.md) for examples and the migration map.
 

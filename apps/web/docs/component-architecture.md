@@ -9,7 +9,7 @@ its controls without adding another branch to the application shell.
 | --- | --- | --- |
 | `*Layout` | Placement and providers shared by descendant routes | `OrgLayout`, `WorkspaceLayout`, `SettingsLayout` |
 | `Panel` | A bounded surface, its topbar regions, and its body | Chat card, routed workspace card, detail view |
-| `*Page` | A route or a reusable recipe for composing a route | `HomePage`, `WorkspacePage`, `SiteEditorPage` |
+| `*Page` | A route or a reusable recipe for composing a route | `HomePage`, `WorkspacePage` |
 | `Page` | Document content: scrolling, spacing, width, and heading | Settings, project configuration, lists |
 | `*Content` | Feature rendering and data reads below the route's boundary | `AgentSettingsContent` |
 | `*Provider` / `*Context` | Runtime state with an explicit lifetime | `WorkspaceContext`, `Chat.Provider` |
@@ -29,7 +29,7 @@ flowchart TD
   Runtime --> Workspace["WorkspaceLayout · desktop split + saved widths"]
   Workspace --> Chat["Panel · chat topbar + composer"]
   Workspace --> Route["Destination route"]
-  Route --> Recipe["WorkspacePage / SiteEditorPage"]
+  Route --> Recipe["WorkspacePage"]
   Recipe --> Surface["Panel"]
   Surface --> Topbar["Panel.Topbar.Left / Center / Right"]
   Surface --> Body["Panel.Content · canvas"]
@@ -78,8 +78,21 @@ export default function ProjectSettingsPage() {
 Workspace destination routes also use `WorkspacePagePending` as their router
 pending component, retaining the standard frame while a route chunk loads.
 That component is lazy so settings-only visits do not eagerly load workspace
-features. The shared Site Editor parent owns its Preview, Content, and Code
-children, its branch/publish actions, and its runtime drawer.
+features. Routes supply their feature controls and drawers directly. For example,
+`SiteEditorRoute` shares one frame across Preview, Content, and Code:
+
+```tsx
+export default function SiteEditorRoute() {
+  return (
+    <WorkspacePage actions={<SiteEditorActions />} drawer={<SiteEditorDrawer />}>
+      <Outlet />
+    </WorkspacePage>
+  );
+}
+```
+
+`SiteEditorActions` and `SiteEditorDrawer` are private to the route module and
+own its branch/publish controls and runtime drawer.
 The Develop/Live project switch remains in the shared workspace topbar because
 it switches project identity on every destination, including Settings.
 
@@ -154,7 +167,7 @@ form actions with the document.
 | `WorkspacePanelGroup` | `WorkspaceLayout` for placement; route recipes for main-panel content |
 | `PanelCard`, `SidePanel`, `PanelHeader` | `Panel`, `Panel.Content`, `Panel.Topbar` |
 | `Toolbar.*` and `MainPanelHeader*` portals | `Panel.Topbar.{Left,Center,Right}.{Target,Portal}` |
-| `MainPanelContent`, `MainPanelWithDrawer` | `WorkspacePage`, `SiteEditorPage` |
+| `MainPanelContent`, `MainPanelWithDrawer` | `WorkspacePage` with route-owned actions and drawer |
 | `ViewLayout`, `ViewTabs`, `ViewActions` | `DetailPanel` and `Panel.Topbar` portals |
 | `Page.Header`, `Page.Header.Left/Right` | The surrounding panel's topbar |
 | `Page.Body maxWidth={…}` | `Page.Container width="…"` |
