@@ -18,31 +18,82 @@ export type Plan = {
   features: Record<string, boolean>;
 };
 
-/** The currency every price below is quoted and charged in. */
-export const PLAN_PRICE_CURRENCY = "BRL";
-
-/**
- * Monthly subscription price, in whole BRL, keyed by plan id.
- *
- * TEMPORARY. The price actually charged lives in Stripe, mapped by
- * `STRIPE_PLAN_PRICE_IDS`; nothing here is read by checkout, so a wrong number
- * here misquotes an org without changing what its card is charged. Replace
- * this table with the amount off the Stripe price object as soon as the
- * gateway wiring lands — do not add a tier here instead.
- *
- * Keyed by ID, not by rung: a plant on the wrong rung is cosmetic, a price on
- * the wrong plan is a misquote. An id that is missing here (`ai_service`, or
- * any tier added later) renders NO price rather than a guessed one.
- */
-const PLAN_PRICES_BRL: Record<string, number> = {
-  free: 0,
-  pro: 250,
-  pro_plus: 1250,
-  ultra: 5000,
+/** What a tier costs per month, as Stripe states it. */
+export type PlanPrice = {
+  /** Minor units — centavos for BRL. */
+  amountCents: number;
+  /** ISO 4217, lowercase from Stripe; `Intl` accepts either case. */
+  currency: string;
+  interval: string | null;
 };
 
-export function planPriceBrl(planId: string): number | undefined {
-  return PLAN_PRICES_BRL[planId];
+/**
+ * The monthly price of every purchasable tier, straight off the Stripe Price
+ * objects checkout charges.
+ *
+ * This replaced a hardcoded BRL table. Nothing in that table reached checkout,
+ * so a stale number quoted one amount while the card was charged another —
+ * and a misquote that renders confidently is worse than no price at all.
+ * Hence no fallback here: a plan Stripe can't price renders nothing.
+ *
+ * Not keyed by org — prices are a property of the deployment, so every org
+ * shares one cache entry.
+ */
+export function usePlanPrices() {
+  const studio = useStudioTools();
+  const plansEnabled = usePlansEnabled();
+  return useQuery({
+    queryKey: KEYS.aiPlanPrices(),
+    enabled: plansEnabled,
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const { prices } = await studio.call(
+        "ORGANIZATION_BILLING_PLAN_PRICES",
+        {},
+      );
+      return Object.fromEntries(
+        prices.map((p) => [
+          p.planId,
+          {
+            amountCents: p.amountCents,
+            currency: p.currency,
+            interval: p.interval,
+          } satisfies PlanPrice,
+        ]),
+      ) as Record<string, PlanPrice>;
+    },
+  });
+}
+
+/**
+ * Free has no Stripe price and never will — it is the absence of a
+ * subscription, not a product priced at zero.
+ *
+ * It still renders "R$ 0" rather than nothing: an absent price line on one
+ * card alone knocks its button out of line with the rest of the row. The
+ * currency is borrowed from whatever a real tier is priced in, so the zero
+ * matches the column beside it instead of asserting a currency of its own.
+ */
+export function planPrice(
+  prices: Record<string, PlanPrice> | undefined,
+  planId: string,
+): PlanPrice | undefined {
+  if (planId !== "free") return prices?.[planId];
+  const paid = prices && Object.values(prices)[0];
+  return paid
+    ? { amountCents: 0, currency: paid.currency, interval: paid.interval }
+    : undefined;
+}
+
+/** One place that turns a price into the string every surface shows. */
+export function formatPlanPrice(price: PlanPrice, language: string): string {
+  return (price.amountCents / 100).toLocaleString(language, {
+    style: "currency",
+    currency: price.currency.toUpperCase(),
+    // Whole units: these are R$ 250 / R$ 5.000, and ",00" on four cards is
+    // noise. A tier ever priced with cents will need this relaxed.
+    maximumFractionDigits: 0,
+  });
 }
 
 /** Every gate a plan can hold, in the order the comparison reads. */

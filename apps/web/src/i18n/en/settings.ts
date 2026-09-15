@@ -531,6 +531,7 @@ export const settings = {
   "settings.planUsage.manageBilling": "Manage billing",
   "settings.planUsage.portalFailed": "Couldn't open billing: {message}",
   "settings.planUsage.subscribe": "Subscribe",
+  "settings.planUsage.changePlan": "Change plan",
   "settings.planUsage.downgrade": "Downgrade",
   "settings.planUsage.changed": "Plan updated",
   "settings.planUsage.changeFailed": "Couldn't change plan: {message}",

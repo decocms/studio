@@ -643,6 +643,7 @@ export const KEYS = {
   aiPlanEntitlements: (orgId: string) =>
     ["ai-plan-entitlements", orgId] as const,
   aiPlanCatalog: (orgId: string) => ["ai-plan-catalog", orgId] as const,
+  aiPlanPrices: () => ["ai-plan-prices"] as const,
   // Whether the org has a Stripe account/subscription behind its plan.
   orgBillingAccount: (orgId: string) => ["org-billing-account", orgId] as const,
 

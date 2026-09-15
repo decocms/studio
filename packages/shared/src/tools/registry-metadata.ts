@@ -78,6 +78,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_BILLING_CHECKOUT_START",
   "ORGANIZATION_BILLING_PORTAL",
+  "ORGANIZATION_BILLING_PLAN_PRICES",
   "ORGANIZATION_TASK_QUOTA_GET",
   // Legacy deco.cx infra billing
   "INFRA_BILLING_SITES_LIST",
@@ -482,6 +483,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_BILLING_PORTAL",
     description: "Open the Stripe billing portal",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_BILLING_PLAN_PRICES",
+    description: "Read each plan's monthly price from Stripe",
     category: "Organizations",
   },
   {
@@ -1535,6 +1541,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_CREDITS",
       "AI_PLAN_ENTITLEMENTS",
       "AI_PLAN_LIST",
+      // Read-only, and the plan catalog and every paywall quote from it — a
+      // member who may see the tiers may see what they cost.
+      "ORGANIZATION_BILLING_PLAN_PRICES",
       // NOT AI_PLAN_SET — it lives in `ai-providers:manage` only. It changes
       // the org's plan and takes no payment, so granting it to every member
       // let any member hand its org every feature (including `ai_service`)

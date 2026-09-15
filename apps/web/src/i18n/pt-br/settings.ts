@@ -548,6 +548,7 @@ export const settings = {
   "settings.planUsage.portalFailed":
     "Não foi possível abrir a cobrança: {message}",
   "settings.planUsage.subscribe": "Assinar",
+  "settings.planUsage.changePlan": "Mudar de plano",
   "settings.planUsage.downgrade": "Voltar ao gratuito",
   "settings.planUsage.changed": "Plano atualizado",
   "settings.planUsage.changeFailed":

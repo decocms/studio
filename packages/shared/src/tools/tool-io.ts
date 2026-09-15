@@ -1273,6 +1273,17 @@ export interface StudioToolIO {
     input: { planId?: string | undefined };
     output: { url: string };
   };
+  ORGANIZATION_BILLING_PLAN_PRICES: {
+    input: { [x: string]: never };
+    output: {
+      prices: {
+        planId: string;
+        amountCents: number;
+        currency: string;
+        interval: string | null;
+      }[];
+    };
+  };
   ORGANIZATION_BILLING_PORTAL: {
     input: { [x: string]: never };
     output: { url: string };

@@ -25,10 +25,12 @@ import { useEntitlements, usePlansEnabled } from "@/hooks/use-entitlements";
 import {
   FEATURE_ROWS,
   PlanPlant,
-  planPriceBrl,
-  PLAN_PRICE_CURRENCY,
+  planPrice,
+  formatPlanPrice,
+  usePlanPrices,
   usePlanCatalog,
   type Plan,
+  type PlanPrice,
 } from "./plan-ladder";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
@@ -42,7 +44,7 @@ import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
  * lines. Inline, every plan gets the same feature rows in the same order, so
  * what a tier adds is read down a column and across a row.
  *
- * Allowances stay on the gateway; the price is a placeholder (`planPriceBrl`).
+ * Allowances stay on the gateway; prices come from Stripe (`usePlanPrices`).
  */
 
 export function PlanCatalog() {
@@ -55,6 +57,7 @@ export function PlanCatalog() {
   const [confirmDowngrade, setConfirmDowngrade] = useState(false);
 
   const { data: plans, isLoading, isError, refetch } = usePlanCatalog();
+  const { data: prices } = usePlanPrices();
 
   // An UPGRADE is a purchase, so it goes to Stripe and the tier arrives from
   // the webhook. `AI_PLAN_SET` takes no payment and only accepts 'free', which
@@ -94,6 +97,10 @@ export function PlanCatalog() {
   const currentIndex = plans?.findIndex((p) => p.id === currentId) ?? -1;
   const suggestedId =
     currentIndex >= 0 ? (plans?.[currentIndex + 1]?.id ?? null) : null;
+  // An org already paying for a tier does not "Subscribe" to another one — it
+  // moves the subscription it has, on Stripe's own confirm screen. Same
+  // button, and the word is the only thing that says which of the two it is.
+  const subscribed = currentId !== null && currentId !== "free";
 
   return (
     <SettingsSection title={t("settings.plans.title")}>
@@ -120,6 +127,8 @@ export function PlanCatalog() {
               key={plan.id}
               plan={plan}
               index={index}
+              price={planPrice(prices, plan.id)}
+              subscribed={subscribed}
               isCurrent={plan.id === currentId}
               emphasis={plan.id === suggestedId}
               disabled={isPending}
@@ -171,6 +180,8 @@ export function PlanCatalog() {
 function PlanCard({
   plan,
   index,
+  price,
+  subscribed,
   isCurrent,
   emphasis,
   disabled,
@@ -178,6 +189,8 @@ function PlanCard({
 }: {
   plan: Plan;
   index: number;
+  price: PlanPrice | undefined;
+  subscribed: boolean;
   isCurrent: boolean;
   emphasis: boolean;
   disabled: boolean;
@@ -185,7 +198,6 @@ function PlanCard({
 }) {
   const t = useT();
   const [preferences] = usePreferences();
-  const price = planPriceBrl(plan.id);
 
   return (
     <Card
@@ -198,15 +210,13 @@ function PlanCard({
         <div className="flex flex-col gap-3">
           <h3 className="text-base font-medium leading-tight">{plan.name}</h3>
           {/* Free renders "R$0" rather than nothing: an absent line on one
-              card alone would knock its button out of line with the rest. */}
+              card alone would knock its button out of line with the rest.
+              While the prices load, EVERY card omits the line, so the row
+              stays aligned and no card shows a number that is about to move. */}
           {price !== undefined && (
             <div className="flex flex-col gap-1">
               <span className="text-2xl font-semibold leading-none tracking-tight tabular-nums">
-                {price.toLocaleString(preferences.language, {
-                  style: "currency",
-                  currency: PLAN_PRICE_CURRENCY,
-                  maximumFractionDigits: 0,
-                })}
+                {formatPlanPrice(price, preferences.language)}
               </span>
               <span className="text-sm text-muted-foreground">
                 {t("settings.plans.perMonth")}
@@ -230,7 +240,9 @@ function PlanCard({
         >
           {plan.id === "free"
             ? t("settings.planUsage.downgrade")
-            : t("settings.planUsage.subscribe")}
+            : subscribed
+              ? t("settings.planUsage.changePlan")
+              : t("settings.planUsage.subscribe")}
         </Button>
       )}
 

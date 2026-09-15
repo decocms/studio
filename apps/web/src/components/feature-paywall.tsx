@@ -13,10 +13,11 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PaywallDialog } from "@/components/paywall/paywall-dialog";
 import {
-  PLAN_PRICE_CURRENCY,
   PlanPlant,
   planAccent,
-  planPriceBrl,
+  planPrice,
+  formatPlanPrice,
+  usePlanPrices,
   planUnlocking,
   usePlanCatalog,
 } from "@/views/settings/ai-providers/plan-ladder";
@@ -101,6 +102,7 @@ export function FeaturePaywall({
   const { org } = useProjectContext();
   const { data: plans } = usePlanCatalog();
   const { data: entitlements } = useEntitlements();
+  const { data: prices } = usePlanPrices();
   const [preferences] = usePreferences();
   // The same names the plan picker lists, so the upsell and the plan card
   // call the feature the same thing.
@@ -112,7 +114,7 @@ export function FeaturePaywall({
     ? nextRung(plans, entitlements?.plan.id)
     : planUnlocking(plans, feature);
   const accent = target ? planAccent(target.index) : undefined;
-  const price = target ? planPriceBrl(target.plan.id) : undefined;
+  const price = target ? planPrice(prices, target.plan.id) : undefined;
   const bullets = copy
     ? ALLOWANCE_BULLETS
     : feature in FEATURE_BULLETS
@@ -163,11 +165,7 @@ export function FeaturePaywall({
         price !== undefined ? (
           <span className="flex items-baseline justify-center gap-1.5">
             <span className="text-2xl font-semibold tabular-nums tracking-tight">
-              {price.toLocaleString(preferences.language, {
-                style: "currency",
-                currency: PLAN_PRICE_CURRENCY,
-                maximumFractionDigits: 0,
-              })}
+              {formatPlanPrice(price, preferences.language)}
             </span>
             <span className="text-sm text-muted-foreground">
               {t("settings.plans.perMonth")}
