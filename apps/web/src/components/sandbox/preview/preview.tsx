@@ -3,7 +3,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
@@ -346,19 +346,21 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const isMobile = useIsMobile();
   // Desktop: the main panel header hosts the preview controls (single top bar).
   // Mobile / standalone (no header slot): render the toolbar inline below.
-  const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
+  const {
+    currentBranch: branch,
+    taskId: activeTaskId,
+    virtualMcpId: sessionAgentId,
+  } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
-  const workspaceContext = useOptionalWorkspace();
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
   /** THIS session's runtime, off the thread's own immutable stamp — the one
    *  thread-aware gate, scoped to this agent's entity by the id match. */
   const session = useSessionRuntime(virtualMcpId);
   /** Settings › CMS for this project. `off` is the one thing that keeps a CMS
    *  session out of the blocks editor below. */
-  const cmsMode = resolveCmsMode(
-    workspaceContext?.entity?.id === virtualMcpId
-      ? (workspaceContext.entity.metadata?.ui?.layout ?? null)
-      : null,
-  );
+  const cmsMode = resolveCmsMode(agent?.metadata?.ui?.layout ?? null);
   const contentEditingEnabled = isContentEditingEnabled(cmsMode);
   const blocksEditingEnabled = isBlocksEditingEnabled({
     contentEditingEnabled,
@@ -468,11 +470,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
-    workspaceContext?.entity?.id === virtualMcpId
-      ? resolvePreviewServerUrl(workspaceContext.entity.metadata)
-      : null;
+    agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const fastPreviewEnabled =
-    workspaceContext?.entity?.id === virtualMcpId && session.runtime === "cms";
+    agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
   const projectDefaultsToCms = session.projectDefault === "cms";
 
@@ -735,8 +735,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * place, and re-tracks live once the panel closes.
    */
   const inPlaceRenderEnabled =
-    workspaceContext?.entity?.id === virtualMcpId &&
-    workspaceContext.entity.metadata?.fastPreviewInPlace === true;
+    agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
   const inPlaceRenderActive =
     display.mode === "production" &&
     fastPreviewEnabled &&

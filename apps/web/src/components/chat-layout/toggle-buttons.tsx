@@ -12,16 +12,7 @@ import {
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t";
 
-/**
- * A panel collapse control bracketing the workspace: the left one lives at
- * the start of the MAIN header and hides/shows the chat (chat-bubble icon),
- * the right one lives at the end of the CHAT header and hides/shows the main
- * panel (chevron-into-bar icon).
- *
- * Deliberately a plain icon button, not a HeaderTabButton: these are chrome for
- * the panel itself, not one of its views, so they never take the tab's active
- * pill styling.
- */
+/** Toggles the thread from the content topbar, and content from either topbar. */
 export function PanelCollapseToggle({
   side,
   open,

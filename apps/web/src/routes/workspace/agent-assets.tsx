@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { AgentViewGuard } from "./agent-view-guard";
 import { AssetsTab } from "@/layouts/main-panel-tabs/assets-tab";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
@@ -12,10 +12,10 @@ function AgentAssetsContent() {
   );
 }
 
-export default function AgentAssetsPage() {
+export default function AgentAssetsRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentAssetsContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

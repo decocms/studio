@@ -1,12 +1,12 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { TaskBoardPage } from "@/layouts/task-board";
 
-export default function TasksPage() {
+export default function TasksRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <TaskBoardPage />
       </div>
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

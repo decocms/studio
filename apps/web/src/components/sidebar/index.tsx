@@ -97,13 +97,27 @@ export function StudioSidebar() {
 }
 
 export function StudioSidebarMobile({ onClose }: { onClose: () => void }) {
+  const inSettings = useInSettings();
+
   return (
     <SidebarShell
       sheet
       header={<SidebarPickerHeaderMobile onClose={onClose} />}
-      back={<ProjectBackRow onNavigate={onClose} />}
-      body={<OrgSidebarBody onNavigate={onClose} />}
-      footer={<SidebarAccountFooterMobile />}
+      back={
+        inSettings ? (
+          <SettingsBackRow onNavigate={onClose} />
+        ) : (
+          <ProjectBackRow onNavigate={onClose} />
+        )
+      }
+      body={
+        inSettings ? (
+          <SettingsNav onNavigate={onClose} />
+        ) : (
+          <OrgSidebarBody onNavigate={onClose} />
+        )
+      }
+      footer={inSettings ? <SettingsVersion /> : <SidebarAccountFooterMobile />}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { getRouteApi } from "@tanstack/react-router";
 import { AppViewContent } from "@/routes/project-app-view";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
@@ -26,10 +26,10 @@ function AgentViewContent() {
   );
 }
 
-export default function AgentViewPage() {
+export default function AgentViewRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentViewContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

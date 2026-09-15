@@ -1,4 +1,4 @@
-/** Binds project and thread runtime to the desktop workspace or mobile surface. */
+/** Binds project and thread runtime to ChatLayout and its routed content. */
 
 import {
   useEffect,
@@ -19,14 +19,16 @@ import {
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
-import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
 import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
-import { useThreadManager } from "@/components/chat/store/hooks";
+import {
+  useThreadActions,
+  useThreadManager,
+} from "@/components/chat/store/hooks";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
 import {
   Navigate,
@@ -36,14 +38,10 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { useIsSandboxStartPending } from "@/components/sandbox/hooks/use-sandbox-start";
-import { useStatusSounds } from "../../hooks/use-status-sounds";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
-import {
-  resolveMobileSurface,
-  useWorkspaceLayoutState,
-} from "@/hooks/use-layout-state";
+import { useChatLayoutState } from "@/hooks/use-chat-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
 import { getActiveGithubRepo } from "@/lib/github-repo";
 import { useBaseBranch } from "@/components/thread/github/use-version-gate";
@@ -54,11 +52,15 @@ import {
 } from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
-import {
-  WorkspaceContext,
-  type WorkspaceContextValue,
-} from "@/layouts/workspace/workspace-context";
-import { WorkspaceLayout } from "@/layouts/workspace/workspace-layout";
+import { ChatLayout, useChatLayout } from "@/components/chat-layout";
+import { PanelCollapseToggle } from "@/components/chat-layout/toggle-buttons";
+import { ThreadsMenu } from "@/components/chat/threads-menu";
+import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
+import { DevAgentControl } from "@/components/dev-agent/dev-agent-control";
+import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar";
+import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { resolveThreadSessionIdentity } from "./session-identity";
+import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -82,6 +84,7 @@ import {
   useRouteAgentId,
   useRouteThreadId,
   useRouteVirtualMcpId,
+  useThreadNavigate,
 } from "@/layouts/thread-route";
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
@@ -91,7 +94,7 @@ import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
 
 // ---------------------------------------------------------------------------
-// Agent inset sub-components
+// Thread runtime and presentation
 // ---------------------------------------------------------------------------
 
 function ActiveTaskBoundary({ children }: { children?: React.ReactNode }) {
@@ -455,128 +458,90 @@ function VmEventsBridge({
 }
 
 // ---------------------------------------------------------------------------
-// Task workspace — the chat + main-panel region, rendered inside
-// the selected active-task runtime provider.
-//
-// The hosted no-runtime state (no AI provider) is handled by the structured
-// chat side panel, not by unmounting the workspace. Native coding agents use
-// the terminal runtime adapter and never enter this provider-setup path.
+// Thread presentation stays under the selected runtime; layout state contains no
+// project entity or thread identity.
 // ---------------------------------------------------------------------------
 
-type TaskLayout = ReturnType<typeof useWorkspaceLayoutState>;
-
-function DesktopTaskWorkspace({
-  virtualMcpId,
-  layout,
-  onNewTaskRef,
-}: {
-  virtualMcpId: string;
-  layout: TaskLayout;
-  onNewTaskRef: React.MutableRefObject<(() => void) | null>;
-}) {
+function ThreadTopbar() {
+  const layout = useChatLayout();
   return (
-    <>
-      <NewTaskBridge
-        onNewTaskRef={onNewTaskRef}
-        createNewTask={layout.createNewTask}
-      />
-      {/* Panels each own a 48px header (tabs / toggles / publish). Everything
-          lives under SandboxEventsProvider — useMainPanelTabs gates Content on
-          lifecycle.phase === "running" + decofile. */}
-      <MainPanelBoundary>
-        <WorkspaceLayout
-          identity={`${virtualMcpId}-${layout.threadId}`}
-          sidePanelOpen={layout.sidePanelOpen}
-          mainOpen={layout.mainOpen}
-          toggleMain={layout.toggleMain}
-          chatContent={<ActiveTaskBoundary />}
-        >
-          <Outlet />
-        </WorkspaceLayout>
-      </MainPanelBoundary>
-    </>
+    <Panel.Topbar>
+      <Panel.Topbar.Left>
+        <ThreadsMenu />
+      </Panel.Topbar.Left>
+      <Panel.Topbar.Right className="shrink-0">
+        <NewChatCrumb />
+        {!layout.contentOpen && (
+          <PanelCollapseToggle
+            side="right"
+            open={layout.contentOpen}
+            onToggle={layout.toggleContent}
+          />
+        )}
+      </Panel.Topbar.Right>
+    </Panel.Topbar>
   );
 }
 
-function MobileTaskWorkspace({
-  virtualMcpId,
+function ThreadSessionContent({
   layout,
   onNewTaskRef,
+  createNewTask,
 }: {
-  virtualMcpId: string;
-  layout: TaskLayout;
+  layout: ReturnType<typeof useChatLayoutState>;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
+  createNewTask: () => void;
 }) {
-  const t = useT();
-  const mobileSurface = resolveMobileSurface({
-    visibility: {
-      sidePanelOpen: layout.sidePanelOpen,
-      mainOpen: layout.mainOpen,
-    },
-    sidePanelParamPresent: layout.sidePanelParamPresent,
-  });
-
-  return (
-    <>
-      {/* No Chat/Tasks/Library toggles on mobile: there's no side-by-side split,
-          so one surface shows at a time and every destination (Chat, the main
-          views, Tasks, Library) lives in this single dropdown instead. */}
-      <Panel.Topbar.Center.Portal>
-        <MobileMainPanelTabSelect
-          virtualMcpId={virtualMcpId}
-          taskId={layout.threadId}
-        />
-      </Panel.Topbar.Center.Portal>
-      <NewTaskBridge
-        onNewTaskRef={onNewTaskRef}
-        createNewTask={layout.createNewTask}
-      />
-      <MainPanelBoundary>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {mobileSurface === "main" ? (
-            <ErrorBoundary
-              fallback={
-                <div
-                  role="alert"
-                  className="flex-1 flex items-center justify-center text-sm text-muted-foreground"
-                >
-                  {t("agentShellLayout.agentShellLayout.somethingWentWrong")}
-                </div>
-              }
-            >
-              <MainPanelBoundary>
-                <Outlet />
-              </MainPanelBoundary>
-            </ErrorBoundary>
-          ) : (
-            <Panel variant="plain">
-              <Panel.Content data-testid="chat-panel">
-                <ActiveTaskBoundary />
-              </Panel.Content>
-            </Panel>
-          )}
-        </div>
-      </MainPanelBoundary>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AgentInsetProvider — resolves virtualMcpId, provides WorkspaceContext,
-// wraps in Chat.Provider, renders the task-scoped chat+main panel group.
-// ---------------------------------------------------------------------------
-
-function AgentInsetProvider() {
-  const t = useT();
   const isMobile = useIsMobile();
-  const navigate = useNavigate();
-  const { org } = useProjectContext();
+  const { virtualMcpId, taskId } = useChatTask();
+  const entity = useVirtualMCP(virtualMcpId);
+  const contentKey = useActivePanelTabId() ?? "overview";
 
-  useStatusSounds(org.slug);
+  return (
+    <>
+      {isMobile && (
+        <Panel.Topbar.Center.Portal>
+          <MobileMainPanelTabSelect
+            virtualMcpId={virtualMcpId}
+            taskId={taskId}
+          />
+        </Panel.Topbar.Center.Portal>
+      )}
+      <NewTaskBridge
+        onNewTaskRef={onNewTaskRef}
+        createNewTask={createNewTask}
+      />
+      <ChatLayout
+        {...layout}
+        contentKey={contentKey}
+        contentNavigation={
+          <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
+        }
+        contentActions={entity && <DevAgentControl virtualMcp={entity} />}
+      >
+        <ChatLayout.Thread topbar={<ThreadTopbar />}>
+          <ActiveTaskBoundary />
+        </ChatLayout.Thread>
+        <Outlet />
+      </ChatLayout>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Resolves route identity and initializes the existing thread/runtime providers.
+// ---------------------------------------------------------------------------
+
+function ThreadSessionProvider() {
+  const t = useT();
+  const navigate = useNavigate();
+  const navigateThread = useThreadNavigate();
+  const { create } = useThreadActions();
+  const { org } = useProjectContext();
 
   const params = useParams({ strict: false });
   const orgSlug = params.org ?? "";
-  const workspaceSearch = useSearch({ strict: false });
+  const sessionSearch = useSearch({ strict: false });
 
   const routeThreadId = useRouteThreadId();
   /** The canonical project path owns agent identity; organization routes use the Super Agent. */
@@ -641,10 +606,27 @@ function AgentInsetProvider() {
       }
     : null;
 
-  const layout = useWorkspaceLayoutState(entityMetadata, {
-    virtualMcpId,
-    isAgentRoute: true,
+  const layout = useChatLayoutState(entityMetadata);
+  const { threadId, providerKey } = resolveThreadSessionIdentity({
+    routeThreadId,
+    fallbackKey: generatedThreadId,
   });
+
+  const createNewTask = async () => {
+    const newTaskId = crypto.randomUUID();
+    const branch =
+      threads.find((thread) => thread.id === threadId)?.branch ?? null;
+    try {
+      await create({
+        id: newTaskId,
+        virtual_mcp_id: virtualMcpId,
+        ...(branch ? { branch } : {}),
+      });
+    } catch {
+      // The collection action reports errors; the route retries a missing row.
+    }
+    navigateThread(newTaskId, () => ({}));
+  };
 
   const onNewTask = useRef<(() => void) | null>(null);
 
@@ -681,9 +663,9 @@ function AgentInsetProvider() {
           route,
           search: {
             thread: ensuredTask.id,
-            sidepanel: workspaceSearch.sidepanel,
-            mainpanel: workspaceSearch.mainpanel,
-            autosend: workspaceSearch.autosend,
+            sidepanel: sessionSearch.sidepanel,
+            mainpanel: sessionSearch.mainpanel,
+            autosend: sessionSearch.autosend,
           },
         }}
       />
@@ -732,168 +714,99 @@ function AgentInsetProvider() {
     }
   }
 
-  const chatVirtualMcpId = virtualMcpId;
-
-  const workspaceContextValue: WorkspaceContextValue = {
-    virtualMcpId,
-    entity,
-    threadId: layout.threadId,
-    sidePanelOpen: layout.sidePanelOpen,
-    mainOpen: layout.mainOpen,
-    toggleSidePanel: layout.toggleSidePanel,
-    toggleMain: layout.toggleMain,
-  };
-
   if (ensureState.status === "creating" || ensureState.status === "loading") {
     return (
-      <WorkspaceContext value={workspaceContextValue}>
-        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
-          >
-            <Spinner className="size-4 mr-2" />
-            {t("agentShellLayout.agentShellLayout.creatingTask")}
-          </div>
+      <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex h-full items-center justify-center bg-background card-shadow rounded-[0.75rem] text-sm text-muted-foreground"
+        >
+          <Spinner className="size-4 mr-2" />
+          {t("agentShellLayout.agentShellLayout.creatingTask")}
         </div>
-      </WorkspaceContext>
+      </div>
     );
   }
 
   if (ensureState.status === "error") {
     return (
-      <WorkspaceContext value={workspaceContextValue}>
-        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div
-            role="alert"
-            className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm"
-          >
-            <div className="font-medium">
-              {t("agentShellLayout.agentShellLayout.taskUnavailable")}
-            </div>
-            <div className="text-muted-foreground">
-              {ensureState.error.message}
-            </div>
+      <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+        <div
+          role="alert"
+          className="flex flex-col h-full items-center justify-center gap-2 bg-background card-shadow rounded-[0.75rem] p-8 text-sm"
+        >
+          <div className="font-medium">
+            {t("agentShellLayout.agentShellLayout.taskUnavailable")}
+          </div>
+          <div className="text-muted-foreground">
+            {ensureState.error.message}
           </div>
         </div>
-      </WorkspaceContext>
+      </div>
     );
   }
 
   if (!entity) {
     return (
-      <WorkspaceContext value={workspaceContextValue}>
-        <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
-          <div className="flex flex-col h-full bg-background overflow-hidden card-shadow rounded-[0.75rem]">
-            <EmptyState
-              image={
-                <AlertCircle size={48} className="text-muted-foreground" />
-              }
-              title={t("agentShellLayout.agentShellLayout.agentNotFound")}
-              description={t(
-                "agentShellLayout.agentShellLayout.agentNotFoundDescription",
-                { virtualMcpId },
-              )}
-              actions={
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    navigate({ to: "/$org", params: { org: orgSlug } })
-                  }
-                >
-                  {t("agentShellLayout.agentShellLayout.goToOrgHome")}
-                </Button>
-              }
-            />
-          </div>
-        </div>
-      </WorkspaceContext>
-    );
-  }
-
-  // Mobile layout — unchanged semantics, just inlined here for clarity.
-  if (isMobile) {
-    return (
-      <WorkspaceContext value={workspaceContextValue}>
-        <div className="flex flex-col flex-1 min-w-0 bg-background min-h-0">
-          <Chat.Provider
-            key={chatVirtualMcpId}
-            virtualMcpId={chatVirtualMcpId}
-            task={ensureState.status === "ready" ? ensureState.task : null}
-          >
-            <VmEventsBridge
-              virtualMcpId={virtualMcpId}
-              hasActiveGithubRepo={hasActiveGithubRepo}
-              sandboxMap={entity?.metadata?.sandboxMap}
-            >
-              <ActiveTaskRuntimeProvider
-                key={layout.providerKey}
-                threadId={layout.threadId}
+      <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
+        <div className="flex flex-col h-full bg-background overflow-hidden card-shadow rounded-[0.75rem]">
+          <EmptyState
+            image={<AlertCircle size={48} className="text-muted-foreground" />}
+            title={t("agentShellLayout.agentShellLayout.agentNotFound")}
+            description={t(
+              "agentShellLayout.agentShellLayout.agentNotFoundDescription",
+              { virtualMcpId },
+            )}
+            actions={
+              <Button
+                variant="outline"
+                onClick={() =>
+                  navigate({ to: "/$org", params: { org: orgSlug } })
+                }
               >
-                <MainPanelBoundary>
-                  <MobileTaskWorkspace
-                    virtualMcpId={chatVirtualMcpId}
-                    layout={layout}
-                    onNewTaskRef={onNewTask}
-                  />
-                </MainPanelBoundary>
-              </ActiveTaskRuntimeProvider>
-            </VmEventsBridge>
-          </Chat.Provider>
+                {t("agentShellLayout.agentShellLayout.goToOrgHome")}
+              </Button>
+            }
+          />
         </div>
-      </WorkspaceContext>
+      </div>
     );
   }
 
-  // Desktop — portal toggle buttons into outer toolbar, render chat+main group.
-  // The org-wide tasks column is owned by org-shell-layout, outside this
-  // Suspense boundary, so it stays mounted while this task-scoped content loads.
   return (
-    <div className="flex-1 min-w-0 flex flex-col">
-      <WorkspaceContext value={workspaceContextValue}>
-        <Chat.Provider
-          key={chatVirtualMcpId}
-          virtualMcpId={chatVirtualMcpId}
-          task={ensureState.status === "ready" ? ensureState.task : null}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <Chat.Provider
+        key={virtualMcpId}
+        virtualMcpId={virtualMcpId}
+        task={ensureState.status === "ready" ? ensureState.task : null}
+      >
+        <VmEventsBridge
+          virtualMcpId={virtualMcpId}
+          hasActiveGithubRepo={hasActiveGithubRepo}
+          sandboxMap={entity.metadata?.sandboxMap}
         >
-          <VmEventsBridge
-            virtualMcpId={virtualMcpId}
-            hasActiveGithubRepo={hasActiveGithubRepo}
-            sandboxMap={entity?.metadata?.sandboxMap}
-          >
-            {/* The toggles, tabs, header, and main panel all render inside the
-                selected active-task runtime via DesktopTaskWorkspace. The
-                runtime-setup prompt lives only in the side panel; the tabs
-                stay navigable regardless. */}
-            <ActiveTaskRuntimeProvider
-              key={layout.providerKey}
-              threadId={layout.threadId}
-            >
-              <MainPanelBoundary>
-                <DesktopTaskWorkspace
-                  virtualMcpId={virtualMcpId}
-                  layout={layout}
-                  onNewTaskRef={onNewTask}
-                />
-              </MainPanelBoundary>
-            </ActiveTaskRuntimeProvider>
-          </VmEventsBridge>
-        </Chat.Provider>
-      </WorkspaceContext>
+          <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>
+            <MainPanelBoundary>
+              <ThreadSessionContent
+                layout={layout}
+                onNewTaskRef={onNewTask}
+                createNewTask={createNewTask}
+              />
+            </MainPanelBoundary>
+          </ActiveTaskRuntimeProvider>
+        </VmEventsBridge>
+      </Chat.Provider>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Default export — the per-task content for /$org/$taskId.
-//
-// Sidebar, toolbar shell, and ChatPrefsProvider live in `org-shell-layout`
-// (the parent route). This component just renders the per-task chrome inside
-// the flex-row Outlet on desktop, or directly inside SidebarInset on mobile.
+// The parent organization route owns Layout. ThreadRoute owns the thread store
+// and preferences; this route owns the selected project's session providers.
 // ---------------------------------------------------------------------------
 
-export default function AgentShellLayout() {
+export default function ThreadSessionRoute() {
   const params = useParams({ strict: false });
   if (params.taskId !== undefined) return <LegacyThreadRedirect />;
   if (params._splat !== undefined) return <Outlet />;
@@ -902,7 +815,7 @@ export default function AgentShellLayout() {
       <LegacyAgentWorkspaceRedirect>
         <LegacyMainRedirect>
           <OrgFileOpenProvider>
-            <AgentInsetProvider />
+            <ThreadSessionProvider />
             <OrgFilePreviewMount />
           </OrgFileOpenProvider>
         </LegacyMainRedirect>

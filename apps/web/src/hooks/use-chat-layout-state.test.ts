@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
-  computeWorkspacePanelSizes,
+  computeChatLayoutPanelSizes,
   mobileSurfaceSearch,
   resolveDefaultPanelState,
   resolveMobileSurface,
-  resolveWorkspacePanelAction,
-  resolveWorkspaceThread,
-} from "./use-layout-state";
+  resolveChatLayoutPanelAction,
+} from "./use-chat-layout-state";
 
 describe("resolveDefaultPanelState", () => {
   const absentSearch = {
     panelNamed: false,
-    sidePanelParamPresent: false,
+    threadVisibilityExplicit: false,
   };
 
   test("defaults to Chat when no layout metadata exists", () => {
@@ -20,7 +19,7 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: null,
         ...absentSearch,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: false });
+    ).toEqual({ threadOpen: true, contentOpen: false });
   });
 
   test("a Chat default opens Chat and closes Main", () => {
@@ -29,7 +28,7 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: { defaultMainView: { type: "chat" } },
         ...absentSearch,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: false });
+    ).toEqual({ threadOpen: true, contentOpen: false });
   });
 
   test("a non-Chat default opens Main without a side panel", () => {
@@ -38,7 +37,7 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: { defaultMainView: { type: "settings" } },
         ...absentSearch,
       }),
-    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+    ).toEqual({ threadOpen: false, contentOpen: true });
   });
 
   test("a Content default with chatDefaultOpen:false keeps the chat closed", () => {
@@ -53,7 +52,7 @@ describe("resolveDefaultPanelState", () => {
         },
         ...absentSearch,
       }),
-    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+    ).toEqual({ threadOpen: false, contentOpen: true });
   });
 
   test("a thread that already has messages opens the chat despite chatDefaultOpen:false", () => {
@@ -67,7 +66,7 @@ describe("resolveDefaultPanelState", () => {
         ...absentSearch,
         threadHasMessages: true,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+    ).toEqual({ threadOpen: true, contentOpen: true });
   });
 
   test("an empty thread keeps a chatDefaultOpen:false agent chat closed", () => {
@@ -80,7 +79,7 @@ describe("resolveDefaultPanelState", () => {
         ...absentSearch,
         threadHasMessages: false,
       }),
-    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+    ).toEqual({ threadOpen: false, contentOpen: true });
   });
 
   test("an explicit sidepanel=false still hides the chat even with messages", () => {
@@ -92,11 +91,11 @@ describe("resolveDefaultPanelState", () => {
           chatDefaultOpen: false,
         },
         panelNamed: false,
-        sidePanelParamPresent: true,
+        threadVisibilityExplicit: true,
         sidePanelParamValue: false,
         threadHasMessages: true,
       }),
-    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+    ).toEqual({ threadOpen: false, contentOpen: true });
   });
 
   test("chatDefaultOpen maps to the Chat side panel", () => {
@@ -108,7 +107,7 @@ describe("resolveDefaultPanelState", () => {
         },
         ...absentSearch,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+    ).toEqual({ threadOpen: true, contentOpen: true });
   });
 
   test("an explicit side panel overrides the configured side-panel default", () => {
@@ -119,10 +118,10 @@ describe("resolveDefaultPanelState", () => {
           chatDefaultOpen: false,
         },
         panelNamed: false,
-        sidePanelParamPresent: true,
+        threadVisibilityExplicit: true,
         sidePanelParamValue: true,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+    ).toEqual({ threadOpen: true, contentOpen: true });
   });
 
   test("sidepanel=false keeps a non-Chat default Main-only", () => {
@@ -133,10 +132,10 @@ describe("resolveDefaultPanelState", () => {
           chatDefaultOpen: true,
         },
         panelNamed: false,
-        sidePanelParamPresent: true,
+        threadVisibilityExplicit: true,
         sidePanelParamValue: false,
       }),
-    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+    ).toEqual({ threadOpen: false, contentOpen: true });
   });
 
   /**
@@ -152,7 +151,7 @@ describe("resolveDefaultPanelState", () => {
         ...absentSearch,
         routeDefaultMain: "board",
       }),
-    ).toEqual({ sidePanelOpen: false, mainOpen: true });
+    ).toEqual({ threadOpen: false, contentOpen: true });
   });
 
   test("an explicit sidepanel=true reopens the chat on a route default", () => {
@@ -160,11 +159,11 @@ describe("resolveDefaultPanelState", () => {
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
         panelNamed: false,
-        sidePanelParamPresent: true,
+        threadVisibilityExplicit: true,
         sidePanelParamValue: true,
         routeDefaultMain: "board",
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+    ).toEqual({ threadOpen: true, contentOpen: true });
   });
 
   test("?mainpanel=false on a route default leaves the chat as the last open panel", () => {
@@ -173,12 +172,12 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: { defaultMainView: { type: "chat" } },
         mainPanelParam: false,
         panelNamed: false,
-        sidePanelParamPresent: false,
+        threadVisibilityExplicit: false,
         routeDefaultMain: "board",
       }),
       /** The route default would collapse the chat, but the "at least one panel
        *  open" fallback keeps it showing once the main panel closes. */
-    ).toEqual({ sidePanelOpen: true, mainOpen: false });
+    ).toEqual({ threadOpen: true, contentOpen: false });
   });
 
   /** INVERTED: this was `?main=<tab>`. The view is a path segment now, so what
@@ -188,9 +187,9 @@ describe("resolveDefaultPanelState", () => {
       resolveDefaultPanelState({
         entityMetadata: { defaultMainView: { type: "chat" } },
         panelNamed: true,
-        sidePanelParamPresent: false,
+        threadVisibilityExplicit: false,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+    ).toEqual({ threadOpen: true, contentOpen: true });
   });
 
   /** The split's payoff: the view stays in the path while the panel is shut, so
@@ -201,9 +200,9 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: { defaultMainView: { type: "chat" } },
         panelNamed: true,
         mainPanelParam: false,
-        sidePanelParamPresent: false,
+        threadVisibilityExplicit: false,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: false });
+    ).toEqual({ threadOpen: true, contentOpen: false });
   });
 
   test("?mainpanel=true opens a panel the agent default would leave closed", () => {
@@ -212,9 +211,9 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: { defaultMainView: { type: "chat" } },
         panelNamed: false,
         mainPanelParam: true,
-        sidePanelParamPresent: false,
+        threadVisibilityExplicit: false,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: true });
+    ).toEqual({ threadOpen: true, contentOpen: true });
   });
 
   test("an all-closed state falls back to Chat", () => {
@@ -223,37 +222,37 @@ describe("resolveDefaultPanelState", () => {
         entityMetadata: { defaultMainView: { type: "settings" } },
         mainPanelParam: false,
         panelNamed: false,
-        sidePanelParamPresent: true,
+        threadVisibilityExplicit: true,
         sidePanelParamValue: false,
       }),
-    ).toEqual({ sidePanelOpen: true, mainOpen: false });
+    ).toEqual({ threadOpen: true, contentOpen: false });
   });
 });
 
-describe("resolveWorkspacePanelAction", () => {
+describe("resolveChatLayoutPanelAction", () => {
   test("opens Chat when only Main is visible", () => {
     expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleSidePanel" },
-        { sidePanelOpen: false, mainOpen: true },
+      resolveChatLayoutPanelAction(
+        { type: "toggleThread" },
+        { threadOpen: false, contentOpen: true },
       ),
     ).toEqual({ sidepanel: true });
   });
 
   test("closes the active side panel when Main remains open", () => {
     expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleSidePanel" },
-        { sidePanelOpen: true, mainOpen: true },
+      resolveChatLayoutPanelAction(
+        { type: "toggleThread" },
+        { threadOpen: true, contentOpen: true },
       ),
     ).toEqual({ sidepanel: false });
   });
 
   test("refuses to close the active side panel when it is the final panel", () => {
     expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleSidePanel" },
-        { sidePanelOpen: true, mainOpen: false },
+      resolveChatLayoutPanelAction(
+        { type: "toggleThread" },
+        { threadOpen: true, contentOpen: false },
       ),
     ).toBeNull();
   });
@@ -262,57 +261,57 @@ describe("resolveWorkspacePanelAction", () => {
    *  is why closing it erased one. Both directions are the boolean now. */
   test("closing Main opens Chat even when Main was the only visible panel", () => {
     expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleMain" },
-        { sidePanelOpen: true, mainOpen: false },
+      resolveChatLayoutPanelAction(
+        { type: "toggleContent" },
+        { threadOpen: true, contentOpen: false },
       ),
     ).toEqual({ mainpanel: true });
     expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleMain" },
-        { sidePanelOpen: true, mainOpen: true },
+      resolveChatLayoutPanelAction(
+        { type: "toggleContent" },
+        { threadOpen: true, contentOpen: true },
       ),
     ).toEqual({ mainpanel: false, sidepanel: true });
     expect(
-      resolveWorkspacePanelAction(
-        { type: "toggleMain" },
-        { sidePanelOpen: false, mainOpen: true },
+      resolveChatLayoutPanelAction(
+        { type: "toggleContent" },
+        { threadOpen: false, contentOpen: true },
       ),
     ).toEqual({ mainpanel: false, sidepanel: true });
   });
 
-  test("openSidePanel is idempotent and opens Chat when it is closed", () => {
+  test("openThread is idempotent and opens Chat when it is closed", () => {
     expect(
-      resolveWorkspacePanelAction(
-        { type: "openSidePanel" },
-        { sidePanelOpen: true, mainOpen: true },
+      resolveChatLayoutPanelAction(
+        { type: "openThread" },
+        { threadOpen: true, contentOpen: true },
       ),
     ).toBeNull();
     expect(
-      resolveWorkspacePanelAction(
-        { type: "openSidePanel" },
-        { sidePanelOpen: false, mainOpen: true },
+      resolveChatLayoutPanelAction(
+        { type: "openThread" },
+        { threadOpen: false, contentOpen: true },
       ),
     ).toEqual({ sidepanel: true });
   });
 });
 
-describe("computeWorkspacePanelSizes", () => {
+describe("computeChatLayoutPanelSizes", () => {
   test.each([
     [
-      { sidePanelOpen: true, mainOpen: false },
+      { threadOpen: true, contentOpen: false },
       { side: 100, main: 0 },
     ],
     [
-      { sidePanelOpen: true, mainOpen: true },
+      { threadOpen: true, contentOpen: true },
       { side: 33, main: 67 },
     ],
     [
-      { sidePanelOpen: false, mainOpen: true },
+      { threadOpen: false, contentOpen: true },
       { side: 0, main: 100 },
     ],
   ])("computes the two-panel workspace sizes", (visibility, expected) => {
-    expect(computeWorkspacePanelSizes(visibility)).toEqual(expected);
+    expect(computeChatLayoutPanelSizes(visibility)).toEqual(expected);
   });
 });
 
@@ -333,8 +332,8 @@ describe("resolveMobileSurface", () => {
   test("an explicit ?sidepanel=true wins over an open main panel", () => {
     expect(
       resolveMobileSurface({
-        visibility: { sidePanelOpen: true, mainOpen: true },
-        sidePanelParamPresent: true,
+        visibility: { threadOpen: true, contentOpen: true },
+        threadVisibilityExplicit: true,
       }),
     ).toBe("chat");
   });
@@ -342,8 +341,8 @@ describe("resolveMobileSurface", () => {
   test("the default main view still wins when ?sidepanel is absent", () => {
     expect(
       resolveMobileSurface({
-        visibility: { sidePanelOpen: true, mainOpen: true },
-        sidePanelParamPresent: false,
+        visibility: { threadOpen: true, contentOpen: true },
+        threadVisibilityExplicit: false,
       }),
     ).toBe("main");
   });
@@ -351,53 +350,15 @@ describe("resolveMobileSurface", () => {
   test("falls back to main / chat when only one panel is open", () => {
     expect(
       resolveMobileSurface({
-        visibility: { sidePanelOpen: false, mainOpen: true },
-        sidePanelParamPresent: true,
+        visibility: { threadOpen: false, contentOpen: true },
+        threadVisibilityExplicit: true,
       }),
     ).toBe("main");
     expect(
       resolveMobileSurface({
-        visibility: { sidePanelOpen: true, mainOpen: false },
-        sidePanelParamPresent: false,
+        visibility: { threadOpen: true, contentOpen: false },
+        threadVisibilityExplicit: false,
       }),
     ).toBe("chat");
-  });
-});
-
-describe("resolveWorkspaceThread", () => {
-  const fallbackKey = "5f0d0f3a-0000-4000-8000-000000000000";
-
-  test("the legacy route's own thread is both the thread and the key", () => {
-    expect(
-      resolveWorkspaceThread({ routeThreadId: "thread-1", fallbackKey }),
-    ).toEqual({ threadId: "thread-1", providerKey: "thread-1" });
-  });
-
-  test("a destination's ?thread= is both the thread and the key", () => {
-    expect(
-      resolveWorkspaceThread({ routeThreadId: "thread-2", fallbackKey }),
-    ).toEqual({ threadId: "thread-2", providerKey: "thread-2" });
-  });
-
-  /**
-   * INVERTED: a route naming no thread used to report the fallback id AS the
-   * thread, so the workspace opened an SSE stream on
-   * `/decopilot/threads/<fabricated-uuid>/stream` (404, one per visit) and
-   * reported a `chat_opened` for a thread nobody had opened. The fallback is
-   * provider identity only; the thread stays absent.
-   */
-  test("a route that names no thread keeps the fallback out of the thread id", () => {
-    expect(
-      resolveWorkspaceThread({ routeThreadId: null, fallbackKey }),
-    ).toEqual({ threadId: null, providerKey: fallbackKey });
-  });
-
-  test("opening a thread changes the provider key, so the workspace remounts", () => {
-    const before = resolveWorkspaceThread({ routeThreadId: null, fallbackKey });
-    const after = resolveWorkspaceThread({
-      routeThreadId: "thread-3",
-      fallbackKey,
-    });
-    expect(before.providerKey).not.toBe(after.providerKey);
   });
 });

@@ -1,10 +1,10 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
 
-export default function LibraryPage() {
+export default function LibraryRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <LibraryTab />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

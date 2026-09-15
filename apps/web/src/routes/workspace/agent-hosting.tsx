@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { HostingTab } from "@/layouts/main-panel-tabs/hosting";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
@@ -14,10 +14,10 @@ function AgentHostingContent() {
   );
 }
 
-export default function AgentHostingPage() {
+export default function AgentHostingRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentHostingContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

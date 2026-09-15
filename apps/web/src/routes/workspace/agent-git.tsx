@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { AgentViewGuard } from "./agent-view-guard";
 import { GitTab } from "@/components/thread/github/git-tab";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
@@ -12,10 +12,10 @@ function AgentGitContent() {
   );
 }
 
-export default function AgentGitPage() {
+export default function AgentGitRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentGitContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

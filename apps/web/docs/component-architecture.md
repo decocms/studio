@@ -1,64 +1,115 @@
-# Workspace, Panel, and Page
+# Layout, ChatLayout, Panel, and Page
 
-Studio separates layout, surfaces, and route content so a feature can compose
-its controls without adding another branch to the application shell.
+Studio uses four components to separate the application frame, the optional
+chat arrangement, panel surfaces, and document content.
 
 ## Ownership and naming
 
-| Name | Owns | Examples |
-| --- | --- | --- |
-| `*Layout` | Placement and providers shared by descendant routes | `OrgLayout`, `WorkspaceLayout`, `SettingsLayout` |
-| `Panel` | A bounded surface, its topbar regions, and its body | Chat card, routed workspace card, detail view |
-| `*Page` | A route or a reusable recipe for composing a route | `HomePage`, `WorkspacePage` |
-| `Page` | Document content: scrolling, spacing, width, and heading | Settings, project configuration, lists |
-| `*Content` | Feature rendering and data reads below the route's boundary | `AgentSettingsContent` |
-| `*Provider` / `*Context` | Runtime state with an explicit lifetime | `WorkspaceContext`, `Chat.Provider` |
+| Component | Owns |
+| --- | --- |
+| [`Layout`](../src/components/layout/index.tsx) | Persistent application frame: sidebar, resizing, mobile navigation, and content area |
+| [`ChatLayout`](../src/components/chat-layout/index.tsx) | Placement, visibility, and resizing of its `Thread` and `Content` regions |
+| [`Panel`](../src/components/panel/index.tsx) | A surface, its topbar regions, and its body |
+| [`Page`](../src/components/page/index.tsx) | Document content: scrolling, spacing, width, and heading |
+| `*Route` | Route composition and feature-specific controls |
+| `*Page` | A feature screen rendered inside a route's panel |
+| `*Provider` / `*Context` | Shared state with an explicit lifetime; layout and domain state stay separate |
 
 Use PascalCase symbols and kebab-case files. Name feature components for their
-domain; use these suffixes when they explain ownership. Existing `*Tab` feature
-components remain the implementations behind destination pages. The router's
-path selects the page; `thread`, `sidepanel`, and `mainpanel` describe its
-workspace arrangement.
+domain: `OrgGeneralPage` describes a screen, and `SiteEditorActions`
+describes its controls. `*Content` can isolate feature data reads below a loading
+or error boundary.
+
+`Chat` and `ChatLayout` describe UI composition. Domain identifiers and contracts
+still use `thread`, including `threadId`. The `ChatLayout.Content` region holds
+the current route; `Chat.Main` remains the conversation's body.
+
+## One application frame, optional chat
+
+Every organization destination shares the same `Layout`. The organization
+route supplies navigation and an `Outlet`; changing between Home and Settings
+keeps this frame mounted, preserving the sidebar's size and open preference.
+
+```tsx
+<Layout expandedSidebar={inSettings} notice={<OrgNoticeBanner />}>
+  <Layout.Sidebar
+    renderMobile={({ onClose }) => <StudioSidebarMobile onClose={onClose} />}
+  >
+    <StudioSidebar />
+  </Layout.Sidebar>
+  <Layout.Content>
+    <Outlet />
+  </Layout.Content>
+</Layout>
+```
+
+| Destination | Composition inside `Layout.Content` |
+| --- | --- |
+| `/:org/home`, `/tasks`, `/library`, `/reports` | `ChatLayout` with conversation and routed panels |
+| `/:org/projects/:agentId/...`, including project Settings | The same `ChatLayout` arrangement |
+| `/:org/settings/...` | A `Panel` containing the settings page |
+
+The `/settings` parent route composes its panel directly. It needs no separate
+layout component. Thread and runtime providers belong to the lazy route branch
+that uses chat; a direct organization Settings visit does not initialize that
+branch.
 
 ```mermaid
 flowchart TD
-  Org["OrgLayout · sidebar + organization frame"]
-  Org --> Shell["OrgShellLayout · thread state + mobile topbar"]
-  Org --> Settings["SettingsLayout · settings surface"]
-  Shell --> Runtime["AgentShellLayout · project + thread runtime"]
-  Runtime --> Workspace["WorkspaceLayout · desktop split + saved widths"]
-  Workspace --> Chat["Panel · chat topbar + composer"]
-  Workspace --> Route["Destination route"]
-  Route --> Recipe["WorkspacePage"]
-  Recipe --> Surface["Panel"]
+  Org["Organization route"] --> Layout["Layout · persistent navigation + content"]
+  Layout --> Sidebar["Layout.Sidebar · desktop sidebar / mobile sheet"]
+  Layout --> Inset["Layout.Content · mobile topbar + route outlet"]
+  Inset --> Settings["Organization settings route"]
+  Settings --> SettingsPanel["Panel → Page"]
+  Inset --> Session["Thread and runtime providers"]
+  Session --> Split["ChatLayout · visibility + resize"]
+  Split --> Thread["ChatLayout.Thread"]
+  Thread --> Conversation["Panel → conversation"]
+  Split --> Route["Destination route"]
+  Route --> Content["ChatLayout.Content"]
+  Content --> Surface["Panel · destination frame"]
   Surface --> Topbar["Panel.Topbar.Left / Center / Right"]
-  Surface --> Body["Panel.Content · canvas"]
-  Body --> Boundary["ErrorBoundary + MainPanelBoundary"]
-  Boundary --> Content["Feature content / child route"]
-  Body --> Drawer["Site Editor drawer"]
-  Content -. controls via Portal .-> Topbar
-  Content --> Document["Page → Content → Container → Title"]
-  Settings --> Document
+  Surface --> Body["Panel.Content"]
+  Body --> Boundary["Loading / error boundary"]
+  Boundary --> Feature["Feature content / child route"]
+  Body --> Drawer["Optional route drawer"]
+  Feature -. controls via Portal .-> Topbar
+  Feature --> Document["Page.Content → Container → Title"]
 ```
 
-Mobile uses the organization topbar and one workspace surface at a time. Its
-view selector portals into that topbar; the route's own `Panel` scopes feature
-controls separately.
+On mobile, `Layout` supplies navigation and the shared topbar. `ChatLayout`
+shows one region at a time; its destination selector uses the shared topbar's
+center portal target. Each inner `Panel` scopes feature controls separately.
 
 ## The layout on screen
 
 These are captures of the running app with synthetic local data. Colored
 outlines and labels were added to the DOM only for the screenshots.
 
-![Workspace layout with chat, routed panel, topbar regions, and content boundaries](assets/workspace-components.png)
+![Shared Layout with ChatLayout regions, panel topbar controls, and content boundaries](assets/workspace-components.png)
 
-![Settings layout with the Page scroll area, container, and heading](assets/page-components.png)
+![Organization Settings in the shared Layout, with Panel and Page content regions](assets/page-components.png)
 
 ## Compose a route
 
-`WorkspacePage` supplies the common panel frame, navigation and collapse
-controls. Put data reads inside its children so suspension or a render error
-replaces the content while the topbar stays available.
+The chat route branch supplies a `ChatLayout` with a conversation in
+`ChatLayout.Thread` and a destination outlet. It passes presentation controls
+as React nodes, leaving agent and thread data in their domain providers:
+
+```tsx
+<ChatLayout
+  {...layout}
+  contentKey={routeId}
+  contentNavigation={navigation}
+  contentActions={projectActions}
+>
+  <ChatLayout.Thread topbar={threadTopbar}>{conversation}</ChatLayout.Thread>
+  <Outlet />
+</ChatLayout>
+```
+
+Each destination composes `ChatLayout.Content`, which supplies the adjacent
+region and its standard `Panel`. Keep feature data reads in its children:
 
 ```tsx
 function ProjectSettingsContent() {
@@ -66,39 +117,45 @@ function ProjectSettingsContent() {
   return <SettingsTab virtualMcpId={projectId} />;
 }
 
-export default function ProjectSettingsPage() {
+export default function ProjectSettingsRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <ProjectSettingsContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }
 ```
 
-Workspace destination routes also use `WorkspacePagePending` as their router
-pending component, retaining the standard frame while a route chunk loads.
-That component is lazy so settings-only visits do not eagerly load workspace
-features. Routes supply their feature controls and drawers directly. For example,
-`SiteEditorRoute` shares one frame across Preview, Content, and Code:
+Loading and render errors replace the body below the topbar. Routes use
+`ChatLayoutPending` while a destination chunk loads and `ChatLayoutError` for
+route validation or loading failures. Both keep the content region registered
+in the split and retain navigation. Keep feature data reads below the content
+boundaries so the surrounding controls remain available.
+
+The Site Editor parent groups Preview, Content, and Code. Its private
+`SiteEditorActions` and `SiteEditorDrawer` components own branch/publish controls
+and the runtime drawer:
 
 ```tsx
 export default function SiteEditorRoute() {
   return (
-    <WorkspacePage actions={<SiteEditorActions />} drawer={<SiteEditorDrawer />}>
+    <ChatLayout.Content
+      actions={<SiteEditorActions />}
+      drawer={<SiteEditorDrawer />}
+    >
       <Outlet />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }
 ```
 
-`SiteEditorActions` and `SiteEditorDrawer` are private to the route module and
-own its branch/publish controls and runtime drawer.
-The Develop/Live project switch remains in the shared workspace topbar because
-it switches project identity on every destination, including Settings.
+The drawer stays outside the body's error boundary. The Develop/Live project
+switch is supplied by the session route to the common topbar because it changes
+project identity on every destination, including project Settings.
 
-`WorkspaceContext` exposes project/thread identity and panel visibility. The
-shell creates it; layouts and routes consume it. Editors that can also render
-standalone use `useOptionalWorkspace()`.
+`useChatLayout()` exposes layout visibility and toggles. Read agent and thread
+data from their domain providers and SDK hooks; the layout context does not own
+that data.
 
 ## Compose a panel
 
@@ -123,11 +180,11 @@ when a deeper feature owns the state for those controls.
 </Panel.Topbar.Center.Portal>
 ```
 
-Each region has `Target` and `Portal` members. Each `Panel` isolates its targets
-from surrounding panels; mount at most one target per region. Targets register
-through React 19 callback refs and remove their registration on unmount. Without
-a target, a portal renders its optional inline fallback. This is how preview
-controls remain available on mobile and in standalone editors.
+Each topbar region has `Target` and `Portal` members. Each `Panel` isolates its
+targets from surrounding panels; mount at most one target per region. Targets
+register through React 19 callback refs and remove their registration on
+unmount. Without a target, a portal renders its optional inline fallback. This
+keeps preview controls available on mobile and in standalone editors.
 
 The default `card` variant supplies rounded corners and a shadow. `plain`
 supplies the same composition without the card decoration. The topbar stays
@@ -164,15 +221,16 @@ form actions with the document.
 
 | Previous API | Replacement |
 | --- | --- |
-| `WorkspacePanelGroup` | `WorkspaceLayout` for placement; route recipes for main-panel content |
+| `OrgLayout`, `SettingsLayout` | One `Layout`; each parent route composes its content |
+| `WorkspacePanelGroup`, `WorkspaceLayout` | `ChatLayout.Thread` / `ChatLayout.Content` for placement |
+| `WorkspacePage`, `MainPanelContent`, `MainPanelWithDrawer` | `ChatLayout.Content` with route-owned feature content, actions, and drawer |
+| `WorkspaceContext`, `useWorkspace()`, `useInsetContext()` | `useChatLayout()` for placement; domain providers and SDK hooks for agent/thread data |
 | `PanelCard`, `SidePanel`, `PanelHeader` | `Panel`, `Panel.Content`, `Panel.Topbar` |
 | `Toolbar.*` and `MainPanelHeader*` portals | `Panel.Topbar.{Left,Center,Right}.{Target,Portal}` |
-| `MainPanelContent`, `MainPanelWithDrawer` | `WorkspacePage` with route-owned actions and drawer |
 | `ViewLayout`, `ViewTabs`, `ViewActions` | `DetailPanel` and `Panel.Topbar` portals |
 | `Page.Header`, `Page.Header.Left/Right` | The surrounding panel's topbar |
 | `Page.Body maxWidth={…}` | `Page.Container width="…"` |
 | `PageContentClassNameProvider` | Explicit `Page.Content` props |
-| `useInsetContext()` imported from the shell | `useWorkspace()` / `useOptionalWorkspace()` from `workspace-context` |
 
 The route-owned compound composition follows the direction of
 [PR #7002](https://github.com/decocms/studio/pull/7002). This implementation is

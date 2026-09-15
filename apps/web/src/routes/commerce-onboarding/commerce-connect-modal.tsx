@@ -57,7 +57,7 @@ export function CommerceConnectModal({ siteUrl }: { siteUrl?: string }) {
    * agent's chatDefaultOpen) and the sidebar both closed.
    *
    * The sidebar is closed through localStorage rather than a prop because
-   * `OrgLayout` owns that state and this modal renders above it. The report is
+   * `Layout` owns that state and this modal renders above it. The report is
    * the whole screen at this point in onboarding — the nav has nowhere useful
    * to go yet.
    *

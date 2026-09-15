@@ -1,10 +1,10 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { OverviewTab } from "@/layouts/main-panel-tabs/overview-tab";
 
-export default function AgentOverviewPage() {
+export default function AgentOverviewRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <OverviewTab />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

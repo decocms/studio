@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { getRouteApi } from "@tanstack/react-router";
 import { useRouteThreadId } from "@/layouts/thread-route";
 import { useTaskMetadata } from "@/layouts/main-panel-tabs/use-task-metadata";
@@ -25,10 +25,10 @@ function AgentAppContent() {
   );
 }
 
-export default function AgentAppPage() {
+export default function AgentAppRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentAppContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

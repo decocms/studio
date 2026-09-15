@@ -17,7 +17,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { useChatTask } from "@/components/chat/context";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useSandboxRepoDir } from "@/components/sandbox/hooks/use-sandbox-repo-dir";
@@ -40,10 +39,8 @@ const FileExplorer = lazy(() =>
 
 export function CodeTab({ openPath }: { openPath: string | null }) {
   const t = useT();
-  const workspaceContext = useOptionalWorkspace();
   const { org } = useProjectContext();
-  const { currentBranch: branch, taskId } = useChatTask();
-  const virtualMcpId = workspaceContext?.entity?.id ?? null;
+  const { currentBranch: branch, taskId, virtualMcpId } = useChatTask();
   const isDesktopApp = useIsDesktopApp();
 
   const lifecycle = useSandboxLifecycle();

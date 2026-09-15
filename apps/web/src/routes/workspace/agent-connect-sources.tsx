@@ -1,10 +1,10 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { ConnectSourcesTab } from "@/layouts/main-panel-tabs/connect-sources-tab";
 
-export default function AgentConnectSourcesPage() {
+export default function AgentConnectSourcesRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <ConnectSourcesTab />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

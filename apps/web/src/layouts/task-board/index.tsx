@@ -166,7 +166,7 @@ import type { TiptapDoc } from "@/components/chat/types";
 import { toast } from "sonner";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
-void import("../agent-shell-layout/index.tsx").catch(() => {});
+void import("../../routes/thread-session/route.tsx").catch(() => {});
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",

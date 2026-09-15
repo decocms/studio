@@ -1,10 +1,10 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { DiscoverTab } from "@/layouts/main-panel-tabs/discover-tab";
 
-export default function DiscoverPage() {
+export default function DiscoverRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <DiscoverTab />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

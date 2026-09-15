@@ -69,7 +69,7 @@ bun run build:studio
 
 ## Architecture
 
-See [Workspace, Panel, and Page](docs/component-architecture.md) for layout
+See [Layout, ChatLayout, Panel, and Page](docs/component-architecture.md) for layout
 ownership, compound component APIs, naming conventions, and annotated screenshots.
 
 `src/router.tsx` creates the TanStack Router tree and mounts the top-level

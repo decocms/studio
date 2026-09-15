@@ -32,7 +32,7 @@ interface SidebarShellProps {
 }
 
 /** The gutter a panel card puts above its own 48px `PanelHeader`
- *  (`WorkspaceLayout`'s `pt-1` plus its card wrapper's `p-0.5`). The sidebar has
+ *  (`ChatLayout`'s `pt-1` plus its card wrapper's `p-0.5`). The sidebar has
  *  no card, so it repeats the inset here to start its header on the same line.
  *  Invisible: the gutter it exposes is `bg-sidebar`, same as the sidebar. */
 const SIDEBAR_TOP_INSET = "pt-1.5";

@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { CdnTab } from "@/layouts/main-panel-tabs/cdn-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
@@ -17,10 +17,10 @@ function AgentMonitorContent() {
   );
 }
 
-export default function AgentMonitorPage() {
+export default function AgentMonitorRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentMonitorContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

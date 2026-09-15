@@ -11,7 +11,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
   type Crumb,
@@ -60,11 +60,12 @@ export function AvailableSectionEditor({
   ) => void;
 }) {
   const t = useT();
-  const workspaceContext = useOptionalWorkspace();
-  const agentSiteSlug =
-    workspaceContext?.entity?.id === virtualMcpId
-      ? (workspaceContext.entity.metadata?.siteSlug ?? null)
-      : null;
+  const task = useOptionalChatTask();
+  const sessionAgentId = task?.virtualMcpId;
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
+  const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
 
   const [formValue, setFormValue] = useState<Record<string, unknown>>({});
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<Crumb[]>([]);
@@ -78,7 +79,7 @@ export function AvailableSectionEditor({
       .pop()
       ?.replace(/\.tsx?$/, "") ?? resolveType;
 
-  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const threadId = task?.taskId ?? null;
   const sandbox = {
     orgSlug,
     virtualMcpId,

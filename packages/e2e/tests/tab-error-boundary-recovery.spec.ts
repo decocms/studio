@@ -1,11 +1,11 @@
 /**
  * E2E: a render error in one main-panel tab no longer bricks the panel.
  * Switching tabs remounts the ErrorBoundary (keyed on activeTab inside
- * WorkspacePage) so the new tab renders normally. The sandbox drawer
+ * ChatLayout.Content) so the new tab renders normally. The sandbox drawer
  * stays interactive throughout — it's a sibling of the boundary.
  *
  * Trigger: dev-only `window.__forceTabError = <activeTab>` hook in
- * apps/web/src/layouts/workspace/workspace-page.tsx's PageBody.
+ * apps/web/src/components/chat-layout/index.tsx's ContentBody.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/test";

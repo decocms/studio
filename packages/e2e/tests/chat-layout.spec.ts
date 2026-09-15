@@ -1,7 +1,7 @@
 import { expect, test } from "../fixtures/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
-test.describe("workspace composition", () => {
+test.describe("chat layout composition", () => {
   test.setTimeout(120_000);
 
   test("resizing and collapsing preserve the page and the chosen split", async ({
@@ -47,9 +47,9 @@ test.describe("workspace composition", () => {
       page.getByRole("button", { name: "Live", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
 
-    const workspace = page.locator('[data-slot="workspace"]');
-    const chat = page.getByTestId("workspace-side-panel");
-    const separator = workspace.getByRole("separator");
+    const layout = page.locator('[data-slot="chat-layout"]');
+    const chat = page.getByTestId("chat-layout-thread");
+    const separator = layout.getByRole("separator");
     const initialWidth = (await chat.boundingBox())!.width;
     const handle = (await separator.boundingBox())!;
     await page.mouse.move(handle.x + handle.width / 2, handle.y + 200);
@@ -80,6 +80,28 @@ test.describe("workspace composition", () => {
     ).toBe(true);
     expect(new URL(page.url()).pathname).toBe(path);
 
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await page.getByRole("button", { name: /^Automations\b/ }).click();
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${project.item.id}/automations`,
+    );
+    await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect
+      .poll(async () =>
+        Math.abs((await chat.boundingBox())!.width - resizedWidth),
+      )
+      .toBeLessThan(2);
+    await sidebar
+      .getByRole("button", { name: "Settings", exact: true })
+      .click();
+    await expect(input).toBeVisible();
+    await expect
+      .poll(async () =>
+        Math.abs((await chat.boundingBox())!.width - resizedWidth),
+      )
+      .toBeLessThan(2);
+
     await page.reload();
     await expect(input).toBeVisible();
     await expect
@@ -87,6 +109,59 @@ test.describe("workspace composition", () => {
         Math.abs((await chat.boundingBox())!.width - resizedWidth),
       )
       .toBeLessThan(2);
+  });
+
+  test("invalid route search preserves the split and navigation can recover", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const request = page.context().request;
+    const connection = await createHttpConnection(request, orgSlug, {
+      title: "Route error fixture",
+      url: "http://127.0.0.1:1/unused",
+    });
+    const project = await callSelfMcpTool<{ item: { id: string } }>(
+      request,
+      orgSlug,
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      {
+        data: {
+          title: "Route error project",
+          status: "active",
+          connections: [{ connection_id: connection.id }],
+        },
+      },
+    );
+
+    await page.goto(
+      `/${orgSlug}/projects/${project.item.id}/automations/invalid?automationView=invalid&sidepanel=true`,
+    );
+    const panel = page.getByTestId("main-panel");
+    await expect(panel.getByRole("button", { name: "Try again" })).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(page.getByTestId("chat-panel")).toBeVisible();
+    await expect(
+      panel.getByRole("button", { name: "Hide chat" }),
+    ).toBeVisible();
+    expect(pageErrors).toEqual([]);
+
+    await page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("button", { name: "Settings", exact: true })
+      .click();
+    await expect(page).toHaveURL(
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${project.item.id}/settings`,
+    );
+    await expect(page.getByPlaceholder("Project name")).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Try again" })).toHaveCount(
+      0,
+    );
+    await expect(page.getByTestId("chat-panel")).toBeVisible();
+    expect(pageErrors).toEqual([]);
   });
 
   test("the mobile topbar keeps one working surface switch across viewport changes", async ({

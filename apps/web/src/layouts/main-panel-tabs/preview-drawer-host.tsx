@@ -1,3 +1,4 @@
+import { useOptionalChatTask } from "@/components/chat/context";
 /**
  * PreviewDrawerHost — mounts the sandbox PreviewDrawer below the tab body.
  *
@@ -10,7 +11,6 @@
 
 import { useRef, useState } from "react";
 import { useProjectContext } from "@/sdk";
-import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import {
   useSandboxChunkHandler,
@@ -45,9 +45,8 @@ function writePersisted(virtualMcpId: string, state: DrawerState): void {
 }
 
 export function PreviewDrawerHost() {
-  const workspaceContext = useOptionalWorkspace();
   const { org } = useProjectContext();
-  const virtualMcpId = workspaceContext?.virtualMcpId ?? null;
+  const virtualMcpId = useOptionalChatTask()?.virtualMcpId ?? null;
   const lifecycle = useSandboxLifecycle();
   const events = useSandboxEvents();
 

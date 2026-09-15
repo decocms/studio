@@ -11,12 +11,13 @@ import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-drawer-gate";
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
-import { useWorkspace } from "@/layouts/workspace/workspace-context";
+import { ChatLayout } from "@/components/chat-layout";
+import { useVirtualMCP } from "@/sdk";
 
 function SiteEditorActions() {
-  const { entity } = useWorkspace();
-  const currentBranch = useOptionalChatTask()?.currentBranch ?? null;
+  const session = useOptionalChatTask();
+  const entity = useVirtualMCP(session?.virtualMcpId);
+  const currentBranch = session?.currentBranch ?? null;
   const runtime = useSessionRuntime(entity?.id).runtime;
   if (!entity) return null;
   return (
@@ -37,8 +38,9 @@ function SiteEditorActions() {
 }
 
 function SiteEditorDrawer() {
-  const { entity } = useWorkspace();
-  const activeTask = useOptionalChatTask()?.activeTask;
+  const session = useOptionalChatTask();
+  const entity = useVirtualMCP(session?.virtualMcpId);
+  const activeTask = session?.activeTask;
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
   const showDrawer = shouldShowTerminalDrawer({
@@ -54,11 +56,11 @@ function SiteEditorDrawer() {
 /** Preview, Content and Code share a route-owned topbar and runtime context. */
 export default function SiteEditorRoute() {
   return (
-    <WorkspacePage
+    <ChatLayout.Content
       actions={<SiteEditorActions />}
       drawer={<SiteEditorDrawer />}
     >
       <Outlet />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

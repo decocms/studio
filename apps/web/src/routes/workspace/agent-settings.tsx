@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 
@@ -7,10 +7,10 @@ function AgentSettingsContent() {
   return <SettingsTab virtualMcpId={virtualMcpId} />;
 }
 
-export default function AgentSettingsPage() {
+export default function AgentSettingsRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentSettingsContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

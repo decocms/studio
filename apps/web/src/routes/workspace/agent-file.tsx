@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { useSearch } from "@tanstack/react-router";
 import { FileTab } from "@/layouts/main-panel-tabs/file-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
@@ -17,10 +17,10 @@ function AgentFileContent() {
   );
 }
 
-export default function AgentFilePage() {
+export default function AgentFileRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentFileContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

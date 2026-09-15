@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { useSearch } from "@tanstack/react-router";
 import { DeckTab } from "@/layouts/main-panel-tabs/deck-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
@@ -18,10 +18,10 @@ function AgentDeckContent() {
   );
 }
 
-export default function AgentDeckPage() {
+export default function AgentDeckRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentDeckContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { E2eTab } from "@/layouts/main-panel-tabs/e2e-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
@@ -14,10 +14,10 @@ function AgentE2eContent() {
   );
 }
 
-export default function AgentE2ePage() {
+export default function AgentE2eRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentE2eContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

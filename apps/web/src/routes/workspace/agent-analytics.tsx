@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { AnalyticsTab } from "@/layouts/main-panel-tabs/analytics-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
@@ -14,10 +14,10 @@ function AgentAnalyticsContent() {
   );
 }
 
-export default function AgentAnalyticsPage() {
+export default function AgentAnalyticsRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentAnalyticsContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

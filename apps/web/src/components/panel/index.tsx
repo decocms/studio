@@ -19,7 +19,7 @@ const TopbarContext = createContext<{
   setTargets: Dispatch<SetStateAction<Targets>>;
 } | null>(null);
 
-/** A visual surface. The workspace owns its placement; the route owns its contents. */
+/** A visual surface. Layouts own placement; routes own contents. */
 function PanelRoot({
   children,
   className,

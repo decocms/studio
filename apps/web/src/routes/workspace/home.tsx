@@ -1,10 +1,10 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { OrgAgentsTab } from "@/layouts/main-panel-tabs/org-agents-tab";
 
-export default function HomePage() {
+export default function HomeRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <OrgAgentsTab />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

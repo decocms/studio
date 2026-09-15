@@ -90,7 +90,7 @@ export function useNavigateToAgent() {
      *  a different-scoped instance that can't see this agent's threads. Resolving
      *  against it always misses and mints a fresh id — a new chat/production
      *  thread every visit. So we omit `thread` from the URL and let the shell's
-     *  loading-guarded resolver (agent-shell-layout), which runs in the project's
+     *  loading-guarded resolver (ThreadSessionRoute), which runs in the project's
      *  own scope, own it. We keep resolving here only when a specific runtime was
      *  requested: that path parks a runtime intent the shell resolver can't read. */
     const delegateEntryToShell = !options?.runtime;

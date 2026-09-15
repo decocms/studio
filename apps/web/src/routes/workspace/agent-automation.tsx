@@ -1,4 +1,4 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { useParams } from "@tanstack/react-router";
 import { AutomationTab } from "@/layouts/main-panel-tabs/automation-tab";
 
@@ -9,10 +9,10 @@ function AgentAutomationContent() {
   ) : null;
 }
 
-export default function AgentAutomationPage() {
+export default function AgentAutomationRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <AgentAutomationContent />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

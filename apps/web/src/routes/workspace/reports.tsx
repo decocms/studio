@@ -1,10 +1,10 @@
-import { WorkspacePage } from "@/layouts/workspace/workspace-page";
+import { ChatLayout } from "@/components/chat-layout";
 import { ReportsTab } from "@/layouts/main-panel-tabs/reports-tab";
 
-export default function ReportsPage() {
+export default function ReportsRoute() {
   return (
-    <WorkspacePage>
+    <ChatLayout.Content>
       <ReportsTab />
-    </WorkspacePage>
+    </ChatLayout.Content>
   );
 }

@@ -203,7 +203,7 @@ const homeRoute = createRoute({
     // Super Agent) — never resume the last conversation. Cold entry / a fresh
     // tab is a "start from home" gesture (ChatGPT-style), so we deliberately
     // ignore any recorded taskId here. lastLocation's org is recorded on every
-    // org-scoped navigation (orgLayout.beforeLoad), so it's current even after
+    // org-scoped navigation (orgRoute.beforeLoad), so it's current even after
     // an in-app org switch that the queryFn-driven lastOrgSlug can miss. Reads
     // are synchronous so cold entry stays instant. A stale org self-heals:
     // OrgAccessGate clears it and bounces back to "/".
@@ -306,10 +306,10 @@ const reportRoute = createRoute({
 });
 
 // ============================================
-// ORG LAYOUT
+// ORGANIZATION ROUTE — SHARED APPLICATION LAYOUT
 // ============================================
 
-const orgLayout = createRoute({
+const orgRoute = createRoute({
   getParentRoute: () => shellLayout,
   path: "/$org",
   // Record the org on every entry/switch (this re-runs whenever the $org param
@@ -322,35 +322,33 @@ const orgLayout = createRoute({
    *  resolves this match before the router mounts, so it shows no loader during
    *  boot; after boot `beforeLoad` is synchronous and the chunk is cached, so an
    *  org switch resolves it well inside `defaultPendingMs`. Keep it that way —
-   *  an async loader here, or anything under `OrgLayout` that suspends, would
+   *  an async loader here, or anything under `OrgRoute` that suspends, would
    *  put a loading state back on top of a painted shell. */
-  component: lazyRouteComponent(() => import("./layouts/org-layout.tsx")),
+  component: lazyRouteComponent(() => import("./routes/orgs/route.tsx")),
 });
 
 // ============================================
-// ORG SHELL LAYOUT (pathless — workspace providers + mobile sidebar)
+// THREAD ROUTE (pathless — shared thread providers)
 // ============================================
 
-const orgShellLayout = createRoute({
-  getParentRoute: () => orgLayout,
+const threadRoute = createRoute({
+  getParentRoute: () => orgRoute,
   id: "org-shell",
   /** The panel-area loader, NOT the app-wide `SplashScreen`. The sidebar is
-   *  `orgLayout`'s now, so this route's pending state covers only the inset —
+   *  `orgRoute`'s now, so this route's pending state covers only the inset —
    *  without this, returning from the settings tree blanked the whole viewport
    *  for as long as this chunk and its providers took, which is the same reason
-   *  `agentShellLayout` below sets it. */
+   *  `threadSessionRoute` below sets it. */
   pendingComponent: PanelLoading,
-  component: lazyRouteComponent(
-    () => import("./layouts/org-shell-layout/index.tsx"),
-  ),
+  component: lazyRouteComponent(() => import("./routes/orgs/thread-route.tsx")),
 });
 
 // ============================================
-// WORKSPACE SESSION SHELL (pathless — chat/runtime providers + panel state)
+// THREAD SESSION ROUTE (pathless — runtime providers + chat layout state)
 // ============================================
 
 /**
- * Layout search, declared ONCE for every route under the workspace shell.
+ * Layout search, declared once for every route under ThreadSessionRoute.
  *
  * Path = which page. Search = how that page is laid out. `sidepanel`,
  * `mainpanel` and `thread` describe the layout, never the page, so they live
@@ -358,7 +356,7 @@ const orgShellLayout = createRoute({
  * two panel params are symmetric booleans—whether each panel is open—while the
  * matched child route names the page rendered in Main.
  */
-const workspaceLayoutSearchSchema = z.object({
+const chatLayoutSearchSchema = z.object({
   /** Whether the chat side panel is open. Absent = the route/agent default,
    *  which is closed on any destination that declares a `defaultMain`. Legacy
    *  `chat`/`0` links parse to the same boolean (see `panel-search.ts`). */
@@ -374,7 +372,7 @@ const workspaceLayoutSearchSchema = z.object({
   /** The open thread on a destination route. The legacy `/$org/$taskId` carries
    *  the same id in its path param instead, so nothing reads both. */
   thread: z.string().optional(),
-  /** Cross-route chat hand-offs owned by the workspace shell. */
+  /** Cross-route chat hand-offs owned by ThreadSessionRoute. */
   autosend: z.string().optional(),
   /** Mobile Library preview overlay opened from an in-chat file reference. */
   preview: z.string().optional(),
@@ -383,10 +381,10 @@ const workspaceLayoutSearchSchema = z.object({
   virtualmcpid: z.string().optional(),
 });
 
-const agentShellLayout = createRoute({
-  getParentRoute: () => orgShellLayout,
+const threadSessionRoute = createRoute({
+  getParentRoute: () => threadRoute,
   id: "agent-shell",
-  validateSearch: workspaceLayoutSearchSchema,
+  validateSearch: chatLayoutSearchSchema,
   /** Chat visibility follows the person across workspace destinations. Agent
    *  identity never does: canonical agent routes own it in `$agentId`, while
    *  `virtualmcpid` remains an input/filter only on the legacy and org-level
@@ -394,11 +392,11 @@ const agentShellLayout = createRoute({
   search: { middlewares: [retainSearchParams(["sidepanel"])] },
   // Render the centered panel-area loader (matches the shell's own Suspense
   // fallbacks) while this route loads, instead of the full-screen SplashScreen.
-  // The sidebar is already mounted by orgShellLayout, so the pending state
+  // The sidebar is already mounted by orgRoute, so the pending state
   // covers only the main panel region — no off-center left flash on nav.
   pendingComponent: PanelLoading,
   component: lazyRouteComponent(
-    () => import("./layouts/agent-shell-layout/index.tsx"),
+    () => import("./routes/thread-session/route.tsx"),
   ),
 });
 
@@ -413,14 +411,14 @@ const unifiedChatSearchSchema = legacyWorkspaceCompatibilitySearchSchema.extend(
 );
 
 const unifiedChatRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
+  getParentRoute: () => threadSessionRoute,
   path: "/$taskId",
   validateSearch: unifiedChatSearchSchema,
   component: () => null,
 });
 
 /**
- * WORKSPACE ROUTES
+ * ORGANIZATION AND PROJECT DESTINATIONS
  *
  * ROUTE GRAMMAR — path = which page, search = how that page is laid out.
  *
@@ -430,11 +428,10 @@ const unifiedChatRoute = createRoute({
  * Site Editor owns a further nested Preview/Content/Code subtree so all three
  * share the existing editor controls and console drawer.
  *
- * Every leaf renders its original page component. The workspace shell owns
- * shared panel chrome, cross-route providers, and the
- * resizable chat/main panels; it does not select a page body. `sidepanel`,
- * `mainpanel`, and `thread` remain shared search because they describe that
- * workspace layout. Feature payloads live on the leaf that consumes them.
+ * Each destination composes ChatLayout.Content around its feature body.
+ * ChatLayout owns placement and shared panel controls; ThreadSessionRoute
+ * owns the domain providers. `sidepanel`, `mainpanel`, and `thread` remain
+ * shared search. Feature payloads live on the leaf that consumes them.
  *
  * Old `?main=` and `?virtualmcpid=` links are permanent inputs, never outputs.
  * The pure legacy translator maps them directly to this tree before an invalid
@@ -453,16 +450,21 @@ const unifiedChatRoute = createRoute({
  * children, never the existence or meaning of organization paths.
  */
 
-/** Keep workspace features lazy for settings-only visits. */
-const WorkspacePagePending = lazyRouteComponent(
-  () => import("./layouts/workspace/workspace-page"),
-  "WorkspacePagePending",
+/** Keep ChatLayout lazy for settings-only visits. */
+const ChatLayoutPending = lazyRouteComponent(
+  () => import("./components/chat-layout"),
+  "ChatLayoutPending",
+);
+const ChatLayoutError = lazyRouteComponent(
+  () => import("./components/chat-layout"),
+  "ChatLayoutError",
 );
 
 /** Home is organization-owned. Project identity lives under `/projects/$agentId`. */
 const orgHomeRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
-  getParentRoute: () => agentShellLayout,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
   path: "/home",
   staticData: {
     defaultMain: "overview",
@@ -479,7 +481,7 @@ const orgHomeRoute = createRoute({
 /** Bare `/projects` promotes a search-carried legacy identity or lands on the
  *  organization Home. It is an entry point, never a second project list. */
 const projectsIndexRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
+  getParentRoute: () => threadSessionRoute,
   path: "/projects",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   beforeLoad: ({ params, search }) => {
@@ -512,14 +514,16 @@ const projectsIndexRoute = createRoute({
 /** Canonical identity boundary for one project. Every feature is a real child
  *  route and therefore owns both its composition and its URL. */
 const agentWorkspaceRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
   path: "/projects/$agentId",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   component: Outlet,
 });
 
 const agentOverviewRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/",
   staticData: { defaultMain: "overview", mainView: "overview" },
@@ -529,7 +533,8 @@ const agentOverviewRoute = createRoute({
 });
 
 const projectTasksRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/tasks/{-$taskKey}",
   staticData: {
@@ -561,7 +566,8 @@ const projectTasksRoute = createRoute({
 });
 
 const projectReportsRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/reports",
   staticData: {
@@ -578,7 +584,8 @@ const projectReportsRoute = createRoute({
 });
 
 const agentSiteEditorRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/site-editor",
   staticData: {
@@ -635,7 +642,8 @@ const agentSiteEditorCodeRoute = createRoute({
 });
 
 const agentAutomationsRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/automations",
   staticData: {
@@ -662,7 +670,8 @@ const agentAutomationsRoute = createRoute({
 });
 
 const agentAutomationRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/automations/$automationId",
   staticData: {
@@ -678,7 +687,8 @@ const agentAutomationRoute = createRoute({
 });
 
 const agentSettingsRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/settings",
   staticData: {
@@ -691,7 +701,8 @@ const agentSettingsRoute = createRoute({
 });
 
 const agentAssetsRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/assets",
   staticData: {
@@ -704,7 +715,8 @@ const agentAssetsRoute = createRoute({
 });
 
 const agentGitRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/git",
   staticData: {
@@ -717,7 +729,8 @@ const agentGitRoute = createRoute({
 });
 
 const agentHostingRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/hosting",
   staticData: {
@@ -730,7 +743,8 @@ const agentHostingRoute = createRoute({
 });
 
 const agentE2eRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/e2e",
   staticData: {
@@ -743,7 +757,8 @@ const agentE2eRoute = createRoute({
 });
 
 const agentAnalyticsRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/analytics",
   staticData: {
@@ -756,7 +771,8 @@ const agentAnalyticsRoute = createRoute({
 });
 
 const agentMonitorRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   /** The stable tab id is `cdn`. Keeping that name in the canonical path also
    * leaves the previously unambiguous project-first custom view `monitor`
@@ -772,7 +788,8 @@ const agentMonitorRoute = createRoute({
 });
 
 const agentAppRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/apps/$connectionId/$toolName",
   staticData: { defaultMain: "app", mainView: "app" },
@@ -782,7 +799,8 @@ const agentAppRoute = createRoute({
 });
 
 const agentViewRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/views/$viewId",
   staticData: {
@@ -795,7 +813,8 @@ const agentViewRoute = createRoute({
 });
 
 const agentOutputFileRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/outputs/file",
   staticData: {
@@ -809,7 +828,8 @@ const agentOutputFileRoute = createRoute({
 });
 
 const agentOutputDeckRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/outputs/deck",
   staticData: {
@@ -823,7 +843,8 @@ const agentOutputDeckRoute = createRoute({
 });
 
 const agentLibraryFileRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/library/file",
   staticData: {
@@ -837,7 +858,8 @@ const agentLibraryFileRoute = createRoute({
 });
 
 const agentConnectSourcesRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/connect-sources",
   staticData: {
@@ -864,7 +886,7 @@ const agentLegacyProjectViewRoute = createRoute({
  *  application navigation emits it. Nested paths are preserved verbatim and
  *  then resolved by the canonical project tree's compatibility adapter. */
 const legacyAgentsIndexRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
+  getParentRoute: () => threadSessionRoute,
   path: "/agents",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   beforeLoad: ({ params, search }) => {
@@ -890,7 +912,7 @@ const legacyAgentsIndexRoute = createRoute({
 });
 
 const legacyAgentsDeepRoute = createRoute({
-  getParentRoute: () => agentShellLayout,
+  getParentRoute: () => threadSessionRoute,
   path: "/agents/$",
   validateSearch: legacyWorkspaceCompatibilitySearchSchema,
   beforeLoad: ({ params, location }) => {
@@ -926,8 +948,9 @@ const legacyAgentsDeepRoute = createRoute({
  * smuggling identity into this route's search.
  */
 const tasksRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
-  getParentRoute: () => agentShellLayout,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
   path: "/tasks/{-$taskKey}",
   staticData: {
     defaultMain: "board",
@@ -957,8 +980,9 @@ const tasksRoute = createRoute({
 
 /** The org's Commerce Discovery report. Org-wide, so no project segment. */
 const reportsRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
-  getParentRoute: () => agentShellLayout,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
   path: "/reports",
   staticData: {
     defaultMain: "reports",
@@ -975,8 +999,9 @@ const reportsRoute = createRoute({
 
 /** Library. Org-wide, so no project segment. */
 const libraryRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
-  getParentRoute: () => agentShellLayout,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
   path: "/library",
   staticData: {
     defaultMain: "files",
@@ -988,8 +1013,9 @@ const libraryRoute = createRoute({
 
 /** Discover remains an existing destination; this layer only changes routing. */
 const discoverRoute = createRoute({
-  pendingComponent: WorkspacePagePending,
-  getParentRoute: () => agentShellLayout,
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
   path: "/discover",
   staticData: { defaultMain: "discover", mainView: "discover" },
   component: lazyRouteComponent(
@@ -998,7 +1024,7 @@ const discoverRoute = createRoute({
 });
 
 const orgMembersRedirectRoute = createRoute({
-  getParentRoute: () => orgLayout,
+  getParentRoute: () => orgRoute,
   path: "/members",
   beforeLoad: ({ params }) => {
     throw redirect({
@@ -1029,7 +1055,7 @@ const orgIndexSearchSchema = z.object({
 });
 
 const orgIndexRoute = createRoute({
-  getParentRoute: () => orgShellLayout,
+  getParentRoute: () => threadRoute,
   path: "/",
   validateSearch: orgIndexSearchSchema,
   pendingComponent: PanelLoading,
@@ -1046,7 +1072,7 @@ const orgIndexRoute = createRoute({
  * one lands on the board there, so this route needs no data of its own.
  */
 const taskKeyRoute = createRoute({
-  getParentRoute: () => orgShellLayout,
+  getParentRoute: () => threadRoute,
   path: "/t/$taskKey",
   beforeLoad: ({ params }) => {
     throw redirect({
@@ -1060,22 +1086,24 @@ const taskKeyRoute = createRoute({
 });
 
 // ============================================
-// SETTINGS LAYOUT (/$org/settings)
+// SETTINGS ROUTE (/$org/settings)
 // ============================================
 
-const settingsLayout = createRoute({
-  getParentRoute: () => orgLayout,
+const settingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
   path: "/settings",
-  /** Panel-area loader, for the same reason as `orgShellLayout`: the sidebar
-   *  belongs to `orgLayout` and stays mounted across this crossing, so a
+  /** Panel-area loader, for the same reason as `threadRoute`: the sidebar
+   *  belongs to `orgRoute` and stays mounted across this crossing, so a
    *  full-screen `SplashScreen` would blank a shell that is already painted. */
   pendingComponent: PanelLoading,
-  component: lazyRouteComponent(() => import("./layouts/settings-layout.tsx")),
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/route.tsx"),
+  ),
 });
 
 // Settings index → redirect to /general
 const settingsIndexRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/index-redirect.tsx"),
@@ -1084,7 +1112,7 @@ const settingsIndexRoute = createRoute({
 
 // Operations: Connections
 const connectionsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/connections",
   component: lazyRouteComponent(() => import("./routes/orgs/connections.tsx")),
   validateSearch: z.lazy(() =>
@@ -1096,7 +1124,7 @@ const connectionsRoute = createRoute({
 });
 
 const connectionDetailRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/connections/$appSlug",
   component: lazyRouteComponent(
     () => import("./routes/orgs/connection-detail.tsx"),
@@ -1109,7 +1137,7 @@ const connectionDetailRoute = createRoute({
 });
 
 const collectionDetailRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/connections/$appSlug/$collectionName/$itemId",
   component: lazyRouteComponent(
     () => import("./routes/orgs/collection-detail.tsx"),
@@ -1123,7 +1151,7 @@ const collectionDetailRoute = createRoute({
 
 // Operations: Monitor
 const monitoringRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/monitor",
   component: lazyRouteComponent(
     () => import("./routes/orgs/monitoring/index.tsx"),
@@ -1150,7 +1178,7 @@ const monitoringRoute = createRoute({
 
 // Organization settings pages
 const settingsGeneralRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/general",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/general.tsx"),
@@ -1158,7 +1186,7 @@ const settingsGeneralRoute = createRoute({
 });
 
 const settingsConnectRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/connect",
   pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
@@ -1167,7 +1195,7 @@ const settingsConnectRoute = createRoute({
 });
 
 const settingsAiProvidersRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/ai-providers",
   pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
@@ -1177,7 +1205,7 @@ const settingsAiProvidersRoute = createRoute({
 
 // Redirects old /settings/billing links to the merged AI Providers page.
 const settingsBillingRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/billing",
   beforeLoad: ({ params }) => {
     throw redirect({
@@ -1188,7 +1216,7 @@ const settingsBillingRoute = createRoute({
 });
 
 const settingsInfraBillingRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/infra-billing",
   pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
@@ -1197,7 +1225,7 @@ const settingsInfraBillingRoute = createRoute({
 });
 
 const settingsSecretsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/secrets",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/secrets.tsx"),
@@ -1205,7 +1233,7 @@ const settingsSecretsRoute = createRoute({
 });
 
 const settingsApiKeysRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/api-keys",
   pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
@@ -1214,7 +1242,7 @@ const settingsApiKeysRoute = createRoute({
 });
 
 const settingsBucketsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/buckets",
   pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
@@ -1223,7 +1251,7 @@ const settingsBucketsRoute = createRoute({
 });
 
 const settingsRepositoriesRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/repositories",
   validateSearch: z.object({
     git_error: z.string().optional().catch(undefined),
@@ -1237,7 +1265,7 @@ const settingsRepositoriesRoute = createRoute({
 });
 
 const settingsSyncedReposRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/synced-repos",
   pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
@@ -1246,7 +1274,7 @@ const settingsSyncedReposRoute = createRoute({
 });
 
 const settingsTaskBoardRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/task-board",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/tasks.tsx"),
@@ -1255,7 +1283,7 @@ const settingsTaskBoardRoute = createRoute({
 
 // Redirects old /settings/tasks links to the renamed task board settings.
 const settingsTasksRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/tasks",
   beforeLoad: ({ params }) => {
     throw redirect({
@@ -1266,7 +1294,7 @@ const settingsTasksRoute = createRoute({
 });
 
 const settingsMembersRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/members",
   pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
@@ -1275,7 +1303,7 @@ const settingsMembersRoute = createRoute({
 });
 
 const settingsRolesRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/roles",
   pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
@@ -1289,13 +1317,13 @@ const settingsRolesRoute = createRoute({
 });
 
 const settingsSsoRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/sso",
   component: lazyRouteComponent(() => import("./routes/orgs/settings/sso.tsx")),
 });
 
 const settingsProfileRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/profile",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/profile.tsx"),
@@ -1303,7 +1331,7 @@ const settingsProfileRoute = createRoute({
 });
 
 const settingsStoreRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/store",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store.tsx"),
@@ -1311,7 +1339,7 @@ const settingsStoreRoute = createRoute({
 });
 
 const settingsRegistryRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/registry",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/registry.tsx"),
@@ -1319,7 +1347,7 @@ const settingsRegistryRoute = createRoute({
 });
 
 const settingsStoreRegistryRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/store/registry",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store-registry.tsx"),
@@ -1332,13 +1360,13 @@ const settingsStoreRegistryRoute = createRoute({
 
 // Agents list (view all)
 const settingsAgentsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/agents",
   component: lazyRouteComponent(() => import("./routes/agents-list.tsx")),
 });
 
 const settingsAutomationsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/automations",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/automations.tsx"),
@@ -1346,7 +1374,7 @@ const settingsAutomationsRoute = createRoute({
 });
 
 const settingsSkillsRoute = createRoute({
-  getParentRoute: () => settingsLayout,
+  getParentRoute: () => settingsRoute,
   path: "/skills",
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/skills.tsx"),
@@ -1357,7 +1385,7 @@ const settingsSkillsRoute = createRoute({
 // ROUTE TREE
 // ============================================
 
-const settingsWithChildren = settingsLayout.addChildren([
+const settingsWithChildren = settingsRoute.addChildren([
   settingsIndexRoute,
   connectionsRoute,
   connectionDetailRoute,
@@ -1416,7 +1444,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentLegacyProjectViewRoute,
 ]);
 
-const agentShellWithChildren = agentShellLayout.addChildren([
+const threadSessionWithChildren = threadSessionRoute.addChildren([
   unifiedChatRoute,
   orgHomeRoute,
   projectsIndexRoute,
@@ -1429,21 +1457,21 @@ const agentShellWithChildren = agentShellLayout.addChildren([
   discoverRoute,
 ]);
 
-const orgShellWithChildren = orgShellLayout.addChildren([
+const threadRouteWithChildren = threadRoute.addChildren([
   orgIndexRoute,
   taskKeyRoute,
-  agentShellWithChildren,
+  threadSessionWithChildren,
 ]);
 
-const orgLayoutWithChildren = orgLayout.addChildren([
-  orgShellWithChildren,
+const orgRouteWithChildren = orgRoute.addChildren([
+  threadRouteWithChildren,
   orgMembersRedirectRoute,
   settingsWithChildren,
 ]);
 
 const shellRouteTree = shellLayout.addChildren([
   homeRoute,
-  orgLayoutWithChildren,
+  orgRouteWithChildren,
 ]);
 
 const routeTree = rootRoute.addChildren([
