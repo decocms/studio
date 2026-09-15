@@ -285,6 +285,14 @@ spec:
                 secretKeyRef:
                   name: {{ include "sandbox-env.sentinelSecretName" . }}
                   key: daemonToken
+            {{- if .Values.commitSigning.privateKey }}
+            # The daemon signs commits made as this committer with the mounted
+            # key (sandbox-signing-key-secret.yaml). See values.yaml commitSigning.
+            - name: GIT_SIGNING_KEY_FILE
+              value: "/run/git-signing/key"
+            - name: GIT_SIGNING_KEY_EMAIL
+              value: {{ required "commitSigning.email is required when commitSigning.privateKey is set" .Values.commitSigning.email | quote }}
+            {{- end }}
             {{- if .Values.readOnlyRootFilesystem }}
             # With RO rootfs + emptyDir on /app, the mount root is owned
             # root:1000 (fsGroup). Git 2.35+'s "dubious ownership" check
@@ -341,6 +349,11 @@ spec:
             {{- end }}
             - name: home
               mountPath: /home/sandbox
+            {{- if .Values.commitSigning.privateKey }}
+            - name: git-signing-key
+              mountPath: /run/git-signing
+              readOnly: true
+            {{- end }}
             {{- if not .Values.disableFsSidecar }}
             # The sidecar's FUSE mounts under /app/org surface here.
             - name: orgfs-org
@@ -399,6 +412,14 @@ spec:
         - name: home
           emptyDir:
             sizeLimit: {{ .Values.volumeSizes.home | default "5Gi" }}
+        {{- if .Values.commitSigning.privateKey }}
+        # 0440: root-owned by the kubelet, group-readable by fsGroup 1000. The
+        # daemon copies it to a 0600 file of its own before git uses it.
+        - name: git-signing-key
+          secret:
+            secretName: {{ include "sandbox-env.signingKeySecretName" . }}
+            defaultMode: 0440
+        {{- end }}
         {{- if .Values.depsCache.enabled }}
         # Node-local package cache shared across sandbox pods (see the
         # depsCache comment in values.yaml for the hardlink + isolation

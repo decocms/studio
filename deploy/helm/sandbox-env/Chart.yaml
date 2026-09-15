@@ -9,6 +9,10 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.17.0: opt-in `commitSigning` — mounts the bot's SSH signing key into every
+# sandbox pod and tells the daemon which committer it belongs to, so commits
+# made as the bot are signed and repositories that require verified signatures
+# can merge them. Off unless `commitSigning.privateKey` is set.
 # 0.16.2: renewals now land at idleTtlSeconds + `housekeeper.renewSlackSeconds`
 # (default 60) instead of exactly idleTtlSeconds, so the sweep's graceful reap
 # — HTTPRoute deleted before the pod drains — stays ahead of the operator's own
@@ -154,7 +158,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.16.49
+version: 0.17.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.63.0"
 kubeVersion: ">=1.30.0-0"

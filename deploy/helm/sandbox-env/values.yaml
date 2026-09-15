@@ -874,3 +874,20 @@ housekeeper:
     limits:
       cpu: 200m
       memory: 128Mi
+
+# ── commit signing ─────────────────────────────────────────────────────
+# Sandboxes commit as the shared bot identity. A repository that requires
+# verified signatures rejects those commits unless they are signed with a key
+# registered on the bot's own forge account. Generate one with
+#   ssh-keygen -t ed25519 -N "" -C decobot-signing -f decobot-signing
+# add `decobot-signing.pub` to the bot account as a *Signing Key* (not an
+# authentication key — signing alone grants no repository access), and set:
+commitSigning:
+  # The committer email the key is registered for. Only commits with this
+  # committer are signed; a human's commit signed with the bot's key would
+  # render as Unverified. Required when privateKey is set.
+  email: ""
+  # The OpenSSH private key (`decobot-signing`). Empty leaves commits unsigned.
+  # Mounted read-only into every sandbox pod of this env, where the daemon
+  # points git at it — so treat it as readable by code running in a sandbox.
+  privateKey: ""
