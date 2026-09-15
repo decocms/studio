@@ -46,7 +46,6 @@ export interface StudioToolIO {
   };
   ORGANIZATION_UPDATE: {
     input: {
-      id: string;
       name?: string | undefined;
       description?: string | undefined;
     };
@@ -60,7 +59,7 @@ export interface StudioToolIO {
     };
   };
   ORGANIZATION_DELETE: {
-    input: { id: string };
+    input: { [x: string]: never };
     output: { success: boolean; id: string };
   };
   ORGANIZATION_SETTINGS_GET: {

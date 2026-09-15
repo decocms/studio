@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
-import { requireAuth } from "../../core/studio-context";
+import { requireAuth, requireOrganization } from "../../core/studio-context";
 
 export const ORGANIZATION_DELETE = defineTool({
   name: "ORGANIZATION_DELETE",
@@ -19,28 +19,23 @@ export const ORGANIZATION_DELETE = defineTool({
     idempotentHint: true,
     openWorldHint: false,
   },
-  inputSchema: z.object({
-    id: z.string(),
-  }),
+  inputSchema: z.object({}),
 
   outputSchema: z.object({
     success: z.boolean(),
     id: z.string(),
   }),
 
-  handler: async (input, ctx) => {
+  handler: async (_input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
 
-    // Reject a target org the caller isn't authenticated against (see member-remove.ts).
-    if (input.id !== ctx.organization?.id) {
-      throw new Error(
-        "Organization ID does not match authenticated organization",
-      );
-    }
+    // The target org is the one resolved from the URL path; the input carries
+    // no id, so there is nothing to compare and nothing to spoof.
+    const org = requireOrganization(ctx);
 
     // Merge into existing metadata — organization.update replaces it wholesale.
-    const existing = await ctx.boundAuth.organization.get(input.id);
+    const existing = await ctx.boundAuth.organization.get(org.id);
     const existingMetadata = (existing?.metadata ?? {}) as Record<
       string,
       unknown
@@ -50,12 +45,12 @@ export const ORGANIZATION_DELETE = defineTool({
     if (existingMetadata.archived === true) {
       return {
         success: true,
-        id: input.id,
+        id: org.id,
       };
     }
 
     await ctx.boundAuth.organization.update({
-      organizationId: input.id,
+      organizationId: org.id,
       data: {
         metadata: {
           ...existingMetadata,
@@ -67,7 +62,7 @@ export const ORGANIZATION_DELETE = defineTool({
 
     return {
       success: true,
-      id: input.id,
+      id: org.id,
     };
   },
 });
