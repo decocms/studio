@@ -221,7 +221,7 @@ export const COMMERCE_DISCOVERY_SET_REPOSITORY = defineTool({
           `Repository ${input.repositoryId} is not linked to this organization`,
         );
       }
-      repository = {
+      const ref = {
         repositoryId: row.id,
         provider: row.provider,
         host: row.host,
@@ -229,6 +229,13 @@ export const COMMERCE_DISCOVERY_SET_REPOSITORY = defineTool({
         defaultBranch: row.defaultBranch,
         webUrl: row.webUrl,
       };
+      const parsed = ReportsRepositoryRefSchema.safeParse(ref);
+      if (!parsed.success) {
+        throw new Error(
+          `Repository ${input.repositoryId} has invalid configuration (missing or empty host/path)`,
+        );
+      }
+      repository = parsed.data;
     }
 
     /**
