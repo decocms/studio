@@ -30,6 +30,9 @@ const RUN_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/run$/;
 const PUBLIC_REPORT_RUN_PATH = "/api/v2/diagnostics/run";
 const CAPTURED_REPORT_RUN_PATH = "/__e2e/report-run";
 const capturedReportRuns = new Map<string, Record<string, unknown>>();
+let nextPrivateRunId = 1;
+
+const privateRunId = () => `run_e2e_${nextPrivateRunId++}`;
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -104,7 +107,7 @@ const server = createServer((req, res) => {
           org_id: orgId,
           scope: "private",
           token: `dgn_e2e_${orgId ?? "unknown"}`,
-          run: { id: "run_e2e", status: "running" },
+          run: { id: privateRunId(), status: "running" },
         }),
       );
     });
@@ -121,7 +124,7 @@ const server = createServer((req, res) => {
         JSON.stringify({
           url: domain,
           scope: "private",
-          run: { id: "run_e2e", status: "running" },
+          run: { id: privateRunId(), status: "running" },
         }),
       );
     });

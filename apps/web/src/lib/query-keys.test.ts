@@ -25,3 +25,36 @@ describe("KEYS.reportAll", () => {
     expect(other.slice(0, prefix.length)).not.toEqual([...prefix]);
   });
 });
+
+describe("KEYS.commerceDiscoveryDiagnostic", () => {
+  test("isolates organization and project report readers", () => {
+    const organization = KEYS.commerceDiscoveryDiagnostic("org_1", "conn_1");
+    const projectOne = KEYS.commerceDiscoveryDiagnostic(
+      "org_1",
+      "conn_1",
+      "vir_1",
+    );
+    const projectTwo = KEYS.commerceDiscoveryDiagnostic(
+      "org_1",
+      "conn_1",
+      "vir_2",
+    );
+
+    expect(organization).not.toEqual(projectOne);
+    expect(projectOne).not.toEqual(projectTwo);
+    expect(projectOne.at(-1)).toBe("vir_1");
+  });
+
+  test("shares one invalidation prefix across every ownership scope", () => {
+    const prefix = KEYS.commerceDiscoveryDiagnosticPrefix("org_1", "conn_1");
+    const variants = [
+      KEYS.commerceDiscoveryDiagnostic("org_1", "conn_1"),
+      KEYS.commerceDiscoveryDiagnostic("org_1", "conn_1", "vir_1"),
+      KEYS.commerceDiscoveryDiagnostic("org_1", "conn_1", "vir_2"),
+    ];
+
+    for (const variant of variants) {
+      expect(variant.slice(0, prefix.length)).toEqual([...prefix]);
+    }
+  });
+});

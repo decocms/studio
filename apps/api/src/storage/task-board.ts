@@ -319,6 +319,8 @@ export class TaskBoardStorage {
     type?: TaskBoardItemType;
     assigneeId?: string | null;
     assignedBy?: string | null;
+    /** Exact virtual MCP/project that owns this task. */
+    virtualMcpId?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
     /** The first-class repository the card was written against, when known. */
@@ -357,6 +359,7 @@ export class TaskBoardStorage {
           type: params.type ?? DEFAULT_TASK_TYPE,
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
+          virtual_mcp_id: params.virtualMcpId ?? null,
           repo: params.repo ?? null,
           repository_id: params.repositoryId ?? null,
           due_date: params.dueDate ?? null,
@@ -406,6 +409,7 @@ export class TaskBoardStorage {
       type?: TaskBoardItemType;
       assigneeId?: string | null;
       assignedBy?: string | null;
+      virtualMcpId?: string | null;
       repo?: string | null;
       repositoryId?: string | null;
       dueDate?: string | null;
@@ -430,6 +434,9 @@ export class TaskBoardStorage {
           : {}),
         ...(data.assignedBy !== undefined
           ? { assigned_by: data.assignedBy }
+          : {}),
+        ...(data.virtualMcpId !== undefined
+          ? { virtual_mcp_id: data.virtualMcpId }
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
         ...(data.repositoryId !== undefined
@@ -661,7 +668,8 @@ export class TaskBoardStorage {
 
   /**
    * Link an agent thread to a task (many-to-many). Idempotent — re-linking the
-   * same pair is a no-op, so a run replay can't duplicate the row.
+   * same pair is a no-op, so a run replay can't duplicate the row. Also a
+   * no-op unless both records belong to `organizationId`.
    */
   async linkThread(
     taskBoardItemId: string,
@@ -670,11 +678,24 @@ export class TaskBoardStorage {
   ): Promise<void> {
     await this.db
       .insertInto("task_board_item_threads")
-      .values({
-        task_board_item_id: taskBoardItemId,
-        thread_id: threadId,
-        organization_id: organizationId,
-      })
+      .columns(["task_board_item_id", "thread_id", "organization_id"])
+      .expression((eb) =>
+        eb
+          .selectFrom("task_board_items as item")
+          .innerJoin(
+            "threads as thread",
+            "thread.organization_id",
+            "item.organization_id",
+          )
+          .select([
+            "item.id as task_board_item_id",
+            "thread.id as thread_id",
+            "item.organization_id as organization_id",
+          ])
+          .where("item.id", "=", taskBoardItemId)
+          .where("item.organization_id", "=", organizationId)
+          .where("thread.id", "=", threadId),
+      )
       .onConflict((oc) =>
         oc.columns(["task_board_item_id", "thread_id"]).doNothing(),
       )
@@ -2005,6 +2026,7 @@ export class TaskBoardStorage {
           .as("hasMessages"),
       ])
       .where("link.organization_id", "=", organizationId)
+      .where("t.organization_id", "=", organizationId)
       .where("link.task_board_item_id", "in", ids)
       .orderBy("link.created_at", "desc")
       .execute();
@@ -2513,6 +2535,7 @@ export class TaskBoardStorage {
     type?: string;
     assignee_id: string | null;
     assigned_by: string | null;
+    virtual_mcp_id: string | null;
     repo: string | null;
     repository_id?: string | null;
     due_date: string | Date | null;
@@ -2538,6 +2561,9 @@ export class TaskBoardStorage {
       type: (row.type ?? DEFAULT_TASK_TYPE) as TaskBoardItemType,
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
+      // Old rows and deliberately organization-level cards are explicit null,
+      // never undefined — every public schema requires the nullable field.
+      virtualMcpId: row.virtual_mcp_id ?? null,
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
       dueDate:

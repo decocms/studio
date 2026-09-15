@@ -73,7 +73,12 @@ import {
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { RepositoryImportPicker } from "@/components/repository-import-picker";
-import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  useProjectContext,
+  useVirtualMCPNonBlockingState,
+  useVirtualMCPsNonBlockingState,
+} from "@/sdk";
 import { useMembers } from "@/hooks/use-members";
 import {
   useTaskBoardItemActions,
@@ -141,7 +146,11 @@ import {
   EMPTY_FILTERS,
   TaskFiltersBar,
   TaskFiltersDrawer,
+  resolveTaskBoardProjectScope,
+  resolveTaskBoardProjectAssignment,
   taskMatchesFilters,
+  taskMatchesProjectScope,
+  type TaskBoardProjectScope,
   type TaskFilters,
 } from "./task-filters";
 import { useBoardSearch, visibleSelection } from "./filters-search";
@@ -161,6 +170,7 @@ import {
 } from "@/hooks/use-destination-route";
 import {
   findTaskByKeyOrId,
+  shouldRedirectMissingTask,
   taskRouteSegment,
 } from "@/layouts/task-board/task-route";
 import { useThreadActions } from "@/components/chat/store/hooks";
@@ -822,12 +832,29 @@ function AssigneeDisplay({
 }
 
 export function TaskBoardPage({
-  routeProjectId,
+  projectScope,
 }: {
-  routeProjectId?: string;
+  projectScope?: TaskBoardProjectScope;
 } = {}) {
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
+  const projectEntity = useVirtualMCPNonBlockingState(projectScope?.projectId);
+  /** Find the reverse half of the dev/live pair without relying on the first
+   * page of the org-wide project list. The server applies this metadata filter
+   * before pagination; the exact entity query above covers a dev route whose
+   * own metadata points forward to live. */
+  const reverseProjectAliases = useVirtualMCPsNonBlockingState(
+    {
+      filters: [
+        {
+          column: "metadata.liveAgentId",
+          value: projectScope?.projectId ?? "__no_project_scope__",
+        },
+      ],
+      pageSize: 1000,
+    },
+    !!projectScope,
+  );
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   const repositories = useRepositories();
@@ -912,6 +939,25 @@ export function TaskBoardPage({
   const activeProjectRepo = filters.project
     ? (entryForFilter(filters.project, projectIndex)?.repo ?? null)
     : null;
+  const projectAliasCandidates = projectEntity.item
+    ? [projectEntity.item, ...reverseProjectAliases.items]
+    : reverseProjectAliases.items;
+  const resolvedProjectScope = projectScope
+    ? resolveTaskBoardProjectScope(projectScope, projectAliasCandidates)
+    : undefined;
+  const projectAliasesPending =
+    !!projectScope && (projectEntity.pending || reverseProjectAliases.pending);
+  const projectAliasesError = projectScope
+    ? (projectEntity.error ?? reverseProjectAliases.error)
+    : null;
+  /** A project route owns the project dimension. Ignore a stale/shareable
+   * `?repo=` there while retaining every other URL filter exactly as-is. */
+  const boardFilters = projectScope ? { ...filters, project: null } : filters;
+  const scopedItems = resolvedProjectScope
+    ? items.filter((item) =>
+        taskMatchesProjectScope(item, resolvedProjectScope, projectIndex),
+      )
+    : items;
   const [preferences] = usePreferences();
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const toggleSelect = (id: string) =>
@@ -931,7 +977,7 @@ export function TaskBoardPage({
   const clearSelection = () => setSelection(new Set());
   // A filter change can hide selected cards the same way the list-view toggle does.
   const handleFiltersChange = (next: TaskFilters) => {
-    setFilters(next);
+    setFilters(projectScope ? { ...next, project: null } : next);
     clearSelection();
   };
   // Create only: an existing card is addressed by its path, not by state.
@@ -949,12 +995,12 @@ export function TaskBoardPage({
   /** Keep task details inside the route that owns this board. Search remains
    * untouched so layout and non-project filters survive card navigation. */
   const navigateToTask = (taskKey: string | undefined, replace: boolean) => {
-    if (routeProjectId) {
+    if (projectScope) {
       navigate({
         to: PROJECT_ROUTE.tasks,
         params: {
           org: org.slug,
-          agentId: routeProjectId,
+          agentId: projectScope.projectId,
           taskKey,
         },
         search: (prev: Record<string, unknown>) => prev,
@@ -992,12 +1038,17 @@ export function TaskBoardPage({
     "taskKey" in routeParams && typeof routeParams.taskKey === "string"
       ? routeParams.taskKey
       : undefined;
-  const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
+  const openItem = findTaskByKeyOrId(scopedItems, openTaskKey) ?? null;
   const taskReturnFocusRef = useRef<HTMLElement | null>(null);
   const boardFocusRef = useRef<HTMLDivElement>(null);
   /** A deleted (or never-visible) card leaves the segment dangling; land on
    *  the board rather than an empty pane. */
-  const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
+  const staleTaskKey = shouldRedirectMissingTask({
+    taskKey: openTaskKey,
+    taskFound: !!openItem,
+    tasksPending: isLoading,
+    projectAliasesPending,
+  });
   /** The key the card actually wears, so a link minted from an id or from
    *  `deco-1` settles on the shareable form instead of preserving whatever
    *  spelling it arrived as. */
@@ -1091,8 +1142,8 @@ export function TaskBoardPage({
     setTaskId(newId, agentId);
   };
 
-  const visibleItems = items.filter((item) =>
-    taskMatchesFilters(item, filters, projectIndex),
+  const visibleItems = scopedItems.filter((item) =>
+    taskMatchesFilters(item, boardFilters, projectIndex),
   );
   /** Bulk actions operate only on cards that remain visible after a filter
    * change, never on a stale hidden selection. */
@@ -1116,6 +1167,7 @@ export function TaskBoardPage({
    * made here.
    */
   const widenProjectFilterFor = (repo: string | null) => {
+    if (projectScope) return;
     const next = filterAfterCreate({ repo }, filters.project, projectIndex);
     if (next !== filters.project) {
       setFilters({ ...filters, project: next });
@@ -1194,42 +1246,49 @@ export function TaskBoardPage({
   const showBoardTopbarActions =
     !openItem &&
     !(isLoading && items.length === 0) &&
+    !projectAliasesPending &&
     !staleTaskKey &&
     !(canonicalKey && canonicalKey !== openTaskKey);
   const topbarActions = showBoardTopbarActions ? boardActions : null;
   const topbarContributions = (
     <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
   );
-  const showBodyToolbar = items.length > 0;
+  const showBodyToolbar = scopedItems.length > 0;
   const toolbarContributions =
     showBodyToolbar && !openItem ? (
       <Main.Toolbar.Portal>
         <div className="flex min-w-0 flex-1 items-center">
           <div className="sm:hidden">
             <TaskFiltersDrawer
-              filters={filters}
+              filters={boardFilters}
               members={members}
               tags={orgTags}
               index={projectIndex}
               onChange={handleFiltersChange}
               onOpenBoardSettings={openBoardSettings}
+              showProjectFilter={!projectScope}
             />
           </div>
           <div className="hidden min-w-0 flex-1 overflow-x-auto sm:block">
             <TaskFiltersBar
-              filters={filters}
+              filters={boardFilters}
               members={members}
               tags={orgTags}
               index={projectIndex}
               onChange={handleFiltersChange}
               onOpenBoardSettings={openBoardSettings}
+              showProjectFilter={!projectScope}
             />
           </div>
         </div>
       </Main.Toolbar.Portal>
     ) : null;
 
-  if (isLoading && items.length === 0) {
+  // A failed alias lookup is not an empty alias set. Let the route boundary
+  // offer retry instead of silently redirecting a valid deep-linked task.
+  if (projectAliasesError) throw projectAliasesError;
+
+  if ((isLoading && items.length === 0) || projectAliasesPending) {
     return (
       <>
         {topbarContributions}
@@ -1247,12 +1306,12 @@ export function TaskBoardPage({
     return (
       <>
         {topbarContributions}
-        {routeProjectId ? (
+        {projectScope ? (
           <Navigate
             to={PROJECT_ROUTE.tasks}
             params={{
               org: org.slug,
-              agentId: routeProjectId,
+              agentId: projectScope.projectId,
               taskKey: undefined,
             }}
             search={(prev: Record<string, unknown>) => prev}
@@ -1276,12 +1335,12 @@ export function TaskBoardPage({
     return (
       <>
         {topbarContributions}
-        {routeProjectId ? (
+        {projectScope ? (
           <Navigate
             to={PROJECT_ROUTE.tasks}
             params={{
               org: org.slug,
-              agentId: routeProjectId,
+              agentId: projectScope.projectId,
               taskKey: canonicalKey,
             }}
             search={(prev: Record<string, unknown>) => prev}
@@ -1305,7 +1364,7 @@ export function TaskBoardPage({
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      {items.length === 0 ? (
+      {scopedItems.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
           <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             {t("taskBoard.taskBoard.noTasksYet")}
@@ -1438,7 +1497,6 @@ export function TaskBoardPage({
           item={openItem}
           onClose={() => closeTask()}
           onAfterPageUnmount={restoreBoardFocus}
-          routeProjectId={routeProjectId}
           isSaving={actions.update.isPending}
           onSubmit={(input) => {
             if (blockSuperAgentWithoutRepository(input.assigneeId)) {
@@ -1454,8 +1512,15 @@ export function TaskBoardPage({
             const contentFields = isReportsTask(openItem)
               ? {}
               : { title, description, priority };
+            // A project route owns this dimension. Besides preventing a stale
+            // dialog value from moving a card elsewhere, this upgrades legacy
+            // owner-null cards as soon as they are edited in their project.
+            const scopedBoardFields = {
+              ...boardFields,
+              ...resolveTaskBoardProjectAssignment(boardFields, projectScope),
+            };
             actions.update.mutate(
-              { id: openItem.id, ...boardFields, ...contentFields },
+              { id: openItem.id, ...scopedBoardFields, ...contentFields },
               { onError: onDelegateError },
             );
           }}
@@ -1465,7 +1530,9 @@ export function TaskBoardPage({
           }}
           onClone={() => {
             // A copy starts fresh and undelegated: no assignee, no threads.
-            const repo = openItem.repo;
+            // Scoped copies retain both the exact project and its optional
+            // execution repository.
+            const repo = projectScope ? projectScope.repo : openItem.repo;
             actions.create.mutate({
               title: t("taskBoard.taskDialog.cloneTitle", {
                 title: openItem.title,
@@ -1473,6 +1540,9 @@ export function TaskBoardPage({
               description: openItem.description,
               status: openItem.status,
               priority: openItem.priority,
+              virtualMcpId: projectScope
+                ? projectScope.projectId
+                : openItem.virtualMcpId,
               repo,
               dueDate: openItem.dueDate,
               tagIds: openItem.tags.map((tag) => tag.id),
@@ -1512,6 +1582,7 @@ export function TaskBoardPage({
               view: "site-editor",
             });
           }}
+          projectScope={projectScope}
         />
       )}
 
@@ -1521,6 +1592,7 @@ export function TaskBoardPage({
         onClose={closeCreate}
         defaultStatus={createStatus ?? undefined}
         defaultRepo={activeProjectRepo}
+        projectScope={projectScope}
         isSaving={actions.create.isPending}
         onSubmit={(input) => {
           if (blockSuperAgentWithoutRepository(input.assigneeId)) {
@@ -1529,6 +1601,7 @@ export function TaskBoardPage({
           }
           const scopedInput = {
             ...input,
+            ...resolveTaskBoardProjectAssignment(input, projectScope),
           };
           actions.create.mutate(scopedInput);
           widenProjectFilterFor(scopedInput.repo ?? null);

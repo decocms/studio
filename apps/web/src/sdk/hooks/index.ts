@@ -75,6 +75,7 @@ export {
   useVirtualMCPNonBlocking,
   useVirtualMCPNonBlockingState,
   useVirtualMCPsNonBlocking,
+  useVirtualMCPsNonBlockingState,
   fetchVirtualMCPs,
   useVirtualMCPsPage,
   useVirtualMCP,

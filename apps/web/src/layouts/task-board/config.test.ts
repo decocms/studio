@@ -32,6 +32,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     type: "chore",
     assigneeId: null,
     assignedBy: null,
+    virtualMcpId: null,
     repo: null,
     dueDate: null,
     sortOrder,

@@ -50,8 +50,9 @@ export function useProjectIndex(
 ): ProjectIndex {
   const all = useVirtualMCPsNonBlocking();
   const projects = scopableProjects(all);
-  return buildProjectIndex(projects, [
-    ...tasks.map((task) => task.repo),
-    ...extraRepos,
-  ]);
+  return buildProjectIndex(
+    projects,
+    [...tasks.map((task) => task.repo), ...extraRepos],
+    all,
+  );
 }

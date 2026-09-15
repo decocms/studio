@@ -30,6 +30,7 @@ const item = (over: Partial<TaskBoardItem> = {}): TaskBoardItem =>
   ({
     id: "item-1",
     organizationId: "org-1",
+    virtualMcpId: null,
     status: "in_review",
     reviewCycleStartedAt: null,
     updatedBy: "user-1",

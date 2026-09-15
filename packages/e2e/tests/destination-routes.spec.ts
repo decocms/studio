@@ -599,7 +599,7 @@ test.describe("destination routes", () => {
     await expect(tasksLink).not.toHaveAttribute("aria-current", "page");
   });
 
-  test("a project workspace preserves the existing repository task filter", async ({
+  test("a cold project Tasks entry resolves its exact scope and hides the redundant project filter", async ({
     authedPage: { page, orgSlug },
   }) => {
     const request = page.context().request;
@@ -621,11 +621,11 @@ test.describe("destination routes", () => {
     });
 
     const path = `/${orgSlug}/projects/${projectId}/tasks`;
-    await page.goto(`${path}?repo=example%2Frepo#cold-entry`);
+    await page.goto(`${path}?repo=someone%2Felse#cold-entry`);
     await page.waitForURL(
       (url) =>
         url.pathname === path &&
-        url.searchParams.get("repo") === "example/repo" &&
+        url.searchParams.get("repo") === null &&
         url.hash === "#cold-entry",
       { timeout: SHELL_TIMEOUT_MS },
     );
@@ -637,10 +637,10 @@ test.describe("destination routes", () => {
     ).toHaveCount(0);
     await expect(
       mainPanel(page).getByRole("button", {
-        name: "cold scoped tasks e2e",
+        name: "Project",
         exact: true,
       }),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 
   test("an attention task nested under a project opens that project's task detail", async ({
@@ -2632,7 +2632,7 @@ test.describe("destination routes", () => {
         url.searchParams.get("view") === "list" &&
         url.searchParams.get("q") === "legacy destination query" &&
         url.searchParams.get("priority") === "high" &&
-        url.searchParams.get("repo") === "acme/storefront" &&
+        url.searchParams.get("repo") === null &&
         url.hash === "#board-state",
       { timeout: SHELL_TIMEOUT_MS },
     );

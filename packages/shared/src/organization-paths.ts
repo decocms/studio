@@ -22,32 +22,35 @@ export function orgSettingsPath(
   return page ? `${base}/${page}` : base;
 }
 
-/**
- * `/<org>/agents/<panel>?virtualmcpid=<id>` — a project's workspace, at one view.
- *
- * The project is a SEARCH param, not a path segment: it has to mean the same
- * thing on `/tasks` and `/library`, which have no segment to put it in.
- *
- * Every server-side emitter of this link goes through here. Two of them mint
- * URLs that outlive us — the report CTA is persisted by the commerce-discovery
- * service per (org, site) and refreshes only when setup re-runs, and share
- * invites sit in delivered mail — so a future rename has to be a compile error
- * here, not a dead link nobody can recall.
- */
-export function agentPanelPath(
+/** Canonical root of one project's workspace. */
+function projectWorkspacePath(orgSlug: string, agentId: string): string {
+  return `/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(agentId)}`;
+}
+
+/** Canonical Reports destination inside one project workspace. */
+export function projectReportsPath(orgSlug: string, projectId: string): string {
+  return `${projectWorkspacePath(orgSlug, projectId)}/reports`;
+}
+
+export interface AgentAppPathOptions {
+  agentId: string;
+  connectionId: string;
+  toolName: string;
+  /** App-owned search in addition to the identity encoded by the path. */
+  search?: Readonly<Record<string, string>> & {
+    virtualmcpid?: never;
+    main?: never;
+    connection?: never;
+    tool?: never;
+  };
+}
+
+/** Canonical URL for a tool-rendered app belonging to one agent. */
+export function agentAppPath(
   orgSlug: string,
-  opts: {
-    projectId: string;
-    panel?: string;
-    /** Extra query the panel needs, e.g. the `app` view's connection + tool. */
-    search?: Record<string, string>;
-  },
+  opts: AgentAppPathOptions,
 ): string {
-  const base = `/${encodeURIComponent(orgSlug)}/agents`;
-  const path = opts.panel ? `${base}/${opts.panel}` : base;
-  const query = new URLSearchParams({
-    virtualmcpid: opts.projectId,
-    ...(opts.search ?? {}),
-  });
-  return `${path}?${query.toString()}`;
+  const path = `${projectWorkspacePath(orgSlug, opts.agentId)}/apps/${encodeURIComponent(opts.connectionId)}/${encodeURIComponent(opts.toolName)}`;
+  const query = new URLSearchParams(opts.search ?? {});
+  return query.size > 0 ? `${path}?${query.toString()}` : path;
 }

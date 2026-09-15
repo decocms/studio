@@ -1,13 +1,17 @@
-import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
-import { z } from "zod";
 import {
   fromWire,
   legacyGithubRepo,
 } from "@decocms/shared/reports/repository-ref";
+import {
+  getCommerceDiscoveryReportOwnerId,
+  WellKnownOrgMCPId,
+} from "@decocms/shared/sdk";
+import { z } from "zod";
 import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { triggerCommerceDiscoveryRun } from "./auth-client";
+import { resolveCommerceReportOwnerId } from "./ownership";
 
 const CommerceDiscoveryRunInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to run the diagnostic for."),
@@ -45,44 +49,63 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
       throw new Error(normalized.error);
     }
 
-    /**
-     * The repository the client picked is persisted on the CD connection's
-     * `configuration_state`. Forward it so Commerce Discovery audits the right
-     * one; its absence just means no repository is linked and never blocks the
-     * run.
-     *
-     * Both spellings go out for the deprecation window: `repository` is the
-     * identity (any provider, any host, resolvable back to a credential), and
-     * `github_repo` is the legacy string a Reports still on the old reader
-     * needs — derived from the reference when it is a github.com one, and read
-     * straight off the state for an org the backfill has not reached.
-     */
     const cdConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(
       organization.id,
     );
-    const cdConnection = await ctx.storage.connections.findById(
-      cdConnectionId,
+    return ctx.storage.commerceDiscoveryReports.withSetupLock(
       organization.id,
-    );
-    const configState = cdConnection?.configuration_state as
-      | Record<string, unknown>
-      | string
-      | null
-      | undefined;
-    const state =
-      configState && typeof configState === "object" ? configState : null;
-    const repository = fromWire(state?.repository);
-    const legacy =
-      typeof state?.github_repo === "string" && state.github_repo.length > 0
-        ? state.github_repo
-        : undefined;
+      async ({ connections, virtualMcps, reports }) => {
+        // Read the mutable connection and start the run under the same lock as
+        // setup, so the run snapshot cannot straddle an owner/site transfer.
+        const cdConnection = await connections.findById(
+          cdConnectionId,
+          organization.id,
+        );
+        const fallbackProjectId = getCommerceDiscoveryReportOwnerId(
+          organization.id,
+          undefined,
+        );
+        const reportOwnerProjectId = await resolveCommerceReportOwnerId(
+          virtualMcps,
+          getCommerceDiscoveryReportOwnerId(
+            organization.id,
+            cdConnection?.metadata?.projectId,
+          ),
+          organization.id,
+          fallbackProjectId,
+        );
 
-    return triggerCommerceDiscoveryRun({
-      siteUrl: normalized.value,
-      orgId: organization.id,
-      repository: repository ?? undefined,
-      githubRepo:
-        (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
-    });
+        // Forward repository identity and the compatible GitHub spelling.
+        const configState = cdConnection?.configuration_state as
+          | Record<string, unknown>
+          | string
+          | null
+          | undefined;
+        const state =
+          configState && typeof configState === "object" ? configState : null;
+        const repository = fromWire(state?.repository);
+        const legacy =
+          typeof state?.github_repo === "string" && state.github_repo.length > 0
+            ? state.github_repo
+            : undefined;
+
+        const result = await triggerCommerceDiscoveryRun({
+          siteUrl: normalized.value,
+          orgId: organization.id,
+          repository: repository ?? undefined,
+          githubRepo:
+            (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
+        });
+        if (!result.triggered) return result;
+
+        await reports.recordRun({
+          organizationId: organization.id,
+          runId: result.runId,
+          siteUrl: normalized.value,
+          virtualMcpId: reportOwnerProjectId,
+        });
+        return { triggered: true };
+      },
+    );
   },
 });

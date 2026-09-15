@@ -10,6 +10,7 @@ import {
   MAX_TASK_TITLE_LENGTH,
   SUPER_AGENT_ASSIGNEE_ID,
   TaskBoardItemPrioritySchema,
+  TaskBoardProjectIdSchema,
   TaskBoardItemTypeSchema,
   TaskBoardItemSchema,
   TaskBoardItemStatusSchema,
@@ -29,6 +30,7 @@ import {
   isReportsTask,
   userInitiatedTaskQuotaConfig,
 } from "../../billing/task-quota";
+import { requireOwnedVirtualMcp } from "@/tools/thread/helpers";
 
 /**
  * Fields whose change earns a from/to timeline entry, and the action it logs as.
@@ -63,6 +65,7 @@ const UPDATABLE_FIELDS = [
   "priority",
   "type",
   "assigneeId",
+  "virtualMcpId",
   "repo",
   "dueDate",
   "sortOrder",
@@ -215,6 +218,9 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     priority: TaskBoardItemPrioritySchema.optional(),
     type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
+    virtualMcpId: TaskBoardProjectIdSchema.nullable()
+      .optional()
+      .describe("Virtual MCP/project that owns this task."),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
     dueDate: z.string().datetime().nullable().optional(),
     /** New drag-to-reorder position within its lane (ascending). */
@@ -270,13 +276,16 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
     if (input.assigneeId) {
       await assertValidAssignee(ctx, organizationId, input.assigneeId);
     }
+    if (input.virtualMcpId) {
+      await requireOwnedVirtualMcp(
+        ctx.storage.virtualMcps,
+        input.virtualMcpId,
+        organizationId,
+      );
+    }
 
-    // Link an existing chat thread to this task (the "New Chat" flow). Verify
-    // the task AND the thread both belong to this org before inserting the
-    // (idempotent) join row — attachThreads() joins task_board_item_threads
-    // to threads without an org filter, so an unchecked thread id would let
-    // a caller pull another org's thread (title, status, message content)
-    // into their own task board.
+    // Link an existing chat thread to this task (the "New Chat" flow). Both
+    // sides must belong to the active organization before storage sees them.
     if (input.linkThreadId) {
       const target = await ctx.storage.taskBoard.getById(
         input.id,
@@ -284,7 +293,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
       );
       if (!target) throw new Error(`Task board item not found: ${input.id}`);
       const thread = await ctx.storage.threads.get(input.linkThreadId);
-      if (!thread) {
+      if (!thread || thread.organization_id !== organizationId) {
         throw new Error(`Thread not found: ${input.linkThreadId}`);
       }
       await ctx.storage.taskBoard.linkThread(
@@ -409,6 +418,7 @@ export const TASK_BOARD_ITEM_UPDATE = defineTool({
               ? getUserId(ctx)!
               : null
             : undefined,
+          virtualMcpId: input.virtualMcpId,
           repo: input.repo,
           dueDate: input.dueDate,
           sortOrder: input.sortOrder,

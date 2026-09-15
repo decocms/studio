@@ -133,7 +133,11 @@ import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import { parseChangeRequestUrl } from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
-import { entryForFilter, stampableEntries } from "@/lib/project-index";
+import {
+  entryForFilter,
+  normalizeRepo,
+  projectAssignmentOptions,
+} from "@/lib/project-index";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { isResolvedRunFailure } from "@decocms/shared/entities";
@@ -151,6 +155,7 @@ import {
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
+import type { TaskBoardProjectScope } from "./task-filters";
 import { taskSharePath } from "./task-route";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
@@ -181,6 +186,9 @@ type TaskForm = {
   /** What kind of work this is. Always set — defaults to `chore`. */
   type: TaskBoardItemType;
   assigneeId: string | null;
+  /** Exact project ownership. Kept separate from `repo`, which identifies the
+   * execution source and is not unique when projects share a repository. */
+  virtualMcpId: string | null;
   repo: string | null;
   dueDate: Date | null;
   tagIds: string[];
@@ -368,8 +376,6 @@ interface TaskEditorProps {
   onClose: () => void;
   /** Restore focus to the board after page chrome is actually detached. */
   onAfterPageUnmount?: () => void;
-  /** Preserve the current workspace in copied task URLs. */
-  routeProjectId?: string;
   /** Present in edit mode, prefills the form. */
   item?: TaskBoardItem;
   /** In create mode, the status to start the new task in (e.g. the lane the
@@ -379,6 +385,9 @@ interface TaskEditorProps {
    * Project filter's repo, so a card made while the board is narrowed to a
    * project belongs to it). An `owner/name`, matching the {@link repo} field. */
   defaultRepo?: string | null;
+  /** Route-owned project scope. It defaults new cards to the project's
+   * repository and removes the project picker so edits cannot leave scope. */
+  projectScope?: TaskBoardProjectScope;
   onSubmit: (input: {
     title: string;
     description: string | null;
@@ -386,6 +395,7 @@ interface TaskEditorProps {
     priority: TaskBoardItemPriority;
     type: TaskBoardItemType;
     assigneeId: string | null;
+    virtualMcpId: string | null;
     repo: string | null;
     dueDate: string | null;
     tagIds: string[];
@@ -422,10 +432,10 @@ function TaskBoardItemEditor({
   open = true,
   onClose,
   onAfterPageUnmount,
-  routeProjectId,
   item,
   defaultStatus,
   defaultRepo,
+  projectScope,
   onSubmit,
   onDelete,
   onClone,
@@ -450,12 +460,11 @@ function TaskBoardItemEditor({
   const createTag = useCreateTag();
   const deleteTag = useDeleteTag();
 
-  /** Which project this task pertains to, offered as the board offers it: one
-   *  list where a repository IS the project that pins it. Narrowed to the
-   *  repositories the org can actually reach — see {@link stampableEntries}. */
+  /** Exact project assignments for the task editor. Unlike the board filter,
+   *  this list expands a shared-repository bucket into one row per project. */
   const repos = listRepoScopeLabels(useConnections({ slug: "mcp-github" }));
   const projectIndex = useProjectIndex(NO_TASKS, repos);
-  const projectEntries = stampableEntries(projectIndex);
+  const projectAssignments = projectAssignmentOptions(projectIndex);
 
   const [form, setForm] = useState<TaskForm>({
     title: item?.title ?? "",
@@ -465,24 +474,57 @@ function TaskBoardItemEditor({
     priority: item?.priority ?? "medium",
     type: item?.type ?? DEFAULT_TASK_TYPE,
     assigneeId: item?.assigneeId ?? null,
-    // Edit wins with the card's own repo; create seeds from the active project.
-    repo: item?.repo ?? defaultRepo ?? null,
+    virtualMcpId: projectScope?.projectId ?? (item ? item.virtualMcpId : null),
+    repo: projectScope
+      ? projectScope.repo
+      : item
+        ? (item.repo ?? null)
+        : (defaultRepo ?? null),
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
-  const { title, description, status, priority, assigneeId, repo, dueDate } =
-    form;
+  const {
+    title,
+    description,
+    status,
+    priority,
+    assigneeId,
+    virtualMcpId,
+    repo,
+    dueDate,
+  } = form;
   /**
-   * The bucket this card's repository belongs to, so the control shows the
-   * PROJECT — its avatar and its name — rather than the string underneath.
+   * The exact project this card names. Hidden dev ids resolve to their visible
+   * live partner; legacy owner-null cards retain repository fallback display.
    *
-   * Resolved against the WHOLE index, not the stampable subset: a card already
-   * stamped for a repository whose connection has since gone still belongs to
-   * its project and should say so. The reachability gate decides what you can
-   * PICK, not what an existing value is called. Undefined only when nothing in
-   * the org names that repository, which renders as the raw `owner/name`.
+   * Resolution uses the whole index, not only writable options: a detached
+   * project's existing cards still say which project owns them even though the
+   * picker correctly refuses to assign new work there.
    */
-  const selectedEntry = repo ? entryForFilter(repo, projectIndex) : undefined;
+  const ownerProject = virtualMcpId
+    ? projectIndex.projectById.get(virtualMcpId)
+    : undefined;
+  const ownerBucket = virtualMcpId
+    ? projectIndex.byProject.get(virtualMcpId)
+    : undefined;
+  const selectedAssignment = projectAssignments.find((assignment) =>
+    virtualMcpId
+      ? assignment.virtualMcpId === virtualMcpId ||
+        assignment.virtualMcpId === ownerProject?.id
+      : assignment.virtualMcpId === null &&
+        normalizeRepo(assignment.repo) === normalizeRepo(repo),
+  );
+  const selectedEntry =
+    selectedAssignment?.entry ??
+    (ownerProject && ownerBucket
+      ? {
+          ...ownerBucket,
+          title: ownerProject.title,
+          projects: [ownerProject],
+        }
+      : virtualMcpId === null && repo
+        ? entryForFilter(repo, projectIndex)
+        : undefined);
   const taskType = form.type;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -530,6 +572,7 @@ function TaskBoardItemEditor({
       priority: v.priority,
       type: v.type,
       assigneeId: v.assigneeId,
+      virtualMcpId: v.virtualMcpId,
       repo: v.repo,
       dueDate: v.dueDate ? toEndOfDayIso(v.dueDate) : null,
       tagIds: v.tagIds,
@@ -732,7 +775,11 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}${taskSharePath(org.slug, item, routeProjectId)}`,
+                  `${window.location.origin}${taskSharePath(
+                    org.slug,
+                    item,
+                    projectScope?.projectId,
+                  )}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}
@@ -1353,46 +1400,55 @@ function TaskBoardItemEditor({
               </Popover>
             </PropertyGroup>
 
-            <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
-              {/* Which project this task pertains to. The value persisted is
-                  still the repository — that is the only per-card link there
-                  is — but what you PICK is a project, named as you know it. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    /* Hugs its label like every other property; the cap is
-                       what keeps a long project name inside the column. */
-                    className={cn(
-                      PROPERTY_BUTTON,
-                      "max-w-full",
-                      !repo && EMPTY_PROPERTY,
-                    )}
-                  >
-                    <ProjectEntryIcon entry={selectedEntry} />
-                    <span className="min-w-0 truncate text-left">
-                      {selectedEntry?.title ??
-                        repo ??
-                        t("taskBoard.taskDialog.projectButton")}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem onSelect={() => patch({ repo: null })}>
-                    {t("taskBoard.taskDialog.noProject")}
-                  </DropdownMenuItem>
-                  {projectEntries.map((entry) => (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      className="gap-2"
-                      onSelect={() => patch({ repo: entry.repo })}
+            {!projectScope && (
+              <PropertyGroup label={t("taskBoard.taskDialog.projectLabel")}>
+                {/* Project identity and execution repository are persisted
+                    together. Shared-repository projects remain separate rows. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      /* Hugs its label like every other property; the cap is
+                         what keeps a long project name inside the column. */
+                      className={cn(
+                        PROPERTY_BUTTON,
+                        "max-w-full",
+                        !virtualMcpId && !repo && EMPTY_PROPERTY,
+                      )}
                     >
-                      <ProjectEntryRow entry={entry} />
+                      <ProjectEntryIcon entry={selectedEntry} />
+                      <span className="min-w-0 truncate text-left">
+                        {selectedEntry?.title ??
+                          repo ??
+                          virtualMcpId ??
+                          t("taskBoard.taskDialog.projectButton")}
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    <DropdownMenuItem
+                      onSelect={() => patch({ virtualMcpId: null, repo: null })}
+                    >
+                      {t("taskBoard.taskDialog.noProject")}
                     </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </PropertyGroup>
+                    {projectAssignments.map((assignment) => (
+                      <DropdownMenuItem
+                        key={assignment.key}
+                        className="gap-2"
+                        onSelect={() =>
+                          patch({
+                            virtualMcpId: assignment.virtualMcpId,
+                            repo: assignment.repo,
+                          })
+                        }
+                      >
+                        <ProjectEntryRow entry={assignment.entry} />
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </PropertyGroup>
+            )}
           </div>
         </div>
       </div>
@@ -1460,7 +1516,12 @@ function TaskBoardItemEditor({
 export function TaskBoardItemDialog(
   props: Pick<
     TaskEditorProps,
-    "onClose" | "defaultStatus" | "defaultRepo" | "onSubmit" | "isSaving"
+    | "onClose"
+    | "defaultStatus"
+    | "defaultRepo"
+    | "projectScope"
+    | "onSubmit"
+    | "isSaving"
   > & { open: boolean },
 ) {
   return <TaskBoardItemEditor {...props} chrome="dialog" />;

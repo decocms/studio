@@ -27,9 +27,13 @@ import { ChatPrefsProvider } from "@/components/chat/context";
 import { ThreadManagerProvider } from "@/components/chat/store/hooks";
 import { MobileSidebarSheet } from "@/layouts/shell-controls";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
+import { PROJECT_ROUTE, useLeafRoutePath } from "@/hooks/use-destination-route";
+import { useScopeId } from "@/hooks/use-project-scope";
 
 export default function OrgShellLayout() {
   const isMobile = useIsMobile();
+  const leafRoutePath = useLeafRoutePath();
+  const scopeId = useScopeId();
   // Commerce onboarding hands off here: after site setup it lands on the org
   // Home surface with `?connect=1`, which mounts the blocking connections modal
   // over the (blurred) org home until at least one data source is connected.
@@ -45,6 +49,10 @@ export default function OrgShellLayout() {
    * it still has a full org home to render behind the modal.
    */
   const showConnectModal = connect === "1";
+  const reportProjectId =
+    leafRoutePath === PROJECT_ROUTE.reports
+      ? (scopeId ?? undefined)
+      : undefined;
   return (
     <ThreadManagerProvider>
       <ChatPrefsProvider>
@@ -69,7 +77,12 @@ export default function OrgShellLayout() {
             )}
           />
         )}
-        {showConnectModal && <CommerceConnectModal siteUrl={connectSiteUrl} />}
+        {showConnectModal && (
+          <CommerceConnectModal
+            siteUrl={connectSiteUrl}
+            projectId={reportProjectId}
+          />
+        )}
       </ChatPrefsProvider>
     </ThreadManagerProvider>
   );
