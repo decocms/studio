@@ -3,7 +3,7 @@
  *
  * Opening a card is a navigation, not a modal: the card owns the path
  * `/$org/tasks/DECO-01`, which renders it in place of the lanes, and the
- * breadcrumb leads back out to the bare board. These tests pin that contract
+ * sidebar leads back out to the bare board. These tests pin that contract
  * at both ends — the URL a card click produces, and the fact that a menu item
  * which destroys the card lands you back on a working board.
  *
@@ -48,30 +48,17 @@ async function openBoard(page: Page, orgSlug: string) {
 
 const detail = (page: Page) => page.getByTestId("task-detail");
 
-/** Follow the semantic parent whether the adaptive trail has room to show it
- * directly or has moved it into the parent-pages overflow. */
-async function navigateToTasksFromBreadcrumb(page: Page) {
-  const breadcrumb = page.getByRole("navigation", {
-    name: "Breadcrumb",
-    exact: true,
-  });
-  const directLink = breadcrumb.getByRole("link", {
-    name: "Tasks",
-    exact: true,
-  });
-  if (await directLink.isVisible()) {
-    await directLink.click();
-    return;
-  }
-
-  await breadcrumb.getByRole("button", { name: "Show parent pages" }).click();
-  await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+async function navigateToTasksFromSidebar(page: Page) {
+  await page
+    .locator('[data-slot="sidebar"]')
+    .getByRole("link", { name: "Tasks", exact: true })
+    .click();
 }
 
 /** A card's own URL: the board's path plus the human key it wears. */
 const cardUrl = (orgSlug: string) => new RegExp(`/${orgSlug}/tasks/[^/?#]+`);
 
-test("clicking a card navigates to it and the breadcrumb comes back", async ({
+test("clicking a card navigates to it and the sidebar returns to the board", async ({
   authedPage,
 }) => {
   const { page, orgSlug } = authedPage;
@@ -100,11 +87,9 @@ test("clicking a card navigates to it and the breadcrumb comes back", async ({
       .getByRole("heading", { level: 1 }),
   ).toHaveText(/^[A-Z]+-\d+$/);
   await expect(
-    page
-      .getByRole("navigation", { name: "Breadcrumb", exact: true })
-      .locator('[aria-current="page"]'),
+    page.getByRole("navigation", { name: "Breadcrumb", exact: true }),
   ).toHaveCount(0);
-  await navigateToTasksFromBreadcrumb(page);
+  await navigateToTasksFromSidebar(page);
   await expect(detail(page)).toHaveCount(0);
   await expect(page).not.toHaveURL(cardUrl(orgSlug));
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
@@ -142,7 +127,9 @@ test("closing a task does not leave it one Back away", async ({
   /* Leaving replaces the task's entry instead of stacking a second one: if it
      pushed, Back would re-open the task just closed, and a few open/close
      cycles would bury whatever the board was reached from. */
-  await navigateToTasksFromBreadcrumb(page);
+  await detail(page)
+    .getByRole("button", { name: "Go back", exact: true })
+    .click();
   await expect(detail(page)).toHaveCount(0);
   expect(await depth()).toBe(atBoard + 1);
 

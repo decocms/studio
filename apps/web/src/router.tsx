@@ -1110,7 +1110,6 @@ const connectionDetailRoute = createRoute({
   staticData: {
     mainTitleKey: "settings.nav.connections",
     mainTitleParam: "appSlug",
-    mainBreadcrumbParentKey: "settings.nav.connections",
   },
   component: lazyRouteComponent(
     () => import("./routes/orgs/connection-detail.tsx"),
@@ -1128,7 +1127,6 @@ const collectionDetailRoute = createRoute({
   staticData: {
     mainTitleKey: "settings.nav.connections",
     mainTitleParam: "itemId",
-    mainBreadcrumbParentKey: "settings.nav.connections",
   },
   component: lazyRouteComponent(
     () => import("./routes/orgs/collection-detail.tsx"),

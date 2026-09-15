@@ -257,7 +257,7 @@ function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
 /**
  * Location trail — the only place the current folder is named (there's no page
  * heading duplicating it). The home volume is the top of the tree, represented
- * by the same accessible Home icon as route breadcrumbs; the sibling volumes
+ * by an accessible Home icon; the sibling volumes
  * (uploads/outputs/public) hang off that crumb without repeating the org name.
  */
 export function Breadcrumbs({

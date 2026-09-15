@@ -8,8 +8,6 @@ declare module "@tanstack/react-router" {
     mainTitleKey?: TranslationKey;
     /** URL parameter used as the immediate title for a dynamic detail route. */
     mainTitleParam?: "appSlug" | "itemId";
-    /** Optional extra parent shown by a nested route's Main breadcrumb. */
-    mainBreadcrumbParentKey?: TranslationKey;
   }
 }
 
@@ -17,7 +15,6 @@ interface RouteMainTitleMatch {
   staticData?: {
     mainTitleKey?: TranslationKey;
     mainTitleParam?: "appSlug" | "itemId";
-    mainBreadcrumbParentKey?: TranslationKey;
   };
   params?: Record<string, string>;
 }
@@ -56,23 +53,4 @@ export function resolveRouteMainTitleParam(
     if (value?.trim()) return value;
   }
   return undefined;
-}
-
-/** Resolve the deepest optional parent contributed by a nested route. */
-export function resolveRouteMainBreadcrumbParentKey(
-  matches: readonly RouteMainTitleMatch[],
-): TranslationKey | undefined {
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const key = matches[i]?.staticData?.mainBreadcrumbParentKey;
-    if (key) return key;
-  }
-  return undefined;
-}
-
-export function useRouteMainBreadcrumbParentTitle(): string | undefined {
-  const t = useT();
-  const key = useRouterState({
-    select: (state) => resolveRouteMainBreadcrumbParentKey(state.matches),
-  });
-  return key ? t(key) : undefined;
 }

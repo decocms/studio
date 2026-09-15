@@ -64,7 +64,6 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Main } from "@/components/main";
-import { MainBreadcrumb } from "@/components/main-breadcrumb";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
 import { useVirtualMCPsNonBlocking } from "@/sdk/hooks/use-virtual-mcp";
@@ -76,6 +75,7 @@ import {
   SettingsSection,
 } from "@/components/settings/settings-section";
 import {
+  ArrowLeft,
   AlertTriangle,
   Check,
   ChevronDown,
@@ -1485,14 +1485,13 @@ export function RoleDetailPage(props: RoleDetailPageProps) {
 
   return (
     <>
-      <MainBreadcrumb.Parent.Portal
-        item={{
-          id: "settings:roles",
-          label: t("settings.roles.pageTitle"),
-          onSelect: props.onBack,
-        }}
-      />
       <Main.Title.Portal>{title}</Main.Title.Portal>
+      <Main.Topbar.Left.Portal>
+        <Button variant="ghost" size="sm" onClick={props.onBack}>
+          <ArrowLeft size={16} />
+          {t("common.index.goBack")}
+        </Button>
+      </Main.Topbar.Left.Portal>
       {content}
     </>
   );

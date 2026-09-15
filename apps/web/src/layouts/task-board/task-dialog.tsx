@@ -37,6 +37,7 @@ import {
   AlertCircle,
   AlertSquare,
   Archive,
+  ArrowLeft,
   Bookmark,
   Calendar,
   Check,
@@ -411,8 +412,8 @@ interface TaskEditorProps {
  *
  * `dialog` is the create flow — a task with no id yet has no URL to live at,
  * so it stays a modal (the home page's "New task" opens the same one).
- * `page` is the edit flow: the board hands the panel over to it and the
- * route-owned topbar breadcrumb, not a close button, is what leads back out.
+ * `page` is the edit flow: the board hands the panel over to it, and the
+ * back button returns to the board.
  *
  * Everything between the header row and the footer is chrome-independent.
  */
@@ -599,8 +600,7 @@ function TaskBoardItemEditor({
 
   /**
    * Esc leaves the page, the way it would dismiss the dialog. A dialog has a
-   * layer to close; a page only has the way it was entered, so this walks the
-   * route-owned breadcrumb back to the board.
+   * layer to close; a page returns to the board.
    *
    * It defers to whatever is nearer the user first: an open layer (a menu,
    * popover or dialog, which dismisses on the same key) and a field being typed
@@ -664,9 +664,10 @@ function TaskBoardItemEditor({
   const header = (
     <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
       {chrome === "page" ? (
-        /* The route-owned topbar carries Tasks › key. This spacer preserves
-           the action row without repeating a second breadcrumb landmark. */
-        <span />
+        <Button variant="ghost" size="sm" onClick={close}>
+          <ArrowLeft size={16} />
+          {t("common.index.goBack")}
+        </Button>
       ) : /* Null only for a card written before the key backfill, which has
               no key to show. */
       key ? (
@@ -1466,9 +1467,7 @@ export function TaskBoardItemDialog(
 }
 
 /**
- * A task rendered in place of the board, reached by clicking its card. The
- * breadcrumb in the route topbar is what leads back out; see
- * {@link TaskBoardItemEditor}.
+ * A task rendered in place of the board, reached by clicking its card.
  */
 export function TaskBoardItemDetail(
   props: Omit<TaskEditorProps, "chrome" | "open" | "defaultStatus"> & {

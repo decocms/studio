@@ -10,8 +10,6 @@ import {
   useVirtualMCP,
 } from "@/sdk";
 import { useT } from "@/i18n/use-t";
-import { projectMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
-import type { MainBreadcrumbNavigableItem } from "@/components/main-breadcrumb";
 import {
   WorkspaceRouteMain,
   type WorkspaceRouteMainProps,
@@ -23,53 +21,34 @@ import {
  * primitive never guesses its composition from router params.
  */
 export function AgentRouteMain(
-  props: Omit<
-    WorkspaceRouteMainProps,
-    | "breadcrumbAncestors"
-    | "breadcrumbScope"
-    | "breadcrumbScopeIsCurrent"
-    | "leading"
-  > & {
-    /**
-     * The project's own overview route. Its title is the project's name, and
-     * its scope IS its current destination, so the trail collapses to the
-     * semantic heading exactly as organization Home does.
-     */
+  props: Omit<WorkspaceRouteMainProps, "leading" | "hideTitle"> & {
+    /** The project's Home uses its name as a visually hidden page title. */
     agentRoot?: boolean;
-    /** Semantic route levels nested below the agent. */
-    breadcrumbAncestors?: readonly MainBreadcrumbNavigableItem[];
   },
 ) {
-  const { agentRoot = false, breadcrumbAncestors = [], ...routeProps } = props;
+  const { agentRoot = false, ...routeProps } = props;
   const t = useT();
   const workspace = useWorkspace();
   const { org } = useProjectContext();
   const agentId = useRouteVirtualMcpId();
   const agent = useVirtualMCP(agentId);
-  const breadcrumbAgent =
+  const titleAgent =
     agent ??
     (agentId === getDecopilotId(org.id)
       ? getWellKnownDecopilotVirtualMCP(org.id)
       : { id: agentId, title: t("taskBoard.taskDialog.projectLabel") });
   const fixedRouteTitle = useRouteMainTitle();
   const projectTitle =
-    breadcrumbAgent.title.trim() || t("taskBoard.taskDialog.projectLabel");
+    titleAgent.title.trim() || t("taskBoard.taskDialog.projectLabel");
   const routeTitle = agentRoot
     ? projectTitle
     : routeProps.title?.trim() || fixedRouteTitle;
-  const projectScope = projectMainBreadcrumbItem(
-    org.slug,
-    breadcrumbAgent,
-    t("taskBoard.taskDialog.projectLabel"),
-  );
 
   return (
     <WorkspaceRouteMain
       {...routeProps}
       title={routeTitle}
-      breadcrumbScope={projectScope}
-      breadcrumbScopeIsCurrent={agentRoot}
-      breadcrumbAncestors={breadcrumbAncestors}
+      hideTitle={agentRoot}
       actions={
         <>
           {routeProps.actions}

@@ -165,48 +165,4 @@ describe("Main", () => {
     );
     expect(getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
-
-  it("restores the prior breadcrumb contributor after an overlap", async () => {
-    function BreadcrumbFrame({ next }: { next: boolean }) {
-      return (
-        <Main>
-          <Main.Breadcrumb.Parent.Target>
-            {({ present, target }) => (
-              <div data-testid="breadcrumb-target" data-present={present}>
-                {target}
-              </div>
-            )}
-          </Main.Breadcrumb.Parent.Target>
-          <Main.Breadcrumb.Parent.Portal>
-            <button type="button">Previous parent</button>
-          </Main.Breadcrumb.Parent.Portal>
-          {next ? (
-            <Main.Breadcrumb.Parent.Portal>
-              <button type="button">Next parent</button>
-            </Main.Breadcrumb.Parent.Portal>
-          ) : null}
-        </Main>
-      );
-    }
-
-    const { getByRole, getByTestId, queryByRole, rerender } = render(
-      <BreadcrumbFrame next />,
-    );
-    await waitFor(() =>
-      expect(getByRole("button", { name: "Next parent" })).toBeVisible(),
-    );
-
-    expect(
-      queryByRole("button", { name: "Previous parent" }),
-    ).not.toBeInTheDocument();
-    expect(getByTestId("breadcrumb-target")).toHaveAttribute(
-      "data-present",
-      "true",
-    );
-
-    rerender(<BreadcrumbFrame next={false} />);
-    await waitFor(() =>
-      expect(getByRole("button", { name: "Previous parent" })).toBeVisible(),
-    );
-  });
 });

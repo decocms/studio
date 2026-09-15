@@ -300,8 +300,7 @@ test.describe("fast preview publish surface", () => {
         exact: true,
       }),
     ).toBeVisible();
-    await expect(breadcrumb).not.toContainText("Site Editor");
-    await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
+    await expect(breadcrumb).toHaveCount(0);
 
     /* Mode, page, and device controls share the topbar with publishing. */
     const editorToolbar = mainPanel.locator('[data-slot="main-topbar"]');
@@ -657,17 +656,6 @@ test.describe("fast preview publish surface", () => {
     await expect
       .poll(async () => (await mainColumn.boundingBox())?.width ?? 0)
       .toBeLessThanOrEqual(580);
-
-    const projectParent = breadcrumb
-      .locator('[data-slot="main-breadcrumb-scope"]')
-      .getByRole("link");
-    await projectParent.focus();
-    await expect(projectParent).toBeFocused();
-    const projectParentHref = await projectParent.getAttribute("href");
-    expect(projectParentHref).not.toBeNull();
-    expect(new URL(projectParentHref ?? "", page.url()).pathname).toBe(
-      `/${orgSlug}/projects/${project.vmcpId}`,
-    );
 
     // --- Entry point 1: the dropdown (the half that regressed) -------------
     await page.getByRole("button", { name: MORE_ACTIONS }).click();

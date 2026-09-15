@@ -3,8 +3,6 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolDetailsView } from "@/components/details/tool.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Main } from "@/components/main";
-import { MainBreadcrumb } from "@/components/main-breadcrumb";
-import { connectionMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
 import {
   useCollectionActions,
   useConnections,
@@ -108,35 +106,20 @@ function CollectionDetailsContent() {
     normalizedCollectionName &&
     WELL_KNOWN_VIEW_DETAILS[normalizedCollectionName];
 
-  const connectionParent = connection ? (
-    <MainBreadcrumb.Parent.Portal
-      item={connectionMainBreadcrumbItem(
-        org.slug,
-        params.appSlug,
-        connection,
-        collectionName,
-      )}
-    />
-  ) : null;
-
   if (ViewComponent) {
     return (
-      <>
-        {connectionParent}
-        <ViewComponent
-          appSlug={params.appSlug}
-          connection={connection}
-          itemId={itemId}
-          onBack={handleBack}
-          onUpdate={handleUpdate}
-        />
-      </>
+      <ViewComponent
+        appSlug={params.appSlug}
+        connection={connection}
+        itemId={itemId}
+        onBack={handleBack}
+        onUpdate={handleUpdate}
+      />
     );
   }
 
   return (
     <>
-      {connectionParent}
       <Main.Title.Portal>
         <span title={itemId}>{itemId}</span>
       </Main.Title.Portal>

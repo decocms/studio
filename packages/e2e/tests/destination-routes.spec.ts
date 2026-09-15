@@ -20,7 +20,7 @@
  * `plugins/ban-e2e-app-imports.js`).
  */
 
-import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { connectDevDb } from "../fixtures/db";
 import {
   callSelfMcpTool,
@@ -49,24 +49,6 @@ async function expectChatCollapsed(page: Page): Promise<void> {
   await expect(chatPanel(page)).toBeHidden();
   await expect(sidePanel(page)).toHaveAttribute("aria-hidden", "true");
   await expect(sidePanel(page)).toHaveAttribute("inert", "");
-}
-
-/** Resolve a parent from the adaptive trail without assuming it fits inline. */
-async function breadcrumbParent(
-  page: Page,
-  breadcrumb: Locator,
-  name: string,
-): Promise<{ link: Locator; overflowed: boolean }> {
-  const direct = breadcrumb.getByRole("link", { name, exact: true });
-  if (await direct.isVisible()) return { link: direct, overflowed: false };
-
-  await breadcrumb
-    .getByRole("button", { name: "Show parent pages", exact: true })
-    .click();
-  return {
-    link: page.getByRole("menuitem", { name, exact: true }),
-    overflowed: true,
-  };
 }
 
 /** Exercise the narrowest supported shell in a non-English locale. The key
@@ -399,67 +381,12 @@ test.describe("destination routes", () => {
         }),
       ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
       await expect(mainPanel(page).locator("h1")).toHaveCount(1);
-      const breadcrumb = mainTopbarRegion(page, "left").getByRole(
-        "navigation",
-        { name: "Breadcrumb", exact: true },
-      );
-      /* A scope's own Home is its current destination — true for the
-         organization and, identically, for a project workspace root. */
-      const scopeIsCurrent =
-        route.path === `/${orgSlug}/home` ||
-        route.path === `/${orgSlug}/projects/${agentId}`;
-      await expect(breadcrumb).toHaveCount(scopeIsCurrent ? 0 : 1);
       await expect(
-        mainTopbarRegion(page, "left").locator(
-          '[data-slot="main-breadcrumb-current-separator"]',
-        ),
-      ).toHaveCount(scopeIsCurrent ? 0 : 1);
-      if (scopeIsCurrent) {
-        /* A scope Home keeps one semantic heading for focus and screen
-           readers, but renders no visual breadcrumb or icon-only duplicate. */
-        await expect(
-          mainTopbarRegion(page, "left")
-            .getByRole("heading", {
-              level: 1,
-              name: route.title,
-              exact: true,
-            })
-            .locator("svg"),
-        ).toHaveCount(0);
-      } else {
-        /* The final route is the adjacent page title, not a repeated last crumb. */
-        await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(
-          0,
-        );
-        await expect(breadcrumb).not.toContainText(route.title);
-        const scopeLink = breadcrumb.getByRole("link").first();
-        await expect(scopeLink).toHaveText("");
-        await expect(scopeLink).toHaveAttribute("aria-label", /\S/);
-        await expect(scopeLink.locator("svg")).toHaveCount(1);
-        if (projectScoped) {
-          /* Project routes keep the same Home affordance but re-point it: the
-             root is the PROJECT's Home, named by the project and never by the
-             organization, and it stays icon-only. */
-          await expect(scopeLink).toHaveAttribute(
-            "aria-label",
-            "route topbar e2e",
-          );
-          expect(
-            new URL((await scopeLink.getAttribute("href")) ?? "", page.url())
-              .pathname,
-          ).toBe(`/${orgSlug}/projects/${agentId}`);
-          await expect(
-            breadcrumb.getByRole("link", { name: "Home", exact: true }),
-          ).toHaveCount(0);
-          await expect(breadcrumb.getByRole("link")).toHaveCount(1);
-        } else {
-          await expect(scopeLink).toHaveAttribute("aria-label", "Home");
-          await expect(scopeLink).toHaveAttribute(
-            "href",
-            new RegExp(`/${orgSlug}/home$`),
-          );
-        }
-      }
+        mainTopbar(page).getByRole("navigation", {
+          name: "Breadcrumb",
+          exact: true,
+        }),
+      ).toHaveCount(0);
     }
 
     await page.goto(`/${orgSlug}/tasks`);
@@ -660,25 +587,7 @@ test.describe("destination routes", () => {
     expect(copiedTaskUrl.search).toBe("");
     expect(copiedTaskUrl.hash).toBe("");
 
-    const projectBreadcrumbRoot = mainTopbarRegion(page, "left").getByRole(
-      "link",
-      { name: projectTitle, exact: true },
-    );
-    expect(
-      new URL(
-        (await projectBreadcrumbRoot.getAttribute("href")) ?? "",
-        page.url(),
-      ).pathname,
-    ).toBe(projectRoot);
-    await expect(projectBreadcrumbRoot.locator("svg")).toHaveCount(1);
-    await expect(
-      mainTopbarRegion(page, "left").getByRole("link", {
-        name: "Home",
-        exact: true,
-      }),
-    ).toHaveCount(0);
-
-    await projectBreadcrumbRoot.click();
+    await projectHome.click();
     await page.waitForURL((url) => url.pathname === projectRoot, {
       timeout: SHELL_TIMEOUT_MS,
     });
@@ -798,7 +707,7 @@ test.describe("destination routes", () => {
     ).toHaveCount(0);
   });
 
-  test("every Settings sidebar destination owns a semantic breadcrumb", async ({
+  test("every Settings sidebar destination owns a plain page title", async ({
     authedPage: { page, orgSlug },
   }) => {
     const destinations = [
@@ -828,7 +737,7 @@ test.describe("destination routes", () => {
         name: "Breadcrumb",
         exact: true,
       });
-      await expect(breadcrumb).toHaveCount(1, { timeout: SHELL_TIMEOUT_MS });
+      await expect(breadcrumb).toHaveCount(0);
       await expect(
         page.locator('[data-slot="main-topbar-left"]').getByRole("heading", {
           level: 1,
@@ -837,18 +746,6 @@ test.describe("destination routes", () => {
         }),
       ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
       await expect(page.locator("h1")).toHaveCount(1);
-      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
-      await expect(breadcrumb).not.toContainText(title);
-      const homeLink = breadcrumb.getByRole("link").first();
-      await expect(homeLink).toHaveText("");
-      await expect(homeLink.locator("svg")).toHaveCount(1);
-      await expect(homeLink).toHaveAttribute(
-        "href",
-        new RegExp(`/${orgSlug}/home$`),
-      );
-      await expect(
-        breadcrumb.getByRole("link", { name: "Settings", exact: true }),
-      ).toHaveAttribute("href", new RegExp(`/${orgSlug}/settings/general$`));
       expect(new URL(page.url()).pathname).toBe(path);
     }
   });
@@ -922,12 +819,18 @@ test.describe("destination routes", () => {
       page.getByRole("heading", { level: 2, name: "Owner", exact: true }),
     ).toHaveCount(0);
     await expect(page.getByText("Built-in", { exact: true })).toBeVisible();
+    await topbarLeft
+      .getByRole("button", { name: "Go back", exact: true })
+      .click();
     await expect(
-      topbarLeft.getByRole("button", { name: "Roles", exact: true }),
+      topbarLeft.getByRole("heading", { level: 1, name: "Roles", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Owner", exact: true }),
     ).toBeVisible();
   });
 
-  test("Settings detail breadcrumbs use route titles while data is unavailable", async ({
+  test("Settings details keep route titles while data is unavailable", async ({
     authedPage: { page, orgSlug },
   }) => {
     const cases = [
@@ -956,28 +859,17 @@ test.describe("destination routes", () => {
         name: "Breadcrumb",
         exact: true,
       });
-      await expect(breadcrumb).not.toContainText(route.title);
-      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
-      const connectionsParent = await breadcrumbParent(
-        page,
-        breadcrumb,
-        "Connections",
-      );
-      await expect(connectionsParent.link).toHaveAttribute(
-        "href",
-        new RegExp(`/${orgSlug}/settings/connections$`),
-      );
-      if (connectionsParent.overflowed) await page.keyboard.press("Escape");
+      await expect(breadcrumb).toHaveCount(0);
     }
   });
 
-  test("a tool detail contributes its connection parent without repeating the current page", async ({
+  test("a tool detail owns a single decoded page title", async ({
     authedPage: { page, orgSlug },
   }) => {
-    const connectionTitle = `Breadcrumb connection ${crypto.randomUUID()}`;
+    const connectionTitle = `Title connection ${crypto.randomUUID()}`;
     await createHttpConnection(page.context().request, orgSlug, {
       title: connectionTitle,
-      url: `http://127.0.0.1:1/breadcrumb-${crypto.randomUUID()}`,
+      url: `http://127.0.0.1:1/title-${crypto.randomUUID()}`,
     });
 
     await page.goto(`/${orgSlug}/settings/connections?tab=connected`);
@@ -1012,98 +904,7 @@ test.describe("destination routes", () => {
       }),
     ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
     await expect(topbarLeft.locator("h1")).toHaveCount(1);
-    await expect(breadcrumb).not.toContainText(toolTitle);
-    await expect(
-      breadcrumb.getByRole("link", {
-        name: connectionTitle,
-        exact: true,
-      }),
-    ).toHaveAttribute("href", /\/settings\/connections\/[^?]+\?tab=tools$/);
-    await expect(
-      page.getByRole("navigation", {
-        name: "Resource breadcrumb",
-        exact: true,
-      }),
-    ).toHaveCount(0);
-
-    await breadcrumb
-      .getByRole("button", { name: "Show parent pages", exact: true })
-      .click();
-    await expect(
-      page.getByRole("menuitem", { name: "Settings", exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("menuitem", { name: "Connections", exact: true }),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
-
-    const appSlug = connectionPath.split("/").at(-1);
-    if (!appSlug) throw new Error("Connection route has no app slug");
-    let releaseConnectionList!: () => void;
-    let heldConnectionList = false;
-    const connectionListGate = new Promise<void>((resolve) => {
-      releaseConnectionList = resolve;
-    });
-    const mcpPattern = "**/api/*/tools/COLLECTION_CONNECTIONS_LIST";
-    await page.addInitScript(() => {
-      localStorage.removeItem("studio:rq-cache");
-    });
-    await page.route(mcpPattern, async (route) => {
-      const body = route.request().postData() ?? "";
-      let requestedSlug: unknown;
-      try {
-        const payload: unknown = JSON.parse(body);
-        requestedSlug =
-          typeof payload === "object" && payload && "slug" in payload
-            ? payload.slug
-            : undefined;
-      } catch {
-        requestedSlug = undefined;
-      }
-      if (!heldConnectionList && requestedSlug === appSlug) {
-        heldConnectionList = true;
-        await connectionListGate;
-      }
-      await route.continue();
-    });
-
-    try {
-      const toolUrl = `${connectionPath}/tools/${encodeURIComponent(toolTitle)}`;
-      await page.goto(toolUrl);
-      await expect
-        .poll(() => heldConnectionList, { timeout: SHELL_TIMEOUT_MS })
-        .toBe(true);
-
-      const staticConnections = breadcrumb.getByRole("link", {
-        name: "Connections",
-        exact: true,
-      });
-      await expect(staticConnections).toBeVisible();
-      await staticConnections.focus();
-      releaseConnectionList();
-
-      const loadedConnection = breadcrumb.getByRole("link", {
-        name: connectionTitle,
-        exact: true,
-      });
-      await expect(loadedConnection).toBeFocused({
-        timeout: SHELL_TIMEOUT_MS,
-      });
-      await loadedConnection.press("Enter");
-      await page.waitForURL((url) => url.pathname === connectionPath, {
-        timeout: SHELL_TIMEOUT_MS,
-      });
-      await expect(
-        page.locator('[data-slot="main-topbar-left"]').getByRole("heading", {
-          level: 1,
-          name: connectionTitle,
-          exact: true,
-        }),
-      ).toBeFocused({ timeout: SHELL_TIMEOUT_MS });
-    } finally {
-      releaseConnectionList();
-      await page.unroute(mcpPattern);
-    }
+    await expect(breadcrumb).toHaveCount(0);
   });
 
   test("the org landing resolves into a destination", async ({
@@ -1933,39 +1734,7 @@ test.describe("destination routes", () => {
     await expect(
       page.getByRole("heading", { name: viewTitle, level: 1 }),
     ).toBeVisible();
-    const declaredViewBreadcrumb = mainTopbarRegion(page, "left").getByRole(
-      "navigation",
-      { name: "Breadcrumb", exact: true },
-    );
-    const projectParent = await breadcrumbParent(
-      page,
-      declaredViewBreadcrumb,
-      "colliding view e2e",
-    );
-    await expect(
-      declaredViewBreadcrumb.locator('[aria-current="page"]'),
-    ).toHaveCount(0);
-    await expect(declaredViewBreadcrumb).not.toContainText(viewTitle);
-
-    await projectParent.link.click();
-    await page.waitForURL(
-      (url) =>
-        url.pathname === `/${orgSlug}/projects/${agentId}` &&
-        url.searchParams.get("thread") === threadId &&
-        url.searchParams.get("sidepanel") === "true",
-      { timeout: SHELL_TIMEOUT_MS },
-    );
-    await expect(chatPanel(page)).toBeVisible();
-
-    // The sidebar Overview row is a real link (open-in-new-tab semantics), but
-    // it must use the same project-scoped search writer as every view button.
-    await declaredView.click();
-    await page.waitForURL(
-      (url) =>
-        url.pathname === `/${orgSlug}/projects/${agentId}/views/${viewId}` &&
-        url.searchParams.get("thread") === threadId,
-      { timeout: SHELL_TIMEOUT_MS },
-    );
+    // Returning through the sidebar preserves the selected chat and layout.
     const projectOverview = page
       .locator('[data-slot="sidebar"]')
       .locator(`a[href^="/${orgSlug}/projects/${agentId}"]`)
@@ -2444,7 +2213,7 @@ test.describe("destination routes", () => {
     ).toBeFocused();
   });
 
-  test("keyboard tab and breadcrumb navigation focus the new desktop route heading", async ({
+  test("keyboard tab and sidebar navigation focus the new desktop route heading", async ({
     authedPage: { page, orgSlug },
   }) => {
     const projectTitle = "desktop focus e2e";
@@ -2456,20 +2225,6 @@ test.describe("destination routes", () => {
     );
     await page.goto(`/${orgSlug}/projects/${agentId}/site-editor`);
     await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-
-    const projectBreadcrumb = mainTopbar(page).getByRole("link", {
-      name: projectTitle,
-      exact: true,
-    });
-    await projectBreadcrumb.focus();
-    await page.setViewportSize({ width: 320, height: 720 });
-    const responsiveViewSelect = page.getByRole("combobox", {
-      name: "View",
-      exact: true,
-    });
-    await expect(responsiveViewSelect).toBeFocused();
-    await page.setViewportSize({ width: 1280, height: 720 });
-    await expect(projectBreadcrumb).toBeFocused();
 
     const viewTab = mainPanel(page).getByRole("button", {
       name: "Content",
@@ -2490,10 +2245,12 @@ test.describe("destination routes", () => {
       }),
     ).toBeFocused();
 
-    const projectParent = mainTopbar(page).getByRole("link", {
-      name: projectTitle,
-      exact: true,
-    });
+    const projectParent = page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("link", {
+        name: "Home",
+        exact: true,
+      });
     await projectParent.focus();
     await page.keyboard.press("Enter");
     await page.waitForURL(

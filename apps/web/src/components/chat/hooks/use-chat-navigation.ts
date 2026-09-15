@@ -34,7 +34,7 @@ export function useChatNavigation(): ChatNavigation {
   const taskId = useRouteThreadId();
 
   /**
-   * The same route-aware answer the shell and breadcrumb use: `$agentId` wins,
+   * The same route-aware answer the shell uses: `$agentId` wins,
    * legacy thread search is accepted only by its compatibility route, and org
    * pages fall back to Decopilot.
    */

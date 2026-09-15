@@ -96,38 +96,11 @@ test.describe("sandbox drawer is scoped to the Site Editor", () => {
           }),
       ).toBeVisible({ timeout: 60_000 });
       await expect(sandboxToolbarTab).toBeVisible({ timeout: 60_000 });
-      const breadcrumb = page
-        .getByTestId("main-panel")
-        .getByRole("navigation", { name: "Breadcrumb", exact: true });
-      await expect(breadcrumb).toHaveCount(1);
-      let agentBreadcrumbLink = breadcrumb.getByRole("link", {
-        name: "drawer site-editor e2e",
-        exact: true,
-      });
-      let overflowOpen = false;
-      if (!(await agentBreadcrumbLink.isVisible().catch(() => false))) {
-        await breadcrumb
-          .getByRole("button", {
-            name: "Show parent pages",
-            exact: true,
-          })
-          .click();
-        agentBreadcrumbLink = page.getByRole("menuitem", {
-          name: "drawer site-editor e2e",
-          exact: true,
-        });
-        overflowOpen = true;
-      }
-      await expect(agentBreadcrumbLink).toBeVisible();
-      const agentBreadcrumbHref =
-        await agentBreadcrumbLink.getAttribute("href");
-      expect(agentBreadcrumbHref).not.toBeNull();
-      expect(new URL(agentBreadcrumbHref ?? "", page.url()).pathname).toBe(
-        siteEditorBase.replace("/site-editor", ""),
-      );
-      if (overflowOpen) await page.keyboard.press("Escape");
-      await expect(breadcrumb).not.toContainText("Site Editor");
-      await expect(breadcrumb.locator('[aria-current="page"]')).toHaveCount(0);
+      await expect(
+        page
+          .getByTestId("main-panel")
+          .getByRole("navigation", { name: "Breadcrumb", exact: true }),
+      ).toHaveCount(0);
       await expect(
         page.getByTestId("main-panel").locator('[data-slot="main-toolbar"]'),
       ).toHaveCount(0);

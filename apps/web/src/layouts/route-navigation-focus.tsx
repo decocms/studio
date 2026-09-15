@@ -175,11 +175,6 @@ function activeNavigationSource(): {
   const link = active.closest<HTMLElement>("a[href]");
   if (link) return { element: active, root: link, type: "route" };
 
-  const breadcrumb = active.closest<HTMLElement>(
-    '[data-slot="main-breadcrumb"]',
-  );
-  if (breadcrumb) return { element: active, root: breadcrumb, type: "route" };
-
   return null;
 }
 
@@ -193,9 +188,7 @@ function hasUsableFocus(): boolean {
 function focusIsInRouteChrome(active: Element | null): boolean {
   return Boolean(
     active instanceof HTMLElement &&
-      active.closest(
-        `${MOBILE_VIEW_SELECT_SOURCE}, ${ROUTE_CONTROL_SOURCE}, [data-slot="main-breadcrumb"]`,
-      ),
+      active.closest(`${MOBILE_VIEW_SELECT_SOURCE}, ${ROUTE_CONTROL_SOURCE}`),
   );
 }
 

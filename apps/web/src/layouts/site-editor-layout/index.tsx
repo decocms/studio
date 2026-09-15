@@ -1,7 +1,6 @@
 import { Outlet } from "@tanstack/react-router";
 import { Main } from "@/components/main";
-import { MainBreadcrumb } from "@/components/main-breadcrumb";
-import { projectMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
+import { RouteMainTitle } from "@/layouts/route-main-title";
 import { useChatTask } from "@/components/chat/context";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -20,12 +19,7 @@ import { MainPanelTabsBar } from "@/layouts/main-panel-tabs/main-panel-tabs-bar"
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
 import { WorkspaceMainLeading } from "@/layouts/agent-shell-layout/workspace-main-controls";
 import { useWorkspace } from "@/layouts/agent-shell-layout/workspace-context";
-import {
-  getDecopilotId,
-  getWellKnownDecopilotVirtualMCP,
-  useProjectContext,
-  useVirtualMCP,
-} from "@/sdk";
+import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { shouldShowSiteEditorDrawer } from "./drawer-availability";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useT } from "@/i18n/use-t";
@@ -70,15 +64,6 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
   const { org } = useProjectContext();
   const title = useRouteMainTitle() ?? t("sidebar.projectNav.siteEditor");
   const entity = useVirtualMCP(agentId);
-  const breadcrumbAgent =
-    entity ??
-    (agentId === getDecopilotId(org.id)
-      ? getWellKnownDecopilotVirtualMCP(org.id)
-      : {
-          id: agentId,
-          title: t("taskBoard.taskDialog.projectLabel"),
-          icon: null,
-        });
   const { activeTask, currentBranch, taskId } = useChatTask();
   const session = useSessionRuntime(agentId);
   const routeView = useActivePanelTabId() ?? "site-editor";
@@ -103,16 +88,7 @@ export function SiteEditorLayout({ agentId }: SiteEditorLayoutProps) {
         <Main.Topbar className="flex h-auto min-h-12 flex-wrap gap-y-1 py-1">
           <Main.Topbar.Left className="flex-1 basis-auto">
             <WorkspaceMainLeading currentRouteTitle={title} />
-            <MainBreadcrumb
-              compactTitle="visually-hidden"
-              scope={projectMainBreadcrumbItem(
-                org.slug,
-                breadcrumbAgent,
-                t("taskBoard.taskDialog.projectLabel"),
-              )}
-              current={{ id: "site-editor", label: title }}
-              className="flex-initial"
-            />
+            <RouteMainTitle title={title} compact className="flex-initial" />
             <div className="hidden min-w-0 md:flex">
               <MainPanelTabsBar
                 disableActiveMainToggle={!workspace.sidePanelOpen}

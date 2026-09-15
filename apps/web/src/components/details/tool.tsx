@@ -45,7 +45,6 @@ import {
   OAuthAuthenticationState,
   ManualAuthRequiredState,
 } from "./connection/settings-tab";
-import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useMCPAuthStatus } from "@/hooks/use-mcp-auth-status";
 import {
   useConnection,
@@ -57,8 +56,6 @@ import {
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
 import { Main } from "@/components/main";
-import { MainBreadcrumb } from "@/components/main-breadcrumb";
-import { connectionMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
 import { ToolAnnotationBadges } from "@/components/tools/tools-list.tsx";
 import {
   useOptionalChatStream,
@@ -747,7 +744,6 @@ export function ToolDetailsView({
   onBack,
 }: ToolDetailsViewProps) {
   const t = useT();
-  const { org } = useProjectContext();
   const [selectedConnectionId, setSelectedConnectionId] = useState(
     siblings[0]?.id ?? "",
   );
@@ -763,21 +759,9 @@ export function ToolDetailsView({
       <span title={toolName}>{toolName}</span>
     </Main.Title.Portal>
   );
-  const connectionParentPortal = connection ? (
-    <MainBreadcrumb.Parent.Portal
-      item={connectionMainBreadcrumbItem(
-        org.slug,
-        getConnectionSlug(connection),
-        connection,
-        "tools",
-      )}
-    />
-  ) : null;
-
   if (!connection || !connectionId) {
     return (
       <>
-        {connectionParentPortal}
         {titlePortal}
         <div className="flex h-full items-center justify-center">
           <div className="flex flex-col items-center gap-2 text-center">
@@ -795,7 +779,6 @@ export function ToolDetailsView({
 
   return (
     <>
-      {connectionParentPortal}
       {titlePortal}
       <Suspense
         fallback={

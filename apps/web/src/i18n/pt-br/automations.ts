@@ -92,7 +92,7 @@ export const automations = {
   "automations.automationDetail.addStarter": "Adicionar um acionador",
   "automations.automationDetail.advanced": "Avançado",
   "automations.automationDetail.automationNamePlaceholder": "Nome da automação",
-  "automations.automationDetail.breadcrumbFallback": "Automação",
+  "automations.automationDetail.titleFallback": "Automação",
   "automations.automationDetail.backToList": "Voltar para a lista",
   "automations.automationDetail.failedToAddStarter":
     "Falha ao adicionar acionador",

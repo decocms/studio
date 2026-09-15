@@ -13,12 +13,8 @@ import {
 import { SettingsSidebarMobile } from "@/components/sidebar/settings-sidebar";
 import { useProjectContext } from "@/sdk";
 import { useStatusSounds } from "../hooks/use-status-sounds";
-import { MainBreadcrumb } from "@/components/main-breadcrumb";
-import { organizationMainBreadcrumbItem } from "@/components/main-breadcrumb/route-items";
-import {
-  useRouteMainBreadcrumbParentTitle,
-  useRouteMainTitle,
-} from "@/hooks/use-route-main-title";
+import { useRouteMainTitle } from "@/hooks/use-route-main-title";
+import { RouteMainTitle } from "./route-main-title";
 
 export default function SettingsLayout() {
   const t = useT();
@@ -26,7 +22,6 @@ export default function SettingsLayout() {
   const { org } = useProjectContext();
   const settingsTitle = t("sidebar.navDestinations.settings");
   const routeTitle = useRouteMainTitle() ?? settingsTitle;
-  const routeParentTitle = useRouteMainBreadcrumbParentTitle();
   const routeKey = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -42,35 +37,7 @@ export default function SettingsLayout() {
               <div className="md:hidden">
                 <SidebarTriggerButton />
               </div>
-              <MainBreadcrumb
-                scope={organizationMainBreadcrumbItem(
-                  org,
-                  t("sidebar.navDestinations.home"),
-                )}
-                ancestors={[
-                  {
-                    id: "settings",
-                    label: settingsTitle,
-                    link: {
-                      to: "/$org/settings/general",
-                      params: { org: org.slug },
-                    },
-                  },
-                  ...(routeParentTitle
-                    ? [
-                        {
-                          id: "settings:connections",
-                          label: routeParentTitle,
-                          link: {
-                            to: "/$org/settings/connections" as const,
-                            params: { org: org.slug },
-                          },
-                        },
-                      ]
-                    : []),
-                ]}
-                current={{ id: `settings:${routeKey}`, label: routeTitle }}
-              />
+              <RouteMainTitle title={routeTitle} />
               <Main.Topbar.Left.Target />
             </Main.Topbar.Left>
             <Main.Topbar.Center>

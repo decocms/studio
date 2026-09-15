@@ -8,9 +8,7 @@ import {
 } from "@/hooks/registry/use-registry";
 import { useT } from "@/i18n/use-t.ts";
 import { Main } from "@/components/main";
-import { MainBreadcrumb } from "@/components/main-breadcrumb";
 import { CollectionTabs } from "@/components/collections/collection-tabs.tsx";
-import { useProjectContext } from "@/sdk";
 import RegistryItemsPage from "./registry-items-page";
 import RegistryRequestsPage from "./registry-requests-page";
 import RegistrySettingsPage from "./registry-settings-page";
@@ -74,7 +72,6 @@ export default function RegistryLayout({
   onTabChange: (tab: NavItem["tab"]) => void;
 }) {
   const t = useT();
-  const { org } = useProjectContext();
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const { registryName, registryIcon, acceptPublishRequests } =
     useRegistryConfig(PLUGIN_ID);
@@ -121,16 +118,6 @@ export default function RegistryLayout({
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden">
-      <MainBreadcrumb.Parent.Portal
-        item={{
-          id: "settings:store",
-          label: t("settings.nav.store"),
-          link: {
-            to: "/$org/settings/store",
-            params: { org: org.slug },
-          },
-        }}
-      />
       <Main.Title.Portal>
         <span className="inline-flex min-w-0 items-center gap-1.5">
           {registryIcon ? (

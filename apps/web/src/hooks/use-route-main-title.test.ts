@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  resolveRouteMainBreadcrumbParentKey,
   resolveRouteMainTitleKey,
   resolveRouteMainTitleParam,
 } from "./use-route-main-title";
@@ -28,24 +27,6 @@ describe("resolveRouteMainTitleKey", () => {
       ]),
     ).toBe("sidebar.navDestinations.settings");
     expect(resolveRouteMainTitleKey([{ staticData: {} }])).toBeUndefined();
-  });
-});
-
-describe("resolveRouteMainBreadcrumbParentKey", () => {
-  test("uses only the deepest nested route that contributes a parent", () => {
-    expect(
-      resolveRouteMainBreadcrumbParentKey([
-        { staticData: {} },
-        {
-          staticData: {
-            mainBreadcrumbParentKey: "settings.nav.connections",
-          },
-        },
-      ]),
-    ).toBe("settings.nav.connections");
-    expect(
-      resolveRouteMainBreadcrumbParentKey([{ staticData: {} }]),
-    ).toBeUndefined();
   });
 });
 

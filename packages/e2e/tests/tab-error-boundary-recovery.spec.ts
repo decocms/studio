@@ -172,22 +172,10 @@ test.describe("tab error boundary recovers on tab switch", () => {
     await expect(main.getByText(/something went wrong/i)).toBeVisible({
       timeout: 60_000,
     });
-    const breadcrumb = main.getByRole("navigation", {
-      name: "Breadcrumb",
-      exact: true,
-    });
-    const directTasks = breadcrumb.getByRole("link", {
-      name: "Tasks",
-      exact: true,
-    });
-    if (await directTasks.isVisible()) {
-      await directTasks.click();
-    } else {
-      await breadcrumb
-        .getByRole("button", { name: "Show parent pages" })
-        .click();
-      await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
-    }
+    await page
+      .locator('[data-slot="sidebar"]')
+      .getByRole("link", { name: "Tasks", exact: true })
+      .click();
 
     await page.waitForURL((url) => url.pathname === `/${orgSlug}/tasks`, {
       timeout: 60_000,

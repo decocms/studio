@@ -3,7 +3,7 @@ import { WorkspaceRouteMain } from "./workspace-route-main";
 
 export default function HomeRoute() {
   return (
-    <WorkspaceRouteMain breadcrumbScopeIsCurrent contentMode="scroll">
+    <WorkspaceRouteMain hideTitle contentMode="scroll">
       <OrgAgentsTab />
     </WorkspaceRouteMain>
   );

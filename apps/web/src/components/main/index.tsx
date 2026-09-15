@@ -2,11 +2,9 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   createContext,
   use,
-  useRef,
   useState,
   type ComponentPropsWithoutRef,
   type Dispatch,
-  type MutableRefObject,
   type RefCallback,
   type ReactNode,
   type SetStateAction,
@@ -15,11 +13,7 @@ import { createPortal } from "react-dom";
 import "./main.css";
 
 type MainTopbarRegion = "left" | "center" | "right";
-type MainPortalRegion =
-  | MainTopbarRegion
-  | "breadcrumb-parent"
-  | "toolbar"
-  | "title";
+type MainPortalRegion = MainTopbarRegion | "toolbar" | "title";
 
 type PortalTarget = HTMLElement | null;
 type PortalTargetSetter = Dispatch<SetStateAction<PortalTarget>>;
@@ -32,13 +26,9 @@ type ToolbarPortalContentsSetter = Dispatch<
 >;
 
 interface MainTopbarContextValue {
-  breadcrumbParentFocusRevision: MutableRefObject<number>;
   targets: Record<MainPortalRegion, PortalTarget>;
-  breadcrumbParentPortalContents: OrderedPortalContents;
   toolbarPortalContents: ReadonlySet<HTMLElement>;
   titlePortalContents: OrderedPortalContents;
-  setBreadcrumbParentTarget: PortalTargetSetter;
-  setBreadcrumbParentPortalContents: OrderedPortalContentsSetter;
   setLeftTarget: PortalTargetSetter;
   setCenterTarget: PortalTargetSetter;
   setRightTarget: PortalTargetSetter;
@@ -142,109 +132,6 @@ function useOrderedPortalContentRef(
   return [contentRef, content];
 }
 
-type BreadcrumbParentFocusDestination = "dynamic" | "static";
-
-function scheduleBreadcrumbParentFocusHandoff(
-  root: HTMLElement,
-  source: HTMLElement,
-  destination: BreadcrumbParentFocusDestination,
-  isCurrent: () => boolean,
-): void {
-  requestAnimationFrame(() => {
-    if (!isCurrent() || !root.isConnected) return;
-    const active = document.activeElement;
-    if (active !== source && active !== document.body) return;
-
-    const selectors =
-      destination === "dynamic"
-        ? [
-            '[data-slot="main-breadcrumb-dynamic-parent"] a[href]',
-            '[data-slot="main-breadcrumb-dynamic-parent"] button:not([disabled])',
-          ]
-        : [
-            '[data-slot="main-breadcrumb-ancestor"] a[href]',
-            '[data-slot="main-breadcrumb-ancestor"] button:not([disabled])',
-            '[data-slot="main-breadcrumb-overflow-trigger"]',
-            '[data-slot="main-breadcrumb-scope"] a[href]',
-            '[data-slot="main-breadcrumb-scope"] button:not([disabled])',
-          ];
-    const target = selectors
-      .map((selector) => root.querySelector<HTMLElement>(selector))
-      .find((candidate) => candidate && candidate.getClientRects().length > 0);
-    target?.focus({ preventScroll: true });
-  });
-}
-
-/** Preserve breadcrumb focus when an async route parent replaces its fallback. */
-function useBreadcrumbParentPortalContentRef(
-  setContents: OrderedPortalContentsSetter,
-  focusHandoffRevision: MutableRefObject<number>,
-): readonly [RefCallback<HTMLElement>, HTMLElement | null] {
-  const [content, setContent] = useState<HTMLElement | null>(null);
-  const [contentRef] = useState<RefCallback<HTMLElement>>(
-    () => (node: HTMLElement | null) => {
-      if (!node) return;
-
-      const root = node.closest<HTMLElement>('[data-slot="main"]');
-      const active =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      const staticSource = active?.closest(
-        '[data-slot="main-breadcrumb-ancestor"]',
-      )
-        ? active
-        : null;
-      const attachedPathname = window.location.pathname;
-      const attachRevision = ++focusHandoffRevision.current;
-
-      setContent(node);
-      setContents((current) => [
-        ...current.filter((candidate) => candidate !== node),
-        node,
-      ]);
-      if (root && staticSource) {
-        scheduleBreadcrumbParentFocusHandoff(
-          root,
-          staticSource,
-          "dynamic",
-          () => focusHandoffRevision.current === attachRevision,
-        );
-      }
-
-      return () => {
-        const focused =
-          document.activeElement instanceof HTMLElement &&
-          node.contains(document.activeElement)
-            ? document.activeElement
-            : null;
-        const cleanupRevision = ++focusHandoffRevision.current;
-        const hasOtherDynamicParent = Array.from(
-          node.parentElement?.querySelectorAll<HTMLElement>(
-            '[data-slot="main-breadcrumb-parent-portal-content"]',
-          ) ?? [],
-        ).some((candidate) => candidate !== node);
-        setContent((current) => (current === node ? null : current));
-        setContents((current) =>
-          current.includes(node)
-            ? current.filter((candidate) => candidate !== node)
-            : current,
-        );
-        if (root && focused && window.location.pathname === attachedPathname) {
-          scheduleBreadcrumbParentFocusHandoff(
-            root,
-            focused,
-            hasOtherDynamicParent ? "dynamic" : "static",
-            () => focusHandoffRevision.current === cleanupRevision,
-          );
-        }
-      };
-    },
-  );
-
-  return [contentRef, content];
-}
-
 function MainRoot({
   children,
   className,
@@ -257,11 +144,6 @@ function MainRoot({
   const [toolbarPortalContents, setToolbarPortalContents] = useState<
     ReadonlySet<HTMLElement>
   >(() => new Set());
-  const [breadcrumbParentTarget, setBreadcrumbParentTarget] =
-    useState<PortalTarget>(null);
-  const breadcrumbParentFocusRevision = useRef(0);
-  const [breadcrumbParentPortalContents, setBreadcrumbParentPortalContents] =
-    useState<OrderedPortalContents>([]);
   const [titleTarget, setTitleTarget] = useState<PortalTarget>(null);
   const [titlePortalContents, setTitlePortalContents] =
     useState<OrderedPortalContents>([]);
@@ -269,20 +151,15 @@ function MainRoot({
   return (
     <MainTopbarContext
       value={{
-        breadcrumbParentFocusRevision,
         targets: {
-          "breadcrumb-parent": breadcrumbParentTarget,
           left: leftTarget,
           center: centerTarget,
           right: rightTarget,
           toolbar: toolbarTarget,
           title: titleTarget,
         },
-        breadcrumbParentPortalContents,
         toolbarPortalContents,
         titlePortalContents,
-        setBreadcrumbParentTarget,
-        setBreadcrumbParentPortalContents,
         setLeftTarget,
         setCenterTarget,
         setRightTarget,
@@ -707,71 +584,6 @@ function MainDrawer({ children }: { children?: ReactNode }) {
   return children;
 }
 
-interface MainBreadcrumbParentTargetRenderState {
-  /** A route contribution is mounted in this target. */
-  present: boolean;
-  /** Keep this node mounted even while `present` is false. */
-  target: ReactNode;
-}
-
-function MainBreadcrumbParentTarget({
-  children,
-}: {
-  children: (state: MainBreadcrumbParentTargetRenderState) => ReactNode;
-}) {
-  const { breadcrumbParentPortalContents, setBreadcrumbParentTarget } =
-    useMainTopbarContext();
-  const targetRef = usePortalTargetRef(
-    "breadcrumb-parent",
-    setBreadcrumbParentTarget,
-  );
-
-  return children({
-    present: breadcrumbParentPortalContents.length > 0,
-    target: (
-      <span
-        ref={targetRef}
-        data-slot="main-breadcrumb-parent-portal-target"
-        className="contents"
-      />
-    ),
-  });
-}
-
-function MainBreadcrumbParentPortal({ children }: { children: ReactNode }) {
-  const {
-    breadcrumbParentFocusRevision,
-    breadcrumbParentPortalContents,
-    targets,
-    setBreadcrumbParentPortalContents,
-  } = useMainTopbarContext();
-  const [contentRef, content] = useBreadcrumbParentPortalContentRef(
-    setBreadcrumbParentPortalContents,
-    breadcrumbParentFocusRevision,
-  );
-  const target = targets["breadcrumb-parent"];
-  const active =
-    content !== null &&
-    breadcrumbParentPortalContents[
-      breadcrumbParentPortalContents.length - 1
-    ] === content;
-
-  return target
-    ? createPortal(
-        <span
-          ref={contentRef}
-          data-slot="main-breadcrumb-parent-portal-content"
-          data-active={active ? "true" : "false"}
-          hidden={!active}
-          className={cn("contents", !active && "hidden")}
-        >
-          {children}
-        </span>,
-        target,
-      )
-    : null;
-}
-
 function MainTitle({
   children,
   className,
@@ -847,12 +659,6 @@ function MainTitlePortal({ children }: { children: ReactNode }) {
 }
 
 export const Main = Object.assign(MainRoot, {
-  Breadcrumb: {
-    Parent: {
-      Portal: MainBreadcrumbParentPortal,
-      Target: MainBreadcrumbParentTarget,
-    },
-  },
   Topbar: Object.assign(MainTopbar, {
     Left: Object.assign(MainTopbarLeft, {
       Portal: MainTopbarLeftPortal,

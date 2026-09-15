@@ -58,21 +58,11 @@ const AUTOSAVE_POLL_TIMEOUT_MS = 15_000;
  * timeout above.
  */
 async function closeTask(page: Page) {
-  // The breadcrumb, not Escape: in the editor, Escape only blurs.
-  const breadcrumb = page.getByRole("navigation", {
-    name: "Breadcrumb",
-    exact: true,
-  });
-  const directLink = breadcrumb.getByRole("link", {
-    name: "Tasks",
-    exact: true,
-  });
-  if (await directLink.isVisible()) {
-    await directLink.click();
-  } else {
-    await breadcrumb.getByRole("button", { name: "Show parent pages" }).click();
-    await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
-  }
+  // Navigating away flushes pending edits, including a still-focused editor.
+  await page
+    .locator('[data-slot="sidebar"]')
+    .getByRole("link", { name: "Tasks", exact: true })
+    .click();
   await expect(detailOf(page)).toHaveCount(0);
 }
 
