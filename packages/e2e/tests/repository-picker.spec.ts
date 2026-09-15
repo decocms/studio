@@ -11,31 +11,59 @@ for (const width of [1280, 390]) {
       .getByRole("button", { name: "Import repository", exact: true })
       .click();
     const dialog = page.getByRole("dialog");
+    // One entry point, not a button per provider-and-method combination.
     await expect(
-      dialog.getByRole("button", {
-        name: "Connect GitLab with a token",
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(
-      dialog.getByText("Add GitHub account or organization", { exact: true }),
+      dialog.getByRole("button", { name: "Add account", exact: true }),
     ).toBeVisible();
     await expect(dialog.getByLabel("Repository URL")).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath("repository-picker.png"),
       animations: "disabled",
     });
+
     await dialog
-      .getByRole("button", { name: "Connect GitLab with a token", exact: true })
+      .getByRole("button", { name: "Add account", exact: true })
       .click();
+    const flow = page.getByRole("dialog", {
+      name: "Connect a git account",
+      exact: true,
+    });
+    for (const provider of ["GitHub", "GitLab", "Bitbucket"]) {
+      await expect(
+        flow.getByRole("button", { name: provider, exact: true }),
+      ).toBeVisible();
+    }
+    await flow.getByRole("button", { name: "GitLab", exact: true }).click();
+
+    // GitLab always offers a token; OAuth appears only where this deployment
+    // registered an application, and then the method step is not skipped.
+    const capabilities = await callSelfMcpTool<{
+      gitlab: { oauthHosts: string[] };
+    }>(page.request, orgSlug, "GIT_PROVIDER_CAPABILITIES", {});
+    if (capabilities.gitlab.oauthHosts.length > 0) {
+      await expect(
+        page.getByText(
+          "Reaches every repository this account can see; it cannot be narrowed to a subset.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Use an access token", exact: true })
+        .click();
+    }
+
     const tokenDialog = page.getByRole("dialog", {
       name: "Connect GitLab with a token",
       exact: true,
     });
     await expect(tokenDialog.getByLabel("Access token")).toBeVisible();
     await tokenDialog
-      .getByRole("button", { name: "Cancel", exact: true })
+      .getByRole("button", { name: "Back", exact: true })
       .click();
+    await expect(
+      page.getByRole("button", { name: "GitLab", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(
       page.getByRole("dialog", { name: "Import repository", exact: true }),
     ).toBeVisible();

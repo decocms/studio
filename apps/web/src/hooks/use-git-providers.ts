@@ -112,6 +112,8 @@ export function useConnectGitAccountToken() {
       type: GitProviderKind;
       host: string;
       token: string;
+      /** Required for Bitbucket: an access token cannot name its own workspace. */
+      workspace?: string;
     }) => (await studio.call("GIT_ACCOUNT_CONNECT_TOKEN", input)).account,
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: KEYS.gitAccounts(org.id) }),

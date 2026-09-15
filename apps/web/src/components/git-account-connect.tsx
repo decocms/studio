@@ -1,7 +1,20 @@
+/**
+ * Connecting a git provider account, as one staged flow: provider, then — only
+ * where there is a choice — method. Settings and the repository picker share
+ * it, so `layout` decides the trigger and nothing else.
+ *
+ * Token before OAuth: the provider narrows a scoped token, an OAuth grant
+ * reaches everything its user can. Said as a label, not a confirmation step.
+ */
+
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@decocms/ui/lib/utils.ts";
-import { ChevronRight } from "@untitledui/icons";
+import {
+  ArrowLeft,
+  ChevronRight,
+  LinkExternal01,
+  Plus,
+} from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
@@ -19,9 +32,13 @@ import {
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
-import { DEFAULT_HOSTS } from "@decocms/shared/git-providers";
+import {
+  DEFAULT_HOSTS,
+  type GitProviderKind,
+} from "@decocms/shared/git-providers";
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import {
+  type GitProviderCapabilities,
   useGitProviderCapabilities,
   useConnectGitAccountToken,
 } from "@/hooks/use-git-providers";
@@ -33,42 +50,134 @@ type TokenProvider = "gitlab" | "bitbucket";
 
 type Key = Parameters<ReturnType<typeof useT>>[0];
 
+type Stage =
+  | { name: "provider" }
+  | { name: "method"; provider: GitProviderKind }
+  | { name: "token"; provider: TokenProvider };
+
+/** How one provider can be connected on this deployment. `href` navigates; a token opens the form. */
+interface ConnectMethod {
+  kind: "app" | "oauth" | "token";
+  href?: string;
+}
+
+const PROVIDER_COPY: Record<GitProviderKind, { label: Key }> = {
+  github: { label: "settings.repositories.providerGithub" },
+  gitlab: { label: "settings.repositories.providerGitlab" },
+  bitbucket: { label: "settings.repositories.providerBitbucket" },
+};
+
 /**
- * Per-provider copy for the token dialog. GitLab has self-managed hosts, so
- * its dialog asks for one; Bitbucket is Cloud only, so the host is fixed.
+ * What a row promises, from what this deployment configured — offering OAuth
+ * without an application is a dead end found one click later.
  */
+function providerHint(
+  provider: GitProviderKind,
+  methods: ConnectMethod[],
+): Key {
+  if (methods.length === 0) return "settings.repositories.githubUnavailable";
+  if (provider === "github") return "settings.repositories.providerGithubHint";
+  return methods.length > 1
+    ? "settings.repositories.providerTokenOrOauthHint"
+    : "settings.repositories.providerTokenOnlyHint";
+}
+
+/** Per-provider copy for the token form: which fields it asks for and the steps it shows. */
 const TOKEN_COPY: Record<
   TokenProvider,
   {
-    action: Key;
-    hint: Key;
     title: Key;
     description: Key;
     placeholder: Key;
+    steps: [Key, Key, Key, Key];
     askHost: boolean;
+    askWorkspace: boolean;
+    askProject: boolean;
   }
 > = {
   gitlab: {
-    action: "settings.repositories.connectGitlabToken",
-    hint: "settings.repositories.gitlabTokenHint",
     title: "settings.repositories.tokenDialogTitle",
     description: "settings.repositories.tokenDialogDescription",
     placeholder: "settings.repositories.tokenPlaceholder",
+    steps: [
+      "settings.repositories.gitlabStep1",
+      "settings.repositories.gitlabStep2",
+      "settings.repositories.gitlabStep3",
+      "settings.repositories.gitlabStep4",
+    ],
     askHost: true,
+    askWorkspace: false,
+    askProject: true,
   },
   bitbucket: {
-    action: "settings.repositories.connectBitbucketToken",
-    hint: "settings.repositories.bitbucketTokenHint",
     title: "settings.repositories.tokenDialogTitleBitbucket",
     description: "settings.repositories.tokenDialogDescriptionBitbucket",
     placeholder: "settings.repositories.tokenPlaceholderBitbucket",
+    steps: [
+      "settings.repositories.bitbucketStep1",
+      "settings.repositories.bitbucketStep2",
+      "settings.repositories.bitbucketStep3",
+      "settings.repositories.bitbucketStep4",
+    ],
     askHost: false,
+    askWorkspace: true,
+    askProject: false,
   },
 };
+
+const PROVIDER_ORDER: GitProviderKind[] = ["github", "gitlab", "bitbucket"];
+
+/**
+ * The ways `provider` can be connected here, token first. Empty for GitHub
+ * with no App: it is the one provider with no token fallback.
+ */
+function methodsFor(
+  provider: GitProviderKind,
+  capabilities: GitProviderCapabilities | undefined,
+  connectUrl: (path: string) => string,
+): ConnectMethod[] {
+  if (provider === "github") {
+    const github = capabilities?.github;
+    return github?.configured && github.connectPath
+      ? [{ kind: "app", href: connectUrl(github.connectPath) }]
+      : [];
+  }
+  const oauth =
+    provider === "gitlab" ? capabilities?.gitlab : capabilities?.bitbucket;
+  const methods: ConnectMethod[] = [{ kind: "token" }];
+  if (oauth && oauth.oauthHosts.length > 0 && oauth.connectPath) {
+    methods.push({ kind: "oauth", href: connectUrl(oauth.connectPath) });
+  }
+  return methods;
+}
+
+/**
+ * Where the provider mints the token, aimed as deep as the fields allow.
+ * GitLab prefills from `name` and `scopes`; a host that ignores them is fine.
+ */
+function tokenPageUrl(
+  provider: TokenProvider,
+  fields: { host: string; workspace: string; project: string },
+): string | null {
+  if (provider === "bitbucket") {
+    const workspace = fields.workspace.trim();
+    return workspace
+      ? `https://bitbucket.org/${encodeURIComponent(workspace)}/workspace/repositories`
+      : null;
+  }
+  const host = fields.host.trim();
+  if (!host) return null;
+  const project = fields.project.trim().replace(/^\/+|\/+$/g, "");
+  const query = "?name=Studio&scopes=api";
+  return project
+    ? `https://${host}/${project}/-/settings/access_tokens${query}`
+    : `https://${host}/-/user_settings/personal_access_tokens${query}`;
+}
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
+
 export function GitAccountConnect({
   layout = "buttons",
   disabled = false,
@@ -76,173 +185,258 @@ export function GitAccountConnect({
   layout?: "buttons" | "picker";
   disabled?: boolean;
 }) {
-  const [tokenProvider, setTokenProvider] = useState<TokenProvider | null>(
-    null,
-  );
+  const t = useT();
+  const [stage, setStage] = useState<Stage | null>(null);
+  const open = () => setStage({ name: "provider" });
+
   return (
     <>
-      <ConnectActions
-        layout={layout}
-        disabled={disabled}
-        onTokenDialog={setTokenProvider}
-      />
-      {tokenProvider && (
-        <TokenConnectDialog
-          provider={tokenProvider}
-          onOpenChange={(open) => {
-            if (!open) setTokenProvider(null);
-          }}
+      {layout === "picker" ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={open}
+          className="w-full h-auto justify-start gap-3 rounded-none px-4 py-3 hover:bg-accent"
+        >
+          <span className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <Plus size={16} />
+          </span>
+          <span className="flex-1 min-w-0 text-left">
+            <span className="block text-sm font-medium">
+              {t("settings.repositories.addAccount")}
+            </span>
+            <span className="block text-xs font-normal text-muted-foreground whitespace-normal">
+              {t("settings.repositories.addAccountDescription")}
+            </span>
+          </span>
+          <span className="shrink-0 text-muted-foreground">
+            <ChevronRight size={16} />
+          </span>
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" disabled={disabled} onClick={open}>
+          <Plus size={16} />
+          {t("settings.repositories.addAccount")}
+        </Button>
+      )}
+      {stage && (
+        <AddAccountDialog
+          stage={stage}
+          onStage={setStage}
+          onClose={() => setStage(null)}
         />
       )}
     </>
   );
 }
-function TokenConnectDialog({
-  provider,
-  onOpenChange,
+
+function AddAccountDialog({
+  stage,
+  onStage,
+  onClose,
 }: {
-  provider: TokenProvider;
-  onOpenChange: (open: boolean) => void;
+  stage: Stage;
+  onStage: (stage: Stage) => void;
+  onClose: () => void;
 }) {
   const t = useT();
-  const copy = TOKEN_COPY[provider];
-  const connect = useConnectGitAccountToken();
-  const [host, setHost] = useState(DEFAULT_HOSTS[provider]);
-  const [token, setToken] = useState("");
+  const capabilities = useGitProviderCapabilities();
+  const { org } = useProjectContext();
+  const returnTo = `/${org.slug}/settings/repositories`;
+  const connectUrl = (path: string) =>
+    `${path}?returnTo=${encodeURIComponent(returnTo)}`;
 
-  function handleConnect() {
-    if (!host.trim() || !token.trim()) return;
-    connect.mutate(
-      { type: provider, host: host.trim(), token: token.trim() },
-      {
-        onSuccess: (account) => {
-          toast.success(
-            t("settings.repositories.connected", { login: account.login }),
-          );
-          setToken("");
-          onOpenChange(false);
-        },
-        onError: (err) =>
-          toast.error(errorMessage(err, t("settings.repositories.failed"))),
-      },
+  function choose(provider: GitProviderKind) {
+    const methods = methodsFor(provider, capabilities.data, connectUrl);
+    const only = methods.length === 1 ? methods[0] : undefined;
+    if (only?.href) {
+      globalThis.location.href = only.href;
+      return;
+    }
+    if (only?.kind === "token") {
+      onStage({ name: "token", provider: provider as TokenProvider });
+      return;
+    }
+    onStage({ name: "method", provider });
+  }
+
+  if (stage.name === "token") {
+    // Back to where the user came from; a skipped stage is a dead end.
+    const provider = stage.provider;
+    return (
+      <TokenConnectDialog
+        provider={provider}
+        onBack={() =>
+          onStage(
+            methodsFor(provider, capabilities.data, connectUrl).length > 1
+              ? { name: "method", provider }
+              : { name: "provider" },
+          )
+        }
+        onClose={onClose}
+      />
     );
   }
 
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{t(copy.title)}</DialogTitle>
-          <DialogDescription>{t(copy.description)}</DialogDescription>
+          <DialogTitle>
+            {stage.name === "provider"
+              ? t("settings.repositories.addAccountTitle")
+              : t(PROVIDER_COPY[stage.provider].label)}
+          </DialogTitle>
+          <DialogDescription>
+            {stage.name === "provider"
+              ? t("settings.repositories.addAccountDescription")
+              : t("settings.repositories.chooseMethodDescription")}
+          </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
-          {copy.askHost && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`${provider}-host`}>
-                {t("settings.repositories.tokenHostLabel")}
-              </Label>
-              <Input
-                id={`${provider}-host`}
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder={t("settings.repositories.tokenHostPlaceholder")}
-              />
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${provider}-token`}>
-              {t("settings.repositories.tokenLabel")}
-            </Label>
-            <Input
-              id={`${provider}-token`}
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder={t(copy.placeholder)}
-              autoComplete="off"
-            />
+
+        {capabilities.isError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {capabilities.error.message}
+          </p>
+        ) : capabilities.isPending ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
           </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={connect.isPending}
-          >
-            {t("settings.repositories.cancel")}
-          </Button>
-          <Button
-            onClick={handleConnect}
-            disabled={!host.trim() || !token.trim() || connect.isPending}
-          >
-            {connect.isPending
-              ? t("settings.repositories.connecting")
-              : t("settings.repositories.connect")}
-          </Button>
-        </DialogFooter>
+        ) : stage.name === "provider" ? (
+          <div className="flex flex-col gap-1">
+            {PROVIDER_ORDER.map((provider) => {
+              const methods = methodsFor(
+                provider,
+                capabilities.data,
+                connectUrl,
+              );
+              return (
+                <OptionRow
+                  key={provider}
+                  icon={<GitProviderIcon provider={provider} size={16} />}
+                  label={t(PROVIDER_COPY[provider].label)}
+                  description={t(providerHint(provider, methods))}
+                  disabled={methods.length === 0}
+                  onClick={() => choose(provider)}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {methodsFor(stage.provider, capabilities.data, connectUrl).map(
+              (method) => (
+                <OptionRow
+                  key={method.kind}
+                  icon={<GitProviderIcon provider={stage.provider} size={16} />}
+                  label={t(
+                    method.kind === "token"
+                      ? "settings.repositories.methodToken"
+                      : method.kind === "oauth"
+                        ? "settings.repositories.methodOauth"
+                        : "settings.repositories.methodApp",
+                  )}
+                  description={t(
+                    method.kind === "token"
+                      ? "settings.repositories.methodTokenHint"
+                      : method.kind === "oauth"
+                        ? "settings.repositories.methodOauthHint"
+                        : "settings.repositories.methodAppHint",
+                  )}
+                  note={
+                    method.kind === "oauth"
+                      ? t("settings.repositories.methodOauthScopeNote")
+                      : undefined
+                  }
+                  href={method.href}
+                  onClick={
+                    method.kind === "token"
+                      ? () =>
+                          onStage({
+                            name: "token",
+                            provider: stage.provider as TokenProvider,
+                          })
+                      : undefined
+                  }
+                />
+              ),
+            )}
+          </div>
+        )}
+
+        {stage.name === "method" && (
+          <DialogFooter className="sm:justify-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onStage({ name: "provider" })}
+            >
+              <ArrowLeft size={16} />
+              {t("settings.repositories.back")}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function ConnectAction({
-  layout,
+/** One choice in the flow — a provider, or a way to connect one. */
+function OptionRow({
+  icon,
   label,
   description,
-  icon,
+  note,
   href,
   onClick,
   disabled,
 }: {
-  layout: "buttons" | "picker";
+  icon: ReactNode;
   label: string;
   description: string;
-  icon: ReactNode;
+  note?: string;
   href?: string;
   onClick?: () => void;
   disabled?: boolean;
 }) {
-  const content =
-    layout === "picker" ? (
-      <>
-        <span className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-          {icon}
+  const content = (
+    <>
+      <span className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+        {icon}
+      </span>
+      <span className="flex-1 min-w-0 text-left">
+        <span className="block text-sm font-medium">{label}</span>
+        <span className="block text-xs font-normal text-muted-foreground whitespace-normal">
+          {description}
         </span>
-        <span className="flex-1 min-w-0 text-left">
-          <span className="block text-sm font-medium">{label}</span>
-          <span className="block text-xs font-normal text-muted-foreground whitespace-normal">
-            {description}
-          </span>
-        </span>
-        {!disabled && (
-          <span className="shrink-0 text-muted-foreground">
-            <ChevronRight size={16} />
+        {note && (
+          <span className="block text-xs font-normal text-warning whitespace-normal mt-0.5">
+            {note}
           </span>
         )}
-      </>
-    ) : (
-      <>
-        {icon}
-        {label}
-      </>
-    );
+      </span>
+      {!disabled && (
+        <span className="shrink-0 text-muted-foreground">
+          <ChevronRight size={16} />
+        </span>
+      )}
+    </>
+  );
   const button = (
     <Button
-      size="sm"
-      variant={layout === "picker" ? "ghost" : "outline"}
-      className={cn(
-        layout === "picker" &&
-          "w-full h-auto justify-start gap-3 rounded-none px-4 py-3 hover:bg-accent",
-      )}
+      variant="ghost"
       aria-label={label}
       disabled={disabled}
       asChild={!!href && !disabled}
       onClick={onClick}
+      className="w-full h-auto justify-start gap-3 px-3 py-3 hover:bg-accent"
     >
       {href && !disabled ? <a href={href}>{content}</a> : content}
     </Button>
   );
-  return layout === "buttons" && disabled ? (
+  return disabled ? (
     <Tooltip>
       <TooltipTrigger asChild>
         <span tabIndex={0}>{button}</span>
@@ -254,89 +448,178 @@ function ConnectAction({
   );
 }
 
-function ConnectActions({
-  layout,
-  disabled,
-  onTokenDialog,
+function TokenConnectDialog({
+  provider,
+  onBack,
+  onClose,
 }: {
-  layout: "buttons" | "picker";
-  disabled: boolean;
-  onTokenDialog: (provider: TokenProvider) => void;
+  provider: TokenProvider;
+  onBack: () => void;
+  onClose: () => void;
 }) {
   const t = useT();
-  const capabilities = useGitProviderCapabilities();
-  const { org } = useProjectContext();
-  const returnTo = `/${org.slug}/settings/repositories`;
-  const connectUrl = (path: string) =>
-    `${path}?returnTo=${encodeURIComponent(returnTo)}`;
-  if (capabilities.isError)
-    return (
-      <p role="alert" className="text-sm text-destructive">
-        {capabilities.error.message}
-      </p>
+  const copy = TOKEN_COPY[provider];
+  const connect = useConnectGitAccountToken();
+  const [host, setHost] = useState(DEFAULT_HOSTS[provider]);
+  const [workspace, setWorkspace] = useState("");
+  const [project, setProject] = useState("");
+  const [token, setToken] = useState("");
+
+  const ready =
+    !!host.trim() &&
+    !!token.trim() &&
+    (!copy.askWorkspace || !!workspace.trim());
+  const providerPage = tokenPageUrl(provider, { host, workspace, project });
+
+  function handleConnect() {
+    if (!ready) return;
+    connect.mutate(
+      {
+        type: provider,
+        host: host.trim(),
+        token: token.trim(),
+        ...(copy.askWorkspace ? { workspace: workspace.trim() } : {}),
+      },
+      {
+        onSuccess: (account) => {
+          toast.success(
+            t("settings.repositories.connected", { login: account.login }),
+          );
+          setToken("");
+          onClose();
+        },
+        onError: (err) =>
+          toast.error(errorMessage(err, t("settings.repositories.failed"))),
+      },
     );
-  const github = capabilities.data?.github;
-  const gitlab = capabilities.data?.gitlab;
-  const bitbucket = capabilities.data?.bitbucket;
-
-  const githubConfigured = github?.configured === true;
-  const gitlabConfigured = (gitlab?.oauthHosts.length ?? 0) > 0;
-  const bitbucketConfigured = (bitbucket?.oauthHosts.length ?? 0) > 0;
-
-  if (capabilities.isPending) {
-    return <Skeleton className="h-9 w-40" />;
   }
 
   return (
-    <div
-      className={cn(
-        "flex",
-        layout === "picker" ? "flex-col" : "flex-wrap items-center gap-2",
-      )}
-    >
-      <ConnectAction
-        layout={layout}
-        label={t("settings.repositories.addGithubAccount")}
-        description={t(
-          githubConfigured
-            ? "settings.repositories.browseAccount"
-            : "settings.repositories.githubUnavailable",
-        )}
-        icon={<GitProviderIcon provider="github" size={16} />}
-        href={github?.connectPath ? connectUrl(github.connectPath) : undefined}
-        disabled={disabled || !githubConfigured || !github?.connectPath}
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t(copy.title)}</DialogTitle>
+          <DialogDescription>{t(copy.description)}</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3">
+          {copy.askHost && (
+            <Field
+              id={`${provider}-host`}
+              label={t("settings.repositories.tokenHostLabel")}
+              value={host}
+              onChange={setHost}
+              placeholder={t("settings.repositories.tokenHostPlaceholder")}
+            />
+          )}
+          {copy.askWorkspace && (
+            <Field
+              id={`${provider}-workspace`}
+              label={t("settings.repositories.tokenWorkspaceLabel")}
+              value={workspace}
+              onChange={setWorkspace}
+              placeholder={t("settings.repositories.tokenWorkspacePlaceholder")}
+              hint={t("settings.repositories.tokenWorkspaceHint")}
+            />
+          )}
+          {copy.askProject && (
+            <Field
+              id={`${provider}-project`}
+              label={t("settings.repositories.tokenProjectLabel")}
+              value={project}
+              onChange={setProject}
+              placeholder={t("settings.repositories.tokenProjectPlaceholder")}
+              hint={t("settings.repositories.tokenProjectHint")}
+            />
+          )}
+
+          <div className="rounded-lg border border-border/60 bg-muted/40 p-3 flex flex-col gap-2">
+            <p className="text-xs font-medium">
+              {t("settings.repositories.tokenStepsTitle")}
+            </p>
+            <ol className="flex flex-col gap-1 list-decimal pl-4 text-xs text-muted-foreground">
+              {copy.steps.map((step) => (
+                <li key={step}>{t(step)}</li>
+              ))}
+            </ol>
+            {providerPage && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                asChild
+              >
+                <a href={providerPage} target="_blank" rel="noreferrer">
+                  <LinkExternal01 size={14} />
+                  {t("settings.repositories.openProvider")}
+                </a>
+              </Button>
+            )}
+          </div>
+
+          <Field
+            id={`${provider}-token`}
+            label={t("settings.repositories.tokenLabel")}
+            value={token}
+            onChange={setToken}
+            placeholder={t(copy.placeholder)}
+            type="password"
+          />
+        </div>
+
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBack}
+            disabled={connect.isPending}
+          >
+            <ArrowLeft size={16} />
+            {t("settings.repositories.back")}
+          </Button>
+          <Button
+            onClick={handleConnect}
+            disabled={!ready || connect.isPending}
+          >
+            {connect.isPending
+              ? t("settings.repositories.connecting")
+              : t("settings.repositories.connect")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Field({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  type,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  hint?: string;
+  type?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
       />
-      {gitlabConfigured && gitlab?.connectPath && (
-        <ConnectAction
-          layout={layout}
-          label={t("settings.repositories.connectGitlab")}
-          description={t("settings.repositories.browseAccount")}
-          icon={<GitProviderIcon provider="gitlab" size={16} />}
-          href={connectUrl(gitlab.connectPath)}
-          disabled={disabled}
-        />
-      )}
-      {bitbucketConfigured && bitbucket?.connectPath && (
-        <ConnectAction
-          layout={layout}
-          label={t("settings.repositories.connectBitbucket")}
-          description={t("settings.repositories.browseAccount")}
-          icon={<GitProviderIcon provider="bitbucket" size={16} />}
-          href={connectUrl(bitbucket.connectPath)}
-          disabled={disabled}
-        />
-      )}
-      {(["gitlab", "bitbucket"] as const).map((provider) => (
-        <ConnectAction
-          key={provider}
-          layout={layout}
-          label={t(TOKEN_COPY[provider].action)}
-          description={t(TOKEN_COPY[provider].hint)}
-          icon={<GitProviderIcon provider={provider} size={16} />}
-          onClick={() => onTokenDialog(provider)}
-          disabled={disabled}
-        />
-      ))}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

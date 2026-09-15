@@ -172,6 +172,8 @@ export function clientForAccount(
       });
     case "bitbucket":
       return new BitbucketProviderClient({
+        // `login` is a workspace slug for a pasted token, a user for OAuth.
+        workspace: account.authKind === "token" ? account.login : null,
         host: account.host,
         tokenSource: grantTokenSource(
           credentials,
