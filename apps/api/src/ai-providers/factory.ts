@@ -72,7 +72,11 @@ async function getOpenRouterIndex(
   cache?: ModelListCache,
 ): Promise<Map<string, Partial<ModelInfo>>> {
   if (cache) {
-    const cached = await cache.get(OR_INDEX_ORG_ID, "openrouter");
+    const cached = await cache.get(
+      OR_INDEX_ORG_ID,
+      "openrouter",
+      OR_INDEX_ORG_ID,
+    );
     if (cached) return buildIndex(cached);
   }
   try {
@@ -82,7 +86,8 @@ async function getOpenRouterIndex(
     if (!res.ok) return new Map();
     const { data }: { data: OpenRouterAPIModel[] } = await res.json();
     const models = data.map(mapOpenRouterModel);
-    if (cache) await cache.set(OR_INDEX_ORG_ID, "openrouter", models);
+    if (cache)
+      await cache.set(OR_INDEX_ORG_ID, "openrouter", OR_INDEX_ORG_ID, models);
     return buildIndex(models);
   } catch {
     return new Map();
@@ -177,7 +182,7 @@ export class AIProviderFactory {
     if (!adapter) throw new Error(`Unknown provider: ${providerId}`);
 
     if (this.cache) {
-      const cached = await this.cache.get(organizationId, providerId);
+      const cached = await this.cache.get(organizationId, providerId, keyId);
       if (cached) {
         // Re-apply per-request flags (e.g. asyncResearch) on the cached
         // payload — entries cached before the flag existed otherwise leak
@@ -212,7 +217,7 @@ export class AIProviderFactory {
     const result = models.map((m) => ({ ...m, providerId }));
 
     if (this.cache) {
-      await this.cache.set(organizationId, providerId, result);
+      await this.cache.set(organizationId, providerId, keyId, result);
     }
 
     return applyProviderFlags(result, adapter, apiKey);
