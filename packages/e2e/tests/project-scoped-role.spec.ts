@@ -148,6 +148,15 @@ test.describe("project-scoped role", () => {
     const getBBody = (await getB.json()) as { item?: { id?: string } | null };
     expect(getBBody.item ?? null).toBeNull();
 
+    // A mutation on the out-of-scope project must be rejected too, not just LIST/GET.
+    const pinB = await memberCtx.post(
+      `/api/${owner.orgSlug}/tools/VIRTUAL_MCP_PINNED_VIEWS_UPDATE`,
+      { data: { virtualMcpId: projectBId, pinnedViews: [] } },
+    );
+    expect(pinB.ok(), "member must not mutate an out-of-scope project").toBe(
+      false,
+    );
+
     await ownerCtx.dispose();
     await memberCtx.dispose();
   });

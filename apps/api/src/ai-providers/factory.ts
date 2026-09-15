@@ -43,7 +43,10 @@ function mapOpenRouterModel(m: OpenRouterAPIModel): ModelInfo {
       contextWindow: m.context_length,
       maxOutputTokens: m.top_provider.max_completion_tokens || null,
     },
-    costs: { input: m.pricing.prompt, output: m.pricing.completion },
+    costs: {
+      input: Number(m.pricing.prompt),
+      output: Number(m.pricing.completion),
+    },
   };
 }
 

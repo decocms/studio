@@ -2249,3 +2249,74 @@ describe("resolveSchema – required propagation", () => {
     expect(resolved?.required).not.toContain("b");
   });
 });
+
+describe("resolveSchema – loader picker whose loader has a `type` input prop", () => {
+  test("keeps the module resolveType, not the `type` prop value", () => {
+    // Loader-return prop → anyOf: [Resolvable, <loader ref>]; the loader's own `type` input prop (default "product") must not become the picker resolveType.
+    const definitions = {
+      Resolvable: {
+        type: "object",
+        properties: { __resolveType: { type: "string" } },
+      },
+      listProductsLoader: {
+        title: "zee/loaders/catalog/listProducts.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["zee/loaders/catalog/listProducts.ts"],
+            default: "zee/loaders/catalog/listProducts.ts",
+          },
+          type: {
+            type: "string",
+            enum: ["product", "card"],
+            default: "product",
+          },
+          customSlug: { type: "string" },
+          perPage: { type: "number" },
+        },
+      },
+    };
+
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": {
+              type: "object",
+              properties: {
+                page: {
+                  title: "Page",
+                  nullable: true,
+                  anyOf: [
+                    { $ref: "#/definitions/Resolvable" },
+                    { $ref: "#/definitions/listProductsLoader" },
+                  ],
+                },
+              },
+            } as {
+              $ref?: string;
+              type?: string;
+              properties?: Record<string, unknown>;
+            },
+          },
+        },
+      },
+      schema: { definitions },
+    };
+
+    const page = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.page;
+
+    expect(page?.type).toBe("block-ref");
+    // The `Resolvable` placeholder is skipped; only the real loader remains.
+    expect(page?.anyOfRefs).toHaveLength(1);
+    const ref = page?.anyOfRefs?.[0];
+    expect(ref?.resolveType).toBe("zee/loaders/catalog/listProducts.ts");
+    // A real module block carries no `type` discriminator.
+    expect(ref?.discriminatorValue).toBeUndefined();
+    // The loader's `type` input prop stays editable in the config form.
+    expect(ref?.schema?.properties?.type).toBeDefined();
+    expect(ref?.schema?.properties?.perPage).toBeDefined();
+  });
+});

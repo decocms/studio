@@ -1,8 +1,9 @@
+import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration211userfsorg from "./211-user-fs-org";
 import * as migration210githubrepositoryauthorization from "./210-github-repository-authorization";
 import * as migration212codingagentmcpexcluded from "./212-coding-agent-mcp-excluded";
 import * as migration213bitbucketgitprovider from "./213-bitbucket-git-provider";
-import * as migration214experiments from "./214-experiments";
+import * as migration215experiments from "./215-experiments";
 import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
 import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
@@ -463,7 +464,8 @@ const migrations: Record<string, Migration> = {
   "211-user-fs-org": migration211userfsorg,
   "212-coding-agent-mcp-excluded": migration212codingagentmcpexcluded,
   "213-bitbucket-git-provider": migration213bitbucketgitprovider,
-  "214-experiments": migration214experiments,
+  "214-connections-sanitized-id-idx": migration214connectionssanitizedididx,
+  "215-experiments": migration215experiments,
 };
 
 export default migrations;

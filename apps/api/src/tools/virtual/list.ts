@@ -7,6 +7,7 @@
 import {
   CollectionListInputSchema,
   createCollectionListOutputSchema,
+  likePatternToRegExp,
   type OrderByExpression,
   type WhereExpression,
 } from "@decocms/bindings/collections";
@@ -16,32 +17,6 @@ import { defineTool } from "../../core/define-tool";
 import { resolveCallerProjectScope } from "../../core/project-scope";
 import { requireOrganization } from "../../core/studio-context";
 import { type VirtualMCPEntity, VirtualMCPEntitySchema } from "./schema";
-
-/**
- * Convert SQL LIKE pattern to regex pattern by tokenizing.
- * Handles % (any chars) and _ (single char) wildcards.
- */
-function convertLikeToRegex(likePattern: string): string {
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < likePattern.length) {
-    const char = likePattern[i] as string;
-    if (char === "%") {
-      result.push(".*");
-    } else if (char === "_") {
-      result.push(".");
-    } else if (/[.*+?^${}()|[\]\\]/.test(char)) {
-      // Escape regex special characters
-      result.push("\\" + char);
-    } else {
-      result.push(char);
-    }
-    i++;
-  }
-
-  return result.join("");
-}
 
 function isStringOrValue(value: unknown): value is string | number {
   return typeof value === "string" || typeof value === "number";
@@ -139,8 +114,7 @@ function evaluateWhereExpression(
       }
       // Limit pattern length to prevent ReDoS
       if (value.length > 100) return false;
-      const pattern = convertLikeToRegex(value);
-      return new RegExp(`^${pattern}$`, "i").test(fieldValue);
+      return likePatternToRegExp(value).test(fieldValue);
     case "contains":
       if (typeof fieldValue !== "string" || typeof value !== "string") {
         return false;

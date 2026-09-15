@@ -402,16 +402,6 @@ export function useUpdateRegistryConfig() {
   };
 }
 
-export interface HomeAgentsWriter {
-  /** The freshest id list, read live from the cache (not a render snapshot). */
-  currentIds: () => string[];
-  /**
-   * Queue a write. `transform` receives the freshest id list and returns the
-   * next one, or `null` to skip (no-op guards like "already on home").
-   */
-  apply: (transform: (ids: string[]) => string[] | null) => Promise<void>;
-}
-
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {
   const { org } = useProjectContext();
   const registryConfig = useRegistryConfig();
