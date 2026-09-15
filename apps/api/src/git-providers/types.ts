@@ -160,3 +160,19 @@ export interface TokenSource {
   readonly kind: GitTokenKind;
   get(opts?: TokenOptions): Promise<GitAccessToken | null>;
 }
+
+/**
+ * Every non-trivial string nested in `value`, depth-first. GitLab and
+ * Bitbucket both answer error bodies whose message lives at an inconsistent
+ * depth — a bare string, an array of strings, or an object of arrays — so
+ * each provider's `*ErrorMessage` flattens its own set of top-level fields
+ * through this one recursive walk.
+ */
+export function flattenErrorStrings(value: unknown): string[] {
+  if (typeof value === "string") return value.length > 0 ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(flattenErrorStrings);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).flatMap(flattenErrorStrings);
+  }
+  return [];
+}
