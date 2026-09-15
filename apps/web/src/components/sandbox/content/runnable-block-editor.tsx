@@ -22,7 +22,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
@@ -94,13 +94,14 @@ export function RunnableBlockEditor({
   /** Show the "Run" button (invoke + result panel). Defaults to true. */
   showRun?: boolean;
 }) {
-  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const task = useOptionalChatTask();
+  const threadId = task?.taskId ?? null;
   const t = useT();
-  const inset = useInsetContext();
-  const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
-      : null;
+  const sessionAgentId = task?.virtualMcpId;
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
+  const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
 
   // Tanstack registers commerce/vtex blocks with a freeform props stub (no
   // declared fields) — the block DOES take props, but the site doesn't publish

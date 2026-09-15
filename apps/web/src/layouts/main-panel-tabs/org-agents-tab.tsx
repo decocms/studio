@@ -212,8 +212,8 @@ export function OrgAgentsTab() {
         {/* One reading column for the whole page: the search field was already
             capped at 720px, so a full-width feed under it read as a second,
             wider page stapled to the first. */}
-        <Page.Body
-          maxWidth="max-w-[720px]"
+        <Page.Container
+          width="reading"
           className="flex flex-col gap-12 pt-0 md:pt-0"
         >
           <div className="flex flex-col items-center gap-12 text-center">
@@ -254,7 +254,7 @@ export function OrgAgentsTab() {
               importButton={importButton}
             />
           </Suspense>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
 
       <RepositoryImportPicker

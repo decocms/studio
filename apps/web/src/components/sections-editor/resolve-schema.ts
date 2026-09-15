@@ -782,13 +782,44 @@ export function resolveSchema(
           };
         }
 
-        // Unions discriminated by a `type` field (e.g. ImageCard | TextCard).
+        // A branch is a real module/block when its def carries `__resolveType` or a saved-block title.
+        const branchHasModuleIdentity = (branch: RawSchema): boolean => {
+          const def = resolveBranchDef(branch);
+          if (
+            typeof def.title === "string" &&
+            parseSavedBlockSchemaTitle(def.title)
+          ) {
+            return true;
+          }
+          const rtEnum = (
+            (def.properties as RawSchema | undefined)?.__resolveType as
+              | RawSchema
+              | undefined
+          )?.enum;
+          if (Array.isArray(rtEnum) && typeof rtEnum[0] === "string") {
+            return true;
+          }
+          if (Array.isArray(def.allOf)) {
+            for (const part of def.allOf as RawSchema[]) {
+              const e = (
+                (part.properties as RawSchema | undefined)?.__resolveType as
+                  | RawSchema
+                  | undefined
+              )?.enum;
+              if (Array.isArray(e) && typeof e[0] === "string") return true;
+            }
+          }
+          return false;
+        };
+
+        // A branch with real module identity is keyed by its resolveType, not by its own `type` input prop.
         const typeDiscriminators = nonNull.map((branch) =>
           typeDiscriminatorFromBranch(branch),
         );
         const isTypeDiscriminatedUnion =
           nonNull.length > 1 &&
-          typeDiscriminators.every((disc) => typeof disc === "string");
+          typeDiscriminators.every((disc) => typeof disc === "string") &&
+          !nonNull.some(branchHasModuleIdentity);
 
         if (isTypeDiscriminatedUnion) {
           const anyOfRefs = nonNull.map((branch, index) => {
@@ -828,41 +859,6 @@ export function resolveSchema(
           };
         }
 
-        // A union branch is a real module/block (loader, section, saved block)
-        // only when its resolved def carries a `__resolveType` or a saved-block
-        // title. Deco also emits plain *data* unions (e.g. `Location | Map`) as
-        // an anyOf of `$ref`s to bare object defs with none of those — those must
-        // render as an inline branch selector, NOT as a block picker (which would
-        // find no resolveType, drop every branch at the `continue` below, and
-        // return an empty block-ref that renders as `[object Object]`).
-        const branchHasModuleIdentity = (branch: RawSchema): boolean => {
-          const def = resolveBranchDef(branch);
-          if (
-            typeof def.title === "string" &&
-            parseSavedBlockSchemaTitle(def.title)
-          ) {
-            return true;
-          }
-          const rtEnum = (
-            (def.properties as RawSchema | undefined)?.__resolveType as
-              | RawSchema
-              | undefined
-          )?.enum;
-          if (Array.isArray(rtEnum) && typeof rtEnum[0] === "string") {
-            return true;
-          }
-          if (Array.isArray(def.allOf)) {
-            for (const part of def.allOf as RawSchema[]) {
-              const e = (
-                (part.properties as RawSchema | undefined)?.__resolveType as
-                  | RawSchema
-                  | undefined
-              )?.enum;
-              if (Array.isArray(e) && typeof e[0] === "string") return true;
-            }
-          }
-          return false;
-        };
         // A plain-data union (Location | Map): every branch — inline or behind a
         // `$ref` — resolves to a bare object with no module identity.
         const branchIsPlainDataObject = (branch: RawSchema): boolean => {

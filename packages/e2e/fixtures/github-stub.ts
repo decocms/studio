@@ -970,6 +970,13 @@ export function createGithubStubServer(): Server {
       identityStatus?: number;
       membershipsStatus?: number;
       repositoryDelayMs?: number;
+      repositories?: Array<{
+        id: number;
+        full_name: string;
+        private: boolean;
+        html_url: string;
+        default_branch: string;
+      }>;
     }
   >();
   const codes = new Map<string, string>();
@@ -1019,6 +1026,13 @@ export function createGithubStubServer(): Server {
           }>;
           identityStatus?: number;
           membershipsStatus?: number;
+          repositories?: Array<{
+            id: number;
+            full_name: string;
+            private: boolean;
+            html_url: string;
+            default_branch: string;
+          }>;
         };
         users.set(body.token, body);
         json(res, 200, { ok: true });
@@ -1046,6 +1060,21 @@ export function createGithubStubServer(): Server {
           token
             ? { access_token: token, token_type: "bearer", expires_in: 28800 }
             : { error: "bad_verification_code" },
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/user/repos") {
+        const user = users.get(userToken);
+        if (!user) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
+        }
+        const page = Number(url.searchParams.get("page") ?? 1);
+        const perPage = Number(url.searchParams.get("per_page") ?? 30);
+        json(
+          res,
+          200,
+          (user.repositories ?? []).slice((page - 1) * perPage, page * perPage),
         );
         return;
       }

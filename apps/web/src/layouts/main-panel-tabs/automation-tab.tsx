@@ -128,7 +128,7 @@ function AutomationTabInner({ id }: { id: string }) {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex items-center justify-between pb-4 shrink-0">
             <Button variant="ghost" size="sm" onClick={onBack}>
               <ArrowLeft size={14} />
@@ -152,7 +152,7 @@ function AutomationTabInner({ id }: { id: string }) {
           ) : (
             <RunsTab automationId={id} triggerIds={triggerIds} />
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

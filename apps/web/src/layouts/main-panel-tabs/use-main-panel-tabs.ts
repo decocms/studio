@@ -39,6 +39,7 @@ import { FileTypeIcon } from "@/components/file-type-icon";
 import {
   formatPinnedViewTabId,
   parseAutomationTabId,
+  formatAgentViewTabId,
   parseCodeTabId,
   parseDeckTabId,
   parseFileTabId,
@@ -493,7 +494,7 @@ export function useMainPanelTabs(ctx: {
     ...deckTabs,
     ...libraryFileTabs,
     ...layoutTabs.map((t) => ({
-      id: t.id,
+      id: formatAgentViewTabId(t.id),
       title: t.title,
       kind: "agent" as const,
       icon: resolveTabIcon({

@@ -135,16 +135,26 @@ const BitbucketWorkspaceSchema = z.object({
  * Who a token authenticates as. The routes call this to validate a pasted
  * access token and to seed the account row (`externalAccountId`, `login`).
  *
- * Two answers are tried because Bitbucket's tokens are not all users: an
- * OAuth grant or a user-level token answers `/user`; a workspace or project
- * access token is refused there (it has no user) but can list its own
- * workspace. A repository access token can do neither, so it is refused.
+ * An access token reaches neither `/user` nor `/user/workspaces`, so
+ * `workspace` names where to verify it — `/workspaces/{slug}` is the only
+ * identity call it can make. Bitbucket narrows everything below the workspace
+ * itself. Without `workspace`, the OAuth ladder applies.
  */
 export async function bitbucketPrincipalForToken(
   host: string,
   token: string,
+  workspace?: string | null,
 ): Promise<ProviderPrincipal> {
   assertBitbucketCloud(host);
+  const named = workspace?.trim().toLowerCase();
+  if (named) {
+    const scoped = await tryJson(
+      `${BITBUCKET_API_BASE}/workspaces/${encodeURIComponent(named)}`,
+      token,
+    );
+    if (scoped.ok) return workspacePrincipal(scoped.json);
+    throw scoped.failure;
+  }
   const user = await tryJson(`${BITBUCKET_API_BASE}/user`, token);
   if (user.ok) {
     const parsed = BitbucketUserSchema.parse(user.json);
@@ -170,7 +180,7 @@ export async function bitbucketPrincipalForToken(
         provider: "bitbucket",
         status: 401,
         message:
-          "Bitbucket did not recognise the token as a user or a workspace member. Connect through OAuth, or use a workspace or project access token; a repository access token cannot be identified.",
+          "Bitbucket did not recognise this token. An access token cannot name itself — say which workspace it belongs to and connect it again.",
       })
     : workspaces.failure;
 }
@@ -199,11 +209,18 @@ export class BitbucketProviderClient implements GitProviderClient {
   readonly kind = "bitbucket" as const;
   readonly host: string;
   private readonly tokenSource: TokenSource;
+  /** The one workspace a scoped access token answers for; null for an OAuth grant. */
+  private readonly workspace: string | null;
 
-  constructor(params: { host: string; tokenSource: TokenSource }) {
+  constructor(params: {
+    host: string;
+    tokenSource: TokenSource;
+    workspace?: string | null;
+  }) {
     assertBitbucketCloud(params.host);
     this.host = BITBUCKET_HOST;
     this.tokenSource = params.tokenSource;
+    this.workspace = params.workspace?.trim().toLowerCase() || null;
   }
 
   async tokenForRepo(
@@ -296,10 +313,12 @@ export class BitbucketProviderClient implements GitProviderClient {
   }
 
   /**
-   * Slugs of the workspaces the token is a member of. `/user/workspaces` is
-   * the one listing Bitbucket still serves; `/workspaces` answers 404.
+   * Slugs to list repositories from: the one a scoped token was connected
+   * against, else the token's own. `/user/workspaces` is the one listing
+   * Bitbucket still serves; `/workspaces` answers 404.
    */
   private async workspaceSlugs(): Promise<string[]> {
+    if (this.workspace) return [this.workspace];
     const res = await this.get(`/user/workspaces?pagelen=${MAX_PER_PAGE}`);
     if (!res) return [];
     const page = await bitbucketJson<

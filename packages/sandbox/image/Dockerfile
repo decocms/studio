@@ -36,10 +36,12 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 # `locales` + generated `en_US.UTF-8` is load-bearing: repos using
 # `embedded-postgres` refuse to init without it.
+# `openssh-client` ships the `ssh-keygen` that signs commits; git only
+# Recommends it, and this installs with --no-install-recommends.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       bash ca-certificates curl git gnupg libatomic1 locales python3 \
-       python3-pip ripgrep unzip zstd \
+       bash ca-certificates curl git gnupg libatomic1 locales openssh-client \
+       python3 python3-pip ripgrep unzip zstd \
   && sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen \
   && node --version \

@@ -438,13 +438,13 @@ export function ProfilePreferencesPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.title")}</Page.Title>
             <ProfileSection />
             <PreferencesSection />
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

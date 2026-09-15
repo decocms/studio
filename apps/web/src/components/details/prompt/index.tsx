@@ -18,7 +18,8 @@ import { PromptSchema } from "@decocms/bindings/prompt";
 import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { ViewActions, ViewLayout, ViewTabs } from "../layout";
+import { DetailPanel } from "../detail-panel";
+import { Panel } from "@/components/panel";
 import { SaveActions } from "@/components/save-actions";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -209,8 +210,8 @@ function PromptDetailContent({
   }
 
   return (
-    <ViewLayout>
-      <ViewTabs>
+    <DetailPanel>
+      <Panel.Topbar.Center.Portal>
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium text-foreground truncate">
             {prompt.title}
@@ -226,21 +227,21 @@ function PromptDetailContent({
             </>
           ) : null}
         </div>
-      </ViewTabs>
+      </Panel.Topbar.Center.Portal>
 
-      <ViewActions>
+      <Panel.Topbar.Right.Portal>
         <SaveActions
           onSave={() => void saveAndLock()}
           onUndo={resetToInitial}
           isDirty={form.formState.isDirty}
           isSaving={isSaving}
         />
-      </ViewActions>
+      </Panel.Topbar.Right.Portal>
 
       <div className="h-full">
         <PromptEditForm form={form} />
       </div>
-    </ViewLayout>
+    </DetailPanel>
   );
 }
 

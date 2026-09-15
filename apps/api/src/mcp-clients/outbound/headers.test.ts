@@ -89,4 +89,14 @@ describe("serializeRunMetadataHeader", () => {
     const oversized = { note: "\u{1F600}".repeat(3000) };
     expect(serializeRunMetadataHeader(oversized)).toBeNull();
   });
+
+  test("drops metadata outside the HTTP header ByteString range", () => {
+    const nonLatin1 = { title: "日本語のタイトル" };
+    expect(serializeRunMetadataHeader(nonLatin1)).toBeNull();
+  });
+
+  test("keeps metadata whose characters are all within the Latin-1 byte range", () => {
+    const latin1 = { note: "café" };
+    expect(serializeRunMetadataHeader(latin1)).toBe(JSON.stringify(latin1));
+  });
 });

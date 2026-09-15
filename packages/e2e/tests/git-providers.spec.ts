@@ -37,6 +37,42 @@ interface Repository {
   visibility: "public" | "private" | "internal" | null;
 }
 
+test("local CLI connections cannot be created or used outside local mode", async ({
+  playwright,
+}) => {
+  const request = await newApiContext(playwright);
+  try {
+    const { orgSlug } = await signUpViaApi(request);
+    const response = await request.post(
+      `/api/${orgSlug}/git-providers/github/cli/connect`,
+      { data: {} },
+    );
+    expect(response.status()).toBe(403);
+    const db = await connectDevDb();
+    let accountId: string;
+    try {
+      // Simulate a local database copied to a hosted deployment. There is
+      // deliberately no API that creates this auth kind outside local mode.
+      const { rows } = await db.query<{ id: string }>(
+        "INSERT INTO git_provider_accounts (organization_id, type, host, auth_kind, external_account_id, login) SELECT id, 'github', 'github.com', 'github_cli', 'cli:user:123', 'synthetic-cli-user' FROM organization WHERE slug=$1 RETURNING id",
+        [orgSlug],
+      );
+      accountId = rows[0]!.id;
+    } finally {
+      await db.end();
+    }
+    const { accounts } = await callSelfMcpTool<{
+      accounts: Array<{ id: string; servable: boolean }>;
+    }>(request, orgSlug, "GIT_ACCOUNT_LIST", {});
+    expect(accounts).toMatchObject([{ id: accountId, servable: false }]);
+    await expect(
+      callSelfMcpTool(request, orgSlug, "REPOSITORY_SEARCH", { accountId }),
+    ).rejects.toThrow();
+  } finally {
+    await request.dispose();
+  }
+});
+
 function linkRepository(
   ctx: APIRequestContext,
   org: string,
@@ -243,6 +279,7 @@ test.describe("Git providers: repositories as an org entity", () => {
     const caps = await callSelfMcpTool<{
       github: {
         configured: boolean;
+        cliConnectPath: string | null;
         connectPath: string | null;
         installPath: string | null;
       };
@@ -250,6 +287,7 @@ test.describe("Git providers: repositories as an org entity", () => {
       bitbucket: { oauthHosts: string[]; connectPath: string | null };
     }>(ctx, orgSlug, "GIT_PROVIDER_CAPABILITIES", {});
 
+    expect(caps.github.cliConnectPath).toBeNull();
     if (caps.github.configured) {
       expect(caps.github.connectPath).toBe(
         `/api/${orgSlug}/git-providers/github/connect`,
@@ -315,6 +353,30 @@ test.describe("Git providers: repositories as an org entity", () => {
         token: "not-a-real-github-token",
       }),
     ).rejects.toThrow(/GitHub App/i);
+  });
+
+  /** `/workspaces/{slug}` is the only call that identifies an access token. */
+  test("Bitbucket refuses a token without the workspace it belongs to", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const { orgSlug } = await signUpViaApi(ctx);
+
+    await expect(
+      callSelfMcpTool(ctx, orgSlug, "GIT_ACCOUNT_CONNECT_TOKEN", {
+        type: "bitbucket",
+        host: "bitbucket.org",
+        token: `not-a-real-bitbucket-token-${Date.now()}`,
+      }),
+    ).rejects.toThrow(/workspace/i);
+
+    const { accounts } = await callSelfMcpTool<{ accounts: unknown[] }>(
+      ctx,
+      orgSlug,
+      "GIT_ACCOUNT_LIST",
+      {},
+    );
+    expect(accounts).toEqual([]);
   });
 
   test("rejects a host that is not a bare hostname", async ({ playwright }) => {

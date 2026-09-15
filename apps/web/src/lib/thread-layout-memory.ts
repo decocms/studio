@@ -1,8 +1,8 @@
 /**
  * Per-thread layout memory.
  *
- * The workspace layout — which view is showing (the chat route's `{-$panel}`
- * segment) plus whether each panel is open — lives in the URL, so switching
+ * The workspace layout — which route-owned view is showing plus whether each
+ * panel is open — lives in the URL, so switching
  * threads drops it and the target thread opens on its agent default. This
  * module remembers each thread's last layout, keyed by task id, so returning to
  * a thread restores the view and panels the user left it with.
@@ -16,9 +16,9 @@
  * write is wrapped. A read failure means "no memory", never a crash.
  */
 
-/** v3: `main` (a tab id or the `0` closed sentinel) split into `tab` and
- *  `mainpanel`, so a remembered v2 entry no longer describes this shape. */
-const STORAGE_KEY = "studio:thread-layout:v3";
+/** v4: agent-declared views gained an `agent-view:` namespace. Dropping v3 is
+ * safer than reinterpreting a remembered colliding id as a built-in route. */
+const STORAGE_KEY = "studio:thread-layout:v4";
 
 /** LRU cap. Bounds growth within a session; oldest threads evict first. */
 const MAX_THREADS = 50;

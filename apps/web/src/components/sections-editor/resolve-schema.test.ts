@@ -2319,4 +2319,77 @@ describe("resolveSchema – loader picker whose loader has a `type` input prop",
     expect(ref?.schema?.properties?.type).toBeDefined();
     expect(ref?.schema?.properties?.perPage).toBeDefined();
   });
+
+  test("two real loaders that both have a `type` input prop keep their own resolveType", () => {
+    // Both branches are real modules with a `type` field; must key by resolveType, not by `type`.
+    const definitions = {
+      listProductsLoader: {
+        title: "zee/loaders/catalog/listProducts.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["zee/loaders/catalog/listProducts.ts"],
+            default: "zee/loaders/catalog/listProducts.ts",
+          },
+          type: {
+            type: "string",
+            enum: ["product", "card"],
+            default: "product",
+          },
+        },
+      },
+      listBannersLoader: {
+        title: "zee/loaders/catalog/listBanners.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["zee/loaders/catalog/listBanners.ts"],
+            default: "zee/loaders/catalog/listBanners.ts",
+          },
+          type: { type: "string", enum: ["banner"], default: "banner" },
+        },
+      },
+    };
+
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": {
+              type: "object",
+              properties: {
+                content: {
+                  title: "Content",
+                  nullable: true,
+                  anyOf: [
+                    { $ref: "#/definitions/listProductsLoader" },
+                    { $ref: "#/definitions/listBannersLoader" },
+                  ],
+                },
+              },
+            } as {
+              $ref?: string;
+              type?: string;
+              properties?: Record<string, unknown>;
+            },
+          },
+        },
+      },
+      schema: { definitions },
+    };
+
+    const content = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.content;
+
+    expect(content?.type).toBe("block-ref");
+    expect(content?.anyOfRefs).toHaveLength(2);
+    const resolveTypes = content?.anyOfRefs?.map((r) => r.resolveType);
+    expect(resolveTypes).toContain("zee/loaders/catalog/listProducts.ts");
+    expect(resolveTypes).toContain("zee/loaders/catalog/listBanners.ts");
+    for (const ref of content?.anyOfRefs ?? []) {
+      expect(ref.discriminatorValue).toBeUndefined();
+    }
+  });
 });

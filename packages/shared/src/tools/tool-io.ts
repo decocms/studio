@@ -2304,6 +2304,19 @@ export interface StudioToolIO {
       claimed: boolean;
     };
   };
+  COMMERCE_DISCOVERY_SET_REPOSITORY: {
+    input: { repositoryId: string | null };
+    output: {
+      repository: {
+        repositoryId: string;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        defaultBranch?: string | null | undefined;
+        webUrl?: string | null | undefined;
+      } | null;
+    };
+  };
   COLLECTION_VIRTUAL_MCP_CREATE: {
     input: {
       data: {
@@ -7761,6 +7774,7 @@ export interface StudioToolIO {
     output: {
       github: {
         configured: boolean;
+        cliConnectPath: string | null;
         connectPath: string | null;
         installPath: string | null;
       };
@@ -7776,7 +7790,7 @@ export interface StudioToolIO {
         organizationId: string;
         type: "github" | "gitlab" | "bitbucket";
         host: string;
-        authKind: "token" | "oauth" | "github_app";
+        authKind: "token" | "oauth" | "github_app" | "github_cli";
         externalAccountId: string;
         login: string;
         avatarUrl: string | null;
@@ -7794,6 +7808,7 @@ export interface StudioToolIO {
       type: "github" | "gitlab" | "bitbucket";
       host: string;
       token: string;
+      workspace?: string | undefined;
     };
     output: {
       account: {
@@ -7801,7 +7816,7 @@ export interface StudioToolIO {
         organizationId: string;
         type: "github" | "gitlab" | "bitbucket";
         host: string;
-        authKind: "token" | "oauth" | "github_app";
+        authKind: "token" | "oauth" | "github_app" | "github_cli";
         externalAccountId: string;
         login: string;
         avatarUrl: string | null;

@@ -1,15 +1,5 @@
-/** The active project scope. A project is a FILTER, not a container: picking
- *  one narrows the destinations that say they narrow, and is ignored by the
- *  rest.
- *
- *  ONE CARRIER: `?virtualmcpid=`, and nothing else. It has to mean the same on
- *  Tasks and Library, which have no path segment to hold it — which is why the
- *  agents route gave its `{-$project}` segment up rather than the reverse.
- *
- *  Never auto-selected — a scope nobody chose silently shortens lists, which is
- *  what this param did before only two routes resolved it. */
-
-import { useNavigate, useSearch } from "@tanstack/react-router";
+/** Project scope comes from the canonical route; the API still uses the existing repository filters. */
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import {
   isDecopilot,
@@ -19,6 +9,11 @@ import {
   useVirtualMCPsNonBlocking,
 } from "@/sdk";
 import { getDevAgentIds } from "@/lib/agent-capabilities";
+import {
+  DESTINATION_ROUTE,
+  useActivePanelSegment,
+} from "@/hooks/use-destination-route";
+import { navigateToTabLocation } from "@/layouts/main-panel-tabs/tab-route";
 import { projectRepo } from "@/lib/github-repo";
 
 /** The control renders from the FIRST project: with one there is nothing to
@@ -70,12 +65,20 @@ export interface ProjectScope {
  *  the sidebar's destination rows in particular promise to paint on the first
  *  frame without reading data. */
 export function useScopeId(): string | null {
-  const search = useSearch({ strict: false }) as { virtualmcpid?: string };
-  return search.virtualmcpid ?? null;
+  const params = useParams({ strict: false });
+  const search = useSearch({ strict: false });
+  if (params.agentId) return params.agentId;
+  const legacy =
+    "virtualmcpid" in search && typeof search.virtualmcpid === "string"
+      ? search.virtualmcpid.trim()
+      : undefined;
+  return legacy || null;
 }
 
 export function useProjectScope(): ProjectScope {
   const navigate = useNavigate();
+  const params = useParams({ strict: false });
+  const currentView = useActivePanelSegment();
   const all = useVirtualMCPsNonBlocking();
 
   const projects = scopableProjects(all);
@@ -96,14 +99,38 @@ export function useProjectScope(): ProjectScope {
   const project =
     listed ?? scopableProjects(unlisted ? [unlisted] : [])[0] ?? null;
 
-  const setScope = (id: string | null) =>
-    navigate({
-      to: ".",
-      search: (prev: Record<string, unknown>) => ({
-        ...prev,
-        virtualmcpid: id ?? undefined,
-      }),
+  const setScope = (id: string | null) => {
+    if (id === scopeId && currentView !== undefined) return;
+    const org = params.org ?? "";
+    const search = (prev: Record<string, unknown>) => ({
+      ...prev,
+      virtualmcpid: undefined,
+      thread: undefined,
+      mainpanel: undefined,
     });
+    if (id) {
+      navigateToTabLocation(navigate, {
+        org,
+        agentId: id,
+        tabId:
+          currentView === "board" || currentView === "reports"
+            ? currentView
+            : "overview",
+        search,
+        replace: false,
+      });
+      return;
+    }
+    if (currentView === "board") {
+      navigate({
+        to: DESTINATION_ROUTE.tasks,
+        params: { org, taskKey: undefined },
+        search,
+      });
+      return;
+    }
+    navigate({ to: DESTINATION_ROUTE.home, params: { org }, search });
+  };
 
   return {
     scopeId,

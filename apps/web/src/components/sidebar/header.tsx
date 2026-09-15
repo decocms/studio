@@ -23,7 +23,7 @@ const ICON_SIZE = 16;
 
 export function SidebarPickerHeader() {
   const collapsed = useSidebarCollapsed();
-  /** Settings is forced open (see `OrgLayout`), so a collapse toggle there is a
+  /** Settings is forced open by `Layout`, so a collapse toggle there is a
    *  control with nothing to do — hidden rather than dead. */
   const inSettings = useInSettings();
 

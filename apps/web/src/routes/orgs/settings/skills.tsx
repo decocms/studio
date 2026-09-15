@@ -387,7 +387,7 @@ export default function SettingsSkillsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           {/* Title, toolbar, chips and results are siblings of one gap-6
               column — the Connections page's rhythm. */}
           <div className="flex flex-col gap-6">
@@ -500,7 +500,7 @@ export default function SettingsSkillsPage() {
               </div>
             )}
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
 
       {previewPath && (

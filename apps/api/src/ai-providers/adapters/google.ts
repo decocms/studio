@@ -1,11 +1,53 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import type { ModelCapability } from "@decocms/shared/sdk";
+import { retry, RetryError } from "@decocms/shared/std";
 import {
   isInteractionsOnlyModel,
   pollInteraction,
   submitInteraction,
 } from "./gemini-interactions";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
+
+/** A transient (5xx / 429) status from a listModels page fetch. */
+class TransientListModelsError extends Error {}
+
+/**
+ * A GET is always safe to retry — no side effect. So a single flaky 5xx/429
+ * from Google doesn't fail the whole paginated listModels walk.
+ */
+async function fetchModelsPageWithRetry(
+  url: URL,
+  apiKey: string,
+): Promise<Response> {
+  try {
+    return await retry(
+      async () => {
+        const res = await fetch(url, {
+          headers: { "x-goog-api-key": apiKey },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (res.status >= 500 || res.status === 429) {
+          const body = await res.text().catch(() => "");
+          throw new TransientListModelsError(
+            `Google listModels failed: ${res.status} ${body}`,
+          );
+        }
+        return res;
+      },
+      {
+        maxAttempts: 3,
+        minTimeout: 200,
+        maxTimeout: 2_000,
+        isRetriable: (err) => err instanceof TransientListModelsError,
+      },
+    );
+  } catch (err) {
+    if (err instanceof RetryError && err.cause instanceof Error) {
+      throw err.cause;
+    }
+    throw err;
+  }
+}
 
 interface GoogleModel {
   baseModelId: string;
@@ -99,10 +141,7 @@ export const googleAdapter: ProviderAdapter = {
           url.searchParams.set("pageSize", "1000");
           if (pageToken) url.searchParams.set("pageToken", pageToken);
           // Key goes via header, not `?key=`: outbound fetches are OTel-traced with the full URL, see observability/instrumentations/fetch.ts.
-          const res = await fetch(url, {
-            headers: { "x-goog-api-key": apiKey },
-            signal: AbortSignal.timeout(15_000),
-          });
+          const res = await fetchModelsPageWithRetry(url, apiKey);
           if (!res.ok) {
             throw new Error(`Google listModels failed: ${res.status}`);
           }

@@ -78,7 +78,7 @@ export default defineConfig({
   testDir: "./tests",
   // Uses a separate server with a synthetic GitHub App. Enabling that app
   // here changes credential resolution for the CMS suite's legacy fixtures.
-  testIgnore: "**/github-connect.spec.ts",
+  testIgnore: ["**/github-connect.spec.ts", "**/github-cli.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // Whole-suite backstop: even if a single spec wedges (a dangling fetch /

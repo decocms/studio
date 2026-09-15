@@ -1,3 +1,5 @@
+import { useParams } from "@tanstack/react-router";
+import { taskSharePath } from "./task-route";
 import { Fragment, useRef, useState, type ReactNode } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
@@ -432,6 +434,7 @@ function TaskBoardItemEditor({
 }: TaskEditorProps) {
   const t = useT();
   const { org } = useProjectContext();
+  const { agentId } = useParams({ strict: false });
   const { data } = useMembers();
   const members = (data?.data?.members ?? []) as Member[];
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
@@ -742,7 +745,7 @@ function TaskBoardItemEditor({
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 copyLink(
-                  `${window.location.origin}/${org.slug}/tasks/${key ?? item.id}`,
+                  `${window.location.origin}${taskSharePath(org.slug, item, agentId)}`,
                 );
                 toast.success(t("taskBoard.taskDialog.linkCopied"));
               }}

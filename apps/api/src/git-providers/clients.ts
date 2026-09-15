@@ -36,6 +36,7 @@ import { githubConnectionAccessToken } from "@/oauth/github-mint";
 import { RECONNECT_ERROR } from "@/oauth/token-refresh";
 import type { ChangeRequestClient } from "./change-requests";
 import type { RepoContentClient } from "./content";
+import type { RepoInsightsClient } from "./insights";
 import {
   clientForAccount,
   repositoryUsesStudioCredentials,
@@ -48,13 +49,16 @@ import {
 } from "./credentials";
 import { GithubChangeRequestClient } from "./github/change-requests";
 import { GithubContentClient } from "./github/content";
+import { GithubInsightsClient } from "./github/insights";
 import { resolveLegacyGithubConnection } from "./github/legacy-connection";
 import { GitlabChangeRequestClient } from "./gitlab/change-requests";
 import { gitlabCurrentUser } from "./gitlab/client";
 import { GitlabContentClient } from "./gitlab/content";
+import { GitlabInsightsClient } from "./gitlab/insights";
 import { BitbucketChangeRequestClient } from "./bitbucket/change-requests";
 import { bitbucketPrincipalForToken } from "./bitbucket/client";
 import { BitbucketContentClient } from "./bitbucket/content";
+import { BitbucketInsightsClient } from "./bitbucket/insights";
 import {
   GitProviderError,
   type GitTokenKind,
@@ -86,6 +90,20 @@ function changeRequestClientFor({
       return new GitlabChangeRequestClient({ repo: ref, tokenSource });
     case "bitbucket":
       return new BitbucketChangeRequestClient({ repo: ref, tokenSource });
+  }
+}
+
+function insightsClientFor({
+  ref,
+  tokenSource,
+}: RepoCredential): RepoInsightsClient {
+  switch (ref.provider) {
+    case "github":
+      return new GithubInsightsClient({ repo: ref, tokenSource });
+    case "gitlab":
+      return new GitlabInsightsClient({ repo: ref, tokenSource });
+    case "bitbucket":
+      return new BitbucketInsightsClient({ repo: ref, tokenSource });
   }
 }
 
@@ -216,6 +234,56 @@ export function contentClientForProjectRepo(
   );
 }
 
+/**
+ * Insights client for a repository the caller names however it can. Throws
+ * rather than answering null, like the content factory and for the same reason:
+ * every caller is about to measure or read something and has nothing to show
+ * without a credential.
+ *
+ * Module-private: everything that measures a repository today holds its row.
+ * Widen it when a caller genuinely has only an identity.
+ */
+async function insightsClientForTarget(
+  ctx: StudioContext,
+  organizationId: string,
+  target: RepoTarget,
+): Promise<RepoInsightsClient> {
+  const resolved = await resolveRepoTarget(ctx.storage, organizationId, target);
+  if (!resolved) {
+    throw new GitProviderError({
+      provider: "github",
+      status: 404,
+      message:
+        "No repository for this project — link one in Settings → Repositories",
+    });
+  }
+  if (resolved.repository && resolved.servable) {
+    return insightsClientFor(
+      await repoCredentialForRepository(ctx, resolved.repository),
+    );
+  }
+  const token = await legacyGithubToken(
+    ctx,
+    organizationId,
+    resolved.ref,
+    target.connectionId ?? resolved.repository?.legacyConnectionId ?? null,
+  );
+  if (!token) throw noCredential(resolved);
+  return insightsClientFor(staticRepoCredential(resolved.ref, token));
+}
+
+/** {@link insightsClientForTarget} for a first-class repository row. */
+export function insightsClientForRepository(
+  ctx: StudioContext,
+  repository: RepositoryRecord,
+): Promise<RepoInsightsClient> {
+  return insightsClientForTarget(ctx, repository.organizationId, {
+    repositoryId: repository.id,
+    ref: repoRefOf(repository),
+    connectionId: repository.legacyConnectionId,
+  });
+}
+
 /** Where a change request's repository was recorded, however completely. */
 export interface ChangeRequestOrigin {
   repo: RepoRef;
@@ -279,12 +347,13 @@ export function principalForToken(
   provider: GitProviderKind,
   host: string,
   token: string,
+  workspace?: string | null,
 ): Promise<ProviderPrincipal> {
   switch (provider) {
     case "gitlab":
       return gitlabCurrentUser(host, token);
     case "bitbucket":
-      return bitbucketPrincipalForToken(host, token);
+      return bitbucketPrincipalForToken(host, token, workspace);
     case "github":
       throw new GitProviderError({
         provider,

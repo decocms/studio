@@ -1,12 +1,12 @@
 /**
- * The matched route's default `?main` tab.
+ * The matched route's default main-panel tab.
  *
  * Path = which page, search = how that page is laid out. A destination route
  * (`/$org/home`, `/$org/tasks`, …) owns the page, so it also owns which main
- * panel view shows when the URL names none — and only then: an explicit segment
- * (the `0` closed sentinel included) always wins. This is one more input to the
- * existing default chain in `resolveDefaultPanelState` / `resolveActiveTabAndOpen`,
- * sitting just above the agent's own `defaultMainView`, not a new concept.
+ * panel view shows when the URL names none. An explicit child route always
+ * wins, while `?mainpanel=` independently controls visibility. This is one
+ * input to the existing default chain in `resolveDefaultPanelState` /
+ * `resolveActiveTabAndOpen`, sitting above the agent's own `defaultMainView`.
  *
  * The default travels as route `staticData` rather than as a search default
  * because the panel machinery reads search from the pathless agent-shell match,
@@ -17,8 +17,12 @@ import { useRouterState } from "@tanstack/react-router";
 
 declare module "@tanstack/react-router" {
   interface StaticDataRouteOption {
-    /** The `?main` tab id this route falls back to. Declared in `router.tsx`. */
+    /** The tab id this route opens when no explicit visibility override exists. */
     defaultMain?: string;
+    /** The semantic main view owned by the matched route. */
+    mainView?: string;
+    /** The nested Site Editor surface owned by the matched leaf route. */
+    siteEditorView?: "preview" | "content" | "code";
   }
 }
 

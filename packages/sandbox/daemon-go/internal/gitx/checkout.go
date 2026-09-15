@@ -201,13 +201,17 @@ func InstallSandboxHooks(repoDir string) error {
 	return os.WriteFile(filepath.Join(hooksDir, "build-artifacts"), []byte(artifacts), 0o644)
 }
 
-func ConfigureGitIdentity(repoDir, userName, userEmail string) error {
+// ConfigureGitIdentity sets who the checkout commits as and, when the pod holds
+// a signing key for that committer, that its commits are signed.
+func ConfigureGitIdentity(repoDir, keyDir, userName, userEmail string, signing CommitSigning) error {
 	if userName == "" || userEmail == "" {
 		return nil
 	}
 	if _, err := Run([]string{"config", "user.name", userName}, RunOpts{Cwd: repoDir}); err != nil {
 		return err
 	}
-	_, err := Run([]string{"config", "user.email", userEmail}, RunOpts{Cwd: repoDir})
-	return err
+	if _, err := Run([]string{"config", "user.email", userEmail}, RunOpts{Cwd: repoDir}); err != nil {
+		return err
+	}
+	return configureCommitSigning(repoDir, keyDir, userEmail, signing)
 }

@@ -78,7 +78,7 @@ export default function AgentsListPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <Page.Title>{t("routes.agentsList.title")}</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -220,7 +220,7 @@ export default function AgentsListPage() {
               </div>
             </div>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
 
       <RepositoryImportPicker

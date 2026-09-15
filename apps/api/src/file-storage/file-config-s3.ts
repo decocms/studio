@@ -100,7 +100,12 @@ const clientCache = new Map<string, S3Client>();
 export function buildS3Client(ctx: FileConfigContext): S3Client {
   const cacheKey = `${ctx.info.id}:${ctx.info.updatedAt}`;
   const cached = clientCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    // Re-insert to mark most-recently-used (LRU, not FIFO eviction below).
+    clientCache.delete(cacheKey);
+    clientCache.set(cacheKey, cached);
+    return cached;
+  }
 
   // Validate required configuration fields before passing to AWS SDK
   if (!ctx.info.region) {

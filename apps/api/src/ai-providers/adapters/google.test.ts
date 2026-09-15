@@ -78,4 +78,41 @@ describe("googleAdapter.listModels", () => {
     expect(requestedTokens).toEqual(["", "page-2"]);
     expect(models.map((m) => m.modelId)).toEqual(["gemini-a", "gemini-b"]);
   });
+
+  test("retries a transient 5xx and succeeds once Google recovers", async () => {
+    let calls = 0;
+    globalThis.fetch = (async (): Promise<Response> => {
+      calls++;
+      if (calls < 3) {
+        return new Response("upstream hiccup", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({
+          models: [{ name: "models/gemini-a", supportedGenerationMethods: [] }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+    const models = await provider.listModels();
+
+    expect(calls).toBe(3);
+    expect(models.map((m) => m.modelId)).toEqual(["gemini-a"]);
+  });
+
+  test("does not retry a non-transient 4xx and surfaces it immediately", async () => {
+    let calls = 0;
+    globalThis.fetch = (async (): Promise<Response> => {
+      calls++;
+      return new Response("bad key", { status: 401 });
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("bad-key");
+
+    await expect(provider.listModels()).rejects.toThrow(
+      "Google listModels failed: 401",
+    );
+    expect(calls).toBe(1);
+  });
 });

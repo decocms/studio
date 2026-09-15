@@ -11,6 +11,7 @@
 
 import type { GitProviderKind } from "@decocms/shared/git-providers";
 import { githubCapability } from "./github/app-auth";
+import { githubCliEnabled } from "./github/cli-auth";
 import { gitlabCapability } from "./gitlab/env";
 import { bitbucketCapability } from "./bitbucket/env";
 import type { GitProviderCapability } from "./types";
@@ -18,9 +19,9 @@ import type { GitProviderCapability } from "./types";
 export function providerCapabilities(): Record<
   GitProviderKind,
   GitProviderCapability
-> {
+> & { github: GitProviderCapability & { cli: boolean } } {
   return {
-    github: githubCapability(),
+    github: { ...githubCapability(), cli: githubCliEnabled() },
     gitlab: gitlabCapability(),
     bitbucket: bitbucketCapability(),
   };

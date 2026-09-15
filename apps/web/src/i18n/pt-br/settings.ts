@@ -76,7 +76,9 @@ export const settings = {
   "settings.jira.automationOn": "Automação ativa",
   "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
   "settings.jira.promptHelp":
-    "Deixe vazio para usar a instrução do próprio agente. A descrição, os comentários e os anexos da issue sempre vão junto.",
+    "Esta é a instrução inteira que o run recebe — não existe um padrão. Digite “/” para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
+  "settings.jira.promptSave": "Salvar",
+  "settings.jira.promptDiscard": "Descartar",
   "settings.jira.removeAriaLabel": "Parar de rodar o agente em {status}",
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
@@ -94,7 +96,7 @@ export const settings = {
     "Agente reiniciado em {issueKey} \u2014 o run que já estava nela foi interrompido",
   "settings.jira.testRunFailed": "Não foi possível iniciar o run",
   "settings.jira.testRunHelp":
-    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Deixe a instrução vazia para usar a do próprio agente.",
+    "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.syncedRepos.pageDescription":
     "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
@@ -132,11 +134,10 @@ export const settings = {
     "Entrar com GitHub, GitLab ou Bitbucket depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab ou do Bitbucket com um token de acesso.",
   "settings.repositories.githubUnavailable":
     "Peça a um administrador para habilitar o GitHub.",
-  "settings.repositories.browseAccount": "Busque repositórios da sua conta.",
-  "settings.repositories.gitlabTokenHint":
-    "Use um token de acesso pessoal, de projeto ou de grupo.",
-  "settings.repositories.bitbucketTokenHint":
-    "Use um token de acesso de workspace, de projeto ou de repositório.",
+  "settings.repositories.connectGithubCli": "Conectar com GitHub CLI",
+  "settings.repositories.githubCliHint":
+    "Use seu login local do gh para buscar e importar repositórios.",
+  "settings.repositories.authKindGithubCli": "GitHub CLI",
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
   "settings.repositories.githubSelectTitle": "Selecionar repositórios",
@@ -194,11 +195,6 @@ export const settings = {
     "Este provedor git não está configurado. Peça a um administrador para habilitá-lo.",
   "settings.repositories.oauthFailed":
     "Não foi possível conectar sua conta git. Tente novamente. Se o erro persistir, entre em contato com um administrador.",
-  "settings.repositories.connectGitlab": "Conectar GitLab",
-  "settings.repositories.connectGitlabToken": "Conectar GitLab com um token",
-  "settings.repositories.connectBitbucket": "Conectar Bitbucket",
-  "settings.repositories.connectBitbucketToken":
-    "Conectar Bitbucket com um token",
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Token pessoal",
@@ -217,6 +213,59 @@ export const settings = {
     "Conectar o Bitbucket com um token",
   "settings.repositories.tokenDialogDescriptionBitbucket":
     "Use um token de acesso de workspace, de projeto ou de repositório com permissão de escrita em repositórios e pull requests — os agentes usam ele para dar push e abrir pull requests. Somente Bitbucket Cloud. É guardado criptografado e não é exibido novamente.",
+  "settings.repositories.addAccount": "Adicionar conta",
+  "settings.repositories.addAccountTitle": "Conectar uma conta git",
+  "settings.repositories.addAccountDescription":
+    "Escolha onde seus repositórios ficam.",
+  "settings.repositories.chooseMethodDescription":
+    "Escolha como o Studio deve se conectar a este provedor.",
+  "settings.repositories.back": "Voltar",
+  "settings.repositories.providerGithub": "GitHub",
+  "settings.repositories.providerGitlab": "GitLab",
+  "settings.repositories.providerBitbucket": "Bitbucket",
+  "settings.repositories.providerGithubHint":
+    "Instale o app do Studio e escolha os repositórios a compartilhar.",
+  "settings.repositories.providerTokenOrOauthHint":
+    "Conecte com um token de acesso, ou autorize via OAuth.",
+  "settings.repositories.providerTokenOnlyHint":
+    "Conecte com um token de acesso.",
+  "settings.repositories.methodToken": "Usar um token de acesso",
+  "settings.repositories.methodTokenHint":
+    "O provedor limita o token aos repositórios para os quais você o criou.",
+  "settings.repositories.methodOauth": "Autorizar via OAuth",
+  "settings.repositories.methodOauthHint":
+    "Entre e autorize o Studio no seu navegador.",
+  "settings.repositories.methodOauthScopeNote":
+    "Alcança todos os repositórios que esta conta enxerga; não dá para restringir a um subconjunto.",
+  "settings.repositories.methodApp": "Instalar o app do GitHub",
+  "settings.repositories.methodAppHint":
+    "Escolha exatamente quais repositórios o Studio pode usar.",
+  "settings.repositories.tokenStepsTitle": "Como criar o token",
+  "settings.repositories.openProvider": "Abrir provedor",
+  "settings.repositories.tokenWorkspaceLabel": "Workspace",
+  "settings.repositories.tokenWorkspacePlaceholder": "sua-workspace",
+  "settings.repositories.tokenWorkspaceHint":
+    "O slug na URL do Bitbucket. Um token de acesso não consegue dizer a que workspace pertence, então o Studio o verifica contra esta.",
+  "settings.repositories.tokenProjectLabel": "Caminho do projeto (opcional)",
+  "settings.repositories.tokenProjectPlaceholder": "grupo/projeto",
+  "settings.repositories.tokenProjectHint":
+    "Preencha para ir direto à página de tokens desse projeto.",
+  "settings.repositories.bitbucketStep1":
+    "Abra o repositório que o Studio deve alcançar, ou o projeto que os agrupa.",
+  "settings.repositories.bitbucketStep2":
+    "Settings → Security → Access tokens → Create token.",
+  "settings.repositories.bitbucketStep3":
+    "Conceda Repositories read e write, e Pull requests read e write.",
+  "settings.repositories.bitbucketStep4":
+    "Cole o token abaixo. O Bitbucket o mantém restrito ao escopo que você deu.",
+  "settings.repositories.gitlabStep1":
+    "Abra o projeto ou grupo que o Studio deve alcançar.",
+  "settings.repositories.gitlabStep2":
+    "Settings → Access tokens → Add new token.",
+  "settings.repositories.gitlabStep3":
+    "Papel: Developer ou acima. Escopo: api.",
+  "settings.repositories.gitlabStep4":
+    "Cole o token abaixo. Um token de projeto só alcança aquele projeto.",
   "settings.repositories.tokenHostLabel": "Host",
   "settings.repositories.tokenHostPlaceholder": "gitlab.com",
   "settings.repositories.tokenLabel": "Token de acesso",

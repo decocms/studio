@@ -24,8 +24,10 @@
  */
 
 import { Hono } from "hono";
+import { getConnInfo } from "hono/bun";
 import { z } from "zod";
 import { ContextFactory } from "@/core/context-factory";
+import { ForbiddenError } from "@/core/access-control";
 import type { StudioContext } from "@/core/studio-context";
 import { getPublicUrl } from "@/core/server-constants";
 import {
@@ -37,6 +39,11 @@ import {
   githubAccountVersion,
 } from "@/storage/github-connect-flows";
 import { readGithubAppConfig } from "@/git-providers/github/env";
+import {
+  githubCliEnabled,
+  githubCliPrincipal,
+} from "@/git-providers/github/cli-auth";
+import { isLocalGithubCliRequest } from "@/git-providers/github/cli-request";
 import { readGitlabOAuthConfig } from "@/git-providers/gitlab/env";
 import {
   exchangeGithubCode,
@@ -103,6 +110,60 @@ async function mintState(
 
 export const createGitProviderRoutes = () => {
   const app = new Hono<Env>();
+
+  app.post("/git-providers/github/cli/connect", async (c) => {
+    if (!githubCliEnabled())
+      return c.json({ error: "GitHub CLI requires local mode" }, 403);
+    let address: string | undefined;
+    try {
+      address = getConnInfo(c).remote.address;
+    } catch {
+      // Missing socket information fails closed.
+    }
+    if (
+      !isLocalGithubCliRequest(address, c.req.header("Origin"), getPublicUrl())
+    ) {
+      return c.json(
+        { error: "GitHub CLI requires a local, same-origin request" },
+        403,
+      );
+    }
+    const ctx = c.get("studioContext");
+    if (!ctx.auth.user || !ctx.organization)
+      return c.json({ error: "Unauthorized" }, 401);
+    try {
+      await ctx.access.check("GIT_ACCOUNT_CONNECT_TOKEN");
+    } catch (error) {
+      if (error instanceof ForbiddenError)
+        return c.json({ error: "Forbidden" }, 403);
+      throw error;
+    }
+    c.header("Cache-Control", "no-store");
+    if (!c.req.header("Content-Type")?.startsWith("application/json")) {
+      return c.json({ error: "Invalid content type" }, 415);
+    }
+    let principal;
+    try {
+      principal = await githubCliPrincipal();
+    } catch {
+      return c.json(
+        {
+          error:
+            "Could not connect to GitHub CLI. Install gh and run gh auth login --hostname github.com, then try again.",
+        },
+        400,
+      );
+    }
+    const account = await ctx.storage.gitProviderAccounts.upsert({
+      organizationId: ctx.organization.id,
+      type: "github",
+      host: "github.com",
+      authKind: "github_cli",
+      ...principal,
+      createdBy: ctx.auth.user.id,
+    });
+    return c.json({ account: { id: account.id, login: account.login } });
+  });
 
   /** Prove installation access via user OAuth, then let the user choose one. */
   app.get("/git-providers/github/connect", async (c) => {

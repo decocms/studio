@@ -518,9 +518,14 @@ export const createOrgFsRoutes = (deps: OrgFsRoutesDeps = {}) => {
     }
   });
 
-  // Attachable skills — the SAME catalog the runtime surfaces in
-  // <available-skills> (buildSkillCatalog: home + home/skills + public sets), so
-  // the agent link picker and the run can never drift on what "a skill" is.
+  // Attachable skills — the same catalog the runtime draws <available-skills>
+  // from (buildSkillCatalog: home + home/skills + public sets), so the agent
+  // link picker and the run can never drift on what "a skill" is.
+  //
+  // Deliberately UNFILTERED: a `disable-model-invocation` skill is hidden from
+  // the model, not from the person. Both readers here — the "/" menu and the
+  // attach picker — are a person choosing one by hand, which is the whole
+  // point of the flag. The filter belongs in skills-instructions.ts.
   // Volume-less; lives above the `/:volume/*` routes. Member-gated read.
   app.get("/skills", async (c) => {
     const ctx = c.get("studioContext");

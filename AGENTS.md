@@ -429,11 +429,13 @@ Above-the-fold variants will flash control first, because flags resolve after
 - A comment that takes a paragraph to justify a workaround is a signal the code is wrong, not the comment—fix the code, don't explain it away
 
 ### "Thread" vs "Chat" naming
-The domain concept is a **thread** — that's the name on the backend and in all code: DB columns/tables, storage, tools, API routes, wire payloads, query keys, types, hooks, variables, functions. Do NOT rename any of these to "chat".
+The domain concept is a **thread** — that's the name on the backend and in domain code: DB columns/tables, storage, tools, API routes, wire payloads, query keys, types, hooks, variables, functions. Do NOT rename any of these to "chat".
 
 User-facing copy calls it a **chat** — anything a person reads in the UI: JSX text, button/menu labels, placeholders, tooltips, `aria-label`s, headings, empty states, toasts/error messages. Write these as "chat".
 
-So a `thread`-named identifier can render "New chat" in a label; keep the code identifier as `thread` and only the displayed string as "chat". When in doubt: if it crosses the wire or lives in code, it's "thread"; if a user reads it, it's "chat".
+So a `thread`-named identifier can render "New chat" in a label; keep the domain identifier as `thread` and the displayed string as "chat".
+
+**UI composition exception:** `Chat`, `ChatLayout`, and their layout-only types and hooks (such as `useChatLayout`) name the conversation interface and its arrangement. This does not extend to domain state: use `threadId`, thread types, and thread API contracts even inside those components. `ChatLayout.Thread` names the conversation region; `ChatLayout.Content` names the adjacent route region.
 
 ### Internationalization (i18n)
 
@@ -463,7 +465,17 @@ The web UI (`apps/web/src`) is internationalized by a zero-dependency module at
 - `packages/ui` stays i18n-free: its few built-in English defaults are overridable via props;
   pass translated strings from the app.
 
+### UI layout composition
+
+- `Layout` owns the persistent application frame and its `Sidebar` / `Content` regions. Organization and settings routes share this frame; keep thread and runtime providers scoped to the route branch that uses them.
+- `ChatLayout` adds optional chat placement, visibility, and resizing through `ChatLayout.Thread` / `ChatLayout.Content`. Its context and `useChatLayout()` expose layout state; read agent and thread data from their domain providers and SDK hooks.
+- `Panel` owns a surface and `Panel.Topbar.Left/Center/Right` controls. Deep feature controls use the corresponding `.Target` / `.Portal` pair, scoped to the nearest panel.
+- Route components use `*Route` and compose their content directly; feature screens may use `*Page`. Chat destinations use `ChatLayout.Content` with their own actions and drawer; organization Settings composes `Panel`. Keep suspending feature reads below the content boundary.
+- `Page.Content` owns document scrolling; `Page.Container` owns width and spacing; `Page.Title` owns the heading. Canvas editors manage their own inner panes inside `Panel.Content`.
+- See [the architecture guide](apps/web/docs/component-architecture.md) for examples and the migration map.
+
 ### React 19 Patterns
+
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
 - **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.ts`)—prefer alternatives
 - **DO NOT** use `useMemo`/`useCallback`/`memo` (banned by `plugins/ban-memoization.ts`)—React 19 compiler handles optimization

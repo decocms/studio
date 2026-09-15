@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PANEL_PAYLOAD_KEYS } from "@/layouts/main-panel-tabs/panel-route";
+import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 import {
   isProjectSettingsSectionKey,
   PROJECT_SETTINGS_SECTION_KEYS,
@@ -23,7 +23,12 @@ describe("project settings sections", () => {
     expect(isProjectSettingsSectionKey("general")).toBe(true);
   });
 
-  test("`section` is a registered panel payload key, so leaving Settings drops it", () => {
-    expect(PANEL_PAYLOAD_KEYS).toContain("section");
+  test("leaving Settings drops its section selection", () => {
+    const next = resolvePanelNavigationSearch({
+      previous: { section: "general", thread: "thread-1", sidepanel: true },
+      destination: "agent",
+    });
+    expect(next).not.toHaveProperty("section");
+    expect(next.thread).toBe("thread-1");
   });
 });
