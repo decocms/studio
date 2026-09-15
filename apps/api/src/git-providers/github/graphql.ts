@@ -179,6 +179,8 @@ export async function githubGraphqlRequest<T>(
       kind,
     });
     const waitMs = githubRetryAfterMs(res.headers);
+    // Drain the unread body, same as every other discard-and-throw call site here.
+    await res.body?.cancel().catch(() => {});
     throw new Error(
       `GitHub ${kind} rate limit reached${
         waitMs === null ? "" : `; retry in ${Math.ceil(waitMs / 1000)}s`
