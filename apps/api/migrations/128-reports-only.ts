@@ -7,7 +7,7 @@ import type { Kysely } from "kysely";
  * orgs start focused on the diagnostic, and other parts get added back later.
  *
  * Nullable on purpose (no default): NULL means "never set" (treated as off),
- * which lets COMMERCE_DISCOVERY_SETUP default it on for commerce orgs while
+ * which lets REPORTS_SETUP default it on for commerce orgs while
  * leaving every other org off, and lets an explicit `false` (turned off later)
  * survive a re-run of setup.
  *

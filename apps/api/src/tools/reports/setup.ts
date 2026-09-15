@@ -1,9 +1,9 @@
 import { agentPanelPath } from "@decocms/shared/organization-paths";
 import {
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+  REPORTS_TOOL_NAME,
   type ConnectionEntity,
-  getCommerceDiscoveryAgentId,
-  getWellKnownCommerceDiscoveryConnection,
+  getReportsAgentId,
+  getWellKnownReportsConnection,
   getWellKnownReportVirtualMCP,
   type VirtualMCPEntity,
   WellKnownOrgMCPId,
@@ -19,16 +19,12 @@ import {
 } from "../../core/studio-context";
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
-import {
-  fetchCommerceDiscoveryAuth,
-  resolveCommerceDiscoveryMcpUrl,
-} from "./auth-client";
+import { fetchReportsAuth, resolveReportsMcpUrl } from "./auth-client";
 
-const REPORT_TOOL_NAME =
-  COMMERCE_DISCOVERY_REPORT_TOOL_NAME as "get_my_diagnostic";
+const REPORT_TOOL_NAME = REPORTS_TOOL_NAME as "get_my_diagnostic";
 
 /**
- * How recently an org must have been created for COMMERCE_DISCOVERY_SETUP to
+ * How recently an org must have been created for REPORTS_SETUP to
  * treat it as "created by this onboarding flow" and default reports_only on.
  * Generous enough for a slow onboarding session; far below the age of any
  * established org.
@@ -81,12 +77,12 @@ async function rereadVirtualMcpOrThrow(
   throw error;
 }
 
-export const COMMERCE_DISCOVERY_SETUP = defineTool({
-  name: "COMMERCE_DISCOVERY_SETUP",
+export const REPORTS_SETUP = defineTool({
+  name: "REPORTS_SETUP",
   description:
-    "Create or return the Commerce Discovery connection and virtual MCP for the current organization.",
+    "Create or return the Reports connection and virtual MCP for the current organization.",
   annotations: {
-    title: "Set Up Commerce Discovery",
+    title: "Set Up Reports",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
@@ -103,7 +99,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
 
     const userId = getUserId(ctx);
     if (!userId) {
-      throw new Error("User ID required to set up Commerce Discovery");
+      throw new Error("User ID required to set up Reports");
     }
 
     const normalized = normalizeReportsSiteUrl(input.siteUrl);
@@ -111,15 +107,15 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
       throw new Error(normalized.error);
     }
 
-    const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id);
-    const virtualMcpId = getCommerceDiscoveryAgentId(organization.id);
+    const connectionId = WellKnownOrgMCPId.REPORTS(organization.id);
+    const virtualMcpId = getReportsAgentId(organization.id);
 
     /**
-     * Claim contact forwarded on /upgrade: Commerce Discovery emails this
+     * Claim contact forwarded on /upgrade: Reports emails this
      * address when the run completes (the "generating" screen's promise). The
      * "diagnóstico completo" CTA must land on the report app view — NOT the
-     * /commerce-onboarding page — so build the exact URL the app writes for
-     * that view (`commerceReportNavTarget`, web/hooks/use-commerce-diagnostic):
+     * /reports-onboarding page — so build the exact URL the app writes for
+     * that view (`reportNavTarget`, web/hooks/use-reports-diagnostic):
      * the agent is the project segment, `app` is the view, and the view's
      * parameter is search. Both ids are deterministic per org, so the URL is
      * fully known here at /upgrade time. No thread: the report is a view, and
@@ -149,11 +145,11 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
 
     // Claim the CURRENT site for this org, unconditionally, on every setup.
     //
-    // The claim is Commerce Discovery's master-gated per-(org, site) upgrade —
+    // The claim is Reports's master-gated per-(org, site) upgrade —
     // POST /api/v2/internal/diagnostics/:domain/upgrade — which sets the
     // diagnostic to private, links the org, and mints a fresh report token.
     // But the studio-side connection is keyed per ORG
-    // (WellKnownOrgMCPId.COMMERCE_DISCOVERY(organization.id)), not per site.
+    // (WellKnownOrgMCPId.REPORTS(organization.id)), not per site.
     //
     // Previously the /upgrade was only called when the connection was missing
     // (or missing its token). So selecting an EXISTING org whose connection
@@ -164,10 +160,10 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     // freshly-minted token + siteUrl onto the per-org connection so it follows
     // the site currently being onboarded and always holds the newest token.
     //
-    // This also keeps us consistent with commerce-discovery#184, which revokes
+    // This also keeps us consistent with reports#184, which revokes
     // prior report tokens for the URL on each /upgrade — because we persist the
     // token returned by THIS upgrade, the connection never holds a revoked one.
-    const auth = await fetchCommerceDiscoveryAuth({
+    const auth = await fetchReportsAuth({
       siteUrl: normalized.value,
       orgId: organization.id,
       orgName: organization.name,
@@ -177,10 +173,10 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     // The MCP URL must target the same instance as the internal API — in
     // staging REPORTS_INTERNAL_API_URL (or the legacy CD env) overrides the host, so the
     // CD connection must point there too, not at the hardcoded prod constant.
-    const mcpUrl = resolveCommerceDiscoveryMcpUrl();
+    const mcpUrl = resolveReportsMcpUrl();
 
     if (connection) {
-      console.log("[commerce-discovery] syncing connection to claimed site", {
+      console.log("[reports] syncing connection to claimed site", {
         orgId: organization.id,
         siteUrl: normalized.value,
         connectionId,
@@ -191,14 +187,14 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
         metadata: { ...(connection.metadata ?? {}), siteUrl: normalized.value },
       });
     } else {
-      console.log("[commerce-discovery] creating connection", {
+      console.log("[reports] creating connection", {
         orgId: organization.id,
         siteUrl: normalized.value,
         connectionId,
       });
 
       try {
-        const base = getWellKnownCommerceDiscoveryConnection(
+        const base = getWellKnownReportsConnection(
           organization.id,
           auth.authorizationToken,
           mcpUrl,
@@ -228,7 +224,7 @@ export const COMMERCE_DISCOVERY_SETUP = defineTool({
     );
 
     if (!virtualMcp) {
-      console.log("[commerce-discovery] creating virtual MCP", {
+      console.log("[reports] creating virtual MCP", {
         orgId: organization.id,
         siteUrl: normalized.value,
         connectionId: connection.id,

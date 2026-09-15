@@ -22,7 +22,7 @@
 
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Outlet, useSearch } from "@tanstack/react-router";
-import { CommerceConnectModal } from "@/routes/commerce-onboarding/commerce-connect-modal";
+import { CommerceConnectModal } from "@/routes/reports-onboarding/connect-modal";
 import { StudioSidebarMobile } from "@/components/sidebar";
 import { ChatPrefsProvider } from "@/components/chat/context";
 import { ThreadManagerProvider } from "@/components/chat/store/hooks";

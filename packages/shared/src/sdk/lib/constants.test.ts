@@ -38,7 +38,7 @@ describe("isStudioPackAgent", () => {
 });
 
 describe("getWellKnownReportVirtualMCP", () => {
-  test("pins the Commerce Discovery agent to the org sidebar", () => {
+  test("pins the Reports agent to the org sidebar", () => {
     expect(getWellKnownReportVirtualMCP("org_xyz", "conn_xyz").pinned).toBe(
       true,
     );

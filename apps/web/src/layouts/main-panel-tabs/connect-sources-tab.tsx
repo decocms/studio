@@ -1,5 +1,5 @@
 /**
- * ConnectSourcesTab — reopens the commerce-onboarding connect flow for a
+ * ConnectSourcesTab — reopens the reports-onboarding connect flow for a
  * client who already finished onboarding but skipped one or more data
  * sources (GA4/GSC/VTEX/GitHub). Opened via the report app's generic
  * `studio://navigate?main=connect-sources` app message (see
@@ -24,13 +24,13 @@ import {
 import {
   CompanionMcpsSection,
   CompanionMcpsSectionSkeleton,
-} from "@/routes/commerce-onboarding/companion-mcps-section.tsx";
-import { useCommerceDiscoverySiteUrl } from "@/routes/commerce-onboarding/use-commerce-companions.ts";
+} from "@/routes/reports-onboarding/companion-mcps-section.tsx";
+import { useReportsSiteUrl } from "@/routes/reports-onboarding/use-companions.ts";
 import {
   ConnectFooterButton,
   ConnectLayout,
-} from "@/routes/commerce-onboarding/connect-layout.tsx";
-import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
+} from "@/routes/reports-onboarding/connect-layout.tsx";
+import { parseSelfToolResult } from "@/routes/reports-onboarding/self-tool-result.ts";
 import { usePanelNavigate } from "./use-panel-navigate";
 
 function ConnectSourcesTabError({ onClose }: { onClose: () => void }) {
@@ -38,7 +38,7 @@ function ConnectSourcesTabError({ onClose }: { onClose: () => void }) {
   return (
     <ConnectLayout onClose={onClose} footer={null}>
       <p className="text-sm text-muted-foreground">
-        {t("routes.commerceOnboarding.connectModal.loadError")}
+        {t("routes.reportsOnboarding.connectModal.loadError")}
       </p>
     </ConnectLayout>
   );
@@ -76,14 +76,14 @@ function ConnectSourcesTabContent({
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(org.id);
+  const connectionId = WellKnownOrgMCPId.REPORTS(org.id);
   const selfClient = useMCPClient({
     connectionId: SELF_MCP_ALIAS_ID,
     orgId: org.id,
     orgSlug: org.slug,
   });
 
-  const siteUrl = useCommerceDiscoverySiteUrl({
+  const siteUrl = useReportsSiteUrl({
     selfClient,
     org,
     cdConnectionId: connectionId,
@@ -99,7 +99,7 @@ function ConnectSourcesTabContent({
     mutationFn: async (url: string) =>
       parseSelfToolResult<{ triggered: boolean; reason?: string }>(
         await selfClient.callTool({
-          name: "COMMERCE_DISCOVERY_RUN",
+          name: "REPORTS_RUN",
           arguments: { siteUrl: url },
         }),
       ),
@@ -113,7 +113,7 @@ function ConnectSourcesTabContent({
         await runMutation.mutateAsync(siteUrl);
       } catch {
         setRunError(
-          t("routes.commerceOnboarding.connectModal.somethingWentWrong"),
+          t("routes.reportsOnboarding.connectModal.somethingWentWrong"),
         );
         return;
       }
@@ -136,8 +136,8 @@ function ConnectSourcesTabContent({
             pending={runMutation.isPending}
             label={
               runMutation.isPending
-                ? t("routes.commerceOnboarding.connectSourcesTab.refreshing")
-                : t("routes.commerceOnboarding.connectSourcesTab.refresh")
+                ? t("routes.reportsOnboarding.connectSourcesTab.refreshing")
+                : t("routes.reportsOnboarding.connectSourcesTab.refresh")
             }
             onClick={() => void refreshReport()}
           />
@@ -146,7 +146,7 @@ function ConnectSourcesTabContent({
     >
       <div className="flex min-h-0 flex-1 flex-col gap-8 overflow-y-auto">
         <h2 className="text-xl font-medium leading-tight text-foreground">
-          {t("routes.commerceOnboarding.connectSourcesTab.title")}
+          {t("routes.reportsOnboarding.connectSourcesTab.title")}
         </h2>
         <CompanionMcpsSection
           org={org}

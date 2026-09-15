@@ -170,12 +170,12 @@ export const reports = {
   "reports.signalDeck.signOut": "Sair",
   "reports.signalDeck.userMenuLabel": "Menu do usuário",
   "reports.socialProof.alreadyReceived": "Já receberam",
-  "reports.commerceBanner.storeDefault": "sua loja",
-  "reports.commerceBanner.generatingTitle": "Gerando seu diagnóstico",
-  "reports.commerceBanner.readyTitle": "Seu relatório está pronto",
-  "reports.commerceBanner.generatingSubtitle":
+  "reports.banner.storeDefault": "sua loja",
+  "reports.banner.generatingTitle": "Gerando seu diagnóstico",
+  "reports.banner.readyTitle": "Seu relatório está pronto",
+  "reports.banner.generatingSubtitle":
     "Analisando {store}. Isso leva alguns minutos.",
-  "reports.commerceBanner.readySubtitle": "Veja a análise completa de {store}.",
+  "reports.banner.readySubtitle": "Veja a análise completa de {store}.",
   "reports.emptyState.title": "Nenhum relatório ainda",
   "reports.emptyState.description":
     "Rode um diagnóstico da sua loja para ver como ela está e o que corrigir primeiro.",

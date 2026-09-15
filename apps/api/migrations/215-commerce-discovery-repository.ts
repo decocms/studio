@@ -1,11 +1,11 @@
 import { type Kysely, sql } from "kysely";
 
 /**
- * The Commerce Discovery diagnostic's repository, as a reference instead of a
+ * The Reports diagnostic's repository, as a reference instead of a
  * string.
  *
  * An onboarded org carries its pick as `configuration_state.github_repo` on the
- * Commerce Discovery connection: a bare `owner/name`, github.com by
+ * Reports connection: a bare `owner/name`, github.com by
  * construction. That string cannot name a GitLab project in nested subgroups,
  * cannot tell two hosts apart, and cannot be resolved back to a credential —
  * which is the whole reason the audit only ever worked for GitHub.

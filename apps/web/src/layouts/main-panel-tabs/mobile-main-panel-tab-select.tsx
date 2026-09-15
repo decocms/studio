@@ -11,7 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@decocms/ui/components/select.tsx";
-import { getCommerceDiscoveryAgentId, useProjectContext } from "@/sdk";
+import { getReportsAgentId, useProjectContext } from "@/sdk";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { mobileSurfaceSearch } from "@/hooks/use-layout-state";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
@@ -143,7 +143,7 @@ export function MobileMainPanelTabSelect({
   });
   const { org } = useProjectContext();
   const reportsOnly = useReportsOnly();
-  const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+  const onReportAgent = virtualMcpId === getReportsAgentId(org.id);
 
   const options = buildMobileViewOptions({
     tabs,
@@ -186,7 +186,7 @@ export function MobileMainPanelTabSelect({
      *  panel on the current agent (mirrors setActiveTab in useMainPanelTabs). */
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
       openPanel(value, {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+        virtualmcpid: getReportsAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined, sidepanel: false }),
       });

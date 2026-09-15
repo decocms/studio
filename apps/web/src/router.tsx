@@ -260,18 +260,36 @@ const onboardingRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/onboarding.tsx")),
 });
 
-const commerceOnboardingRoute = createRoute({
+const onboardingSearch = z.lazy(() =>
+  z.object({
+    org: z.string().optional(),
+    siteUrl: z.string().optional(),
+  }),
+);
+
+const reportsOnboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reports-onboarding",
+  component: lazyRouteComponent(
+    () => import("./routes/reports-onboarding.tsx"),
+  ),
+  validateSearch: onboardingSearch,
+});
+
+/**
+ * The name this flow shipped under. Kept because the report email's CTA
+ * persisted it — Reports stores the URL per (org, site) and re-sends it, so
+ * links already in inboxes outlive any rename here. Redirects rather than
+ * rendering a second copy, and carries the search through: `siteUrl` is the
+ * whole point of the link.
+ */
+const legacyCommerceOnboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/commerce-onboarding",
-  component: lazyRouteComponent(
-    () => import("./routes/commerce-onboarding.tsx"),
-  ),
-  validateSearch: z.lazy(() =>
-    z.object({
-      org: z.string().optional(),
-      siteUrl: z.string().optional(),
-    }),
-  ),
+  validateSearch: onboardingSearch,
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: "/reports-onboarding", search });
+  },
 });
 
 // Storefront "." shortcut: resolve (site, domain) → the project's content editor. Root route so login can bounce back with params intact.
@@ -291,7 +309,7 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
-// Auth-gated commerce report for a scanned domain. The route itself stays
+// Auth-gated report for a scanned domain. The route itself stays
 // outside the org shell so login can happen inline over its locked preview.
 const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -368,7 +386,7 @@ const workspaceLayoutSearchSchema = z.object({
   mainpanel: mainPanelSearchSchema,
   /** LEGACY INPUT ONLY — the view is a path segment and its visibility is
    *  `mainpanel` now. Still arrives from bookmarks and from already-delivered
-   *  mail (`tools/reports/setup.ts`, `commerce-diagnostic-share.ts`), so it is
+   *  mail (`tools/reports/setup.ts`, `reports-share.ts`), so it is
    *  accepted here and retired by `<LegacyMainRedirect />`. Nothing writes it. */
   main: z.union([z.string(), z.literal(0)]).optional(),
   /** The open thread on a destination route. The legacy `/$org/$taskId` carries
@@ -463,7 +481,7 @@ const orgHomeRoute = createRoute({
     mainView: "overview",
   },
   validateSearch: z.object({
-    /** Commerce onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
+    /** Reports onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
   }),
@@ -929,7 +947,7 @@ const tasksRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/workspace/tasks.tsx")),
 });
 
-/** The org's Commerce Discovery report. Org-wide, so no project segment. */
+/** The org's Reports report. Org-wide, so no project segment. */
 const reportsRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/reports",
@@ -1421,7 +1439,8 @@ const routeTree = rootRoute.addChildren([
   shellRouteTree,
   adminLayoutWithChildren,
   onboardingRoute,
-  commerceOnboardingRoute,
+  reportsOnboardingRoute,
+  legacyCommerceOnboardingRoute,
   chooseEditorRoute,
   reportRoute,
   loginRoute,

@@ -15,7 +15,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
 import { OrgBlockedError } from "../../core/org-notice-gate";
-import { TOOL_BY_NAME } from "../../tools";
+import { resolveToolByName, TOOL_BY_NAME } from "../../tools";
 import { getToolRegistration } from "../../tools/management-registration";
 import type { Env } from "../hono-env";
 
@@ -54,7 +54,7 @@ export const createToolsRestRoutes = () => {
 
     // Manual tool-identifier check: 404 if the name isn't part of the builtin
     // tool surface.
-    const tool = TOOL_BY_NAME.get(toolName);
+    const tool = resolveToolByName(toolName);
     if (!tool) {
       return c.json({ error: `Unknown tool: ${toolName}` }, 404);
     }

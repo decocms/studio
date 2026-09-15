@@ -16,7 +16,7 @@ import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
 /**
- * Internal task-board import — a trusted machine service (commerce-discovery's
+ * Internal task-board import — a trusted machine service (reports's
  * diagnostic worker) batch-creates task board items for the org at the end of
  * an enriched report run.
  *

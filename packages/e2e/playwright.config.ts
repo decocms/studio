@@ -5,9 +5,9 @@ const appPort = process.env.VITE_PORT || "4000";
 const apiOrigin = `http://localhost:${serverPort}`;
 const appOrigin = process.env.BASE_URL || `http://localhost:${appPort}`;
 
-// Commerce Discovery setup mints a one-time client token by calling the
+// Reports setup mints a one-time client token by calling the
 // commerce-skills internal upgrade API. We point the studio server at a local
-// mock (commerce-upgrade-mock.ts, started as a webServer below) so onboarding
+// mock (reports-upgrade-mock.ts, started as a webServer below) so onboarding
 // specs exercise the real setup path without hitting the production worker.
 const commerceMockPort = process.env.COMMERCE_MOCK_PORT || "4100";
 const commerceMockOrigin = `http://localhost:${commerceMockPort}`;
@@ -52,7 +52,7 @@ const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
 // by requireDeploymentAdmin first, before that guard runs.
 // Shared internal service bearer for the service-token routes (credential
 // vault, task-board import, commerce-diagnostic share-invite). Kept in sync by
-// hand with the literal in commerce-diagnostic-share.spec.ts (no shared import:
+// hand with the literal in reports-share.spec.ts (no shared import:
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
 const organizationNoticesApiKey = "e2e-organization-notices-api-key";
@@ -112,9 +112,9 @@ export default defineConfig({
   webServer: [
     {
       // Mock commerce-skills upgrade API. Started before the studio server so
-      // COMMERCE_DISCOVERY_SETUP can mint a token over HTTP without reaching
+      // REPORTS_SETUP can mint a token over HTTP without reaching
       // the production worker. Standalone process (no app imports).
-      command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/commerce-upgrade-mock.ts`,
+      command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/reports-upgrade-mock.ts`,
       url: `${commerceMockOrigin}/health`,
       reuseExistingServer: true,
       timeout: 30_000,

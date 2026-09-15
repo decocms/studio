@@ -121,11 +121,11 @@ export const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_BIND,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_CONNECTION_STATUS,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_SET_REPOSITORY,
+  CommerceDiscoveryTools.REPORTS_SETUP,
+  CommerceDiscoveryTools.REPORTS_RUN,
+  CommerceDiscoveryTools.REPORTS_BIND,
+  CommerceDiscoveryTools.REPORTS_CONNECTION_STATUS,
+  CommerceDiscoveryTools.REPORTS_SET_REPOSITORY,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
@@ -311,6 +311,36 @@ export const TOOL_BY_NAME: Map<string, RegistrableTool> = new Map(
 );
 
 /**
+ * Names a tool answered to before it was renamed.
+ *
+ * A tool name is a wire identifier: an external MCP client, a saved harness
+ * config or a stored allowlist can all name one, and a rename in this repo
+ * updates none of them. So the old name keeps RESOLVING while only the current
+ * one is ADVERTISED — hence a second map rather than extra entries in
+ * `TOOL_BY_NAME`, which every listing iterates and would otherwise show each
+ * renamed tool twice (and register it twice on the MCP server).
+ *
+ * Renaming a tool also moves its permission resource; the other half of that is
+ * the renamed tool's own `ctx.access.check(current, legacy)`.
+ *
+ * Entries are removed once the old name has been out of use for a release.
+ */
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  COMMERCE_DISCOVERY_SETUP: "REPORTS_SETUP",
+  COMMERCE_DISCOVERY_RUN: "REPORTS_RUN",
+  COMMERCE_DISCOVERY_BIND: "REPORTS_BIND",
+  COMMERCE_DISCOVERY_CONNECTION_STATUS: "REPORTS_CONNECTION_STATUS",
+};
+
+/** A tool by its current name, or by one it used to answer to. */
+export function resolveToolByName(name: string): RegistrableTool | undefined {
+  const current = TOOL_BY_NAME.get(name);
+  if (current) return current;
+  const renamed = LEGACY_TOOL_NAMES[name];
+  return renamed ? TOOL_BY_NAME.get(renamed) : undefined;
+}
+
+/**
  * An MCP server exposing just the named management tools — no prompts, no brand
  * prompts, no resources.
  *
@@ -332,7 +362,7 @@ export const toolSubsetMCP = (
     },
   );
   for (const toolName of toolNames) {
-    const tool = TOOL_BY_NAME.get(toolName);
+    const tool = resolveToolByName(toolName);
     if (!tool) {
       console.warn(`[${name}] unknown tool "${toolName}" — not registered`);
       continue;

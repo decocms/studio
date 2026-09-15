@@ -2,7 +2,7 @@ import { z } from "zod";
 import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { fetchCommerceDiscoveryConnectionStatus } from "./auth-client";
+import { fetchReportsConnectionStatus } from "./auth-client";
 
 const CommerceDiscoveryStatusInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL of the store to inspect."),
@@ -24,12 +24,12 @@ const CommerceDiscoveryStatusOutputSchema = z.object({
     ),
 });
 
-export const COMMERCE_DISCOVERY_CONNECTION_STATUS = defineTool({
-  name: "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+export const REPORTS_CONNECTION_STATUS = defineTool({
+  name: "REPORTS_CONNECTION_STATUS",
   description:
     "Read per-provider connection status (ga4/gsc/vtex) for the org's store — { connected, via: oauth|sa, resource }. The single source of truth for whether a data source is connected, unifying the OAuth (Studio vault) and shared-SA binding lanes. Read-only.",
   annotations: {
-    title: "Commerce Discovery Connection Status",
+    title: "Reports Connection Status",
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
@@ -41,14 +41,23 @@ export const COMMERCE_DISCOVERY_CONNECTION_STATUS = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
-    await ctx.access.check();
+    /**
+     * Both names, because a tool name IS the permission resource: a stored
+     * grant (an API key's allowlist, a custom role) that named the tool
+     * before it was renamed would otherwise be silently revoked. `check`
+     * grants on the first resource that passes.
+     */
+    await ctx.access.check(
+      "REPORTS_CONNECTION_STATUS",
+      "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+    );
 
     const normalized = normalizeReportsSiteUrl(input.siteUrl);
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }
 
-    return fetchCommerceDiscoveryConnectionStatus({
+    return fetchReportsConnectionStatus({
       siteUrl: normalized.value,
       orgId: organization.id,
     });

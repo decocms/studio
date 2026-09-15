@@ -1,5 +1,5 @@
 /**
- * The repository a Commerce Discovery diagnostic runs against, as the two
+ * The repository a Reports diagnostic runs against, as the two
  * sides of the wire agree on it.
  *
  * Reports used to be handed a bare `owner/name` string on github.com. That

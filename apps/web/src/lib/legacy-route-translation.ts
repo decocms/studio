@@ -27,7 +27,7 @@ import {
 } from "@/layouts/main-panel-tabs/tab-route";
 import {
   isBrandContextSetup,
-  isCommerceDiscoveryAgentId,
+  isReportsAgentId,
   isDecopilot,
   isRetiredStudioPackAgent,
   isSiteDiagnostics,
@@ -205,7 +205,7 @@ export function isCanonicalAgentIdSegment(
     isDecopilot(id) !== null ||
     isBrandContextSetup(id) !== null ||
     isSiteDiagnostics(id) !== null ||
-    isCommerceDiscoveryAgentId(id) !== null ||
+    isReportsAgentId(id) !== null ||
     isStudioPackAgent(id) ||
     isRetiredStudioPackAgent(id)
   );
