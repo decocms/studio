@@ -144,9 +144,30 @@ function invoiceSubscriptionId(
   );
 }
 
-/** The gateway plan id every price in a subscription's items maps to, or
- *  undefined when none of them is a plan price. First match wins: a
- *  subscription carrying one plan price plus add-on prices still resolves. */
+/**
+ * The gateway plan id every price in a subscription's items maps to, or
+ * undefined when none of them is a plan price. First match wins: a
+ * subscription carrying one plan price plus add-on prices still resolves.
+ *
+ * CREDIT LINES ARE SKIPPED, and that is not a refinement — it is the whole
+ * correctness of an upgrade. This also runs over an INVOICE's lines, and the
+ * proration invoice for a tier change carries two of them: a negative credit
+ * for the unused remainder of the price being LEFT, and a positive charge for
+ * the price being MOVED TO. Stripe orders the credit first. Verified on a real
+ * Pro → Ultra upgrade:
+ *
+ *   line[0]  -25000  price=<pro>    proration=true
+ *   line[1] +500000  price=<ultra>  proration=true
+ *
+ * Taking the first match there returns `pro` for an org that just paid R$4750
+ * to be on Ultra — and since that invoice is immediately `paid`, `invoice.paid`
+ * applies it. The org is charged for Ultra and entitled to Pro, and the two
+ * events race closely enough (same second) that the staleness watermark cannot
+ * order them reliably. A line the customer is being CREDITED for is the plan
+ * they are leaving, never the plan they are on.
+ *
+ * Subscription items carry no `amount`, so they are unaffected by the guard.
+ */
 export function planIdForPrices(
   obj: Record<string, unknown>,
   map: Record<string, string>,
@@ -154,6 +175,8 @@ export function planIdForPrices(
   const items = rec(obj.items)?.data;
   if (!Array.isArray(items)) return undefined;
   for (const item of items) {
+    const amount = rec(item)?.amount;
+    if (typeof amount === "number" && amount <= 0) continue;
     const priceId = idOf(rec(item)?.price);
     if (priceId && map[priceId]) return map[priceId];
   }

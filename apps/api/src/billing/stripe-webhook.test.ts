@@ -274,4 +274,61 @@ describe("planIdForStripe", () => {
       planIdForPrices({ items: { data: [{ price: "price_pro" }] } }, MAP),
     ).toBe("pro");
   });
+
+  test("an upgrade's proration invoice resolves to the price being MOVED TO", () => {
+    // The real shape of a Pro -> Ultra proration invoice, captured from a live
+    // test-mode upgrade: Stripe puts the CREDIT for the plan being left first,
+    // the charge for the plan being moved to second. Reading first-match here
+    // returned `pro` for an org that had just paid to be on Ultra — and that
+    // invoice is immediately `paid`, so `invoice.paid` applied the downgrade.
+    const prorationInvoice = {
+      items: {
+        data: [
+          { amount: -25000, price: { id: "price_pro" }, proration: true },
+          { amount: 500000, price: { id: "price_ultra" }, proration: true },
+        ],
+      },
+    };
+    expect(planIdForPrices(prorationInvoice, MAP)).toBe("ultra");
+  });
+
+  test("a downgrade's proration invoice resolves to the cheaper plan, not the credited one", () => {
+    // Ultra -> Pro: the credit is the big number and comes first. Amount size
+    // must not decide this either — only the sign does.
+    const downgrade = {
+      items: {
+        data: [
+          { amount: -500000, price: { id: "price_ultra" }, proration: true },
+          { amount: 25000, price: { id: "price_pro" }, proration: true },
+        ],
+      },
+    };
+    expect(planIdForPrices(downgrade, MAP)).toBe("pro");
+  });
+
+  test("a fully-credited line never names the plan, even alone", () => {
+    // All that is left is what the org is leaving. Naming it would re-grant a
+    // tier the customer is no longer paying for.
+    expect(
+      planIdForPrices(
+        { items: { data: [{ amount: -25000, price: { id: "price_pro" } }] } },
+        MAP,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("a zero-amount line is not a plan either", () => {
+    expect(
+      planIdForPrices(
+        { items: { data: [{ amount: 0, price: { id: "price_pro" } }] } },
+        MAP,
+      ),
+    ).toBeUndefined();
+  });
+
+  test("subscription items still resolve — they carry no amount at all", () => {
+    // The guard must not break the customer.subscription.updated path, whose
+    // items have a price and no `amount` field.
+    expect(planIdForPrices(sub("price_ultra"), MAP)).toBe("ultra");
+  });
 });
