@@ -187,6 +187,8 @@ export async function githubGraphqlRequest<T>(
   }
 
   if (!res.ok) {
+    // Drain the unread body, same as every other discard-and-throw call site here.
+    await res.body?.cancel().catch(() => {});
     throw new Error(`GitHub GraphQL ${args.label} failed: ${res.status}`);
   }
 
