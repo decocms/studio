@@ -131,10 +131,15 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
     }
   };
 
-  return queryClient.getQueryCache().subscribe(() => {
+  const unsubscribe = queryClient.getQueryCache().subscribe(() => {
     if (timer != null) return;
     timer = setTimeout(write, WRITE_DEBOUNCE_MS);
   });
+
+  return () => {
+    if (timer != null) clearTimeout(timer);
+    unsubscribe();
+  };
 }
 
 // --- Active-org cache (user-scoped) -----------------------------------------
