@@ -1,8 +1,7 @@
 /**
- * A/B experiments are scoped by `org_sites` ownership (like Infra Billing and
- * Monitor). Site slugs are globally unique and guessable (public hostnames), so
- * ownership is the only thing between one tenant and another's experiments. This
- * asserts, over the wire:
+ * A/B experiments are scoped to a site the org owns — a project (VIRTUAL
+ * connection) whose resolved slug matches. Ownership is the only thing between
+ * tenants (slugs are guessable public hostnames). Asserts, over the wire:
  *
  *   - the owning org creates + lists + updates + deletes its experiment;
  *   - a duplicate key on the same site is rejected;
@@ -39,6 +38,9 @@ interface ResultsOut {
   results: unknown;
 }
 
+/** Give the org a project (VIRTUAL connection) whose site slug is the returned
+ *  value — that is what `assertOwnsSite` checks (resolveAgentSiteSlug over the
+ *  org's virtual MCPs), NOT `org_sites`. The bare title doubles as the slug. */
 async function seedOwnedSite(
   db: Client,
   orgSlug: string,
@@ -52,9 +54,10 @@ async function seedOwnedSite(
     )
   ).rows[0]!.id;
   await db.query(
-    `INSERT INTO org_sites (slug, organization_id, source, created_by, updated_by)
-     VALUES ($1, $2, 'manual', $3, $3)`,
-    [slug, orgId, userId],
+    `INSERT INTO connections
+       (id, organization_id, created_by, title, connection_type, connection_url)
+     VALUES ($1, $2, $3, $4, 'VIRTUAL', 'virtual://e2e')`,
+    [`conn_${slug}`, orgId, userId, slug],
   );
   return slug;
 }

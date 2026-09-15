@@ -14,6 +14,7 @@ import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { queryExperimentResults } from "../../deco-legacy/experiment-analytics";
+import { assertOwnsSite } from "./ownership";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -104,12 +105,8 @@ export const EXPERIMENT_RESULTS = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-
+    await assertOwnsSite(ctx, organization.id, input.site);
     const slug = input.site.toLowerCase();
-    const owned = await ctx.storage.orgSites.isOwnedBy(slug, organization.id);
-    if (!owned) {
-      throw new Error("Site not found in organization");
-    }
 
     const window =
       input.since && input.until

@@ -1,18 +1,18 @@
 import type { StudioContext } from "../../core/studio-context";
+import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 
 /**
- * Fail unless the org owns the site slug. Experiment rows are already scoped by
- * `organization_id`, so this is not a cross-tenant leak guard — it stops an org
- * from creating/reading experiments for a slug it does not own (which would be
- * meaningless rows), and keeps the CRUD tools consistent with EXPERIMENT_RESULTS.
- * 404-style message, indistinguishable from a non-existent slug.
+ * Fail unless the org owns a project (VIRTUAL connection) whose resolved site
+ * slug is `site` — a Studio site lives in `connections`, not `org_sites`. Guards
+ * EXPERIMENT_RESULTS against reading another tenant's slug-keyed analytics.
  */
 export async function assertOwnsSite(
   ctx: StudioContext,
   organizationId: string,
   site: string,
 ): Promise<void> {
-  const owned = await ctx.storage.orgSites.isOwnedBy(site, organizationId);
+  const vms = await ctx.storage.virtualMcps.list(organizationId);
+  const owned = vms.some((vm) => resolveAgentSiteSlug(vm) === site);
   if (!owned) {
     throw new Error("Site not found in organization");
   }
