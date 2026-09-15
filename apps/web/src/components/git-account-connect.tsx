@@ -319,9 +319,18 @@ function AddAccountDialog({
             onClose={onClose}
           />
         ) : capabilities.isError ? (
-          <p role="alert" className="text-sm text-destructive">
-            {capabilities.error.message}
-          </p>
+          <div className="flex flex-col items-start gap-2">
+            <p role="alert" className="text-sm text-destructive">
+              {t("settings.repositories.failed")}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => capabilities.refetch()}
+            >
+              {t("settings.repositories.tryAgain")}
+            </Button>
+          </div>
         ) : capabilities.isPending ? (
           <div className="flex flex-col gap-2">
             <Skeleton className="h-14 w-full" />
