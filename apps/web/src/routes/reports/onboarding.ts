@@ -15,7 +15,7 @@ export function onboardingUrl(storeUrl: string): string {
   for (const [key, value] of Object.entries(attribution)) {
     if (typeof value === "string") params.set(key, value);
   }
-  return `/commerce-onboarding?${params.toString()}`;
+  return `/reports-onboarding?${params.toString()}`;
 }
 
 export interface ConnectCtaContext {

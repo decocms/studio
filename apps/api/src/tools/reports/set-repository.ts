@@ -1,7 +1,4 @@
-import {
-  getCommerceDiscoveryAgentId,
-  WellKnownOrgMCPId,
-} from "@decocms/shared/sdk";
+import { getReportsAgentId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { splitOwnerName } from "@decocms/shared/git-providers";
 import {
   legacyGithubRepo,
@@ -20,7 +17,7 @@ import {
 import { notifyMcpConfiguration } from "../connection/on-configuration";
 
 /**
- * Point the org's Commerce Discovery diagnostic at one of its repositories.
+ * Point the org's Reports diagnostic at one of its repositories.
  *
  * This is one server-side write because the browser was doing six: read the
  * connection, merge its state, write it back, read the agent, provision a
@@ -112,20 +109,18 @@ export function nextConfigurationState(
   };
 }
 
-async function updateCommerceDiscoveryState(
+async function updateReportsState(
   ctx: StudioContext,
   organizationId: string,
   repository: ReportsRepositoryRef | null,
 ): Promise<void> {
-  const connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(organizationId);
+  const connectionId = WellKnownOrgMCPId.REPORTS(organizationId);
   const connection = await ctx.storage.connections.findById(
     connectionId,
     organizationId,
   );
   if (!connection) {
-    throw new Error(
-      "Commerce Discovery is not set up for this organization yet",
-    );
+    throw new Error("Reports is not set up for this organization yet");
   }
 
   const state = nextConfigurationState(
@@ -154,7 +149,7 @@ async function updateCommerceDiscoveryState(
     );
   } catch (error) {
     console.error(
-      "[commerce-discovery] ON_MCP_CONFIGURATION after repository change failed",
+      "[reports] ON_MCP_CONFIGURATION after repository change failed",
       error,
     );
   }
@@ -166,7 +161,7 @@ async function updateReportAgentBinding(
   userId: string,
   repository: ReportsRepositoryRef | null,
 ): Promise<void> {
-  const agentId = getCommerceDiscoveryAgentId(organizationId);
+  const agentId = getReportsAgentId(organizationId);
   const agent = await ctx.storage.virtualMcps.findById(agentId, organizationId);
   if (!agent) return;
 
@@ -186,12 +181,12 @@ async function updateReportAgentBinding(
   });
 }
 
-export const COMMERCE_DISCOVERY_SET_REPOSITORY = defineTool({
-  name: "COMMERCE_DISCOVERY_SET_REPOSITORY",
+export const REPORTS_SET_REPOSITORY = defineTool({
+  name: "REPORTS_SET_REPOSITORY",
   description:
-    "Point the organization's Commerce Discovery diagnostic at one of its linked repositories, or unlink the current one. Works for GitHub, GitLab and Bitbucket.",
+    "Point the organization's Reports diagnostic at one of its linked repositories, or unlink the current one. Works for GitHub, GitLab and Bitbucket.",
   annotations: {
-    title: "Set Commerce Discovery Repository",
+    title: "Set Reports Repository",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
@@ -237,7 +232,7 @@ export const COMMERCE_DISCOVERY_SET_REPOSITORY = defineTool({
      * heard about. The agent binding is the cosmetic half — tabs and clone —
      * and can safely be a moment behind.
      */
-    await updateCommerceDiscoveryState(ctx, organization.id, repository);
+    await updateReportsState(ctx, organization.id, repository);
     await updateReportAgentBinding(ctx, organization.id, userId, repository);
 
     return { repository };

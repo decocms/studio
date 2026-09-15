@@ -1231,6 +1231,6 @@ export function isStudioOwnedConnection(
     WellKnownOrgMCPId.REGISTRY,
     WellKnownOrgMCPId.COMMUNITY_REGISTRY,
     WellKnownOrgMCPId.DEV_ASSETS,
-    WellKnownOrgMCPId.COMMERCE_DISCOVERY,
+    WellKnownOrgMCPId.REPORTS,
   ].some((id) => id(organizationId) === connectionId);
 }

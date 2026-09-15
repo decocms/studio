@@ -39,7 +39,7 @@ const ORG_DONE = "org_215_done";
 /** Its `github_repo` is not `owner/name`, and its agent metadata is not JSON. */
 const ORG_BROKEN = "org_215_broken";
 
-describe("215 commerce discovery repository", () => {
+describe("215 reports repository", () => {
   let database: StudioDatabase;
 
   const rows = async <T>(q: string): Promise<T[]> =>

@@ -56,7 +56,7 @@ export function getApiKeyOrganizationBinding(ctx: StudioContext): {
 
 /**
  * The exhaustive list of service-token routes that resolve the org by ID —
- * their machine caller (commerce-discovery) holds the org id, not the slug.
+ * their machine caller (reports) holds the org id, not the slug.
  * One entry per route, as the path segments AFTER `/api/:org` (`"*"` matches
  * exactly one dynamic segment). Every other route stays slug-only so a slug
  * that happens to equal another org's id can never cause cross-org resolution

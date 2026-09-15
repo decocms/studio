@@ -82,81 +82,51 @@ export const KEYS = {
   // domain at once, e.g. after an in-place login unlocks the full deck.
   reportAll: (domain: string) => ["report", domain] as const,
 
-  commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "connection", orgId, connectionId] as const,
+  reportsConnection: (orgId: string, connectionId: string) =>
+    ["reports", "connection", orgId, connectionId] as const,
   // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
   // keyed per org + connection so a credential rotation forces a fresh fetch.
-  commerceDiscoveryDiagnostic: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "diagnostic", orgId, connectionId] as const,
-  commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
-    ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
+  reportsDiagnostic: (orgId: string, connectionId: string) =>
+    ["reports", "diagnostic", orgId, connectionId] as const,
+  reportsVirtualMcp: (orgId: string, virtualMcpId: string) =>
+    ["reports", "virtual-mcp", orgId, virtualMcpId] as const,
 
-  // Commerce companion discovery (Commerce Discovery's live config schema,
+  // Commerce companion discovery (Reports's live config schema,
   // candidate connections satisfying a binding, and the registry batch).
-  commerceDiscoveryCompanionSchema: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-schema", orgId, connectionId] as const,
-  commerceDiscoveryCompanionConnections: (orgId: string, key: string) =>
-    ["commerce-discovery", "companion-connections", orgId, key] as const,
+  reportsCompanionSchema: (orgId: string, connectionId: string) =>
+    ["reports", "companion-schema", orgId, connectionId] as const,
+  reportsCompanionConnections: (orgId: string, key: string) =>
+    ["reports", "companion-connections", orgId, key] as const,
   // Prefix for every companion-connections query in an org, regardless of the
   // requirements-signature `key`. Use with invalidateQueries to refetch all
   // variants after a connection is created/linked/updated.
-  commerceDiscoveryCompanionConnectionsPrefix: (orgId: string) =>
-    ["commerce-discovery", "companion-connections", orgId] as const,
-  commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
-    ["commerce-discovery", "companion-registry", orgId, key] as const,
-  commerceDiscoveryCompanionOAuthStatus: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-oauth-status",
-      orgId,
-      connectionId,
-    ] as const,
-  commerceDiscoveryCompanionGaProperties: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-ga-properties",
-      orgId,
-      connectionId,
-    ] as const,
-  commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  reportsCompanionConnectionsPrefix: (orgId: string) =>
+    ["reports", "companion-connections", orgId] as const,
+  reportsCompanionRegistry: (orgId: string, key: string) =>
+    ["reports", "companion-registry", orgId, key] as const,
+  reportsCompanionOAuthStatus: (orgId: string, connectionId: string) =>
+    ["reports", "companion-oauth-status", orgId, connectionId] as const,
+  reportsCompanionGaProperties: (orgId: string, connectionId: string) =>
+    ["reports", "companion-ga-properties", orgId, connectionId] as const,
+  reportsCompanionGscSites: (orgId: string, connectionId: string) =>
+    ["reports", "companion-gsc-sites", orgId, connectionId] as const,
   // GitHub repo picker: repos matching a server-side search (empty = default
   // page) for the companion connection. Keyed by query so each search term is
   // cached independently.
-  commerceDiscoveryCompanionGithubRepos: (
+  reportsCompanionGithubRepos: (
     orgId: string,
     connectionId: string,
     query: string,
   ) =>
-    [
-      "commerce-discovery",
-      "companion-github-repos",
-      orgId,
-      connectionId,
-      query,
-    ] as const,
-  // The repo currently selected on the Commerce Discovery connection
+    ["reports", "companion-github-repos", orgId, connectionId, query] as const,
+  // The repo currently selected on the Reports connection
   // (github_repo), read once for prefill — independent of the search query.
-  commerceDiscoveryCompanionGithubSelected: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-github-selected",
-      orgId,
-      connectionId,
-    ] as const,
-  // Per-(org, siteUrl) connection status from commerce-discovery — the single
+  reportsCompanionGithubSelected: (orgId: string, connectionId: string) =>
+    ["reports", "companion-github-selected", orgId, connectionId] as const,
+  // Per-(org, siteUrl) connection status from reports — the single
   // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
-  commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
-    ["commerce-discovery", "connection-status", orgId, siteUrl] as const,
+  reportsConnectionStatus: (orgId: string, siteUrl: string) =>
+    ["reports", "connection-status", orgId, siteUrl] as const,
 
   connectionActivity: (
     connectionId: string,

@@ -22,7 +22,7 @@ import { type RepositoryRecord, repoRefOf } from "@/storage/repositories";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
 /**
- * Internal repository reads — a trusted machine service (commerce-discovery's
+ * Internal repository reads — a trusted machine service (reports's
  * diagnostic worker) reads a repository's history and shape THROUGH Studio,
  * instead of leasing a git token and talking to the provider itself.
  *

@@ -52,7 +52,7 @@ describe("isStudioOwnedConnection", () => {
     ["registry", WellKnownOrgMCPId.REGISTRY],
     ["community registry", WellKnownOrgMCPId.COMMUNITY_REGISTRY],
     ["dev assets", WellKnownOrgMCPId.DEV_ASSETS],
-    ["commerce discovery", WellKnownOrgMCPId.COMMERCE_DISCOVERY],
+    ["reports", WellKnownOrgMCPId.REPORTS],
   ])("excludes the %s connection", (_name, wellKnownId) => {
     expect(isStudioOwnedConnection(orgId, wellKnownId(orgId))).toBe(true);
   });

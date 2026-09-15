@@ -4,7 +4,7 @@
  * A composer then the feed, in the org home's column. */
 import { Suspense } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import { CommerceReportBanner } from "@/components/home/commerce-report-banner";
+import { ReportBanner } from "@/components/home/report-banner";
 import { NewTaskComposer } from "@/components/org-home/new-task-composer";
 import {
   ProjectFeed,
@@ -29,7 +29,7 @@ export function OverviewTab() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex max-w-[720px] flex-col gap-8 px-6 py-8">
-        <CommerceReportBanner />
+        <ReportBanner />
         <NewTaskComposer />
         <Suspense
           fallback={

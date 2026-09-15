@@ -10,7 +10,7 @@
  * Black-box: the studio server reaches this over HTTP only — no app imports.
  * Uses `node:http` (NOT `Bun.serve`) so it typechecks under the suite's Node
  * types and runs under either node or bun (same rationale as
- * commerce-upgrade-mock.ts).
+ * reports-upgrade-mock.ts).
  *
  * Git model (per "owner/repo"):
  *   - blobs:   content-addressed utf-8 strings

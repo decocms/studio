@@ -1,5 +1,5 @@
-export { COMMERCE_DISCOVERY_BIND } from "./bind";
-export { COMMERCE_DISCOVERY_CONNECTION_STATUS } from "./status";
-export { COMMERCE_DISCOVERY_RUN } from "./run";
-export { COMMERCE_DISCOVERY_SET_REPOSITORY } from "./set-repository";
-export { COMMERCE_DISCOVERY_SETUP } from "./setup";
+export { REPORTS_BIND } from "./bind";
+export { REPORTS_CONNECTION_STATUS } from "./status";
+export { REPORTS_RUN } from "./run";
+export { REPORTS_SET_REPOSITORY } from "./set-repository";
+export { REPORTS_SETUP } from "./setup";

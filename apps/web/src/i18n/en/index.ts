@@ -29,7 +29,7 @@ import { discover } from "./discover.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { common } from "./common.ts";
-import { commerceOnboarding } from "./commerce-onboarding.ts";
+import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
 import { chat } from "./chat.ts";
@@ -76,7 +76,7 @@ export const en = {
   ...commandPalette,
   ...connections,
   ...common,
-  ...commerceOnboarding,
+  ...reportsOnboarding,
   ...collections,
   ...chooseEditor,
   ...chat,
