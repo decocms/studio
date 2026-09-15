@@ -83,4 +83,10 @@ describe("serializeRunMetadataHeader", () => {
     const oversized = { note: "x".repeat(9 * 1024) };
     expect(serializeRunMetadataHeader(oversized)).toBeNull();
   });
+
+  test("drops metadata whose byte size exceeds the cap despite a smaller UTF-16 length", () => {
+    // 3000 4-byte emoji: ~12KB in bytes, under 8K in UTF-16 code units.
+    const oversized = { note: "\u{1F600}".repeat(3000) };
+    expect(serializeRunMetadataHeader(oversized)).toBeNull();
+  });
 });

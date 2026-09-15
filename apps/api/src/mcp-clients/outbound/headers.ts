@@ -53,7 +53,9 @@ export function serializeRunMetadataHeader(
 ): string | null {
   if (!runMetadata || Object.keys(runMetadata).length === 0) return null;
   const serialized = JSON.stringify(runMetadata);
-  return serialized.length > MAX_RUN_METADATA_HEADER_BYTES ? null : serialized;
+  // Cap is in bytes, not UTF-16 code units, so measure the encoded size.
+  const byteLength = new TextEncoder().encode(serialized).length;
+  return byteLength > MAX_RUN_METADATA_HEADER_BYTES ? null : serialized;
 }
 
 /**
