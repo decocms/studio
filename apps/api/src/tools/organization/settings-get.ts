@@ -26,6 +26,7 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).nullable().optional(),
     enabled_plugins: z.array(z.string()).nullable().optional(),
+    coding_agent_mcp_excluded: z.array(z.string()).nullable().optional(),
     registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
