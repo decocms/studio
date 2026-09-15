@@ -148,15 +148,35 @@ export const GLOBAL_SEARCH = defineTool({
     const items: z.infer<typeof SearchResultSchema>[] = [];
     let totalCount = 0;
 
-    if (includeThreads) {
-      const { threads, total } = await ctx.storage.threads.list(undefined, {
-        limit,
-        offset: 0,
-        search: normalizeSearchQuery(input.query),
-        includeArchived: false,
-      });
-      totalCount += total;
-      for (const thread of threads) {
+    // Three independent lookups, run concurrently instead of one-at-a-time.
+    const [threadsResult, tasksResult, connectionsResult] = await Promise.all([
+      includeThreads
+        ? ctx.storage.threads.list(undefined, {
+            limit,
+            offset: 0,
+            search: normalizeSearchQuery(input.query),
+            includeArchived: false,
+          })
+        : null,
+      includeTasks
+        ? ctx.storage.taskBoard.searchByTitle(
+            organization.id,
+            normalizeSearchQuery(input.query) ?? "",
+            limit,
+          )
+        : null,
+      includeConnections
+        ? ctx.storage.connections.searchByTitle(
+            organization.id,
+            normalizeSearchQuery(input.query) ?? "",
+            limit,
+          )
+        : null,
+    ]);
+
+    if (threadsResult) {
+      totalCount += threadsResult.total;
+      for (const thread of threadsResult.threads) {
         items.push({
           type: "thread",
           id: thread.id,
@@ -174,17 +194,9 @@ export const GLOBAL_SEARCH = defineTool({
       }
     }
 
-    if (includeTasks) {
-      /** An empty query is the documented "most recently updated" case: an
-       *  empty term matches every title, and the storage query already orders
-       *  by `updated_at desc` under the same limit. */
-      const tasks = await ctx.storage.taskBoard.searchByTitle(
-        organization.id,
-        normalizeSearchQuery(input.query) ?? "",
-        limit,
-      );
-      totalCount += tasks.length;
-      for (const task of tasks) {
+    if (tasksResult) {
+      totalCount += tasksResult.length;
+      for (const task of tasksResult) {
         items.push({
           type: "task",
           id: task.id,
@@ -201,16 +213,9 @@ export const GLOBAL_SEARCH = defineTool({
       }
     }
 
-    if (includeConnections) {
-      /** Same empty-query contract as tasks: no term means "most recently
-       *  updated", which the storage query already orders by. */
-      const connections = await ctx.storage.connections.searchByTitle(
-        organization.id,
-        normalizeSearchQuery(input.query) ?? "",
-        limit,
-      );
-      totalCount += connections.length;
-      for (const connection of connections) {
+    if (connectionsResult) {
+      totalCount += connectionsResult.length;
+      for (const connection of connectionsResult) {
         items.push({
           type: "connection",
           id: connection.id,

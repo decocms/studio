@@ -405,3 +405,95 @@ test.describe("Git providers: tenancy", () => {
     expect(rows[0]?.organization_id).toBe(victimOrgId);
   });
 });
+
+test.describe("Git providers: connect permission", () => {
+  let db: Client;
+
+  test.beforeAll(async () => {
+    db = await connectDevDb();
+  });
+
+  test.afterAll(async () => {
+    await db.end();
+  });
+
+  /**
+   * The GitHub connect/install starters gate behind `GIT_ACCOUNT_CONNECT_TOKEN`
+   * (apps/api/src/api/routes/git-providers.ts); the GitLab and Bitbucket OAuth
+   * starters must too — a member on a role that doesn't grant it must not be
+   * able to link an org-wide git credential just by being a member.
+   */
+  test("a member without GIT_ACCOUNT_CONNECT_TOKEN cannot start GitLab or Bitbucket OAuth", async ({
+    playwright,
+  }) => {
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("org not found after signup");
+
+    // A custom role with NO permissions at all.
+    const roleSlug = `restricted-connect-${Date.now()}-${Math.floor(
+      Math.random() * 1e6,
+    )}`;
+    const createRole = await ownerCtx.post(
+      "/api/auth/organization/create-role",
+      { data: { organizationId: orgId, role: roleSlug, permission: {} } },
+    );
+    expect(
+      createRole.ok(),
+      `create-role failed: ${await createRole.text().catch(() => "")}`,
+    ).toBe(true);
+
+    const memberCtx = await newApiContext(playwright);
+    const member = await signUpViaApi(memberCtx);
+    const invite = await ownerCtx.post("/api/auth/organization/invite-member", {
+      data: { organizationId: orgId, email: member.email, role: "user" },
+    });
+    expect(invite.ok()).toBe(true);
+    const inviteJson = (await invite.json()) as {
+      id?: string;
+      invitation?: { id?: string };
+    };
+    const invitationId = inviteJson.id ?? inviteJson.invitation?.id;
+    const accept = await memberCtx.post(
+      "/api/auth/organization/accept-invitation",
+      { data: { invitationId } },
+    );
+    expect(
+      accept.ok(),
+      `accept-invitation failed: ${await accept.text().catch(() => "")}`,
+    ).toBe(true);
+
+    const memberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [member.userId, orgId],
+    );
+    const memberId = memberRow.rows[0]?.id;
+    if (!memberId) throw new Error("member row not found after accept");
+    const assign = await ownerCtx.post(
+      "/api/auth/organization/update-member-role",
+      { data: { organizationId: orgId, memberId, role: [roleSlug] } },
+    );
+    expect(
+      assign.ok(),
+      `update-member-role failed: ${await assign.text().catch(() => "")}`,
+    ).toBe(true);
+
+    for (const provider of ["gitlab", "bitbucket"]) {
+      const res = await memberCtx.get(
+        `/api/${owner.orgSlug}/git-providers/${provider}/connect`,
+        { maxRedirects: 0 },
+      );
+      // Denied before ever reaching the OAuth redirect.
+      expect(res.status(), `${provider} connect status`).toBeGreaterThanOrEqual(
+        400,
+      );
+      const body = await res.text();
+      expect(body).toMatch(/access denied/i);
+    }
+  });
+});

@@ -1,5 +1,5 @@
 export function BitbucketIcon({
-  size,
+  size = 24,
   className,
 }: {
   size?: number;

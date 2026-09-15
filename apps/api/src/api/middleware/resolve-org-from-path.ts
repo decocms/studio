@@ -67,6 +67,13 @@ const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
   ["vault", "connections", "*", "configuration"],
   ["internal", "task-board", "import"],
   ["internal", "commerce-diagnostic", "share-invite"],
+  ["internal", "organization-notices"],
+  ["internal", "repositories", "resolve"],
+  ["internal", "repositories", "*", "tree"],
+  ["internal", "repositories", "*", "file"],
+  ["internal", "repositories", "*", "search"],
+  ["internal", "repositories", "*", "change-requests"],
+  ["internal", "repositories", "*", "commits"],
 ];
 
 /**

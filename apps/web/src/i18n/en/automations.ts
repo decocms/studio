@@ -187,4 +187,8 @@ export const automations = {
   "automations.webhookSecretDialog.tokenInUrl": "Token in URL",
   "automations.webhookSecretDialog.tokenLabel": "Token (shown once)",
   "automations.webhookSecretDialog.url": "URL",
+  "automations.setupRequired.title": "Setup required",
+  "automations.setupRequired.description":
+    "Automations are not available yet. Please complete the MCP Studio setup first.",
+  "automations.setupRequired.goToSetup": "Go to setup",
 } as const;

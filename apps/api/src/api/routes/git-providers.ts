@@ -364,6 +364,7 @@ export const createGitProviderRoutes = () => {
   app.get("/git-providers/gitlab/connect", async (c) => {
     const ctx = c.get("studioContext");
     if (!ctx.auth.user) return c.json({ error: "Unauthorized" }, 401);
+    await ctx.access.check("GIT_ACCOUNT_CONNECT_TOKEN");
     const config = readGitlabOAuthConfig();
     const host = (c.req.query("host") ?? config?.host ?? "gitlab.com")
       .trim()
@@ -395,6 +396,7 @@ export const createGitProviderRoutes = () => {
   app.get("/git-providers/bitbucket/connect", async (c) => {
     const ctx = c.get("studioContext");
     if (!ctx.auth.user) return c.json({ error: "Unauthorized" }, 401);
+    await ctx.access.check("GIT_ACCOUNT_CONNECT_TOKEN");
     const config = readBitbucketOAuthConfig();
     if (!config) {
       return c.json(

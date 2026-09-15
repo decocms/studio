@@ -10,6 +10,7 @@ import { QueryClient, dehydrate } from "@tanstack/react-query";
 import {
   clearPersistedQueryCache,
   hydrateQueryClient,
+  persistQueryClient,
   readCachedOrg,
   wasOrgCacheRestored,
   writeCachedOrg,
@@ -148,6 +149,20 @@ describe("readCachedOrg/writeCachedOrg", () => {
 
     const raw = localStorageStub.getItem(key);
     expect(Object.keys(JSON.parse(raw ?? "{}"))).toEqual(["fresh"]);
+  });
+});
+
+describe("persistQueryClient", () => {
+  test("cancels a pending debounced write once unsubscribed", async () => {
+    const queryClient = new QueryClient();
+    const unsubscribe = persistQueryClient(queryClient);
+
+    queryClient.setQueryData(["publicConfig"], { theme: "dark" });
+    unsubscribe();
+
+    // The debounced write would have fired by now had it not been cancelled.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(localStorageStub.getItem("studio:rq-cache")).toBeNull();
   });
 });
 

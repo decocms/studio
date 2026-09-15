@@ -277,7 +277,7 @@ function AccountsSection({
   return (
     <SettingsSection
       title={t("settings.repositories.accountsTitle")}
-      headerClassName="flex-col items-start [&>div]:max-w-full"
+      headerClassName="flex-col items-start [&>div]:w-full"
       description={t("settings.repositories.accountsDescription")}
       actions={rows.length > 0 ? <GitAccountConnect /> : null}
     >

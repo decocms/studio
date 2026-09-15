@@ -4,10 +4,9 @@
  * This barrel is the ONLY entry point the rest of the API should import. The
  * layout under it is deliberate:
  *
- * - `types.ts`, `content.ts`, `change-requests.ts` — the contracts. Three,
- *   because the three things Studio does with a repository (hold an account
- *   for it, read and write its files, propose and land changes) have genuinely
- *   different shapes and different callers.
+ * - `types.ts`, `content.ts`, `change-requests.ts`, `insights.ts` — the four
+ *   contracts, one per thing Studio does with a repository: hold an account,
+ *   read and write files, propose and land changes, measure history.
  * - `credentials.ts` — which credential reaches which repository. Neutral.
  * - `clients.ts` — the composition root, and the one module that knows both
  *   providers exist.
@@ -33,6 +32,7 @@
 export * from "./types";
 export * from "./content";
 export * from "./change-requests";
+export * from "./insights";
 export * from "./credentials";
 export * from "./clients";
 export * from "./capabilities";

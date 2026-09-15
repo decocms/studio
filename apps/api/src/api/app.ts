@@ -112,6 +112,10 @@ import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import { createEditorResolveRoutes } from "./routes/editor-resolve";
+import {
+  ORGANIZATION_NOTICES_API_PREFIX,
+  createOrganizationNoticeSiteResolutionRoutes,
+} from "./routes/organization-notices-service";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
@@ -2222,10 +2226,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
-  // Resolve the org from the URL before serving so the stable URL cannot drift
-  // to the session-active org when the path targets a different org.
-  app.use("/api/:org/files/*", resolveOrgFromPath);
+  // Stable file redirect endpoint; org resolution for this path is already registered above with decopilot/v1.
   app.route("/api", filesRoutes);
 
   // Thread outputs (model-shared files surfaced as download chips in the chat)
@@ -2343,6 +2344,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   // admin surface. The `_` prefix just keeps well-behaved slugs from ever
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
+
+  // Cross-org site ownership lookup for the organization-notices service.
+  // Registered before the /api/:org catch-all under a static prefix.
+  app.route(
+    ORGANIZATION_NOTICES_API_PREFIX,
+    createOrganizationNoticeSiteResolutionRoutes(),
+  );
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());

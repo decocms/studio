@@ -67,6 +67,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.dnsAwaiting": "Awaiting DNS",
   "mainPanelTabs.hostingTab.dnsCopy": "Copy value",
   "mainPanelTabs.hostingTab.dnsCopied": "Copied",
+  "mainPanelTabs.hostingTab.dnsCopyError": "Couldn't copy to clipboard",
   "mainPanelTabs.hostingTab.notConnectedTitle": "Hosting isn't connected yet",
   "mainPanelTabs.hostingTab.notConnectedDescription":
     "This site's hosting data will appear here once the control-plane connection is configured.",

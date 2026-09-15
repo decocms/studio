@@ -10,8 +10,7 @@
  *   - Toolbar.TogglesSlot   — tasks/chat toggle buttons
  *   - Toolbar.RightSlot     — right-side actions (e.g. Create PR)
  *
- * Consumers render into the slots via <Toolbar.Center> / <Toolbar.Tabs> /
- * <Toolbar.Toggles> / <Toolbar.Right> (createPortal). Never suspends itself.
+ * Consumers render into the slots via <Toolbar.Tabs> / <Toolbar.Toggles> / <Toolbar.Right> (createPortal). Never suspends itself.
  */
 
 import {
@@ -118,12 +117,6 @@ function ToolbarCenterSlot() {
   );
 }
 
-function ToolbarCenter({ children }: { children: ReactNode }) {
-  const { centerEl } = useToolbarCtx();
-  if (!centerEl) return null;
-  return createPortal(children, centerEl);
-}
-
 function ToolbarTabsSlot({ className }: { className?: string }) {
   const { setTabsEl } = useToolbarCtx();
   return (
@@ -163,7 +156,6 @@ Toolbar.Header = ToolbarHeader;
 Toolbar.LeftColumn = ToolbarLeftColumn;
 Toolbar.RightColumn = ToolbarRightColumn;
 Toolbar.CenterSlot = ToolbarCenterSlot;
-Toolbar.Center = ToolbarCenter;
 Toolbar.TabsSlot = ToolbarTabsSlot;
 Toolbar.Tabs = ToolbarTabs;
 Toolbar.TogglesSlot = ToolbarTogglesSlot;

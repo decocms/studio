@@ -195,7 +195,12 @@ export function SessionStats({
             onOpenContextPanel ? "cursor-pointer" : "cursor-default",
           )}
         >
-          <svg width={RING_SIZE} height={RING_SIZE} className="-rotate-90">
+          <svg
+            width={RING_SIZE}
+            height={RING_SIZE}
+            className="-rotate-90"
+            aria-hidden="true"
+          >
             <circle
               cx={RING_SIZE / 2}
               cy={RING_SIZE / 2}

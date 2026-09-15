@@ -75,8 +75,6 @@ interface RowMeta {
   kind: RowKind;
   /** The org or project the verb names. */
   label: string;
-  /** Set when leaving the current org — the strip says so. */
-  leaves?: string;
 }
 
 /** A group heading with the create affordance for that group on its right.
@@ -159,12 +157,6 @@ function VerbStrip({
   return (
     <div className="border-t border-border px-3 py-2 text-xs text-warning">
       {t("sidebar.picker.verbTravel", { name: meta.label })}
-      {meta.leaves && (
-        <span className="text-muted-foreground">
-          {" "}
-          {t("sidebar.picker.verbLeaves", { name: meta.leaves })}
-        </span>
-      )}
     </div>
   );
 }
@@ -330,7 +322,6 @@ function PickerContent({
                     key={`${hit.orgSlug}:${hit.id}`}
                     hit={hit}
                     currentOrgSlug={org.slug}
-                    currentOrgName={org.name}
                     scopeId={scopeId}
                     rows={rows}
                     onScope={scopeTo}
@@ -349,7 +340,6 @@ function PickerContent({
                     key={candidate.id}
                     candidate={candidate}
                     currentOrgSlug={org.slug}
-                    currentOrgName={org.name}
                     rows={rows}
                     onTravel={travelTo}
                     onClose={onClose}
@@ -433,7 +423,6 @@ function PickerContent({
                   key={candidate.id}
                   candidate={candidate}
                   currentOrgSlug={org.slug}
-                  currentOrgName={org.name}
                   rows={rows}
                   onTravel={travelTo}
                   onClose={onClose}
@@ -452,18 +441,16 @@ function PickerContent({
 /** One organization row, shared by both modes so an org reads the same whether
  *  you browsed to it or searched for it. Registers its verb in `rows` as a
  *  side effect of render, exactly like `SearchHitRow` — the current org SCOPEs
- *  (a no-op that just closes), every other org TRAVELs and says what it leaves. */
+ *  (a no-op that just closes), every other org TRAVELs. */
 function OrgRow({
   candidate,
   currentOrgSlug,
-  currentOrgName,
   rows,
   onTravel,
   onClose,
 }: {
   candidate: PickerOrg;
   currentOrgSlug: string;
-  currentOrgName: string;
   rows: Map<string, RowMeta>;
   onTravel: (slug: string) => void;
   onClose: () => void;
@@ -473,7 +460,6 @@ function OrgRow({
   rows.set(value, {
     kind: isCurrent ? "scope" : "travel",
     label: candidate.name,
-    ...(isCurrent ? {} : { leaves: currentOrgName }),
   });
   return (
     <CommandItem
@@ -494,7 +480,6 @@ function OrgRow({
 function SearchHitRow({
   hit,
   currentOrgSlug,
-  currentOrgName,
   scopeId,
   rows,
   onScope,
@@ -502,7 +487,6 @@ function SearchHitRow({
 }: {
   hit: ProjectSearchHit;
   currentOrgSlug: string;
-  currentOrgName: string;
   scopeId: string | null;
   rows: Map<string, RowMeta>;
   onScope: (id: string) => void;
@@ -516,7 +500,6 @@ function SearchHitRow({
   rows.set(value, {
     kind: isHere ? "scope" : "travel",
     label: hit.title,
-    leaves: isHere ? undefined : currentOrgName,
   });
 
   return (

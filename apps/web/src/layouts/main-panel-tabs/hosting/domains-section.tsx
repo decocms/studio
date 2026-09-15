@@ -28,7 +28,13 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
-import { errorText, mutateJson, type DnsRecord, type Domain } from "./api";
+import {
+  errorText,
+  mutateJson,
+  validateHostname,
+  type DnsRecord,
+  type Domain,
+} from "./api";
 import { DomainDnsPanel } from "./dns-panel";
 import {
   ConfirmDeleteDialog,
@@ -131,6 +137,11 @@ export function DomainsSection({
     const host = formHost.trim().toLowerCase();
     if (!host) {
       toast.error(t("mainPanelTabs.hostingTab.errorDomainHostRequired"));
+      return;
+    }
+    const validationError = validateHostname(host);
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
     putMutation.mutate({ host });
