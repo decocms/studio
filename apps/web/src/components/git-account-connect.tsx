@@ -197,6 +197,8 @@ export function GitAccountConnect({
           size="sm"
           disabled={disabled}
           onClick={open}
+          // Without this the name is the title AND the description read together.
+          aria-label={t("settings.repositories.addAccount")}
           className="w-full h-auto justify-start gap-3 rounded-none px-4 py-3 hover:bg-accent"
         >
           <span className="size-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -261,41 +263,42 @@ function AddAccountDialog({
     onStage({ name: "method", provider });
   }
 
-  if (stage.name === "token") {
-    // Back to where the user came from; a skipped stage is a dead end.
-    const provider = stage.provider;
-    return (
-      <TokenConnectDialog
-        provider={provider}
-        onBack={() =>
-          onStage(
-            methodsFor(provider, capabilities.data, connectUrl).length > 1
-              ? { name: "method", provider }
-              : { name: "provider" },
-          )
-        }
-        onClose={onClose}
-      />
+  // Back to where the user came from; a skipped stage is a dead end.
+  const back = (provider: TokenProvider) =>
+    onStage(
+      methodsFor(provider, capabilities.data, connectUrl).length > 1
+        ? { name: "method", provider }
+        : { name: "provider" },
     );
-  }
+
+  const title =
+    stage.name === "token"
+      ? t(TOKEN_COPY[stage.provider].title)
+      : stage.name === "method"
+        ? t(PROVIDER_COPY[stage.provider].label)
+        : t("settings.repositories.addAccountTitle");
+  const description =
+    stage.name === "token"
+      ? t(TOKEN_COPY[stage.provider].description)
+      : stage.name === "method"
+        ? t("settings.repositories.chooseMethodDescription")
+        : t("settings.repositories.addAccountDescription");
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {stage.name === "provider"
-              ? t("settings.repositories.addAccountTitle")
-              : t(PROVIDER_COPY[stage.provider].label)}
-          </DialogTitle>
-          <DialogDescription>
-            {stage.name === "provider"
-              ? t("settings.repositories.addAccountDescription")
-              : t("settings.repositories.chooseMethodDescription")}
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        {capabilities.isError ? (
+        {stage.name === "token" ? (
+          <TokenForm
+            provider={stage.provider}
+            onBack={() => back(stage.provider)}
+            onClose={onClose}
+          />
+        ) : capabilities.isError ? (
           <p role="alert" className="text-sm text-destructive">
             {capabilities.error.message}
           </p>
@@ -448,7 +451,8 @@ function OptionRow({
   );
 }
 
-function TokenConnectDialog({
+/** The token stage's body, rendered inside the flow's one dialog. */
+function TokenForm({
   provider,
   onBack,
   onClose,
@@ -495,99 +499,84 @@ function TokenConnectDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t(copy.title)}</DialogTitle>
-          <DialogDescription>{t(copy.description)}</DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-3">
-          {copy.askHost && (
-            <Field
-              id={`${provider}-host`}
-              label={t("settings.repositories.tokenHostLabel")}
-              value={host}
-              onChange={setHost}
-              placeholder={t("settings.repositories.tokenHostPlaceholder")}
-            />
-          )}
-          {copy.askWorkspace && (
-            <Field
-              id={`${provider}-workspace`}
-              label={t("settings.repositories.tokenWorkspaceLabel")}
-              value={workspace}
-              onChange={setWorkspace}
-              placeholder={t("settings.repositories.tokenWorkspacePlaceholder")}
-              hint={t("settings.repositories.tokenWorkspaceHint")}
-            />
-          )}
-          {copy.askProject && (
-            <Field
-              id={`${provider}-project`}
-              label={t("settings.repositories.tokenProjectLabel")}
-              value={project}
-              onChange={setProject}
-              placeholder={t("settings.repositories.tokenProjectPlaceholder")}
-              hint={t("settings.repositories.tokenProjectHint")}
-            />
-          )}
-
-          <div className="rounded-lg border border-border/60 bg-muted/40 p-3 flex flex-col gap-2">
-            <p className="text-xs font-medium">
-              {t("settings.repositories.tokenStepsTitle")}
-            </p>
-            <ol className="flex flex-col gap-1 list-decimal pl-4 text-xs text-muted-foreground">
-              {copy.steps.map((step) => (
-                <li key={step}>{t(step)}</li>
-              ))}
-            </ol>
-            {providerPage && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-start"
-                asChild
-              >
-                <a href={providerPage} target="_blank" rel="noreferrer">
-                  <LinkExternal01 size={14} />
-                  {t("settings.repositories.openProvider")}
-                </a>
-              </Button>
-            )}
-          </div>
-
+    <>
+      <div className="flex flex-col gap-3">
+        {copy.askHost && (
           <Field
-            id={`${provider}-token`}
-            label={t("settings.repositories.tokenLabel")}
-            value={token}
-            onChange={setToken}
-            placeholder={t(copy.placeholder)}
-            type="password"
+            id={`${provider}-host`}
+            label={t("settings.repositories.tokenHostLabel")}
+            value={host}
+            onChange={setHost}
+            placeholder={t("settings.repositories.tokenHostPlaceholder")}
           />
+        )}
+        {copy.askWorkspace && (
+          <Field
+            id={`${provider}-workspace`}
+            label={t("settings.repositories.tokenWorkspaceLabel")}
+            value={workspace}
+            onChange={setWorkspace}
+            placeholder={t("settings.repositories.tokenWorkspacePlaceholder")}
+            hint={t("settings.repositories.tokenWorkspaceHint")}
+          />
+        )}
+        {copy.askProject && (
+          <Field
+            id={`${provider}-project`}
+            label={t("settings.repositories.tokenProjectLabel")}
+            value={project}
+            onChange={setProject}
+            placeholder={t("settings.repositories.tokenProjectPlaceholder")}
+            hint={t("settings.repositories.tokenProjectHint")}
+          />
+        )}
+
+        <div className="rounded-lg border border-border/60 bg-muted/40 p-3 flex flex-col gap-2">
+          <p className="text-xs font-medium">
+            {t("settings.repositories.tokenStepsTitle")}
+          </p>
+          <ol className="flex flex-col gap-1 list-decimal pl-4 text-xs text-muted-foreground">
+            {copy.steps.map((step) => (
+              <li key={step}>{t(step)}</li>
+            ))}
+          </ol>
+          {providerPage && (
+            <Button variant="outline" size="sm" className="self-start" asChild>
+              <a href={providerPage} target="_blank" rel="noreferrer">
+                <LinkExternal01 size={14} />
+                {t("settings.repositories.openProvider")}
+              </a>
+            </Button>
+          )}
         </div>
 
-        <DialogFooter className="sm:justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBack}
-            disabled={connect.isPending}
-          >
-            <ArrowLeft size={16} />
-            {t("settings.repositories.back")}
-          </Button>
-          <Button
-            onClick={handleConnect}
-            disabled={!ready || connect.isPending}
-          >
-            {connect.isPending
-              ? t("settings.repositories.connecting")
-              : t("settings.repositories.connect")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Field
+          id={`${provider}-token`}
+          label={t("settings.repositories.tokenLabel")}
+          value={token}
+          onChange={setToken}
+          placeholder={t(copy.placeholder)}
+          type="password"
+        />
+      </div>
+
+      <DialogFooter className="sm:justify-between">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          disabled={connect.isPending}
+        >
+          <ArrowLeft size={16} />
+          {t("settings.repositories.back")}
+        </Button>
+        <Button onClick={handleConnect} disabled={!ready || connect.isPending}>
+          {connect.isPending
+            ? t("settings.repositories.connecting")
+            : t("settings.repositories.connect")}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 
