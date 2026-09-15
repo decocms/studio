@@ -51,12 +51,14 @@ function virtualMcpHasConnectionId(
  * Note: we support a special field `connection_id` that matches virtual MCPs that
  * include a connection with that id (via virtualMcp.connections[*].connection_id).
  */
-function evaluateWhereExpression(
+export function evaluateWhereExpression(
   virtualMcp: VirtualMCPEntity,
   where: WhereExpression,
 ): boolean {
   if ("conditions" in where) {
     const { operator, conditions } = where;
+    // Empty condition list is a no-op, matching applyWhereToSql() in storage/connection.ts.
+    if (conditions.length === 0) return true;
     switch (operator) {
       case "and":
         return conditions.every((c) => evaluateWhereExpression(virtualMcp, c));
