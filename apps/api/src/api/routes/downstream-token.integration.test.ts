@@ -86,6 +86,21 @@ describe("Downstream Token Routes", () => {
     expect(body.error).toBe("tokenEndpoint must be an http(s) URL");
   });
 
+  it("rejects tokenEndpoint targeting a private network", async () => {
+    const res = await app.request("/connections/conn_1/oauth-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessToken: "at",
+        tokenEndpoint: "http://169.254.169.254/latest/meta-data",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("tokenEndpoint must not target a private network");
+  });
+
   it("accepts http(s) tokenEndpoint", async () => {
     const res = await app.request("/connections/conn_1/oauth-token", {
       method: "POST",
