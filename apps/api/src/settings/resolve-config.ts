@@ -530,7 +530,8 @@ export function resolveConfig(
       "STRIPE_PLAN_PRICE_IDS maps more than one plan but " +
         "STRIPE_PORTAL_CONFIGURATION_ID is unset. An org that already has a " +
         "subscription cannot change tier: the account's default portal " +
-        "configuration lists no products, so Stripe refuses the update flow. " +
+        "configuration lists only the legacy plans, not the tiers, so Stripe " +
+        "refuses the update flow. " +
         "First-time checkout is unaffected.",
     );
   }

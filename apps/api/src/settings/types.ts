@@ -118,8 +118,12 @@ export interface Settings {
    * org off the 1st-of-month cycle that `firstOfNextMonthUnix` put it on, and
    * silently undo the alignment between billing and the allowance.
    *
-   * Unset → Stripe uses the account default, which lists no products, so a tier
-   * change is refused with Stripe's own message rather than charging anything.
+   * Unset → Stripe uses the account default, whose product list holds only the
+   * legacy deco.cx plans (Developer, Professional, Grow, Start, Landing, Grátis)
+   * and none of the tiers, so a tier change is refused with Stripe's own message
+   * rather than charging anything. That default is also why the tiers must not
+   * simply be added to it: doing so would put them in the same switchable pool
+   * as the legacy plans, in both directions.
    */
   stripePortalConfigurationId: string | undefined;
   /** The single catalog Product every top-up charge hangs off (created once in
