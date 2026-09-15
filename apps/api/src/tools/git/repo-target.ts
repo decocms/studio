@@ -36,9 +36,18 @@ export interface RepoTargetInput {
 }
 
 export function repoTargetOf(input: RepoTargetInput): RepoTarget {
+  let ref = null;
+  if (input.repoUrl) {
+    ref = parseRepoUrl(input.repoUrl);
+    if (!ref) {
+      throw new Error(
+        `Could not recognise the repository URL: ${input.repoUrl}`,
+      );
+    }
+  }
   return {
     repositoryId: input.repositoryId,
-    ref: input.repoUrl ? parseRepoUrl(input.repoUrl) : null,
+    ref,
     connectionId: input.connectionId,
   };
 }
