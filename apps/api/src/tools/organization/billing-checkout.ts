@@ -101,6 +101,10 @@ export const ORGANIZATION_BILLING_CHECKOUT_START = defineTool({
       successUrl: `${membersUrl}?checkout=success`,
       cancelUrl: `${membersUrl}?checkout=canceled`,
       ...(input.planId ? { planId: input.planId } : {}),
+      // Salts the idempotency key that collapses concurrent clicks into one
+      // session — the org's Stripe situation changing is what should mint a
+      // genuinely new checkout.
+      lastStripeEventAt: billing?.lastStripeEventAt ?? null,
     });
     // Intent half of the funnel — completion (subscription_started) arrives via webhook.
     captureOrgEvent({

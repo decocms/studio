@@ -168,10 +168,42 @@ export function priceIdForPlan(planId: string): string | undefined {
 
 /** First subscribe: Checkout collects + saves the card for the org's flat
  *  monthly subscription (quantity 1). */
+/**
+ * The key that makes two clicks one checkout.
+ *
+ * Stripe replays the first response for a repeated idempotency key, so every
+ * concurrent attempt for the same org and plan receives the SAME Checkout
+ * Session — and a Session can only be completed once. That is what stops a
+ * double-click, a second tab, or an impatient retry from becoming two paid
+ * subscriptions. Refunding one afterwards is not equivalent: Stripe keeps its
+ * processing fee on a refund, so a cured double charge still costs real money,
+ * and the customer still saw two charges.
+ *
+ * Salted with the billing row's last Stripe event so the key changes when the
+ * org's situation does. Without the salt an org that subscribed, cancelled, and
+ * came back inside Stripe's 24h key window would be handed its old, already
+ * completed session and could not subscribe again. Concurrent clicks read the
+ * same watermark, so they still collapse to one session.
+ */
+export function checkoutIdempotencyKey(input: {
+  organizationId: string;
+  planId?: string;
+  lastStripeEventAt?: Date | null;
+}): string {
+  return [
+    "checkout",
+    input.organizationId,
+    input.planId ?? "flat",
+    input.lastStripeEventAt?.getTime() ?? 0,
+  ].join(":");
+}
+
 export async function createOrgCheckoutSession(input: {
   organizationId: string;
   successUrl: string;
   cancelUrl: string;
+  /** Watermark from the org's billing row; salts the idempotency key. */
+  lastStripeEventAt?: Date | null;
   /** The gateway plan being bought. Its price comes from the plan price map,
    *  and it rides the session metadata so the webhook can grant the tier on
    *  completion. Omitted → the flat STRIPE_ORG_PRICE_ID and no tier. */
@@ -194,6 +226,14 @@ export async function createOrgCheckoutSession(input: {
     );
   }
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    // Two clicks, one session — see checkoutIdempotencyKey.
+    idempotencyKey: checkoutIdempotencyKey({
+      organizationId: input.organizationId,
+      ...(input.planId ? { planId: input.planId } : {}),
+      ...(input.lastStripeEventAt !== undefined && {
+        lastStripeEventAt: input.lastStripeEventAt,
+      }),
+    }),
     params: {
       mode: "subscription",
       // No `customer` is passed here — Checkout creates one, so no write-back.

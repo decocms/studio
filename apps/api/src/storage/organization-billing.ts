@@ -65,6 +65,57 @@ export class OrganizationBillingStorage {
 
   /** Webhook write: subscription identity / status / period end + the event
    *  high-water mark, in one row update. */
+  /**
+   * Bind an org to a subscription, but only if nothing else holds the slot.
+   *
+   * The bind used to be read-then-write: the webhook read the row, saw no
+   * subscription, and called `updateStripeState`. Two `checkout.session.completed`
+   * deliveries racing for the same org both read null, so NEITHER hit the
+   * rebind refusal, both wrote, and the last one won — leaving the other
+   * subscription bound to nothing, uncancelled, and billing the customer every
+   * month for ever. Silent, because the refusal that exists to catch exactly
+   * this never fired.
+   *
+   * Postgres decides it now. The WHERE makes the slot a compare-and-set:
+   * whoever gets there first keeps it, everyone else gets `false` and is
+   * handled as an orphan. Re-binding the SAME subscription stays true so a
+   * redelivery is not mistaken for a second subscription.
+   *
+   * @returns false when another subscription already owns the slot.
+   */
+  async bindSubscription(
+    organizationId: string,
+    patch: {
+      stripeSubscriptionId: string;
+      stripeCustomerId?: string;
+      status?: string;
+      lastStripeEventAt?: Date;
+    },
+  ): Promise<boolean> {
+    const result = await this.db
+      .updateTable("organization_billing")
+      .set({
+        stripe_subscription_id: patch.stripeSubscriptionId,
+        ...(patch.stripeCustomerId !== undefined && {
+          stripe_customer_id: patch.stripeCustomerId,
+        }),
+        ...(patch.status !== undefined && { status: patch.status }),
+        ...(patch.lastStripeEventAt !== undefined && {
+          last_stripe_event_at: patch.lastStripeEventAt,
+        }),
+        updated_at: new Date(),
+      })
+      .where("organization_id", "=", organizationId)
+      .where((eb) =>
+        eb.or([
+          eb("stripe_subscription_id", "is", null),
+          eb("stripe_subscription_id", "=", patch.stripeSubscriptionId),
+        ]),
+      )
+      .executeTakeFirst();
+    return (result.numUpdatedRows ?? 0n) > 0n;
+  }
+
   async updateStripeState(
     organizationId: string,
     patch: {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  checkoutIdempotencyKey,
   computeTopUpChargeCents,
   plannedOrphanRefunds,
   taxAndAddressParams,
@@ -168,5 +169,67 @@ describe("plannedOrphanRefunds", () => {
         { id: "in_1", amount_paid: 25000, payment_intent: { id: "pi_exp" } },
       ])[0]?.paymentIntent,
     ).toBe("pi_exp");
+  });
+});
+
+describe("checkoutIdempotencyKey", () => {
+  const AT = new Date("2026-09-15T18:00:00Z");
+
+  test("two clicks for the same org and plan collapse to one session", () => {
+    // Stripe replays the first response for a repeated key, so both callers
+    // get the SAME Checkout Session — and a Session completes at most once.
+    expect(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        planId: "pro",
+        lastStripeEventAt: AT,
+      }),
+    ).toBe(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        planId: "pro",
+        lastStripeEventAt: AT,
+      }),
+    );
+  });
+
+  test("different orgs never share a session", () => {
+    expect(checkoutIdempotencyKey({ organizationId: "org_1" })).not.toBe(
+      checkoutIdempotencyKey({ organizationId: "org_2" }),
+    );
+  });
+
+  test("a changed plan is a different purchase", () => {
+    expect(
+      checkoutIdempotencyKey({ organizationId: "org_1", planId: "pro" }),
+    ).not.toBe(
+      checkoutIdempotencyKey({ organizationId: "org_1", planId: "ultra" }),
+    );
+  });
+
+  test("the watermark salt frees the org after its situation changes", () => {
+    // Subscribe, cancel, come back inside Stripe's 24h key window: without the
+    // salt the org would be handed its own already-completed session and could
+    // never re-subscribe.
+    expect(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        lastStripeEventAt: AT,
+      }),
+    ).not.toBe(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        lastStripeEventAt: new Date(AT.getTime() + 1000),
+      }),
+    );
+  });
+
+  test("a never-billed org is stable rather than random", () => {
+    expect(checkoutIdempotencyKey({ organizationId: "org_new" })).toBe(
+      checkoutIdempotencyKey({
+        organizationId: "org_new",
+        lastStripeEventAt: null,
+      }),
+    );
   });
 });

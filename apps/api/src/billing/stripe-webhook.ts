@@ -411,9 +411,25 @@ export async function applyStripeEvent(
       // Never rebind over a DIFFERENT live subscription (deleted unbinds,
       // so a legitimate re-subscribe passes).
       const subscriptionId = idOf(obj.subscription);
+      // A paid subscription-mode session always names its subscription. Without
+      // one there is nothing to bind, and the old code still wrote `active` and
+      // the customer id — an org marked subscribed with no subscription on file,
+      // which then let the next checkout through as if it were the first.
+      if (!subscriptionId) {
+        console.error(
+          "stripe webhook: subscription checkout without a sub id",
+          {
+            organizationId,
+            eventId: event.id,
+          },
+        );
+        return {
+          handled: false,
+          reason: "subscription checkout without sub id",
+        };
+      }
       if (
         billing.stripeSubscriptionId &&
-        subscriptionId &&
         billing.stripeSubscriptionId !== subscriptionId
       ) {
         console.error("stripe webhook: refused checkout rebind", {
@@ -429,12 +445,31 @@ export async function applyStripeEvent(
       if (isStale(event, billing)) {
         return { handled: false, reason: "stale event" };
       }
-      await storage.updateStripeState(organizationId, {
-        stripeCustomerId: idOf(obj.customer),
+      // Compare-and-set, not a plain write. The read above cannot settle this:
+      // two checkout completions racing for the same org both read a null
+      // subscription, so both would pass the refusal and both would write,
+      // leaving whichever lost uncancelled and billing for ever. Postgres
+      // picks the winner; the loser falls through to the orphan path below and
+      // is reversed like any other refused bind.
+      const customerId = idOf(obj.customer);
+      const bound = await storage.bindSubscription(organizationId, {
         stripeSubscriptionId: subscriptionId,
+        ...(customerId ? { stripeCustomerId: customerId } : {}),
         status: "active",
         lastStripeEventAt: nextWatermark(event, billing),
       });
+      if (!bound) {
+        console.error("stripe webhook: lost the bind race", {
+          organizationId,
+          subscriptionId,
+          eventId: event.id,
+        });
+        return {
+          handled: false,
+          reason: "org already bound to another subscription",
+          orphanSubscriptionId: subscriptionId,
+        };
+      }
       // The plan the buyer paid for, from the metadata OUR checkout creator
       // wrote — a Checkout Session carries no line items unless expanded, so
       // the price map cannot be consulted here. Payment is already confirmed
