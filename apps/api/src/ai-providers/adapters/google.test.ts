@@ -51,4 +51,31 @@ describe("googleAdapter.listModels", () => {
 
     expect(capturedSignal).toBeInstanceOf(AbortSignal);
   });
+
+  test("follows nextPageToken instead of truncating the catalog", async () => {
+    const pages: Record<string, unknown> = {
+      "": {
+        models: [{ name: "models/gemini-a", supportedGenerationMethods: [] }],
+        nextPageToken: "page-2",
+      },
+      "page-2": {
+        models: [{ name: "models/gemini-b", supportedGenerationMethods: [] }],
+      },
+    };
+    const requestedTokens: string[] = [];
+    globalThis.fetch = (async (url: unknown): Promise<Response> => {
+      const token = new URL(String(url)).searchParams.get("pageToken") ?? "";
+      requestedTokens.push(token);
+      return new Response(JSON.stringify(pages[token]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+    const models = await provider.listModels();
+
+    expect(requestedTokens).toEqual(["", "page-2"]);
+    expect(models.map((m) => m.modelId)).toEqual(["gemini-a", "gemini-b"]);
+  });
 });
