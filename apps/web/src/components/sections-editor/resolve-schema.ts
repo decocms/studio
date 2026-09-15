@@ -905,7 +905,10 @@ export function resolveSchema(
             if (!rt) {
               rt = (branch.$ref as string).split("/").pop() ?? "";
             }
-            const discriminatorValue = typeDiscriminatorFromBranch(branch);
+            // A real module block (rt with `/`) is keyed by its resolveType, not by a `type` input prop; only embedded unions (bare ref key) use the discriminator.
+            const discriminatorValue = rt.includes("/")
+              ? undefined
+              : typeDiscriminatorFromBranch(branch);
             // Skip the `Resolvable` placeholder: it has no `__resolveType.enum`
             // so `rt` degrades to the bare ref key (no `/`). All real module
             // blocks (matchers, loaders, sections) contain `/` in their path.
