@@ -1,33 +1,11 @@
-/**
- * Agent Shell Layout
- *
- * Desktop layout — each panel owns its own 48px header (no shared top bar):
- *   AgentInsetProvider
- *   • useVirtualMCP (suspends here)
- *   • Chat.Provider
- *     └── VmEventsBridge
- *         └── ActiveTaskRuntimeProvider
- *             └── WorkspacePanelGroup
- *                 ├── Chat panel  (header: Chat toggle)
- *                 └── Main panel  (header: view tabs + toggles, Preview
- *                     controls, publish). Buttons relocate between the two
- *                     headers so nothing disappears when a panel is closed.
- *
- * Mobile layout (single shared header on top, owned by org-shell):
- *   Chat.Provider
- *   └── VmEventsBridge
- *       └── ActiveTaskRuntimeProvider
- *           └── MainPanelWithDrawer OR ActiveTaskBoundary (sheet-based)
- */
+/** Binds project and thread runtime to the desktop workspace or mobile surface. */
 
 import {
-  createContext,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
-  use,
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -44,7 +22,7 @@ import { isModKey } from "@/lib/keyboard-shortcuts";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { AlertCircle } from "@untitledui/icons";
 import { useProjectContext, useVirtualMCP, parseBranchMap } from "@/sdk";
-import type { VirtualMCPEntity, SandboxMap } from "@decocms/shared/sdk/types";
+import type { SandboxMap } from "@decocms/shared/sdk/types";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { generateBranchName } from "@decocms/shared/branch-name";
 import { defaultThreadRuntime } from "@decocms/shared/thread/session-runtime";
@@ -75,10 +53,13 @@ import {
   useReleases,
 } from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
-import { Toolbar } from "./toolbar";
-import { WorkspacePanelGroup } from "./workspace-panel-group";
+import { Panel } from "@/components/panel";
+import {
+  WorkspaceContext,
+  type WorkspaceContextValue,
+} from "@/layouts/workspace/workspace-context";
+import { WorkspaceLayout } from "@/layouts/workspace/workspace-layout";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
-import { MainPanelWithDrawer } from "@/layouts/main-panel-tabs/main-panel-with-drawer";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import {
@@ -105,25 +86,9 @@ import {
 import { OrgFilePreviewMount } from "./org-file-preview";
 import { OrgFileOpenProvider } from "@/components/chat/org-file-open-context";
 import { BlocksPreviewWorkspaceProvider } from "@/components/sandbox/blocks/blocks-preview-workspace-context";
-import { SidePanel } from "./side-panel";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useAgentRuntimeAdapter } from "@/lib/desktop/agent-runtime-slot";
 import { shouldBlockHostedRuntime } from "@/components/chat/hosted-runtime-guard";
-
-// ---------------------------------------------------------------------------
-// Types & Context
-// ---------------------------------------------------------------------------
-
-export interface InsetContextValue {
-  virtualMcpId: string;
-  entity: VirtualMCPEntity | null;
-}
-
-const InsetContext = createContext<InsetContextValue | null>(null);
-
-export function useInsetContext(): InsetContextValue | null {
-  return use(InsetContext);
-}
 
 // ---------------------------------------------------------------------------
 // Agent inset sub-components
@@ -501,12 +466,10 @@ function VmEventsBridge({
 type TaskLayout = ReturnType<typeof useWorkspaceLayoutState>;
 
 function DesktopTaskWorkspace({
-  entity,
   virtualMcpId,
   layout,
   onNewTaskRef,
 }: {
-  entity: VirtualMCPEntity;
   virtualMcpId: string;
   layout: TaskLayout;
   onNewTaskRef: React.MutableRefObject<(() => void) | null>;
@@ -521,16 +484,15 @@ function DesktopTaskWorkspace({
           lives under SandboxEventsProvider — useMainPanelTabs gates Content on
           lifecycle.phase === "running" + decofile. */}
       <MainPanelBoundary>
-        <WorkspacePanelGroup
-          virtualMcpId={virtualMcpId}
-          taskId={layout.threadId}
-          entity={entity}
+        <WorkspaceLayout
+          identity={`${virtualMcpId}-${layout.threadId}`}
           sidePanelOpen={layout.sidePanelOpen}
           mainOpen={layout.mainOpen}
-          toggleSidePanel={layout.toggleSidePanel}
           toggleMain={layout.toggleMain}
           chatContent={<ActiveTaskBoundary />}
-        />
+        >
+          <Outlet />
+        </WorkspaceLayout>
       </MainPanelBoundary>
     </>
   );
@@ -559,12 +521,12 @@ function MobileTaskWorkspace({
       {/* No Chat/Tasks/Library toggles on mobile: there's no side-by-side split,
           so one surface shows at a time and every destination (Chat, the main
           views, Tasks, Library) lives in this single dropdown instead. */}
-      <Toolbar.Tabs>
+      <Panel.Topbar.Center.Portal>
         <MobileMainPanelTabSelect
           virtualMcpId={virtualMcpId}
           taskId={layout.threadId}
         />
-      </Toolbar.Tabs>
+      </Panel.Topbar.Center.Portal>
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={layout.createNewTask}
@@ -583,13 +545,15 @@ function MobileTaskWorkspace({
               }
             >
               <MainPanelBoundary>
-                <div data-testid="main-panel" className="h-full">
-                  <MainPanelWithDrawer virtualMcpId={virtualMcpId} />
-                </div>
+                <Outlet />
               </MainPanelBoundary>
             </ErrorBoundary>
           ) : (
-            <SidePanel chatContent={<ActiveTaskBoundary />} />
+            <Panel variant="plain">
+              <Panel.Content data-testid="chat-panel">
+                <ActiveTaskBoundary />
+              </Panel.Content>
+            </Panel>
           )}
         </div>
       </MainPanelBoundary>
@@ -598,7 +562,7 @@ function MobileTaskWorkspace({
 }
 
 // ---------------------------------------------------------------------------
-// AgentInsetProvider — resolves virtualMcpId, provides InsetContext,
+// AgentInsetProvider — resolves virtualMcpId, provides WorkspaceContext,
 // wraps in Chat.Provider, renders the task-scoped chat+main panel group.
 // ---------------------------------------------------------------------------
 
@@ -770,14 +734,19 @@ function AgentInsetProvider() {
 
   const chatVirtualMcpId = virtualMcpId;
 
-  const insetContextValue: InsetContextValue = {
+  const workspaceContextValue: WorkspaceContextValue = {
     virtualMcpId,
     entity,
+    threadId: layout.threadId,
+    sidePanelOpen: layout.sidePanelOpen,
+    mainOpen: layout.mainOpen,
+    toggleSidePanel: layout.toggleSidePanel,
+    toggleMain: layout.toggleMain,
   };
 
   if (ensureState.status === "creating" || ensureState.status === "loading") {
     return (
-      <InsetContext value={insetContextValue}>
+      <WorkspaceContext value={workspaceContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div
             role="status"
@@ -788,13 +757,13 @@ function AgentInsetProvider() {
             {t("agentShellLayout.agentShellLayout.creatingTask")}
           </div>
         </div>
-      </InsetContext>
+      </WorkspaceContext>
     );
   }
 
   if (ensureState.status === "error") {
     return (
-      <InsetContext value={insetContextValue}>
+      <WorkspaceContext value={workspaceContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div
             role="alert"
@@ -808,13 +777,13 @@ function AgentInsetProvider() {
             </div>
           </div>
         </div>
-      </InsetContext>
+      </WorkspaceContext>
     );
   }
 
   if (!entity) {
     return (
-      <InsetContext value={insetContextValue}>
+      <WorkspaceContext value={workspaceContextValue}>
         <div className="flex-1 min-h-0 pr-1.5 pb-1.5 overflow-hidden">
           <div className="flex flex-col h-full bg-background overflow-hidden card-shadow rounded-[0.75rem]">
             <EmptyState
@@ -839,14 +808,14 @@ function AgentInsetProvider() {
             />
           </div>
         </div>
-      </InsetContext>
+      </WorkspaceContext>
     );
   }
 
   // Mobile layout — unchanged semantics, just inlined here for clarity.
   if (isMobile) {
     return (
-      <InsetContext value={insetContextValue}>
+      <WorkspaceContext value={workspaceContextValue}>
         <div className="flex flex-col flex-1 min-w-0 bg-background min-h-0">
           <Chat.Provider
             key={chatVirtualMcpId}
@@ -873,7 +842,7 @@ function AgentInsetProvider() {
             </VmEventsBridge>
           </Chat.Provider>
         </div>
-      </InsetContext>
+      </WorkspaceContext>
     );
   }
 
@@ -882,7 +851,7 @@ function AgentInsetProvider() {
   // Suspense boundary, so it stays mounted while this task-scoped content loads.
   return (
     <div className="flex-1 min-w-0 flex flex-col">
-      <InsetContext value={insetContextValue}>
+      <WorkspaceContext value={workspaceContextValue}>
         <Chat.Provider
           key={chatVirtualMcpId}
           virtualMcpId={chatVirtualMcpId}
@@ -903,7 +872,6 @@ function AgentInsetProvider() {
             >
               <MainPanelBoundary>
                 <DesktopTaskWorkspace
-                  entity={entity}
                   virtualMcpId={virtualMcpId}
                   layout={layout}
                   onNewTaskRef={onNewTask}
@@ -912,7 +880,7 @@ function AgentInsetProvider() {
             </ActiveTaskRuntimeProvider>
           </VmEventsBridge>
         </Chat.Provider>
-      </InsetContext>
+      </WorkspaceContext>
     </div>
   );
 }

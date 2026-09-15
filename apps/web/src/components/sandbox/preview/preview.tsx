@@ -3,7 +3,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useChatTask } from "@/components/chat/context";
 import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
@@ -34,10 +34,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import {
-  MainPanelHeaderPortal,
-  useMainPanelHeaderSlot,
-} from "@/layouts/agent-shell-layout/panel-header";
+import { Panel } from "@/components/panel";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { withVariantMatcherOverride } from "@/components/sections-editor/variant-matcher-override";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -349,18 +346,17 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const isMobile = useIsMobile();
   // Desktop: the main panel header hosts the preview controls (single top bar).
   // Mobile / standalone (no header slot): render the toolbar inline below.
-  const headerSlot = useMainPanelHeaderSlot();
   const { currentBranch: branch, taskId: activeTaskId } = useChatTask();
   const workspace = useBlocksPreviewWorkspace();
-  const inset = useInsetContext();
+  const workspaceContext = useOptionalWorkspace();
   /** THIS session's runtime, off the thread's own immutable stamp — the one
    *  thread-aware gate, scoped to this agent's entity by the id match. */
   const session = useSessionRuntime(virtualMcpId);
   /** Settings › CMS for this project. `off` is the one thing that keeps a CMS
    *  session out of the blocks editor below. */
   const cmsMode = resolveCmsMode(
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.ui?.layout ?? null)
+    workspaceContext?.entity?.id === virtualMcpId
+      ? (workspaceContext.entity.metadata?.ui?.layout ?? null)
       : null,
   );
   const contentEditingEnabled = isContentEditingEnabled(cmsMode);
@@ -472,11 +468,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // of a blank overlay. `null` (no field, or a site imported before this was
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
-    inset?.entity?.id === virtualMcpId
-      ? resolvePreviewServerUrl(inset.entity.metadata)
+    workspaceContext?.entity?.id === virtualMcpId
+      ? resolvePreviewServerUrl(workspaceContext.entity.metadata)
       : null;
   const fastPreviewEnabled =
-    inset?.entity?.id === virtualMcpId && session.runtime === "cms";
+    workspaceContext?.entity?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
   const projectDefaultsToCms = session.projectDefault === "cms";
 
@@ -739,8 +735,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * place, and re-tracks live once the panel closes.
    */
   const inPlaceRenderEnabled =
-    inset?.entity?.id === virtualMcpId &&
-    inset.entity.metadata?.fastPreviewInPlace === true;
+    workspaceContext?.entity?.id === virtualMcpId &&
+    workspaceContext.entity.metadata?.fastPreviewInPlace === true;
   const inPlaceRenderActive =
     display.mode === "production" &&
     fastPreviewEnabled &&
@@ -1873,18 +1869,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             />
           ) : null,
         )}
-      {headerSlot
-        ? urlControls && (
-            <MainPanelHeaderPortal>{urlControls}</MainPanelHeaderPortal>
-          )
-        : urlGroup && (
-            /* Declares the same container as PanelHeader: without a header slot
-             (mobile or a standalone desktop surface), the controls render
-             inline instead of portaling. Without it their container queries
-             would find no container and every label would stay at full width.
-
-             Equal empty side zones keep the content-sized URL group centered
-             on the bar wherever there is room. */
+      <Panel.Topbar.Center.Portal
+        fallback={
+          urlGroup && (
             <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
               <div className="flex-1" />
               <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
@@ -1892,7 +1879,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               </div>
               <div className="flex-1" />
             </div>
-          )}
+          )
+        }
+      >
+        {urlControls}
+      </Panel.Topbar.Center.Portal>
 
       <div className="flex-1 overflow-hidden">
         {blocksFullWidth ? (

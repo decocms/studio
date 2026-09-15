@@ -2118,7 +2118,7 @@ function Lanes({
         </div>
       </div>
       {/* Portal to body so the overlay's `position: fixed` resolves against the
-          viewport rather than the workspace PanelCard's transformed containing
+          viewport rather than the workspace Panel's transformed containing
           block (which would offset the card from the cursor). */}
       {createPortal(
         // No drop animation: because the lane opens a live gap under the

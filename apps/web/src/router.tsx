@@ -453,9 +453,15 @@ const unifiedChatRoute = createRoute({
  * children, never the existence or meaning of organization paths.
  */
 
-/** Home is organization-owned. Project identity always lives in the canonical
- *  `/projects/$agentId` branch below. */
+/** Keep workspace features lazy for settings-only visits. */
+const WorkspacePagePending = lazyRouteComponent(
+  () => import("./layouts/workspace/workspace-page"),
+  "WorkspacePagePending",
+);
+
+/** Home is organization-owned. Project identity lives under `/projects/$agentId`. */
 const orgHomeRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentShellLayout,
   path: "/home",
   staticData: {
@@ -513,6 +519,7 @@ const agentWorkspaceRoute = createRoute({
 });
 
 const agentOverviewRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/",
   staticData: { defaultMain: "overview", mainView: "overview" },
@@ -522,6 +529,7 @@ const agentOverviewRoute = createRoute({
 });
 
 const projectTasksRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/tasks/{-$taskKey}",
   staticData: {
@@ -553,6 +561,7 @@ const projectTasksRoute = createRoute({
 });
 
 const projectReportsRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/reports",
   staticData: {
@@ -569,6 +578,7 @@ const projectReportsRoute = createRoute({
 });
 
 const agentSiteEditorRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/site-editor",
   staticData: {
@@ -625,6 +635,7 @@ const agentSiteEditorCodeRoute = createRoute({
 });
 
 const agentAutomationsRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/automations",
   staticData: {
@@ -651,6 +662,7 @@ const agentAutomationsRoute = createRoute({
 });
 
 const agentAutomationRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/automations/$automationId",
   staticData: {
@@ -666,6 +678,7 @@ const agentAutomationRoute = createRoute({
 });
 
 const agentSettingsRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/settings",
   staticData: {
@@ -678,6 +691,7 @@ const agentSettingsRoute = createRoute({
 });
 
 const agentAssetsRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/assets",
   staticData: {
@@ -690,6 +704,7 @@ const agentAssetsRoute = createRoute({
 });
 
 const agentGitRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/git",
   staticData: {
@@ -702,6 +717,7 @@ const agentGitRoute = createRoute({
 });
 
 const agentHostingRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/hosting",
   staticData: {
@@ -714,6 +730,7 @@ const agentHostingRoute = createRoute({
 });
 
 const agentE2eRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/e2e",
   staticData: {
@@ -726,6 +743,7 @@ const agentE2eRoute = createRoute({
 });
 
 const agentAnalyticsRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/analytics",
   staticData: {
@@ -738,6 +756,7 @@ const agentAnalyticsRoute = createRoute({
 });
 
 const agentMonitorRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   /** The stable tab id is `cdn`. Keeping that name in the canonical path also
    * leaves the previously unambiguous project-first custom view `monitor`
@@ -753,6 +772,7 @@ const agentMonitorRoute = createRoute({
 });
 
 const agentAppRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/apps/$connectionId/$toolName",
   staticData: { defaultMain: "app", mainView: "app" },
@@ -762,6 +782,7 @@ const agentAppRoute = createRoute({
 });
 
 const agentViewRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/views/$viewId",
   staticData: {
@@ -774,6 +795,7 @@ const agentViewRoute = createRoute({
 });
 
 const agentOutputFileRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/outputs/file",
   staticData: {
@@ -787,6 +809,7 @@ const agentOutputFileRoute = createRoute({
 });
 
 const agentOutputDeckRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/outputs/deck",
   staticData: {
@@ -800,6 +823,7 @@ const agentOutputDeckRoute = createRoute({
 });
 
 const agentLibraryFileRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/library/file",
   staticData: {
@@ -813,6 +837,7 @@ const agentLibraryFileRoute = createRoute({
 });
 
 const agentConnectSourcesRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentWorkspaceRoute,
   path: "/connect-sources",
   staticData: {
@@ -901,6 +926,7 @@ const legacyAgentsDeepRoute = createRoute({
  * smuggling identity into this route's search.
  */
 const tasksRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentShellLayout,
   path: "/tasks/{-$taskKey}",
   staticData: {
@@ -931,6 +957,7 @@ const tasksRoute = createRoute({
 
 /** The org's Commerce Discovery report. Org-wide, so no project segment. */
 const reportsRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentShellLayout,
   path: "/reports",
   staticData: {
@@ -948,6 +975,7 @@ const reportsRoute = createRoute({
 
 /** Library. Org-wide, so no project segment. */
 const libraryRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentShellLayout,
   path: "/library",
   staticData: {
@@ -960,6 +988,7 @@ const libraryRoute = createRoute({
 
 /** Discover remains an existing destination; this layer only changes routing. */
 const discoverRoute = createRoute({
+  pendingComponent: WorkspacePagePending,
   getParentRoute: () => agentShellLayout,
   path: "/discover",
   staticData: { defaultMain: "discover", mainView: "discover" },

@@ -1,10 +1,11 @@
+import { WorkspacePage } from "@/layouts/workspace/workspace-page";
 import { CdnTab } from "@/layouts/main-panel-tabs/cdn-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { usePublicConfig } from "@/hooks/use-public-config";
 
-export default function Route() {
+function AgentMonitorContent() {
   const virtualMcpId = useRouteVirtualMcpId();
   const views = useControlPlaneViews();
   const config = usePublicConfig();
@@ -13,5 +14,13 @@ export default function Route() {
     <CdnTab virtualMcpId={virtualMcpId} />
   ) : (
     <SettingsTab virtualMcpId={virtualMcpId} />
+  );
+}
+
+export default function AgentMonitorPage() {
+  return (
+    <WorkspacePage>
+      <AgentMonitorContent />
+    </WorkspacePage>
   );
 }

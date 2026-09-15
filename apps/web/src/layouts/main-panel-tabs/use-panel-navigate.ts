@@ -7,8 +7,6 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
-import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
-import { type EntityLayoutMetadata, resolveActiveTabAndOpen } from "./tab-id";
 import { useScopeId } from "@/hooks/use-project-scope";
 import {
   navigateToTabLocation,
@@ -120,18 +118,4 @@ export function usePanelNavigate(): {
     });
 
   return { openPanel, closePanel };
-}
-
-export function useResolvedMainTabId(
-  entityMetadata: EntityLayoutMetadata | null,
-): string {
-  const panelTabId = useActivePanelTabId();
-  const routeDefaultMain = useRouteDefaultMain();
-  const search = useSearch({ strict: false });
-  return resolveActiveTabAndOpen({
-    panelTabId,
-    mainPanelParam: search.mainpanel,
-    routeDefaultMain,
-    metadata: entityMetadata,
-  }).activeTab;
 }

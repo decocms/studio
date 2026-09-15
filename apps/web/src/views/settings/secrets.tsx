@@ -333,7 +333,7 @@ export function OrgSecretsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.nav.secrets")}</Page.Title>
             <ErrorBoundary
@@ -348,7 +348,7 @@ export function OrgSecretsPage() {
               </Suspense>
             </ErrorBoundary>
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

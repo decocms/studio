@@ -11,7 +11,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
   type Crumb,
@@ -60,10 +60,10 @@ export function AvailableSectionEditor({
   ) => void;
 }) {
   const t = useT();
-  const inset = useInsetContext();
+  const workspaceContext = useOptionalWorkspace();
   const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
+    workspaceContext?.entity?.id === virtualMcpId
+      ? (workspaceContext.entity.metadata?.siteSlug ?? null)
       : null;
 
   const [formValue, setFormValue] = useState<Record<string, unknown>>({});

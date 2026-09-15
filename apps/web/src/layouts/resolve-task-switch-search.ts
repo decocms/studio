@@ -90,7 +90,7 @@ export function resolveTaskSwitchSearch(
   } else if (savedLayout) {
     // Restore the target thread's own layout. A remembered per-thread tab is
     // valid here because it belongs to *this* thread; if it has since become
-    // stale, MainPanelContent falls back to Settings rather than crashing.
+    // stale, the destination route falls back to Settings rather than crashing.
     tabId = savedLayout.tab;
     if (savedLayout.sidepanel !== undefined) sidepanel = savedLayout.sidepanel;
     if (savedLayout.mainpanel !== undefined) {

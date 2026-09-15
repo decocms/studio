@@ -737,7 +737,7 @@ export function OrgTasksSettingsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.nav.tasks")}</Page.Title>
             <ReviewSettings />
@@ -754,7 +754,7 @@ export function OrgTasksSettingsPage() {
               <JiraContent />
             </SettingsSection>
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

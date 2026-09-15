@@ -1,11 +1,11 @@
 /**
  * E2E: a render error in one main-panel tab no longer bricks the panel.
  * Switching tabs remounts the ErrorBoundary (keyed on activeTab inside
- * MainPanelContent) so the new tab renders normally. The sandbox drawer
+ * WorkspacePage) so the new tab renders normally. The sandbox drawer
  * stays interactive throughout — it's a sibling of the boundary.
  *
  * Trigger: dev-only `window.__forceTabError = <activeTab>` hook in
- * apps/web/src/layouts/main-panel-tabs/index.tsx's TabBody.
+ * apps/web/src/layouts/workspace/workspace-page.tsx's PageBody.
  */
 import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/test";
@@ -75,18 +75,24 @@ test.describe("tab error boundary recovers on tab switch", () => {
     await expect(page.getByText(/something went wrong/i)).toBeVisible({
       timeout: 15_000,
     });
+    await expect(
+      page
+        .getByTestId("main-panel")
+        .getByRole("button", { name: "Hide panel", exact: true }),
+    ).toBeVisible();
 
     // Switch to the preview tab — renders cleanly, no leftover error.
-    await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=preview`,
+    await page
+      .getByRole("button", { name: "Site Editor", exact: true })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(`/projects/${agentId}/site-editor`),
     );
     await expect(page.getByText(/something went wrong/i)).toBeHidden();
 
     // Switch back to settings — error UI reappears (state was reset on
     // remount via key={activeTab}, not memoized as healthy).
-    await page.goto(
-      `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&main=settings`,
-    );
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByText(/something went wrong/i)).toBeVisible({
       timeout: 15_000,
     });

@@ -36,7 +36,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useProjectContext } from "@/sdk";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
 import { useLiveMeta } from "@/components/sections-editor/use-live-meta";
@@ -249,17 +249,17 @@ export interface ContentBrowserProps {
 }
 
 export function ContentBrowser({ deepLinkPage }: ContentBrowserProps) {
-  const inset = useInsetContext();
+  const workspaceContext = useOptionalWorkspace();
   const { currentBranch: branch } = useChatTask();
   const { org } = useProjectContext();
 
-  const virtualMcpId = inset?.entity?.id ?? null;
+  const virtualMcpId = workspaceContext?.entity?.id ?? null;
 
   const vmEvents = useSandboxEvents();
   // Resolve the sandbox from the shared lifecycle context — the same source
   // Preview reads. A thread-scoped repo bound by `load_repo` lives on the
   // thread (not the agent entity), and the lifecycle provider already merges
-  // that in. Reading `inset.entity.metadata.sandboxMap` directly would miss it
+  // that in. Reading `workspaceContext.entity.metadata.sandboxMap` directly would miss it
   // and strand Content on "starting" for the ephemeral Decopilot agent.
   const lifecycle = useSandboxLifecycle();
   const { runtime, previewServerUrl } = useSessionRuntime(virtualMcpId);

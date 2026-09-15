@@ -1,5 +1,10 @@
+import { WorkspacePage } from "@/layouts/workspace/workspace-page";
 import { ConnectSourcesTab } from "@/layouts/main-panel-tabs/connect-sources-tab";
 
-export default function ConnectSourcesRoute() {
-  return <ConnectSourcesTab />;
+export default function AgentConnectSourcesPage() {
+  return (
+    <WorkspacePage>
+      <ConnectSourcesTab />
+    </WorkspacePage>
+  );
 }

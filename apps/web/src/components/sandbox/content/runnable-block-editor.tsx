@@ -22,7 +22,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
@@ -96,10 +96,10 @@ export function RunnableBlockEditor({
 }) {
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const t = useT();
-  const inset = useInsetContext();
+  const workspaceContext = useOptionalWorkspace();
   const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
+    workspaceContext?.entity?.id === virtualMcpId
+      ? (workspaceContext.entity.metadata?.siteSlug ?? null)
       : null;
 
   // Tanstack registers commerce/vtex blocks with a freeform props stub (no

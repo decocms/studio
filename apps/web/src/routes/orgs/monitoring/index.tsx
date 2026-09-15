@@ -731,7 +731,7 @@ function MonitoringDashboardContent({
 
   return (
     <>
-      <Page.Body className="!pb-4">
+      <Page.Container className="!pb-4">
         <div className="flex flex-col gap-5">
           <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
           <div className="flex items-center justify-between gap-4">
@@ -912,7 +912,7 @@ function MonitoringDashboardContent({
             />
           )}
         </div>
-      </Page.Body>
+      </Page.Container>
 
       {tab === "automations" ? (
         <AutomationsTabContent dateRange={dateRange} />
@@ -1048,9 +1048,9 @@ export default function MonitoringDashboard() {
         <ErrorBoundary
           fallback={
             <>
-              <Page.Body className="!pb-3">
+              <Page.Container className="!pb-3">
                 <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
-              </Page.Body>
+              </Page.Container>
               <Page.Content>
                 <div className="flex-1 flex items-center justify-center h-full">
                   <EmptyState
@@ -1065,7 +1065,7 @@ export default function MonitoringDashboard() {
           <Suspense
             fallback={
               <>
-                <Page.Body className="!pb-3">
+                <Page.Container className="!pb-3">
                   <div className="flex flex-col gap-4">
                     <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
                     <CollectionTabs
@@ -1093,7 +1093,7 @@ export default function MonitoringDashboard() {
                       }
                     />
                   </div>
-                </Page.Body>
+                </Page.Container>
 
                 {tab === "threads" ? (
                   <div className="flex-1 flex flex-col overflow-auto md:overflow-hidden">

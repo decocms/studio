@@ -11,7 +11,7 @@ export function OrgGeneralPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.orgGeneral.organization")}</Page.Title>
             <OrganizationForm />
@@ -19,7 +19,7 @@ export function OrgGeneralPage() {
             <DomainSettings />
             <DeleteOrganizationSection />
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

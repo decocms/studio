@@ -69,6 +69,9 @@ bun run build:studio
 
 ## Architecture
 
+See [Workspace, Panel, and Page](docs/component-architecture.md) for layout
+ownership, compound component APIs, naming conventions, and annotated screenshots.
+
 `src/router.tsx` creates the TanStack Router tree and mounts the top-level
 providers; `src/index.web.tsx` is the browser entry that renders it (the Tauri
 desktop build has its own entry, `src/index.native.tsx`). Route components load

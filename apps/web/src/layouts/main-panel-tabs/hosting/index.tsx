@@ -116,7 +116,7 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <Page.Body maxWidth="max-w-5xl">
+      <Page.Container width="standard">
         <SettingsPage>
           <div className="flex flex-col gap-2">
             <Page.Title
@@ -188,7 +188,7 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
             error={redirectsQuery.error}
           />
         </SettingsPage>
-      </Page.Body>
+      </Page.Container>
     </div>
   );
 }

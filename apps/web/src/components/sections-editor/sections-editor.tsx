@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/i18n/use-t";
 import { KEYS } from "@/lib/query-keys";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import {
   ChevronDown,
   ChevronLeft,
@@ -185,10 +185,10 @@ export function SectionsEditor({
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
-  const inset = useInsetContext();
+  const workspaceContext = useOptionalWorkspace();
   const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
+    workspaceContext?.entity?.id === virtualMcpId
+      ? (workspaceContext.entity.metadata?.siteSlug ?? null)
       : null;
   // Section-gallery previews render against the sandbox dev server, falling
   // back to the Fast Preview production deployment while the sandbox boots.

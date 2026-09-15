@@ -1,9 +1,10 @@
+import { WorkspacePage } from "@/layouts/workspace/workspace-page";
 import { useSearch } from "@tanstack/react-router";
 import { FileTab } from "@/layouts/main-panel-tabs/file-tab";
 import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
 import { useRouteVirtualMcpId, useRouteThreadId } from "@/layouts/thread-route";
 
-export default function Route() {
+function AgentFileContent() {
   const search = useSearch({ strict: false });
   const virtualMcpId = useRouteVirtualMcpId();
   const threadId = useRouteThreadId();
@@ -13,5 +14,13 @@ export default function Route() {
     <FileTab key={value} fileKey={value} taskId={threadId} />
   ) : (
     <SettingsTab virtualMcpId={virtualMcpId} />
+  );
+}
+
+export default function AgentFilePage() {
+  return (
+    <WorkspacePage>
+      <AgentFileContent />
+    </WorkspacePage>
   );
 }

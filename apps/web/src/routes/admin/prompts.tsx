@@ -118,7 +118,7 @@ export default function AdminPromptsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
               {t("admin.prompts.description", {
@@ -190,7 +190,7 @@ export default function AdminPromptsPage() {
               </Button>
             </div>
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

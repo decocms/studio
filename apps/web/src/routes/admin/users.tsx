@@ -135,7 +135,7 @@ export default function AdminUsersPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <SearchInput
               value={search}
@@ -168,7 +168,7 @@ export default function AdminUsersPage() {
               }
             />
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useOptionalWorkspace } from "@/layouts/workspace/workspace-context";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
   type Crumb,
@@ -73,10 +73,10 @@ export function SavedSectionEditor({
   ) => void;
 }) {
   const t = useT();
-  const inset = useInsetContext();
+  const workspaceContext = useOptionalWorkspace();
   const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
+    workspaceContext?.entity?.id === virtualMcpId
+      ? (workspaceContext.entity.metadata?.siteSlug ?? null)
       : null;
 
   // Seed once: this component is remounted (via `key`) when blockKey changes.

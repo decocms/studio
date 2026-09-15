@@ -1,5 +1,5 @@
-import { Outlet } from "@tanstack/react-router";
+import { SiteEditorPage } from "@/layouts/workspace/site-editor-page";
 
 export default function SiteEditorRoute() {
-  return <Outlet />;
+  return <SiteEditorPage />;
 }
