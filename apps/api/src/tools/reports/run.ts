@@ -1,5 +1,9 @@
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { z } from "zod";
+import {
+  fromWire,
+  legacyGithubRepo,
+} from "@decocms/shared/reports/repository-ref";
 import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
@@ -41,10 +45,18 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
       throw new Error(normalized.error);
     }
 
-    // The repo the client picked in the GitHub companion is persisted on the CD
-    // connection's configuration_state (github_repo). Forward it so Commerce
-    // Discovery can run repo-audit against the right repo; its absence just means
-    // GitHub isn't connected and never blocks the run.
+    /**
+     * The repository the client picked is persisted on the CD connection's
+     * `configuration_state`. Forward it so Commerce Discovery audits the right
+     * one; its absence just means no repository is linked and never blocks the
+     * run.
+     *
+     * Both spellings go out for the deprecation window: `repository` is the
+     * identity (any provider, any host, resolvable back to a credential), and
+     * `github_repo` is the legacy string a Reports still on the old reader
+     * needs — derived from the reference when it is a github.com one, and read
+     * straight off the state for an org the backfill has not reached.
+     */
     const cdConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(
       organization.id,
     );
@@ -57,18 +69,20 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
       | string
       | null
       | undefined;
-    const githubRepo =
-      configState &&
-      typeof configState === "object" &&
-      typeof configState.github_repo === "string" &&
-      configState.github_repo.length > 0
-        ? (configState.github_repo as string)
+    const state =
+      configState && typeof configState === "object" ? configState : null;
+    const repository = fromWire(state?.repository);
+    const legacy =
+      typeof state?.github_repo === "string" && state.github_repo.length > 0
+        ? state.github_repo
         : undefined;
 
     return triggerCommerceDiscoveryRun({
       siteUrl: normalized.value,
       orgId: organization.id,
-      githubRepo,
+      repository: repository ?? undefined,
+      githubRepo:
+        (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
     });
   },
 });

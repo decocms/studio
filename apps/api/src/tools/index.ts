@@ -125,6 +125,7 @@ export const CORE_TOOLS = [
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_BIND,
   CommerceDiscoveryTools.COMMERCE_DISCOVERY_CONNECTION_STATUS,
+  CommerceDiscoveryTools.COMMERCE_DISCOVERY_SET_REPOSITORY,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
