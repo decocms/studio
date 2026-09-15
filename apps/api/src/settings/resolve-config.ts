@@ -293,6 +293,7 @@ export function resolveConfig(
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
     stripePlanPriceIds: parsePlanPriceIds(envVars.STRIPE_PLAN_PRICE_IDS),
+    stripePortalConfigurationId: envVars.STRIPE_PORTAL_CONFIGURATION_ID,
     stripeTopupProductId: envVars.STRIPE_TOPUP_PRODUCT_ID,
     // Capped at 100: above that is a fat-fingered misconfig ("150" for "15")
     // that would silently more-than-double every top-up charge. 0 is valid —
@@ -512,6 +513,25 @@ export function resolveConfig(
         "API, so without the token a customer is charged and the entitlement " +
         "is never granted — and AI_PLAN_SET cannot repair it, it accepts only " +
         "'free'.",
+    );
+  }
+
+  // Selling a ladder nobody can climb. Warn, not throw: a FIRST subscribe works
+  // without this, so refusing to boot would take down a deployment whose
+  // checkout is fine. Only the existing subscriber changing tier is broken, and
+  // Stripe refuses that one loudly at the point of use rather than charging for
+  // it — so this is a "you will get support tickets" warning, not a data risk.
+  if (
+    settings.plansEnabled &&
+    Object.keys(settings.stripePlanPriceIds).length > 1 &&
+    !settings.stripePortalConfigurationId
+  ) {
+    console.warn(
+      "STRIPE_PLAN_PRICE_IDS maps more than one plan but " +
+        "STRIPE_PORTAL_CONFIGURATION_ID is unset. An org that already has a " +
+        "subscription cannot change tier: the account's default portal " +
+        "configuration lists no products, so Stripe refuses the update flow. " +
+        "First-time checkout is unaffected.",
     );
   }
 

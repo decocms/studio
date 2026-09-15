@@ -102,6 +102,26 @@ export interface Settings {
    * be placed by an operator through the gateway's admin API.
    */
   stripePlanPriceIds: Record<string, string>;
+  /**
+   * The Customer Portal configuration used for a TIER CHANGE, and only that.
+   *
+   * Deliberately not the account default. The default configuration also backs
+   * `ORGANIZATION_BILLING_PORTAL` — the full self-serve portal — so listing the
+   * tier products there would let any customer switch plans freely, including a
+   * legacy deco.cx subscriber on a much more expensive price dropping itself to
+   * the cheapest new tier. A `flow_data` session is pinned to one price and
+   * cannot wander, so the upgrade path gets its own configuration and the full
+   * portal keeps offering no plan switching at all.
+   *
+   * Its `subscription_update` must list every purchasable plan's product, and
+   * must set `billing_cycle_anchor=unchanged` — `reset` would move an upgraded
+   * org off the 1st-of-month cycle that `firstOfNextMonthUnix` put it on, and
+   * silently undo the alignment between billing and the allowance.
+   *
+   * Unset → Stripe uses the account default, which lists no products, so a tier
+   * change is refused with Stripe's own message rather than charging anything.
+   */
+  stripePortalConfigurationId: string | undefined;
   /** The single catalog Product every top-up charge hangs off (created once in
    *  the Stripe dashboard). Top-up amounts are arbitrary, so the Price is
    *  ad-hoc per checkout — but it must point at THIS product, or Stripe's

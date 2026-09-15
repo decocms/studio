@@ -354,9 +354,13 @@ export interface StripeSubscription {
  * which the webhook already resolves back to a tier through the price map — so
  * the entitlement follows the money without a second code path.
  *
- * Requires the portal configuration to have `subscription_update` enabled AND
- * to list the plan products. Stripe 400s otherwise, and its message is what
- * the org admin sees.
+ * Runs on its OWN portal configuration (`STRIPE_PORTAL_CONFIGURATION_ID`), not
+ * the account default: the default also backs the full self-serve portal, and
+ * listing the tier products there would let anyone switch plans freely. That
+ * configuration must list every purchasable plan's product — Stripe 400s
+ * otherwise, and its message is what the org admin sees. Verified: with the
+ * default configuration, Stripe refuses with "the configuration does not
+ * include the price in its features[subscription_update][products]".
  */
 export async function createSubscriptionUpdateSession(input: {
   customerId: string;
@@ -371,6 +375,9 @@ export async function createSubscriptionUpdateSession(input: {
       params: {
         customer: input.customerId,
         return_url: input.returnUrl,
+        ...(getSettings().stripePortalConfigurationId && {
+          configuration: getSettings().stripePortalConfigurationId,
+        }),
         flow_data: {
           type: "subscription_update_confirm",
           subscription_update_confirm: {

@@ -417,6 +417,17 @@ configMap:
     # (canceled, unpaid, deleted) drops the org back to free through the same
     # webhook; `past_due` is left alone while Stripe is still dunning.
     # STRIPE_PLAN_PRICE_IDS: ""
+    #
+    # The Customer Portal configuration used for a TIER CHANGE (an org that
+    # already has a subscription moving to another plan). Its
+    # subscription_update must LIST the plan products and set
+    # billing_cycle_anchor=unchanged; Stripe refuses the flow otherwise, and
+    # `reset` would move the org off the 1st-of-month cycle checkout anchors it
+    # to. Deliberately NOT the account default — the default also backs the full
+    # self-serve portal, where listing the tier products would let a legacy
+    # subscriber on an expensive price switch itself to the cheapest new tier.
+    # Unset: first-time checkout still works, tier changes are refused.
+    # STRIPE_PORTAL_CONFIGURATION_ID: ""
 
 secret:
   # secretName: ""  # If defined, uses this existing secret (does not create new secret)
