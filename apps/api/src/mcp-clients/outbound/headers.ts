@@ -40,6 +40,22 @@ export function stripBindingMetadata(value: unknown): unknown {
   return value;
 }
 
+// Common HTTP servers/proxies reject a single header line above ~8-16KB.
+const MAX_RUN_METADATA_HEADER_BYTES = 8 * 1024;
+
+/**
+ * Serialize run metadata for the outbound run-metadata header, dropping it
+ * (rather than truncating, which would produce invalid JSON) when it's too
+ * large to safely forward as a header.
+ */
+export function serializeRunMetadataHeader(
+  runMetadata: Record<string, string> | undefined,
+): string | null {
+  if (!runMetadata || Object.keys(runMetadata).length === 0) return null;
+  const serialized = JSON.stringify(runMetadata);
+  return serialized.length > MAX_RUN_METADATA_HEADER_BYTES ? null : serialized;
+}
+
 /**
  * Build request headers for HTTP-based connections
  * Handles configuration token issuance and OAuth token refresh
@@ -148,14 +164,17 @@ async function _buildRequestHeaders(
 
   // Forward per-run metadata (e.g. from a webhook trigger) so a downstream MCP
   // server can read run-scoped context from the request instead of a tool arg.
-  if (
+  const runMetadataHeader = serializeRunMetadataHeader(
+    ctx.metadata.runMetadata,
+  );
+  if (runMetadataHeader) {
+    writeStudioHeader(headers, "runMetadata", runMetadataHeader);
+  } else if (
     ctx.metadata.runMetadata &&
     Object.keys(ctx.metadata.runMetadata).length > 0
   ) {
-    writeStudioHeader(
-      headers,
-      "runMetadata",
-      JSON.stringify(ctx.metadata.runMetadata),
+    console.warn(
+      `[Proxy] runMetadata for connection ${connectionId} exceeds ${MAX_RUN_METADATA_HEADER_BYTES} bytes, dropping header`,
     );
   }
 

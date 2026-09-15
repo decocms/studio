@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { stripBindingMetadata } from "./headers";
+import { serializeRunMetadataHeader, stripBindingMetadata } from "./headers";
 
 describe("stripBindingMetadata", () => {
   test("strips __binding from a top-level object value", () => {
@@ -64,5 +64,23 @@ describe("stripBindingMetadata", () => {
     expect(stripBindingMetadata(null)).toBeNull();
     expect(stripBindingMetadata(undefined)).toBeUndefined();
     expect(stripBindingMetadata("x")).toBe("x");
+  });
+});
+
+describe("serializeRunMetadataHeader", () => {
+  test("returns null for undefined or empty metadata", () => {
+    expect(serializeRunMetadataHeader(undefined)).toBeNull();
+    expect(serializeRunMetadataHeader({})).toBeNull();
+  });
+
+  test("serializes small metadata to JSON", () => {
+    expect(serializeRunMetadataHeader({ taskBoardItemId: "abc" })).toBe(
+      JSON.stringify({ taskBoardItemId: "abc" }),
+    );
+  });
+
+  test("drops metadata that would exceed the header size cap", () => {
+    const oversized = { note: "x".repeat(9 * 1024) };
+    expect(serializeRunMetadataHeader(oversized)).toBeNull();
   });
 });
