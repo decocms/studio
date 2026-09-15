@@ -2,18 +2,32 @@ import { createTtlLruCache, type TtlLruCache } from "../lib/ttl-lru-cache";
 import type { ModelInfo } from "./types";
 
 export interface ModelListCache {
-  get(organizationId: string, providerId: string): Promise<ModelInfo[] | null>;
+  get(
+    organizationId: string,
+    providerId: string,
+    keyId: string,
+  ): Promise<ModelInfo[] | null>;
   set(
     organizationId: string,
     providerId: string,
+    keyId: string,
     models: ModelInfo[],
   ): Promise<void>;
-  invalidate(organizationId: string, providerId: string): Promise<void>;
+  invalidate(
+    organizationId: string,
+    providerId: string,
+    keyId: string,
+  ): Promise<void>;
   teardown(): void;
 }
 
-function cacheKey(organizationId: string, providerId: string): string {
-  return `${organizationId}.${providerId}`;
+// keyId is included: openai-compatible keys carry their own baseUrl, so two keys on the same provider can have different catalogs.
+function cacheKey(
+  organizationId: string,
+  providerId: string,
+  keyId: string,
+): string {
+  return `${organizationId}.${providerId}.${keyId}`;
 }
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -46,20 +60,26 @@ export class InMemoryModelListCache implements ModelListCache {
   async get(
     organizationId: string,
     providerId: string,
+    keyId: string,
   ): Promise<ModelInfo[] | null> {
-    return this.cache.get(cacheKey(organizationId, providerId)) ?? null;
+    return this.cache.get(cacheKey(organizationId, providerId, keyId)) ?? null;
   }
 
   async set(
     organizationId: string,
     providerId: string,
+    keyId: string,
     models: ModelInfo[],
   ): Promise<void> {
-    this.cache.set(cacheKey(organizationId, providerId), models);
+    this.cache.set(cacheKey(organizationId, providerId, keyId), models);
   }
 
-  async invalidate(organizationId: string, providerId: string): Promise<void> {
-    this.cache.delete(cacheKey(organizationId, providerId));
+  async invalidate(
+    organizationId: string,
+    providerId: string,
+    keyId: string,
+  ): Promise<void> {
+    this.cache.delete(cacheKey(organizationId, providerId, keyId));
   }
 
   teardown(): void {

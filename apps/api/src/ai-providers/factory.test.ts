@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { AIProviderKeyStorage } from "../storage/ai-provider-keys";
 import { AIProviderFactory } from "./factory";
+import type { ModelListCache } from "./model-list-cache";
+import type { ModelInfo } from "./types";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -99,5 +101,51 @@ describe("AIProviderFactory.listModels", () => {
     // Regression: OpenRouter's decimal-string pricing must be parsed to numbers.
     expect(models[0]?.costs?.input).toBe(0.0000005808);
     expect(models[0]?.costs?.output).toBe(0.0000017424);
+  });
+
+  test("caches openai-compatible model lists per key, not per provider", async () => {
+    const endpointByKey: Record<string, string> = {
+      "key-a": "a",
+      "key-b": "b",
+    };
+    globalThis.fetch = (async (url: unknown): Promise<Response> => {
+      const u = String(url);
+      const model = u.startsWith("https://a.example.com")
+        ? "model-a"
+        : "model-b";
+      return new Response(
+        JSON.stringify({ data: [{ id: model, owned_by: "test" }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const storage = {
+      resolve: async (keyId: string) => ({
+        keyInfo: { id: keyId, providerId: "openai-compatible" } as never,
+        apiKey: JSON.stringify({
+          baseUrl: `https://${endpointByKey[keyId]}.example.com`,
+          apiKey: "secret",
+        }),
+      }),
+    } as unknown as AIProviderKeyStorage;
+
+    // Keys off whatever identifying args the caller actually passes.
+    const store = new Map<string, ModelInfo[]>();
+    const cache = {
+      get: async (...args: string[]) => store.get(args.join(".")) ?? null,
+      set: async (...args: [...string[], ModelInfo[]]) => {
+        const models = args.pop() as ModelInfo[];
+        store.set((args as string[]).join("."), models);
+      },
+      invalidate: async () => {},
+      teardown: () => {},
+    } as unknown as ModelListCache;
+
+    const factory = new AIProviderFactory(storage, cache);
+    const modelsA = await factory.listModels("key-a", "org-1");
+    const modelsB = await factory.listModels("key-b", "org-1");
+
+    expect(modelsA[0]?.modelId).toBe("model-a");
+    expect(modelsB[0]?.modelId).toBe("model-b");
   });
 });
