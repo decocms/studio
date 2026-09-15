@@ -1,6 +1,6 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { ModelCapability } from "@decocms/shared/sdk";
-import { retry, RetryError } from "@decocms/shared/std";
+import { fetchWithTransientRetry } from "./fetch-transient-retry";
 import type {
   StudioProvider,
   ModelInfo,
@@ -11,44 +11,14 @@ import type {
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
 
-/** A transient (5xx / 429) status from the models GET. */
-class TransientModelsListError extends Error {}
-
-/**
- * A GET is always safe to retry — no side effect. So a single flaky 5xx/429
- * from OpenRouter no longer fails every org's model list for that provider.
- */
-async function fetchModelsWithRetry(
+function fetchModelsWithRetry(
   headers: Record<string, string>,
 ): Promise<Response> {
-  try {
-    return await retry(
-      async () => {
-        const res = await fetch("https://openrouter.ai/api/v1/models", {
-          headers,
-          signal: AbortSignal.timeout(30_000),
-        });
-        if (res.status >= 500 || res.status === 429) {
-          const body = await res.text().catch(() => "");
-          throw new TransientModelsListError(
-            `OpenRouter listModels failed: ${res.status} ${body}`,
-          );
-        }
-        return res;
-      },
-      {
-        maxAttempts: 3,
-        minTimeout: 200,
-        maxTimeout: 2_000,
-        isRetriable: (err) => err instanceof TransientModelsListError,
-      },
-    );
-  } catch (err) {
-    if (err instanceof RetryError && err.cause instanceof Error) {
-      throw err.cause;
-    }
-    throw err;
-  }
+  return fetchWithTransientRetry(
+    "OpenRouter listModels",
+    "https://openrouter.ai/api/v1/models",
+    { headers, signal: AbortSignal.timeout(30_000) },
+  );
 }
 
 export const openrouterAdapter: ProviderAdapter = {
