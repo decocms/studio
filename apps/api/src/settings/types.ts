@@ -40,6 +40,10 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
+  /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
+   *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
+   *  no impersonation. Unset = header ignored entirely. */
+  deploymentAdminToken: string | undefined;
 
   // Observability
   // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`

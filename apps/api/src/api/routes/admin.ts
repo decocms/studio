@@ -2,9 +2,10 @@
  * Deployment Admin Routes
  *
  * Instance-level admin surface for operators (debugging a user's issue, fixing
- * org membership) — gated by `DEPLOYMENT_ADMIN_EMAILS`, not by any per-org
- * role. Every endpoint lives behind `requireDeploymentAdmin`, and the raw
- * Better Auth admin plugin (`/api/auth/admin/*`) is fenced off in `app.ts` so
+ * org membership) — gated by `DEPLOYMENT_ADMIN_EMAILS` (a human's session) or
+ * `DEPLOYMENT_ADMIN_TOKEN` (server-to-server, see `hasValidAdminToken`), not
+ * by any per-org role. Every endpoint lives behind `requireDeploymentAdmin`,
+ * and the raw Better Auth admin plugin (`/api/auth/admin/*`) is fenced off in `app.ts` so
  * a pushed `adminUserIds` id can't reach set-role / set-user-password / etc.
  * directly. The one exception the client hits directly is
  * `authClient.admin.stopImpersonating()`, which needs no admin permission.
@@ -18,6 +19,7 @@
  * namespace). The prefix is exported so the mount and the SSO-enforcement
  * exemption in app.ts share one source — see the constant below.
  */
+import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { auth, getTrustedOrigins, grantDeploymentAdmin } from "@/auth";
@@ -157,10 +159,51 @@ async function replaceOrgFlags(
     .execute();
 }
 
+/**
+ * Server-to-server credential for /api/_admin: the shared secret in
+ * `DEPLOYMENT_ADMIN_TOKEN`, sent as `x-deployment-admin-token`. Exists because
+ * every other credential this API issues (Studio JWT, API key) resolves to a
+ * user with no email, and the email allowlist below is what gates this surface
+ * — so an operator tool like ai-service had no way in but replaying a human's
+ * browser cookie.
+ *
+ * Own header, not `Authorization: Bearer`, so the token never reaches
+ * better-auth's API-key probe in context-factory (which would log a warn line
+ * carrying its prefix on every call).
+ *
+ * Deliberately NOT accepted for /impersonate: that route mints a session on
+ * behalf of a real admin and its audit trail is `session.impersonatedBy`,
+ * which a header-only caller has no identity to fill. Everything else is
+ * attributable through the route's own audit line.
+ */
+export function matchesAdminToken(
+  provided: string | undefined,
+  expected: string | undefined,
+): boolean {
+  if (!expected || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function hasValidAdminToken(c: Context<Env>): boolean {
+  return matchesAdminToken(
+    c.req.header("x-deployment-admin-token"),
+    getSettings().deploymentAdminToken,
+  );
+}
+
 async function requireDeploymentAdmin(
   c: Context<Env>,
   next: () => Promise<void>,
 ) {
+  if (
+    c.req.path !== `${ADMIN_API_PREFIX}/impersonate` &&
+    hasValidAdminToken(c)
+  ) {
+    return next();
+  }
+
   const user = c.get("studioContext").auth.user;
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);

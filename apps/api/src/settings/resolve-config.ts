@@ -241,6 +241,7 @@ export function resolveConfig(
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+    deploymentAdminToken: envVars.DEPLOYMENT_ADMIN_TOKEN || undefined,
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,
