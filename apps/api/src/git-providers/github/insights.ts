@@ -30,6 +30,7 @@ import {
   type CodeSearchResult,
   DEFAULT_FILE_BYTES,
   DEFAULT_TREE_ENTRIES,
+  encodeRepoFilePath,
   type ListChangeRequestsParams,
   type ListCommitsParams,
   type ListTreeParams,
@@ -441,7 +442,7 @@ export class GithubInsightsClient implements RepoInsightsClient {
     const ref = params.ref ?? (await this.resolveDefaultBranch());
     const query = new URLSearchParams({ ref });
     const res = await githubFetch(
-      `${this.repoBase}/contents/${encodeFilePath(params.path)}?${query}`,
+      `${this.repoBase}/contents/${encodeRepoFilePath(params.path)}?${query}`,
       {
         token: await this.requireToken(),
         operation: "insights_file",
@@ -539,9 +540,4 @@ export class GithubInsightsClient implements RepoInsightsClient {
         : null,
     };
   }
-}
-
-/** Repository-relative paths keep their separators; every segment is escaped. */
-function encodeFilePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
 }

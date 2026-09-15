@@ -40,6 +40,7 @@ import {
   type CodeSearchResult,
   DEFAULT_FILE_BYTES,
   DEFAULT_TREE_ENTRIES,
+  encodeRepoFilePath,
   type ListChangeRequestsParams,
   type ListCommitsParams,
   type ListTreeParams,
@@ -358,7 +359,7 @@ export class BitbucketInsightsClient implements RepoInsightsClient {
     );
     const ref = params.ref ?? (await this.resolveDefaultBranch());
     const res = await this.call(
-      `${this.repoBase}/src/${encodeRef(ref)}/${encodeFilePath(params.path)}`,
+      `${this.repoBase}/src/${encodeRef(ref)}/${encodeRepoFilePath(params.path)}`,
       { allow: [404] },
     );
     if (res.status === 404) {
@@ -522,9 +523,4 @@ export class BitbucketInsightsClient implements RepoInsightsClient {
 /** Branch names and revisions are one path segment: slashes encode too. */
 function encodeRef(ref: string): string {
   return encodeURIComponent(ref);
-}
-
-/** Repository-relative paths keep their separators; every segment is escaped. */
-function encodeFilePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
 }

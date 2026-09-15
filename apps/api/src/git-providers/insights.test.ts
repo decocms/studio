@@ -1,10 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import {
   cappedLimit,
+  encodeRepoFilePath,
   loginLooksLikeBot,
   pageFromCursor,
   readCappedBody,
 } from "./insights";
+
+describe("encodeRepoFilePath", () => {
+  test("keeps separators literal while escaping each segment", () => {
+    expect(encodeRepoFilePath("src/checkout page.ts")).toBe(
+      "src/checkout%20page.ts",
+    );
+  });
+
+  test("escapes a path segment that itself contains a slash-like character", () => {
+    expect(encodeRepoFilePath("a/b#c")).toBe("a/b%23c");
+  });
+});
 
 describe("cappedLimit", () => {
   test("an absent ask takes the default, itself bounded by the ceiling", () => {

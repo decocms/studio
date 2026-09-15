@@ -356,6 +356,16 @@ function concatChunks(chunks: Uint8Array[], total: number): Uint8Array {
 }
 
 /**
+ * A repository-relative path, percent-encoded segment by segment so the
+ * separators stay literal slashes. Shared by the two providers whose file-read
+ * endpoint takes the path as part of the URL (GitHub, Bitbucket) — GitLab's
+ * takes the whole path as one opaque segment instead, so it encodes it alone.
+ */
+export function encodeRepoFilePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+/**
  * A page number as an opaque cursor, for the two providers that page by number.
  * Invalid input is page 1 rather than a throw: a cursor is the caller echoing
  * back something we minted, and a garbled one should restart the listing rather
