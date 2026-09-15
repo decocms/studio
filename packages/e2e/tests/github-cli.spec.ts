@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { APIRequestContext } from "@playwright/test";
@@ -24,7 +24,7 @@ async function cliState(state: {
 async function seed(request: APIRequestContext) {
   const login = `cli-${randomUUID().slice(0, 8)}`;
   const token = `synthetic-${randomUUID()}`;
-  const id = Math.floor(Math.random() * 1_000_000_000) + 1;
+  const id = randomInt(1, 1_000_000_001);
   const path = `${login}/example`;
   const repositories = [
     {
