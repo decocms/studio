@@ -41,7 +41,7 @@ export function stripBindingMetadata(value: unknown): unknown {
 }
 
 // Common HTTP servers/proxies reject a single header line above ~8-16KB.
-const MAX_RUN_METADATA_HEADER_BYTES = 8 * 1024;
+const MAX_HEADER_VALUE_BYTES = 8 * 1024;
 
 /** HTTP header values must be ByteStrings (code points 0-255) — `fetch`/undici
  *  throws on anything outside that range instead of encoding it. Run metadata
@@ -66,8 +66,35 @@ export function serializeRunMetadataHeader(
   const serialized = JSON.stringify(runMetadata);
   // Cap is in bytes, not UTF-16 code units, so measure the encoded size.
   const byteLength = new TextEncoder().encode(serialized).length;
-  if (byteLength > MAX_RUN_METADATA_HEADER_BYTES) return null;
+  if (byteLength > MAX_HEADER_VALUE_BYTES) return null;
   return isHeaderSafe(serialized) ? serialized : null;
+}
+
+/**
+ * Drop any org-configured custom connection header whose value is unsafe
+ * (outside the HTTP header ByteString range) or oversized — unlike
+ * `configuration_state`/`metadata`, `connection_headers.headers` has no
+ * schema-level size or byte-range check, but flows straight into every
+ * outbound request's headers, where an unsafe value throws in `fetch`/undici
+ * and an oversized one gets the request rejected with 431 by the downstream
+ * server/proxy.
+ */
+export function sanitizeCustomHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!headers) return {};
+  const safe: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const byteLength = new TextEncoder().encode(value).length;
+    if (byteLength > MAX_HEADER_VALUE_BYTES || !isHeaderSafe(value)) {
+      console.warn(
+        `[Proxy] Dropping unsafe or oversized custom header "${key}"`,
+      );
+      continue;
+    }
+    safe[key] = value;
+  }
+  return safe;
 }
 
 /**
@@ -188,7 +215,7 @@ async function _buildRequestHeaders(
     Object.keys(ctx.metadata.runMetadata).length > 0
   ) {
     console.warn(
-      `[Proxy] runMetadata for connection ${connectionId} exceeds ${MAX_RUN_METADATA_HEADER_BYTES} bytes, dropping header`,
+      `[Proxy] runMetadata for connection ${connectionId} exceeds ${MAX_HEADER_VALUE_BYTES} bytes, dropping header`,
     );
   }
 
