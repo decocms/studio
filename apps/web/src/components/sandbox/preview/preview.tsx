@@ -1208,6 +1208,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     win.postMessage({ type: "cms-editor::deactivate" }, origin);
   };
 
+  // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
+  const clearEditorHover = () => {
+    const win = previewIframeRef.current?.contentWindow;
+    const origin = editorBridgeOrigin;
+    if (!win || !origin) return;
+    win.postMessage({ type: "cms-editor::clear-hover" }, origin);
+    win.postMessage({ type: "visual-editor::clear-hover" }, origin);
+  };
+
   const activateEditingMode = (mode: PreviewEditingMode) => {
     if (mode === "blocks" && !blocksEditingEnabled) return;
     const previousMode = editingMode;
@@ -2063,6 +2072,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             "border-x border-border bg-background shadow-sm",
                         )}
                         style={previewFrameStyle}
+                        onMouseLeave={clearEditorHover}
                       >
                         <iframe
                           // Key on the iframe base: remount when the base URL changes

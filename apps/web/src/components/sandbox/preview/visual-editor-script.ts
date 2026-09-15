@@ -149,6 +149,13 @@ export const VISUAL_EDITOR_SCRIPT = `(function() {
   window.addEventListener("message", function(e) {
     // Only Studio's own postMessage (source === this frame's parent) may drive the bridge — a nested/downstream frame's forged message can't deactivate the editor.
     if (e.source !== window.parent) return;
+    // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
+    if (e.data && e.data.type === "visual-editor::clear-hover") {
+      highlight.style.display = "none";
+      badge.style.display = "none";
+      lastTarget = null;
+      return;
+    }
     if (e.data && e.data.type === "visual-editor::deactivate") {
       highlight.remove();
       badge.remove();
