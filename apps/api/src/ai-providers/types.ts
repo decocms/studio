@@ -82,11 +82,12 @@ export interface OpenRouterAPIModel {
   canonical_slug: string;
   name: string;
   created: number;
+  // OpenRouter serializes these as decimal strings, not numbers.
   pricing: {
-    prompt: number;
-    completion: number;
-    request: number;
-    image: number;
+    prompt: string;
+    completion: string;
+    request: string;
+    image: string;
   };
   context_length: number;
   architecture: {

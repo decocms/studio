@@ -98,8 +98,8 @@ export const openrouterAdapter: ProviderAdapter = {
               maxOutputTokens,
             },
             costs: {
-              input: m.pricing.prompt ?? 0,
-              output: m.pricing.completion ?? 0,
+              input: Number(m.pricing.prompt) || 0,
+              output: Number(m.pricing.completion) || 0,
             },
           };
         };

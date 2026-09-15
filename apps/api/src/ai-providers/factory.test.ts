@@ -34,7 +34,13 @@ const OPENROUTER_MODELS_BODY = {
       canonical_slug: "google/gemini-2.5-flash",
       name: "Gemini 2.5 Flash",
       created: 0,
-      pricing: { prompt: 0, completion: 0, request: 0, image: 0 },
+      // OpenRouter serializes pricing as decimal strings, not numbers.
+      pricing: {
+        prompt: "0.0000005808",
+        completion: "0.0000017424",
+        request: "0",
+        image: "0",
+      },
       context_length: 100,
       architecture: {
         modality: "text",
@@ -90,5 +96,8 @@ describe("AIProviderFactory.listModels", () => {
     expect(models).toHaveLength(1);
     // Regression: this model previously crashed index-building, blanking enrichment.
     expect(models[0]?.capabilities).toContain("vision");
+    // Regression: OpenRouter's decimal-string pricing must be parsed to numbers.
+    expect(models[0]?.costs?.input).toBe(0.0000005808);
+    expect(models[0]?.costs?.output).toBe(0.0000017424);
   });
 });
