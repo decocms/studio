@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { RepoChoice } from "@/git-providers/repo-choices";
 import {
   buildClaudeCodeTaskPrompt,
+  narrowToPreferredRepo,
   pickSoleTaskRepo,
   type TaskRepo,
 } from "./claude-code-task-run";
@@ -266,20 +267,98 @@ const choice = (
   ...overrides,
 });
 
+/** A repository-backed choice, as `mergeRepoChoices` hands one over. */
+const repositoryChoice = (id: string, owner: string, name: string) =>
+  choice(id, owner, name, {
+    repository: { id } as unknown as NonNullable<RepoChoice["repository"]>,
+    connectionId: null,
+    installationId: undefined,
+  });
+
+describe("narrowToPreferredRepo", () => {
+  const choices = [
+    repositoryChoice("repo_web", "acme", "web"),
+    repositoryChoice("repo_api", "acme", "api"),
+  ];
+
+  test("a card that names nothing is not narrowed", () => {
+    expect(narrowToPreferredRepo(choices)).toEqual(choices);
+    expect(narrowToPreferredRepo(choices, {})).toEqual(choices);
+    expect(
+      narrowToPreferredRepo(choices, { repositoryId: null, repo: null }),
+    ).toEqual(choices);
+  });
+
+  test("the id wins over a name that points somewhere else", () => {
+    expect(
+      narrowToPreferredRepo(choices, {
+        repositoryId: "repo_api",
+        repo: "acme/web",
+      }).map((c) => c.id),
+    ).toEqual(["repo_api"]);
+  });
+
+  test("an id that matches nothing falls through to the name", () => {
+    expect(
+      narrowToPreferredRepo(choices, {
+        repositoryId: "repo_unlinked",
+        repo: "acme/web",
+      }).map((c) => c.id),
+    ).toEqual(["repo_web"]);
+  });
+
+  test("an id that matches nothing, with no name, narrows to nothing", () => {
+    expect(
+      narrowToPreferredRepo(choices, { repositoryId: "repo_unlinked" }),
+    ).toEqual([]);
+  });
+
+  test("a legacy choice carries no repository, so only its name can match", () => {
+    const legacy = [choice("conn_1", "acme", "web")];
+    expect(narrowToPreferredRepo(legacy, { repositoryId: "repo_web" })).toEqual(
+      [],
+    );
+    expect(
+      narrowToPreferredRepo(legacy, { repo: "acme/web" }).map((c) => c.id),
+    ).toEqual(["conn_1"]);
+  });
+});
+
 describe("pickSoleTaskRepo", () => {
   test("binds the reported repo from several choices and refuses missing or ambiguous matches", () => {
     const choices = [
       choice("one", "acme", "web"),
       choice("two", "acme", "api"),
     ];
-    expect(pickSoleTaskRepo(choices, "ACME/API")?.id).toBe("two");
-    expect(pickSoleTaskRepo(choices, "other/repo")).toBeNull();
+    expect(pickSoleTaskRepo(choices, { repo: "ACME/API" })?.id).toBe("two");
+    expect(pickSoleTaskRepo(choices, { repo: "other/repo" })).toBeNull();
     expect(
-      pickSoleTaskRepo(
-        [...choices, choice("three", "acme", "api")],
-        "acme/api",
-      ),
+      pickSoleTaskRepo([...choices, choice("three", "acme", "api")], {
+        repo: "acme/api",
+      }),
     ).toBeNull();
+  });
+
+  test("the card's repository id binds a checkout a name could not tell apart", () => {
+    const mirrored = [
+      repositoryChoice("repo_github", "acme", "storefront"),
+      choice("repo_gitlab", "acme", "storefront", {
+        repository: {
+          id: "repo_gitlab",
+        } as unknown as NonNullable<RepoChoice["repository"]>,
+        provider: "gitlab",
+        connectionId: null,
+        installationId: undefined,
+        webUrl: "https://gitlab.acme.com/acme/storefront",
+      }),
+    ];
+    expect(pickSoleTaskRepo(mirrored, { repo: "acme/storefront" })).toBeNull();
+    expect(
+      pickSoleTaskRepo(mirrored, {
+        repositoryId: "repo_gitlab",
+        repo: "acme/storefront",
+      })?.id,
+    ).toBe("repo_gitlab");
   });
   test("no clonable repo is not eligible", () => {
     expect(pickSoleTaskRepo([])).toBeNull();

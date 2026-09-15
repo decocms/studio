@@ -7625,6 +7625,7 @@ export interface StudioToolIO {
       type: "github" | "gitlab" | "bitbucket";
       host: string;
       token: string;
+      workspace?: string | undefined;
     };
     output: {
       account: {

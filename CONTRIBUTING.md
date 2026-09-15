@@ -18,8 +18,9 @@ bun run dev            # migrations + web app + API
 ### Importing a GitHub repository locally
 
 Install [GitHub CLI](https://cli.github.com/) and run
-`gh auth login --hostname github.com`. In local mode, the repository picker
-and Settings → Repositories show **Connect with GitHub CLI**. Connect, then
+`gh auth login --hostname github.com`. In local mode, open **Add account** in
+the repository picker or Settings → Repositories, then choose
+**Connect with GitHub CLI**. Connect, then
 choose a repository to import. No GitHub App registration or OAuth secrets are
 needed. `bun run dev` enables local mode by default; `--no-local-mode` uses the
 GitHub App connection instead.

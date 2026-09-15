@@ -2019,6 +2019,13 @@ export interface TaskBoardItem {
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
    *  created org-wide (no site context) carry none. */
   repo: string | null;
+  /**
+   * The first-class repository this task was written against, when its writer
+   * knew it. Preferred over `repo` when binding a run's checkout: a name can
+   * match two rows in an org that mirrors a repository across hosts, an id
+   * cannot. Null for a card that names only a name, or none at all.
+   */
+  repositoryId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;

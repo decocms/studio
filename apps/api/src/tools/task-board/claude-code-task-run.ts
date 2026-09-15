@@ -62,6 +62,53 @@ export interface TaskRepo {
 }
 
 /**
+ * What the card already decided about where its work happens.
+ *
+ * Two rungs because cards were written at two different times: the id is what
+ * a sender records now, the name is all an older card (or a human typing into
+ * the field) has.
+ */
+export interface PreferredTaskRepo {
+  /** The card's first-class repository. */
+  repositoryId?: string | null;
+  /** The card's `owner/name`. */
+  repo?: string | null;
+}
+
+/**
+ * Narrow the org's clonable repos to what the card asked for, if anything.
+ *
+ * The id wins over the name, and falls THROUGH to it rather than failing: an
+ * id that matches nothing means the repository was unlinked since the card was
+ * written, and the name may still find its replacement. An ask that matches
+ * nothing at either rung narrows to nothing — which is the conservative
+ * answer, because it sends the run to the mid-run pick instead of binding it
+ * to a repository the card did not name.
+ *
+ * Pure, and exported for its test.
+ */
+export function narrowToPreferredRepo(
+  choices: RepoChoice[],
+  preferred?: PreferredTaskRepo,
+): RepoChoice[] {
+  const repositoryId = preferred?.repositoryId;
+  const repo = preferred?.repo;
+  if (repositoryId) {
+    const byId = choices.filter(
+      (choice) => choice.repository?.id === repositoryId,
+    );
+    if (byId.length > 0) return byId;
+  }
+  if (repo) {
+    return choices.filter(
+      (choice) =>
+        `${choice.owner}/${choice.name}`.toLowerCase() === repo.toLowerCase(),
+    );
+  }
+  return repositoryId ? [] : choices;
+}
+
+/**
  * The org's single clonable repo, or null when the answer is ambiguous.
  *
  * "Single" counts REPOSITORIES, not connections — see `mergeRepoChoices`, which
@@ -70,21 +117,16 @@ export interface TaskRepo {
  * both point at. Counting connections made a genuinely one-repo org look
  * ambiguous and silently dropped every task to Decopilot.
  *
+ * `preferred` is what the card already decided, so a multi-repo org still binds
+ * a checkout before dispatch — see {@link narrowToPreferredRepo}.
+ *
  * Pure, so the counting rule is unit-tested without a StudioContext.
  */
 export function pickSoleTaskRepo(
   choices: RepoChoice[],
-  /** The card's own `repo`, when it has one: narrow to it first, so a
-   *  multi-repo org still binds a checkout before dispatch. An unknown or
-   *  ambiguous name narrows to nothing and falls back to the mid-run pick. */
-  preferredRepo?: string,
+  preferred?: PreferredTaskRepo,
 ): TaskRepo | null {
-  if (preferredRepo)
-    choices = choices.filter(
-      (choice) =>
-        `${choice.owner}/${choice.name}`.toLowerCase() ===
-        preferredRepo.toLowerCase(),
-    );
+  choices = narrowToPreferredRepo(choices, preferred);
   if (choices.length !== 1) return null;
   const chosen = choices[0]!;
   return {
@@ -137,7 +179,7 @@ export interface TaskRepoChoiceOption {
 export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
-  preferredRepo?: string,
+  preferred?: PreferredTaskRepo,
 ): Promise<TaskRepoChoice> {
   if (!agentSandboxEnabled()) {
     console.warn(
@@ -148,7 +190,7 @@ export async function resolveTaskRepoChoice(
   }
   try {
     const choices = await listOrgRepoChoices(ctx, organizationId);
-    const repo = pickSoleTaskRepo(choices, preferredRepo);
+    const repo = pickSoleTaskRepo(choices, preferred);
     if (repo) return { repo };
     if (choices.length === 0) {
       console.warn(

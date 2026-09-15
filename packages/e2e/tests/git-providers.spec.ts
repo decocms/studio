@@ -355,6 +355,30 @@ test.describe("Git providers: repositories as an org entity", () => {
     ).rejects.toThrow(/GitHub App/i);
   });
 
+  /** `/workspaces/{slug}` is the only call that identifies an access token. */
+  test("Bitbucket refuses a token without the workspace it belongs to", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const { orgSlug } = await signUpViaApi(ctx);
+
+    await expect(
+      callSelfMcpTool(ctx, orgSlug, "GIT_ACCOUNT_CONNECT_TOKEN", {
+        type: "bitbucket",
+        host: "bitbucket.org",
+        token: `not-a-real-bitbucket-token-${Date.now()}`,
+      }),
+    ).rejects.toThrow(/workspace/i);
+
+    const { accounts } = await callSelfMcpTool<{ accounts: unknown[] }>(
+      ctx,
+      orgSlug,
+      "GIT_ACCOUNT_LIST",
+      {},
+    );
+    expect(accounts).toEqual([]);
+  });
+
   test("rejects a host that is not a bare hostname", async ({ playwright }) => {
     const ctx = await newApiContext(playwright);
     const { orgSlug } = await signUpViaApi(ctx);

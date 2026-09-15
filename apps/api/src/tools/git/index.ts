@@ -173,7 +173,7 @@ export const GIT_ACCOUNT_LIST = defineTool({
 export const GIT_ACCOUNT_CONNECT_TOKEN = defineTool({
   name: "GIT_ACCOUNT_CONNECT_TOKEN",
   description:
-    "Connect a git provider account with an access token: a GitLab personal, project or group token, or a Bitbucket Cloud workspace, project or repository access token. Validates the token against the provider before storing it encrypted. Use this for self-managed GitLab instances (no OAuth application) or when OAuth is not wanted.",
+    "Connect a git provider account with an access token: a GitLab personal, project or group token, or a Bitbucket Cloud repository, project or workspace access token. Bitbucket also needs the workspace slug, because an access token cannot name itself. Validates the token against the provider before storing it encrypted. Prefer this over OAuth when the account should only reach a subset of repositories: a scoped token is narrowed by the provider, an OAuth grant reaches everything its user can.",
   annotations: {
     title: "Connect git account with a token",
     readOnlyHint: false,
@@ -193,6 +193,13 @@ export const GIT_ACCOUNT_CONNECT_TOKEN = defineTool({
         "Provider host, e.g. gitlab.com, gitlab.acme.com or bitbucket.org",
       ),
     token: z.string().min(1).describe("Access token with api scope"),
+    workspace: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Bitbucket workspace slug the token belongs to. Required for Bitbucket: an access token cannot name itself, and the workspace is what Studio verifies it against.",
+      ),
   }),
   outputSchema: z.object({ account: AccountOutputSchema }),
   handler: async (input, ctx) => {
@@ -203,8 +210,19 @@ export const GIT_ACCOUNT_CONNECT_TOKEN = defineTool({
     if (!/^[a-z0-9.-]+(:[0-9]+)?$/.test(host)) {
       throw new Error("host must be a bare hostname, optionally with a port");
     }
+    const workspace = input.workspace?.trim().toLowerCase();
+    if (input.type === "bitbucket" && !workspace) {
+      throw new Error(
+        "Connecting Bitbucket with a token needs the workspace slug the token belongs to",
+      );
+    }
     // Refuses GitHub by policy — see `principalForToken`.
-    const principal = await principalForToken(input.type, host, input.token);
+    const principal = await principalForToken(
+      input.type,
+      host,
+      input.token,
+      workspace,
+    );
     const account = await ctx.storage.gitProviderAccounts.upsert({
       organizationId: organization.id,
       type: input.type,

@@ -83,6 +83,7 @@ test("CLI button connects, searches, links and disconnects without storing a tok
   const request = page.context().request;
   const user = await seed(request);
   await page.goto(`/${orgSlug}/settings/repositories`);
+  await page.getByRole("button", { name: "Add account", exact: true }).click();
   const button = page.getByRole("button", {
     name: "Connect with GitHub CLI",
     exact: true,
@@ -90,6 +91,7 @@ test("CLI button connects, searches, links and disconnects without storing a tok
   await expect(button).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("github-cli-connect.png"),
+    animations: "disabled",
   });
   await button.click();
   await expect(page.getByText(user.login, { exact: true })).toBeVisible();
