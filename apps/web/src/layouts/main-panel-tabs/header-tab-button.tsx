@@ -93,12 +93,15 @@ export function HeaderTabButton({
         className,
       )}
     >
-      <span className="flex size-5 items-center justify-center shrink-0">
-        <TabIconGlyph icon={icon} />
-      </span>
+      {icon.kind !== "none" && (
+        <span className="flex size-5 items-center justify-center shrink-0">
+          <TabIconGlyph icon={icon} />
+        </span>
+      )}
       <span
         className={cn(
-          LABEL_HIDDEN_BELOW[labelCollapse],
+          // A glyphless tab keeps its label always, else the button is empty.
+          icon.kind !== "none" && LABEL_HIDDEN_BELOW[labelCollapse],
           "whitespace-nowrap text-sm font-medium leading-none",
         )}
       >

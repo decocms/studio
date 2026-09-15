@@ -41,6 +41,26 @@ describe("resolveTabIcon", () => {
     ).toEqual({ kind: "component", Component: LayoutAlt04 });
   });
 
+  test("site-editor (Preview) is glyphless → none", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "site-editor",
+        kind: "system",
+        connections: conns,
+      }),
+    ).toEqual({ kind: "none" });
+  });
+
+  test("content (Content) is glyphless → none", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "content",
+        kind: "system",
+        connections: conns,
+      }),
+    ).toEqual({ kind: "none" });
+  });
+
   test("system tab with an id absent from SYSTEM_TAB_ICONS → fallback", () => {
     expect(
       resolveTabIcon({

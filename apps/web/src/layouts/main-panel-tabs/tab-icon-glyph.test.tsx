@@ -31,4 +31,10 @@ describe("TabIconGlyph", () => {
 
     expect(html).toContain("<svg");
   });
+
+  test("renders nothing for a glyphless tab", () => {
+    const html = renderToStaticMarkup(<TabIconGlyph icon={{ kind: "none" }} />);
+
+    expect(html).toBe("");
+  });
 });
