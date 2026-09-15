@@ -262,6 +262,9 @@ export function resolveConfig(
     aiGatewayEnabled: toBool(envVars.DECO_AI_GATEWAY_ENABLED),
     aiGatewayUrl: envVars.DECO_AI_GATEWAY_URL || "https://ai-site.deco.site",
     aiGatewayAdminToken: envVars.DECO_AI_GATEWAY_ADMIN_TOKEN,
+    conciergeUrl:
+      envVars.CONCIERGE_URL || "https://decocms-concierge.deco-ceo.workers.dev",
+    conciergeAuthToken: envVars.CONCIERGE_MCP_AUTH_TOKEN,
     stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
     stripeSecretKey: envVars.STRIPE_SECRET_KEY,
     stripeOrgPriceId: envVars.STRIPE_ORG_PRICE_ID,
