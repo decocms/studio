@@ -7,7 +7,12 @@
  */
 export interface StudioToolIO {
   ORGANIZATION_CREATE: {
-    input: { slug: string; name: string; description?: string | undefined };
+    input: {
+      slug: string;
+      name: string;
+      description?: string | undefined;
+      initialCreditCents?: number | undefined;
+    };
     output: {
       id: string;
       name: string;

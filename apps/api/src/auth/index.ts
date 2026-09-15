@@ -41,6 +41,7 @@ import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
 import { createMagicLinkConfig } from "./magic-link";
+import { readInitialCreditCents } from "./initial-credit";
 import { seedOrgDb } from "./org";
 import { hoistOrgLogo } from "./hoist-org-logo";
 import { identifyAuthenticatedUser } from "./posthog-identify";
@@ -240,7 +241,9 @@ const plugins = [
   organization({
     organizationCreation: {
       afterCreate: async (data) => {
-        await seedOrgDb(data.organization.id, data.member.userId);
+        await seedOrgDb(data.organization.id, data.member.userId, {
+          signupGrantCents: readInitialCreditCents(data.organization.metadata),
+        });
       },
     },
     organizationHooks: {

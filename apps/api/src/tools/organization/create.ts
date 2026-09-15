@@ -8,6 +8,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getUserId, requireAuth } from "../../core/studio-context";
 import { isReservedOrganizationSlug } from "@decocms/shared/organization-slugs";
+import { MAX_SIGNUP_GRANT_CENTS } from "../../billing/gateway-admin";
 
 export const ORGANIZATION_CREATE = defineTool({
   name: "ORGANIZATION_CREATE" as const,
@@ -32,6 +33,15 @@ export const ORGANIZATION_CREATE = defineTool({
       ),
     name: z.string().min(1).max(255),
     description: z.string().optional(),
+    initialCreditCents: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_SIGNUP_GRANT_CENTS)
+      .optional()
+      .describe(
+        "Initial Deco AI Gateway credit to grant this org, in cents (e.g. 2500 = $25). Overrides the deployment default; omit to use it. 0 grants nothing.",
+      ),
   }),
 
   outputSchema: z.object({
@@ -57,13 +67,16 @@ export const ORGANIZATION_CREATE = defineTool({
       throw new Error("User ID required to create organization");
     }
 
-    // Create organization via bound auth client
+    // initialCreditCents rides in metadata for the afterCreate seed hook.
+    const metadata: Record<string, unknown> = {};
+    if (input.description) metadata.description = input.description;
+    if (input.initialCreditCents !== undefined) {
+      metadata.initialCreditCents = input.initialCreditCents;
+    }
     const result = await ctx.boundAuth.organization.create({
       name: input.name,
       slug: input.slug,
-      metadata: input.description
-        ? { description: input.description }
-        : undefined,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       userId, // Server-side creation
     });
 
