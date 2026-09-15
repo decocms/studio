@@ -532,4 +532,139 @@ describe("Task Board Import Route", () => {
       delegated: 0,
     });
   });
+  it("records the repository the finding was written against", async () => {
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO repositories
+        (id, organization_id, provider, host, path, web_url, created_at, updated_at)
+      VALUES
+        ('repo_board', 'org_board', 'github', 'github.com', 'acme/storefront',
+         'https://github.com/acme/storefront', ${now}, ${now})
+    `.execute(database.db);
+
+    const key = "diag:shop.com:REPO-001";
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: key,
+            repositoryId: "repo_board",
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_r1" },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const row = await database.db
+      .selectFrom("task_board_items")
+      .select(["id", "repository_id"])
+      .where("organization_id", "=", "org_board")
+      .where("external_key", "=", key)
+      .executeTakeFirstOrThrow();
+    expect(row.repository_id).toBe("repo_board");
+  });
+
+  it("a refresh picks up a repository the card was created without", async () => {
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO repositories
+        (id, organization_id, provider, host, path, web_url, created_at, updated_at)
+      VALUES
+        ('repo_board', 'org_board', 'github', 'github.com', 'acme/storefront',
+         'https://github.com/acme/storefront', ${now}, ${now})
+    `.execute(database.db);
+
+    const key = "diag:shop.com:REPO-002";
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Adicionar H1 na home", externalKey: key }],
+        source: { url: "shop.com", run_id: "run_r2" },
+      }),
+    );
+    const before = await database.db
+      .selectFrom("task_board_items")
+      .select(["repository_id"])
+      .where("external_key", "=", key)
+      .executeTakeFirstOrThrow();
+    expect(before.repository_id).toBeNull();
+
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          {
+            title: "Adicionar H1 na home",
+            externalKey: key,
+            repositoryId: "repo_board",
+          },
+        ],
+        source: { url: "shop.com", run_id: "run_r3" },
+      }),
+    );
+    const after = await database.db
+      .selectFrom("task_board_items")
+      .select(["repository_id"])
+      .where("external_key", "=", key)
+      .executeTakeFirstOrThrow();
+    expect(after.repository_id).toBe("repo_board");
+  });
+
+  it("refuses a repository belonging to another org, writing nothing", async () => {
+    const now = new Date().toISOString();
+    await sql`
+      INSERT INTO "organization" (id, name, slug, "createdAt")
+      VALUES ('org_foreign', 'Foreign Org', 'foreign-org', ${now})
+      ON CONFLICT (id) DO NOTHING
+    `.execute(database.db);
+    await sql`
+      INSERT INTO repositories
+        (id, organization_id, provider, host, path, web_url, created_at, updated_at)
+      VALUES
+        ('repo_foreign', 'org_foreign', 'github', 'github.com', 'other/private',
+         'https://github.com/other/private', ${now}, ${now})
+    `.execute(database.db);
+
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar H1 na home", repositoryId: "repo_foreign" },
+        ],
+        source: { url: "shop.com", run_id: "run_r4" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "invalid_repository: repo_foreign",
+    });
+
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(0);
+  });
+
+  it("refuses a repository that does not exist, before the run_id is burned", async () => {
+    const body = {
+      items: [{ title: "Adicionar H1 na home", repositoryId: "repo_nope" }],
+      source: { url: "shop.com", run_id: "run_r5" },
+    };
+    const refused = await app.fetch(post("org_board", "svc-secret", body));
+    expect(refused.status).toBe(400);
+
+    // The claim must still be available: a rejected import is not a replay.
+    const retried = await app.fetch(
+      post("org_board", "svc-secret", {
+        ...body,
+        items: [{ title: "Adicionar H1 na home" }],
+      }),
+    );
+    await expect(retried.json()).resolves.toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+    });
+  });
 });
