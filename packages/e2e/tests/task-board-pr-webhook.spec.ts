@@ -19,7 +19,7 @@
  *
  * `GITHUB_WEBHOOK_SECRET` is set on the API server by playwright.config.ts;
  * the literal is duplicated here by hand (the config isn't a spec module),
- * matching how commerce-diagnostic-share.spec.ts carries the vault token.
+ * matching how reports-share.spec.ts carries the vault token.
  */
 
 import { createHmac } from "node:crypto";

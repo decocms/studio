@@ -2,7 +2,7 @@ import { Outlet, useSearch } from "@tanstack/react-router";
 import { ChatPrefsProvider } from "@/components/chat/context";
 import { ThreadManagerProvider } from "@/components/chat/store/hooks";
 import { MainPanelBoundary } from "@/layouts/main-panel-boundary";
-import { CommerceConnectModal } from "@/routes/commerce-onboarding/commerce-connect-modal";
+import { ReportsConnectModal } from "@/routes/reports-onboarding/connect-modal";
 
 /** Thread providers load only for destinations that offer a conversation. */
 export default function ThreadRoute() {
@@ -20,7 +20,7 @@ export default function ThreadRoute() {
         <MainPanelBoundary>
           <Outlet />
         </MainPanelBoundary>
-        {showConnectModal && <CommerceConnectModal siteUrl={siteUrl} />}
+        {showConnectModal && <ReportsConnectModal siteUrl={siteUrl} />}
       </ChatPrefsProvider>
     </ThreadManagerProvider>
   );

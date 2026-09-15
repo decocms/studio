@@ -25,7 +25,7 @@ import {
 import { useChatStream, useChatPrefs } from "@/components/chat/context.tsx";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { resolveAppNavigateTarget } from "@/routes/project-app-navigate.ts";
-import { ConnectSourceDialog } from "@/routes/commerce-onboarding/connect-source-dialog.tsx";
+import { ConnectSourceDialog } from "@/routes/reports-onboarding/connect-source-dialog.tsx";
 import { useState } from "react";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 

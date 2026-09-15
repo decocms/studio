@@ -26,7 +26,7 @@ export function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * A trusted internal service (e.g. commerce-discovery's credential resolver)
+ * A trusted internal service (e.g. reports's credential resolver)
  * presenting this shared token may lease ANY connection in the org resolved from
  * the path — bypassing the per-connection grant. It's the service-scoped
  * equivalent of a workload token; the org in the URL still bounds it. Rotate via

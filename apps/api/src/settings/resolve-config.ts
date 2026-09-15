@@ -417,7 +417,7 @@ export function resolveConfig(
       envVars.CLICKHOUSE_ANALYTICS_USERNAME || "admin_monitor",
     clickhouseAnalyticsPassword: envVars.CLICKHOUSE_ANALYTICS_PASSWORD,
     oneDollarStatsApiKey: envVars.ONEDOLLAR_BACKEND_API_KEY,
-    // New name first, legacy Commerce Discovery envs as fallback — one
+    // New name first, legacy Reports envs as fallback — one
     // setting, so prod migrates secrets whenever convenient without a
     // coordinated deploy. Drop the fallback once the CD envs are renamed.
     reportsInternalApiUrl: resolveAliasedEnv(

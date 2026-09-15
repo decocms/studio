@@ -15,7 +15,7 @@ import { useRouteDefaultMain } from "@/hooks/use-route-default-main";
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { createElement } from "react";
 import {
-  getCommerceDiscoveryAgentId,
+  getReportsAgentId,
   getDevConnectionId,
   useConnections,
   useMCPClientOptional,
@@ -527,8 +527,7 @@ export function useMainPanelTabs(ctx: {
     return true;
   });
 
-  const onReportAgent =
-    ctx.virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+  const onReportAgent = ctx.virtualMcpId === getReportsAgentId(org.id);
 
   const setActiveTab = (id: string) => {
     // On a reports-only org sitting on any shell other than the Report Agent
@@ -538,7 +537,7 @@ export function useMainPanelTabs(ctx: {
     // itself this falls through to the normal tab-toggle below.
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: id })) {
       openPanel(id, {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+        virtualmcpid: getReportsAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined }),
       });

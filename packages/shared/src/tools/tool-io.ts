@@ -1972,7 +1972,7 @@ export interface StudioToolIO {
     input: { id: string };
     output: { id: string; healthy: boolean; latencyMs: number };
   };
-  COMMERCE_DISCOVERY_SETUP: {
+  REPORTS_SETUP: {
     input: { siteUrl: string };
     output: {
       connection: {
@@ -2286,17 +2286,17 @@ export interface StudioToolIO {
       created: { connection: boolean; virtualMcp: boolean };
     };
   };
-  COMMERCE_DISCOVERY_RUN: {
+  REPORTS_RUN: {
     input: { siteUrl: string };
     output: { triggered: boolean; reason?: string | undefined };
   };
-  COMMERCE_DISCOVERY_BIND: {
+  REPORTS_BIND: {
     input: { siteUrl: string; provider: "ga4" | "gsc"; resourceId: string };
     output:
       | { ok: true; resourceId: string; evidence: string }
       | { ok: false; reason: string; detail: string };
   };
-  COMMERCE_DISCOVERY_CONNECTION_STATUS: {
+  REPORTS_CONNECTION_STATUS: {
     input: { siteUrl: string };
     output: {
       providers: Record<
@@ -2310,7 +2310,7 @@ export interface StudioToolIO {
       claimed: boolean;
     };
   };
-  COMMERCE_DISCOVERY_SET_REPOSITORY: {
+  REPORTS_SET_REPOSITORY: {
     input: { repositoryId: string | null };
     output: {
       repository: {

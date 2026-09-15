@@ -416,7 +416,7 @@ describe("resolveConfig reports internal API env rename", () => {
     expect(result.settings.reportsInternalApiKey).toBe("new-key");
   });
 
-  it("falls back to the legacy COMMERCE_DISCOVERY_INTERNAL_* names", () => {
+  it("falls back to the legacy REPORTS_INTERNAL_* names", () => {
     const result = resolveConfig(flags, {
       COMMERCE_DISCOVERY_INTERNAL_API_URL: "https://reports-old.example.com",
       COMMERCE_DISCOVERY_INTERNAL_API_KEY: "old-key",
