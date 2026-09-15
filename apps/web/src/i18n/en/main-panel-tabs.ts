@@ -522,7 +522,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",
   "mainPanelTabs.mobileMainPanelTabSelect.switchTo": "Switch to {name}",
-  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Tasks",
+  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Board",
   "mainPanelTabs.mobileMainPanelTabSelect.view": "View",
   "mainPanelTabs.previewTab.connectGithub": "Connect GitHub",
   "mainPanelTabs.previewTab.connectGithubDescription":

@@ -1270,8 +1270,19 @@ export interface StudioToolIO {
     };
   };
   ORGANIZATION_BILLING_CHECKOUT_START: {
-    input: { [x: string]: never };
+    input: { planId?: string | undefined };
     output: { url: string };
+  };
+  ORGANIZATION_BILLING_PLAN_PRICES: {
+    input: { [x: string]: never };
+    output: {
+      prices: {
+        planId: string;
+        amountCents: number;
+        currency: string;
+        interval: string | null;
+      }[];
+    };
   };
   ORGANIZATION_BILLING_PORTAL: {
     input: { [x: string]: never };
@@ -5120,6 +5131,65 @@ export interface StudioToolIO {
         | "openai-compatible";
     };
     output: { balanceCents: number };
+  };
+  AI_PLAN_ENTITLEMENTS: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+    };
+    output: {
+      plan: { id: string; name: string };
+      features: Record<string, boolean>;
+      usage: {
+        percent: number;
+        state: "warn" | "ok" | "exhausted";
+        usedMicros: number | null;
+        limitMicros: number | null;
+      } | null;
+      credits: { remainingUsd: number } | null;
+      tasks: {
+        allowed: boolean;
+        remaining: number | null;
+        denyReason: string | null;
+      };
+      periodStart: string | null;
+      periodEnd: string | null;
+    };
+  };
+  AI_PLAN_LIST: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+    };
+    output: {
+      plans: { id: string; name: string; features: Record<string, boolean> }[];
+    };
+  };
+  AI_PLAN_SET: {
+    input: {
+      providerId:
+        | "google"
+        | "deco"
+        | "anthropic"
+        | "openrouter"
+        | "llmapi"
+        | "openai-compatible";
+      planId: "free";
+    };
+    output: {
+      plan: { id: string; name: string };
+      features: Record<string, boolean>;
+    };
   };
   CLAUDE_SUBSCRIPTION_CONNECT: {
     input: { token: string };

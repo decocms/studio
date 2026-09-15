@@ -45,6 +45,7 @@ import {
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import { orgHasFeature } from "@/core/plan-feature-gate";
 import type { Env } from "../hono-env";
 
 interface DecofileScope {
@@ -160,6 +161,21 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     ) {
       return c.json({ error: "Unauthorized" }, 401);
     }
+  }
+
+  // The `cms` plan gate. These routes are the sandbox-less CMS data plane and
+  // are not builtin tools, so `requiresFeature` cannot reach them. Fails OPEN
+  // when the gateway has no answer; for an anonymous draft-token reader it can
+  // only be answered from cache (no user to mint a JWT for), which is the
+  // right bias — a shared preview link must not break on a cold instance.
+  if (!(await orgHasFeature(ctx, organization.id, "cms"))) {
+    return c.json(
+      {
+        error: "This organization's plan does not include the CMS",
+        code: "feature_not_in_plan",
+      },
+      403,
+    );
   }
 
   const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);

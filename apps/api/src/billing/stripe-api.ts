@@ -135,16 +135,74 @@ export function taxAndAddressParams(
   };
 }
 
+/**
+ * The Stripe Price that sells `planId`, or undefined when the operator has not
+ * priced it.
+ *
+ * `STRIPE_PLAN_PRICE_IDS` is keyed price → plan (a price grants exactly one
+ * tier; a tier may be sold by more than one price), so buying reads it
+ * backwards. Undefined is the answer that matters: a plan with no price cannot
+ * be sold, and refusing here is what stops a tier being handed out for a
+ * payment that was never taken.
+ *
+ * `?? {}` because a partially-mocked settings object is a crash here
+ * otherwise, and "no prices configured" is the safe reading of a missing map.
+ */
+export function priceIdForPlan(planId: string): string | undefined {
+  const map = getSettings().stripePlanPriceIds ?? {};
+  return Object.entries(map).find(([, id]) => id === planId)?.[0];
+}
+
+/**
+ * The first instant of next month, UTC, as Stripe's unix seconds.
+ *
+ * The gateway meters every org's allowance per UTC calendar month
+ * (`currentPeriod` in plans-shape.ts) and resets it on the 1st. Without an
+ * anchor Stripe bills on the signup day instead, so an org that subscribes on
+ * the 20th pays a full month and gets eleven days of allowance before the
+ * reset. Anchoring the cycle to the 1st puts both clocks on the same day.
+ *
+ * Stripe requires the anchor to be in the future and no more than one billing
+ * period out; the 1st of next month is always both, for the monthly prices
+ * these plans use. Proration is left at Stripe's default
+ * (`create_prorations`), so the partial first month is charged pro rata rather
+ * than given away or billed in full.
+ *
+ * ponytail: monthly prices only — an annual price anchored here would bill a
+ * year's proration into weeks. Gate on `price.recurring.interval` if a yearly
+ * tier is ever sold.
+ */
+export function firstOfNextMonthUnix(now: Date = new Date()): number {
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+  return Math.floor(start / 1000);
+}
+
 /** First subscribe: Checkout collects + saves the card for the org's flat
  *  monthly subscription (quantity 1). */
 export async function createOrgCheckoutSession(input: {
   organizationId: string;
   successUrl: string;
   cancelUrl: string;
+  /** The gateway plan being bought. Its price comes from the plan price map,
+   *  and it rides the session metadata so the webhook can grant the tier on
+   *  completion. Omitted → the flat STRIPE_ORG_PRICE_ID and no tier. */
+  planId?: string;
 }): Promise<{ url: string }> {
-  const priceId = getSettings().stripeOrgPriceId;
+  const settings = getSettings();
+  // The plan's own price, or the flat subscription price for a deployment
+  // with no tiers configured. A plan the operator has not priced cannot be
+  // sold — refusing here is what stops a tier being handed out for a payment
+  // that was never taken.
+  const priceId = input.planId
+    ? priceIdForPlan(input.planId)
+    : settings.stripeOrgPriceId;
   if (!priceId) {
-    throw new StripeApiError(503, "billing is not configured");
+    throw new StripeApiError(
+      503,
+      input.planId
+        ? `plan '${input.planId}' has no Stripe price configured`
+        : "billing is not configured",
+    );
   }
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
     params: {
@@ -156,8 +214,19 @@ export async function createOrgCheckoutSession(input: {
       cancel_url: input.cancelUrl,
       // orgId on BOTH the session (checkout.session.completed) and the
       // subscription (defense in depth for subscription-keyed lookups).
-      metadata: { orgId: input.organizationId },
-      subscription_data: { metadata: { orgId: input.organizationId } },
+      metadata: {
+        orgId: input.organizationId,
+        ...(input.planId ? { planId: input.planId } : {}),
+      },
+      subscription_data: {
+        // Align the billing cycle with the allowance month — see
+        // firstOfNextMonthUnix.
+        billing_cycle_anchor: firstOfNextMonthUnix(),
+        metadata: {
+          orgId: input.organizationId,
+          ...(input.planId ? { planId: input.planId } : {}),
+        },
+      },
     },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
@@ -257,7 +326,82 @@ export interface StripeSubscription {
   customer: string;
   /** Unix seconds. Recent API versions moved this onto the items. */
   current_period_end?: number;
-  items?: { data?: { current_period_end?: number }[] };
+  /** `data[].id` is the subscription ITEM id, which is what a price swap
+   *  addresses — the subscription id alone cannot say which line to change. */
+  items?: {
+    data?: {
+      id?: string;
+      current_period_end?: number;
+      price?: { id?: string };
+    }[];
+  };
+}
+
+/**
+ * Move an EXISTING subscription to another tier, on Stripe's hosted
+ * confirmation screen.
+ *
+ * Checkout cannot do this: a second checkout for an org that already has a
+ * subscription is a second subscription, which is a double charge — so
+ * `ORGANIZATION_BILLING_CHECKOUT_START` refuses it and, before this, Pro → Ultra
+ * had no route at all. The portal's `subscription_update_confirm` flow drops
+ * the buyer straight onto the confirm step for one specific price, showing the
+ * proration before anything is charged. We never render that amount ourselves;
+ * quoting a proration we computed and charging one Stripe computed is how the
+ * two drift.
+ *
+ * On confirm Stripe swaps the item and fires `customer.subscription.updated`,
+ * which the webhook already resolves back to a tier through the price map — so
+ * the entitlement follows the money without a second code path.
+ *
+ * Requires the portal configuration to have `subscription_update` enabled AND
+ * to list the plan products. Stripe 400s otherwise, and its message is what
+ * the org admin sees.
+ */
+export async function createSubscriptionUpdateSession(input: {
+  customerId: string;
+  subscriptionId: string;
+  subscriptionItemId: string;
+  priceId: string;
+  returnUrl: string;
+}): Promise<{ url: string }> {
+  const session = await stripeRequest<{ url?: string }>(
+    "/billing_portal/sessions",
+    {
+      params: {
+        customer: input.customerId,
+        return_url: input.returnUrl,
+        flow_data: {
+          type: "subscription_update_confirm",
+          subscription_update_confirm: {
+            subscription: input.subscriptionId,
+            items: [{ id: input.subscriptionItemId, price: input.priceId }],
+          },
+          after_completion: {
+            type: "redirect",
+            redirect: { return_url: input.returnUrl },
+          },
+        },
+      },
+    },
+  );
+  if (!session.url) throw new StripeApiError(500, "portal session lacks url");
+  return { url: session.url };
+}
+
+export interface StripePrice {
+  id: string;
+  /** Minor units (centavos for BRL). Null for a price with no fixed amount. */
+  unit_amount: number | null;
+  /** ISO 4217, lowercase, as Stripe returns it. */
+  currency: string;
+  recurring?: { interval?: string } | null;
+}
+
+/** Read one Price. The amount the card is actually charged, which is the only
+ *  number worth quoting — see the plan-price tool. */
+export async function retrievePrice(priceId: string): Promise<StripePrice> {
+  return stripeRequest<StripePrice>(`/prices/${encodeURIComponent(priceId)}`);
 }
 
 /** Read a subscription by id — used to resolve its customer and period end. */

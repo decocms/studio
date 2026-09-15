@@ -1,4 +1,5 @@
 import type { StudioContext } from "@/core/studio-context";
+import { orgPinnedModel } from "@/core/plan-feature-gate";
 import {
   ChatTierSchema,
   type SimpleModeTier,
@@ -144,9 +145,33 @@ export async function resolveTier(
     await ctx.storage.aiProviderKeys.list({ organizationId: orgId })
   ).filter((key) => isHostedProviderId(key.providerId));
 
+  // A deco-admin pin outranks everything — but ONLY for an org without
+  // `model_choice`. §6: below Ultra deco picks the model and the org is not
+  // told which one ran, so neither its own slot nor a member's personal
+  // override may move it. An Ultra org bought the right to choose and keeps it.
+  //
+  // The pin is a bare model id: it can only ever mean "on the org's gateway
+  // key", which is the one credential a deco admin can speak for. No deco key
+  // (self-hosted, or BYOK-only) means no pin to apply, and resolution falls
+  // through untouched.
+  const pinnedModelId = await orgPinnedModel(ctx, orgId, tier);
+  const decoKey = pinnedModelId
+    ? keys.find((k) => k.providerId === "deco")
+    : undefined;
+  if (pinnedModelId && decoKey) {
+    const catalog = await fetchModelList(ctx, decoKey.id, orgId).catch(
+      () => [] as AiProviderModel[],
+    );
+    return {
+      credentialId: decoKey.id,
+      modelId: pinnedModelId,
+      modelMeta: metaFromCatalogEntry(catalog, pinnedModelId),
+    };
+  }
+
   // Prefer the user override, then the org slot; take the first whose key is
   // still live. A slot pointing at a deleted key is skipped so resolution
-  // degrades cleanly: user → org → default-pick.
+  // degrades cleanly: pin → user → org → default-pick.
   // ponytail: read-time liveness check is why deleting a provider key needs no
   // sweep of every user's saved override — a stale slot just falls through.
   for (const slot of [userSlot, orgSlot]) {

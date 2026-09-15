@@ -9,9 +9,16 @@
 
 import type { ReactNode } from "react";
 import type { LinkProps } from "@tanstack/react-router";
-import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
+import {
+  BarChartSquare02,
+  Columns03,
+  Folder,
+  Home02,
+  Lock01,
+} from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
+import { useTabLocked } from "./use-tab-locked";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useProjectContext } from "@/sdk";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
@@ -215,6 +222,7 @@ export function NavDestinationsContent({
   onNavigate?: () => void;
 }) {
   const destinations = useNavDestinations();
+  const isLocked = useTabLocked();
 
   return (
     <SidebarMenu className="gap-1">
@@ -226,6 +234,11 @@ export function NavDestinationsContent({
           dataTour={item.dataTour}
           isActive={item.isActive}
           link={item.link}
+          trailing={
+            isLocked(item.key) ? (
+              <Lock01 size={14} className="text-muted-foreground" />
+            ) : undefined
+          }
           onSelect={() => {
             track("nav_destination_clicked", { destination: item.trackAs });
             onNavigate?.();

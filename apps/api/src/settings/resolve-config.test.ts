@@ -541,3 +541,133 @@ describe("resolveConfig decopilot max concurrent hosted runs", () => {
     );
   });
 });
+
+describe("resolveConfig plans gateway JWT secret", () => {
+  it("refuses to boot with plans on and no explicit gateway JWT secret", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        BETTER_AUTH_SECRET: "some-unrelated-session-secret",
+      }),
+    ).toThrow(/STUDIO_PLANS_ENABLED requires an explicit gateway JWT secret/);
+  });
+
+  it.each(["STUDIO_JWT_SECRET", "MESH_JWT_SECRET"])(
+    "boots with plans on when %s is set",
+    (name) => {
+      const result = resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        DECO_AI_GATEWAY_ENABLED: "true",
+        [name]: "shared-with-the-gateway",
+        STUDIO_PROVISION_SECRET_KEY: "shared-service-key",
+      });
+
+      expect(result.settings.studioJwtSecret).toBe("shared-with-the-gateway");
+    },
+  );
+
+  it("refuses to boot with plans on and no provision key", () => {
+    // Same consequence as a missing JWT secret: the gateway cannot identify
+    // this server, falls back to a per-user membership callback that 401s for
+    // anyone who never completed the gateway OAuth flow, and every gate then
+    // fails OPEN. Only the JWT half had a check.
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        STUDIO_JWT_SECRET: "shared-with-the-gateway",
+      }),
+    ).toThrow(/requires STUDIO_PROVISION_SECRET_KEY/);
+  });
+
+  it("does not require it while plans are off — that path 401s loudly, it does not open a gate", () => {
+    expect(() => resolveConfig(flags, {})).not.toThrow();
+  });
+
+  it("refuses to boot with plans on and the gateway disabled", () => {
+    // The third door to a fleet-wide fail-open, and the one the chart's own
+    // defaults lead to: `DECO_AI_GATEWAY_ENABLED` ships "false" and the plans
+    // block never says to flip it. With no gateway there is no adapter to ask,
+    // so `planStateFor` returns null and every gate allows.
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        STUDIO_JWT_SECRET: "shared-with-the-gateway",
+        STUDIO_PROVISION_SECRET_KEY: "shared-service-key",
+      }),
+    ).toThrow(/requires DECO_AI_GATEWAY_ENABLED=true/);
+  });
+
+  it("refuses to boot when Stripe can sell a plan the gateway cannot be told about", () => {
+    // The webhook is the only path to a paid tier and it places the tier
+    // through the gateway's admin API. A price map with no admin token is a
+    // card charged for an entitlement that cannot land.
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        DECO_AI_GATEWAY_ENABLED: "true",
+        STUDIO_JWT_SECRET: "shared-with-the-gateway",
+        STUDIO_PROVISION_SECRET_KEY: "shared-service-key",
+        STRIPE_PLAN_PRICE_IDS: "price_abc=pro",
+      }),
+    ).toThrow(/DECO_AI_GATEWAY_ADMIN_TOKEN is not\./);
+  });
+
+  it("boots with the price map and the admin token together", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        DECO_AI_GATEWAY_ENABLED: "true",
+        STUDIO_JWT_SECRET: "shared-with-the-gateway",
+        STUDIO_PROVISION_SECRET_KEY: "shared-service-key",
+        STRIPE_PLAN_PRICE_IDS: "price_abc=pro",
+        DECO_AI_GATEWAY_ADMIN_TOKEN: "admin-token",
+      }),
+    ).not.toThrow();
+  });
+
+  it("treats an empty string as unset, so a rendered-but-blank template still fails the boot", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        STUDIO_PLANS_ENABLED: "true",
+        STUDIO_JWT_SECRET: "",
+        MESH_JWT_SECRET: "",
+      }),
+    ).toThrow(/STUDIO_PLANS_ENABLED requires an explicit gateway JWT secret/);
+  });
+
+  /**
+   * The map that decides what a payment BUYS. A wrong entry here grants the
+   * wrong tier, so anything unparseable is dropped rather than guessed at —
+   * and an unmapped price then grants nothing (see planIdForStripe).
+   */
+  describe("STRIPE_PLAN_PRICE_IDS", () => {
+    const parse = (raw: string | undefined) =>
+      resolveConfig(flags, { STRIPE_PLAN_PRICE_IDS: raw }).settings
+        .stripePlanPriceIds;
+
+    it("maps each price to its plan", () => {
+      expect(parse("price_a=pro,price_b=ultra")).toEqual({
+        price_a: "pro",
+        price_b: "ultra",
+      });
+    });
+
+    it("tolerates whitespace and trailing separators", () => {
+      expect(parse(" price_a = pro , price_b=ultra , ")).toEqual({
+        price_a: "pro",
+        price_b: "ultra",
+      });
+    });
+
+    it("is empty when unset, so Stripe grants and revokes nothing", () => {
+      expect(parse(undefined)).toEqual({});
+      expect(parse("")).toEqual({});
+    });
+
+    it("drops an unparseable entry instead of failing the boot or guessing", () => {
+      expect(parse("garbage,price_a=pro,=ultra,price_b=")).toEqual({
+        price_a: "pro",
+      });
+    });
+  });
+});

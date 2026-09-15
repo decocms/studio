@@ -45,6 +45,7 @@ import {
   requireOrganization,
 } from "../../core/studio-context";
 import { getSettings } from "../../settings";
+import { orgHasFeature } from "../../core/plan-feature-gate";
 import {
   analyticsQuery,
   isAnalyticsConfigured,
@@ -803,11 +804,17 @@ async function siteOdHosts(slug: string): Promise<string[]> {
 }
 
 /**
- * Shared auth + tenancy guard for every `/monitor/:site/*` route below: a
- * principal must be authenticated (`resolveOrgFromPath` lets anonymous
- * requests through) and the org must own the site slug (404, not 403, so an
- * unowned slug looks like a non-existent one). Returns the resolved slug, or
- * the error Response to return as-is.
+ * Shared auth + tenancy + plan guard for every `/monitor/:site/*` route below:
+ * a principal must be authenticated (`resolveOrgFromPath` lets anonymous
+ * requests through), the org's plan must include `monitoring`, and the org must
+ * own the site slug (404, not 403, so an unowned slug looks like a
+ * non-existent one). Returns the resolved slug, or the error Response to
+ * return as-is.
+ *
+ * This is where the `monitoring` plan gate lives, because the warehouse reads
+ * are BFF routes rather than builtin tools — `requiresFeature` on defineTool
+ * cannot reach them. One insertion here covers all four routes; the client gate
+ * (`TabBody`) only closes the panel. Fails OPEN when the gateway has no answer.
  */
 async function requireOwnedSite(
   c: Context<{ Variables: Variables }>,
@@ -821,10 +828,23 @@ async function requireOwnedSite(
   if (!site) {
     return c.json({ error: "site is required" }, 400);
   }
+  // Ownership FIRST, then the plan. The other order answered 403
+  // "plan does not include monitoring" for a slug the org does not own, which
+  // both leaks that the plan gate exists to an unowned-slug probe and costs a
+  // gateway round trip to refuse a request that was a 404 anyway.
   const slug = site.toLowerCase();
   const owned = await ctx.storage.orgSites.isOwnedBy(slug, org.id);
   if (!owned) {
     return c.json({ error: "Site not found in organization" }, 404);
+  }
+  if (!(await orgHasFeature(ctx, org.id, "monitoring"))) {
+    return c.json(
+      {
+        error: "This organization's plan does not include monitoring",
+        code: "feature_not_in_plan",
+      },
+      403,
+    );
   }
   return { slug };
 }

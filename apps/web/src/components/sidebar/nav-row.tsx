@@ -43,6 +43,9 @@ interface SidebarNavRowProps {
   dataTour?: string;
   /** Rows nested under this one, rendered inside its `<li>` after the button. */
   children?: ReactNode;
+  /** A mark for the row's right edge — a lock, a count. Ordered there rather
+   *  than placed there, for the `span:last-child` reason above. */
+  trailing?: ReactNode;
 }
 
 export function SidebarNavRow({
@@ -55,6 +58,7 @@ export function SidebarNavRow({
   className,
   dataTour,
   children,
+  trailing,
 }: SidebarNavRowProps) {
   const isCollapsed = useSidebarCollapsed();
   const name = ariaLabel ?? label;
@@ -75,6 +79,11 @@ export function SidebarNavRow({
   const body = (
     <>
       {icon}
+      {trailing && (
+        <span className="order-last ml-auto flex shrink-0 items-center group-data-[state=collapsed]/sidebar:hidden">
+          {trailing}
+        </span>
+      )}
       <span className="truncate">{label}</span>
     </>
   );

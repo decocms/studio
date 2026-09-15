@@ -18,7 +18,7 @@ export const sidebar = {
   "sidebar.navDestinations.library": "Biblioteca",
   "sidebar.navDestinations.reports": "Relatórios",
   "sidebar.navDestinations.settings": "Configurações",
-  "sidebar.navDestinations.tasks": "Tarefas",
+  "sidebar.navDestinations.tasks": "Board",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.siteEditor": "Editor do site",
   "sidebar.projects.heading": "Projetos",
@@ -41,7 +41,6 @@ export const sidebar = {
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
   "sidebar.showMoreButton.loading": "Carregando…",
   "sidebar.showMoreButton.showMore": "Mostrar mais",
-  "sidebar.sidebarFooter.addConnection": "Adicionar conexão",
   "sidebar.sidebarFooter.inviteMembers": "Convidar membros",
   "sidebar.sidebarResizeHandle.ariaLabel": "Redimensionar barra lateral",
   "sidebar.sidebarResizeHandle.title":

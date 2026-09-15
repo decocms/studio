@@ -17,6 +17,11 @@ import {
   type ClaudeCodeModelClass,
 } from "@/harnesses/claude-code-env";
 import type { TaskRepo } from "./claude-code-task-run";
+import {
+  assertAiBudget,
+  FeatureNotInPlanError,
+  orgHasFeature,
+} from "@/core/plan-feature-gate";
 
 /**
  * Fold the board's system prompt (Settings → Board) into one run.
@@ -113,6 +118,29 @@ export async function enqueueAgentRunForTask(
   const organizationId = task.organizationId;
   const userId = task.assignedBy ?? task.createdBy;
   const harnessId = opts.harnessId ?? "decopilot";
+
+  // The Kanban gate, at the point that spends.
+  //
+  // `kanban` is an Ultra feature, and until now it was enforced ONLY by the
+  // client's tab paywall — a dialog in a browser. Every TASK_BOARD_* tool sits
+  // in the basic-usage capability, granted to every member of every org, so a
+  // Free org could create a card and re-run it through the tool REST endpoint
+  // and get a working, unbilled agent fleet. The gateway built a chokepoint for
+  // this (`POST /api/teams/:org/tasks/claim`, with its 402 and its trial
+  // grants) and mesh never called it.
+  //
+  // Gated HERE rather than on the ~25 board tools: reading and organising a
+  // board costs nothing, dispatching an agent run is the thing that spends. The
+  // budget stop rides along for the same reason.
+  //
+  // Both fail OPEN when the gateway has no answer, like every other gate.
+  if (!(await orgHasFeature(ctx, organizationId, "kanban"))) {
+    throw new FeatureNotInPlanError(
+      "Running a task agent needs the kanban feature, which this plan does not include.",
+      "kanban",
+    );
+  }
+  await assertAiBudget(ctx, organizationId, "running a task agent");
 
   const model = await resolveTier(ctx, "smart");
   const agentId = getDecopilotId(organizationId);

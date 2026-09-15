@@ -1,6 +1,7 @@
 export {
   ProjectContextProvider,
   useProjectContext,
+  useProjectContextOptional,
   useOrg,
   type ProjectContextProviderProps,
   type ProjectLocator,

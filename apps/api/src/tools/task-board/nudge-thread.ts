@@ -13,6 +13,11 @@
 
 import { taskRunMetadata } from "@/billing/subsidized-runs";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
+import {
+  assertAiBudget,
+  FeatureNotInPlanError,
+  orgHasFeature,
+} from "@/core/plan-feature-gate";
 import { resolveTier } from "@/core/resolve-tier";
 import type { StudioContext } from "@/core/studio-context";
 import { enqueueThreadRun } from "@/dispatch-queue";
@@ -40,6 +45,27 @@ export async function nudgeThreadTurn(
   },
 ): Promise<void> {
   const organizationId = item.organizationId;
+
+  // The same two gates `enqueueAgentRunForTask` applies, because this is the
+  // other way to dispatch a full agent run onto a card — and it was the way
+  // round them. `TASK_BOARD_ITEM_LIST` is basic-usage (every member of every
+  // org) and fires `recoverStalledTasks` fire-and-forget, which lands here; so
+  // did the reviewer sweeper's boot-time timer, with no member action at all.
+  // A downgraded or exhausted org's board therefore kept dispatching agent
+  // runs past a `kanban` refusal it had already been given.
+  //
+  // Gated in the callee, not at the three call sites: there are three today, a
+  // sweeper that adds more, and one forgetting is the whole bug.
+  //
+  // Both fail OPEN when the gateway has no answer, like every other gate.
+  if (!(await orgHasFeature(ctx, organizationId, "kanban"))) {
+    throw new FeatureNotInPlanError(
+      "Continuing a task agent needs the kanban feature, which this plan does not include.",
+      "kanban",
+    );
+  }
+  await assertAiBudget(ctx, organizationId, "continuing a task agent");
+
   const model = await resolveTier(ctx, "smart");
   const agentId = thread.virtual_mcp_id ?? getDecopilotId(organizationId);
 

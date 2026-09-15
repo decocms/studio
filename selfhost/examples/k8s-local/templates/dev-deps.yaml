@@ -24,6 +24,13 @@ spec:
       containers:
         - name: postgres
           image: postgres:15-alpine
+          # postgres defaults max_connections to 100, and Studio's connection
+          # budget is DATABASE_POOL_MAX x (replicas x 2 api processes + worker) —
+          # at the chart's default pool of 20 that is exactly 100 at TWO
+          # replicas, so a burst 500s with "sorry, too many clients already".
+          # Measured, at 120 concurrent gated calls. This is a throwaway local
+          # database, so give it headroom rather than shrinking the pool.
+          args: ["-c", "max_connections=300"]
           env:
             - { name: POSTGRES_USER, value: studio }
             - { name: POSTGRES_PASSWORD, value: studio }

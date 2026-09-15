@@ -3,6 +3,8 @@ import { createHmac } from "node:crypto";
 import {
   mapSubscriptionStatus,
   parseStripeEvent,
+  planIdForPrices,
+  planIdForStripe,
   subscriptionFunnelEvent,
   verifyStripeSignature,
   type HandledStripeEvent,
@@ -206,5 +208,70 @@ describe("subscriptionFunnelEvent", () => {
     expect(
       subscriptionFunnelEvent(evt("customer.created"), handled),
     ).toBeNull();
+  });
+});
+
+/**
+ * The join between money and entitlement. Before this existed, `AI_PLAN_SET`
+ * granted any tier for free and a cancelled subscription revoked nothing: the
+ * billing row read `canceled` while the org kept every paid feature and its
+ * full AI allowance, indefinitely.
+ */
+describe("planIdForStripe", () => {
+  const MAP = { price_pro: "pro", price_ultra: "ultra" };
+  const sub = (priceId: string) => ({
+    items: { data: [{ price: { id: priceId } }] },
+  });
+
+  test("an active subscription grants the tier its price maps to", () => {
+    expect(planIdForStripe("active", sub("price_ultra"), MAP)).toBe("ultra");
+    expect(planIdForStripe("active", sub("price_pro"), MAP)).toBe("pro");
+  });
+
+  test("a cancelled subscription drops the org to free", () => {
+    expect(planIdForStripe("canceled", sub("price_ultra"), MAP)).toBe("free");
+  });
+
+  /** …including one whose price was unmapped after the fact. An org must never
+   *  keep a paid tier because the operator edited the price map. */
+  test("drops to free even when the price is not in the map", () => {
+    expect(planIdForStripe("canceled", sub("price_gone"), MAP)).toBe("free");
+    expect(planIdForStripe("canceled", {}, MAP)).toBe("free");
+  });
+
+  /** Dunning grace, matching task-quota.ts — the two must not disagree about
+   *  what a delinquent org can do. `undefined` means "leave the plan alone". */
+  test("past_due changes nothing while Stripe is still retrying the card", () => {
+    expect(
+      planIdForStripe("past_due", sub("price_ultra"), MAP),
+    ).toBeUndefined();
+  });
+
+  /** The safe direction of the asymmetry: a price nobody priced grants
+   *  nothing, rather than defaulting to some tier. */
+  test("an active subscription on an unmapped price grants nothing", () => {
+    expect(
+      planIdForStripe("active", sub("price_unknown"), MAP),
+    ).toBeUndefined();
+    expect(planIdForStripe("active", {}, MAP)).toBeUndefined();
+    expect(planIdForStripe("active", sub("price_pro"), {})).toBeUndefined();
+  });
+
+  test("resolves a plan price sitting beside add-on prices", () => {
+    const mixed = {
+      items: {
+        data: [
+          { price: { id: "price_addon" } },
+          { price: { id: "price_pro" } },
+        ],
+      },
+    };
+    expect(planIdForPrices(mixed, MAP)).toBe("pro");
+  });
+
+  test("reads a price given as a bare id, as Stripe sends it unexpanded", () => {
+    expect(
+      planIdForPrices({ items: { data: [{ price: "price_pro" }] } }, MAP),
+    ).toBe("pro");
   });
 });

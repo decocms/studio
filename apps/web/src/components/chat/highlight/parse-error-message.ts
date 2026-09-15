@@ -6,6 +6,17 @@ export function parseErrorMessage(message: string): {
   summary: string;
   rawDetails: string | null;
 } {
+  // A JSON envelope is the single most common shape here — every route on the
+  // chat path answers `{ "error": "..." }` — and it used to render verbatim,
+  // braces and escaped quotes and all. Unwrap it FIRST, then classify the
+  // sentence inside on the same rules as any other message; keep the envelope
+  // as the technical detail.
+  const unwrapped = unwrapJsonError(message);
+  if (unwrapped !== null) {
+    const inner = parseErrorMessage(unwrapped);
+    return { summary: inner.summary, rawDetails: inner.rawDetails ?? message };
+  }
+
   const trimmed = message.trim();
   const looksLikeHtml =
     trimmed.startsWith("<") && /<[a-z][\s\S]*>/i.test(trimmed);
@@ -59,4 +70,25 @@ export function parseErrorMessage(message: string): {
     };
   }
   return { summary: message, rawDetails: null };
+}
+
+/** The human sentence inside a `{ "error": "..." }` / `{ "message": "..." }`
+ *  body, or null when the string is not one. */
+function unwrapJsonError(message: string): string | null {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("{")) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (!json || typeof json !== "object") return null;
+  const { error, message: inner } = json as Record<string, unknown>;
+  const text = typeof error === "string" ? error : inner;
+  // Only a non-empty string, and never one that would recurse: a value that is
+  // itself a JSON object is not the sentence we are after.
+  return typeof text === "string" && text.trim() && !text.trim().startsWith("{")
+    ? text
+    : null;
 }

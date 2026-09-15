@@ -83,6 +83,16 @@ interface ProjectContextType {
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
+/**
+ * The project context, or undefined outside a provider.
+ *
+ * For gates rendered by leaf components that also appear in isolation (a
+ * message row in a unit test, a standalone preview): they must not throw just
+ * because they are not inside the shell. Anything that NEEDS the org still
+ * uses `useProjectContext` and fails loudly.
+ */
+export const useProjectContextOptional = () => useContext(ProjectContext);
+
 export const useProjectContext = () => {
   const context = useContext(ProjectContext);
   if (!context) {

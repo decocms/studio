@@ -6,14 +6,21 @@ import {
   expect,
   test,
 } from "bun:test";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, dehydrate } from "@tanstack/react-query";
 import {
   clearPersistedQueryCache,
+  hydrateQueryClient,
   persistQueryClient,
   readCachedOrg,
   wasOrgCacheRestored,
   writeCachedOrg,
 } from "./query-persist";
+import { KEYS } from "./query-keys";
+
+// Vite `define`s this at build time; bun test has no such pass.
+declare const __STUDIO_VERSION__: string;
+(globalThis as unknown as Record<string, string>).__STUDIO_VERSION__ ??=
+  "test-version";
 
 // readCachedOrg/writeCachedOrg early-return when `window` is undefined. Bun's
 // test runtime has no DOM, so stub a minimal window + localStorage.
@@ -168,5 +175,58 @@ describe("clearPersistedQueryCache", () => {
 
     expect(readCachedOrg("user-6", "acme")).toBeNull();
     expect(localStorageStub.getItem("unrelated-key")).toBe("keep-me");
+  });
+});
+
+describe("hydrateQueryClient", () => {
+  // publicConfig carries the deployment flags (STUDIO_PLANS_ENABLED among
+  // them). Those flip server-side with no version bump, so the hydrated entry
+  // must not be allowed to answer for them on its original fetch time.
+  function persist(
+    entries: Array<[readonly unknown[], Record<string, unknown>]>,
+  ) {
+    const source = new QueryClient();
+    for (const [key, data] of entries) {
+      source.setQueryData<Record<string, unknown>>(key, data);
+    }
+    localStorageStub.setItem(
+      "studio:rq-cache",
+      JSON.stringify({
+        buster: __STUDIO_VERSION__,
+        timestamp: Date.now(),
+        state: dehydrate(source, { shouldDehydrateQuery: () => true }),
+      }),
+    );
+  }
+
+  test("hydrates publicConfig but marks it for revalidation", () => {
+    persist([[KEYS.publicConfig(), { plansEnabled: false }]]);
+
+    const client = new QueryClient();
+    hydrateQueryClient(client);
+
+    // Still paints instantly — the data is there.
+    expect(
+      client.getQueryData<Record<string, unknown>>(KEYS.publicConfig()),
+    ).toEqual({
+      plansEnabled: false,
+    });
+    // ...but is invalidated, so refetchOnMount refetches it regardless of
+    // staleTime. Without this a restart with a flipped flag stayed invisible.
+    expect(client.getQueryState(KEYS.publicConfig())?.isInvalidated).toBe(true);
+  });
+
+  test("leaves other persisted entries alone", () => {
+    persist([
+      [KEYS.publicConfig(), { plansEnabled: false }],
+      [["organization-settings", "acme"], { flags: {} }],
+    ]);
+
+    const client = new QueryClient();
+    hydrateQueryClient(client);
+
+    expect(
+      client.getQueryState(["organization-settings", "acme"])?.isInvalidated,
+    ).toBe(false);
   });
 });

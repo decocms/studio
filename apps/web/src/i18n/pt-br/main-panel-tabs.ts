@@ -543,7 +543,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Biblioteca",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Visualização principal",
   "mainPanelTabs.mobileMainPanelTabSelect.switchTo": "Ir para {name}",
-  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Tarefas",
+  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Board",
   "mainPanelTabs.mobileMainPanelTabSelect.view": "Visualizar",
   "mainPanelTabs.previewTab.connectGithub": "Conectar GitHub",
   "mainPanelTabs.previewTab.connectGithubDescription":
