@@ -44,8 +44,9 @@ export function CreditsEmptyState() {
   const { org } = useProjectContext();
   /**
    * A plan without the `credits` feature cannot top up: `AI_PROVIDER_TOPUP_URL`
-   * declares `requiresFeature: "credits"`, which Free does not have, so every
-   * amount on this surface returns `403 feature_not_in_plan`. Such an org gets
+   * declares `requiresFeature: "credits"`, so every amount on this surface
+   * would return `403 feature_not_in_plan`. Every plan carries it today, Free
+   * included; an org can still have it revoked. Such an org gets
    * the plan dialog instead of this one, NOT nothing: this modal fires exactly
    * when an org opens a chat it has no way to run, which is the moment it most
    * needs to be told why. Fails OPEN like every other access gate, so a gateway

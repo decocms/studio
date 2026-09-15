@@ -89,7 +89,8 @@ export type Feature =
   | "model_choice"
   | "diagnostic"
   | "diagnostic_enriched"
-  /** May buy AI credits on top of the allowance — see the gateway's plans. */
+  /** May buy AI credits on top of the allowance, Free included — see the
+   *  gateway's plans. */
   | "credits";
 
 export function useEntitlements() {
@@ -222,10 +223,12 @@ export function modelDisclosureAllowed({
  * gate here it fails OPEN, because a blip must not lock an org out of its own
  * chat.
  *
- * `credits: null` is also unknown (a Free plan is never told a dollar figure at
- * all), so it cannot manufacture a block either — but it cannot lift one:
- * matching the server, only a credit balance we can SEE and that is positive
- * keeps work going on a full bar.
+ * `credits: null` is also unknown (the gateway withholds it from a plan
+ * without `credits`), so it cannot manufacture a block either — but it cannot
+ * lift one: matching the server, only a credit balance we can SEE and that is
+ * positive keeps work going on a full bar. A free org that has topped up is on
+ * exactly this path — a full trial bar, a positive balance, chat still
+ * running.
  */
 export function useAiBudgetExhausted(): boolean {
   const { data } = useEntitlements();

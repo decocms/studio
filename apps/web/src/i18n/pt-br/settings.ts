@@ -541,7 +541,7 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Reinicia no começo de cada ciclo de cobrança.",
   "settings.planUsage.oneTimeHint":
-    "Crédito de teste único. Faça upgrade para uma franquia mensal.",
+    "Crédito de teste único. Adicione créditos para continuar, ou faça upgrade para uma franquia mensal.",
   "settings.planUsage.noAiIncluded": "Sem uso de IA incluído.",
   "settings.planUsage.creditsLeft": "restantes",
   "settings.planUsage.manageBilling": "Gerenciar cobrança",

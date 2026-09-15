@@ -525,7 +525,7 @@ export const settings = {
   "settings.planUsage.periodHint":
     "Resets at the start of each billing period.",
   "settings.planUsage.oneTimeHint":
-    "One-time trial credit. Upgrade for a monthly allowance.",
+    "One-time trial credit. Top up to keep going, or upgrade for a monthly allowance.",
   "settings.planUsage.noAiIncluded": "No AI usage included.",
   "settings.planUsage.creditsLeft": "left",
   "settings.planUsage.manageBilling": "Manage billing",

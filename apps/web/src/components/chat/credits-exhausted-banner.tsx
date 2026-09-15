@@ -41,8 +41,9 @@ export function CreditsExhaustedBanner({
   const t = useT();
   /**
    * A plan without the `credits` feature cannot top up: `AI_PROVIDER_TOPUP_URL`
-   * declares `requiresFeature: "credits"`, which Free does not have, so every
-   * amount on this surface returned `403 feature_not_in_plan`. The caller in
+   * declares `requiresFeature: "credits"`, so every amount on this surface
+   * would return `403 feature_not_in_plan`. Every plan has it today, Free
+   * included; an org can still have it revoked. The caller in
    * `highlight/index.tsx` checks the same gate and shows the plan refusal
    * instead, so returning null here is never the org's whole answer. Fails
    * OPEN like every other access gate, so a gateway blip still lets an org

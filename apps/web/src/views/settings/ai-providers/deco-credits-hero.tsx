@@ -316,9 +316,10 @@ export function DecoCreditsHero() {
 
           <CreditsBalance enabled={!plansEnabled} />
 
-          {/* Quick top-up. Withheld from a plan without `credits` (Free): its
-              allowance is a ceiling, and the way past it is a plan. Fails OPEN
-              like every other gate, so a gateway blip still lets an org pay. */}
+          {/* Quick top-up. Withheld from a plan without `credits` — every plan
+              carries it today, Free included, so this is the per-org revoke
+              case. Fails OPEN like every other gate, so a gateway blip still
+              lets an org pay. */}
           {canBuyCredits ? (
             <div className="pt-4 border-t border-border/60">
               <p className="text-xs font-medium text-muted-foreground mb-2.5">

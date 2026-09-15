@@ -307,11 +307,11 @@ export function ChatHighlight() {
   const flags = useHighlightFlags();
 
   if (flags.isCreditExhausted) {
-    // A mid-stream 402 on a plan that cannot top up (Free's trial is a hard
-    // ceiling) has nothing to sell: the top-up dialog renders NOTHING for such
-    // an org, so the turn failed with no card, no message and no explanation at
-    // all — the exact state this fix exists for. Send them to the plan, which
-    // is the only way past it.
+    // A mid-stream 402 on a plan without `credits` has nothing to sell: the
+    // top-up dialog renders NOTHING for such an org, so the turn failed with no
+    // card, no message and no explanation at all — the exact state this fix
+    // exists for. Send them to the plan instead, the only way past it. Free
+    // takes the top-up branch now; this is the revoked-per-org case.
     return canBuyCredits ? (
       <CreditsExhaustedBanner onDismiss={clearError} />
     ) : (

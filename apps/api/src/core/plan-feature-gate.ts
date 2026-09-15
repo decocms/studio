@@ -27,8 +27,10 @@ export type PlanFeature =
   | "model_choice"
   | "diagnostic"
   | "diagnostic_enriched"
-  /** May buy AI credits on top of the allowance. Free cannot: its $2 trial is
-   *  a hard ceiling and the way past it is a plan, not a top-up. */
+  /** May buy AI credits on top of the allowance — every plan, Free included.
+   *  What it buys is the wallet, a second pool: more work, never a bigger
+   *  allowance. `isUsageBlocked` is what lets that wallet outlive a full
+   *  bar. */
   | "credits";
 
 /** Thrown when the org's plan does not include the feature. Serialized as 403. */

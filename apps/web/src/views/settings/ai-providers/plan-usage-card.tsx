@@ -124,8 +124,9 @@ export function PlanUsageCard() {
   const [preferences] = usePreferences();
 
   const plansEnabled = usePlansEnabled();
-  // Free cannot top up: its allowance is a ceiling and the only way past it is
-  // a plan. That changes both the copy and whether a credits row belongs here.
+  // Whether a credits row belongs on this card at all. Every plan carries
+  // `credits` today, Free included — a spent trial is bought past as well as
+  // upgraded past — so this is the per-org revoke case.
   const canBuyCredits = useFeature("credits");
   const { data, isLoading, isError, refetch } = useEntitlements();
   const { data: plans } = usePlanCatalog();
@@ -297,9 +298,8 @@ export function PlanUsageCard() {
           the second of this card's two pools, and a separate titled card for
           them was a second place to look for one subject. A real footer, edge
           to edge, so the two pools read as one card with two floors. Withheld
-          from a plan without `credits` (Free), whose allowance is a ceiling.
-          Fails OPEN like every other gate, so a gateway blip still lets an
-          org pay. The balance is the ONE amount this card may show, and only
+          from a plan without `credits`. Fails OPEN like every other gate, so
+          a gateway blip still lets an org pay. The balance is the ONE amount this card may show, and only
           once the bar is full: that is the moment credits are what the org is
           spending. */}
       {canBuyCredits && (
