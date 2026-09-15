@@ -1,5 +1,9 @@
 import { COMMERCE_DISCOVERY_MCP_URL } from "@decocms/shared/sdk";
 import { retry, RetryError } from "@decocms/shared/std";
+import {
+  type ReportsRepositoryRef,
+  toWire,
+} from "@decocms/shared/reports/repository-ref";
 import { z } from "zod";
 import { getSettings } from "../../settings";
 import type { Settings } from "../../settings";
@@ -363,7 +367,14 @@ export async function bindCommerceDiscoveryResource(
  * { triggered: false } rather than thrown, so the UI can still open the report.
  */
 export async function triggerCommerceDiscoveryRun(
-  input: { siteUrl: string; orgId: string; githubRepo?: string },
+  input: {
+    siteUrl: string;
+    orgId: string;
+    /** The repository, as an identity any provider can carry. */
+    repository?: ReportsRepositoryRef;
+    /** The legacy github.com `owner/name`, for the deprecation window. */
+    githubRepo?: string;
+  },
   options: CommerceDiscoveryAuthOptions = {},
 ): Promise<{ triggered: boolean; reason?: string }> {
   const baseUrl = resolveBaseUrl(options);
@@ -380,11 +391,14 @@ export async function triggerCommerceDiscoveryRun(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    // github_repo (optional) is the repo the client picked in the GitHub
-    // companion. Commerce Discovery threads it to the enriched-agent hand-off so
-    // repo-audit targets the right repo; absent ⇒ GitHub not connected.
+    /**
+     * Both spellings of the repository the client picked; Commerce Discovery
+     * threads whichever it understands to the enriched-agent hand-off so the
+     * audit targets the right one. Absent ⇒ no repository linked.
+     */
     body: JSON.stringify({
       org_id: input.orgId,
+      ...(input.repository ? { repository: toWire(input.repository) } : {}),
       ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

@@ -2299,6 +2299,19 @@ export interface StudioToolIO {
       claimed: boolean;
     };
   };
+  COMMERCE_DISCOVERY_SET_REPOSITORY: {
+    input: { repositoryId: string | null };
+    output: {
+      repository: {
+        repositoryId: string;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        defaultBranch?: string | null | undefined;
+        webUrl?: string | null | undefined;
+      } | null;
+    };
+  };
   COLLECTION_VIRTUAL_MCP_CREATE: {
     input: {
       data: {
