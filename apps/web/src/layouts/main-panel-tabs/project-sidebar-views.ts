@@ -37,6 +37,7 @@ export const PROJECT_NATIVE_VIEW_IDS = [
   "e2e",
   "analytics",
   "cdn",
+  "experiments",
 ] as const satisfies readonly ProjectSidebarViewId[];
 
 export type ProjectNativeViewId = (typeof PROJECT_NATIVE_VIEW_IDS)[number];
@@ -147,8 +148,8 @@ export function projectSidebarViewPresence(
     e2e: native.e2e,
     analytics: native.analytics,
     cdn: native.cdn,
+    experiments: native.experiments,
     automations: true,
-    experiments: true,
   };
 }
 

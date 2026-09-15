@@ -59,6 +59,7 @@ export function useProjectNativeViewPresence(
       e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
       analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
       cdn: monitorEnabled && ownsSite && controlPlaneViews.monitor,
+      experiments: controlPlaneViews.experiments,
     },
     assetsPending: !!siteSlug && fileConfigs.isPending,
     // A disabled TanStack query is still pending; it is only unresolved when a
