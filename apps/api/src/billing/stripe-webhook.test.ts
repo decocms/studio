@@ -224,9 +224,16 @@ describe("planIdForStripe", () => {
     items: { data: [{ price: { id: priceId } }] },
   });
 
-  test("an active subscription grants the tier its price maps to", () => {
-    expect(planIdForStripe("active", sub("price_ultra"), MAP)).toBe("ultra");
-    expect(planIdForStripe("active", sub("price_pro"), MAP)).toBe("pro");
+  /**
+   * THE payment gate. `active` on a new price is Stripe reporting the swap, not
+   * the payment: the portal's update flow changes the item and invoices the
+   * proration separately. Granting here gave an org the tier before the money
+   * cleared, and if that invoice then declined the subscription went `past_due`
+   * — which is grace — so it kept a tier it never paid for for weeks.
+   */
+  test("an active subscription grants NOTHING — the money has not cleared yet", () => {
+    expect(planIdForStripe("active", sub("price_ultra"), MAP)).toBeUndefined();
+    expect(planIdForStripe("active", sub("price_pro"), MAP)).toBeUndefined();
   });
 
   test("a cancelled subscription drops the org to free", () => {
@@ -248,14 +255,30 @@ describe("planIdForStripe", () => {
     ).toBeUndefined();
   });
 
-  /** The safe direction of the asymmetry: a price nobody priced grants
-   *  nothing, rather than defaulting to some tier. */
-  test("an active subscription on an unmapped price grants nothing", () => {
+  /** Whatever the price is, active alone grants nothing — mapped, unmapped or
+   *  absent. Revocation is the only thing a state change may do on its own. */
+  test("no shape of an active subscription grants a tier", () => {
     expect(
       planIdForStripe("active", sub("price_unknown"), MAP),
     ).toBeUndefined();
     expect(planIdForStripe("active", {}, MAP)).toBeUndefined();
     expect(planIdForStripe("active", sub("price_pro"), {})).toBeUndefined();
+  });
+
+  /**
+   * The lapse cases still revoke IMMEDIATELY, and must not be made to wait for
+   * a payment that by definition is not coming. Gating grants on money is only
+   * safe because taking the tier away stayed instant.
+   */
+  test("every non-active, non-dunning state revokes at once", () => {
+    for (const status of [
+      "canceled",
+      "unpaid",
+      "incomplete_expired",
+      "paused",
+    ]) {
+      expect(planIdForStripe(status, sub("price_ultra"), MAP)).toBe("free");
+    }
   });
 
   test("resolves a plan price sitting beside add-on prices", () => {

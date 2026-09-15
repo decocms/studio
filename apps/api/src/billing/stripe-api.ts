@@ -53,6 +53,10 @@ async function stripeRequest<T>(
   init?: {
     method?: "GET" | "POST" | "DELETE";
     params?: Record<string, unknown>;
+    /** Stripe replays the FIRST response for a repeated key instead of acting
+     *  twice. Required on anything that moves money from a handler Stripe may
+     *  redeliver — a refund without one is a second refund. */
+    idempotencyKey?: string;
   },
 ): Promise<T> {
   const key = getSettings().stripeSecretKey;
@@ -65,6 +69,9 @@ async function stripeRequest<T>(
     headers: {
       Authorization: `Bearer ${key}`,
       ...(body && { "Content-Type": "application/x-www-form-urlencoded" }),
+      ...(init?.idempotencyKey && {
+        "Idempotency-Key": init.idempotencyKey,
+      }),
     },
     body,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -435,4 +442,92 @@ export async function cancelSubscription(
   await stripeRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     method: "DELETE",
   });
+}
+
+export interface StripeInvoiceRef {
+  id?: string;
+  amount_paid?: number;
+  /** This account's API version puts these on the invoice directly. */
+  payment_intent?: string | { id?: string } | null;
+}
+
+/**
+ * Give back everything an orphan subscription actually took.
+ *
+ * Cancelling an orphan stops FUTURE billing and returns nothing, so the
+ * customer who opened checkout in two tabs stayed charged twice for the one
+ * subscription they kept. That is the whole double-charge: two sessions both
+ * complete, the first binds, the second is refused — and refusing it is not
+ * enough, because Stripe already took the money.
+ *
+ * Idempotent per invoice, which matters more here than anywhere else in this
+ * file: this runs from a webhook Stripe redelivers on any non-2xx, and a
+ * refund replayed without a key is a second refund. The key is derived from
+ * the invoice, so a redelivery replays the original response instead.
+ *
+ * Invoices with nothing collected (a downgrade's credit note, a zero
+ * proration) are skipped — there is no payment to reverse.
+ */
+export async function refundSubscriptionPayments(
+  subscriptionId: string,
+): Promise<{ refundedCents: number }> {
+  const list = await stripeRequest<{ data?: StripeInvoiceRef[] }>(
+    `/invoices?subscription=${encodeURIComponent(subscriptionId)}&status=paid&limit=100`,
+  );
+  const refunds = plannedOrphanRefunds(subscriptionId, list.data ?? []);
+  for (const refund of refunds) {
+    await stripeRequest("/refunds", {
+      params: { payment_intent: refund.paymentIntent, reason: "duplicate" },
+      idempotencyKey: refund.idempotencyKey,
+    });
+  }
+  return {
+    refundedCents: refunds.reduce((sum, r) => sum + r.amountCents, 0),
+  };
+}
+
+export interface PlannedRefund {
+  paymentIntent: string;
+  amountCents: number;
+  idempotencyKey: string;
+}
+
+/**
+ * Which of an orphan's invoices actually took money, and the key that makes
+ * giving it back safe to repeat.
+ *
+ * Split out from the HTTP so the decision is testable on its own — it is the
+ * part that can be wrong in a way that costs someone money, either by missing a
+ * charge (customer stays double-charged) or by refunding something that was
+ * never collected.
+ *
+ * Skips anything with nothing collected: a downgrade's credit invoice and a
+ * zero-value proration are both `paid` with `amount_paid: 0`. Skips an invoice
+ * with no payment intent, which is how an invoice settled from customer balance
+ * presents — there is no card payment to reverse.
+ *
+ * The key is per INVOICE rather than per subscription: an orphan with two paid
+ * invoices must produce two distinct refunds, while a redelivery of the same
+ * webhook must produce none.
+ */
+export function plannedOrphanRefunds(
+  subscriptionId: string,
+  invoices: StripeInvoiceRef[],
+): PlannedRefund[] {
+  const planned: PlannedRefund[] = [];
+  for (const invoice of invoices) {
+    const amountCents = invoice.amount_paid ?? 0;
+    if (amountCents <= 0) continue;
+    const paymentIntent =
+      typeof invoice.payment_intent === "string"
+        ? invoice.payment_intent
+        : invoice.payment_intent?.id;
+    if (!paymentIntent) continue;
+    planned.push({
+      paymentIntent,
+      amountCents,
+      idempotencyKey: `orphan-refund:${subscriptionId}:${invoice.id ?? paymentIntent}`,
+    });
+  }
+  return planned;
 }

@@ -26,7 +26,11 @@ import {
   OrganizationBillingStorage,
   type OrganizationBillingRow,
 } from "../storage/organization-billing";
-import { cancelSubscription, StripeApiError } from "./stripe-api";
+import {
+  cancelSubscription,
+  refundSubscriptionPayments,
+  StripeApiError,
+} from "./stripe-api";
 import { creditGatewayTopUp, setGatewayOrgPlan } from "./gateway-admin";
 import { getSettings } from "../settings";
 
@@ -234,14 +238,42 @@ export function planIdForPrices(
  * but still drops the org to free on the way out, because an org holding a
  * paid tier must never keep it just because its price was later unmapped.
  */
+/**
+ * What a SUBSCRIPTION-STATE change alone may do to the org's plan — which is
+ * revoke it, or nothing. It can never grant a paid tier.
+ *
+ * A subscription reaching `active` on a new price is Stripe saying the swap
+ * happened, not that it was paid for. The portal's update flow applies the item
+ * change and invoices the proration separately, so granting here handed an org
+ * the tier before the money cleared: if that invoice then declined, the
+ * subscription went `past_due`, `past_due` is grace ("leave the plan alone"),
+ * and the org kept a tier it never paid for through Stripe's entire retry
+ * schedule. First-time checkout was never exposed to this —
+ * `checkout.session.completed` requires `payment_status: paid` — the tier
+ * change was.
+ *
+ * So grants come only from money actually clearing (`checkout.session.completed`
+ * and `invoice.paid`), and this function is left with the half that must NOT
+ * wait for a payment: taking the plan away. Every tier change produces an
+ * `invoice.paid` to grant on — verified in both directions, including a
+ * downgrade, whose credit invoice (total -474999) is still marked paid.
+ *
+ * `past_due` therefore preserves the last PAID tier by construction, with
+ * nothing stored: no other event ever granted one.
+ *
+ * Returning the tier here again would silently reopen the hole, so the return
+ * type is deliberately "free or nothing".
+ */
 export function planIdForStripe(
   status: string,
-  obj: Record<string, unknown>,
-  map: Record<string, string>,
-): string | undefined {
+  _obj: Record<string, unknown>,
+  _map: Record<string, string>,
+): "free" | undefined {
   if (status === "past_due") return undefined;
   if (status !== "active") return "free";
-  return planIdForPrices(obj, map);
+  // Active says the subscription exists, not that it is paid for. `invoice.paid`
+  // grants; see above.
+  return undefined;
 }
 
 /** subscription → current period end; Basil moved it onto items.data[]. */
@@ -405,10 +437,15 @@ export async function applyStripeEvent(
       });
       // The plan the buyer paid for, from the metadata OUR checkout creator
       // wrote — a Checkout Session carries no line items unless expanded, so
-      // the price map cannot be consulted here. `customer.subscription.updated`
-      // fires for the same subscription with real items and resolves it again
-      // from the price, so a session with no planId is not a hole: it just
-      // grants nothing until that event lands.
+      // the price map cannot be consulted here. Payment is already confirmed
+      // above, which is what makes granting here legitimate.
+      //
+      // A session with no planId is not a hole: the subscription's first
+      // invoice (`billing_reason: subscription_create`) is paid in the same
+      // breath and `invoice.paid` resolves the tier from its lines. That is
+      // now the ONLY backstop — `customer.subscription.updated` used to be one
+      // and deliberately is not any more, because it cannot tell a paid swap
+      // from an unpaid one.
       const planId = s(rec(obj.metadata)?.planId);
       return {
         handled: true,
@@ -622,22 +659,34 @@ export async function processStripeEvent(
     // webhook.
     invalidateOrgFeaturesCache(result.organizationId);
   }
-  // Cancel a refused-but-paid subscription so it stops charging. NOT
-  // fail-soft: a transient failure must 500 the route so Stripe redelivers
-  // and the cancel retries. Already-gone (400/404) is success.
+  // Undo a refused-but-paid subscription completely: stop the billing AND give
+  // back what it already took. Cancelling alone left the customer charged twice
+  // for the one subscription they kept, which is the double charge itself — two
+  // checkouts completing before either bound is a double-click or a second tab,
+  // not an exotic race.
+  //
+  // NOT fail-soft: a transient failure must 500 the route so Stripe redelivers
+  // and this retries. Both halves are safe to repeat — an already-gone
+  // subscription (400/404) counts as cancelled, and the refund carries a
+  // per-invoice idempotency key, so a redelivery replays rather than refunds
+  // twice. Cancel first: if the refund is what fails, the org is at least not
+  // still being billed while Stripe retries.
   if (!result.handled && result.orphanSubscriptionId) {
+    const subscriptionId = result.orphanSubscriptionId;
     try {
-      await cancelSubscription(result.orphanSubscriptionId);
-      console.error("stripe webhook: canceled orphan subscription", {
-        subscriptionId: result.orphanSubscriptionId,
-        eventId: event.id,
-      });
+      await cancelSubscription(subscriptionId);
     } catch (err) {
       const alreadyGone =
         err instanceof StripeApiError &&
         (err.status === 400 || err.status === 404);
       if (!alreadyGone) throw err;
     }
+    const { refundedCents } = await refundSubscriptionPayments(subscriptionId);
+    console.error("stripe webhook: reversed orphan subscription", {
+      subscriptionId,
+      refundedCents,
+      eventId: event.id,
+    });
   }
   return result;
 }
