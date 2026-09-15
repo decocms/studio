@@ -14,6 +14,7 @@
 
 import { type QueryClient, dehydrate, hydrate } from "@tanstack/react-query";
 import { clearHtmlResourceCache } from "./html-resource-persist";
+import { KEYS } from "./query-keys";
 
 const STORAGE_KEY = "studio:rq-cache";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
@@ -105,6 +106,22 @@ export function hydrateQueryClient(queryClient: QueryClient): void {
     }
 
     hydrate(queryClient, parsed.state);
+
+    // `hydrate` restores each entry with its ORIGINAL `dataUpdatedAt`, so a
+    // reload inside publicConfig's staleTime serves the persisted copy and
+    // never asks the server. publicConfig is how every *deployment* flag
+    // reaches the browser (STUDIO_PLANS_ENABLED among them), and those flip
+    // server-side with no version bump — so flipping one and restarting, which
+    // takes far less than the staleTime, left the old value painted with
+    // nothing to dislodge it. Mark it invalidated: an invalidated query is
+    // stale regardless of staleTime, so the first observer refetches once via
+    // `refetchOnMount`. Hydration still paints instantly; only the guaranteed
+    // revalidation is added, and only for this one key.
+    queryClient.invalidateQueries({
+      queryKey: KEYS.publicConfig(),
+      refetchType: "none",
+    });
+
     cacheRestored = true;
   } catch {
     // Corrupt entry — drop it, never let it block boot.
