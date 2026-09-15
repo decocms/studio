@@ -8,6 +8,7 @@
  */
 
 import type { GitProviderKind } from "@decocms/shared/git-providers";
+import { z } from "zod";
 import {
   useInfiniteQuery,
   type InfiniteData,
@@ -113,6 +114,33 @@ export function useConnectGitAccountToken() {
       host: string;
       token: string;
     }) => (await studio.call("GIT_ACCOUNT_CONNECT_TOKEN", input)).account,
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: KEYS.gitAccounts(org.id) }),
+  });
+}
+
+export function useConnectGithubCli() {
+  const { org } = useProjectContext();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const response = await fetch(
+        `/api/${encodeURIComponent(org.slug)}/git-providers/github/cli/connect`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        },
+      );
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        const error = z.object({ error: z.string() }).parse(body);
+        throw new Error(error.error);
+      }
+      return z
+        .object({ account: z.object({ id: z.string(), login: z.string() }) })
+        .parse(body).account;
+    },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: KEYS.gitAccounts(org.id) }),
   });

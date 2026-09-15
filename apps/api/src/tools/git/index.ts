@@ -98,6 +98,8 @@ export const GIT_PROVIDER_CAPABILITIES = defineTool({
   outputSchema: z.object({
     github: z.object({
       configured: z.boolean(),
+      /** Local CLI connect uses POST and never redirects to OAuth. */
+      cliConnectPath: z.string().nullable(),
       /** Org-scoped path that starts the OAuth proof + installation sync. */
       connectPath: z.string().nullable(),
       /** Org-scoped path that sends the user to install the App on a new account. */
@@ -120,9 +122,11 @@ export const GIT_PROVIDER_CAPABILITIES = defineTool({
     const base = `/api/${organization.slug ?? organization.id}/git-providers`;
     const capabilities = providerCapabilities();
     const github = capabilities.github.configured;
+    const cli = capabilities.github.cli;
     return {
       github: {
-        configured: github,
+        configured: github || cli,
+        cliConnectPath: cli ? `${base}/github/cli/connect` : null,
         connectPath: github ? `${base}/github/connect` : null,
         installPath: github ? `${base}/github/install` : null,
       },

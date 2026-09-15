@@ -24,8 +24,14 @@ export type GitProviderKind = z.infer<typeof GitProviderKindSchema>;
  *   minted per repository from the App private key. No stored user grant.
  * - `oauth`: a refreshable OAuth grant stored in the account credential row.
  * - `token`: a long-lived personal / project / group access token.
+ * - `github_cli`: local-only credentials read from the selected gh account.
  */
-export const GIT_AUTH_KINDS = ["github_app", "oauth", "token"] as const;
+export const GIT_AUTH_KINDS = [
+  "github_app",
+  "oauth",
+  "token",
+  "github_cli",
+] as const;
 export const GitAuthKindSchema = z.enum(GIT_AUTH_KINDS);
 export type GitAuthKind = z.infer<typeof GitAuthKindSchema>;
 

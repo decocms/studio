@@ -2253,7 +2253,7 @@ export interface NotificationTable {
 // ============================== Git providers ===============================
 
 export type GitProviderKindColumn = "github" | "gitlab" | "bitbucket";
-export type GitAuthKindColumn = "github_app" | "oauth" | "token";
+export type GitAuthKindColumn = "github_app" | "oauth" | "token" | "github_cli";
 export type GitAccountStatusColumn = "active" | "revoked";
 
 export interface GitProviderAccountTable {

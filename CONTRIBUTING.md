@@ -15,6 +15,26 @@ npx lefthook install   # pre-commit hook that runs `bun run fmt`
 bun run dev            # migrations + web app + API
 ```
 
+### Importing a GitHub repository locally
+
+Install [GitHub CLI](https://cli.github.com/) and run
+`gh auth login --hostname github.com`. In local mode, the repository picker
+and Settings → Repositories show **Connect with GitHub CLI**. Connect, then
+choose a repository to import. No GitHub App registration or OAuth secrets are
+needed. `bun run dev` enables local mode by default; `--no-local-mode` uses the
+GitHub App connection instead.
+
+Studio runs `gh` on the machine running the API. It saves the selected account
+identity and reads its token from the CLI when needed, without storing the
+token in Studio's database. Switching the active account in `gh` does not
+switch an existing connection. After logging out or renaming your GitHub
+account, log in again and reconnect in Studio.
+
+The connection uses the developer's CLI permissions, which can cover more
+repositories than the one imported. GitHub App installation and webhook flows
+still require an App. Run the API on your host to use your host's CLI login;
+a container cannot automatically access it.
+
 ## Filing issues & opening PRs
 
 - **Bug or feature idea?** Open an issue first — templates live under

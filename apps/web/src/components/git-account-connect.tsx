@@ -24,6 +24,7 @@ import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import {
   useGitProviderCapabilities,
   useConnectGitAccountToken,
+  useConnectGithubCli,
 } from "@/hooks/use-git-providers";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
@@ -265,6 +266,7 @@ function ConnectActions({
 }) {
   const t = useT();
   const capabilities = useGitProviderCapabilities();
+  const cliConnect = useConnectGithubCli();
   const { org } = useProjectContext();
   const returnTo = `/${org.slug}/settings/repositories`;
   const connectUrl = (path: string) =>
@@ -280,6 +282,7 @@ function ConnectActions({
   const bitbucket = capabilities.data?.bitbucket;
 
   const githubConfigured = github?.configured === true;
+  const useCli = !!github?.cliConnectPath;
   const gitlabConfigured = (gitlab?.oauthHosts.length ?? 0) > 0;
   const bitbucketConfigured = (bitbucket?.oauthHosts.length ?? 0) > 0;
 
@@ -296,15 +299,47 @@ function ConnectActions({
     >
       <ConnectAction
         layout={layout}
-        label={t("settings.repositories.addGithubAccount")}
+        label={t(
+          useCli
+            ? "settings.repositories.connectGithubCli"
+            : "settings.repositories.addGithubAccount",
+        )}
         description={t(
-          githubConfigured
-            ? "settings.repositories.browseAccount"
-            : "settings.repositories.githubUnavailable",
+          useCli
+            ? "settings.repositories.githubCliHint"
+            : githubConfigured
+              ? "settings.repositories.browseAccount"
+              : "settings.repositories.githubUnavailable",
         )}
         icon={<GitProviderIcon provider="github" size={16} />}
-        href={github?.connectPath ? connectUrl(github.connectPath) : undefined}
-        disabled={disabled || !githubConfigured || !github?.connectPath}
+        href={
+          !useCli && github?.connectPath
+            ? connectUrl(github.connectPath)
+            : undefined
+        }
+        onClick={
+          useCli
+            ? () =>
+                cliConnect.mutate(undefined, {
+                  onSuccess: (account) =>
+                    toast.success(
+                      t("settings.repositories.connected", {
+                        login: account.login,
+                      }),
+                    ),
+                  onError: (error) =>
+                    toast.error(
+                      errorMessage(error, t("settings.repositories.failed")),
+                    ),
+                })
+            : undefined
+        }
+        disabled={
+          disabled ||
+          cliConnect.isPending ||
+          !githubConfigured ||
+          (!useCli && !github?.connectPath)
+        }
       />
       {gitlabConfigured && gitlab?.connectPath && (
         <ConnectAction

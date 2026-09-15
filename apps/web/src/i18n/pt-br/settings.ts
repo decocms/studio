@@ -137,6 +137,10 @@ export const settings = {
     "Use um token de acesso pessoal, de projeto ou de grupo.",
   "settings.repositories.bitbucketTokenHint":
     "Use um token de acesso de workspace, de projeto ou de repositório.",
+  "settings.repositories.connectGithubCli": "Conectar com GitHub CLI",
+  "settings.repositories.githubCliHint":
+    "Use seu login local do gh para buscar e importar repositórios.",
+  "settings.repositories.authKindGithubCli": "GitHub CLI",
   "settings.repositories.addGithubAccount":
     "Adicionar conta ou organização do GitHub",
   "settings.repositories.githubSelectTitle": "Selecionar repositórios",

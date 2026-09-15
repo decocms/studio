@@ -1,4 +1,5 @@
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
+import * as migration215githubcliauth from "./215-github-cli-auth";
 import * as migration211userfsorg from "./211-user-fs-org";
 import * as migration210githubrepositoryauthorization from "./210-github-repository-authorization";
 import * as migration212codingagentmcpexcluded from "./212-coding-agent-mcp-excluded";
@@ -464,6 +465,7 @@ const migrations: Record<string, Migration> = {
   "212-coding-agent-mcp-excluded": migration212codingagentmcpexcluded,
   "213-bitbucket-git-provider": migration213bitbucketgitprovider,
   "214-connections-sanitized-id-idx": migration214connectionssanitizedididx,
+  "215-github-cli-auth": migration215githubcliauth,
 };
 
 export default migrations;
