@@ -251,7 +251,7 @@ function FeedCard({
             type="button"
             onClick={() =>
               navigateToAgent(project.id, {
-                panel: landingTabIdFor(project.metadata?.ui?.layout),
+                view: landingTabIdFor(project.metadata?.ui?.layout),
               })
             }
             className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md text-left text-sm font-medium text-foreground transition-colors hover:text-primary"

@@ -1,11 +1,12 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import RequiredAuthLayout from "@/layouts/required-auth-layout";
 import { NoPermissionState } from "@/components/no-permission-state";
 import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
+import { PanelLoading } from "@/layouts/main-panel-boundary";
 
 const TABS = [
   { to: "/_admin/users", labelKey: "admin.layout.usersTab" },
@@ -18,16 +19,20 @@ function AdminTabs() {
   const t = useT();
 
   return (
-    <nav className="flex items-center gap-1 border-b border-border px-4 md:px-10">
+    <nav
+      aria-label={t("admin.layout.navigation")}
+      className="flex min-w-0 items-center gap-0.5 overflow-x-auto no-scrollbar"
+    >
       {TABS.map((tab) => (
         <Link
           key={tab.to}
           to={tab.to}
+          aria-current={pathname.startsWith(tab.to) ? "page" : undefined}
           className={cn(
-            "-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
+            "rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             pathname.startsWith(tab.to)
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
           )}
         >
           {t(tab.labelKey)}
@@ -44,7 +49,7 @@ function AdminGate() {
   if (loading) {
     return (
       <div className="flex h-dvh flex-1 items-center justify-center">
-        <Spinner className="size-5 text-muted-foreground" />
+        <PanelLoading />
       </div>
     );
   }
@@ -68,17 +73,31 @@ function AdminGate() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background">
-      <div className="shrink-0 px-4 pt-6 md:px-10">
-        <h1 className="pb-4 text-xl font-medium">
-          {t("admin.layout.adminDashboard")}
-        </h1>
-      </div>
-      <AdminTabs />
-      <div className="flex-1 overflow-hidden">
+    <Main className="h-dvh">
+      <Main.Topbar>
+        <Main.Topbar.Left>
+          <Main.Title>
+            <Main.Title.Target fallback={t("admin.layout.adminDashboard")} />
+          </Main.Title>
+        </Main.Topbar.Left>
+        <Main.Topbar.Center>
+          <div className="hidden min-w-0 md:block">
+            <AdminTabs />
+          </div>
+          <Main.Topbar.Center.Target />
+        </Main.Topbar.Center>
+        <Main.Topbar.Right>
+          <Main.Topbar.Right.Target />
+        </Main.Topbar.Right>
+      </Main.Topbar>
+      <Main.Toolbar />
+      <Main.Toolbar.Portal visibility="compact">
+        <AdminTabs />
+      </Main.Toolbar.Portal>
+      <Main.Content mode="canvas">
         <Outlet />
-      </div>
-    </div>
+      </Main.Content>
+    </Main>
   );
 }
 

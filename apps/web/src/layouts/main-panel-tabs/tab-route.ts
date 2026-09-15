@@ -57,7 +57,7 @@ export type TabRouteLocation =
   | { kind: "org-destination"; destination: OrgTabDestination };
 
 export type ProjectTabDestination = "tasks" | "reports";
-export type OrgTabDestination = "home" | "library" | "discover";
+export type OrgTabDestination = "home" | "library";
 
 type AgentParams = { org: string; agentId: string };
 type OrgParams = { org: string };
@@ -73,7 +73,6 @@ export type TabRouteTarget =
     }
   | { to: typeof DESTINATION_ROUTE.reports; params: OrgParams; search: {} }
   | { to: typeof DESTINATION_ROUTE.library; params: OrgParams; search: {} }
-  | { to: typeof DESTINATION_ROUTE.discover; params: OrgParams; search: {} }
   | { to: typeof PROJECT_ROUTE.root; params: AgentParams; search: {} }
   | {
       to: typeof PROJECT_ROUTE.tasks;
@@ -212,7 +211,8 @@ export function tabIdForRoute(state: MatchedTabRouteState): string | undefined {
 
 const ORG_DESTINATION_BY_TAB: Readonly<Record<string, OrgTabDestination>> = {
   files: "library",
-  discover: "discover",
+  // Compatibility for persisted tabs written while Discover was a destination.
+  discover: "home",
 };
 
 const PROJECT_DESTINATION_BY_TAB: Readonly<
@@ -344,12 +344,6 @@ export function tabRouteTarget(input: {
       switch (location.destination) {
         case "home":
           return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
-        case "discover":
-          return {
-            to: DESTINATION_ROUTE.discover,
-            params: { org },
-            search: {},
-          };
         case "library":
           return { to: DESTINATION_ROUTE.library, params: { org }, search: {} };
       }
@@ -493,14 +487,6 @@ export function navigateToTabRouteTarget(
     case DESTINATION_ROUTE.reports:
       navigate({
         to: DESTINATION_ROUTE.reports,
-        params: target.params,
-        search,
-        replace,
-      });
-      return;
-    case DESTINATION_ROUTE.discover:
-      navigate({
-        to: DESTINATION_ROUTE.discover,
         params: target.params,
         search,
         replace,

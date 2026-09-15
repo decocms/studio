@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Lock01 } from "@untitledui/icons";
 import { Link, useParams } from "@tanstack/react-router";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { useT } from "@/i18n/use-t.ts";
 
 interface NoPermissionStateProps {
   /** Short label describing the section the user tried to open. */
@@ -19,11 +20,12 @@ interface NoPermissionStateProps {
 /** Org-scoped default action; isolated so its `$org` param lookup never runs
  *  when a caller supplies its own action outside an org route. */
 function ProfileLink() {
+  const t = useT();
   const { org } = useParams({ from: "/shell/$org" });
   return (
     <Button variant="outline" size="sm" asChild>
       <Link to="/$org/settings/profile" params={{ org }}>
-        Go to your profile
+        {t("common.noPermissionState.goToProfile")}
       </Link>
     </Button>
   );
@@ -39,10 +41,11 @@ export function NoPermissionState({
   description,
   action,
 }: NoPermissionStateProps) {
-  const title = area ? `No access to ${area}` : "No access";
-  const body =
-    description ??
-    "Your role doesn't include permission for this section. Ask an organization admin to update your role if you need it.";
+  const t = useT();
+  const title = area
+    ? t("common.noPermissionState.titleWithArea", { area })
+    : t("common.noPermissionState.title");
+  const body = description ?? t("common.noPermissionState.description");
 
   return (
     <div className="flex h-full min-h-[60vh] flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

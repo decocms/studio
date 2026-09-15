@@ -1,14 +1,15 @@
 import { HostingTab } from "@/layouts/main-panel-tabs/hosting";
-import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
-import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { AgentRouteMain } from "./agent-route-main";
+import { AgentViewGuard } from "./agent-view-guard";
 
-export default function Route() {
-  const virtualMcpId = useRouteVirtualMcpId();
-  const views = useControlPlaneViews();
-  return views.hosting ? (
-    <HostingTab virtualMcpId={virtualMcpId} />
-  ) : (
-    <SettingsTab virtualMcpId={virtualMcpId} />
+export default function AgentHostingRoute() {
+  const agentId = useRouteVirtualMcpId();
+  return (
+    <AgentRouteMain contentMode="canvas">
+      <AgentViewGuard tabId="hosting">
+        <HostingTab virtualMcpId={agentId} />
+      </AgentViewGuard>
+    </AgentRouteMain>
   );
 }

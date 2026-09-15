@@ -61,16 +61,6 @@ export function LegacyCanonicalNavigate({
           replace
         />
       );
-    case DESTINATION_ROUTE.discover:
-      return (
-        <Navigate
-          to={DESTINATION_ROUTE.discover}
-          params={route.params}
-          search={search}
-          hash
-          replace
-        />
-      );
     case DESTINATION_ROUTE.library:
       return (
         <Navigate

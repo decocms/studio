@@ -9,7 +9,7 @@
  *
  * Starting it is exactly the onboarding hand-off, reused rather than
  * reimplemented: COMMERCE_DISCOVERY_SETUP claims the site, then we navigate to
- * the org home thread with `?connect=1`, which mounts the blocking
+ * organization Home with `?connect=1`, which mounts the blocking
  * CommerceConnectModal — the step that asks for the data sources (GA4/GSC/VTEX/
  * GitHub), triggers COMMERCE_DISCOVERY_RUN and opens the report.
  *
@@ -43,6 +43,7 @@ import {
 import { parseSelfToolResult } from "@/routes/commerce-onboarding/self-tool-result.ts";
 import { translateSiteError } from "@/routes/commerce-onboarding/site-error.ts";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { Main } from "@/components/main";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -102,7 +103,10 @@ function StartDiagnosticState({
   const t = useT();
   const host = siteUrlToHost(claimedSiteUrl ?? undefined);
   return (
-    <div className="flex min-h-full w-full flex-col items-center justify-center gap-8 p-6">
+    <Main.Container
+      width="reading"
+      className="flex min-h-full flex-col items-center justify-center gap-8"
+    >
       {/* The report you don't have yet, tilted under its own glow. */}
       <div className="relative flex items-end justify-center pt-4">
         <div
@@ -138,7 +142,7 @@ function StartDiagnosticState({
           ))}
         </ul>
       </div>
-    </div>
+    </Main.Container>
   );
 }
 

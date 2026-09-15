@@ -36,6 +36,7 @@ function task(
     title: id,
     updatedAt,
     status: link.status ?? "done",
+    virtualMcpId: null,
     repo: link.repo ?? null,
     threads: link.virtualMcpId
       ? [{ threadId: `t_${id}`, virtualMcpId: link.virtualMcpId }]

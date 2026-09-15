@@ -1,18 +1,29 @@
 import { buildSandboxUrl } from "@/sdk/sandbox-url";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { WELL_KNOWN_STARTERS } from "@decocms/sandbox/shared";
-import { useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Play } from "@untitledui/icons";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import { useSandboxEvents } from "../../hooks/use-sandbox-events";
-import { DEFAULT_TAB, DrawerToolbar, type DrawerStatus } from "./toolbar";
+import {
+  DEFAULT_TAB,
+  DrawerToolbar,
+  drawerTabId,
+  type DrawerStatus,
+  type DrawerToolbarHandle,
+} from "./toolbar";
 import { SandboxTerminal } from "./terminal";
 import {
   clampDrawerHeight,
-  DRAWER_MIN_HEIGHT,
-  DRAWER_TOP_RESERVE,
+  drawerHeightForKey,
+  resolveDrawerResizeMetrics,
 } from "./resize";
+import { activeTabAfterScriptClose } from "./script-tab-state";
+import {
+  createTabCloseFocusHandoff,
+  type TabCloseFocusHandoff,
+} from "./tab-close-focus-handoff";
 
 export interface PreviewDrawerProps {
   vmId: string | null;
@@ -35,10 +46,19 @@ export interface PreviewDrawerProps {
 
 export function PreviewDrawer(props: PreviewDrawerProps) {
   const t = useT();
+  const tabPanelId = useId();
   const vmEvents = useSandboxEvents();
   const [active, setActive] = useState<string>(DEFAULT_TAB);
   const [scriptTabs, setScriptTabs] = useState<string[]>([]);
   const [killingScripts, setKillingScripts] = useState<Set<string>>(new Set());
+  const [closingScriptTabs, setClosingScriptTabs] = useState<Set<string>>(
+    new Set(),
+  );
+  const closingScriptTabsRef = useRef<Map<string, number>>(new Map());
+  const scriptTabVersionsRef = useRef<Map<string, number>>(new Map());
+  const toolbarRef = useRef<DrawerToolbarHandle>(null);
+  const activeTabRef = useRef(DEFAULT_TAB);
+  const focusHandoffsRef = useRef<Set<TabCloseFocusHandoff>>(new Set());
 
   // Once-per-VM auto-open of dev/start. Render-time setState gated by a ref
   // so a second render after the first scripts event becomes a no-op. The
@@ -54,6 +74,8 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     if (starter) {
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- TODO: refactor render-time .current access
       scriptsAppliedRef.current = true;
+      // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- active event-state mirror for delayed close completions
+      activeTabRef.current = starter;
       setScriptTabs((prev) =>
         prev.includes(starter) ? prev : [...prev, starter],
       );
@@ -81,6 +103,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // Tab click also opens the drawer when collapsed. Once open, subsequent
   // tab clicks just switch tabs.
   const handleSelectTab = (tab: string) => {
+    activeTabRef.current = tab;
     setActive(tab);
     if (!props.open) props.onOpenChange(true);
   };
@@ -124,24 +147,89 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   };
 
   const handleAddScript = async (name: string) => {
+    // A same-name tab opened after an older close request is a new incarnation.
+    // That older response may stop its own process, but must never remove this
+    // newer UI handle.
+    scriptTabVersionsRef.current.set(
+      name,
+      (scriptTabVersionsRef.current.get(name) ?? 0) + 1,
+    );
     setScriptTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    activeTabRef.current = name;
     setActive(name);
     props.onOpenChange(true);
     await runExec(name, t("sandbox.drawer.failedToRun", { name }));
   };
 
-  // × on a script tab: kill the process AND drop the tab. Active tab
-  // falls back to setup.
-  const handleCloseScript = async (name: string) => {
-    await killScript(name);
-    setScriptTabs((prev) => prev.filter((t) => t !== name));
-    if (active === name) setActive(DEFAULT_TAB);
+  // × on a script tab: kill the process AND drop the tab only once the
+  // daemon confirms the kill. The functional active-state update is important:
+  // a user may select another tab while this request is in flight.
+  const handleCloseScript = async (
+    name: string,
+    closeButton: HTMLButtonElement,
+  ) => {
+    // State disables the control on the next commit; the ref closes the smaller
+    // same-tick gap where two events can enter before that commit. Check before
+    // installing focus-intent listeners so a rejected duplicate owns nothing.
+    if (closingScriptTabsRef.current.has(name)) return;
+    const version = scriptTabVersionsRef.current.get(name) ?? 0;
+    closingScriptTabsRef.current.set(name, version);
+    const closeOwnedFocus = document.activeElement === closeButton;
+    let focusHandoff: TabCloseFocusHandoff | null = null;
+    let focusHandoffArmed = false;
+    if (closeOwnedFocus) {
+      focusHandoff = createTabCloseFocusHandoff(closeButton, {
+        onFinish: () => {
+          if (focusHandoff) focusHandoffsRef.current.delete(focusHandoff);
+        },
+      });
+      focusHandoffsRef.current.add(focusHandoff);
+    }
+    setClosingScriptTabs((prev) => new Set(prev).add(name));
+    try {
+      const res = await killScript(name);
+      // Missing sandbox identity is a programming/setup state. Keep the tab so
+      // the user does not lose the only handle for retrying once it is ready.
+      if (res === null) return;
+      if (!res.ok) throw new Error(`Kill failed: ${res.statusText}`);
+      if ((scriptTabVersionsRef.current.get(name) ?? 0) !== version) return;
+      scriptTabVersionsRef.current.set(name, version + 1);
+      const focusTarget = activeTabAfterScriptClose(
+        activeTabRef.current,
+        name,
+        DEFAULT_TAB,
+      );
+      if (focusHandoff) {
+        focusHandoffArmed = true;
+        focusHandoff.focusAfterSourceRemoval(
+          () => toolbarRef.current?.focusTab(focusTarget) ?? false,
+        );
+      }
+      setScriptTabs((prev) => prev.filter((tab) => tab !== name));
+      activeTabRef.current = focusTarget;
+      setActive((current) =>
+        activeTabAfterScriptClose(current, name, DEFAULT_TAB),
+      );
+    } catch {
+      toast.error(t("sandbox.drawer.failedToStop", { name }));
+    } finally {
+      if (!focusHandoffArmed) focusHandoff?.cancel();
+      if (closingScriptTabsRef.current.get(name) === version) {
+        closingScriptTabsRef.current.delete(name);
+        setClosingScriptTabs((prev) => {
+          const next = new Set(prev);
+          next.delete(name);
+          return next;
+        });
+      }
+    }
   };
 
   // Per-script Run/Restart on the active tab — does NOT add or remove the
   // tab; just (re)starts the process. Restart is the same call as Run; the
   // daemon's task-manager replaces the existing task with the same logName.
   const handleRunActive = async () => {
+    if (closingScriptTabsRef.current.has(active)) return;
     const wasRunning = vmEvents.activeProcesses.includes(active);
     const failureMessage = wasRunning
       ? t("sandbox.drawer.failedToRestart", { name: active })
@@ -152,7 +240,12 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // Per-script Stop on the active tab. Marks the script as killing so the
   // toolbar shows "Stopping…"; the prune above clears it once SSE confirms.
   const handleStopActive = async () => {
-    if (killingScripts.has(active)) return;
+    if (
+      killingScripts.has(active) ||
+      closingScriptTabsRef.current.has(active)
+    ) {
+      return;
+    }
     setKillingScripts((prev) => new Set(prev).add(active));
     try {
       const res = await killScript(active);
@@ -181,6 +274,7 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   const scriptIsRunning =
     isScriptTab && vmEvents.activeProcesses.includes(active);
   const scriptIsKilling = isScriptTab && killingScripts.has(active);
+  const scriptClosePending = isScriptTab && closingScriptTabs.has(active);
 
   // Drag-to-resize the open drawer. The height is applied imperatively to the
   // drawer element during the drag (no per-frame React render, so the xterm
@@ -193,11 +287,68 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
   // the whole gesture to the handle, so pointerup/pointercancel are delivered
   // even when the cursor leaves the window (no sticky drag / stuck body cursor).
   const drawerRef = useRef<HTMLDivElement>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
+  const [resizeMetrics, setResizeMetrics] = useState<{
+    height: number;
+    minHeight: number;
+    maxHeight: number;
+  } | null>(null);
+
+  // A route change can unmount the Site Editor in the middle of a captured
+  // pointer gesture. The detached handle will not reliably receive pointerup,
+  // so release document-wide interaction styles and listeners explicitly.
+  useLayoutEffect(
+    () => () => {
+      resizeCleanupRef.current?.();
+      for (const handoff of focusHandoffsRef.current) handoff.cancel();
+      focusHandoffsRef.current.clear();
+    },
+    [],
+  );
+
+  // CSS and the ARIA separator share one live range. Observe the pane for new
+  // bounds and the drawer for the clamped rendered value; pointer dragging
+  // remains render-free because resize callbacks are ignored during a gesture.
+  useLayoutEffect(() => {
+    if (!props.open) {
+      resizeCleanupRef.current?.();
+      setResizeMetrics(null);
+      return;
+    }
+
+    const drawer = drawerRef.current;
+    const pane = drawer?.parentElement;
+    if (!drawer || !pane) return;
+
+    const measure = () => {
+      if (resizeCleanupRef.current) return;
+      const paneHeight = pane.getBoundingClientRect().height;
+      const next = resolveDrawerResizeMetrics(
+        drawer.getBoundingClientRect().height,
+        paneHeight,
+      );
+      setResizeMetrics((current) =>
+        current?.height === next.height &&
+        current.minHeight === next.minHeight &&
+        current.maxHeight === next.maxHeight
+          ? current
+          : next,
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    observer.observe(drawer);
+    return () => observer.disconnect();
+  }, [props.open, props.height]);
+
   const handleResizeStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!props.open) return;
+    if (!props.open || !e.isPrimary || e.button !== 0) return;
     const el = drawerRef.current;
     const pane = el?.parentElement;
     if (!el || !pane) return;
+    resizeCleanupRef.current?.();
     e.preventDefault();
     const handle = e.currentTarget;
     const { pointerId } = e;
@@ -206,6 +357,8 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
     const startHeight = el.getBoundingClientRect().height;
     const paneHeight = pane.getBoundingClientRect().height;
     let nextHeight = startHeight;
+    const previousBodyUserSelect = document.body.style.userSelect;
+    const previousBodyCursor = document.body.style.cursor;
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
       // Dragging up (smaller clientY) grows the drawer; clamp so it stays
@@ -216,44 +369,82 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
       );
       el.style.height = `${nextHeight}px`;
     };
-    const finish = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointerId) return;
+    const cleanup = () => {
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", finish);
       handle.removeEventListener("pointercancel", finish);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
+      handle.removeEventListener("lostpointercapture", finish);
+      if (handle.hasPointerCapture(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+      document.body.style.userSelect = previousBodyUserSelect;
+      document.body.style.cursor = previousBodyCursor;
+      if (resizeCleanupRef.current === cleanup) {
+        resizeCleanupRef.current = null;
+      }
+    };
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      cleanup();
+      setResizeMetrics(resolveDrawerResizeMetrics(nextHeight, paneHeight));
       props.onHeightChange(nextHeight);
     };
     document.body.style.userSelect = "none";
     document.body.style.cursor = "row-resize";
+    resizeCleanupRef.current = cleanup;
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", finish);
     handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("lostpointercapture", finish);
+  };
+
+  const handleResizeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const drawer = drawerRef.current;
+    const pane = drawer?.parentElement;
+    if (!drawer || !pane) return;
+
+    const paneHeight = pane.getBoundingClientRect().height;
+    const nextHeight = drawerHeightForKey(
+      e.key,
+      drawer.getBoundingClientRect().height,
+      paneHeight,
+    );
+    if (nextHeight === null) return;
+
+    e.preventDefault();
+    drawer.style.height = `${nextHeight}px`;
+    setResizeMetrics(resolveDrawerResizeMetrics(nextHeight, paneHeight));
+    props.onHeightChange(nextHeight);
   };
 
   return (
     <div
       ref={drawerRef}
-      className="flex shrink-0 flex-col"
+      className="flex shrink-0 flex-col overflow-hidden"
       style={{
         height: props.open ? (props.height ?? "50%") : "auto",
-        // Cap relative to the pane so a persisted px height from a taller
-        // window can never swallow the tab body above when the window shrinks.
-        // `max(MIN, …)` keeps the same floor as `clampDrawerHeight` so a pane
-        // shorter than the reserve can't collapse the drawer past the min.
-        maxHeight: props.open
-          ? `max(${DRAWER_MIN_HEIGHT}px, calc(100% - ${DRAWER_TOP_RESERVE}px))`
-          : undefined,
+        minHeight:
+          props.open && resizeMetrics
+            ? `${resizeMetrics.minHeight}px`
+            : undefined,
+        maxHeight:
+          props.open && resizeMetrics
+            ? `${resizeMetrics.maxHeight}px`
+            : undefined,
       }}
     >
-      {props.open && (
+      {props.open && resizeMetrics && (
         <ResizeHandle
           onPointerDown={handleResizeStart}
+          onKeyDown={handleResizeKeyDown}
           label={t("sandbox.preview.resizeTerminal")}
+          value={resizeMetrics.height}
+          min={resizeMetrics.minHeight}
+          max={resizeMetrics.maxHeight}
         />
       )}
       <DrawerToolbar
+        ref={toolbarRef}
         status={props.status}
         open={props.open}
         onToggle={handleToggle}
@@ -269,22 +460,30 @@ export function PreviewDrawer(props: PreviewDrawerProps) {
         scripts={props.scripts}
         active={active}
         scriptTabs={scriptTabs}
+        closingScriptTabs={closingScriptTabs}
+        tabPanelId={tabPanelId}
         onSelectTab={handleSelectTab}
         onAddScript={handleAddScript}
         onCloseScript={handleCloseScript}
         showScriptControls={isScriptTab}
         scriptIsRunning={scriptIsRunning}
-        scriptIsKilling={scriptIsKilling}
+        scriptIsKilling={scriptIsKilling || scriptClosePending}
         onRunActiveScript={handleRunActive}
         onStopActiveScript={handleStopActive}
       />
       {props.open && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          id={tabPanelId}
+          role="tabpanel"
+          aria-labelledby={drawerTabId(tabPanelId, active)}
+          className="flex-1 overflow-hidden"
+        >
           <DrawerBody
             vmId={props.vmId}
             active={active}
             hasData={vmEvents.hasData(active)}
             onRunActive={handleRunActive}
+            runDisabled={scriptClosePending}
           />
         </div>
       )}
@@ -310,11 +509,13 @@ function DrawerBody({
   active,
   hasData,
   onRunActive,
+  runDisabled,
 }: {
   vmId: string | null;
   active: string;
   hasData: boolean;
   onRunActive: () => void;
+  runDisabled: boolean;
 }) {
   const t = useT();
   // When the sandbox isn't running, the preview area shows a starting card
@@ -329,8 +530,9 @@ function DrawerBody({
       <p>{t("sandbox.drawer.scriptNotRunning", { name: active })}</p>
       <button
         type="button"
+        disabled={runDisabled}
         onClick={onRunActive}
-        className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+        className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Play className="size-3.5" /> {t("sandbox.drawer.run")}
       </button>
@@ -344,24 +546,36 @@ function DrawerBody({
  * the toolbar border; on hover the line highlights and the cursor turns into
  * `row-resize`. The actual resize math lives in `PreviewDrawer.handleResizeStart`.
  *
- * Pointer-only by design: keyboard resize (a focusable splitter with
- * arrow-key + `aria-valuenow`) is intentionally out of scope; the collapse
- * chevron in the toolbar remains the keyboard path to change the drawer size.
+ * It is also an ARIA range separator: ArrowUp/ArrowDown resize by one step and
+ * Home/End move to the bounds. The live px range mirrors pointer clamping.
  */
 function ResizeHandle({
   onPointerDown,
+  onKeyDown,
   label,
+  value,
+  min,
+  max,
 }: {
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   label: string;
+  value: number;
+  min: number;
+  max: number;
 }) {
   return (
     <div
       role="separator"
+      tabIndex={0}
       aria-orientation="horizontal"
       aria-label={label}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
       onPointerDown={onPointerDown}
-      className="group relative -mb-px h-1.5 shrink-0 cursor-row-resize"
+      onKeyDown={onKeyDown}
+      className="group relative -mb-px h-1.5 shrink-0 touch-none cursor-row-resize select-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
     >
       <div className="absolute inset-x-0 bottom-0 h-px bg-transparent transition-colors group-hover:bg-primary" />
     </div>

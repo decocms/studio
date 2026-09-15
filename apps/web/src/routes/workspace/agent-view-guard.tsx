@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { getRouteApi, Navigate } from "@tanstack/react-router";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
-import { useMainPanelTabs } from "@/layouts/main-panel-tabs/use-main-panel-tabs";
-import { useRouteThreadId } from "@/layouts/thread-route";
+import { useMainPanelTabs } from "@/layouts/main-panel-tabs/main-panel-tabs-context";
 import { resolvePanelNavigationSearch } from "@/layouts/main-panel-tabs/panel-navigation-search";
 
 const agentRoute = getRouteApi(
@@ -24,8 +23,7 @@ export function AgentViewGuard({
 }) {
   const params = agentRoute.useParams();
   const agentId = params.agentId;
-  const taskId = useRouteThreadId();
-  const { activeTab } = useMainPanelTabs({ virtualMcpId: agentId, taskId });
+  const { activeTab } = useMainPanelTabs();
 
   const requestedViewIsActive =
     tabId === "code"

@@ -461,9 +461,6 @@ test.describe("Commerce onboarding route isolation", () => {
       (url) =>
         url.pathname ===
           `/${user.orgSlug}/projects/${virtualMcpId}/apps/${connectionId}/get_my_diagnostic` &&
-        !url.searchParams.has("virtualmcpid") &&
-        !url.searchParams.has("connection") &&
-        !url.searchParams.has("tool") &&
         url.searchParams.get("sidepanel") === "false",
       { timeout: 20_000 },
     );

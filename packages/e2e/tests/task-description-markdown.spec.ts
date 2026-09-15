@@ -58,8 +58,11 @@ const AUTOSAVE_POLL_TIMEOUT_MS = 15_000;
  * timeout above.
  */
 async function closeTask(page: Page) {
-  // The breadcrumb, not Escape: in the editor, Escape only blurs.
-  await detailOf(page).getByRole("button", { name: "Tasks" }).click();
+  // Navigating away flushes pending edits, including a still-focused editor.
+  await page
+    .locator('[data-slot="sidebar"]')
+    .getByRole("link", { name: "Tasks", exact: true })
+    .click();
   await expect(detailOf(page)).toHaveCount(0);
 }
 
@@ -99,6 +102,18 @@ test.describe("task description markdown editor", () => {
     await page.keyboard.type("# Heading here", { delay: 15 });
     await page.keyboard.press("Enter");
     await page.keyboard.type("some **bold** words", { delay: 15 });
+
+    // Renders caused by the editor must not invoke the page ref's cleanup and
+    // accidentally collapse the two-second debounce into writes per key.
+    // (React 19 also cleans callback refs up when their identity changes.)
+    const beforeDebounce = await call<{ items: TaskBoardItem[] }>(
+      "TASK_BOARD_ITEM_LIST",
+      {},
+    );
+    expect(
+      beforeDebounce.items.find((candidate) => candidate.id === item.id)
+        ?.description ?? null,
+    ).toBe(null);
 
     // 1 + 2: the heading and the bold rendered, and neither the `#` nor the
     // `**` survived as visible text.

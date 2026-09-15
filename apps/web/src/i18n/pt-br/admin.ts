@@ -6,6 +6,7 @@ export const admin = {
   "admin.layout.emailVerificationRequired":
     "Verifique seu endereço de e-mail para acessar o painel de administração.",
   "admin.layout.goHome": "Voltar para início",
+  "admin.layout.navigation": "Seções administrativas",
   "admin.layout.organizationsTab": "Organizações",
   "admin.layout.promptsTab": "Prompts dos agentes",
   "admin.layout.restrictedToDashboard":

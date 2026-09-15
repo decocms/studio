@@ -326,7 +326,7 @@ function legacyDestinationTarget(
     case "overview":
       return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
     case "discover":
-      return { to: DESTINATION_ROUTE.discover, params: { org }, search: {} };
+      return { to: DESTINATION_ROUTE.home, params: { org }, search: {} };
     default:
       return null;
   }

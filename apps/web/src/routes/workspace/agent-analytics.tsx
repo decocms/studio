@@ -1,14 +1,15 @@
 import { AnalyticsTab } from "@/layouts/main-panel-tabs/analytics-tab";
-import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
-import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { AgentRouteMain } from "./agent-route-main";
+import { AgentViewGuard } from "./agent-view-guard";
 
-export default function Route() {
-  const virtualMcpId = useRouteVirtualMcpId();
-  const views = useControlPlaneViews();
-  return views.analytics ? (
-    <AnalyticsTab virtualMcpId={virtualMcpId} />
-  ) : (
-    <SettingsTab virtualMcpId={virtualMcpId} />
+export default function AgentAnalyticsRoute() {
+  const agentId = useRouteVirtualMcpId();
+  return (
+    <AgentRouteMain contentMode="canvas">
+      <AgentViewGuard tabId="analytics">
+        <AnalyticsTab virtualMcpId={agentId} />
+      </AgentViewGuard>
+    </AgentRouteMain>
   );
 }

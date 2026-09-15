@@ -27,8 +27,8 @@ export function taskRouteSegment(orgSlug: string, item: TaskRouteItem): string {
 }
 
 /** Canonical share path for a task. Project-owned task pages retain their
- * structural scope so a pasted link restores the project sidebar and
- * breadcrumb; organization Tasks keeps the shorter org path. Every dynamic
+ * structural scope so a pasted link restores the project sidebar;
+ * organization Tasks keeps the shorter org path. Every dynamic
  * segment is encoded at this single write boundary. */
 export function taskSharePath(
   orgSlug: string,

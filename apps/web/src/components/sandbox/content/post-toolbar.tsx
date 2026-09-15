@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FilterFunnel01,
   SwitchVertical01,
+  Tag01,
   Trash01,
   X,
 } from "@untitledui/icons";
@@ -347,12 +348,14 @@ export function PostSelectionToolbar({
   count,
   allSelected,
   onToggleSelectAll,
+  onUpdateCategory,
   onDelete,
   onExit,
 }: {
   count: number;
   allSelected: boolean;
   onToggleSelectAll: () => void;
+  onUpdateCategory: () => void;
   onDelete: () => void;
   onExit: () => void;
 }) {
@@ -364,6 +367,24 @@ export function PostSelectionToolbar({
         {t("sandbox.postToolbar.itemsSelected", { count })}
       </span>
       <div className="ml-auto flex items-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={count === 0}
+              onClick={onUpdateCategory}
+              aria-label={t("sandbox.postToolbar.updateCategory")}
+            >
+              <Tag01 size={14} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t("sandbox.postToolbar.updateCategory")}
+          </TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

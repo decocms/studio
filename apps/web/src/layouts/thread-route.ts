@@ -12,7 +12,11 @@
  */
 
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { getWellKnownDecopilotVirtualMCP, useProjectContext } from "@/sdk";
+import {
+  getWellKnownDecopilotVirtualMCP,
+  isDecopilot,
+  useProjectContext,
+} from "@/sdk";
 import {
   canonicalThreadRouteTarget,
   navigateToTabRouteTarget,
@@ -46,6 +50,21 @@ export function routeThreadMatchesAgent(input: {
   return (
     input.threadAgentId == null || input.threadAgentId === input.routeAgentId
   );
+}
+
+export type ThreadOwnerDestination =
+  | { kind: "home" }
+  | { kind: "agent"; agentId: string };
+
+/** Canonical landing for a thread whose loaded ownership disagrees with the
+ * provisional route. Home is the Super Agent's default/overview surface;
+ * every regular agent owns an explicit workspace path. */
+export function destinationForThreadOwner(
+  threadAgentId: string,
+): ThreadOwnerDestination {
+  const agentId = threadAgentId.trim();
+  if (!agentId || isDecopilot(agentId)) return { kind: "home" };
+  return { kind: "agent", agentId };
 }
 
 /** The thread id for the matched route, from either the path param or `?thread=`. */

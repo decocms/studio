@@ -99,7 +99,12 @@ export function SidebarNavRow({
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton {...shared} aria-label={name} onClick={onSelect}>
+      <SidebarMenuButton
+        {...shared}
+        aria-label={name}
+        aria-current={isActive ? "page" : undefined}
+        onClick={onSelect}
+      >
         {body}
       </SidebarMenuButton>
       {children}

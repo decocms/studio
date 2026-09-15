@@ -112,11 +112,18 @@ export function DeployButton({
         size="sm"
         onClick={() => setConfirm(true)}
         disabled={deployMutation.isPending}
+        aria-label={
+          deployMutation.isPending
+            ? t("mainPanelTabs.hostingTab.deploying")
+            : t("mainPanelTabs.hostingTab.deploy")
+        }
       >
         <Rocket01 />
-        {deployMutation.isPending
-          ? t("mainPanelTabs.hostingTab.deploying")
-          : t("mainPanelTabs.hostingTab.deploy")}
+        <span className="@max-sm/main-topbar:hidden">
+          {deployMutation.isPending
+            ? t("mainPanelTabs.hostingTab.deploying")
+            : t("mainPanelTabs.hostingTab.deploy")}
+        </span>
       </Button>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>

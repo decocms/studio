@@ -1,15 +1,11 @@
-/**
- * The new-chat crumb, which is what is left of this file: the agent crumb and
- * its picker lived here too, until the mobile sheet — their only caller —
- * stopped carrying an agent selector beside the org one.
- */
+/** Compact new-chat action shared by workspace chrome. */
+import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { Edit05 } from "@untitledui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useRouteThreadId, useRouteVirtualMcpId } from "@/layouts/thread-route";
 import { useThreads } from "@/components/chat/store/hooks";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useT } from "@/i18n/use-t.ts";
@@ -17,8 +13,8 @@ import { useT } from "@/i18n/use-t.ts";
 /**
  * New-chat button — starts a fresh chat with the active agent (reusing an
  * existing empty "New chat" for it when there is one, so empties don't pile
- * up). Lives in the chat panel header, so "new chat" stays reachable when the
- * sidebar's own new-chat action is tucked away.
+ * up). It stays available in compact workspace chrome so "new chat" remains
+ * reachable when the sidebar's own action is tucked away.
  */
 export function NewChatCrumb() {
   const t = useT();
@@ -26,9 +22,8 @@ export function NewChatCrumb() {
   const { createNewTask } = usePanelActions();
 
   /**
-   * The scope of the page, not of the legacy grammar: on
-   * `/$org/agents/{-$project}` the project segment names the agent, so a new chat
-   * started there belongs to that project rather than to the Super Agent.
+   * The agent named by the canonical workspace route. A new chat started there
+   * belongs to that agent rather than to the Super Agent.
    */
   const activeAgentId = useRouteVirtualMcpId();
   const routeThreadId = useRouteThreadId();

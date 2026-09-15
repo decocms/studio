@@ -1,17 +1,26 @@
-import { useSearch } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import { FileTab } from "@/layouts/main-panel-tabs/file-tab";
-import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
-import { useRouteVirtualMcpId, useRouteThreadId } from "@/layouts/thread-route";
+import { useRouteThreadId } from "@/layouts/thread-route";
+import { RouteNotFound } from "./route-not-found";
+import { AgentRouteMain } from "./agent-route-main";
+import { resolveRouteResourceTarget } from "./route-resource-title";
 
-export default function Route() {
-  const search = useSearch({ strict: false });
-  const virtualMcpId = useRouteVirtualMcpId();
+const route = getRouteApi(
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/outputs/file",
+);
+
+export default function AgentFileRoute() {
+  const { key } = route.useSearch();
   const threadId = useRouteThreadId();
-  const value =
-    "key" in search && typeof search.key === "string" ? search.key : undefined;
-  return value ? (
-    <FileTab key={value} fileKey={value} taskId={threadId} />
-  ) : (
-    <SettingsTab virtualMcpId={virtualMcpId} />
+  const target = resolveRouteResourceTarget(key);
+
+  return (
+    <AgentRouteMain title={target?.title} contentMode="canvas">
+      {target ? (
+        <FileTab fileKey={target.value} taskId={threadId} />
+      ) : (
+        <RouteNotFound />
+      )}
+    </AgentRouteMain>
   );
 }

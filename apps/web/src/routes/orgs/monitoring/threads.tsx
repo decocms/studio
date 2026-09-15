@@ -25,6 +25,7 @@ import { useIdSelection } from "@/hooks/use-id-selection.ts";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { KEYS } from "@/lib/query-keys";
+import { Main } from "@/components/main";
 import {
   ThreadSheetBody,
   type ThreadEntity,
@@ -105,13 +106,16 @@ function ThreadRow({
   return (
     <TableRow
       ref={lastRowRef}
-      className="h-14 md:h-16 cursor-pointer hover:bg-muted/40 transition-colors border-b-0"
-      onClick={onClick}
+      className="h-14 border-b-0 transition-colors hover:bg-muted/40 md:h-16"
     >
       <TableCell className="min-w-0 pr-2 pl-4 md:pr-4">
-        <div className="font-medium text-foreground truncate">
+        <button
+          type="button"
+          className="w-full truncate rounded-sm text-left font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onClick}
+        >
           {thread.title}
-        </div>
+        </button>
       </TableCell>
       <TableCell className="w-36 px-3 text-muted-foreground">
         <div className="flex items-center gap-2 min-w-0">
@@ -379,7 +383,11 @@ export function ThreadsTabContent({
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+      <Main.Container
+        width="wide"
+        padding="compact"
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 min-w-0 pt-1">
             <div className="min-w-0">
@@ -469,7 +477,7 @@ export function ThreadsTabContent({
             </div>
           </div>
         </div>
-      </div>
+      </Main.Container>
 
       <Sheet
         open={selection.isOpen}

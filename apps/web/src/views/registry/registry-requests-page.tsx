@@ -50,8 +50,9 @@ import type {
 } from "@/lib/registry/types";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useT } from "@/i18n/use-t.ts";
-import type { TranslationKey } from "@/i18n/use-t.ts";
+import type { TFunction, TranslationKey } from "@/i18n/use-t.ts";
 import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
+import { Main } from "@/components/main";
 
 const STATUS_OPTIONS: Array<{
   value: PublishRequestStatus;
@@ -70,6 +71,46 @@ const STATUS_OPTIONS: Array<{
     labelKey: "registry.registryRequestsPage.statusRejected",
   },
 ] as const;
+
+const SORT_OPTIONS = [
+  {
+    value: "created_at:asc",
+    sortBy: "created_at",
+    sortDirection: "asc",
+    labelKey: "registry.registryRequestsPage.sortCreatedOldest",
+  },
+  {
+    value: "created_at:desc",
+    sortBy: "created_at",
+    sortDirection: "desc",
+    labelKey: "registry.registryRequestsPage.sortCreatedNewest",
+  },
+  {
+    value: "title:asc",
+    sortBy: "title",
+    sortDirection: "asc",
+    labelKey: "registry.registryRequestsPage.sortAlphaAZ",
+  },
+  {
+    value: "title:desc",
+    sortBy: "title",
+    sortDirection: "desc",
+    labelKey: "registry.registryRequestsPage.sortAlphaZA",
+  },
+] as const satisfies ReadonlyArray<{
+  value: string;
+  sortBy: "created_at" | "title";
+  sortDirection: "asc" | "desc";
+  labelKey: TranslationKey;
+}>;
+
+function publishRequestStatusLabel(
+  status: PublishRequestStatus,
+  t: TFunction,
+): string {
+  const option = STATUS_OPTIONS.find((candidate) => candidate.value === status);
+  return option ? t(option.labelKey) : status;
+}
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -179,17 +220,6 @@ export default function RegistryRequestsPage() {
       return next;
     });
   };
-  const toggleRequestSelection = (id: string) => {
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
   const selectVisiblePending = () => {
     setSelectedIds((previous) => {
       const next = new Set(previous);
@@ -225,7 +255,9 @@ export default function RegistryRequestsPage() {
       toast.success(t("registry.registryRequestsPage.requestApprovedAndAdded"));
     } catch (error) {
       const msg =
-        error instanceof Error ? error.message : "Failed to approve request";
+        error instanceof Error
+          ? error.message
+          : t("registry.registryRequestsPage.failedApproveRequest");
       if (msg.includes("UNIQUE constraint") || msg.includes("already exists")) {
         toast.error(t("registry.registryRequestsPage.itemAlreadyExists"));
       } else {
@@ -249,7 +281,9 @@ export default function RegistryRequestsPage() {
       setRejectNotes("");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to reject request",
+        error instanceof Error
+          ? error.message
+          : t("registry.registryRequestsPage.failedRejectRequest"),
       );
     }
   };
@@ -260,7 +294,9 @@ export default function RegistryRequestsPage() {
       toast.success(t("registry.registryRequestsPage.requestDeleted"));
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete request",
+        error instanceof Error
+          ? error.message
+          : t("registry.registryRequestsPage.failedDeleteRequest"),
       );
     }
   };
@@ -321,631 +357,660 @@ export default function RegistryRequestsPage() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="shrink-0 border-b border-border">
-        <div className="h-12 px-4 md:px-6 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-medium">
-              {t("registry.registryRequestsPage.requestsToPublish")}
-            </h2>
-            <Badge variant="secondary" className="text-xs">
-              {totalCount}
-            </Badge>
+    <>
+      <Main.Toolbar.Portal>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label={t(
+              "registry.registryRequestsPage.statusFilterAriaLabel",
+            )}
+            className="inline-flex shrink-0 rounded-lg border border-border p-0.5"
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={status === option.value}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                  status === option.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => {
+                  clearSelection();
+                  setStatus(option.value);
+                }}
+              >
+                {t(option.labelKey)}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex rounded-lg border border-border p-0.5">
-              {STATUS_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={cn(
-                    "px-2.5 py-1 text-xs rounded-md transition-colors",
-                    status === option.value
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => setStatus(option.value)}
-                  onClickCapture={() => clearSelection()}
-                >
-                  {t(option.labelKey)}
-                </button>
-              ))}
-            </div>
+
+          <Badge variant="secondary" className="shrink-0 text-xs">
+            {t("registry.registryRequestsPage.requestCount", {
+              count: totalCount,
+            })}
+          </Badge>
+
+          <label className="ml-auto flex shrink-0 items-center gap-2">
+            <span className="sr-only">
+              {t("registry.registryRequestsPage.sortAriaLabel")}
+            </span>
             <select
-              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={`${sortBy}:${sortDirection}`}
               onChange={(event) => {
-                const [nextSortBy, nextDirection] =
-                  event.target.value.split(":");
-                setSortBy(nextSortBy as "created_at" | "title");
-                setSortDirection(nextDirection as "asc" | "desc");
+                const option = SORT_OPTIONS.find(
+                  (candidate) => candidate.value === event.target.value,
+                );
+                if (!option) return;
+                setSortBy(option.sortBy);
+                setSortDirection(option.sortDirection);
               }}
             >
-              <option value="created_at:asc">
-                {t("registry.registryRequestsPage.sortCreatedOldest")}
-              </option>
-              <option value="created_at:desc">
-                {t("registry.registryRequestsPage.sortCreatedNewest")}
-              </option>
-              <option value="title:asc">
-                {t("registry.registryRequestsPage.sortAlphaAZ")}
-              </option>
-              <option value="title:desc">
-                {t("registry.registryRequestsPage.sortAlphaZA")}
-              </option>
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
             </select>
-          </div>
+          </label>
         </div>
-      </div>
+      </Main.Toolbar.Portal>
 
-      <div className="flex-1 overflow-auto px-4 md:px-6 py-4">
-        {listQuery.isLoading ? (
-          <div className="text-sm text-muted-foreground">
-            {t("registry.registryRequestsPage.loadingRequests")}
-          </div>
-        ) : listQuery.isError ? (
-          <div className="p-8 text-center rounded-lg border border-border">
-            <p className="text-sm text-destructive">
-              {t("registry.registryRequestsPage.failedLoadRequests")}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {listQuery.error instanceof Error
-                ? listQuery.error.message
-                : t("registry.registryRequestsPage.unknownError")}
-            </p>
-          </div>
-        ) : requests.length === 0 ? (
-          <div className="p-8 text-center rounded-lg border border-border">
-            <p className="text-sm text-muted-foreground">
-              {status === "pending"
-                ? t("registry.registryRequestsPage.noPendingRequests")
-                : status === "approved"
-                  ? t("registry.registryRequestsPage.noApprovedRequests")
-                  : t("registry.registryRequestsPage.noRejectedRequests")}
-            </p>
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {status === "pending" && (
-                  <TableHead className="w-10">
-                    <Checkbox
-                      checked={
-                        allVisiblePendingSelected && pendingRequests.length > 0
-                      }
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          selectVisiblePending();
-                        } else {
-                          clearSelection();
-                        }
-                      }}
-                    />
-                  </TableHead>
-                )}
-                <TableHead>
-                  {t("registry.registryRequestsPage.columnName")}
-                </TableHead>
-                <TableHead>
-                  {t("registry.registryRequestsPage.columnRequester")}
-                </TableHead>
-                <TableHead>
-                  {t("registry.registryRequestsPage.columnTags")}
-                </TableHead>
-                <TableHead>
-                  {t("registry.registryRequestsPage.columnStatus")}
-                </TableHead>
-                <TableHead>
-                  {t("registry.registryRequestsPage.columnDate")}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t("registry.registryRequestsPage.columnActions")}
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {requests.map((request) => {
-                const iconUrl = getIconUrl(request);
-                const tags = getStudioMcpMetadata(request._meta)?.tags ?? [];
-                const isPending = pendingById.has(request.id);
-                const isSelected = selectedIds.has(request.id);
-
-                return (
-                  <TableRow
-                    key={request.id}
-                    className={cn(
-                      isPending && "cursor-pointer",
-                      isSelected && "bg-accent/20",
-                    )}
-                    onClick={() => {
-                      if (isPending) toggleRequestSelection(request.id);
-                    }}
-                  >
+      <div className="h-full flex flex-col">
+        <div className="flex-1 overflow-auto">
+          <Main.Container width="fluid" padding="compact">
+            {listQuery.isLoading ? (
+              <div className="text-sm text-muted-foreground">
+                {t("registry.registryRequestsPage.loadingRequests")}
+              </div>
+            ) : listQuery.isError ? (
+              <div className="p-8 text-center rounded-lg border border-border">
+                <p className="text-sm text-destructive">
+                  {t("registry.registryRequestsPage.failedLoadRequests")}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {listQuery.error instanceof Error
+                    ? listQuery.error.message
+                    : t("registry.registryRequestsPage.unknownError")}
+                </p>
+              </div>
+            ) : requests.length === 0 ? (
+              <div className="p-8 text-center rounded-lg border border-border">
+                <p className="text-sm text-muted-foreground">
+                  {status === "pending"
+                    ? t("registry.registryRequestsPage.noPendingRequests")
+                    : status === "approved"
+                      ? t("registry.registryRequestsPage.noApprovedRequests")
+                      : t("registry.registryRequestsPage.noRejectedRequests")}
+                </p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
                     {status === "pending" && (
-                      <TableCell>
+                      <TableHead className="w-10">
                         <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={(checked) =>
-                            toggleSelected(request.id, checked === true)
+                          aria-label={t(
+                            "registry.registryRequestsPage.selectAllPendingAriaLabel",
+                          )}
+                          checked={
+                            allVisiblePendingSelected &&
+                            pendingRequests.length > 0
                           }
-                          onClick={(event) => event.stopPropagation()}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="size-7 rounded-md border border-border bg-muted/30 overflow-hidden shrink-0 flex items-center justify-center">
-                          {iconUrl ? (
-                            <img
-                              src={iconUrl}
-                              alt={request.title}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <span className="text-[10px] font-semibold text-muted-foreground">
-                              {request.title.slice(0, 1).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {request.title}
-                          </p>
-                          {request.description && (
-                            <p className="text-xs text-muted-foreground truncate max-w-[300px]">
-                              {request.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground truncate">
-                        {request.requester_name ||
-                          request.requester_email ||
-                          "-"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {tags.slice(0, 3).map((tag) => (
-                          <Badge
-                            key={`${request.id}-tag-${tag}`}
-                            variant="secondary"
-                            className="text-[10px]"
-                          >
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className="capitalize text-[11px]"
-                      >
-                        {request.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {formatDate(request.created_at)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs px-2"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setViewingRequest(request);
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              selectVisiblePending();
+                            } else {
+                              clearSelection();
+                            }
                           }}
-                        >
-                          <Eye size={13} />
-                          {t("registry.registryRequestsPage.buttonView")}
-                        </Button>
-                        {isPending ? (
-                          <>
-                            <Button
-                              size="sm"
-                              className="h-7 text-xs px-2"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setConfirmApproveRequest(request);
-                              }}
-                              disabled={
-                                approvingId !== null ||
-                                isBulkApproving ||
-                                isSelected
-                              }
-                            >
-                              <CheckCircle size={13} />
-                              {approvingId === request.id
-                                ? t("registry.registryRequestsPage.approving")
-                                : isSelected
-                                  ? t("registry.registryRequestsPage.selected")
-                                  : t(
-                                      "registry.registryRequestsPage.buttonApprove",
-                                    )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs px-2"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setRejectingRequest(request);
-                                setRejectNotes("");
-                              }}
-                              disabled={reviewMutation.isPending}
-                            >
-                              <XCircle size={13} />
-                              {t("registry.registryRequestsPage.buttonReject")}
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs px-2"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void handleDelete(request);
-                            }}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash01 size={13} />
-                            {t("registry.registryRequestsPage.buttonDelete")}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+                        />
+                      </TableHead>
+                    )}
+                    <TableHead>
+                      {t("registry.registryRequestsPage.columnName")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryRequestsPage.columnRequester")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryRequestsPage.columnTags")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryRequestsPage.columnStatus")}
+                    </TableHead>
+                    <TableHead>
+                      {t("registry.registryRequestsPage.columnDate")}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t("registry.registryRequestsPage.columnActions")}
+                    </TableHead>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-        {requests.length > 0 && hasMore ? (
-          <div ref={loadMoreRef} className="h-1 w-full" />
-        ) : null}
-        {isFetchingMore && requests.length > 0 ? (
-          <div className="pt-3 text-xs text-muted-foreground">
-            {t("registry.registryRequestsPage.loadingMoreRequests")}
-          </div>
-        ) : null}
-      </div>
+                </TableHeader>
+                <TableBody>
+                  {requests.map((request) => {
+                    const iconUrl = getIconUrl(request);
+                    const tags =
+                      getStudioMcpMetadata(request._meta)?.tags ?? [];
+                    const isPending = pendingById.has(request.id);
+                    const isSelected = selectedIds.has(request.id);
 
-      {selectedCount > 0 ? (
-        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
-          <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
-            <div className="text-xs text-muted-foreground pr-1">
-              {t("registry.registryRequestsPage.selectedCount", {
-                selectedCount,
-              })}
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2"
-              onClick={selectVisiblePending}
-              disabled={allVisiblePendingSelected}
-            >
-              {t("registry.registryRequestsPage.selectAll")}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2"
-              onClick={clearSelection}
-            >
-              {t("registry.registryRequestsPage.clearSelection")}
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 text-xs px-2"
-              onClick={() => setBulkApproveOpen(true)}
-              disabled={isBulkApproving}
-            >
-              <CheckCircle size={13} />
-              {t("registry.registryRequestsPage.approveSelected")}
-            </Button>
-          </div>
+                    return (
+                      <TableRow
+                        key={request.id}
+                        className={cn(isSelected && "bg-accent/20")}
+                      >
+                        {status === "pending" && (
+                          <TableCell>
+                            <Checkbox
+                              aria-label={t(
+                                "registry.registryRequestsPage.selectRequestAriaLabel",
+                                { title: request.title },
+                              )}
+                              checked={isSelected}
+                              onCheckedChange={(checked) =>
+                                toggleSelected(request.id, checked === true)
+                              }
+                            />
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="size-7 rounded-md border border-border bg-muted/30 overflow-hidden shrink-0 flex items-center justify-center">
+                              {iconUrl ? (
+                                <img
+                                  src={iconUrl}
+                                  alt={request.title}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span className="text-[10px] font-semibold text-muted-foreground">
+                                  {request.title.slice(0, 1).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {request.title}
+                              </p>
+                              {request.description && (
+                                <p className="text-xs text-muted-foreground truncate max-w-[300px]">
+                                  {request.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground truncate">
+                            {request.requester_name ||
+                              request.requester_email ||
+                              "-"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {tags.slice(0, 3).map((tag) => (
+                              <Badge
+                                key={`${request.id}-tag-${tag}`}
+                                variant="secondary"
+                                className="text-[10px]"
+                              >
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-[11px]">
+                            {publishRequestStatusLabel(request.status, t)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {formatDate(request.created_at)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs px-2"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setViewingRequest(request);
+                              }}
+                            >
+                              <Eye size={13} />
+                              {t("registry.registryRequestsPage.buttonView")}
+                            </Button>
+                            {isPending ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-xs px-2"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setConfirmApproveRequest(request);
+                                  }}
+                                  disabled={
+                                    approvingId !== null ||
+                                    isBulkApproving ||
+                                    isSelected
+                                  }
+                                >
+                                  <CheckCircle size={13} />
+                                  {approvingId === request.id
+                                    ? t(
+                                        "registry.registryRequestsPage.approving",
+                                      )
+                                    : isSelected
+                                      ? t(
+                                          "registry.registryRequestsPage.selected",
+                                        )
+                                      : t(
+                                          "registry.registryRequestsPage.buttonApprove",
+                                        )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs px-2"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setRejectingRequest(request);
+                                    setRejectNotes("");
+                                  }}
+                                  disabled={reviewMutation.isPending}
+                                >
+                                  <XCircle size={13} />
+                                  {t(
+                                    "registry.registryRequestsPage.buttonReject",
+                                  )}
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleDelete(request);
+                                }}
+                                disabled={deleteMutation.isPending}
+                              >
+                                <Trash01 size={13} />
+                                {t(
+                                  "registry.registryRequestsPage.buttonDelete",
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+            {requests.length > 0 && hasMore ? (
+              <div ref={loadMoreRef} className="h-1 w-full" />
+            ) : null}
+            {isFetchingMore && requests.length > 0 ? (
+              <div className="pt-3 text-xs text-muted-foreground">
+                {t("registry.registryRequestsPage.loadingMoreRequests")}
+              </div>
+            ) : null}
+          </Main.Container>
         </div>
-      ) : null}
 
-      <Dialog
-        open={Boolean(viewingRequest)}
-        onOpenChange={(next) => {
-          if (!next) {
-            setViewingRequest(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[720px] max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              {viewingRequest?.title ??
-                t("registry.registryRequestsPage.requestDetails")}
-            </DialogTitle>
-            <DialogDescription>
-              {t("registry.registryRequestsPage.reviewMetadataDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          {viewingRequest && (
-            <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-              <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-center gap-3">
-                <div className="size-16 rounded-lg border border-border bg-muted/30 overflow-hidden shrink-0 flex items-center justify-center">
-                  {getIconUrl(viewingRequest) ? (
-                    <img
-                      src={getIconUrl(viewingRequest) || ""}
-                      alt={viewingRequest.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
+        {selectedCount > 0 ? (
+          <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2">
+            <div className="rounded-xl border border-border bg-background/95 shadow-lg backdrop-blur px-3 py-2 flex items-center gap-2">
+              <div className="text-xs text-muted-foreground pr-1">
+                {t("registry.registryRequestsPage.selectedCount", {
+                  selectedCount,
+                })}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2"
+                onClick={selectVisiblePending}
+                disabled={allVisiblePendingSelected}
+              >
+                {t("registry.registryRequestsPage.selectAll")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2"
+                onClick={clearSelection}
+              >
+                {t("registry.registryRequestsPage.clearSelection")}
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs px-2"
+                onClick={() => setBulkApproveOpen(true)}
+                disabled={isBulkApproving}
+              >
+                <CheckCircle size={13} />
+                {t("registry.registryRequestsPage.approveSelected")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        <Dialog
+          open={Boolean(viewingRequest)}
+          onOpenChange={(next) => {
+            if (!next) {
+              setViewingRequest(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[720px] max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>
+                {viewingRequest?.title ??
+                  t("registry.registryRequestsPage.requestDetails")}
+              </DialogTitle>
+              <DialogDescription>
+                {t("registry.registryRequestsPage.reviewMetadataDescription")}
+              </DialogDescription>
+            </DialogHeader>
+            {viewingRequest && (
+              <div className="flex-1 overflow-y-auto pr-1 space-y-4">
+                <div className="rounded-lg border border-border bg-muted/20 p-3 flex items-center gap-3">
+                  <div className="size-16 rounded-lg border border-border bg-muted/30 overflow-hidden shrink-0 flex items-center justify-center">
+                    {getIconUrl(viewingRequest) ? (
+                      <img
+                        src={getIconUrl(viewingRequest) || ""}
+                        alt={viewingRequest.title}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="text-lg font-semibold text-muted-foreground">
+                        {viewingRequest.title.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {viewingRequest.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {viewingRequest.server?.name || viewingRequest.id}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {t("registry.registryRequestsPage.labelStatus")}
+                    </span>
+                    <span>
+                      {publishRequestStatusLabel(viewingRequest.status, t)}
+                    </span>
+                  </div>
+                  <div className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {t("registry.registryRequestsPage.labelSubmitted")}
+                    </span>
+                    <span>{formatDate(viewingRequest.created_at)}</span>
+                  </div>
+                  <div className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {t("registry.registryRequestsPage.labelRequester")}
+                    </span>
+                    <span>{viewingRequest.requester_name || "-"}</span>
+                  </div>
+                  <div className="grid gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {t("registry.registryRequestsPage.labelEmail")}
+                    </span>
+                    <span>{viewingRequest.requester_email || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>
+                    {t("registry.registryRequestsPage.labelRemoteURL")}
+                  </Label>
+                  <code className="text-xs rounded-md border border-border bg-muted/30 px-2.5 py-2 break-all">
+                    {viewingRequest.server?.remotes?.[0]?.url ?? "-"}
+                  </code>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>
+                    {t("registry.registryRequestsPage.labelDescription")}
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {viewingRequest.description ||
+                      t("registry.registryRequestsPage.noDescriptionProvided")}
+                  </p>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>{t("registry.registryRequestsPage.labelTags")}</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(viewingMetadata?.tags ?? []).length ? (
+                      (viewingMetadata?.tags ?? []).map((tag) => (
+                        <Badge
+                          key={`${viewingRequest.id}-detail-tag-${tag}`}
+                          variant="secondary"
+                        >
+                          {tag}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">-</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>
+                    {t("registry.registryRequestsPage.labelCategories")}
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(viewingMetadata?.categories ?? []).length ? (
+                      (viewingMetadata?.categories ?? []).map((category) => (
+                        <Badge
+                          key={`${viewingRequest.id}-detail-category-${category}`}
+                          variant="secondary"
+                        >
+                          {category}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">-</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>
+                    {t("registry.registryRequestsPage.labelREADME")}
+                  </Label>
+                  {getReadmeMeta(viewingRequest).hasReadmeContent ? (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto rounded-md border border-border bg-muted/20 px-2.5 py-2">
+                      {getReadmeMeta(viewingRequest).readmeContent}
+                    </p>
+                  ) : getReadmeMeta(viewingRequest).hasReadmeLink ? (
+                    <a
+                      href={getReadmeMeta(viewingRequest).readmeUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm inline-flex items-center gap-1.5 text-primary hover:underline"
+                    >
+                      {t("registry.registryRequestsPage.openREADMELink")}
+                      <LinkExternal01 size={14} />
+                    </a>
                   ) : (
-                    <span className="text-lg font-semibold text-muted-foreground">
-                      {viewingRequest.title.slice(0, 1).toUpperCase()}
+                    <span className="text-sm text-muted-foreground">
+                      {t("registry.registryRequestsPage.noREADMEProvided")}
                     </span>
                   )}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {viewingRequest.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {viewingRequest.server?.name || viewingRequest.id}
-                  </p>
-                </div>
               </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setViewingRequest(null)}>
+                {t("registry.registryRequestsPage.buttonClose")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    {t("registry.registryRequestsPage.labelStatus")}
-                  </span>
-                  <span className="capitalize">{viewingRequest.status}</span>
-                </div>
-                <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    {t("registry.registryRequestsPage.labelSubmitted")}
-                  </span>
-                  <span>{formatDate(viewingRequest.created_at)}</span>
-                </div>
-                <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    {t("registry.registryRequestsPage.labelRequester")}
-                  </span>
-                  <span>{viewingRequest.requester_name || "-"}</span>
-                </div>
-                <div className="grid gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    {t("registry.registryRequestsPage.labelEmail")}
-                  </span>
-                  <span>{viewingRequest.requester_email || "-"}</span>
-                </div>
-              </div>
+        {/* Approve confirmation */}
+        <AlertDialog
+          open={Boolean(confirmApproveRequest)}
+          onOpenChange={(next) => {
+            if (!next) setConfirmApproveRequest(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t("registry.registryRequestsPage.approvePublishRequestTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("registry.registryRequestsPage.approvePublishRequestDesc", {
+                  title: confirmApproveRequest?.title ?? "",
+                })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t("registry.registryRequestsPage.buttonCancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleApproveConfirmed}>
+                {t("registry.registryRequestsPage.buttonApprove")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-              <div className="grid gap-1.5">
-                <Label>
-                  {t("registry.registryRequestsPage.labelRemoteURL")}
-                </Label>
-                <code className="text-xs rounded-md border border-border bg-muted/30 px-2.5 py-2 break-all">
-                  {viewingRequest.server?.remotes?.[0]?.url ?? "-"}
-                </code>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>
-                  {t("registry.registryRequestsPage.labelDescription")}
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {viewingRequest.description ||
-                    t("registry.registryRequestsPage.noDescriptionProvided")}
-                </p>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>{t("registry.registryRequestsPage.labelTags")}</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(viewingMetadata?.tags ?? []).length ? (
-                    (viewingMetadata?.tags ?? []).map((tag) => (
-                      <Badge
-                        key={`${viewingRequest.id}-detail-tag-${tag}`}
-                        variant="secondary"
-                      >
-                        {tag}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>
-                  {t("registry.registryRequestsPage.labelCategories")}
-                </Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(viewingMetadata?.categories ?? []).length ? (
-                    (viewingMetadata?.categories ?? []).map((category) => (
-                      <Badge
-                        key={`${viewingRequest.id}-detail-category-${category}`}
-                        variant="secondary"
-                      >
-                        {category}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label>{t("registry.registryRequestsPage.labelREADME")}</Label>
-                {getReadmeMeta(viewingRequest).hasReadmeContent ? (
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto rounded-md border border-border bg-muted/20 px-2.5 py-2">
-                    {getReadmeMeta(viewingRequest).readmeContent}
-                  </p>
-                ) : getReadmeMeta(viewingRequest).hasReadmeLink ? (
-                  <a
-                    href={getReadmeMeta(viewingRequest).readmeUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm inline-flex items-center gap-1.5 text-primary hover:underline"
-                  >
-                    {t("registry.registryRequestsPage.openREADMELink")}
-                    <LinkExternal01 size={14} />
-                  </a>
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    {t("registry.registryRequestsPage.noREADMEProvided")}
-                  </span>
+        <AlertDialog open={bulkApproveOpen} onOpenChange={setBulkApproveOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t(
+                  "registry.registryRequestsPage.approveSelectedRequestsTitle",
                 )}
-              </div>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t(
+                  "registry.registryRequestsPage.approveSelectedRequestsDesc",
+                  {
+                    count: selectedRequests.length,
+                  },
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="grid gap-1.5">
+              <Label htmlFor="bulk-visibility">
+                {t("registry.registryRequestsPage.visibilityForAll")}
+              </Label>
+              <select
+                id="bulk-visibility"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={bulkVisibility}
+                onChange={(event) =>
+                  setBulkVisibility(event.target.value as "private" | "public")
+                }
+              >
+                <option value="private">
+                  {t("registry.registryRequestsPage.visibilityPrivate")}
+                </option>
+                <option value="public">
+                  {t("registry.registryRequestsPage.visibilityPublic")}
+                </option>
+              </select>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setViewingRequest(null)}>
-              {t("registry.registryRequestsPage.buttonClose")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isBulkApproving}>
+                {t("registry.registryRequestsPage.buttonCancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkApproveConfirmed}
+                disabled={isBulkApproving || selectedVisibleCount === 0}
+              >
+                {isBulkApproving
+                  ? t("registry.registryRequestsPage.approving")
+                  : t("registry.registryRequestsPage.approveSelected")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Approve confirmation */}
-      <AlertDialog
-        open={Boolean(confirmApproveRequest)}
-        onOpenChange={(next) => {
-          if (!next) setConfirmApproveRequest(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("registry.registryRequestsPage.approvePublishRequestTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("registry.registryRequestsPage.approvePublishRequestDesc", {
-                title: confirmApproveRequest?.title ?? "",
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("registry.registryRequestsPage.buttonCancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleApproveConfirmed}>
-              {t("registry.registryRequestsPage.buttonApprove")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={bulkApproveOpen} onOpenChange={setBulkApproveOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("registry.registryRequestsPage.approveSelectedRequestsTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("registry.registryRequestsPage.approveSelectedRequestsDesc", {
-                count: selectedRequests.length,
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="bulk-visibility">
-              {t("registry.registryRequestsPage.visibilityForAll")}
-            </Label>
-            <select
-              id="bulk-visibility"
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={bulkVisibility}
-              onChange={(event) =>
-                setBulkVisibility(event.target.value as "private" | "public")
-              }
-            >
-              <option value="private">
-                {t("registry.registryRequestsPage.visibilityPrivate")}
-              </option>
-              <option value="public">
-                {t("registry.registryRequestsPage.visibilityPublic")}
-              </option>
-            </select>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isBulkApproving}>
-              {t("registry.registryRequestsPage.buttonCancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkApproveConfirmed}
-              disabled={isBulkApproving || selectedVisibleCount === 0}
-            >
-              {isBulkApproving
-                ? t("registry.registryRequestsPage.approving")
-                : t("registry.registryRequestsPage.approveSelected")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <Dialog
-        open={Boolean(rejectingRequest)}
-        onOpenChange={(next) => {
-          if (!next) {
-            setRejectingRequest(null);
-            setRejectNotes("");
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t("registry.registryRequestsPage.rejectPublishRequestTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {t("registry.registryRequestsPage.rejectPublishRequestDesc")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="reject-notes">
-              {t("registry.registryRequestsPage.reviewerNotes")}
-            </Label>
-            <Textarea
-              id="reject-notes"
-              rows={4}
-              value={rejectNotes}
-              onChange={(event) => setRejectNotes(event.target.value)}
-              placeholder={t(
-                "registry.registryRequestsPage.reasonForRejectionPlaceholder",
-              )}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setRejectingRequest(null);
-                setRejectNotes("");
-              }}
-            >
-              {t("registry.registryRequestsPage.buttonCancel")}
-            </Button>
-            <Button onClick={handleReject} disabled={reviewMutation.isPending}>
-              {reviewMutation.isPending
-                ? t("registry.registryRequestsPage.rejecting")
-                : t("registry.registryRequestsPage.buttonReject")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        <Dialog
+          open={Boolean(rejectingRequest)}
+          onOpenChange={(next) => {
+            if (!next) {
+              setRejectingRequest(null);
+              setRejectNotes("");
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {t("registry.registryRequestsPage.rejectPublishRequestTitle")}
+              </DialogTitle>
+              <DialogDescription>
+                {t("registry.registryRequestsPage.rejectPublishRequestDesc")}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-1.5">
+              <Label htmlFor="reject-notes">
+                {t("registry.registryRequestsPage.reviewerNotes")}
+              </Label>
+              <Textarea
+                id="reject-notes"
+                rows={4}
+                value={rejectNotes}
+                onChange={(event) => setRejectNotes(event.target.value)}
+                placeholder={t(
+                  "registry.registryRequestsPage.reasonForRejectionPlaceholder",
+                )}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRejectingRequest(null);
+                  setRejectNotes("");
+                }}
+              >
+                {t("registry.registryRequestsPage.buttonCancel")}
+              </Button>
+              <Button
+                onClick={handleReject}
+                disabled={reviewMutation.isPending}
+              >
+                {reviewMutation.isPending
+                  ? t("registry.registryRequestsPage.rejecting")
+                  : t("registry.registryRequestsPage.buttonReject")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </>
   );
 }

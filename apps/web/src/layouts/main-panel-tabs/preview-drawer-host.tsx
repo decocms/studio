@@ -10,7 +10,6 @@
 
 import { useRef, useState } from "react";
 import { useProjectContext } from "@/sdk";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import {
   useSandboxChunkHandler,
@@ -44,10 +43,8 @@ function writePersisted(virtualMcpId: string, state: DrawerState): void {
   }
 }
 
-export function PreviewDrawerHost() {
-  const inset = useInsetContext();
+export function PreviewDrawerHost({ virtualMcpId }: { virtualMcpId: string }) {
   const { org } = useProjectContext();
-  const virtualMcpId = inset?.virtualMcpId ?? null;
   const lifecycle = useSandboxLifecycle();
   const events = useSandboxEvents();
 

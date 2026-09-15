@@ -41,6 +41,7 @@ import {
 } from "@/components/monitoring/hooks.ts";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useT } from "@/i18n/use-t.ts";
+import { Main } from "@/components/main";
 import {
   buildFilledStatsData,
   computeHeatmapView,
@@ -507,268 +508,276 @@ export function OverviewTabContent({
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>("calls");
 
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 pt-2 pb-6 max-w-[1200px] mx-auto w-full overflow-auto">
-      {hasError && (
-        <Alert variant="destructive">
-          <AlertTriangle />
-          <div className="flex flex-col gap-1">
-            <AlertTitle>{t("orgs.overview.failedToLoadTitle")}</AlertTitle>
-            <AlertDescription>
-              {t("orgs.overview.failedToLoadDescription")}
-            </AlertDescription>
-          </div>
-        </Alert>
-      )}
-
-      {/* Row 1: Tool Calls — full width */}
-      <MonitoringMetricCard
-        title={t("orgs.overview.toolCalls")}
-        value={stats.totalCalls.toLocaleString()}
+    <div className="min-h-0 flex-1 overflow-auto">
+      <Main.Container
+        width="wide"
+        padding="compact"
+        className="flex flex-col gap-4"
       >
-        <KPIChart
-          data={stats.data}
-          dataKey="calls"
-          colorNum={1}
-          chartHeight="h-[120px] md:h-[180px]"
-          variant="area"
-          ariaLabel={t("orgs.overview.toolCallsAriaLabel")}
-        />
-        <ConnectionLeaderboardTable
-          metrics={connectionBreakdown}
-          connections={connections}
-          mode="requests"
-          total={stats.totalCalls}
-        />
-      </MonitoringMetricCard>
+        {hasError && (
+          <Alert variant="destructive">
+            <AlertTriangle />
+            <div className="flex flex-col gap-1">
+              <AlertTitle>{t("orgs.overview.failedToLoadTitle")}</AlertTitle>
+              <AlertDescription>
+                {t("orgs.overview.failedToLoadDescription")}
+              </AlertDescription>
+            </div>
+          </Alert>
+        )}
 
-      {/* Row 1b: Tool-call heatmap (tool × agent) — full width */}
-      <MonitoringMetricCard
-        title={t("orgs.overview.toolCallHeatmap")}
-        value={
-          heatmapMetric === "calls"
-            ? (heatmapStats?.cells ?? [])
-                .reduce((sum, cell) => sum + cell.calls, 0)
-                .toLocaleString()
-            : formatCompactNumber(
-                (heatmapStats?.cells ?? []).reduce(
-                  (sum, cell) => sum + cell.outputSize,
-                  0,
-                ),
-              )
-        }
-        action={
-          <Select
-            value={heatmapMetric}
-            onValueChange={(v) => setHeatmapMetric(v as HeatmapMetric)}
-          >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="calls">
-                {t("orgs.overview.heatmapMetricCalls")}
-              </SelectItem>
-              <SelectItem value="outputSize">
-                {t("orgs.overview.heatmapMetricOutputSize")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        }
-      >
-        <ToolAgentHeatmap
-          cells={heatmapStats?.cells ?? []}
-          virtualMcps={virtualMcps}
-          metric={heatmapMetric}
-        />
-      </MonitoringMetricCard>
-
-      {/* Row 2: Latency + Errors — half width each */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Row 1: Tool Calls — full width */}
         <MonitoringMetricCard
-          title={t("orgs.overview.latency")}
-          value={formatDuration(
-            latencyMetric === "avg" ? stats.avgDurationMs : stats.p95DurationMs,
-          )}
+          title={t("orgs.overview.toolCalls")}
+          value={stats.totalCalls.toLocaleString()}
+        >
+          <KPIChart
+            data={stats.data}
+            dataKey="calls"
+            colorNum={1}
+            chartHeight="h-[120px] md:h-[180px]"
+            variant="area"
+            ariaLabel={t("orgs.overview.toolCallsAriaLabel")}
+          />
+          <ConnectionLeaderboardTable
+            metrics={connectionBreakdown}
+            connections={connections}
+            mode="requests"
+            total={stats.totalCalls}
+          />
+        </MonitoringMetricCard>
+
+        {/* Row 1b: Tool-call heatmap (tool × agent) — full width */}
+        <MonitoringMetricCard
+          title={t("orgs.overview.toolCallHeatmap")}
+          value={
+            heatmapMetric === "calls"
+              ? (heatmapStats?.cells ?? [])
+                  .reduce((sum, cell) => sum + cell.calls, 0)
+                  .toLocaleString()
+              : formatCompactNumber(
+                  (heatmapStats?.cells ?? []).reduce(
+                    (sum, cell) => sum + cell.outputSize,
+                    0,
+                  ),
+                )
+          }
           action={
             <Select
-              value={latencyMetric}
-              onValueChange={(v) => setLatencyMetric(v as "avg" | "p95")}
+              value={heatmapMetric}
+              onValueChange={(v) => setHeatmapMetric(v as HeatmapMetric)}
             >
-              <SelectTrigger className="w-[120px]">
+              <SelectTrigger className="w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="avg">
-                  {t("orgs.overview.latencyAvg")}
+                <SelectItem value="calls">
+                  {t("orgs.overview.heatmapMetricCalls")}
                 </SelectItem>
-                <SelectItem value="p95">
-                  {t("orgs.overview.latencyP95")}
+                <SelectItem value="outputSize">
+                  {t("orgs.overview.heatmapMetricOutputSize")}
                 </SelectItem>
               </SelectContent>
             </Select>
           }
         >
-          <KPIChart
-            data={stats.data}
-            dataKey={latencyMetric}
-            colorNum={4}
-            chartHeight="h-[120px] md:h-[180px]"
-            ariaLabel={t("orgs.overview.latencyAriaLabel", {
-              type:
-                latencyMetric === "avg" ? t("orgs.overview.average") : "P95",
-            })}
-          />
-          <ConnectionLeaderboardTable
-            metrics={connectionBreakdown}
-            connections={connections}
-            mode="latency"
-            total={stats.totalCalls}
+          <ToolAgentHeatmap
+            cells={heatmapStats?.cells ?? []}
+            virtualMcps={virtualMcps}
+            metric={heatmapMetric}
           />
         </MonitoringMetricCard>
 
-        <MonitoringMetricCard
-          title={t("orgs.overview.errors")}
-          value={stats.totalErrors.toLocaleString()}
-        >
-          <KPIChart
-            data={stats.data}
-            dataKey="errors"
-            colorNum={3}
-            chartHeight="h-[120px] md:h-[180px]"
-            ariaLabel={t("orgs.overview.errorsAriaLabel")}
-          />
-          {stats.totalErrors === 0 ? (
-            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-              {t("orgs.overview.noErrors")}
-            </div>
-          ) : (
+        {/* Row 2: Latency + Errors — half width each */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MonitoringMetricCard
+            title={t("orgs.overview.latency")}
+            value={formatDuration(
+              latencyMetric === "avg"
+                ? stats.avgDurationMs
+                : stats.p95DurationMs,
+            )}
+            action={
+              <Select
+                value={latencyMetric}
+                onValueChange={(v) => setLatencyMetric(v as "avg" | "p95")}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="avg">
+                    {t("orgs.overview.latencyAvg")}
+                  </SelectItem>
+                  <SelectItem value="p95">
+                    {t("orgs.overview.latencyP95")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            }
+          >
+            <KPIChart
+              data={stats.data}
+              dataKey={latencyMetric}
+              colorNum={4}
+              chartHeight="h-[120px] md:h-[180px]"
+              ariaLabel={t("orgs.overview.latencyAriaLabel", {
+                type:
+                  latencyMetric === "avg" ? t("orgs.overview.average") : "P95",
+              })}
+            />
             <ConnectionLeaderboardTable
               metrics={connectionBreakdown}
               connections={connections}
-              mode="errors"
-              total={stats.totalErrors}
+              mode="latency"
+              total={stats.totalCalls}
             />
-          )}
-        </MonitoringMetricCard>
-      </div>
+          </MonitoringMetricCard>
 
-      {/* AI Usage section header */}
-      <div className="flex items-center gap-3 pt-4">
-        <div className="h-px flex-1 bg-border" />
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          {t("orgs.overview.aiUsage")}
-        </span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
+          <MonitoringMetricCard
+            title={t("orgs.overview.errors")}
+            value={stats.totalErrors.toLocaleString()}
+          >
+            <KPIChart
+              data={stats.data}
+              dataKey="errors"
+              colorNum={3}
+              chartHeight="h-[120px] md:h-[180px]"
+              ariaLabel={t("orgs.overview.errorsAriaLabel")}
+            />
+            {stats.totalErrors === 0 ? (
+              <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+                {t("orgs.overview.noErrors")}
+              </div>
+            ) : (
+              <ConnectionLeaderboardTable
+                metrics={connectionBreakdown}
+                connections={connections}
+                mode="errors"
+                total={stats.totalErrors}
+              />
+            )}
+          </MonitoringMetricCard>
+        </div>
 
-      {/* AI Usage — Calls, Tokens, Cost */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MonitoringMetricCard
-          title={t("orgs.overview.aiCalls")}
-          value={llmStatsData.totalCalls.toLocaleString()}
-        >
-          <KPIChart
-            data={llmStatsData.data}
-            dataKey="calls"
-            colorNum={1}
-            chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel={t("orgs.overview.aiCallsAriaLabel")}
-          />
-          <ModelLeaderboardTable models={llmModels} mode="calls" />
-        </MonitoringMetricCard>
+        {/* AI Usage section header */}
+        <div className="flex items-center gap-3 pt-4">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            {t("orgs.overview.aiUsage")}
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
 
-        <MonitoringMetricCard
-          title={t("orgs.overview.tokens")}
-          value={formatCompactNumber(totalTokens)}
-          action={
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {formatCompactNumber(totalInputTokens)}{" "}
-              {t("orgs.overview.tokensIn")} ·{" "}
-              {formatCompactNumber(totalOutputTokens)}{" "}
-              {t("orgs.overview.tokensOut")}
-            </span>
-          }
-        >
-          <KPIChart
-            data={llmStatsData.data}
-            dataKey="totalTokens"
-            colorNum={2}
-            chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel={t("orgs.overview.tokensAriaLabel")}
-          />
-          <ModelLeaderboardTable models={llmModels} mode="tokens" />
-        </MonitoringMetricCard>
-
-        <MonitoringMetricCard
-          title={t("orgs.overview.cost")}
-          value={totalCostUsd > 0 ? formatUsd(totalCostUsd) : "—"}
-          action={
-            totalCostUsd === 0 ? (
-              <span className="text-xs text-muted-foreground">
-                {t("orgs.overview.noCostData")}
-              </span>
-            ) : undefined
-          }
-        >
-          <KPIChart
-            data={llmStatsData.data}
-            dataKey="costUsd"
-            colorNum={5}
-            chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel={t("orgs.overview.costAriaLabel")}
-          />
-          {totalCostUsd > 0 ? (
-            <ModelLeaderboardTable models={llmModels} mode="cost" />
-          ) : (
-            <div className="flex items-center justify-center h-20 text-center text-xs text-muted-foreground px-4">
-              {t("orgs.overview.costProvidersNotice")}
-            </div>
-          )}
-        </MonitoringMetricCard>
-      </div>
-
-      {/* AI Usage — Latency + Errors */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MonitoringMetricCard
-          title={t("orgs.overview.aiLatency")}
-          value={formatDuration(llmStatsData.avgDurationMs)}
-          action={
-            <span className="text-xs text-muted-foreground">
-              {t("orgs.overview.p95Prefix")}
-              {formatDuration(llmStatsData.p95DurationMs)}
-            </span>
-          }
-        >
-          <KPIChart
-            data={llmStatsData.data}
-            dataKey="avg"
-            colorNum={4}
-            chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel={t("orgs.overview.aiLatencyAriaLabel")}
-          />
-          <ModelLeaderboardTable models={llmModels} mode="calls" />
-        </MonitoringMetricCard>
-
-        <MonitoringMetricCard
-          title={t("orgs.overview.aiErrors")}
-          value={llmStatsData.totalErrors.toLocaleString()}
-        >
-          <KPIChart
-            data={llmStatsData.data}
-            dataKey="errors"
-            colorNum={3}
-            chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel={t("orgs.overview.aiErrorsAriaLabel")}
-          />
-          {llmStatsData.totalErrors === 0 ? (
-            <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
-              {t("orgs.overview.noAiErrors")}
-            </div>
-          ) : (
+        {/* AI Usage — Calls, Tokens, Cost */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MonitoringMetricCard
+            title={t("orgs.overview.aiCalls")}
+            value={llmStatsData.totalCalls.toLocaleString()}
+          >
+            <KPIChart
+              data={llmStatsData.data}
+              dataKey="calls"
+              colorNum={1}
+              chartHeight="h-[80px] md:h-[120px]"
+              ariaLabel={t("orgs.overview.aiCallsAriaLabel")}
+            />
             <ModelLeaderboardTable models={llmModels} mode="calls" />
-          )}
-        </MonitoringMetricCard>
-      </div>
+          </MonitoringMetricCard>
+
+          <MonitoringMetricCard
+            title={t("orgs.overview.tokens")}
+            value={formatCompactNumber(totalTokens)}
+            action={
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {formatCompactNumber(totalInputTokens)}{" "}
+                {t("orgs.overview.tokensIn")} ·{" "}
+                {formatCompactNumber(totalOutputTokens)}{" "}
+                {t("orgs.overview.tokensOut")}
+              </span>
+            }
+          >
+            <KPIChart
+              data={llmStatsData.data}
+              dataKey="totalTokens"
+              colorNum={2}
+              chartHeight="h-[80px] md:h-[120px]"
+              ariaLabel={t("orgs.overview.tokensAriaLabel")}
+            />
+            <ModelLeaderboardTable models={llmModels} mode="tokens" />
+          </MonitoringMetricCard>
+
+          <MonitoringMetricCard
+            title={t("orgs.overview.cost")}
+            value={totalCostUsd > 0 ? formatUsd(totalCostUsd) : "—"}
+            action={
+              totalCostUsd === 0 ? (
+                <span className="text-xs text-muted-foreground">
+                  {t("orgs.overview.noCostData")}
+                </span>
+              ) : undefined
+            }
+          >
+            <KPIChart
+              data={llmStatsData.data}
+              dataKey="costUsd"
+              colorNum={5}
+              chartHeight="h-[80px] md:h-[120px]"
+              ariaLabel={t("orgs.overview.costAriaLabel")}
+            />
+            {totalCostUsd > 0 ? (
+              <ModelLeaderboardTable models={llmModels} mode="cost" />
+            ) : (
+              <div className="flex items-center justify-center h-20 text-center text-xs text-muted-foreground px-4">
+                {t("orgs.overview.costProvidersNotice")}
+              </div>
+            )}
+          </MonitoringMetricCard>
+        </div>
+
+        {/* AI Usage — Latency + Errors */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MonitoringMetricCard
+            title={t("orgs.overview.aiLatency")}
+            value={formatDuration(llmStatsData.avgDurationMs)}
+            action={
+              <span className="text-xs text-muted-foreground">
+                {t("orgs.overview.p95Prefix")}
+                {formatDuration(llmStatsData.p95DurationMs)}
+              </span>
+            }
+          >
+            <KPIChart
+              data={llmStatsData.data}
+              dataKey="avg"
+              colorNum={4}
+              chartHeight="h-[80px] md:h-[120px]"
+              ariaLabel={t("orgs.overview.aiLatencyAriaLabel")}
+            />
+            <ModelLeaderboardTable models={llmModels} mode="calls" />
+          </MonitoringMetricCard>
+
+          <MonitoringMetricCard
+            title={t("orgs.overview.aiErrors")}
+            value={llmStatsData.totalErrors.toLocaleString()}
+          >
+            <KPIChart
+              data={llmStatsData.data}
+              dataKey="errors"
+              colorNum={3}
+              chartHeight="h-[80px] md:h-[120px]"
+              ariaLabel={t("orgs.overview.aiErrorsAriaLabel")}
+            />
+            {llmStatsData.totalErrors === 0 ? (
+              <div className="flex items-center justify-center h-20 text-sm text-muted-foreground">
+                {t("orgs.overview.noAiErrors")}
+              </div>
+            ) : (
+              <ModelLeaderboardTable models={llmModels} mode="calls" />
+            )}
+          </MonitoringMetricCard>
+        </div>
+      </Main.Container>
     </div>
   );
 }
@@ -817,7 +826,11 @@ function SkeletonCard({ className }: { className?: string }) {
 
 export function OverviewTabSkeleton() {
   return (
-    <div className="flex flex-col gap-4 px-4 md:px-10 pt-8 md:pt-12 pb-6 max-w-[1200px] mx-auto w-full">
+    <Main.Container
+      width="wide"
+      padding="compact"
+      className="flex flex-col gap-4"
+    >
       <SkeletonCard />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <SkeletonCard />
@@ -829,6 +842,6 @@ export function OverviewTabSkeleton() {
         <SkeletonCard />
         <SkeletonCard />
       </div>
-    </div>
+    </Main.Container>
   );
 }

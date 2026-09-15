@@ -1,0 +1,46 @@
+@reference "@decocms/ui/styles/global.css";
+
+@layer components {
+  [data-slot="main-topbar"] {
+    height: 0;
+    background-color: transparent;
+
+    /* Empty topbar spacing scrolls with the body instead of clipping it. */
+    & ~ [data-slot="main-content"] {
+      padding-top: calc(var(--spacing) * 12);
+    }
+
+    @variant max-md {
+      &:has(
+          > :not([data-slot^="main-topbar-"], .hidden, .sr-only),
+          > [data-slot^="main-topbar-"]:not(.hidden)
+            > :not(.hidden, .sr-only, [data-slot$="-portal-target"]:empty)
+        ) {
+        height: calc(var(--spacing) * 12);
+        border-bottom-width: 1px;
+        background-color: var(--background);
+
+        & ~ [data-slot="main-content"] {
+          padding-top: 0;
+        }
+      }
+    }
+
+    /* Mobile controls and accessibility headings leave desktop Home empty. */
+    @variant md {
+      &:has(
+          > :not([data-slot^="main-topbar-"], .md\:hidden, .sr-only),
+          > [data-slot^="main-topbar-"]:not(.md\:hidden)
+            > :not(.md\:hidden, .sr-only, [data-slot$="-portal-target"]:empty)
+        ) {
+        height: calc(var(--spacing) * 12);
+        border-bottom-width: 1px;
+        background-color: var(--background);
+
+        & ~ [data-slot="main-content"] {
+          padding-top: 0;
+        }
+      }
+    }
+  }
+}

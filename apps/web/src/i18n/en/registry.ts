@@ -1,4 +1,5 @@
 export const registry = {
+  "registry.registryLayout.permissionArea": "the registry",
   "registry.brokenMcpList.connStatus": "conn",
   "registry.brokenMcpList.connectionLabel": "Connection",
   "registry.brokenMcpList.durationLabel": "Duration",
@@ -445,6 +446,7 @@ export const registry = {
   "registry.registryItemsPage.id": "ID",
   "registry.registryItemsPage.importCsv": "Import CSV",
   "registry.registryItemsPage.importedItems": "Imported {count} items",
+  "registry.registryItemsPage.itemCount": "{count} items",
   "registry.registryItemsPage.items": "Items",
   "registry.registryItemsPage.loadingItems": "Loading items...",
   "registry.registryItemsPage.loadingMoreItems": "Loading more items...",
@@ -464,6 +466,7 @@ export const registry = {
   "registry.registryItemsPage.removedVerifiedStatus": "Removed verified status",
   "registry.registryItemsPage.searchPlaceholder":
     "Search by id, title, description, or server name",
+  "registry.registryItemsPage.searchFilter": "Search: {search}",
   "registry.registryItemsPage.table": "Table",
   "registry.registryItemsPage.tableViewAriaLabel": "Table view",
   "registry.registryItemsPage.tags": "Tags",
@@ -472,10 +475,12 @@ export const registry = {
     "Try removing filters or changing your search to find matching MCPs.",
   "registry.registryItemsPage.visibility": "Visibility",
   "registry.registryLayout.itemsTab": "Items",
+  "registry.registryLayout.navigation": "Registry views",
   "registry.registryLayout.qaTab": "QA",
   "registry.registryLayout.requestsTab": "Requests",
   "registry.registryLayout.settingsTab": "Settings",
   "registry.registryMonitorPage.brokenMcps": "Broken MCPs",
+  "registry.registryMonitorPage.navigation": "Quality assurance views",
   "registry.registryMonitorPage.tabConfiguration": "Configuration",
   "registry.registryMonitorPage.tabConnections": "Connections",
   "registry.registryMonitorPage.tabTests": "Tests",
@@ -508,8 +513,14 @@ export const registry = {
   "registry.registryRequestsPage.columnRequester": "Requester",
   "registry.registryRequestsPage.columnStatus": "Status",
   "registry.registryRequestsPage.columnTags": "Tags",
+  "registry.registryRequestsPage.failedApproveRequest":
+    "Failed to approve request",
+  "registry.registryRequestsPage.failedDeleteRequest":
+    "Failed to delete request",
   "registry.registryRequestsPage.failedLoadRequests":
     "Failed to load publish requests.",
+  "registry.registryRequestsPage.failedRejectRequest":
+    "Failed to reject request",
   "registry.registryRequestsPage.itemAlreadyExists":
     "An item with this ID already exists in the registry. Delete or rename it first.",
   "registry.registryRequestsPage.labelCategories": "Categories",
@@ -546,11 +557,15 @@ export const registry = {
   "registry.registryRequestsPage.requestDeleted": "Request deleted",
   "registry.registryRequestsPage.requestDetails": "Request details",
   "registry.registryRequestsPage.requestRejected": "Request rejected",
+  "registry.registryRequestsPage.requestCount": "{count} requests",
   "registry.registryRequestsPage.requestsToPublish": "Requests to Publish",
   "registry.registryRequestsPage.reviewMetadataDescription":
     "Review all metadata sent by the requester before approving.",
   "registry.registryRequestsPage.reviewerNotes": "Reviewer notes (optional)",
   "registry.registryRequestsPage.selectAll": "Select all",
+  "registry.registryRequestsPage.selectAllPendingAriaLabel":
+    "Select all pending requests",
+  "registry.registryRequestsPage.selectRequestAriaLabel": "Select {title}",
   "registry.registryRequestsPage.selected": "Selected",
   "registry.registryRequestsPage.selectedCount": "{selectedCount} selected",
   "registry.registryRequestsPage.sortAlphaAZ": "Alphabetical (A-Z)",
@@ -559,9 +574,12 @@ export const registry = {
     "Created at (newest first)",
   "registry.registryRequestsPage.sortCreatedOldest":
     "Created at (oldest first)",
+  "registry.registryRequestsPage.sortAriaLabel": "Sort requests",
   "registry.registryRequestsPage.statusApproved": "Approved",
   "registry.registryRequestsPage.statusPending": "Pending",
   "registry.registryRequestsPage.statusRejected": "Rejected",
+  "registry.registryRequestsPage.statusFilterAriaLabel":
+    "Filter requests by status",
   "registry.registryRequestsPage.unknownError": "Unknown error",
   "registry.registryRequestsPage.visibilityForAll":
     "Visibility for all selected",
@@ -574,6 +592,11 @@ export const registry = {
   "registry.registrySettingsPage.cancel": "Cancel",
   "registry.registrySettingsPage.configureNameIcon":
     "Configure the name and icon shown in the store selector.",
+  "registry.registrySettingsPage.copyApiKey": "Copy API key",
+  "registry.registrySettingsPage.copyPublicRegistryUrl":
+    "Copy public registry URL",
+  "registry.registrySettingsPage.copyPublishRequestUrl":
+    "Copy publish request URL",
   "registry.registrySettingsPage.failedGenerateApiKey":
     "Failed to generate API key",
   "registry.registrySettingsPage.failedRevokeApiKey":
@@ -581,6 +604,7 @@ export const registry = {
   "registry.registrySettingsPage.failedUploadIcon":
     "Failed to upload icon. Please try again.",
   "registry.registrySettingsPage.generate": "Generate",
+  "registry.registrySettingsPage.hideApiKey": "Hide API key",
   "registry.registrySettingsPage.keyName": "Key name",
   "registry.registrySettingsPage.keyNamePlaceholder": "e.g. CI/CD Pipeline",
   "registry.registrySettingsPage.maxRequests": "Max requests",
@@ -606,11 +630,14 @@ export const registry = {
   "registry.registrySettingsPage.requireApiToken": "Require API Token",
   "registry.registrySettingsPage.requireApiTokenHelp":
     "Requests without a valid token will be rejected.",
+  "registry.registrySettingsPage.revokeApiKeyAriaLabel":
+    "Revoke API key {name}",
   "registry.registrySettingsPage.revokeApiKeyDescription":
-    'This action cannot be undone. The key{keyName ? ` "{keyName}"` : ""} will stop working immediately.',
+    "This action cannot be undone. The key “{keyName}” will stop working immediately.",
   "registry.registrySettingsPage.revokeApiKeyTitle": "Revoke API key?",
   "registry.registrySettingsPage.revokeKey": "Revoke key",
   "registry.registrySettingsPage.revoking": "Revoking...",
+  "registry.registrySettingsPage.showApiKey": "Show API key",
   "registry.registrySettingsPage.storeVisibility": "Store Visibility",
   "registry.registrySettingsPage.storeVisibilityDescription":
     "Choose what appears when users browse this registry in Store.",

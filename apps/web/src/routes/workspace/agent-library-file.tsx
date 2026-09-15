@@ -1,18 +1,20 @@
-import { useSearch } from "@tanstack/react-router";
+import { getRouteApi } from "@tanstack/react-router";
 import { LibraryFileTab } from "@/layouts/main-panel-tabs/library-file-tab";
-import { SettingsTab } from "@/layouts/main-panel-tabs/settings-tab";
-import { useRouteVirtualMcpId } from "@/layouts/thread-route";
+import { RouteNotFound } from "./route-not-found";
+import { AgentRouteMain } from "./agent-route-main";
+import { resolveRouteResourceTarget } from "./route-resource-title";
 
-export default function Route() {
-  const search = useSearch({ strict: false });
-  const virtualMcpId = useRouteVirtualMcpId();
-  const value =
-    "path" in search && typeof search.path === "string"
-      ? search.path
-      : undefined;
-  return value ? (
-    <LibraryFileTab key={value} path={value} />
-  ) : (
-    <SettingsTab virtualMcpId={virtualMcpId} />
+const route = getRouteApi(
+  "/shell/$org/org-shell/agent-shell/projects/$agentId/library/file",
+);
+
+export default function AgentLibraryFileRoute() {
+  const { path } = route.useSearch();
+  const target = resolveRouteResourceTarget(path);
+
+  return (
+    <AgentRouteMain title={target?.title} contentMode="canvas">
+      {target ? <LibraryFileTab path={target.value} /> : <RouteNotFound />}
+    </AgentRouteMain>
   );
 }

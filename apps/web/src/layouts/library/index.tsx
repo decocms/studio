@@ -6,12 +6,12 @@
  * "root" listing of volumes and nothing labelled "home". The other volumes
  * (`uploads`, `outputs`, `public`) present as system folders inside it — same
  * mounts, different framing. The breadcrumb is the only place the current
- * folder is named, which frees the header row for the search box.
+ * folder is named, while search and folder actions compose into Main's topbar.
  *
- * Search sits in that row and follows you: cross-volume at the home root,
- * narrowed to the current folder's subtree anywhere else. Browse location lives
- * in `?path=` and the open preview in `?preview=`, so both are linkable and
- * survive reload.
+ * Search sits in the topbar and follows you: cross-volume at the home root,
+ * narrowed to the current folder's subtree anywhere else. Browse location
+ * lives in `?path=` and the open preview in `?preview=`, so both are linkable
+ * and survive reload.
  */
 
 import { useRef, useState } from "react";
@@ -30,6 +30,7 @@ import {
 } from "@untitledui/icons";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Main } from "@/components/main";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -142,7 +143,7 @@ export function LibraryPage({
     onOpenBrandOverride ??
     ((brandPath: string) => openPreview("brand", brandPath));
 
-  // The search box lives in the header row and follows the browse location:
+  // The search box lives in Main's topbar and follows the browse location:
   // cross-volume at the home root, narrowed to this folder's subtree elsewhere.
   // (`volume === null` is the `public` sets listing — global there; scoping it
   // would need a multi-volume filter.)
@@ -365,9 +366,9 @@ export function LibraryPage({
 
   // Right-clicking empty space creates a folder here. This listens on the whole
   // page, so anything interactive has to opt out first: entry cards that own a
-  // rename menu call preventDefault, and everything else (the search box, the
-  // toolbar, the cards with no menu of their own) keeps its native menu — a
-  // right-click meant for "paste" must never become "new folder".
+  // rename menu call preventDefault, and the cards with no menu of their own
+  // keep their native menu — a right-click meant for "paste" must never become
+  // "new folder". Topbar controls render outside this event boundary.
   function handleContextMenuEmpty(e: React.MouseEvent) {
     if (e.defaultPrevented || !browseVolume) return;
     if (
@@ -380,6 +381,82 @@ export function LibraryPage({
     e.preventDefault();
     setNewFolderOpen(true);
   }
+
+  const searchInput = (
+    <div className="relative w-[clamp(7rem,35cqw,23.4375rem)] shrink-0">
+      <SearchLg
+        size={16}
+        className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+      />
+      <Input
+        value={searchText}
+        onChange={(e) => setSearchText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setSearchText("");
+        }}
+        placeholder={searchPlaceholder}
+        className="h-9 rounded-xl pr-9 pl-9"
+      />
+      {searchText && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
+          onClick={() => setSearchText("")}
+          aria-label={t("library.library.clearSearch")}
+        >
+          <XClose size={14} />
+        </Button>
+      )}
+    </div>
+  );
+  const uploadLabel = upload.isPending
+    ? t("library.library.uploading")
+    : t("library.library.uploadFile");
+  const topbarActions = (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        onClick={refresh}
+        aria-label={t("library.library.refresh")}
+      >
+        <RefreshCw01 size={14} />
+      </Button>
+      {browseVolume && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={() => setNewFolderOpen(true)}
+          aria-label={t("library.library.newFolder")}
+        >
+          <Plus size={14} />
+          <span className="@max-4xl/main-topbar:hidden">
+            {t("library.library.newFolder")}
+          </span>
+        </Button>
+      )}
+      {location.readOnly ? (
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <Eye size={12} />
+          {t("library.library.readOnly")}
+        </span>
+      ) : (
+        <Button
+          size="sm"
+          className="shrink-0"
+          disabled={upload.isPending}
+          onClick={() => fileInputRef.current?.click()}
+          aria-label={uploadLabel}
+        >
+          <Upload01 size={14} />
+          <span className="@max-4xl/main-topbar:hidden">{uploadLabel}</span>
+        </Button>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -400,85 +477,36 @@ export function LibraryPage({
           </div>
         </div>
       )}
+      <Main.Topbar.Center.Portal>
+        <div
+          data-responsive-focus-group="library-search"
+          className="hidden md:block"
+        >
+          {searchInput}
+        </div>
+      </Main.Topbar.Center.Portal>
+      <Main.Toolbar.Portal visibility="compact">
+        <div
+          data-responsive-focus-group="library-search"
+          className="w-full [&>*]:w-full"
+        >
+          {searchInput}
+        </div>
+      </Main.Toolbar.Portal>
+      <Main.Topbar.Right.Portal>{topbarActions}</Main.Topbar.Right.Portal>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => void handleUpload(e.target.files)}
+      />
       <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
-          {/* One header row: the breadcrumb names the location (no heading
-              repeating it), and the reclaimed space holds the search box. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-              <Breadcrumbs
-                segments={location.segments}
-                onNavigate={onOpenDir}
-              />
-            </div>
-            <div className="relative w-full shrink-0 sm:w-56">
-              <SearchLg
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setSearchText("");
-                }}
-                placeholder={searchPlaceholder}
-                className="h-9 rounded-xl pr-9 pl-9"
-              />
-              {searchText && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
-                  onClick={() => setSearchText("")}
-                  aria-label={t("library.library.clearSearch")}
-                >
-                  <XClose size={14} />
-                </Button>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={refresh}
-              aria-label={t("library.library.refresh")}
-            >
-              <RefreshCw01 size={14} />
-            </Button>
-            {browseVolume && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setNewFolderOpen(true)}
-              >
-                <Plus size={14} />
-                {t("library.library.newFolder")}
-              </Button>
-            )}
-            {location.readOnly ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Eye size={12} />
-                {t("library.library.readOnly")}
-              </span>
-            ) : (
-              <Button
-                size="sm"
-                disabled={upload.isPending}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload01 size={14} />
-                {upload.isPending
-                  ? t("library.library.uploading")
-                  : t("library.library.uploadFile")}
-              </Button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => void handleUpload(e.target.files)}
-            />
+        <Main.Container width="standard" className="flex flex-col gap-10 py-10">
+          {/* The breadcrumb names the current content location; global search
+              and folder-level actions belong to the surrounding Main chrome. */}
+          <div className="min-w-0">
+            <Breadcrumbs segments={location.segments} onNavigate={onOpenDir} />
           </div>
 
           {searchQuery ? (
@@ -511,7 +539,7 @@ export function LibraryPage({
               onMove={handleMove}
             />
           )}
-        </div>
+        </Main.Container>
       </div>
 
       {/* Preview/skill/brand each render as a right-side panel on desktop

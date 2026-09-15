@@ -2,29 +2,24 @@ import { PromptDetailsView } from "@/components/details/prompt/index.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolDetailsView } from "@/components/details/tool.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { Main } from "@/components/main";
 import {
   useCollectionActions,
   useConnections,
   useMCPClient,
   useProjectContext,
+  type ConnectionEntity,
 } from "@/sdk";
 
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
 import { Container } from "@untitledui/icons";
-import { Link, useParams, useRouter } from "@tanstack/react-router";
+import { useParams, useRouter } from "@tanstack/react-router";
 import { Suspense, type ComponentType } from "react";
-import { ViewLayout } from "@/components/details/layout";
 import { useT } from "@/i18n/use-t.ts";
 
 interface CollectionDetailsProps {
+  appSlug: string;
+  connection: ConnectionEntity | null;
   itemId: string;
   onBack: () => void;
   onUpdate: (updates: Record<string, unknown>) => Promise<void>;
@@ -44,7 +39,7 @@ function ToolDetailsContent() {
     from: "/shell/$org/settings/connections/$appSlug/$collectionName/$itemId",
   });
 
-  const itemId = decodeURIComponent(params.itemId);
+  const itemId = params.itemId;
 
   const siblings = useConnections({ slug: params.appSlug });
 
@@ -68,18 +63,6 @@ function ToolDetailsContent() {
   );
 }
 
-/**
- * Formats a collection name for display
- * e.g., "LLM" -> "Llm", "USER_PROFILES" -> "User Profiles"
- */
-function formatCollectionName(name: string): string {
-  return name
-    .toLowerCase()
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
 function CollectionDetailsContent() {
   const router = useRouter();
   const params = useParams({
@@ -87,8 +70,8 @@ function CollectionDetailsContent() {
   });
 
   const t = useT();
-  const collectionName = decodeURIComponent(params.collectionName);
-  const itemId = decodeURIComponent(params.itemId);
+  const collectionName = params.collectionName;
+  const itemId = params.itemId;
 
   const handleBack = () => {
     router.history.back();
@@ -123,48 +106,11 @@ function CollectionDetailsContent() {
     normalizedCollectionName &&
     WELL_KNOWN_VIEW_DETAILS[normalizedCollectionName];
 
-  const collectionDisplayName = formatCollectionName(collectionName);
-
-  const breadcrumb = (
-    <Breadcrumb>
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to="/$org/settings/connections" params={{ org: org.slug }}>
-              Connections
-            </Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        {connection && (
-          <>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link
-                  to="/$org/settings/connections/$appSlug"
-                  params={{
-                    org: org.slug,
-                    appSlug: params.appSlug,
-                  }}
-                  search={{ tab: collectionName }}
-                >
-                  {connection.title}
-                </Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-          </>
-        )}
-        <BreadcrumbItem>
-          <BreadcrumbPage>{collectionDisplayName}</BreadcrumbPage>
-        </BreadcrumbItem>
-      </BreadcrumbList>
-    </Breadcrumb>
-  );
-
   if (ViewComponent) {
     return (
       <ViewComponent
+        appSlug={params.appSlug}
+        connection={connection}
         itemId={itemId}
         onBack={handleBack}
         onUpdate={handleUpdate}
@@ -173,17 +119,22 @@ function CollectionDetailsContent() {
   }
 
   return (
-    <ViewLayout breadcrumb={breadcrumb}>
-      <EmptyState
-        icon={<Container size={36} className="text-muted-foreground" />}
-        title={t("orgs.collectionDetail.noComponentDefinedTitle")}
-        description={t("orgs.collectionDetail.noComponentDefinedDescription")}
-        buttonProps={{
-          onClick: handleBack,
-          children: t("orgs.collectionDetail.goBackButton"),
-        }}
-      />
-    </ViewLayout>
+    <>
+      <Main.Title.Portal>
+        <span title={itemId}>{itemId}</span>
+      </Main.Title.Portal>
+      <div className="flex h-full min-h-0 items-center justify-center">
+        <EmptyState
+          icon={<Container size={36} className="text-muted-foreground" />}
+          title={t("orgs.collectionDetail.noComponentDefinedTitle")}
+          description={t("orgs.collectionDetail.noComponentDefinedDescription")}
+          buttonProps={{
+            onClick: handleBack,
+            children: t("orgs.collectionDetail.goBackButton"),
+          }}
+        />
+      </div>
+    </>
   );
 }
 
@@ -192,7 +143,7 @@ function CollectionDetailsRouter() {
     from: "/shell/$org/settings/connections/$appSlug/$collectionName/$itemId",
   });
 
-  const collectionName = decodeURIComponent(params.collectionName);
+  const collectionName = params.collectionName;
 
   const isTools = collectionName === "tools";
 

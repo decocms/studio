@@ -23,12 +23,12 @@ describe("project settings sections", () => {
     expect(isProjectSettingsSectionKey("general")).toBe(true);
   });
 
-  test("leaving Settings drops its section selection", () => {
-    const next = resolvePanelNavigationSearch({
+  test("leaving Settings drops its section while preserving the active chat", () => {
+    const search = resolvePanelNavigationSearch({
       previous: { section: "general", thread: "thread-1", sidepanel: true },
       destination: "agent",
     });
-    expect(next).not.toHaveProperty("section");
-    expect(next.thread).toBe("thread-1");
+    expect(search).not.toHaveProperty("section");
+    expect(search).toMatchObject({ thread: "thread-1", sidepanel: true });
   });
 });

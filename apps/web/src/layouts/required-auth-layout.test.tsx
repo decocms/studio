@@ -61,14 +61,15 @@ describe("RequiredAuthLayout", () => {
     expect(navigatedTo).toEqual(["/login"]);
   });
 
-  it("shows a full-height loader — not a blank page — while pending", () => {
+  it("keeps the splash — not a blank page or a bare spinner — while pending", () => {
     authState.current = { data: null, isPending: true };
-    const { container, getByRole, queryByText } = renderLayout();
+    const { container, queryByRole, queryByText } = renderLayout();
 
-    expect(getByRole("status")).toBeInTheDocument();
-    // It owns the viewport rather than sitting in a zero-height strip at the
-    // top, which is what a panel-shaped loader did in this (non-flex) slot.
-    expect(container.firstElementChild).toHaveClass("min-h-dvh");
+    /* This branch is only reachable when `BootGate` failed open, so boot is
+       still running and the splash is what should be on screen. A lone spinner
+       owning the whole viewport reads as a broken page. */
+    expect(container.querySelector(".deco-splash")).not.toBeNull();
+    expect(queryByRole("status")).toBeNull();
     expect(queryByText("protected")).toBeNull();
     expect(navigatedTo).toEqual([]);
   });

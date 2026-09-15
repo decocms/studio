@@ -33,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { JiraIcon } from "@/components/icons/jira-icon";
 import {
   AgentToolsSettings,
@@ -42,7 +42,6 @@ import {
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsPage,
   SettingsSection,
 } from "@/components/settings/settings-section";
 import {
@@ -665,27 +664,24 @@ function JiraContent() {
 export function OrgTasksSettingsPage() {
   const t = useT();
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <Page.Title>{t("settings.nav.tasks")}</Page.Title>
-            <ReviewSettings />
-            <TaskSystemPromptSettings />
-            <AgentToolsSettings />
-            <SettingsSection
-              title={
-                <span className="flex items-center gap-2">
-                  <JiraIcon size={18} />
-                  {t("settings.jira.sectionTitle")}
-                </span>
-              }
-            >
-              <JiraContent />
-            </SettingsSection>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+    <div className="h-full overflow-y-auto">
+      <Main.Container width="standard">
+        <Main.Stack gap="spacious">
+          <ReviewSettings />
+          <TaskSystemPromptSettings />
+          <AgentToolsSettings />
+          <SettingsSection
+            title={
+              <span className="flex items-center gap-2">
+                <JiraIcon size={18} />
+                {t("settings.jira.sectionTitle")}
+              </span>
+            }
+          >
+            <JiraContent />
+          </SettingsSection>
+        </Main.Stack>
+      </Main.Container>
+    </div>
   );
 }

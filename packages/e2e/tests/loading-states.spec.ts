@@ -160,10 +160,13 @@ test.describe("loading states", () => {
     await page.waitForURL((url) => url.pathname !== `/${orgSlug}/settings`, {
       timeout: SHELL_TIMEOUT_MS,
     });
+    await expect(
+      page.getByRole("textbox", { name: "Organization name", exact: true }),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
 
     await page
-      .locator(`[data-slot="sidebar"] a[href="/${orgSlug}/home"]`)
-      .first()
+      .locator('[data-slot="sidebar"]')
+      .getByRole("link", { name: "Back to home", exact: true })
       .click();
     await page.waitForURL((url) => url.pathname === `/${orgSlug}/home`, {
       timeout: SHELL_TIMEOUT_MS,

@@ -2,6 +2,7 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { Main } from "@/components/main";
 import { recordToEnvVars } from "@/components/env-vars-editor";
 import {
   buildCustomStdioParameters,
@@ -57,11 +58,9 @@ import { toast } from "sonner";
 import { DeleteConnectionDialogs } from "@/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/hooks/use-delete-connection";
 import { useT } from "@/i18n/use-t";
-import { ViewLayout } from "../layout";
 import { ConnectionActivity } from "./connection-activity.tsx";
 import { ConnectionAgentsPanel } from "./connection-agents-panel.tsx";
 import { ConnectionCapabilities } from "./connection-capabilities.tsx";
-import { ConnectionDetailHeader } from "./connection-detail-header.tsx";
 import { ConnectionFields } from "./connection-sidebar.tsx";
 import { SettingsTab } from "./settings-tab";
 import {
@@ -426,8 +425,16 @@ function ConnectionInspectorViewWithConnection({
     }
   };
 
+  const firstConnection = siblings[0] ?? connection;
+  const displayTitle = firstConnection.app_name
+    ? firstConnection.title.replace(/\s*\(\d+\)\s*$/, "")
+    : firstConnection.title;
+
   return (
     <>
+      <Main.Title.Portal>
+        <span title={displayTitle}>{displayTitle}</span>
+      </Main.Title.Portal>
       <DeleteConnectionDialogs {...deleteConnection} />
 
       {/* Settings Sheet */}
@@ -551,20 +558,10 @@ function ConnectionInspectorViewWithConnection({
         </SheetContent>
       </Sheet>
 
-      {/* Main page */}
-      <ViewLayout hideHeader>
-        <div className="flex flex-col h-full overflow-hidden">
-          <ConnectionDetailHeader
-            connection={connection}
-            displayTitle={(() => {
-              const first = siblings[0] ?? connection;
-              return first.app_name
-                ? first.title.replace(/\s*\(\d+\)\s*$/, "")
-                : first.title;
-            })()}
-          />
-          <div className="flex-1 overflow-auto @container">
-            <div className="grid grid-cols-1 @3xl:grid-cols-2 gap-5 p-6">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="@container flex-1 overflow-auto">
+          <Main.Container width="wide" padding="compact">
+            <div className="grid grid-cols-1 gap-5 @3xl:grid-cols-2">
               {/* Activity - col 1 */}
               <ConnectionActivity connectionId={connectionId} />
               {/* Instances + Agents - col 2 */}
@@ -657,9 +654,9 @@ function ConnectionInspectorViewWithConnection({
                 />
               </div>
             </div>
-          </div>
+          </Main.Container>
         </div>
-      </ViewLayout>
+      </div>
     </>
   );
 }

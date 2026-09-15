@@ -428,10 +428,10 @@ const unifiedChatRoute = createRoute({
  * `library`). Project identity is always the explicit
  * `/projects/$agentId` boundary, and every project feature is a child below it.
  * Site Editor owns a further nested Preview/Content/Code subtree so all three
- * share the existing editor controls and console drawer.
+ * inherit its topbar and console drawer structurally.
  *
- * Every leaf renders its original page component. The workspace shell owns
- * shared panel chrome, cross-route providers, and the
+ * Every leaf renders its own component and composes the shared `Main`
+ * primitives. The workspace shell owns only cross-route providers and the
  * resizable chat/main panels; it does not select a page body. `sidepanel`,
  * `mainpanel`, and `thread` remain shared search because they describe that
  * workspace layout. Feature payloads live on the leaf that consumes them.
@@ -461,6 +461,7 @@ const orgHomeRoute = createRoute({
   staticData: {
     defaultMain: "overview",
     mainView: "overview",
+    mainTitleKey: "sidebar.navDestinations.home",
   },
   validateSearch: z.object({
     /** Commerce onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
@@ -527,6 +528,7 @@ const projectTasksRoute = createRoute({
   staticData: {
     defaultMain: "board",
     mainView: "board",
+    mainTitleKey: "taskBoard.taskBoard.tasksTitle",
   },
   validateSearch: z.object({
     task: z.string().optional(),
@@ -558,6 +560,7 @@ const projectReportsRoute = createRoute({
   staticData: {
     defaultMain: "reports",
     mainView: "reports",
+    mainTitleKey: "sidebar.navDestinations.reports",
   },
   validateSearch: z.object({
     connect: z.coerce.string().optional(),
@@ -574,6 +577,7 @@ const agentSiteEditorRoute = createRoute({
   staticData: {
     defaultMain: "site-editor",
     mainView: "site-editor",
+    mainTitleKey: "sidebar.projectNav.siteEditor",
   },
   validateSearch: z.object({
     autosend: z.string().optional(),
@@ -630,6 +634,7 @@ const agentAutomationsRoute = createRoute({
   staticData: {
     defaultMain: "automations",
     mainView: "automations",
+    mainTitleKey: "automations.automationsList.title",
   },
   beforeLoad: ({ params, search }) => {
     const automationId = search.automation;
@@ -656,6 +661,7 @@ const agentAutomationRoute = createRoute({
   staticData: {
     defaultMain: "automations",
     mainView: "automation",
+    mainTitleKey: "automations.automationsList.title",
   },
   validateSearch: z.object({
     automationView: z.enum(["settings", "runs"]).optional(),
@@ -671,6 +677,7 @@ const agentSettingsRoute = createRoute({
   staticData: {
     defaultMain: "settings",
     mainView: "settings",
+    mainTitleKey: "sidebar.navDestinations.settings",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-settings.tsx"),
@@ -683,6 +690,7 @@ const agentAssetsRoute = createRoute({
   staticData: {
     defaultMain: "assets",
     mainView: "assets",
+    mainTitleKey: "assets.browser.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-assets.tsx"),
@@ -695,6 +703,7 @@ const agentGitRoute = createRoute({
   staticData: {
     defaultMain: "git",
     mainView: "git",
+    mainTitleKey: "common.mainPanelTabs.reviewChanges",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-git.tsx"),
@@ -707,6 +716,7 @@ const agentHostingRoute = createRoute({
   staticData: {
     defaultMain: "hosting",
     mainView: "hosting",
+    mainTitleKey: "mainPanelTabs.hostingTab.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-hosting.tsx"),
@@ -719,6 +729,7 @@ const agentE2eRoute = createRoute({
   staticData: {
     defaultMain: "e2e",
     mainView: "e2e",
+    mainTitleKey: "mainPanelTabs.e2eTab.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-e2e.tsx"),
@@ -731,6 +742,7 @@ const agentAnalyticsRoute = createRoute({
   staticData: {
     defaultMain: "analytics",
     mainView: "analytics",
+    mainTitleKey: "mainPanelTabs.analyticsTab.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-analytics.tsx"),
@@ -746,6 +758,7 @@ const agentMonitorRoute = createRoute({
   staticData: {
     defaultMain: "cdn",
     mainView: "cdn",
+    mainTitleKey: "mainPanelTabs.cdnTab.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-monitor.tsx"),
@@ -767,6 +780,7 @@ const agentViewRoute = createRoute({
   staticData: {
     defaultMain: "view",
     mainView: "view",
+    mainTitleKey: "mainPanelTabs.agentView.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-view.tsx"),
@@ -779,6 +793,7 @@ const agentOutputFileRoute = createRoute({
   staticData: {
     defaultMain: "file",
     mainView: "file",
+    mainTitleKey: "mainPanelTabs.fileTab.title",
   },
   validateSearch: z.object({ key: z.string().optional() }),
   component: lazyRouteComponent(
@@ -792,6 +807,7 @@ const agentOutputDeckRoute = createRoute({
   staticData: {
     defaultMain: "deck",
     mainView: "deck",
+    mainTitleKey: "mainPanelTabs.deckTab.title",
   },
   validateSearch: z.object({ path: z.string().optional() }),
   component: lazyRouteComponent(
@@ -805,6 +821,7 @@ const agentLibraryFileRoute = createRoute({
   staticData: {
     defaultMain: "library-file",
     mainView: "library-file",
+    mainTitleKey: "mainPanelTabs.libraryFileTab.title",
   },
   validateSearch: z.object({ path: z.string().optional() }),
   component: lazyRouteComponent(
@@ -818,6 +835,7 @@ const agentConnectSourcesRoute = createRoute({
   staticData: {
     defaultMain: "connect-sources",
     mainView: "connect-sources",
+    mainTitleKey: "routes.commerceOnboarding.connectSourcesTab.title",
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-connect-sources.tsx"),
@@ -906,6 +924,7 @@ const tasksRoute = createRoute({
   staticData: {
     defaultMain: "board",
     mainView: "board",
+    mainTitleKey: "taskBoard.taskBoard.tasksTitle",
   },
   validateSearch: z.object({
     /** LEGACY INPUT ONLY — the card is a path segment now. Still arrives from
@@ -936,6 +955,7 @@ const reportsRoute = createRoute({
   staticData: {
     defaultMain: "reports",
     mainView: "reports",
+    mainTitleKey: "sidebar.navDestinations.reports",
   },
   validateSearch: z.object({
     /** `"1"` mounts the blocking connections modal until a data source is
@@ -953,21 +973,35 @@ const libraryRoute = createRoute({
   staticData: {
     defaultMain: "files",
     mainView: "files",
+    mainTitleKey: "sidebar.navDestinations.library",
   },
   validateSearch: z.object(librarySearchShape),
   component: lazyRouteComponent(() => import("./routes/workspace/library.tsx")),
 });
 
-/** Discover remains an existing destination; this layer only changes routing. */
-const discoverRoute = createRoute({
+/** Keep the retired path out of the dynamic `/$taskId` route. Durable links
+ * land on Home without preserving a stale search-carried agent identity. */
+const retiredDiscoverRedirectRoute = createRoute({
   getParentRoute: () => agentShellLayout,
   path: "/discover",
-  staticData: { defaultMain: "discover", mainView: "discover" },
-  component: lazyRouteComponent(
-    () => import("./routes/workspace/discover.tsx"),
-  ),
+  beforeLoad: ({ params }) => {
+    throw redirect({
+      to: "/$org/home",
+      params: { org: params.org },
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        virtualmcpid: undefined,
+      }),
+      hash: true,
+      replace: true,
+    });
+  },
 });
 
+/**
+ * `/$org/members` — the Stripe return-URL shape. `orgSettingsPath` emits
+ * `/$org/settings/members`, so this only has to keep the shorter link alive.
+ */
 const orgMembersRedirectRoute = createRoute({
   getParentRoute: () => orgLayout,
   path: "/members",
@@ -1037,6 +1071,9 @@ const taskKeyRoute = createRoute({
 const settingsLayout = createRoute({
   getParentRoute: () => orgLayout,
   path: "/settings",
+  staticData: {
+    mainTitleKey: "sidebar.navDestinations.settings",
+  },
   /** Panel-area loader, for the same reason as `orgShellLayout`: the sidebar
    *  belongs to `orgLayout` and stays mounted across this crossing, so a
    *  full-screen `SplashScreen` would blank a shell that is already painted. */
@@ -1057,6 +1094,7 @@ const settingsIndexRoute = createRoute({
 const connectionsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connections",
+  staticData: { mainTitleKey: "settings.nav.connections" },
   component: lazyRouteComponent(() => import("./routes/orgs/connections.tsx")),
   validateSearch: z.lazy(() =>
     z.object({
@@ -1069,6 +1107,10 @@ const connectionsRoute = createRoute({
 const connectionDetailRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connections/$appSlug",
+  staticData: {
+    mainTitleKey: "settings.nav.connections",
+    mainTitleParam: "appSlug",
+  },
   component: lazyRouteComponent(
     () => import("./routes/orgs/connection-detail.tsx"),
   ),
@@ -1082,6 +1124,10 @@ const connectionDetailRoute = createRoute({
 const collectionDetailRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connections/$appSlug/$collectionName/$itemId",
+  staticData: {
+    mainTitleKey: "settings.nav.connections",
+    mainTitleParam: "itemId",
+  },
   component: lazyRouteComponent(
     () => import("./routes/orgs/collection-detail.tsx"),
   ),
@@ -1096,6 +1142,7 @@ const collectionDetailRoute = createRoute({
 const monitoringRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/monitor",
+  staticData: { mainTitleKey: "settings.nav.monitor" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/monitoring/index.tsx"),
   ),
@@ -1123,6 +1170,7 @@ const monitoringRoute = createRoute({
 const settingsGeneralRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/general",
+  staticData: { mainTitleKey: "settings.nav.general" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/general.tsx"),
   ),
@@ -1131,6 +1179,7 @@ const settingsGeneralRoute = createRoute({
 const settingsConnectRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/connect",
+  staticData: { mainTitleKey: "settings.nav.connect" },
   pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/connect.tsx"),
@@ -1140,6 +1189,7 @@ const settingsConnectRoute = createRoute({
 const settingsAiProvidersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/ai-providers",
+  staticData: { mainTitleKey: "settings.nav.aiProviders" },
   pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/ai-providers.tsx"),
@@ -1161,6 +1211,7 @@ const settingsBillingRoute = createRoute({
 const settingsInfraBillingRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/infra-billing",
+  staticData: { mainTitleKey: "settings.subnav.infrastructure" },
   pendingComponent: settingsGroupPendingComponent("billing"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/infra-billing.tsx"),
@@ -1170,6 +1221,7 @@ const settingsInfraBillingRoute = createRoute({
 const settingsSecretsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/secrets",
+  staticData: { mainTitleKey: "settings.nav.secrets" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/secrets.tsx"),
   ),
@@ -1178,6 +1230,7 @@ const settingsSecretsRoute = createRoute({
 const settingsApiKeysRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/api-keys",
+  staticData: { mainTitleKey: "settings.apiKeys.sectionTitle" },
   pendingComponent: settingsGroupPendingComponent("connect"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/api-keys.tsx"),
@@ -1187,6 +1240,7 @@ const settingsApiKeysRoute = createRoute({
 const settingsBucketsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/buckets",
+  staticData: { mainTitleKey: "settings.nav.buckets" },
   pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/buckets.tsx"),
@@ -1196,6 +1250,7 @@ const settingsBucketsRoute = createRoute({
 const settingsRepositoriesRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/repositories",
+  staticData: { mainTitleKey: "settings.nav.repositories" },
   validateSearch: z.object({
     git_error: z.string().optional().catch(undefined),
     git_flow: z.string().uuid().optional().catch(undefined),
@@ -1210,6 +1265,7 @@ const settingsRepositoriesRoute = createRoute({
 const settingsSyncedReposRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/synced-repos",
+  staticData: { mainTitleKey: "settings.nav.syncedRepos" },
   pendingComponent: settingsGroupPendingComponent("storage"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/synced-repos.tsx"),
@@ -1219,6 +1275,7 @@ const settingsSyncedReposRoute = createRoute({
 const settingsTaskBoardRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/task-board",
+  staticData: { mainTitleKey: "settings.nav.tasks" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/tasks.tsx"),
   ),
@@ -1239,6 +1296,7 @@ const settingsTasksRoute = createRoute({
 const settingsMembersRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/members",
+  staticData: { mainTitleKey: "settings.nav.members" },
   pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/members.tsx"),
@@ -1248,6 +1306,7 @@ const settingsMembersRoute = createRoute({
 const settingsRolesRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/roles",
+  staticData: { mainTitleKey: "settings.roles.pageTitle" },
   pendingComponent: settingsGroupPendingComponent("members"),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/roles.tsx"),
@@ -1262,12 +1321,14 @@ const settingsRolesRoute = createRoute({
 const settingsSsoRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/sso",
+  staticData: { mainTitleKey: "settings.nav.security" },
   component: lazyRouteComponent(() => import("./routes/orgs/settings/sso.tsx")),
 });
 
 const settingsProfileRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/profile",
+  staticData: { mainTitleKey: "settings.nav.profile" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/profile.tsx"),
   ),
@@ -1276,6 +1337,7 @@ const settingsProfileRoute = createRoute({
 const settingsStoreRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/store",
+  staticData: { mainTitleKey: "settings.nav.store" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store.tsx"),
   ),
@@ -1284,14 +1346,27 @@ const settingsStoreRoute = createRoute({
 const settingsRegistryRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/registry",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/registry.tsx"),
-  ),
+  staticData: { mainTitleKey: "settings.nav.store" },
+  validateSearch: z.object({
+    registryTab: z.enum(["items", "requests", "qa", "settings"]).optional(),
+  }),
+  beforeLoad: ({ params, search }) => {
+    throw redirect({
+      to: "/$org/settings/store/registry",
+      params: { org: params.org },
+      search,
+      replace: true,
+    });
+  },
 });
 
 const settingsStoreRegistryRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/store/registry",
+  staticData: { mainTitleKey: "settings.nav.store" },
+  validateSearch: z.object({
+    registryTab: z.enum(["items", "requests", "qa", "settings"]).optional(),
+  }),
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/store-registry.tsx"),
   ),
@@ -1305,12 +1380,14 @@ const settingsStoreRegistryRoute = createRoute({
 const settingsAgentsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/agents",
+  staticData: { mainTitleKey: "settings.nav.agents" },
   component: lazyRouteComponent(() => import("./routes/agents-list.tsx")),
 });
 
 const settingsAutomationsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/automations",
+  staticData: { mainTitleKey: "settings.nav.automations" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/automations.tsx"),
   ),
@@ -1319,6 +1396,7 @@ const settingsAutomationsRoute = createRoute({
 const settingsSkillsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: "/skills",
+  staticData: { mainTitleKey: "settings.nav.skills" },
   component: lazyRouteComponent(
     () => import("./routes/orgs/settings/skills.tsx"),
   ),
@@ -1397,7 +1475,7 @@ const agentShellWithChildren = agentShellLayout.addChildren([
   tasksRoute,
   reportsRoute,
   libraryRoute,
-  discoverRoute,
+  retiredDiscoverRedirectRoute,
 ]);
 
 const orgShellWithChildren = orgShellLayout.addChildren([

@@ -36,6 +36,7 @@ import { useInfiniteScroll } from "@/hooks/use-infinite-scroll.ts";
 import type { useMembers } from "@/hooks/use-members";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
+import { Main } from "@/components/main";
 import { getOrgMembers } from "./utils.ts";
 
 // ── Logs Table ──────────────────────────────────────────────────────────────
@@ -312,7 +313,11 @@ function MonitoringLogsTableContent({
 function MonitoringLogsTableSkeleton() {
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+      <Main.Container
+        width="wide"
+        padding="compact"
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <Table className="w-full border-collapse">
           <TableHeader className="border-b-0 z-20">
             <TableRow className="h-9 hover:bg-transparent border-b border-border">
@@ -377,7 +382,7 @@ function MonitoringLogsTableSkeleton() {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </Main.Container>
     </div>
   );
 }
@@ -462,7 +467,11 @@ export function AuditTabContent({
 
   return (
     <div className="flex-1 flex flex-col overflow-auto min-w-0">
-      <div className="mx-auto w-full max-w-[1200px] px-4 md:px-10 flex flex-col flex-1 min-h-0">
+      <Main.Container
+        width="wide"
+        padding="compact"
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <div className="flex-1 flex flex-col min-w-0">
           <MonitoringLogsTable
             connectionIds={connectionIds}
@@ -480,7 +489,7 @@ export function AuditTabContent({
             client={client}
           />
         </div>
-      </div>
+      </Main.Container>
     </div>
   );
 }

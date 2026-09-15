@@ -13,10 +13,10 @@
  * `plugins/ban-e2e-app-imports.js`).
  */
 
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
+import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
-import { connectDevDb } from "../fixtures/db";
 
 /** Cold-Vite route compiles are slow on a loaded box, and this crosses the
  *  shell plus a lazy main-panel view. */
@@ -47,7 +47,29 @@ async function createAgent(
   return agent.item.id;
 }
 
+async function assertCanonicalNewProjectHome(
+  page: Page,
+  orgSlug: string,
+): Promise<void> {
+  await page.waitForURL(
+    (url) =>
+      url.pathname === `/${orgSlug}/home` &&
+      url.searchParams.get("virtualmcpid") === null,
+    { timeout: SHELL_TIMEOUT_MS },
+  );
+  const landed = new URL(page.url());
+  expect(landed.pathname).not.toContain("/projects/");
+  await expect(page.getByTestId("main-panel")).toBeVisible({
+    timeout: SHELL_TIMEOUT_MS,
+  });
+  await expect(
+    page.getByRole("button", { name: "Import repository" }),
+  ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+}
+
 test.describe("org home — the agent roster", () => {
+  test.describe.configure({ timeout: 180_000 });
+
   test("lists the agents a person made and hides the Studio Pack managers", async ({
     authedPage: { page, orgSlug },
   }) => {
@@ -93,7 +115,26 @@ test.describe("org home — the agent roster", () => {
     await expect(
       page.getByRole("button", { name: "Import repository" }),
     ).toBeVisible();
+    await expect(mainPanelTrainingCard(page)).toHaveCount(0);
+
+    /* A store diagnostic belongs to the project that claimed the site, so the
+       organization spine offers Home, Tasks and Library and no Reports row —
+       Reports is reached from a project, never from here. */
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await expect(
+      sidebar.getByRole("link", { name: "Home", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: "Tasks", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: "Library", exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: "Reports", exact: true }),
+    ).toHaveCount(0);
   });
+
   test("Home shows the CMS training playlist when the organization owns a legacy site", async ({
     authedPage: { page, user, orgSlug },
   }, testInfo) => {
@@ -109,9 +150,7 @@ test.describe("org home — the agent roster", () => {
         [siteSlug, user.userId, orgSlug],
       );
       await page.goto(`/${orgSlug}/home`);
-      const playlist = page
-        .getByTestId("main-panel")
-        .getByRole("link", { name: /CMS training/ });
+      const playlist = mainPanelTrainingCard(page);
       await expect(playlist).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
       await expect(playlist).toHaveAttribute(
         "href",
@@ -131,4 +170,67 @@ test.describe("org home — the agent roster", () => {
       await db.end();
     }
   });
+
+  test("the command palette New project action opens organization Home", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    /** Exercise the populated-home branch too: the entry action and the
+     * import control are permanent affordances, not empty-state behavior. */
+    await createAgent(page.request, orgSlug, `Palette Agent ${orgSlug}`);
+    await page.goto(`/${orgSlug}/reports`);
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    const modifier = await page.evaluate(() =>
+      /Mac|iPhone|iPad|iPod/.test(navigator.platform) ? "Meta" : "Control",
+    );
+    await page.keyboard.press(`${modifier}+K`);
+    const palette = page.getByRole("dialog", { name: "Command palette" });
+    await expect(palette).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(
+      palette.getByRole("option", { name: "Discover", exact: true }),
+    ).toHaveCount(0);
+    /* Same reason the sidebar drops it: Reports is a project destination. */
+    await expect(
+      palette.getByRole("option", { name: "Reports", exact: true }),
+    ).toHaveCount(0);
+    await palette
+      .getByRole("option", { name: "New project", exact: true })
+      .click();
+
+    await assertCanonicalNewProjectHome(page, orgSlug);
+  });
+
+  test("the organization and project picker New project action opens organization Home", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    const agentId = await createAgent(
+      page.request,
+      orgSlug,
+      `Picker Agent ${orgSlug}`,
+    );
+    await page.goto(`/${orgSlug}/projects/${agentId}/settings`);
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: SHELL_TIMEOUT_MS,
+    });
+
+    await page
+      .getByRole("button", { name: /^Organization and project:/ })
+      .click();
+    await expect(
+      page.getByPlaceholder("Search organizations and projects…"),
+    ).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await page
+      .getByRole("button", { name: "New project", exact: true })
+      .click();
+
+    await assertCanonicalNewProjectHome(page, orgSlug);
+  });
 });
+
+function mainPanelTrainingCard(page: Page) {
+  return page
+    .getByTestId("main-panel")
+    .getByRole("link", { name: /Learn to use the Site Editor/ });
+}

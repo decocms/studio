@@ -22,8 +22,7 @@ import {
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
+import { Main } from "@/components/main";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type SecretInfo,
@@ -35,7 +34,10 @@ import {
 function ErrorFallback({ error }: { error: Error }) {
   const t = useT();
   return (
-    <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+    <div
+      role="alert"
+      className="flex items-center gap-2 rounded-md bg-destructive/10 p-4 text-destructive"
+    >
       <AlertCircle size={16} />
       <span className="text-sm font-medium">
         {t("settings.secrets.failedToLoadError", { error: error.message })}
@@ -85,7 +87,7 @@ function SecretRow({ secret }: { secret: SecretInfo }) {
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function SecretsEmptyState() {
   const t = useT();
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
@@ -100,10 +102,6 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           {t("settings.secrets.emptyDescription")}
         </p>
       </div>
-      <Button onClick={onCreate} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.secrets.newSecret")}
-      </Button>
     </div>
   );
 }
@@ -267,11 +265,24 @@ function SecretsContent() {
   const t = useT();
   const secrets = useSecrets();
   const [createOpen, setCreateOpen] = useState(false);
+  const createAction = (
+    <Button
+      onClick={() => setCreateOpen(true)}
+      size="sm"
+      aria-label={t("settings.secrets.newSecret")}
+    >
+      <Plus size={14} />
+      <span className="@max-sm/main-topbar:hidden">
+        {t("settings.secrets.newSecret")}
+      </span>
+    </Button>
+  );
 
   if (secrets.length === 0) {
     return (
       <>
-        <EmptyState onCreate={() => setCreateOpen(true)} />
+        <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
+        <SecretsEmptyState />
         <CreateSecretDialog open={createOpen} onOpenChange={setCreateOpen} />
       </>
     );
@@ -282,20 +293,15 @@ function SecretsContent() {
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t(
-            secrets.length === 1
-              ? "settings.secrets.secretsCountSingular"
-              : "settings.secrets.secretsCountPlural",
-            { count: secrets.length },
-          )}
-        </p>
-        <Button onClick={() => setCreateOpen(true)} size="sm">
-          <Plus size={14} />
-          {t("settings.secrets.newSecret")}
-        </Button>
-      </div>
+      <Main.Topbar.Right.Portal>{createAction}</Main.Topbar.Right.Portal>
+      <p className="text-sm text-muted-foreground">
+        {t(
+          secrets.length === 1
+            ? "settings.secrets.secretsCountSingular"
+            : "settings.secrets.secretsCountPlural",
+          { count: secrets.length },
+        )}
+      </p>
 
       {orgSecrets.length > 0 ? (
         <section className="rounded-2xl border border-border/60 bg-background p-5">
@@ -331,25 +337,30 @@ function SecretsContent() {
 export function OrgSecretsPage() {
   const t = useT();
   return (
-    <Page>
-      <Page.Content>
-        <Page.Body>
-          <SettingsPage>
-            <Page.Title>{t("settings.nav.secrets")}</Page.Title>
-            <ErrorBoundary
-              fallback={({ error }) => (
-                <ErrorFallback
-                  error={error ?? new Error("Failed to load secrets")}
-                />
-              )}
+    <div className="h-full overflow-y-auto">
+      <Main.Container width="standard">
+        <Main.Stack gap="spacious">
+          <ErrorBoundary
+            fallback={({ error }) => (
+              <ErrorFallback
+                error={
+                  error ?? new Error(t("settings.secrets.failedToLoadFallback"))
+                }
+              />
+            )}
+          >
+            <Suspense
+              fallback={
+                <div role="status" aria-label={t("common.loading")}>
+                  <Skeleton className="h-32 w-full" />
+                </div>
+              }
             >
-              <Suspense fallback={<Skeleton className="h-32 w-full" />}>
-                <SecretsContent />
-              </Suspense>
-            </ErrorBoundary>
-          </SettingsPage>
-        </Page.Body>
-      </Page.Content>
-    </Page>
+              <SecretsContent />
+            </Suspense>
+          </ErrorBoundary>
+        </Main.Stack>
+      </Main.Container>
+    </div>
   );
 }

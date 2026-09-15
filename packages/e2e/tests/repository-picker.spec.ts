@@ -86,10 +86,13 @@ test("repository management shares the searchable picker and lives outside Stora
     await callSelfMcpTool(page.request, orgSlug, "REPOSITORY_LINK", { url });
   }
   await page.goto(`/${orgSlug}/settings/repositories`);
-  await expect(page.locator('[data-slot="settings-heading"]')).toHaveText(
-    "Repositories",
-    { timeout: 15000 },
-  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Repositories",
+      level: 1,
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 15000 });
   await page
     .getByRole("button", { name: "Add repository", exact: true })
     .click();

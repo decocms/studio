@@ -345,9 +345,8 @@ export function DetachedChatContext({ children }: PropsWithChildren) {
  * (chat model, image model, deep research model, simple-mode tier) sync
  * automatically with any other mount of this provider via storage events.
  *
- * `virtualMcpId` is derived from the URL search param (`virtualmcpid`) with
- * a decopilot fallback, matching `useChatNavigation` — so the same
- * provider works on `/$org/` and `/$org/$taskId`.
+ * `virtualMcpId` comes from the canonical `$agentId` route, with compatibility
+ * support for legacy thread URLs and a Decopilot fallback on org pages.
  *
  * `ChatContextProvider` composes this provider, so routes that mount the
  * full chat context get the prefs context via the same code path. If a
@@ -493,9 +492,7 @@ export function ChatPrefsProvider({ children }: PropsWithChildren) {
   /** URL-derived, and read NON-BLOCKING on purpose. This provider sits above
    *  the sidebar and outside every Suspense boundary in the shell, so a
    *  suspending read here blanks the whole app back to the splash screen. The
-   *  id flips (Super Agent → project) on any home → /projects navigation,
-   *  because only the projects route resolves `?virtualmcpid=`, so the key
-   *  changes on a navigation whose URL param did not. */
+   *  id changes whenever navigation enters another `$agentId` workspace. */
   const selectedVirtualMcpData = useVirtualMCPNonBlocking(urlVirtualMcpId);
   /** The org's list is already warm — the sidebar holds it — so the title and
    *  icon are right on the first frame; the GET only adds the fields the list

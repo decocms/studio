@@ -1,8 +1,8 @@
 /** The one sidebar picker: organizations and projects in a single list. It
  *  merges two controls that were never the same kind of thing, so the design is
- *  about keeping them apart — picking a PROJECT writes `?virtualmcpid=` and
- *  stays put, while picking an ORGANIZATION changes the path, remounts the
- *  shell and drops the scope. A footer strip names the verb for the focused row
+ *  about keeping them apart — picking a PROJECT enters its canonical
+ *  `/projects/$agentId` workspace, while picking an ORGANIZATION enters its Home.
+ *  A footer strip names the verb for the focused row
  *  before Enter commits it, since those two live one arrow-key apart, and
  *  nothing is ever auto-selected: a scope nobody chose silently shortens lists.
  *  Two modes, deliberately not one — BROWSING (no term) lists this org's
@@ -34,6 +34,7 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
+import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -229,11 +230,6 @@ function PickerContent({
 
   const rows = new Map<string, RowMeta>();
 
-  /** Picking a project from the SETTINGS tree has to leave it. `setScope`
-   *  writes the param onto the current route, which in settings means landing
-   *  on `/$org/settings/...?virtualmcpid=` — a settings page wearing a scope
-   *  nothing there reads. The picker is the one scope control reachable from
-   *  inside settings, so this is where that has to be answered. */
   const scopeTo = (id: string | null) => {
     track("scope_set", { scoped: id !== null, fromSettings: inSettings });
     setScope(id);
@@ -537,7 +533,7 @@ export function OrgProjectPicker({
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  const { project } = useProjectScope();
+  const { project, projectPending, scopeId } = useProjectScope();
   const { invitations } = usePendingInvitations();
   const [open, setOpen] = useState(false);
   const [creatingOrg, setCreatingOrg] = useState(false);
@@ -545,12 +541,19 @@ export function OrgProjectPicker({
 
   /** The rail shows a 24px mark and nothing else, so the tooltip carries the
    *  org a project belongs to — the one thing the mark cannot say. */
+  const missingProject = scopeId !== null && project === null;
+  const resolvingProject = missingProject && projectPending;
+  const projectFallbackLabel = t("sidebar.picker.projectFallback");
   const label = project
     ? t("sidebar.picker.projectInOrg", {
         project: project.title,
         org: org.name,
       })
-    : org.name;
+    : resolvingProject
+      ? t("common.loading")
+      : missingProject
+        ? projectFallbackLabel
+        : org.name;
 
   /** A `div`, deliberately, not a `span`: `SidebarMenuButton` hides
    *  `>span:last-child` in the collapsed rail, and as the button's only child
@@ -565,6 +568,10 @@ export function OrgProjectPicker({
           size="xs"
           className="shrink-0"
         />
+      ) : resolvingProject ? (
+        <Skeleton className="size-6 shrink-0 rounded-md" />
+      ) : missingProject ? (
+        <ProjectIcon icon={null} name={projectFallbackLabel} />
       ) : (
         <OrgIcon org={org} size="sm" />
       )}
@@ -577,7 +584,11 @@ export function OrgProjectPicker({
   );
 
   const trigger = collapsed ? (
-    <SidebarMenuButton tooltip={label} data-tour={LAYOUT_TOUR_ANCHORS.switcher}>
+    <SidebarMenuButton
+      tooltip={label}
+      data-tour={LAYOUT_TOUR_ANCHORS.switcher}
+      aria-label={t("sidebar.picker.ariaLabel", { name: label })}
+    >
       {icon}
     </SidebarMenuButton>
   ) : (
@@ -598,9 +609,13 @@ export function OrgProjectPicker({
       )}
     >
       {icon}
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-        {project ? project.title : org.name}
-      </span>
+      {resolvingProject ? (
+        <Skeleton className="h-4 w-28" />
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {project?.title ?? (missingProject ? projectFallbackLabel : org.name)}
+        </span>
+      )}
       <ChevronSelectorVertical
         size={14}
         className="shrink-0 text-muted-foreground"

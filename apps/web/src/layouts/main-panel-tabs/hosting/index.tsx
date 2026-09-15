@@ -10,8 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LinkExternal01, Server01 } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
-import { Page } from "@/components/page";
-import { SettingsPage } from "@/components/settings/settings-section";
+import { Main } from "@/components/main";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
@@ -116,19 +115,13 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <Page.Body maxWidth="max-w-5xl">
-        <SettingsPage>
+      <Main.Topbar.Right.Portal>
+        <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
+      </Main.Topbar.Right.Portal>
+      <Main.Container width="wide">
+        <Main.Stack gap="spacious">
           <div className="flex flex-col gap-2">
-            <Page.Title
-              actions={
-                <DeployButton base={base} orgSlug={org.slug} site={siteSlug} />
-              }
-            >
-              <span className="inline-flex items-center gap-2.5">
-                {t("mainPanelTabs.hostingTab.title")}
-                {framework && <Badge variant="secondary">{framework}</Badge>}
-              </span>
-            </Page.Title>
+            {framework && <Badge variant="secondary">{framework}</Badge>}
             {liveUrl && liveHost && (
               <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
                 <a
@@ -187,8 +180,8 @@ export function HostingTab({ virtualMcpId }: { virtualMcpId: string }) {
             isLoading={redirectsQuery.isLoading}
             error={redirectsQuery.error}
           />
-        </SettingsPage>
-      </Page.Body>
+        </Main.Stack>
+      </Main.Container>
     </div>
   );
 }

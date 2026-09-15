@@ -77,21 +77,24 @@ const routeRef = {
   current: {
     fullPath: "/$org/home",
     search: {} as Record<string, unknown>,
-    agentId: undefined as string | undefined,
-    mainView: undefined as string | undefined,
+    params: {} as { agentId?: string },
+    staticData: {} as {
+      mainView?: string;
+      siteEditorView?: "preview" | "content" | "code";
+    },
   },
 };
 mock.module("@tanstack/react-router", () => ({
   ...tanstackRouter,
   useNavigate: () => navigateMock,
-  useParams: () => ({ org: "acme", agentId: routeRef.current.agentId }),
+  useParams: () => ({ org: "acme", ...routeRef.current.params }),
   useSearch: () => routeRef.current.search,
   useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
     select({
       matches: [
         {
           fullPath: routeRef.current.fullPath,
-          staticData: { mainView: routeRef.current.mainView },
+          staticData: routeRef.current.staticData,
         },
       ],
     }),
@@ -122,8 +125,8 @@ describe("FloatingReleaseCard", () => {
     routeRef.current = {
       fullPath: "/$org/home",
       search: {},
-      agentId: undefined,
-      mainView: undefined,
+      params: {},
+      staticData: {},
     };
     sessionRef.current = {
       user: {
@@ -226,12 +229,13 @@ describe("FloatingReleaseCard", () => {
         cta: { label: "Take the tour", action: "start-tour" },
       }),
     ];
-    // The project overview has project controls, but no Site Editor controls.
+    // Scoped to a project, on the agents route with NO view named: project
+    // surfaces, but not the Site Editor's.
     routeRef.current = {
       fullPath: "/$org/projects/$agentId/",
       search: {},
-      agentId: "vir_1",
-      mainView: "overview",
+      params: { agentId: "vir_1" },
+      staticData: { mainView: "overview" },
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 
@@ -256,8 +260,11 @@ describe("FloatingReleaseCard", () => {
     routeRef.current = {
       fullPath: "/$org/projects/$agentId/site-editor/",
       search: {},
-      agentId: "vir_1",
-      mainView: "site-editor",
+      params: { agentId: "vir_1" },
+      staticData: {
+        mainView: "site-editor",
+        siteEditorView: "preview",
+      },
     };
     const { getByRole } = render(<FloatingReleaseCard />, { wrapper });
 

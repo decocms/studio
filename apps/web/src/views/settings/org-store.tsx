@@ -19,7 +19,7 @@ import {
   useConnectionActions,
 } from "@/sdk";
 import { KEYS } from "@/lib/query-keys";
-import { Page } from "@/components/page";
+import { Main } from "@/components/main";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useRegistryConnections } from "@/hooks/use-registry-connections";
 import {
@@ -31,14 +31,16 @@ import { useT } from "@/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
-  SettingsPage,
   SettingsSection,
 } from "@/components/settings/settings-section";
 
 function ErrorFallback({ error }: { error: Error }) {
   const t = useT();
   return (
-    <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+    <div
+      role="alert"
+      className="flex items-center gap-2 rounded-md bg-destructive/10 p-4 text-destructive"
+    >
       <AlertCircle size={16} />
       <span className="text-sm font-medium">
         {t("settings.orgStore.failedLoadStoreSettings")} {error.message}
@@ -211,6 +213,9 @@ function RegistryItem({
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  aria-label={t("settings.orgStore.removeRegistryLabel", {
+                    name,
+                  })}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Trash01 size={14} />
@@ -236,6 +241,7 @@ function RegistryItem({
             </Popover>
           )}
           <Switch
+            aria-label={t("settings.orgStore.toggleRegistryLabel", { name })}
             checked={enabled}
             onClick={(e) => e.stopPropagation()}
             onCheckedChange={(checked) => onToggle(checked)}
@@ -402,7 +408,14 @@ function OrgStoreContent() {
                 />
               }
               action={
-                <Switch checked={false} disabled onCheckedChange={() => {}} />
+                <Switch
+                  aria-label={t("settings.orgStore.toggleRegistryLabel", {
+                    name: t("settings.orgStore.mcpRegistry"),
+                  })}
+                  checked={false}
+                  disabled
+                  onCheckedChange={() => {}}
+                />
               }
             />
           )}
@@ -415,27 +428,31 @@ function OrgStoreContent() {
 export function OrgStorePage() {
   const t = useT();
   return (
-    <ErrorBoundary
-      fallback={({ error }) => (
-        <ErrorFallback
-          error={
-            error ?? new Error(t("settings.orgStore.failedLoadStoreSettings"))
-          }
-        />
-      )}
-    >
-      <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-        <Page>
-          <Page.Content>
-            <Page.Body>
-              <SettingsPage>
-                <Page.Title>{t("settings.orgStore.pageTitle")}</Page.Title>
-                <OrgStoreContent />
-              </SettingsPage>
-            </Page.Body>
-          </Page.Content>
-        </Page>
-      </Suspense>
-    </ErrorBoundary>
+    <div className="h-full overflow-y-auto">
+      <Main.Container width="standard">
+        <Main.Stack gap="spacious">
+          <ErrorBoundary
+            fallback={({ error }) => (
+              <ErrorFallback
+                error={
+                  error ??
+                  new Error(t("settings.orgStore.failedLoadStoreSettings"))
+                }
+              />
+            )}
+          >
+            <Suspense
+              fallback={
+                <div role="status" aria-label={t("common.loading")}>
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              }
+            >
+              <OrgStoreContent />
+            </Suspense>
+          </ErrorBoundary>
+        </Main.Stack>
+      </Main.Container>
+    </div>
   );
 }

@@ -7,14 +7,16 @@ import { cn } from "../lib/utils.ts";
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
-      data-slot="table-container"
-      className="w-full min-w-0 bg-card rounded-xl card-shadow overflow-hidden"
+      data-slot="table-frame"
+      className="w-full min-w-0 overflow-hidden rounded-xl bg-card card-shadow"
     >
-      <table
-        data-slot="table"
-        className={cn("w-full caption-bottom text-sm min-w-0", className)}
-        {...props}
-      />
+      <div data-slot="table-container" className="w-full overflow-x-auto">
+        <table
+          data-slot="table"
+          className={cn("w-full min-w-max caption-bottom text-sm", className)}
+          {...props}
+        />
+      </div>
     </div>
   );
 }
