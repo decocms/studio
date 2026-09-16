@@ -22,6 +22,7 @@ import {
   FeatureNotInPlanError,
   orgHasFeature,
 } from "@/core/plan-feature-gate";
+import { emitTaskBoardUpdated } from "./run-reactions";
 
 /**
  * Fold the board's system prompt (Settings → Board) into one run.
@@ -52,6 +53,37 @@ export function withOrgTaskPrompt<
     agent: { ...run.agent, appendInstructions: boardPrompt } as A,
     prompt: run.prompt,
   };
+}
+
+/**
+ * Broadcast a task whose fresh run thread was just linked, so open boards and
+ * task panels show the new run without a manual refresh.
+ *
+ * The other emit sites all ride a LANE change, and a re-run has none left:
+ * `TASK_BOARD_ITEM_RERUN` moves the card to In Progress itself, so when the new
+ * run starts `advanceTaskBoardForRun` finds it already there and returns
+ * without emitting — leaving every client on the pre-enqueue item, whose only
+ * run is the superseded one. This is also the emit that wins the race the other
+ * way: the rerun tool's own broadcast is written before this link exists, so an
+ * SSE push arriving after the mutation's refetch would otherwise overwrite the
+ * fresh list with a thread-less snapshot.
+ *
+ * Best-effort — a broadcast must never fail a dispatch. The hidden Jira anchor
+ * is skipped: no board renders it.
+ */
+async function emitRunLinked(
+  ctx: { storage: Pick<StudioContext["storage"], "taskBoard"> },
+  taskId: string,
+  organizationId: string,
+): Promise<void> {
+  try {
+    const item = await ctx.storage.taskBoard.getById(taskId, organizationId);
+    if (item && item.source !== "jira") {
+      emitTaskBoardUpdated(organizationId, item);
+    }
+  } catch (err) {
+    console.error("[task-board] run-link broadcast failed", err);
+  }
 }
 
 /**
@@ -240,6 +272,8 @@ export async function enqueueAgentRunForTask(
   // Link the run thread to the task (many-to-many) so the board can render it
   // in the card and derive its live run state.
   await ctx.storage.taskBoard.linkThread(task.id, thread.id, organizationId);
+
+  await emitRunLinked(ctx, task.id, organizationId);
 
   const requestMessage = {
     id: crypto.randomUUID(),
