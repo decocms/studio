@@ -1,5 +1,4 @@
 import { Button } from "@decocms/ui/components/button.tsx";
-import { Separator } from "@decocms/ui/components/separator.tsx";
 import { useT } from "@/i18n/use-t";
 import { Panel } from "@/components/panel";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -101,16 +100,10 @@ function PageActions({
   secondary,
 }: PropsWithChildren<{ secondary?: ReactNode }>) {
   const content = (
+    // One row, one gap: the secondary controls are not a group apart from the
+    // primary action, so nothing divides them and nothing spaces them differently.
     <div data-slot="page-actions" className="flex shrink-0 items-center gap-2">
-      {secondary && (
-        <>
-          <div className="flex items-center gap-1">{secondary}</div>
-          <Separator
-            orientation="vertical"
-            className="mx-1 data-[orientation=vertical]:h-4"
-          />
-        </>
-      )}
+      {secondary}
       {children}
     </div>
   );

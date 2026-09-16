@@ -1153,7 +1153,7 @@ export function TaskBoardPage() {
                   onOpenBoardSettings={openBoardSettings}
                 />
               </div>
-              <div className="hidden items-center gap-1 @min-4xl/panel-header:flex">
+              <div className="hidden items-center gap-2 @min-4xl/panel-header:flex">
                 <SearchToggle
                   value={filters.search}
                   onChange={(search) =>
