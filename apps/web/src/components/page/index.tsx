@@ -199,7 +199,11 @@ function PageTabs({ className, ...props }: ComponentPropsWithoutRef<"nav">) {
       {...props}
       data-slot="page-tabs"
       className={cn(
-        "flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar",
+        // Asking for overflow-x makes the browser clip the Y axis too, and a
+        // selected tab's ring and drop shadow sit OUTSIDE its box. The padding
+        // is the room they need; the negative margin gives it back to the
+        // layout, so the first tab still starts on the toolbar's column.
+        "-m-2 flex min-w-0 items-center gap-1 overflow-x-auto p-2 no-scrollbar",
         className,
       )}
     />
