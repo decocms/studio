@@ -38,6 +38,7 @@ import {
   FilterLines,
   Flag01,
   Plus,
+  Settings02,
   Tag01,
   User01,
   X,
@@ -76,7 +77,7 @@ import {
   taskMatchesFilters,
   UNASSIGNED_FILTER,
   type TaskFilters,
-} from "./task-filters";
+} from "./task-filters-core";
 
 interface FilterOption {
   /** Unique within its field — the cmdk row key, so it must not collide. */
@@ -741,5 +742,21 @@ export function AppliedFiltersBar({
         </Button>
       </div>
     </div>
+  );
+}
+
+export function BoardSettingsButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+
+  return (
+    <IconButton
+      label={label}
+      tooltipSide="bottom"
+      variant="secondary"
+      onClick={onClick}
+    >
+      <Settings02 />
+    </IconButton>
   );
 }

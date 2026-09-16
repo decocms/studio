@@ -134,7 +134,7 @@ export function taskMatchesFilters(
   return true;
 }
 
-export const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {
+const DUE_OPTIONS_LABEL_KEYS: Record<DueFilter, TranslationKey> = {
   overdue: "taskBoard.taskFilters.dueDateFilterOverdue",
   today: "taskBoard.taskFilters.dueDateFilterDueToday",
   week: "taskBoard.taskFilters.dueDateFilterDueThisWeek",

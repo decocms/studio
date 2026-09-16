@@ -140,12 +140,14 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
-  BoardSettingsButton,
-  TaskFiltersDrawer,
   taskMatchesFilters,
   type TaskFilters,
-} from "./task-filters";
-import { AppliedFiltersBar, TaskFilterButton } from "./view-controls";
+} from "./task-filters-core";
+import {
+  AppliedFiltersBar,
+  BoardSettingsButton,
+  TaskFilterButton,
+} from "./view-controls";
 import { useBoardSearch, visibleSelection } from "./filters-search";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import {
@@ -1148,21 +1150,10 @@ export function TaskBoardPage() {
             secondary={
               items.length > 0 && (
                 <>
-                  {/* The drawer is for a genuinely narrow panel. The threshold
-                      used to be 56rem, sized for the chip row that used to live
-                      here — three icon buttons need a fraction of that, and at
-                      56rem they vanished the moment the chat opened. */}
-                  <div className="@md/panel-header:hidden">
-                    <TaskFiltersDrawer
-                      filters={filters}
-                      members={members}
-                      tags={orgTags}
-                      index={projectIndex}
-                      onChange={handleFiltersChange}
-                      onOpenBoardSettings={openBoardSettings}
-                    />
-                  </div>
-                  <div className="hidden items-center gap-2 @md/panel-header:flex">
+                  {/* No width swap: these three are ~100px together, so there
+                      is no panel narrow enough to be worth trading them for a
+                      drawer of the chip pickers they replaced. */}
+                  <div className="flex items-center gap-2">
                     <SearchToggle
                       value={filters.search}
                       onChange={(search) =>

@@ -12,7 +12,7 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
 import { buildProjectIndex } from "@/lib/project-index";
 import type { OrgTag } from "./config";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
-import { EMPTY_FILTERS } from "./task-filters";
+import { EMPTY_FILTERS } from "./task-filters-core";
 import { TaskFilterButton } from "./view-controls";
 
 const TAG: OrgTag = {
