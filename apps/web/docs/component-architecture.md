@@ -100,7 +100,7 @@ Additional captures:
 - [Library file list and shared toolbar](assets/compact-library-files.png)
 - [Library on mobile](assets/compact-library-mobile.png)
 - [Project settings — General](assets/project-settings-general.png)
-- [Project settings — Site](assets/project-settings-site.png)
+- [Project settings — CMS](assets/project-settings-site.png)
 - [Project settings — Project layout](assets/project-settings-views.png)
 - [Project settings on mobile](assets/project-settings-mobile.png)
 
@@ -325,7 +325,7 @@ action lives in the header, separated from New folder by a vertical divider.
 `Page.Actions secondary={…}` provides that grouping to other pages too.
 
 Project settings uses the same header and `Page.Tabs` for General, Connections,
-Site, and Project layout. General opens directly to labelled identity fields,
+CMS, and Project layout. General opens directly to labelled identity fields,
 followed by instructions, files, delegation, and deletion. Connections contributes
 its Add connection action through `Page.Actions`; Project layout separates the
 default layout from sidebar view controls. Existing `?section=` links remain

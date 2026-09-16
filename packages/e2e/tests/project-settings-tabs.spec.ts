@@ -42,7 +42,7 @@ test.describe("project settings tabs", () => {
     await expect(tabs.getByRole("link")).toHaveText([
       "General",
       "Connections",
-      "Site",
+      "CMS",
       "Project layout",
     ]);
     await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
@@ -192,7 +192,7 @@ test.describe("project settings tabs", () => {
       name: "Project settings sections",
     });
     await expect(
-      tabs.getByRole("link", { name: "Site", exact: true }),
+      tabs.getByRole("link", { name: "CMS", exact: true }),
     ).toHaveAttribute("aria-current", "page", { timeout: 60_000 });
     const previewServer = page.getByRole("textbox", {
       name: "Preview server",

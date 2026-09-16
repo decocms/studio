@@ -132,7 +132,7 @@ export const virtualMcp = {
   "virtualMcp.settings.general.heading": "Detalhes do projeto",
   "virtualMcp.settings.general.description":
     "As informações que sua equipe vê no Studio. As alterações são salvas automaticamente.",
-  "virtualMcp.settings.site.title": "Site",
+  "virtualMcp.settings.site.title": "CMS",
   "virtualMcp.settings.site.heading": "Site e sandbox",
   "virtualMcp.settings.site.description":
     "Como as edições chegam ao site e o repositório de onde ele roda.",
