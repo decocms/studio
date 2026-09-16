@@ -54,16 +54,22 @@ export function RoutePageHeader({
         </ToolbarIconButton>
       }
       breadcrumbs={
-        (!isHome || scopeId) && (
+        (inSettings || scopeId) && (
           <div className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground @min-xl/panel-header:flex">
-            <Link
-              to="/$org/home"
-              params={{ org: org.slug }}
-              className="max-w-32 truncate hover:text-foreground"
-            >
-              {org.name}
-            </Link>
-            {separator}
+            {/* The org names a PROJECT's parent. On an org page the org is
+                already where you are, so a crumb for it says it twice. */}
+            {scopeId && (
+              <>
+                <Link
+                  to="/$org/home"
+                  params={{ org: org.slug }}
+                  className="max-w-32 truncate hover:text-foreground"
+                >
+                  {org.name}
+                </Link>
+                {separator}
+              </>
+            )}
             {inSettings ? (
               <>
                 <Link

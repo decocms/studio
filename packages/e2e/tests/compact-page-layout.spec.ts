@@ -566,7 +566,7 @@ test.describe("compact page layout", () => {
   });
 
   test("Library uses one header trail for nested folders and volumes", async ({
-    authedPage: { page, orgSlug, user },
+    authedPage: { page, orgSlug },
   }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const folder = "Brand/Launch notes/September 2026";
@@ -586,7 +586,9 @@ test.describe("compact page layout", () => {
       `/${orgSlug}/library?path=${encodeURIComponent(`home/${folder}`)}&fileView=documents`,
     );
     await expect(breadcrumbs).toHaveCount(1);
-    await expect(breadcrumbs.getByRole("link")).toHaveText([user.orgName]);
+    // No org crumb on an org page — only inside a project, where it names the
+    // project's parent. The folder trail below is the library's own.
+    await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
     await expect(
       breadcrumbs.getByRole("heading", { name: "September 2026", exact: true }),
     ).toHaveAttribute("aria-current", "page");
@@ -672,7 +674,7 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "Library", exact: true }),
     ).toBeVisible();
-    await expect(breadcrumbs.getByRole("link")).toHaveText([user.orgName]);
+    await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
     await page.goto(`/${orgSlug}/tasks`);
     await expect(
       header.getByRole("heading", { name: "Tasks", exact: true }),
