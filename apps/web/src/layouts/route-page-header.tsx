@@ -54,22 +54,11 @@ export function RoutePageHeader({
         </ToolbarIconButton>
       }
       breadcrumbs={
-        (inSettings || scopeId) && (
+        // The org is never a crumb: it is the whole app, so naming it says
+        // nothing. A trail exists only where there is something ABOVE the
+        // page — the project you are in, or Settings.
+        (inSettings || (scopeId && !isHome)) && (
           <div className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground @min-xl/panel-header:flex">
-            {/* The org names a PROJECT's parent. On an org page the org is
-                already where you are, so a crumb for it says it twice. */}
-            {scopeId && (
-              <>
-                <Link
-                  to="/$org/home"
-                  params={{ org: org.slug }}
-                  className="max-w-32 truncate hover:text-foreground"
-                >
-                  {org.name}
-                </Link>
-                {separator}
-              </>
-            )}
             {inSettings ? (
               <>
                 <Link

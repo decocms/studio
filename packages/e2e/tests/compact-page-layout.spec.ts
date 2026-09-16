@@ -48,7 +48,9 @@ test.describe("compact page layout", () => {
       header.getByRole("heading", { level: 1, name: "Forma", exact: true }),
     ).toBeVisible();
     const breadcrumbs = header.getByRole("navigation", { name: "Breadcrumbs" });
-    await expect(breadcrumbs.getByRole("link")).toHaveText([user.orgName]);
+    // The org is never a crumb, so a project's home has no trail above its
+    // title — the way back out is the sidebar's own row.
+    await expect(breadcrumbs.getByRole("link")).toHaveCount(0);
     await expect(header.getByText("Overview", { exact: true })).toHaveCount(0);
     await header.screenshot({
       path: testInfo.outputPath("compact-project-home-header.png"),
@@ -58,11 +60,13 @@ test.describe("compact page layout", () => {
       header.getByRole("heading", { name: "Forma", exact: true }),
     ).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 720 });
-    await breadcrumbs.getByRole("link", { name: user.orgName }).click();
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await sidebar
+      .getByRole("button", { name: "All projects", exact: true })
+      .click();
     await expect(
       header.getByRole("heading", { name: user.orgName, exact: true }),
     ).toBeVisible();
-    const sidebar = page.locator('[data-slot="sidebar"]');
     await expect(sidebar.getByText("Projects", { exact: true })).toBeVisible();
     await expect(
       sidebar.getByRole("link", { name: "Members", exact: true }),
