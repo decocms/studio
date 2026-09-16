@@ -814,6 +814,218 @@ export interface StudioToolIO {
       files?: string | undefined;
     };
   };
+  TASK_BOARD_ADMIN_ORG_LIST: {
+    input: { [x: string]: never };
+    output: {
+      isTaskBoardAdmin: boolean;
+      isCrossOrgView: boolean;
+      orgs: { id: string; slug: string; name: string }[];
+    };
+  };
+  TASK_BOARD_DELIVERY: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_STUCK: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_COST: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_QUALITY: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_ERRORS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
+  TASK_BOARD_TENANTS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
   BRAND_CONTEXT_LIST: {
     input: { includeArchived?: boolean | undefined };
     output: {

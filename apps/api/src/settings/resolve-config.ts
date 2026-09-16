@@ -268,6 +268,10 @@ export function resolveConfig(
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
+    taskBoardAdminOrgIds: (envVars.STUDIO_ADMIN_ORG_IDS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     deploymentAdminToken: envVars.DEPLOYMENT_ADMIN_TOKEN || undefined,
 
     // Observability

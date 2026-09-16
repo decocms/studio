@@ -56,6 +56,19 @@ export const KEYS = {
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
 
+  // Cross-org task board admin: whether the caller is one, and the orgs to pick
+  taskBoardAdminOrgs: (locator: ProjectLocator) =>
+    [locator, "task-board-admin-orgs"] as const,
+
+  // One analytics tool's payload for a given org + range
+  taskBoardAnalytics: (
+    locator: ProjectLocator,
+    tool: string,
+    org: string,
+    from: string,
+    to: string,
+  ) => [locator, "task-board-analytics", tool, org, from, to] as const,
+
   // The current user's unread notifications in this org
   notifications: (locator: ProjectLocator) =>
     [locator, "notifications"] as const,

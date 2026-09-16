@@ -29,6 +29,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
 import { getInitials } from "@/lib/get-initials";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -1143,6 +1144,8 @@ export function TaskBoardPage() {
           {t("taskBoard.taskBoard.tasksTitle")}
         </h1>
 
+        <TaskBoardAdminBanner />
+
         {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
 
@@ -1175,6 +1178,7 @@ export function TaskBoardPage() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            <TaskBoardAdminControls />
             <div className="inline-flex rounded-lg bg-muted p-0.5">
               <LayoutToggle
                 active={layout === "list"}
