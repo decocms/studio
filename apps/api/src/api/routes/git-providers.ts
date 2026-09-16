@@ -82,6 +82,32 @@ export function sanitizeReturnTo(raw: string | undefined | null): string {
   return raw;
 }
 
+/**
+ * Where GitHub keeps an installation's settings — the page that carries the
+ * "review and accept new permissions" prompt clearing a 422.
+ *
+ * GitHub sends this as `html_url` on the installation, so prefer it over
+ * composing the path ourselves. The fallback is the shape GitHub currently
+ * uses, kept for an installation read before `html_url` was carried through.
+ *
+ * Owner-only either way: GitHub answers 404, not 403, when the viewer only
+ * belongs to the organization — see `githubReauthUrl`'s `ownerOnly` on the web
+ * side, which is what tells the user that before they click.
+ */
+function installationSettingsUrl(installation: {
+  installationId: number;
+  login: string;
+  accountType: string;
+  htmlUrl: string | null;
+}): string {
+  if (installation.htmlUrl) return installation.htmlUrl;
+  const path =
+    installation.accountType === "Organization"
+      ? `/organizations/${encodeURIComponent(installation.login)}/settings/installations/${installation.installationId}`
+      : `/settings/installations/${installation.installationId}`;
+  return `https://github.com${path}`;
+}
+
 function callbackUrl(provider: GitProviderKind): string {
   return `${getPublicUrl()}/api/_git/${provider}/callback`;
 }
@@ -419,11 +445,7 @@ export const createGitProviderRoutes = () => {
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     const installation = await appAuth.getInstallation(account.installationId);
     if (!installation) return c.json({ error: "Installation not found" }, 404);
-    const path =
-      installation.accountType === "Organization"
-        ? `/organizations/${encodeURIComponent(installation.login)}/settings/installations/${installation.installationId}`
-        : `/settings/installations/${installation.installationId}`;
-    return c.redirect(`https://github.com${path}`);
+    return c.redirect(installationSettingsUrl(installation));
   });
 
   app.get("/git-providers/gitlab/connect", async (c) => {

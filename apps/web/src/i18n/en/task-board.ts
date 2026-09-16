@@ -70,6 +70,8 @@ export const taskBoard = {
     "Studio could not get a GitHub token for this repository. Reconnect GitHub, then re-run the task.",
   "taskBoard.taskDialog.runFailedGithubMissing":
     "The GitHub connection for this repository no longer exists. Link the repository again, then re-run the task.",
+  "taskBoard.taskDialog.runFailedGithubOwnerOnly":
+    "Only an owner of the {owner} GitHub organization can accept the App's new permissions — GitHub shows everyone else a 404. If that isn't you, send them this task.",
   "taskBoard.taskDialog.runFailedReconnect": "Reconnect GitHub",
   "taskBoard.taskDialog.runFailedLinkRepo": "Link repository",
   "taskBoard.taskDialog.activityLabel": "Activity",

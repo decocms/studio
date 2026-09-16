@@ -209,10 +209,13 @@ export interface GithubInstallation {
   avatarUrl: string | null;
   /** "User" or "Organization". */
   accountType: string;
+  /** GitHub's own link to this installation's settings page, when it sent one. */
+  htmlUrl: string | null;
 }
 
 interface InstallationJson {
   id?: unknown;
+  html_url?: unknown;
   account?: {
     id?: unknown;
     login?: unknown;
@@ -245,6 +248,7 @@ export function mapInstallation(
     avatarUrl:
       typeof account.avatar_url === "string" ? account.avatar_url : null,
     accountType: typeof account.type === "string" ? account.type : "User",
+    htmlUrl: typeof json.html_url === "string" ? json.html_url : null,
   };
 }
 

@@ -2822,7 +2822,7 @@ function RunFailureBanner({
     failure.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
   const connectionMissing =
     failure.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
-  const reauthUrl = githubReauthUrl({
+  const reauth = githubReauthUrl({
     orgSlug,
     repo: item.repo,
     repositories: repositories ?? [],
@@ -2842,12 +2842,19 @@ function RunFailureBanner({
                 ? t("taskBoard.taskDialog.runFailedGithubAuth")
                 : failure.message}
           </AlertDescription>
+          {needsGithubAuth && reauth.ownerOnly && reauth.owner && (
+            <AlertDescription>
+              {t("taskBoard.taskDialog.runFailedGithubOwnerOnly", {
+                owner: reauth.owner,
+              })}
+            </AlertDescription>
+          )}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 self-start">
         {(needsGithubAuth || connectionMissing) && (
           <Button size="sm" asChild>
-            <a href={reauthUrl}>
+            <a href={reauth.url}>
               {t(
                 connectionMissing
                   ? "taskBoard.taskDialog.runFailedLinkRepo"
