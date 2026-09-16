@@ -106,29 +106,24 @@ describe("breadcrumb composition", () => {
 
 describe("breadcrumb collapse", () => {
   test("compact trails keep the leaf and put every ancestor in one menu", () => {
-    expect(collapseBreadcrumbs(["Org", "Library", "Folder"], true)).toEqual({
-      start: [],
-      collapsed: ["Org", "Library"],
-      end: ["Folder"],
-    });
-    expect(collapseBreadcrumbs(["Org", "Project"], true)).toEqual({
-      start: [],
-      collapsed: ["Org"],
-      end: ["Project"],
-    });
-    expect(collapseBreadcrumbs(["Org"], true)).toEqual({
-      start: [],
-      collapsed: [],
-      end: ["Org"],
-    });
+    expect(collapseBreadcrumbs(["Org", "Library", "Folder"], true)).toEqual([
+      { type: "menu", items: ["Org", "Library"] },
+      { type: "item", item: "Folder" },
+    ]);
+    expect(collapseBreadcrumbs(["Org", "Project"], true)).toEqual([
+      { type: "menu", items: ["Org"] },
+      { type: "item", item: "Project" },
+    ]);
+    expect(collapseBreadcrumbs(["Org"], true)).toEqual([
+      { type: "item", item: "Org" },
+    ]);
+    expect(collapseBreadcrumbs([], true)).toEqual([]);
   });
   test.each([0, 1, 2, 3, 4])("keeps a %i-item trail intact", (length) => {
     const items = Array.from({ length }, (_, index) => index);
-    expect(collapseBreadcrumbs(items)).toEqual({
-      start: [],
-      collapsed: [],
-      end: items,
-    });
+    expect(collapseBreadcrumbs(items)).toEqual(
+      items.map((item) => ({ type: "item", item })),
+    );
   });
 
   test("collapses Project and Site Editor together, keeping the page and block", () => {
@@ -140,11 +135,12 @@ describe("breadcrumb collapse", () => {
         "Home",
         "HeroSlideShow",
       ]),
-    ).toEqual({
-      start: ["Org"],
-      collapsed: ["Project", "Site Editor"],
-      end: ["Home", "HeroSlideShow"],
-    });
+    ).toEqual([
+      { type: "item", item: "Org" },
+      { type: "menu", items: ["Project", "Site Editor"] },
+      { type: "item", item: "Home" },
+      { type: "item", item: "HeroSlideShow" },
+    ]);
   });
 
   test("keeps one ordered menu and the immediate parent at any depth", () => {
@@ -156,9 +152,38 @@ describe("breadcrumb collapse", () => {
       "HeroSlideShow",
       "First slide",
     ];
-    const { start, collapsed, end } = collapseBreadcrumbs(items);
-    expect(collapsed).toEqual(["Project", "Site Editor", "Home"]);
-    expect(end).toEqual(["HeroSlideShow", "First slide"]);
-    expect([...start, ...collapsed, ...end]).toEqual(items);
+    expect(collapseBreadcrumbs(items)).toEqual([
+      { type: "item", item: "Org" },
+      { type: "menu", items: ["Project", "Site Editor", "Home"] },
+      { type: "item", item: "HeroSlideShow" },
+      { type: "item", item: "First slide" },
+    ]);
   });
+
+  test.each([false, true])(
+    "preserves every item and its action in order at any depth (compact: %s)",
+    (compact) => {
+      const leaf = { key: "leaf", label: "Leaf", onSelect: () => -1 };
+      for (let length = 0; length < 64; length++) {
+        const items = Object.freeze([
+          ...Array.from({ length }, (_, index) => ({
+            key: String(index),
+            label: "Repeated label",
+            onSelect: () => index,
+          })),
+          leaf,
+        ]);
+        const entries = collapseBreadcrumbs(items, compact);
+        const expanded = entries.flatMap((entry) =>
+          entry.type === "menu" ? entry.items : [entry.item],
+        );
+        expect(expanded).toEqual([...items]);
+        items.forEach((item, index) => expect(expanded[index]).toBe(item));
+        expect(
+          entries.filter((entry) => entry.type === "menu").length,
+        ).toBeLessThanOrEqual(1);
+        expect(entries.at(-1)).toEqual({ type: "item", item: leaf });
+      }
+    },
+  );
 });

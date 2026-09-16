@@ -35,16 +35,26 @@ export function resolveBreadcrumbs(
   return items.flatMap(visit);
 }
 
-/** Short trails stay intact; longer ones keep the root, parent, and leaf. */
-export function collapseBreadcrumbs<T>(items: readonly T[], compact = false) {
-  if (compact && items.length > 1) {
-    return { start: [], collapsed: items.slice(0, -1), end: items.slice(-1) };
-  }
-  return items.length > 4
-    ? {
-        start: items.slice(0, 1),
-        collapsed: items.slice(1, -2),
-        end: items.slice(-2),
-      }
-    : { start: [], collapsed: [], end: items };
+type BreadcrumbEntry<T> =
+  | { type: "item"; item: T }
+  | { type: "menu"; items: readonly T[] };
+
+/** Replace one ancestor range with a menu, keeping the leaf in the same list. */
+export function collapseBreadcrumbs<T>(
+  items: readonly T[],
+  compact = false,
+): BreadcrumbEntry<T>[] {
+  const entries: BreadcrumbEntry<T>[] = items.map((item) => ({
+    type: "item",
+    item,
+  }));
+  if (items.length <= (compact ? 1 : 4)) return entries;
+
+  const start = compact ? 0 : 1;
+  const end = items.length - (compact ? 1 : 2);
+  entries.splice(start, end - start, {
+    type: "menu",
+    items: items.slice(start, end),
+  });
+  return entries;
 }

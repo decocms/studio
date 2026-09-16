@@ -125,11 +125,7 @@ function BreadcrumbSegment({
 function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
   const t = useT();
   const [width, ref] = useElementWidth();
-  const { start, collapsed, end } = collapseBreadcrumbs(
-    items,
-    width >= 0 && width < 320,
-  );
-  const visible = [...start, ...(collapsed.length ? [null] : []), ...end];
+  const entries = collapseBreadcrumbs(items, width >= 0 && width < 320);
   return (
     <nav
       ref={ref}
@@ -140,13 +136,15 @@ function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
         data-slot="page-breadcrumbs"
         className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground"
       >
-        {visible.map((item, index) => (
+        {entries.map((entry, index) => (
           <li
-            key={item ? `item:${item.key}` : "collapsed"}
+            key={entry.type === "item" ? `item:${entry.item.key}` : "menu"}
             className={cn(
               "flex min-w-0 items-center gap-2",
               index > 0 && "min-w-5",
-              item ? "last:min-w-16 last:flex-[1_1_auto]" : "shrink-0",
+              entry.type === "item"
+                ? "last:min-w-16 last:flex-[1_1_auto]"
+                : "shrink-0",
             )}
           >
             {index > 0 && (
@@ -155,13 +153,13 @@ function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
                 className="size-3 shrink-0 text-muted-foreground/60"
               />
             )}
-            {item ? (
+            {entry.type === "item" ? (
               <BreadcrumbSegment
-                item={item}
-                current={index === visible.length - 1}
+                item={entry.item}
+                current={index === entries.length - 1}
               />
             ) : (
-              <BreadcrumbMenu items={collapsed} />
+              <BreadcrumbMenu items={entry.items} />
             )}
           </li>
         ))}

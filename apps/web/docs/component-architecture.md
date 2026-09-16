@@ -336,6 +336,8 @@ before the Content editor closes. These actions do not use browser history.
 The shared collapse rule is independent of routes and editor type:
 show trails of up to four items in full; otherwise keep the first and last two
 items and put everything between them in **one** ordered menu.
+The helper replaces one contiguous ancestor range with a menu entry and returns
+the complete ordered list for the renderer.
 
 ```text
 Organization > Project > Site Editor > Home
