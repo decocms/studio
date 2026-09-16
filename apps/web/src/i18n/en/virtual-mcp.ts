@@ -126,21 +126,9 @@ export const virtualMcp = {
   "virtualMcp.settings.identity.name": "Project name",
   "virtualMcp.settings.identity.description": "Description",
   "virtualMcp.settings.general.title": "General",
-  "virtualMcp.settings.general.heading": "Project details",
-  "virtualMcp.settings.general.description":
-    "The basics your team sees across Studio. Changes save automatically.",
   "virtualMcp.settings.site.title": "CMS",
-  "virtualMcp.settings.site.heading": "Site and sandbox",
-  "virtualMcp.settings.site.description":
-    "How edits reach the live site, and the repository it runs from.",
   "virtualMcp.settings.groups.advanced": "Advanced",
   "virtualMcp.settings.connections.title": "Connections",
-  "virtualMcp.settings.connections.heading": "Connected tools",
-  "virtualMcp.settings.connections.description":
-    "The MCP servers this project brings together.",
-  "virtualMcp.settings.views.projectViews": "Project layout",
-  "virtualMcp.settings.views.description":
-    "Choose how your project opens and which views appear in its sidebar.",
   "virtualMcp.settings.views.defaults": "Default layout",
   "virtualMcp.settings.views.sidebar": "Sidebar views",
   "virtualMcp.settings.views.open": "Open",

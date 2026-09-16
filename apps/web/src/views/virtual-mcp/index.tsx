@@ -74,7 +74,6 @@ import { ProjectViewsSection } from "./settings/views-section";
 import { useProjectViews } from "./settings/use-project-views";
 import { ProjectIdentity } from "./settings/project-identity";
 import { ProjectSettingsTabs } from "./settings/settings-tabs";
-import { PROJECT_SETTINGS_SECTIONS } from "./settings/sections";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -998,16 +997,9 @@ function VirtualMcpDetailViewWithData({
           className="@container/project-settings"
         >
           <SettingsPage>
-            <div className="flex flex-col gap-1 px-4">
-              <h2 className="text-base font-medium">
-                {t(PROJECT_SETTINGS_SECTIONS[section].headingKey)}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {t(PROJECT_SETTINGS_SECTIONS[section].descriptionKey)}
-              </p>
-            </div>
             {section === "general" && (
               <div className="flex flex-col gap-4">
+                <ProjectViewsSection views={views} />
                 <ProjectIdentity form={form} onCommit={flushAndSave} />
                 <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
                   <User
@@ -1248,7 +1240,6 @@ function VirtualMcpDetailViewWithData({
                 </SettingsCard>
               </SettingsSection>
             )}
-            {section === "views" && <ProjectViewsSection views={views} />}
             {section === "general" && (
               <SettingsSection title={t("virtualMcp.settings.groups.advanced")}>
                 <SettingsCard>
