@@ -65,8 +65,16 @@ test.describe("chat layout composition", () => {
     await expect(
       sidebar.getByRole("button", { name: "Close chat", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
-    await page
-      .getByTestId("side-panel")
+    await expect(
+      page
+        .getByTestId("side-panel")
+        .getByRole("button", { name: "Close chat", exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      animations: "disabled",
+      path: test.info().outputPath("compact-chat-header.png"),
+    });
+    await sidebar
       .getByRole("button", { name: "Close chat", exact: true })
       .click();
     await expect(page.getByTestId("chat-panel")).toHaveCount(0);

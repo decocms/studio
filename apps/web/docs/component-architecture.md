@@ -101,6 +101,7 @@ Additional captures:
 - [Organization home header](assets/compact-org-home-header.png)
 - [Project home header](assets/compact-project-home-header.png)
 - [Sidebar and chat controls with the shared button radius](assets/compact-sidebar-controls.png)
+- [Chat header with visibility controlled from the sidebar](assets/compact-chat-header.png)
 - [Expanded project sidebar](assets/compact-editor-expanded.png)
 - [Page picker with name and path on one line](assets/compact-editor-page-picker.png)
 - [Tasks with Board / List tabs and filters beside New task](assets/compact-tasks-list.png)
@@ -317,6 +318,7 @@ chat preserves the current project, page, and thread; starting a new chat is a
 separate action inside the conversation.
 The sidebar chat toggle renders from `ChatLayout` through a shared slot, so its
 background and pressed state follow the visible chat, including on mobile.
+It also closes the conversation; the chat header has no separate close button.
 Settings supplies an inactive fallback that opens chat on Home.
 
 Preview and Content tabs show their globe and document icons beside the labels,

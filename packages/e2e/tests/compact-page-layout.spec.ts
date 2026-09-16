@@ -384,12 +384,10 @@ test.describe("compact page layout", () => {
       expect(new URL(page.url()).searchParams.get("thread")).toBe(
         thread.item.id,
       );
-      await page
-        .getByTestId("side-panel")
-        .getByRole("button", { name: "Close chat", exact: true })
-        .click();
+      await threadToggle.click();
       await expect(page.getByTestId("chat-panel")).toHaveCount(0);
       await expect(threadToggle).toHaveAttribute("aria-pressed", "false");
+      await page.mouse.move(0, 0);
       await expect(threadToggle).toHaveCSS(
         "background-color",
         "rgba(0, 0, 0, 0)",

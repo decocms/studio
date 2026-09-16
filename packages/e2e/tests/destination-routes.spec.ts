@@ -549,7 +549,7 @@ test("main and chat toggles preserve the page and thread", async ({
   await expect(mainPanel(page)).toBeVisible();
   await expect(chatPanel(page)).toBeVisible();
   await page
-    .getByTestId("side-panel")
+    .locator('[data-slot="sidebar"]')
     .getByRole("button", { name: "Close chat", exact: true })
     .click();
   await expect(chatPanel(page)).toHaveCount(0);

@@ -1,4 +1,4 @@
-import { XClose, LayoutLeft } from "@untitledui/icons";
+import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 /** Binds project and thread runtime to ChatLayout and its routed content. */
@@ -486,14 +486,6 @@ function ThreadTopbar() {
       </div>
       <Panel.Topbar.Right className="shrink-0">
         <NewChatCrumb />
-        {layout.contentOpen && (
-          <ToolbarIconButton
-            onClick={layout.toggleThread}
-            aria-label={t("page.closeThread")}
-          >
-            <XClose size={16} />
-          </ToolbarIconButton>
-        )}
         <div className="hidden md:contents">
           <ContentToggle
             open={layout.contentOpen}
