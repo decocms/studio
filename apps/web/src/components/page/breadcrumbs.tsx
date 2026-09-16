@@ -45,20 +45,30 @@ function BreadcrumbMenu({ items }: { items: readonly BreadcrumbItem[] }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {items.map((item) => (
-          <DropdownMenuItem
-            key={item.key}
-            asChild={!!item.link && !item.onSelect}
-            onSelect={item.onSelect}
-            disabled={!item.onSelect && !item.link}
-          >
-            {item.link && !item.onSelect ? (
-              <BreadcrumbLink {...item.link}>{item.label}</BreadcrumbLink>
-            ) : (
-              <span className="max-w-64 truncate">{item.label}</span>
-            )}
-          </DropdownMenuItem>
-        ))}
+        {items.map((item) => {
+          const label = (
+            <span
+              className="max-w-64 truncate"
+              title={typeof item.label === "string" ? item.label : undefined}
+            >
+              {item.label}
+            </span>
+          );
+          return (
+            <DropdownMenuItem
+              key={item.key}
+              asChild={!!item.link && !item.onSelect}
+              onSelect={item.onSelect}
+              disabled={!item.onSelect && !item.link}
+            >
+              {item.link && !item.onSelect ? (
+                <BreadcrumbLink {...item.link}>{label}</BreadcrumbLink>
+              ) : (
+                label
+              )}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
