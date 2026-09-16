@@ -7,10 +7,10 @@ test("compact layout is opt-in, persists, and can be turned off", async ({
   test.setTimeout(120_000);
   await page.goto(`/${orgSlug}/settings/profile`);
   const toggle = page.getByRole("switch", {
-    name: "Compact layout (preview)",
+    name: "Consistent Layout (beta)",
     exact: true,
   });
-  const row = page.getByRole("button", { name: /^Compact layout \(preview\)/ });
+  const row = page.getByRole("button", { name: /^Consistent Layout \(beta\)/ });
   await expect(toggle).not.toBeChecked({ timeout: 60_000 });
   await expect(
     page.getByText("Project settings shortcut", { exact: true }),
@@ -39,7 +39,7 @@ test("compact layout is opt-in, persists, and can be turned off", async ({
   await row.hover();
   await expect(row).toHaveCSS("cursor", "pointer");
   await expect(row).toHaveCSS("background-color", hoverBackground);
-  await row.getByText("Compact layout (preview)", { exact: true }).click();
+  await row.getByText("Consistent Layout (beta)", { exact: true }).click();
   await expect(toggle).toBeChecked();
   await toggle.press("Space");
   await expect(toggle).not.toBeChecked();
@@ -172,7 +172,7 @@ test("classic project settings keep edits when opting in and back out", async ({
   for (const enabled of [true, false]) {
     await page.goto(`/${orgSlug}/settings/profile`);
     const toggle = page.getByRole("switch", {
-      name: "Compact layout (preview)",
+      name: "Consistent Layout (beta)",
       exact: true,
     });
     await toggle.click();
@@ -223,7 +223,10 @@ test("existing preferences keep their values and an invalid layout preference st
   });
   await page.goto(`/${orgSlug}/settings/profile`);
   await expect(
-    page.getByRole("switch", { name: "Layout compacto (prévia)", exact: true }),
+    page.getByRole("switch", {
+      name: "Layout consistente (beta)",
+      exact: true,
+    }),
   ).not.toBeChecked({ timeout: 60_000 });
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByTestId("page-header")).toHaveCount(0);

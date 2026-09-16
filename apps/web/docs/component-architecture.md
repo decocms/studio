@@ -5,8 +5,8 @@ chat arrangement, panel surfaces, and document content.
 
 ## Compact layout preference
 
-The compact presentation is opt-in through **Profile & Preferences → Compact
-layout (preview)**. `usePreferences().compactPageLayout` defaults to `false`
+The compact presentation is opt-in through **Profile & Preferences → Consistent
+Layout (beta)**. `usePreferences().compactPageLayout` defaults to `false`
 and persists in this browser alongside theme and language. Changing it applies
 immediately; turning it off restores the classic presentation without changing
 project data, navigation URLs, or other preferences.

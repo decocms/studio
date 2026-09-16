@@ -308,7 +308,7 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.compactPageLayout": "Compact layout (preview)",
+  "settings.preferences.compactPageLayout": "Consistent Layout (beta)",
   "settings.preferences.compactPageLayoutDescription":
     "Try the redesigned navigation, page headers, and controls in this browser. Turn it off to return to the current layout.",
   "settings.preferences.theme": "Theme",

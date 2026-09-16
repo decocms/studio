@@ -316,7 +316,7 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
-  "settings.preferences.compactPageLayout": "Layout compacto (prévia)",
+  "settings.preferences.compactPageLayout": "Layout consistente (beta)",
   "settings.preferences.compactPageLayoutDescription":
     "Experimente a nova navegação, os cabeçalhos e os controles neste navegador. Desative para voltar ao layout atual.",
   "settings.preferences.theme": "Tema",
