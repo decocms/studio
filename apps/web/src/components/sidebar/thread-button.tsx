@@ -2,7 +2,7 @@ import { createContext, use, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { mobileSurfaceSearch } from "@/hooks/use-chat-layout-state";
-import { MessageChatCircle } from "@untitledui/icons";
+import { MessageCircle01 } from "@untitledui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Tooltip,
@@ -62,7 +62,7 @@ function ThreadButton({
             if (isMobile) setOpenMobile(false);
           }}
         >
-          <MessageChatCircle size={16} />
+          <MessageCircle01 size={16} />
         </ToolbarIconButton>
       </TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
