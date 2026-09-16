@@ -23,6 +23,7 @@
 import { z } from "zod";
 import {
   auditTaskBoardAdminAction,
+  isAdminOrgId,
   isTaskBoardAdminCtx,
 } from "@/core/task-board-admin";
 import type { StudioContext } from "@/core/studio-context";
@@ -73,7 +74,10 @@ async function scopedTo(
   ref: string,
   toolName: string,
 ): Promise<StudioContext> {
-  if (!(await isTaskBoardAdminCtx(ctx))) {
+  if (
+    !isAdminOrgId(ctx.organization?.id) ||
+    !(await isTaskBoardAdminCtx(ctx))
+  ) {
     throw new Error(
       "Not allowed to act on another organization (the `org` parameter needs an admin org)",
     );

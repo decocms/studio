@@ -109,7 +109,8 @@ async function resolveScope(
     return { query: { ...range, ...own.query }, org: own.org };
   }
 
-  const isAdmin = await isTaskBoardAdminCtx(ctx);
+  const isAdmin =
+    isAdminOrgId(organization.id) && (await isTaskBoardAdminCtx(ctx));
 
   if (orgRef === "all") {
     if (!isAdmin) return { query: { ...range, ...own.query }, org: own.org };
