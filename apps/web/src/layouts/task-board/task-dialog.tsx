@@ -29,6 +29,11 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@decocms/ui/components/alert.tsx";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
@@ -113,6 +118,8 @@ import {
   prCardActions,
 } from "./pr-card-actions";
 import { previewRouteUrl } from "./preview-routes";
+import { lastRunFailure } from "./run-failure";
+import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import { usePreviewProbe } from "@/hooks/use-preview-probe";
@@ -903,6 +910,14 @@ function TaskBoardItemEditor({
                 </p>
               )}
             </div>
+
+            {item && (
+              <RunFailureBanner
+                item={item}
+                orgSlug={org.slug}
+                onRerun={onRerun}
+              />
+            )}
 
             <div className="flex flex-col">
               <div className="flex flex-col py-6">
@@ -2532,11 +2547,14 @@ function describeActivity(
       return t("taskBoard.taskDialog.activityCreated");
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
+      // Stored as a stringified Error, wire prefix and all.
+      const reason =
+        lastRunFailure([{ action: "status_changed", data: d }])?.message ?? "";
       if (typeof d.retry === "number") {
         return t("taskBoard.taskDialog.activityRetryScheduled", {
           attempt: String(d.retry),
           of: String(d.of ?? d.retry),
-          reason: String(d.reason ?? ""),
+          reason,
         });
       }
       if (typeof d.retriesSpent === "number" && d.retriesSpent > 0) {
@@ -2544,6 +2562,7 @@ function describeActivity(
           t("taskBoard.taskDialog.activityRetriesExhausted", {
             to,
             count: String(d.retriesSpent),
+            reason,
           }),
           { to: statusChip(d.to) },
         );
@@ -2766,5 +2785,75 @@ function TimelineBlock({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * Why the card's last run died, and the one button that can fix it.
+ *
+ * The timeline already carried this text, but as prose with a wire prefix on
+ * it and no remedy — so the two failures a human can actually clear (a GitHub
+ * App installation that lost its permissions, a repo whose connection is gone)
+ * read as noise. Re-run is offered alongside because it is the right next step
+ * once the auth is fixed, and because a re-run BEFORE fixing it fails again
+ * inside a second, which is what made Re-run look broken.
+ *
+ * Renders nothing unless the newest status move carries a reason, so a card
+ * that got anywhere since has no banner. See {@link lastRunFailure}.
+ */
+function RunFailureBanner({
+  item,
+  orgSlug,
+  onRerun,
+}: {
+  item: TaskBoardItem;
+  orgSlug: string;
+  onRerun?: () => void;
+}) {
+  const t = useT();
+  const { data: activity } = useTaskBoardActivity(item.id);
+  const failure = lastRunFailure(activity ?? []);
+  if (!failure) return null;
+
+  const needsGithubAuth =
+    failure.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
+  const connectionMissing =
+    failure.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
+
+  return (
+    <Alert variant="destructive" className="mt-2 flex-col">
+      <div className="flex items-start gap-3">
+        <AlertCircle />
+        <div className="flex flex-col gap-1">
+          <AlertTitle>{t("taskBoard.taskDialog.runFailedTitle")}</AlertTitle>
+          <AlertDescription>
+            {connectionMissing
+              ? t("taskBoard.taskDialog.runFailedGithubMissing")
+              : needsGithubAuth
+                ? t("taskBoard.taskDialog.runFailedGithubAuth")
+                : failure.message}
+          </AlertDescription>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 self-start">
+        {(needsGithubAuth || connectionMissing) && (
+          <Button size="sm" asChild>
+            <a href={`/${orgSlug}/settings/connections`}>
+              {t(
+                connectionMissing
+                  ? "taskBoard.taskDialog.runFailedLinkRepo"
+                  : "taskBoard.taskDialog.runFailedReconnect",
+              )}
+            </a>
+          </Button>
+        )}
+        {onRerun && (
+          <Button size="sm" variant="outline" onClick={onRerun}>
+            <RefreshCw01 size={14} />
+            {t("taskBoard.taskBoard.rerun")}
+          </Button>
+        )}
+      </div>
+    </Alert>
   );
 }

@@ -68,6 +68,13 @@ export const taskBoard = {
     "Não foi possível excluir a tarefa. Tente novamente.",
   "taskBoard.taskBoard.deleteBulkError":
     "Não foi possível excluir {failed} de {total} tarefas.",
+  "taskBoard.taskDialog.runFailedTitle": "Esta execução não pôde começar",
+  "taskBoard.taskDialog.runFailedGithubAuth":
+    "O Studio não conseguiu obter um token do GitHub para este repositório. Reconecte o GitHub e execute a tarefa novamente.",
+  "taskBoard.taskDialog.runFailedGithubMissing":
+    "A conexão do GitHub para este repositório não existe mais. Vincule o repositório novamente e execute a tarefa de novo.",
+  "taskBoard.taskDialog.runFailedReconnect": "Reconectar GitHub",
+  "taskBoard.taskDialog.runFailedLinkRepo": "Vincular repositório",
   "taskBoard.taskDialog.activityLabel": "Atividade",
   "taskBoard.taskDialog.activityCreated": "criou a tarefa",
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
@@ -75,7 +82,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityRetryScheduled":
     "agendou a tentativa {attempt} de {of} — {reason}",
   "taskBoard.taskDialog.activityRetriesExhausted":
-    "moveu para {to} depois de {count} tentativas sem sucesso",
+    "moveu para {to} depois de {count} tentativas sem sucesso — {reason}",
   "taskBoard.taskDialog.activityAssigned": "atribuiu para {name}",
   "taskBoard.taskDialog.activityUnassigned": "removeu a atribuição",
   "taskBoard.taskDialog.activityDelegated": "delegou a {name}",

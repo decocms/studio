@@ -65,6 +65,13 @@ export const taskBoard = {
     "Couldn't delete the task. Please try again.",
   "taskBoard.taskBoard.deleteBulkError":
     "Couldn't delete {failed} of {total} tasks.",
+  "taskBoard.taskDialog.runFailedTitle": "This run could not start",
+  "taskBoard.taskDialog.runFailedGithubAuth":
+    "Studio could not get a GitHub token for this repository. Reconnect GitHub, then re-run the task.",
+  "taskBoard.taskDialog.runFailedGithubMissing":
+    "The GitHub connection for this repository no longer exists. Link the repository again, then re-run the task.",
+  "taskBoard.taskDialog.runFailedReconnect": "Reconnect GitHub",
+  "taskBoard.taskDialog.runFailedLinkRepo": "Link repository",
   "taskBoard.taskDialog.activityLabel": "Activity",
   "taskBoard.taskDialog.activityCreated": "created the task",
   "taskBoard.taskDialog.activityMovedFromTo": "moved from {from} to {to}",
@@ -72,7 +79,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.activityRetryScheduled":
     "scheduled retry {attempt} of {of} — {reason}",
   "taskBoard.taskDialog.activityRetriesExhausted":
-    "moved to {to} after {count} failed retries",
+    "moved to {to} after {count} failed retries — {reason}",
   "taskBoard.taskDialog.activityAssigned": "assigned to {name}",
   "taskBoard.taskDialog.activityUnassigned": "removed the assignee",
   "taskBoard.taskDialog.activityDelegated": "delegated to {name}",
