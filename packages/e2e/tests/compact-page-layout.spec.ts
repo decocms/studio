@@ -256,7 +256,7 @@ test.describe("compact page layout", () => {
       await expect(
         page
           .getByTestId("page-header")
-          .getByRole("heading", { name: "Site Editor", exact: true }),
+          .getByRole("heading", { name: "Home page", exact: true }),
       ).toBeVisible();
       await expect(
         page

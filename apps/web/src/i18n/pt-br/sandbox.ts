@@ -619,14 +619,11 @@ export const sandbox = {
     "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
-  "sandbox.runnableBlockEditor.backToList": "Voltar para a lista",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.runnableBlockEditor.closeResult": "Fechar resultado",
   "sandbox.runnableBlockEditor.collapse": "Recolher",
   "sandbox.runnableBlockEditor.collapseResult": "Recolher resultado",
   "sandbox.runnableBlockEditor.editAsJson": "Editar como JSON",
-  "sandbox.runnableBlockEditor.editingBreadcrumb":
-    "Trilha de navegação de edição",
   "sandbox.runnableBlockEditor.expand": "Expandir",
   "sandbox.runnableBlockEditor.expandResult": "Expandir resultado",
   "sandbox.runnableBlockEditor.failedToRun": "Falha ao executar {singular}",
@@ -681,8 +678,6 @@ export const sandbox = {
     "Caminho (relativo à raiz do repositório) do diretório que contém package.json. Deixe em branco para a raiz do repositório.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
-  "sandbox.savedSectionEditor.editingBreadcrumb":
-    "Trilha de navegação de edição",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Seção global — alterações são salvas automaticamente e aplicadas em todos os locais onde é usada.",
   "sandbox.savedSectionEditor.invalidJsonError":

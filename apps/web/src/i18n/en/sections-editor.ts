@@ -194,7 +194,6 @@ export const sectionsEditor = {
     "Remove all variants",
   "sectionsEditor.sectionVariantList.rename": "Rename",
   "sectionsEditor.sectionVariantList.title": "Variants",
-  "sectionsEditor.sectionsEditor.back": "Back",
   "sectionsEditor.sectionsEditor.cannotDeleteOnlyVariant":
     "Cannot delete the only variant.",
   "sectionsEditor.sectionsEditor.couldNotAddVariant": "Could not add variant.",
@@ -209,7 +208,6 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.couldNotRemoveVariants":
     "Could not remove variants.",
   "sectionsEditor.sectionsEditor.editSeo": "Edit SEO",
-  "sectionsEditor.sectionsEditor.editingBreadcrumb": "Editing breadcrumb",
   "sectionsEditor.sectionsEditor.editingInVariant":
     "Editing in variant: {variant}",
   "sectionsEditor.sectionsEditor.failedToRenameVariant":

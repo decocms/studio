@@ -13,7 +13,7 @@ import { useT } from "@/i18n/use-t";
 interface BreadcrumbItem {
   key: string;
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
 }
 
 function Separator() {
@@ -41,7 +41,11 @@ function BreadcrumbMenu({ items }: { items: readonly BreadcrumbItem[] }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         {items.map((item) => (
-          <DropdownMenuItem key={item.key} onSelect={item.onClick}>
+          <DropdownMenuItem
+            key={item.key}
+            onSelect={item.onClick}
+            disabled={!item.onClick}
+          >
             <span className="max-w-64 truncate" title={item.label}>
               {item.label}
             </span>
@@ -81,14 +85,20 @@ export function PageBreadcrumbs({
                 <Separator />
               </>
             )}
-            <button
-              type="button"
-              onClick={item.onClick}
-              title={item.label}
-              className="max-w-32 truncate rounded-lg hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {item.label}
-            </button>
+            {item.onClick ? (
+              <button
+                type="button"
+                onClick={item.onClick}
+                title={item.label}
+                className="max-w-32 truncate rounded-lg hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {item.label}
+              </button>
+            ) : (
+              <span className="max-w-32 truncate" title={item.label}>
+                {item.label}
+              </span>
+            )}
             <Separator />
           </Fragment>
         ))}

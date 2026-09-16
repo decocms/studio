@@ -595,13 +595,11 @@ export const sandbox = {
     "The connected GitHub repository for this project. Manage in Connections.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edits stay local until you save this as a global {singular}. Run to invoke it against the live preview.",
-  "sandbox.runnableBlockEditor.backToList": "Back to list",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.runnableBlockEditor.closeResult": "Close result",
   "sandbox.runnableBlockEditor.collapse": "Collapse",
   "sandbox.runnableBlockEditor.collapseResult": "Collapse result",
   "sandbox.runnableBlockEditor.editAsJson": "Edit as JSON",
-  "sandbox.runnableBlockEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.runnableBlockEditor.expand": "Expand",
   "sandbox.runnableBlockEditor.expandResult": "Expand result",
   "sandbox.runnableBlockEditor.failedToRun": "Failed to run {singular}",
@@ -654,7 +652,6 @@ export const sandbox = {
     "Path (relative to repo root) to the directory containing package.json. Leave blank for the repo root.",
   "sandbox.savedSectionEditor.closeJsonEditor": "Close JSON editor",
   "sandbox.savedSectionEditor.editAsJson": "Edit as JSON",
-  "sandbox.savedSectionEditor.editingBreadcrumb": "Editing breadcrumb",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Global section — changes save automatically and apply everywhere it's used.",
   "sandbox.savedSectionEditor.invalidJsonError":

@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { BlockBreadcrumbs } from "./block-breadcrumbs";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -7,8 +8,6 @@ import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import {
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Code01,
   Globe01,
@@ -51,11 +50,7 @@ import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
-import {
-  type Crumb,
-  crumbLabel,
-  headerBackTargetIndex,
-} from "./schema-form-breadcrumb";
+import type { Crumb } from "./schema-form-breadcrumb";
 import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
 import {
   buildMatcherBlockData,
@@ -1908,22 +1903,25 @@ export function SectionsEditor({
     editingSeo && activePage
       ? [activePage.name, "SEO", ...seoFieldBreadcrumbs]
       : [];
-  const headerCrumbs = editingSeo
-    ? seoBreadcrumbs
-    : showGlobalBanner
-      ? editingBreadcrumbs.length > 0
-        ? editingBreadcrumbs
-        : [globalBannerName]
-      : editingBreadcrumbs;
-  // A multivariate section shows its variant list and the selected variant's
-  // form as one combined view, so the section-label and variant-label crumbs
-  // collapse to the same level. At that top level the back button must exit the
-  // section (not clear an already-empty field trail) — see headerBackTargetIndex.
-  const isMultivariateSectionTop =
-    !editingSeo &&
-    !isGlobalBlockMode &&
-    isEditingMultivariateSection &&
-    fieldBreadcrumbs.length === 0;
+  const headerCrumbs =
+    seoBreadcrumbs.length > 0
+      ? seoBreadcrumbs
+      : showGlobalBanner
+        ? editingBreadcrumbs.length > 0
+          ? editingBreadcrumbs
+          : [globalBannerName]
+        : editingBreadcrumbs.length > 0
+          ? editingBreadcrumbs
+          : [activePage!.name];
+  const canAddSectionVariant =
+    isEditingSection &&
+    !isEditingMultivariateSection &&
+    !selectedParsed?.isHidden &&
+    !!activePageKey;
+  const showEditingActions =
+    showGlobalBanner ||
+    (!isGlobalBlockMode && hasMultipleVariants && !!activeVariant) ||
+    canAddSectionVariant;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
@@ -2512,134 +2510,71 @@ export function SectionsEditor({
 
   return (
     <div className="flex h-full min-w-0 w-full flex-col">
+      <BlockBreadcrumbs
+        crumbs={headerCrumbs}
+        onSelect={handleBreadcrumbClick}
+      />
       {/* Page header */}
       <div className="shrink-0">
-        {/* When editing a reusable/global block (opened directly or from inside
-            a page), the breadcrumb bar goes purple with a globe and a note that
-            changes apply everywhere — so it never reads as a local edit. */}
         {showGlobalBanner || isEditing || editingSeo ? (
-          <div
-            className={cn(
-              "border-b px-3 py-2.5",
-              showGlobalBanner &&
-                "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
-            )}
-          >
-            <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-              {headerCrumbs.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleBreadcrumbClick(
-                      headerBackTargetIndex(headerCrumbs.length, {
-                        isMultivariateSectionTop,
-                      }),
-                    )
-                  }
-                  title={t("sectionsEditor.sectionsEditor.back")}
-                  aria-label={t("sectionsEditor.sectionsEditor.back")}
-                  className={cn(
-                    "shrink-0 inline-flex size-6 items-center justify-center classic:rounded-md compact:rounded-lg transition-colors",
-                    showGlobalBanner
-                      ? "text-foreground/80 hover:bg-global-section/15"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                  )}
-                >
-                  <ChevronLeft className="size-4" />
-                </button>
+          showEditingActions && (
+            <div
+              className={cn(
+                "border-b px-3 py-2.5",
+                showGlobalBanner &&
+                  "border-global-section/22 bg-global-section/12 dark:bg-global-section/16",
               )}
-              {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
-                <button
-                  type="button"
-                  onClick={exitSectionEditing}
-                  title={t("sectionsEditor.sectionsEditor.editingInVariant", {
-                    variant: activeVariant.label,
-                  })}
-                  className={cn(
-                    "shrink-0 inline-flex items-center gap-1 classic:rounded-md compact:rounded-lg h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
-                    VARIANT_TAB_ACTIVE_CLASS,
-                  )}
-                >
-                  <VariantTabIcon
-                    rule={resolveEffectiveMatcherRule(
-                      activeVariant.rule,
-                      decofile ?? {},
-                      meta ?? undefined,
+            >
+              <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
+                  <button
+                    type="button"
+                    onClick={exitSectionEditing}
+                    title={t("sectionsEditor.sectionsEditor.editingInVariant", {
+                      variant: activeVariant.label,
+                    })}
+                    className={cn(
+                      "shrink-0 inline-flex items-center gap-1 rounded-lg h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
+                      VARIANT_TAB_ACTIVE_CLASS,
                     )}
-                    matchers={availableMatchers}
-                  />
-                  <span className="max-w-[160px] truncate">
-                    {activeVariant.label}
-                  </span>
-                </button>
-              )}
-              <nav
-                aria-label={t(
-                  "sectionsEditor.sectionsEditor.editingBreadcrumb",
-                )}
-                className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
-              >
-                {headerCrumbs.map((crumb, index) => {
-                  const isLast = index === headerCrumbs.length - 1;
-                  const crumbText = crumbLabel(crumb);
-
-                  return (
-                    <span
-                      key={`${crumbText}-${index}`}
-                      className="flex min-w-0 items-center gap-1 overflow-hidden"
-                    >
-                      {index > 0 && (
-                        <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
+                  >
+                    <VariantTabIcon
+                      rule={resolveEffectiveMatcherRule(
+                        activeVariant.rule,
+                        decofile ?? {},
+                        meta ?? undefined,
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleBreadcrumbClick(index)}
-                        title={crumbText}
-                        className={cn(
-                          "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors",
-                          isLast
-                            ? showGlobalBanner
-                              ? "font-semibold text-global-section-fg dark:text-global-section-fg-dark"
-                              : "font-medium text-foreground"
-                            : showGlobalBanner
-                              ? "text-foreground/80"
-                              : "text-muted-foreground",
-                          showGlobalBanner
-                            ? "hover:bg-global-section/15"
-                            : "hover:bg-accent hover:text-accent-foreground",
-                        )}
-                      >
-                        {crumbText}
-                      </button>
+                      matchers={availableMatchers}
+                    />
+                    <span className="max-w-[160px] truncate">
+                      {activeVariant.label}
                     </span>
-                  );
-                })}
-              </nav>
-              {showGlobalBanner && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="shrink-0 cursor-help">
-                      <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[260px]">
-                    {t("sectionsEditor.sectionsEditor.globalSectionTooltip")}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {isEditingSection &&
-                !isEditingMultivariateSection &&
-                !selectedParsed?.isHidden &&
-                activePageKey && (
+                  </button>
+                )}
+                <div className="flex-1" />
+                {showGlobalBanner && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="shrink-0 cursor-help">
+                        <Globe01 className="size-4 text-global-section-fg dark:text-global-section-fg-dark" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[260px]">
+                      {t("sectionsEditor.sectionsEditor.globalSectionTooltip")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {canAddSectionVariant && (
                   <AddVariantButton onClick={() => handleAddSectionVariant()} />
                 )}
+              </div>
+              {showGlobalBanner && (
+                <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
+                  {t("sectionsEditor.sectionsEditor.globalSectionBanner")}
+                </p>
+              )}
             </div>
-            {showGlobalBanner && (
-              <p className="mt-1.5 py-1.5 pl-1 text-sm leading-snug text-foreground">
-                {t("sectionsEditor.sectionsEditor.globalSectionBanner")}
-              </p>
-            )}
-          </div>
+          )
         ) : (
           <div className="flex items-center gap-2 border-b px-3 py-2.5">
             <div className="flex-1 min-w-0">

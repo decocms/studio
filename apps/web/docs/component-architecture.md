@@ -301,6 +301,31 @@ all feature ancestors in that menu, keeping the current title and actions visibl
 <Page.Title>{folder.name}</Page.Title>
 ```
 
+Site Editor uses the same slots through `BlockBreadcrumbs`. The mounted editor
+contributes its current selection after the route identity:
+
+```text
+Organization > Project > Site Editor > Home
+Organization > Project > Site Editor > Home > HeroSlideShow
+Organization > Project > Site Editor > Home > HeroSlideShow > First slide
+```
+
+`SectionsEditor`, `SavedSectionEditor`, and `RunnableBlockEditor` own their
+selection state. `BlockBreadcrumbs` renders ancestors through `Page.Breadcrumbs`
+and the selected block or field through `Page.Title`. Clicking Home selects the
+page's section list; clicking HeroSlideShow selects that section's form. These
+callbacks update the editor directly and do not use browser history. There is no
+separate editing breadcrumb or back arrow inside these editors.
+
+The page is included as soon as its editor mounts. Switching pages, choosing a
+global section or loader, or opening another view replaces or removes the
+contribution with the editor. Shared-block notices and editing actions remain
+inside the editor. Long paths use the shared ancestor menu on narrow panels.
+
+![Selected section in the shared Site Editor breadcrumb](assets/site-editor-block-breadcrumb.png)
+
+![Ancestor selection on a narrow panel](assets/site-editor-breadcrumb-narrow.png)
+
 ```tsx
 <Panel>
   <RoutePageHeader actions={<SiteEditorActions />} navigation={<MainPanelTabsBar {...context} />} />
