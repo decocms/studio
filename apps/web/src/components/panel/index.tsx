@@ -16,6 +16,7 @@ type Region =
   | "center"
   | "right"
   | "title"
+  | "breadcrumbs"
   | "toolbar-left"
   | "toolbar-center"
   | "toolbar-right";
@@ -38,6 +39,7 @@ function PanelRoot({
     center: null,
     right: null,
     title: null,
+    breadcrumbs: null,
     "toolbar-left": null,
     "toolbar-center": null,
     "toolbar-right": null,
@@ -201,6 +203,7 @@ export const Panel = Object.assign(PanelRoot, {
     Center: createPanelRegion("center", "flex-1 justify-center"),
     Right: createPanelRegion("right", "shrink justify-end"),
     Title: createPanelRegion("title", "shrink overflow-hidden"),
+    Breadcrumbs: createPanelRegion("breadcrumbs", "shrink overflow-hidden"),
   }),
   Toolbar: Object.assign(PanelToolbar, {
     Left: createPanelRegion("toolbar-left", "shrink"),

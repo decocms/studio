@@ -105,6 +105,7 @@ Additional captures:
 - [Page picker with name and path on one line](assets/compact-editor-page-picker.png)
 - [Tasks with Board / List tabs and filters beside New task](assets/compact-tasks-list.png)
 - [Library file list and shared toolbar](assets/compact-library-files.png)
+- [Library folders in the shared breadcrumb trail](assets/compact-library-breadcrumbs.png)
 - [Library on mobile](assets/compact-library-mobile.png)
 - [Project settings — General](assets/project-settings-general.png)
 - [Project settings — CMS](assets/project-settings-site.png)
@@ -263,6 +264,22 @@ stays outside the content loading/error boundary. A feature's `Page.Title`
 replaces the fallback heading while mounted; navigating away removes the portal
 and restores the next route's fallback. Empty toolbars occupy no space.
 
+`Page.Header` owns one breadcrumb navigation region. The route supplies the
+organization/project ancestors, `Page.Breadcrumbs` adds feature ancestors through
+`Panel.Topbar.Breadcrumbs`, and `Page.Title` names the current location. Long
+feature paths collapse their middle ancestors into a menu. Narrow panels put
+all feature ancestors in that menu, keeping the current title and actions visible.
+
+```tsx
+<Page.Breadcrumbs
+  items={[
+    { key: "library", label: t("library.library.title"), onClick: openLibrary },
+    { key: parent.path, label: parent.name, onClick: openParent },
+  ]}
+/>
+<Page.Title>{folder.name}</Page.Title>
+```
+
 ```tsx
 <Panel>
   <RoutePageHeader actions={<SiteEditorActions />} navigation={<MainPanelTabsBar {...context} />} />
@@ -357,6 +374,10 @@ Library's file view is saved in `?fileView=` and applies to the current folder,
 search results, and the recent feed. All files and Documents use compact rows;
 Media uses thumbnails. Folders remain available in every view. Existing upload,
 sharing, download, rename, and drag-and-drop handlers stay with their entries.
+Its folder trail lives only in the shared header: organization → Library →
+folder ancestors → current folder. Library returns to the home volume, and the
+internal `home` segment is omitted. Other volumes retain their visible ancestor
+and path. Breadcrumb navigation preserves the file view and browser history.
 
 ## Migration map
 

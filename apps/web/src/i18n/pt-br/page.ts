@@ -9,6 +9,7 @@ export const page = {
   "page.document": "Documento",
   "page.item": "Item",
   "page.breadcrumbs": "Navegação estrutural",
+  "page.breadcrumbMenu": "Mostrar caminho de navegação",
   "page.views": "Visualizações da página",
   "page.openThread": "Abrir chat",
   "page.closeThread": "Fechar chat",

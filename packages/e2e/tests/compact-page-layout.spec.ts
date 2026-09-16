@@ -31,7 +31,7 @@ test.describe("compact page layout", () => {
     ).toBeVisible();
     await expect(page.locator('[data-slot="panel-toolbar"]')).toBeHidden();
     await expect(
-      header.getByRole("navigation", { name: "Breadcrumbs" }),
+      header.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link"),
     ).toHaveCount(0);
     await header.screenshot({
       path: testInfo.outputPath("compact-org-home-header.png"),
@@ -492,8 +492,13 @@ test.describe("compact page layout", () => {
     await page.goto(`/${orgSlug}/library?path=home%2FBrand`);
     const header = page.getByTestId("page-header");
     await expect(
-      header.getByRole("heading", { name: "Library", exact: true }),
+      header.getByRole("heading", { name: "Brand", exact: true }),
     ).toBeVisible({ timeout: 60_000 });
+    const breadcrumbs = header.getByRole("navigation", { name: "Breadcrumbs" });
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Library", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Brand", { exact: true })).toHaveCount(1);
     await expect(
       header.getByRole("button", { name: "Upload file", exact: true }),
     ).toBeVisible();
@@ -555,5 +560,122 @@ test.describe("compact page layout", () => {
       animations: "disabled",
       path: testInfo.outputPath("compact-library-mobile.png"),
     });
+  });
+
+  test("Library uses one header trail for nested folders and volumes", async ({
+    authedPage: { page, orgSlug, user },
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const folder = "Brand/Launch notes/September 2026";
+    for (const volume of ["home", "uploads"]) {
+      const response = await page.request.put(
+        `/api/${orgSlug}/fs/${volume}/file?path=${encodeURIComponent(`${folder}/Readme.md`)}`,
+        {
+          data: "# Launch notes",
+          headers: { "content-type": "text/markdown" },
+        },
+      );
+      expect(response.ok()).toBe(true);
+    }
+    const header = page.getByTestId("page-header");
+    const breadcrumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+    await page.goto(
+      `/${orgSlug}/library?path=${encodeURIComponent(`home/${folder}`)}&fileView=documents`,
+    );
+    await expect(breadcrumbs).toHaveCount(1);
+    await expect(breadcrumbs.getByRole("link")).toHaveText([user.orgName]);
+    await expect(
+      breadcrumbs.getByRole("heading", { name: "September 2026", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(page.getByText("September 2026", { exact: true })).toHaveCount(
+      1,
+    );
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Library", exact: true }),
+    ).toBeVisible();
+    await breadcrumbs
+      .getByRole("button", { name: "Show navigation path" })
+      .click();
+    await expect(
+      page.getByRole("menuitem", { name: "Brand", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("compact-library-breadcrumbs.png"),
+    });
+
+    await breadcrumbs
+      .getByRole("button", { name: "Launch notes", exact: true })
+      .click();
+    await expect(
+      header.getByRole("heading", { name: "Launch notes", exact: true }),
+    ).toBeVisible();
+    expect(new URL(page.url()).searchParams.get("path")).toBe(
+      "home/Brand/Launch notes",
+    );
+    expect(new URL(page.url()).searchParams.get("fileView")).toBe("documents");
+    await page.goBack();
+    await expect(
+      header.getByRole("heading", { name: "September 2026", exact: true }),
+    ).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await breadcrumbs
+      .getByRole("button", { name: "Show navigation path" })
+      .click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Library",
+      "Brand",
+      "Launch notes",
+    ]);
+    await page.getByRole("menuitem", { name: "Brand", exact: true }).click();
+    await expect(
+      header.getByRole("heading", { name: "Brand", exact: true }),
+    ).toBeInViewport();
+    expect(new URL(page.url()).searchParams.get("path")).toBe("home/Brand");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(390);
+    await breadcrumbs
+      .getByRole("button", { name: "Show navigation path" })
+      .click();
+    await page.getByRole("menuitem", { name: "Library", exact: true }).click();
+    await expect(
+      header.getByRole("heading", { name: "Library", exact: true }),
+    ).toBeInViewport();
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
+    ).toHaveCount(0);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(
+      `/${orgSlug}/library?path=${encodeURIComponent(`uploads/${folder}`)}`,
+    );
+    await expect(
+      header.getByRole("heading", { name: "September 2026", exact: true }),
+    ).toBeVisible();
+    await breadcrumbs
+      .getByRole("button", { name: "Show navigation path" })
+      .click();
+    await page.getByRole("menuitem", { name: "uploads", exact: true }).click();
+    await expect(
+      header.getByRole("heading", { name: "uploads", exact: true }),
+    ).toBeVisible();
+    expect(new URL(page.url()).searchParams.get("path")).toBe("uploads");
+    await breadcrumbs
+      .getByRole("button", { name: "Library", exact: true })
+      .click();
+    await expect(
+      header.getByRole("heading", { name: "Library", exact: true }),
+    ).toBeVisible();
+    await expect(breadcrumbs.getByRole("link")).toHaveText([user.orgName]);
+    await page.goto(`/${orgSlug}/tasks`);
+    await expect(
+      header.getByRole("heading", { name: "Tasks", exact: true }),
+    ).toBeVisible();
+    await expect(header.locator('[data-slot="page-breadcrumbs"]')).toHaveCount(
+      0,
+    );
   });
 });

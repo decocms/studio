@@ -3,6 +3,7 @@ import { Separator } from "@decocms/ui/components/separator.tsx";
 import { useT } from "@/i18n/use-t";
 import { Panel } from "@/components/panel";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { PageBreadcrumbs } from "./breadcrumbs";
 import type {
   ComponentPropsWithoutRef,
   PropsWithChildren,
@@ -83,6 +84,8 @@ function PageTitle({
       >
         <h1
           data-slot="page-title"
+          aria-current="page"
+          title={typeof children === "string" ? children : undefined}
           className="min-w-0 truncate text-sm font-medium"
         >
           {children}
@@ -132,6 +135,7 @@ function PageHeader({
   actions?: ReactNode;
   navigation?: ReactNode;
 }) {
+  const t = useT();
   return (
     <>
       <Panel.Topbar
@@ -140,14 +144,25 @@ function PageHeader({
       >
         <Panel.Topbar.Left className="flex-1 gap-2">
           {leading}
-          {breadcrumbs}
-          <Panel.Topbar.Title>
-            <Panel.Topbar.Title.Target
-              fallback={
-                <h1 className="truncate text-sm font-medium">{title}</h1>
-              }
-            />
-          </Panel.Topbar.Title>
+          <nav
+            aria-label={t("page.breadcrumbs")}
+            className="flex min-w-0 flex-1 items-center gap-2"
+          >
+            {breadcrumbs}
+            <Panel.Topbar.Breadcrumbs.Target />
+            <Panel.Topbar.Title className="min-w-12 flex-1">
+              <Panel.Topbar.Title.Target
+                fallback={
+                  <h1
+                    aria-current="page"
+                    className="truncate text-sm font-medium"
+                  >
+                    {title}
+                  </h1>
+                }
+              />
+            </Panel.Topbar.Title>
+          </nav>
           <Panel.Topbar.Left.Target />
         </Panel.Topbar.Left>
         <Panel.Topbar.Right className="shrink-0 gap-2">
@@ -229,4 +244,5 @@ export const Page = Object.assign(PageRoot, {
   Content: PageContent,
   Container: PageContainer,
   Title: PageTitle,
+  Breadcrumbs: PageBreadcrumbs,
 });

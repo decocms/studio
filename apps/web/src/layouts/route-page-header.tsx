@@ -55,10 +55,7 @@ export function RoutePageHeader({
       }
       breadcrumbs={
         (!isHome || scopeId) && (
-          <nav
-            aria-label={t("page.breadcrumbs")}
-            className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground sm:flex"
-          >
+          <div className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground @min-xl/panel-header:flex">
             <Link
               to="/$org/home"
               params={{ org: org.slug }}
@@ -90,7 +87,7 @@ export function RoutePageHeader({
                 {separator}
               </>
             ) : null}
-          </nav>
+          </div>
         )
       }
       actions={actions}

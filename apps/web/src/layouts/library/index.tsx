@@ -5,8 +5,8 @@
  * It opens on the org's own home folder, named after the org: no synthetic
  * "root" listing of volumes and nothing labelled "home". The other volumes
  * (`uploads`, `outputs`, `public`) present as system folders inside it — same
- * mounts, different framing. The breadcrumb is the only place the current
- * folder is named, which frees the header row for the search box.
+ * mounts, different framing. Folder ancestors extend the shared header's
+ * breadcrumb trail, and its title names the current folder.
  *
  * Search sits in the shared page toolbar and follows you: cross-volume at the home root,
  * narrowed to the current folder's subtree anywhere else. Browse location lives
@@ -69,7 +69,6 @@ import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview";
 import {
-  Breadcrumbs,
   LIBRARY_VOLUMES,
   type PendingDelete,
   PublicSetsView,
@@ -134,6 +133,31 @@ export function LibraryPage({
       }),
     });
   const onOpenDir = (path: string) => setSearchParam("path", path);
+  const folderSegments =
+    location.segments[0] === HOME_MOUNT_PATH
+      ? location.segments.slice(1)
+      : location.segments;
+  const segmentOffset = location.segments.length - folderSegments.length;
+  const currentFolder = folderSegments.at(-1);
+  const breadcrumbs = currentFolder
+    ? [
+        {
+          key: HOME_MOUNT_PATH,
+          label: t("library.library.title"),
+          onClick: () => onOpenDir(HOME_MOUNT_PATH),
+        },
+        ...folderSegments.slice(0, -1).map((segment, index) => {
+          const path = location.segments
+            .slice(0, segmentOffset + index + 1)
+            .join("/");
+          return {
+            key: path,
+            label: segmentLabel(segment),
+            onClick: () => onOpenDir(path),
+          };
+        }),
+      ]
+    : [];
   // preview/skill/brand share the single right panel, so opening one clears
   // the others — otherwise a second one just queues behind the precedence
   // order (preview › skill › brand) and only shows once the first is closed.
@@ -416,7 +440,12 @@ export function LibraryPage({
           </div>
         </div>
       )}
-      <Page.Title>{t("library.library.title")}</Page.Title>
+      <Page.Breadcrumbs items={breadcrumbs} />
+      <Page.Title>
+        {currentFolder
+          ? segmentLabel(currentFolder)
+          : t("library.library.title")}
+      </Page.Title>
       <Page.Actions
         secondary={
           browseVolume ? (
@@ -522,8 +551,6 @@ export function LibraryPage({
       </Panel.Toolbar.Right.Portal>
       <div className="h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-6 md:px-8">
-          <Breadcrumbs segments={location.segments} onNavigate={onOpenDir} />
-
           {searchQuery ? (
             <SearchResultsView
               fileView={fileView}
