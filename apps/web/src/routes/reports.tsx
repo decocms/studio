@@ -134,7 +134,7 @@ function ReportLoadError({
           <button
             type="button"
             onClick={retry}
-            className="mt-6 inline-flex h-11 items-center justify-center rounded-full px-6 text-sm font-medium transition-transform duration-300 ease-out hover:scale-[1.03]"
+            className="mt-6 inline-flex h-11 items-center justify-center rounded-lg px-6 text-sm font-medium transition-transform duration-300 ease-out hover:scale-[1.03]"
             style={{ background: DECK.primary, color: DECK.primaryFg }}
           >
             {t("routes.reports.retryButton")}

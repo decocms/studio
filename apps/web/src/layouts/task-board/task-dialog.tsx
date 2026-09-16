@@ -1341,7 +1341,7 @@ function TaskBoardItemEditor({
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
-                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground"
+                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
                             onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
@@ -1357,7 +1357,7 @@ function TaskBoardItemEditor({
                       <button
                         type="button"
                         aria-label={t("taskBoard.taskDialog.addTagButton")}
-                        className="flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <Plus size={14} />
                       </button>

@@ -28,7 +28,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded transition-colors cursor-pointer",
+        "flex h-7 w-7 items-center justify-center rounded-lg transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -56,7 +56,7 @@ function TabChoice({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onSelect}
       className={cn(
-        "flex-1 rounded px-2 py-1 text-xs transition-colors cursor-pointer",
+        "flex-1 rounded-lg px-2 py-1 text-xs transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",

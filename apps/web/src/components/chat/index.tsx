@@ -296,7 +296,7 @@ function ChatMessages() {
             variant="outline"
             size="icon-sm"
             aria-label={t("chat.chat.jumpToLatest")}
-            className="absolute left-1/2 z-50 -translate-x-1/2 rounded-full shadow-md animate-in fade-in duration-200 dark:bg-background dark:hover:bg-accent"
+            className="absolute left-1/2 z-50 -translate-x-1/2 shadow-md animate-in fade-in duration-200 dark:bg-background dark:hover:bg-accent"
             style={{ bottom: paddingBottom + 8 }}
             onClick={() => void stick.scrollToBottom()}
           >

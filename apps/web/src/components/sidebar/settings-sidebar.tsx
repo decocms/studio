@@ -64,7 +64,7 @@ function SettingsGroupHeading({
       onClick={onToggle}
       aria-expanded={open}
       className={cn(
-        "flex w-full items-center gap-1 rounded-md hover:text-muted-foreground",
+        "flex w-full items-center gap-1 rounded-lg hover:text-muted-foreground",
         style,
       )}
     >

@@ -104,7 +104,7 @@ function ProductRow({
       onClick={onToggle}
       aria-pressed={selected}
       className={cn(
-        "flex w-full items-center gap-3 rounded-md border px-2 py-2 text-left transition-colors",
+        "flex w-full items-center gap-3 rounded-lg border px-2 py-2 text-left transition-colors",
         selected
           ? "border-primary/40 bg-primary/5"
           : "border-transparent hover:bg-muted/60",
@@ -209,7 +209,7 @@ function CategoryPane({
       <button
         type="button"
         onClick={() => onSelect(null)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
         <ChevronLeft size={14} />
         <span className="truncate">
@@ -247,7 +247,7 @@ function CategoryPane({
                 key={option.path}
                 type="button"
                 onClick={() => onSelect(option)}
-                className="block w-full truncate rounded px-2 py-1.5 text-left text-sm hover:bg-muted/60"
+                className="block w-full truncate rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted/60"
               >
                 {option.label}
               </button>
@@ -342,7 +342,7 @@ export function ProductPickerDialog({
               type="button"
               onClick={() => setMode(m.id)}
               className={cn(
-                "rounded-md px-2.5 py-1 text-sm transition-colors",
+                "rounded-lg px-2.5 py-1 text-sm transition-colors",
                 mode === m.id
                   ? "bg-muted font-medium text-foreground"
                   : "text-muted-foreground hover:text-foreground",

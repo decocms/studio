@@ -146,7 +146,7 @@ function StatusHighlight(props: StatusHighlightProps) {
               }}
               aria-label={t("chat.highlight.copyErrorDetails")}
               title={t("chat.highlight.copy")}
-              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
+              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-lg bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
             >
               <Copy01 className="size-3.5" />
             </button>

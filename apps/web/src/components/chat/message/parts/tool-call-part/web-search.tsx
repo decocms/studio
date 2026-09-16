@@ -158,7 +158,7 @@ function SourcesList({ citations }: { citations: Citation[] }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
+          className="inline-flex items-center rounded-lg border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
         >
           {expanded
             ? t("chat.webSearch.showLess")

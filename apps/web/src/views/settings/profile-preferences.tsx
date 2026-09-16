@@ -327,7 +327,7 @@ function PreferencesSection() {
                   track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
                 }}
-                className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
+                className="size-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
               >
                 <Play size={11} />
               </button>

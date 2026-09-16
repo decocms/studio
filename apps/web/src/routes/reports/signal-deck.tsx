@@ -603,7 +603,7 @@ export default function SignalDeck({
                     onClick={() =>
                       setPreferences((prev) => ({ ...prev, language: locale }))
                     }
-                    className="h-8 rounded-full px-3 text-xs font-medium uppercase transition-colors"
+                    className="h-8 rounded-lg px-3 text-xs font-medium uppercase transition-colors"
                     style={{
                       background: on ? DECK.primary : "transparent",
                       color: on ? DECK.primaryFg : DECK.muted,
@@ -622,7 +622,7 @@ export default function SignalDeck({
                   aria-label={t("reports.signalDeck.userMenuLabel")}
                   aria-expanded={userMenuOpen}
                   onClick={() => setUserMenuOpen((o) => !o)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border text-sm font-medium transition-transform hover:scale-[1.03]"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border text-sm font-medium transition-transform hover:scale-[1.03]"
                   style={{
                     borderColor: DECK.cardBorder,
                     background: sessionUser.image
@@ -681,7 +681,7 @@ export default function SignalDeck({
             <button
               type="button"
               onClick={(e) => handleShareClick(e, slide)}
-              className="inline-flex h-9 items-center rounded-full px-5 text-sm font-medium transition-transform hover:scale-[1.03]"
+              className="inline-flex h-9 items-center rounded-lg px-5 text-sm font-medium transition-transform hover:scale-[1.03]"
               style={{ background: DECK.primary, color: DECK.primaryFg }}
             >
               {t("reports.signalDeck.share")}
@@ -842,7 +842,7 @@ export default function SignalDeck({
               type="button"
               onClick={(e) => handleShareClick(e, slide)}
               aria-label={t("reports.signalDeck.shareButton")}
-              className="grid h-12 w-12 shrink-0 place-items-center rounded-full border lg:hidden"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border lg:hidden"
               style={{
                 borderColor: "rgba(255,255,255,0.2)",
                 color: "#ffffff",
@@ -872,7 +872,7 @@ export default function SignalDeck({
             <button
               type="button"
               onClick={(e) => handleShareClick(e, slide)}
-              className="ml-auto hidden h-12 items-center gap-2 rounded-full border px-6 text-sm font-medium lg:inline-flex"
+              className="ml-auto hidden h-12 items-center gap-2 rounded-lg border px-6 text-sm font-medium lg:inline-flex"
               style={{
                 borderColor: DECK.inputBorder,
                 color: DECK.ink,
@@ -932,7 +932,7 @@ export default function SignalDeck({
                       setFeedbackOpen(false);
                       setMethoOpen((o) => !o);
                     }}
-                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-2 text-[13px] transition-colors hover:bg-black/5 sm:text-sm"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors hover:bg-black/5 sm:text-sm"
                     style={{ color: methoOpen ? DECK.ink : DECK.muted }}
                   >
                     <Icon name="info" size="medium" />
@@ -978,7 +978,7 @@ export default function SignalDeck({
                       return next;
                     });
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-2 text-[13px] transition-colors hover:bg-black/5 sm:text-sm"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[13px] transition-colors hover:bg-black/5 sm:text-sm"
                   style={{ color: feedbackOpen ? DECK.ink : DECK.muted }}
                 >
                   <Icon name="flag" size="medium" />
@@ -1050,7 +1050,7 @@ export default function SignalDeck({
                           setFeedbackSent(true);
                           setFeedbackSubmitting(false);
                         }}
-                        className="inline-flex items-center gap-1.5 self-start rounded-full px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-40"
+                        className="inline-flex items-center gap-1.5 self-start rounded-lg px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-40"
                         style={{
                           background: DECK.primary,
                           color: DECK.primaryFg,
@@ -1106,7 +1106,7 @@ export default function SignalDeck({
               <button
                 type="button"
                 onClick={(e) => handleShareClick(e, slide)}
-                className="inline-flex h-12 w-12 items-center justify-center gap-2 rounded-full border font-medium sm:w-auto sm:px-6 sm:text-sm"
+                className="inline-flex h-12 w-12 items-center justify-center gap-2 rounded-lg border font-medium sm:w-auto sm:px-6 sm:text-sm"
                 style={{
                   borderColor: DECK.inputBorder,
                   color: DECK.ink,
@@ -1125,7 +1125,7 @@ export default function SignalDeck({
                   onClick={() => go(index - 1)}
                   disabled={index === 0}
                   aria-label={t("reports.signalDeck.previousSlide")}
-                  className="grid h-12 w-12 place-items-center rounded-full border disabled:opacity-30"
+                  className="grid h-12 w-12 place-items-center rounded-lg border disabled:opacity-30"
                   style={{
                     borderColor: DECK.inputBorder,
                     color: DECK.ink,
@@ -1138,7 +1138,7 @@ export default function SignalDeck({
                   type="button"
                   onClick={() => go(index + 1)}
                   aria-label={t("reports.signalDeck.nextSlide")}
-                  className="grid h-12 w-12 place-items-center rounded-full"
+                  className="grid h-12 w-12 place-items-center rounded-lg"
                   style={{ background: DECK.primary, color: DECK.primaryFg }}
                 >
                   <Icon name="arrow_downward" size="large" />
@@ -1148,7 +1148,7 @@ export default function SignalDeck({
               <button
                 type="button"
                 onClick={() => go(index + 1)}
-                className="hidden h-12 items-center gap-2 rounded-full px-6 text-sm font-medium sm:inline-flex"
+                className="hidden h-12 items-center gap-2 rounded-lg px-6 text-sm font-medium sm:inline-flex"
                 style={{ background: DECK.primary, color: DECK.primaryFg }}
               >
                 <span>{t("reports.signalDeck.next")}</span>

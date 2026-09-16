@@ -335,7 +335,7 @@ function StatusFilter({
           key={opt.value}
           type="button"
           className={cn(
-            "text-[11px] px-2 py-0.5 rounded-full border transition-colors",
+            "text-[11px] px-2 py-0.5 rounded-lg border transition-colors",
             value === opt.value
               ? "bg-primary text-primary-foreground border-primary"
               : "bg-muted/30 border-border hover:bg-muted/50",

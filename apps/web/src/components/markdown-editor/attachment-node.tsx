@@ -54,7 +54,7 @@ function AttachmentNodeView({
           aria-label={t("markdownEditor.removeFile")}
           onMouseDown={(e) => e.preventDefault()}
           onClick={deleteNode}
-          className="shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="shrink-0 rounded-lg p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <X size={14} />
         </button>

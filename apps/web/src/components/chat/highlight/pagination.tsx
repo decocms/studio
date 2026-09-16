@@ -31,7 +31,7 @@ export function Pagination({
         onClick={onPrev}
         disabled={current === 0}
         className={cn(
-          "p-0.5 rounded transition-colors",
+          "p-0.5 rounded-lg transition-colors",
           current === 0
             ? "opacity-30 cursor-not-allowed"
             : "hover:text-foreground cursor-pointer",
@@ -48,7 +48,7 @@ export function Pagination({
         onClick={onNext}
         disabled={current === total - 1}
         className={cn(
-          "p-0.5 rounded transition-colors",
+          "p-0.5 rounded-lg transition-colors",
           current === total - 1
             ? "opacity-30 cursor-not-allowed"
             : "hover:text-foreground cursor-pointer",

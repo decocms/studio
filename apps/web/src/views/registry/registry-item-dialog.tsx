@@ -1204,7 +1204,7 @@ export function RegistryItemDialog({
               key={mode}
               type="button"
               className={cn(
-                "px-2.5 py-1 text-xs rounded-md",
+                "px-2.5 py-1 text-xs rounded-lg",
                 readmeMode === mode
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground",

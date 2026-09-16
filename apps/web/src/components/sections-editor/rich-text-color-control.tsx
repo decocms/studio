@@ -92,7 +92,7 @@ export function RichTextColorControl({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyColor(color)}
                 className={cn(
-                  "h-6 w-6 rounded border border-border/60 transition-transform cursor-pointer hover:scale-110",
+                  "h-6 w-6 rounded-lg border border-border/60 transition-transform cursor-pointer hover:scale-110",
                   currentColor === color && "ring-2 ring-ring ring-offset-1",
                 )}
                 style={{ backgroundColor: color }}
@@ -115,7 +115,7 @@ export function RichTextColorControl({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={clearColor}
-              className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
+              className="rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
             >
               {t("sectionsEditor.richTextColorControl.defaultLabel")}
             </button>

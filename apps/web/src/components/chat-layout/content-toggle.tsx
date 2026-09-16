@@ -35,7 +35,7 @@ export function ContentToggle({
         <ToolbarIconButton
           aria-label={label}
           onClick={onClick}
-          className="size-7 rounded-md disabled:opacity-40"
+          className="size-7 disabled:opacity-40"
         >
           <LayoutRight size={16} />
         </ToolbarIconButton>

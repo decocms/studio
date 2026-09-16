@@ -59,9 +59,6 @@ export function SidebarPickerHeaderMobile({
   );
 }
 
-/** Deliberately not `SidebarTriggerButton`: the rail needs a tooltip on this,
- *  and a tooltip needs a ref that the shared toolbar control does not
- *  forward. */
 function CollapseToggle() {
   const t = useT();
   const collapsed = useSidebarCollapsed();
@@ -74,7 +71,7 @@ function CollapseToggle() {
         <ToolbarIconButton
           aria-label={label}
           onClick={toggleSidebar}
-          className="size-7 shrink-0 rounded-lg group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8"
+          className="size-7 shrink-0 group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8"
         >
           <LayoutLeft size={ICON_SIZE} />
         </ToolbarIconButton>

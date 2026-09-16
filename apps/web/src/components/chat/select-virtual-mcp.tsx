@@ -157,7 +157,7 @@ function VirtualMCPPopoverContentInner({
             onClick={createVirtualMCP}
             variant="outline"
             size="sm"
-            className="h-8 px-3 rounded-lg text-sm font-medium shrink-0"
+            className="h-8 px-3 text-sm font-medium shrink-0"
             disabled={isCreating}
           >
             {isCreating

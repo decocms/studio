@@ -1489,7 +1489,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     .filter(Boolean)
                     .join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-0 max-w-full items-stretch overflow-hidden whitespace-nowrap rounded-md border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-lg"
+            className="group/page-picker flex h-7 w-fit min-w-0 max-w-full items-stretch overflow-hidden whitespace-nowrap rounded-lg border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-lg"
           >
             {!activeGlobalSection && !activeLoader && pageOrigin && (
               <span

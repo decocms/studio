@@ -226,7 +226,7 @@ export function ToolCallShell({
                   <button
                     type="button"
                     onClick={() => handleCopy(detail!)}
-                    className="shrink-0 p-1.5 rounded-md text-muted-foreground/50 [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/50 transition-colors active:scale-[0.97]"
+                    className="shrink-0 p-1.5 rounded-lg text-muted-foreground/50 [@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/50 transition-colors active:scale-[0.97]"
                     aria-label={t("common.copy")}
                   >
                     {copied ? (

@@ -297,7 +297,7 @@ function FilterClearButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
     >
       <X size={12} />
     </button>

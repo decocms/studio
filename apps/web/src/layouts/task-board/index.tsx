@@ -467,7 +467,7 @@ function CardAction({
           `${node.offsetWidth}px`,
         )
       }
-      className="absolute -top-0.5 right-0 h-6 gap-1.5 rounded-full px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="absolute -top-0.5 right-0 h-6 gap-1.5 px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
       {action.label}
@@ -1591,7 +1591,7 @@ function SelectionBar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
             >
               {t("taskBoard.taskBoard.actionsButton")}
             </button>
@@ -1706,7 +1706,7 @@ function SelectionBar({
           <button
             type="button"
             onClick={onAutoFix}
-            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <Lightning01 size={14} />
             {t("taskBoard.taskBoard.autoFix")}
@@ -1717,7 +1717,7 @@ function SelectionBar({
           <button
             type="button"
             onClick={onRerun}
-            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <RefreshCw01 size={14} />
             {t("taskBoard.taskBoard.rerun")}
@@ -1729,7 +1729,7 @@ function SelectionBar({
           aria-label={t("taskBoard.taskBoard.clearSelectionButton")}
           title={t("taskBoard.taskBoard.clearSelectionButton")}
           onClick={onClear}
-          className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <X size={16} />
         </button>
@@ -2174,7 +2174,7 @@ function HiddenLanes({
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                       lane: label,
                     })}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <DotsHorizontal size={15} />
                   </button>
@@ -2288,7 +2288,7 @@ function Lane({
               aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                 lane: label,
               })}
-              className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <DotsHorizontal size={15} />
             </button>
@@ -2311,7 +2311,7 @@ function Lane({
           })}
           title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
           onClick={() => onCreate(status)}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Plus size={15} />
         </button>

@@ -339,7 +339,7 @@ export default function RegistryRequestsPage() {
                   key={option.value}
                   type="button"
                   className={cn(
-                    "px-2.5 py-1 text-xs rounded-md transition-colors",
+                    "px-2.5 py-1 text-xs rounded-lg transition-colors",
                     status === option.value
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:text-foreground",

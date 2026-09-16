@@ -39,7 +39,7 @@ function ImageNodeView({ node, selected, editor, deleteNode }: NodeViewProps) {
           // then delete — losing the caret. Keep the mousedown away from PM.
           onMouseDown={(e) => e.preventDefault()}
           onClick={deleteNode}
-          className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/image:opacity-100"
+          className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/image:opacity-100"
         >
           <X size={14} />
         </button>

@@ -69,7 +69,7 @@ export function ModelSelector({
       variant={variant === "borderless" ? "ghost" : "outline"}
       size="sm"
       className={cn(
-        "text-sm hover:bg-accent rounded-lg py-0.5 px-1 gap-1 shadow-none cursor-pointer border-0 group focus-visible:ring-0 focus-visible:ring-offset-0 min-w-0 shrink justify-start overflow-hidden",
+        "text-sm hover:bg-accent py-0.5 px-1 gap-1 shadow-none cursor-pointer border-0 group focus-visible:ring-0 focus-visible:ring-offset-0 min-w-0 shrink justify-start overflow-hidden",
         variant === "borderless" && "md:border-none",
         className,
       )}

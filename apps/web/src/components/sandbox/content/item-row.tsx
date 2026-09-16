@@ -122,7 +122,7 @@ export function ItemRow({
       <button
         type="button"
         onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-2 text-left cursor-pointer"
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-left cursor-pointer"
       >
         {rowIcon}
         <span className="min-w-0 flex-1">

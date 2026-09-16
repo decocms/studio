@@ -86,7 +86,7 @@ export function ObjectField({
         aria-expanded={isOpen}
         aria-controls={contentId}
         onClick={toggleOpen}
-        className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+        className="group flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:text-accent-foreground">
           {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}

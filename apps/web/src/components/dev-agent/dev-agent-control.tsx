@@ -60,7 +60,7 @@ export function DevAgentControl({
         if (!active) void goToAgent(partner.targetId);
       }}
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-colors",
+        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors",
         active
           ? "bg-background text-foreground shadow-sm"
           : "text-muted-foreground hover:text-foreground",

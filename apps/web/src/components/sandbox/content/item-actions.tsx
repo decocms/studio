@@ -38,7 +38,7 @@ export function ItemActions({
         <button
           type="button"
           aria-label={t("sandbox.itemActions.moreActions")}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
           onClick={(e) => e.stopPropagation()}
         >
           <DotsHorizontal size={14} />

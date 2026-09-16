@@ -210,7 +210,7 @@ function ThemeSoundVersionBar({
             }
             className={cn(
               buttonSize,
-              "rounded-md flex items-center justify-center transition-colors",
+              "rounded-lg flex items-center justify-center transition-colors",
               preferences.theme === value
                 ? "bg-sidebar-accent text-foreground"
                 : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
@@ -236,7 +236,7 @@ function ThemeSoundVersionBar({
           }
           className={cn(
             buttonSize,
-            "rounded-md flex items-center justify-center transition-colors",
+            "rounded-lg flex items-center justify-center transition-colors",
             preferences.enableSounds
               ? "text-foreground hover:bg-sidebar-accent/50"
               : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
@@ -581,7 +581,6 @@ export function AccountPopover() {
                 user?.name ?? t("common.accountPopover.defaultAccountLabel")
               }
               className={cn(
-                "rounded-md",
                 isImpersonating && "border-2 border-dashed border-warning",
               )}
             >

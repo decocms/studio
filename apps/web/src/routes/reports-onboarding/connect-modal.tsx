@@ -282,7 +282,7 @@ function ReportsConnectModalContent({
                 type="button"
                 variant="secondary"
                 size="lg"
-                className="h-auto min-h-12 shrink-0 rounded-lg py-3 text-base font-medium leading-tight"
+                className="h-auto min-h-12 shrink-0 py-3 text-base font-medium leading-tight"
                 disabled={runMutation.isPending}
                 onClick={() => void openReport()}
               >

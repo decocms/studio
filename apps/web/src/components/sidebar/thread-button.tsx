@@ -10,7 +10,6 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useT } from "@/i18n/use-t";
 import { usePanelActions } from "@/layouts/shell-layout";
@@ -57,10 +56,7 @@ function ThreadButton({
           aria-label={label}
           aria-pressed={open}
           active={open}
-          className={cn(
-            "size-7 shrink-0 group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8",
-            !open && "bg-transparent hover:bg-sidebar-accent/50",
-          )}
+          className="size-7 shrink-0 group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8"
           onClick={() => {
             onToggle();
             if (isMobile) setOpenMobile(false);

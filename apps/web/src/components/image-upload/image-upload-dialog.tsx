@@ -339,7 +339,7 @@ export function ImageUploadDialog({
                             void runGalleryAction(gallery.onDelete!(item.path))
                           }
                           aria-label={t("imageUpload.deletePicture")}
-                          className="absolute -right-1 -top-1 hidden rounded-full bg-background p-1 text-muted-foreground shadow-sm hover:text-destructive group-hover:block"
+                          className="absolute -right-1 -top-1 hidden rounded-lg bg-background p-1 text-muted-foreground shadow-sm hover:text-destructive group-hover:block"
                         >
                           <Trash01 className="size-3" />
                         </button>

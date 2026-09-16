@@ -92,7 +92,7 @@ export function AddButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 rounded-md border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40 disabled:hover:border-dashed disabled:hover:text-muted-foreground cursor-pointer"
+      className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground disabled:opacity-40 disabled:hover:border-dashed disabled:hover:text-muted-foreground cursor-pointer"
     >
       <Plus size={13} />
       {label}
@@ -113,7 +113,7 @@ export function RemoveButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer"
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer"
     >
       <Trash01 size={13} />
     </button>
@@ -148,7 +148,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-sm transition-colors cursor-pointer",
+        "flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-sm transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",

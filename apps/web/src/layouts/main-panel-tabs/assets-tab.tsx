@@ -414,7 +414,7 @@ function AssetCardMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0 rounded-md"
+          className="size-7 shrink-0 "
           aria-label={t("filePicker.filePickerDialog.assetActions")}
         >
           <DotsVertical size={14} />

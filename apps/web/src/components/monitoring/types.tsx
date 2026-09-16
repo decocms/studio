@@ -712,7 +712,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         variant="ghost"
                         onClick={handleReplay}
                         aria-label={t("monitoring.types.replayToolCall")}
-                        className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground h-8 w-8"
                       >
                         <Play size={14} />
                       </Button>
@@ -730,7 +730,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         variant="ghost"
                         onClick={() => handleDownload("input")}
                         aria-label={t("monitoring.types.downloadFullInput")}
-                        className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground h-8 w-8"
                       >
                         <Download01 size={14} />
                       </Button>
@@ -745,7 +745,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   variant="ghost"
                   onClick={() => handleCopy("input")}
                   aria-label={t("monitoring.types.copyInput")}
-                  className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+                  className="text-muted-foreground hover:text-foreground h-8 w-8"
                 >
                   {copiedInput ? <Check size={14} /> : <Copy01 size={14} />}
                 </Button>
@@ -784,7 +784,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                         variant="ghost"
                         onClick={() => handleDownload("output")}
                         aria-label={t("monitoring.types.downloadFullOutput")}
-                        className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+                        className="text-muted-foreground hover:text-foreground h-8 w-8"
                       >
                         <Download01 size={14} />
                       </Button>
@@ -799,7 +799,7 @@ export function ExpandedLogContent({ log }: ExpandedLogContentProps) {
                   variant="ghost"
                   onClick={() => handleCopy("output")}
                   aria-label={t("monitoring.types.copyOutput")}
-                  className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+                  className="text-muted-foreground hover:text-foreground h-8 w-8"
                 >
                   {copiedOutput ? <Check size={14} /> : <Copy01 size={14} />}
                 </Button>

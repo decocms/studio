@@ -51,7 +51,7 @@ function FilterRow<T extends string>({
           <ToggleGroupItem
             key={opt.value}
             value={opt.value}
-            className="h-6 gap-1.5 rounded-md border border-transparent px-2 text-xs font-medium text-muted-foreground hover:bg-transparent data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+            className="h-6 gap-1.5 rounded-lg border border-transparent px-2 text-xs font-medium text-muted-foreground hover:bg-transparent data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
           >
             {opt.icon}
             {opt.label}
@@ -64,7 +64,7 @@ function FilterRow<T extends string>({
 
 export function ThreadFiltersPopover({
   panel,
-  className = "md:size-[34px] rounded-lg",
+  className = "md:size-[34px]",
 }: {
   panel: ThreadsPanel;
   className?: string;

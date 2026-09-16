@@ -111,7 +111,7 @@ function GroupHeading({
           <button
             type="button"
             aria-label={createLabel}
-            className="-my-1 shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="-my-1 shrink-0 cursor-pointer rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             onClick={onCreate}
           >
             <Plus size={14} />

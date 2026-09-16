@@ -94,6 +94,7 @@ mobile, Blocks overlays the preview instead of squeezing the canvas.
 
 Additional captures:
 
+- [Sidebar and chat controls with the shared button radius](assets/compact-sidebar-controls.png)
 - [Expanded project sidebar](assets/compact-editor-expanded.png)
 - [Page picker with name and path on one line](assets/compact-editor-page-picker.png)
 - [Tasks with Board / List tabs and filters beside New task](assets/compact-tasks-list.png)
@@ -316,6 +317,11 @@ panel moves between docked and overlaid placement. The canvas and overlay have
 separate stacking contexts so loading/iframe layers cannot cover editor controls.
 A page restored from the shared selection keeps its path even before metadata
 finishes loading.
+
+Action buttons use the design system's `rounded-lg` radius. `ToolbarIconButton`
+composes the shared ghost `Button`, so sidebar, chat, and editor controls inherit
+the same corners and interaction states. Its `active` state supplies the selected
+background; callers supply placement and size without radius overrides.
 
 Tasks uses `Page.Tabs` for Board and List, with filters in the header beside
 New task through `Page.Actions secondary={…}`. Narrow panels use the existing
