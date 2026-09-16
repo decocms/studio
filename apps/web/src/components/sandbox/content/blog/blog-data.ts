@@ -11,6 +11,7 @@
  * shared `useSaveBlock`/`useDeleteBlock`, whose `decoBlockFilePath` already
  * reproduces that encoding.
  */
+import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
 
@@ -278,6 +279,12 @@ export interface CategoryRef {
   slug: string;
 }
 
+/** A single author reference, denormalized on a post payload. */
+export interface AuthorRef {
+  name: string;
+  email: string;
+}
+
 /** Compact metadata for a post, used by the posts list filters/sort. */
 export interface PostMeta {
   /** Decofile key (block id). */
@@ -301,7 +308,21 @@ export interface PostMeta {
   missing: string[];
   /** Publication state — see `postStatus`. */
   status: PostStatus;
+  /** Which physical block backs this post — see {@link PostForm}. */
+  form: PostForm;
 }
+
+/**
+ * The two physical forms one lifecycle post takes. A `planning` post is a
+ * block with no `__resolveType` under {@link PLANNING_POST_KEY_PREFIX}, so the
+ * site never renders it (draft / generating / awaiting_review / archived). A
+ * `live` post is the
+ * classic `collections/blog/posts/<id>` block with a `__resolveType`
+ * (scheduled / published). One stable `<id>` is shared across both forms; a
+ * status change that crosses the boundary promotes/demotes the block — see
+ * {@link movePostToStatus}.
+ */
+export type PostForm = "planning" | "live";
 
 function toArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -343,26 +364,85 @@ export function missingPostFields(payload: Record<string, unknown>): string[] {
   return missing;
 }
 
-/** The three publication states the CMS edits. */
-export type PostStatus = "draft" | "scheduled" | "published";
+/**
+ * The lifecycle a post travels, in board order.
+ *
+ * These values are the blog app's own `PostStatus` union — Studio writes them
+ * into `payload.status`, the app reads them, so the vocabulary has to be the
+ * app's, not one invented here. Do not add a state the app cannot read.
+ *
+ * `draft` / `generating` / `awaiting_review` / `archived` are stored as
+ * planning-only blocks the site never resolves (see
+ * {@link PLANNING_POST_KEY_PREFIX}); `scheduled` / `published` are the live
+ * states the site renders.
+ */
+export type PostStatus =
+  | "draft"
+  | "generating"
+  | "awaiting_review"
+  | "scheduled"
+  | "published"
+  | "archived";
+
+/** The board lanes, left → right — the order the lifecycle advances. */
+export const POST_STATUSES: readonly PostStatus[] = [
+  "draft",
+  "generating",
+  "awaiting_review",
+  "scheduled",
+  "published",
+  "archived",
+];
 
 /** Local hour of day a newly scheduled post goes live. */
 export const DEFAULT_SCHEDULE_HOUR = 8;
 
-/** Publication state from `status` alone — unset means published, so adding the field unpublished nothing. */
+/**
+ * Publication state from `status` alone. Planning posts always carry an
+ * explicit non-live state; on a live post an unset/blank status still means
+ * published (legacy: adding the field unpublished nothing).
+ *
+ * `idea` and `in_review` are read as `draft` / `awaiting_review`: a short-lived
+ * Studio-only vocabulary that predates aligning on the blog app's union.
+ */
 export function postStatus(payload: Record<string, unknown>): PostStatus {
-  const status = str(payload.status);
-  if (status === "" || status === "published") return "published";
-  if (status === "scheduled") return "scheduled";
-  return "draft";
+  switch (str(payload.status)) {
+    case "draft":
+    // Legacy Studio-only name for the first lane.
+    case "idea":
+      return "draft";
+    case "generating":
+      return "generating";
+    case "awaiting_review":
+    // Legacy Studio-only name for the review lane.
+    case "in_review":
+      return "awaiting_review";
+    case "scheduled":
+      return "scheduled";
+    case "published":
+      return "published";
+    case "archived":
+      return "archived";
+    // Legacy: an unset status field means published (adding it unpublishes nothing).
+    case "":
+      return "published";
+    // Any other value is unrecognized — the safest non-live state, not a live post.
+    default:
+      return "awaiting_review";
+  }
 }
 
-/** Whether missing required fields bar this post from *becoming* published — the only gated move. */
+/**
+ * Whether missing required fields bar this post from *becoming* live — the
+ * gated forward moves are Scheduled and Published. Pulling a post back to
+ * review or an earlier planning state is never blocked.
+ */
 export function blocksPostStatus(
   payload: Record<string, unknown>,
   next: PostStatus,
 ): boolean {
-  if (next !== "published" || postStatus(payload) === "published") return false;
+  if (next !== "published" && next !== "scheduled") return false;
+  if (postStatus(payload) === next) return false;
   return missingPostFields(payload).length > 0;
 }
 
@@ -416,44 +496,191 @@ export function listPostsWithMeta(
     authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
     missing: missingPostFields(payload),
     status: postStatus(payload),
+    form: "live",
   }));
 }
 
+// ------------------ Lifecycle posts (idea → published) -----------------------
+
 /**
- * Append a category to a post payload, keyed by slug. Idempotent — a slug
- * already present yields an equivalent payload (no duplicate). Pure: returns
- * a new payload, never mutates the input.
+ * Planning posts (draft / generating / awaiting_review / archived) live one
+ * block each under this
+ * prefix, carrying NO `__resolveType` — exactly like themes, so the site's blog
+ * app never resolves an unfinished draft. Only when a post is scheduled is it
+ * promoted to a real `collections/blog/posts/<id>` block the site renders.
  */
-export function addCategoryToPost(
-  payload: Record<string, unknown>,
-  category: CategoryRef,
-): Record<string, unknown> {
-  const categories = toArray(payload.categories);
-  if (categories.some((c) => categorySlugOf(c) === category.slug)) {
-    return payload;
-  }
-  return {
-    ...payload,
-    categories: [...categories, { name: category.name, slug: category.slug }],
-  };
+export const PLANNING_POST_KEY_PREFIX = "blog-manager/posts/";
+
+/** True when a key points at a planning post — anything but scheduled/published. */
+function isPlanningPostKey(key: string): boolean {
+  return key.startsWith(PLANNING_POST_KEY_PREFIX);
+}
+
+/** The `<id>` shared by a post's planning and live forms — the last path segment. */
+export function postIdOfKey(key: string): string {
+  return key.split("/").pop() ?? key;
+}
+
+export function planningPostKey(id: string): string {
+  return `${PLANNING_POST_KEY_PREFIX}${id}`;
+}
+
+export function livePostKey(id: string): string {
+  return `collections/blog/posts/${id}`;
+}
+
+/** A fresh id for a new lifecycle post, unique enough for a per-site decofile. */
+export function newPostId(): string {
+  return randomHex(12);
 }
 
 /**
- * Replace a post's categories with exactly the given one. Pure: returns a new
- * payload, never mutates the input. Used by the bulk "replace" mode to migrate
- * posts to a single category in one step.
+ * The planning brief a card carries before (and after) generation: which pillar
+ * it belongs to, the format it should follow, and the free-text angle. Stored
+ * under `payload.planning`; consumed by generation and shown on the card.
  */
-export function replaceCategoryOnPost(
-  payload: Record<string, unknown>,
-  category: CategoryRef,
-): Record<string, unknown> {
-  const current = toArray(payload.categories);
-  if (current.length === 1 && categorySlugOf(current[0]) === category.slug) {
-    return payload;
-  }
+export interface PlanningMeta {
+  /** The idea this post was written from, when it was written from one. */
+  ideaKey?: string;
+  pillarKey?: string;
+  pillarTitle?: string;
+  format?: BrandRule;
+  brief?: string;
+}
+
+/** Read the planning brief off a post payload, tolerating a missing/legacy shape. */
+export function planningMeta(payload: Record<string, unknown>): PlanningMeta {
+  const record = asRecord(payload.planning) ?? {};
+  const format = asRecord(record.format);
   return {
-    ...payload,
-    categories: [{ name: category.name, slug: category.slug }],
+    ideaKey: str(record.ideaKey) || undefined,
+    pillarKey: str(record.pillarKey) || undefined,
+    pillarTitle: str(record.pillarTitle) || undefined,
+    format: format
+      ? { name: str(format.name), value: str(format.value) }
+      : undefined,
+    brief: str(record.brief) || undefined,
+  };
+}
+
+/** Payload for a post started by hand: a briefing, no body yet. */
+export function emptyDraftPostPayload(args: {
+  title: string;
+  planning?: PlanningMeta;
+  now: Date;
+}): Record<string, unknown> {
+  return {
+    title: args.title,
+    slug: "",
+    excerpt: "",
+    date: args.now.toISOString().slice(0, 10),
+    image: "",
+    alt: "",
+    authors: [],
+    categories: [],
+    sections: [],
+    status: "draft",
+    planning: (args.planning ?? {}) as Record<string, unknown>,
+  };
+}
+
+/** Rebuild a planning-post block (no `__resolveType`, so the site ignores it). */
+export function buildPlanningPostBlock(
+  key: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return { name: key, [WRAPPER_KEY.posts]: payload };
+}
+
+/**
+ * Rebuild a post block in the form its key implies — planning (no
+ * `__resolveType`) or live — so a content edit never accidentally promotes an
+ * unpublished post to a site-rendered block. Crossing the boundary is a
+ * status change, handled by {@link movePostToStatus}, not a content save.
+ */
+export function buildPostBlock(
+  key: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return isPlanningPostKey(key)
+    ? buildPlanningPostBlock(key, payload)
+    : buildBlogBlock(key, "posts", payload);
+}
+
+/** All planning posts (everything but scheduled/published) with their payload. */
+export function listPlanningPosts(
+  decofile: Record<string, unknown>,
+): Array<{ key: string; payload: Record<string, unknown> }> {
+  const out: Array<{ key: string; payload: Record<string, unknown> }> = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!isPlanningPostKey(key)) continue;
+    const block = asRecord(value);
+    if (!block) continue;
+    out.push({ key, payload: getBlogPayload(block, "posts") });
+  }
+  return out;
+}
+
+/**
+ * Every post the board shows: planning posts first, then live posts. `form`
+ * distinguishes them so the board can pick the right key on a lane move.
+ */
+export function listAllPostsWithMeta(
+  decofile: Record<string, unknown>,
+): PostMeta[] {
+  const planning: PostMeta[] = listPlanningPosts(decofile).map(
+    ({ key, payload }) => ({
+      key,
+      title: str(payload.title) || "Untitled post",
+      slug: str(payload.slug),
+      date: str(payload.date),
+      scheduledDatetime: str(payload.scheduledDatetime),
+      categorySlugs: toArray(payload.categories)
+        .map(categorySlugOf)
+        .filter(Boolean),
+      authorEmails: toArray(payload.authors).map(authorEmailOf).filter(Boolean),
+      missing: missingPostFields(payload),
+      status: postStatus(payload),
+      form: "planning",
+    }),
+  );
+  return [...planning, ...listPostsWithMeta(decofile)];
+}
+
+/** A promote/demote plan: blocks to write, keys to delete, applied atomically. */
+export interface PostMove {
+  writes: Record<string, unknown>;
+  deletes: string[];
+}
+
+/**
+ * Move a post to `next`, crossing the planning↔live boundary when the target
+ * state requires it. draft/generating/awaiting_review/archived live as
+ * planning blocks;
+ * scheduled/published as live `collections/blog/posts/<id>` blocks. The `<id>`
+ * and `slug` are preserved across a promote/demote, so links stay stable.
+ *
+ * Returns the write/delete set rather than performing it, so the caller can
+ * apply it as one atomic `patchDecofile({ set, delete })`.
+ */
+export function movePostToStatus(
+  entry: { key: string; payload: Record<string, unknown> },
+  next: PostStatus,
+  now: Date,
+): PostMove {
+  const nextPayload = setPostStatus(entry.payload, next, now);
+  const id = postIdOfKey(entry.key);
+  const targetForm: PostForm =
+    next === "scheduled" || next === "published" ? "live" : "planning";
+  const targetKey =
+    targetForm === "live" ? livePostKey(id) : planningPostKey(id);
+  const block =
+    targetForm === "live"
+      ? buildBlogBlock(targetKey, "posts", nextPayload)
+      : buildPlanningPostBlock(targetKey, nextPayload);
+  return {
+    writes: { [targetKey]: block },
+    deletes: targetKey === entry.key ? [] : [entry.key],
   };
 }
 
@@ -524,7 +751,13 @@ export function removeCategoryFromPost(
 export function stampPostModified(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...payload, dateModified: new Date().toISOString() };
+  // Only the legacy names: an absent status already means published.
+  const stored = str(payload.status);
+  const normalized =
+    stored === "idea" || stored === "in_review"
+      ? { status: postStatus(payload) }
+      : {};
+  return { ...payload, ...normalized, dateModified: new Date().toISOString() };
 }
 
 function randomHex(length: number): string {
@@ -816,4 +1049,618 @@ export function isBlogPostBlockResolveType(resolveType: string): boolean {
   return BLOG_POST_BLOCK_PREFIXES.some((prefix) =>
     resolveType.startsWith(prefix),
   );
+}
+
+// ------------------ Brand rules (dos / guardrails / values / competitors) ----
+
+/** Where the editorial brand context lives, as Spire named it. */
+export const BRAND_BLOCK_KEY = "blog-manager-brand";
+
+/**
+ * One editorial rule: a short name plus a markdown body. Replaces the flat
+ * strings these fields used to hold — a rule worth writing down needs more
+ * room than a single-line input, and a competitor is useless without the
+ * context of why it matters.
+ */
+export interface BrandRule {
+  name: string;
+  value: string;
+}
+
+/**
+ * Read a rule list from a brand block, tolerating the flat `string[]` shape
+ * that Spire wrote and that this editor saved before the change. A legacy
+ * string becomes the rule's name with an empty body, so nothing is lost and the
+ * block picks up the new shape on the next save — no migration.
+ *
+ * An object entry survives even when both its fields are empty: that is a row
+ * the user just added and hasn't typed into yet, and dropping it made the
+ * editor's "add" button do nothing. Only a non-object, or a legacy string that
+ * is blank, is junk. Use {@link filledBrandRules} where substance is what
+ * matters.
+ */
+export function normalizeBrandRules(value: unknown): BrandRule[] {
+  if (!Array.isArray(value)) return [];
+  const rules: BrandRule[] = [];
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      if (entry.trim()) rules.push({ name: entry, value: "" });
+      continue;
+    }
+    const record = asRecord(entry);
+    if (!record) continue;
+    rules.push({ name: str(record.name), value: str(record.value) });
+  }
+  return rules;
+}
+
+/**
+ * Rules a reader would consider written. Blank rows are real editor state, so
+ * they belong on screen — but not in a prompt, and not in the "is this field
+ * still empty?" check that decides whether an extract may fill it.
+ */
+export function filledBrandRules(rules: BrandRule[]): BrandRule[] {
+  return rules.filter((rule) => rule.name.trim() || rule.value.trim());
+}
+
+// ------------------ Brand-evidence sampling (tone of voice) ------------------
+
+/** Total serialized chars sent to the model; keeps one call affordable. */
+const BRAND_EVIDENCE_MAX_CHARS = 60_000;
+/**
+ * Per-block cap. Deliberately small relative to the total: breadth beats depth
+ * here. Voice repeats across a site, so 15 pages read shallowly characterize it
+ * better than 5 read deeply — and a high cap lets the few biggest pages (which
+ * are big from having many sections, not from having more voice) crowd out the
+ * institutional ones that carry the values.
+ */
+const BRAND_EVIDENCE_MAX_BLOCK_CHARS = 4_000;
+
+export interface BrandEvidenceBlock {
+  key: string;
+  content: string;
+}
+
+/**
+ * Pull the human-written phrases out of a block as `prop: phrase` lines.
+ *
+ * Sending the block's JSON does not work: a real page is mostly asset URLs,
+ * resolveTypes and loader config, so serialized size measures how many sections
+ * a page has, not how much voice it carries. Ranking Farm Rio's 1018 pages by
+ * JSON size surfaced product-listing stubs and buried the institutional pages
+ * that hold the brand's values.
+ *
+ * A phrase is a string containing a space — enough to separate "do rio pro
+ * mundo" and "92% de funcionárias" from "site/sections/Layout/Flex.tsx" and
+ * "20px" without a prop allowlist. Prop names are kept because they say what
+ * kind of copy it is, and exact duplicates are dropped: a site repeats the same
+ * banner text across hundreds of pages, and paying for it once is enough.
+ * Near-duplicates that differ only in casing survive on purpose — that
+ * inconsistency is itself a fact about the brand.
+ */
+export function extractBlockProse(block: unknown): string {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+
+  const walk = (node: unknown, prop: string) => {
+    if (typeof node === "string") {
+      if (!node.includes(" ") || node.length < 4) return;
+      if (/^(https?:)?\/\//.test(node) || /^data:/.test(node)) return;
+      const line = `${prop}: ${node.trim()}`;
+      if (seen.has(line)) return;
+      seen.add(line);
+      lines.push(line);
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, prop);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "__resolveType") continue;
+        walk(value, key);
+      }
+    }
+  };
+
+  walk(block, "block");
+  return lines.join("\n");
+}
+
+/**
+ * The blocks that show how this brand writes, most telling first: existing
+ * posts (the brand writing blogposts), then categories (the topics it owns),
+ * then pages (marketing copy — weaker voice evidence, and all a site with no
+ * blog has; Farm Rio has 1018 pages and zero posts).
+ *
+ * Within each tier, most prose first — a product-listing page serializes to
+ * almost nothing once URLs are dropped, an institutional page to paragraphs.
+ *
+ * `pageKeys` comes from the caller's `extractPages`, keeping this independent
+ * of the page-list module.
+ */
+export function selectBrandEvidenceBlocks(
+  decofile: Record<string, unknown>,
+  pageKeys: string[],
+): BrandEvidenceBlock[] {
+  const prose = new Map<string, string>();
+  const proseFor = (key: string) => {
+    const cached = prose.get(key);
+    if (cached !== undefined) return cached;
+    const extracted = extractBlockProse(decofile[key]).slice(
+      0,
+      BRAND_EVIDENCE_MAX_BLOCK_CHARS,
+    );
+    prose.set(key, extracted);
+    return extracted;
+  };
+  const byProseDesc = (a: string, b: string) =>
+    proseFor(b).length - proseFor(a).length;
+
+  const ordered = [
+    ...listBlogPayloads(decofile, "posts")
+      .map((p) => p.key)
+      .sort(byProseDesc),
+    ...listBlogPayloads(decofile, "categories").map((c) => c.key),
+    ...[...pageKeys].sort(byProseDesc),
+  ];
+
+  const selected: BrandEvidenceBlock[] = [];
+  const seen = new Set<string>();
+  let remaining = BRAND_EVIDENCE_MAX_CHARS;
+
+  for (const key of ordered) {
+    if (seen.has(key)) continue;
+    if (!decofile[key]) continue;
+    seen.add(key);
+    const content = proseFor(key);
+    if (content.length > remaining) break;
+    selected.push({ key, content });
+    remaining -= content.length;
+  }
+
+  return selected;
+}
+
+// ------------------ Ideas (the editorial planning queue) ---------------------
+
+/** One block per idea. The prefix says `themes` — this queue's old name. */
+export const IDEA_KEY_PREFIX = "blog-manager/themes/";
+
+/** One angle, worth several posts. Not a post, and has no status. */
+export interface IdeaEntry {
+  key: string;
+  title: string;
+  /** The brief: the angle, who it is for, what it must cover. */
+  body: string;
+  /** The pillar this idea sits in, when it sits in one. */
+  pillarKey?: string;
+  createdAt: string;
+}
+
+export function newIdeaKey(): string {
+  return `${IDEA_KEY_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** Rebuild an idea block — a planning block, so no `__resolveType`. */
+export function buildIdeaBlock(
+  key: string,
+  idea: Omit<IdeaEntry, "key">,
+): Record<string, unknown> {
+  return {
+    name: key,
+    title: idea.title,
+    body: idea.body,
+    pillarKey: idea.pillarKey ?? "",
+    createdAt: idea.createdAt,
+  };
+}
+
+/** Newest first, so a fresh suggestion lands at the top of the tray. */
+export function scanIdeas(decofile: Record<string, unknown>): IdeaEntry[] {
+  const ideas: IdeaEntry[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!key.startsWith(IDEA_KEY_PREFIX)) continue;
+    const record = asRecord(value);
+    if (!record) continue;
+    ideas.push({
+      key,
+      title: str(record.title),
+      body: str(record.body),
+      pillarKey: str(record.pillarKey) || undefined,
+      createdAt: str(record.createdAt),
+    });
+  }
+  return ideas.sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
+  );
+}
+
+// ------------------ Content pillars (recurring territories) ------------------
+
+/**
+ * Pillars are the reconceived themes: broad, durable communication territories
+ * ("Product updates", "Customer cases") a blog returns to, each usable by
+ * several formats. Like themes, they are Studio-only planning blocks (no
+ * `__resolveType`), one per block under this prefix so a suggestion appending
+ * several never clobbers the one being edited.
+ */
+export const PILLAR_KEY_PREFIX = "blog-manager/pillars/";
+
+/** A pillar: a title, a markdown brief, and the formats it tends to use. */
+export interface PillarEntry {
+  key: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  /** Names of the formats this pillar tends to use (optional). */
+  formats: string[];
+}
+
+export function newPillarKey(): string {
+  return `${PILLAR_KEY_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** Every pillar, newest first. */
+export function scanPillars(decofile: Record<string, unknown>): PillarEntry[] {
+  const pillars: PillarEntry[] = [];
+  for (const [key, value] of Object.entries(decofile)) {
+    if (!key.startsWith(PILLAR_KEY_PREFIX)) continue;
+    const record = asRecord(value);
+    if (!record) continue;
+    pillars.push({
+      key,
+      title: str(record.title),
+      body: str(record.body),
+      createdAt: str(record.createdAt),
+      formats: toArray(record.formats)
+        .map((f) => str(f))
+        .filter(Boolean),
+    });
+  }
+  return pillars.sort(
+    (a, b) =>
+      b.createdAt.localeCompare(a.createdAt) || a.title.localeCompare(b.title),
+  );
+}
+
+// ------------------ Formats (loose post templates) ---------------------------
+
+/**
+ * A format is a name plus a markdown brief, injected into the generation
+ * prompt — deliberately loose, so it cites sections rather than sequencing
+ * them. Same `{ name, value }` shape as a brand rule, so `normalizeBrandRules`
+ * already reads the list.
+ */
+export const FORMATS_BLOCK_KEY = "blog-manager-formats";
+
+/** How many posts the format suggestion reads. */
+const MAX_POST_STRUCTURES = 40;
+
+export interface PostStructure {
+  key: string;
+  title: string;
+  /** Component names of the post's sections, in document order. */
+  sections: string[];
+}
+
+/**
+ * The shape of each existing post: which sections it uses, in order.
+ *
+ * This — not the prose — is what reveals the formats a blog already writes in.
+ * Forty sequences of component names is a tiny input next to forty post bodies,
+ * and it is the only part that answers "how is this post built".
+ */
+export function postStructures(
+  decofile: Record<string, unknown>,
+): PostStructure[] {
+  return listBlogPayloads(decofile, "posts")
+    .slice(0, MAX_POST_STRUCTURES)
+    .map(({ key, payload }) => ({
+      key,
+      title: str(payload.title),
+      sections: toArray(payload.sections)
+        .map((section) => str(asRecord(section)?.__resolveType))
+        .filter(Boolean)
+        .map(blockComponentName),
+    }));
+}
+
+export interface MentionableSection {
+  /** The token a brief cites, and what gets inserted: `ProductShelf`. */
+  name: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * The sections a format's brief may cite, deduped by component name.
+ *
+ * `discoverBlogBlockTypes` dedupes by `resolveType`, so an app and a site
+ * variant of the same component both survive — and since a citation is the bare
+ * component name, those two are indistinguishable once written. Collapsing them
+ * here keeps the picker from listing the same `@Name` twice.
+ */
+export function mentionableSections(meta: LiveMeta): MentionableSection[] {
+  const byName = new Map<string, MentionableSection>();
+  for (const block of discoverBlogBlockTypes(meta)) {
+    const name = blockComponentName(block.resolveType);
+    if (byName.has(name)) continue;
+    byName.set(name, {
+      name,
+      title: block.title,
+      description: block.description,
+    });
+  }
+  return [...byName.values()];
+}
+
+/**
+ * `@Name` mentions in a format's brief. Requires a word boundary before the
+ * `@` so an email address in the prose isn't read as a citation, matching when
+ * the editor's picker fires.
+ */
+export function citedSections(markdown: string): string[] {
+  const cited = new Set<string>();
+  for (const match of markdown.matchAll(/(?:^|[\s([{>])@([A-Za-z][\w-]*)/g)) {
+    if (match[1]) cited.add(match[1]);
+  }
+  return [...cited];
+}
+
+/**
+ * Cited sections the site no longer has. Without surfacing these, a format
+ * keeps pointing at a renamed section and only the generated post shows it.
+ */
+export function unknownCitations(
+  markdown: string,
+  available: string[],
+): string[] {
+  const known = new Set(available);
+  return citedSections(markdown).filter((name) => !known.has(name));
+}
+
+/**
+ * Sections for the starter format, in a sensible reading order, skipping
+ * whatever this site doesn't have — so the brief never cites something
+ * unrenderable. Its prose comes from the caller, to stay translated.
+ */
+const DEFAULT_FORMAT_SECTIONS = [
+  "Heading",
+  "Paragraph",
+  "BlockImage",
+  "List",
+  "Cta",
+] as const;
+
+export function defaultFormatSections(available: string[]): string[] {
+  const known = new Set(available);
+  return DEFAULT_FORMAT_SECTIONS.filter((name) => known.has(name));
+}
+
+/** Casing, accents and spacing are presentation, not identity. */
+export function normalizeTitleKey(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Drop suggestions whose title already exists, and duplicates within the batch.
+ * The tool is told not to repeat, but it is a model — and running "suggest"
+ * twice is the normal way to use the button, so the second run must not double
+ * the list.
+ */
+export function dedupeSuggestedThemes<T extends { title: string }>(
+  existingTitles: string[],
+  suggested: T[],
+): T[] {
+  const seen = new Set(existingTitles.map(normalizeTitleKey));
+  const fresh: T[] = [];
+  for (const theme of suggested) {
+    const key = normalizeTitleKey(theme.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    fresh.push(theme);
+  }
+  return fresh;
+}
+
+// ------------------ Generation ----------------------------------------------
+
+/** Brand fields a generated post cannot be written without. */
+export type BrandRequirement =
+  | "companyName"
+  | "language"
+  | "description"
+  | "tone"
+  | "targetAudience"
+  | "dos"
+  | "avoid";
+
+const REQUIRED_BRAND_TEXT = [
+  "companyName",
+  "language",
+  "description",
+  "tone",
+  "targetAudience",
+] as const satisfies readonly BrandRequirement[];
+
+/**
+ * What the brand block still lacks before anything may be generated.
+ *
+ * These are the three tabs that decide how a post reads — the basics, the
+ * generation instructions and the guardrails. Without them the model falls back
+ * on what a brand in this category usually sounds like, which is the one
+ * outcome the whole feature exists to avoid, so this blocks rather than warns.
+ * `values`, `categories` and `competitors` are genuinely extra.
+ */
+export function missingBrandForGeneration(block: unknown): BrandRequirement[] {
+  const brand = asRecord(block) ?? {};
+  const missing: BrandRequirement[] = [];
+  for (const field of REQUIRED_BRAND_TEXT) {
+    if (!str(brand[field]).trim()) missing.push(field);
+  }
+  if (filledBrandRules(normalizeBrandRules(brand.dos)).length === 0) {
+    missing.push("dos");
+  }
+  if (filledBrandRules(normalizeBrandRules(brand.avoid)).length === 0) {
+    missing.push("avoid");
+  }
+  return missing;
+}
+
+/**
+ * Component name → the resolveType this site actually exposes for it.
+ *
+ * A generated section names its kind (`Heading`); only the site knows whether
+ * that is `blog/sections/blocks/Heading.tsx` or its own
+ * `site/sections/Blog/Post/Heading.tsx`. Keeping the mapping here means the
+ * model never sees a resolveType and so can never invent one.
+ */
+export function sectionResolveTypes(meta: LiveMeta): Record<string, string> {
+  const byName: Record<string, string> = {};
+  for (const block of discoverBlogBlockTypes(meta)) {
+    const name = blockComponentName(block.resolveType);
+    if (!(name in byName)) byName[name] = block.resolveType;
+  }
+  return byName;
+}
+
+type DraftSection =
+  StudioToolIO["BLOG_POST_DRAFT"]["output"]["sections"][number];
+
+/**
+ * Turn generated sections into decofile blocks.
+ *
+ * This is where the storage conventions live, and they differ per kind — a
+ * `List` stores its items as one newline-joined string, while `Checklist` and
+ * friends store JSON. Getting it wrong yields a block that saves fine and
+ * renders empty, so each kind is written out explicitly rather than spread.
+ *
+ * A kind this site doesn't expose is dropped: better a shorter post than a
+ * block the editor can't render.
+ */
+export function buildPostSections(
+  sections: DraftSection[],
+  resolveTypes: Record<string, string>,
+): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = [];
+  for (const section of sections) {
+    const __resolveType = resolveTypes[section.type];
+    if (!__resolveType) continue;
+    switch (section.type) {
+      case "Heading":
+        blocks.push({
+          __resolveType,
+          text: str(section.text),
+          level: section.level ?? "2",
+        });
+        break;
+      case "Paragraph":
+        blocks.push({ __resolveType, html: str(section.html) });
+        break;
+      case "List":
+        blocks.push({
+          __resolveType,
+          // One string, newline-separated — see ListBlock in plain-blocks.
+          items: (section.items ?? []).join("\n"),
+          style: section.style ?? "unordered",
+        });
+        break;
+      case "Quote":
+        blocks.push({ __resolveType, quote: str(section.quote) });
+        break;
+      case "Callout":
+        blocks.push({
+          __resolveType,
+          title: str(section.title),
+          body: str(section.body),
+          variant: section.variant ?? "info",
+        });
+        break;
+      case "Cta":
+        blocks.push({
+          __resolveType,
+          text: str(section.text),
+          href: str(section.href),
+        });
+        break;
+      case "Divider":
+        blocks.push({ __resolveType });
+        break;
+    }
+  }
+  return blocks;
+}
+
+/** URL-safe slug from a title: accents folded, punctuation dropped. */
+export function slugifyTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+/** `slugifyTitle`, suffixed until it stops colliding with an existing post. */
+export function uniquePostSlug(title: string, taken: string[]): string {
+  const base = slugifyTitle(title) || `post-${randomHex(6)}`;
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; n < 100; n++) {
+    const candidate = `${base}-${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base}-${randomHex(4)}`;
+}
+
+/** A freshly generated post: lands in Awaiting review, with no cover image. */
+export function buildGeneratedPostPayload({
+  draft,
+  resolveTypes,
+  categories,
+  authors,
+  planning,
+  takenSlugs,
+  now,
+}: {
+  draft: StudioToolIO["BLOG_POST_DRAFT"]["output"];
+  resolveTypes: Record<string, string>;
+  /** The site's categories, to resolve the chosen slugs into stored refs. */
+  categories: CategoryRef[];
+  /** The site's authors, to resolve the chosen emails into stored refs. */
+  authors: AuthorRef[];
+  /** The briefing the card was generated from, kept for the board card. */
+  planning?: PlanningMeta;
+  takenSlugs: string[];
+  now: Date;
+}): Record<string, unknown> {
+  const chosenCategories = new Set(draft.categorySlugs);
+  const chosenAuthors = new Set(draft.authorEmails);
+  const payload: Record<string, unknown> = {
+    title: draft.title,
+    slug: uniquePostSlug(draft.title, takenSlugs),
+    date: now.toISOString().slice(0, 10),
+    excerpt: draft.excerpt,
+    image: "",
+    alt: "",
+    authors: authors.filter((author) => chosenAuthors.has(author.email)),
+    categories: categories.filter((c) => chosenCategories.has(c.slug)),
+    seo: {
+      title: draft.seo.title,
+      description: draft.seo.description,
+      image: "",
+    },
+    sections: buildPostSections(draft.sections, resolveTypes),
+    planning: (planning ?? {}) as Record<string, unknown>,
+  };
+  return setPostStatus(payload, "awaiting_review", now);
 }
