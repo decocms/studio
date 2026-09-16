@@ -1175,6 +1175,16 @@ export function TaskBoardPage() {
       <Panel.Toolbar.Left.Portal>
         <Page.Tabs>
           <Page.Tab
+            active={layout === "board"}
+            aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+              label: t("common.taskBoard.boardView"),
+            })}
+            onClick={() => setLayout("board")}
+          >
+            <Columns03 size={14} />
+            {t("common.taskBoard.boardView")}
+          </Page.Tab>
+          <Page.Tab
             active={layout === "list"}
             aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
               label: t("common.taskBoard.listView"),
@@ -1186,16 +1196,6 @@ export function TaskBoardPage() {
           >
             <List size={14} />
             {t("common.taskBoard.listView")}
-          </Page.Tab>
-          <Page.Tab
-            active={layout === "board"}
-            aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-              label: t("common.taskBoard.boardView"),
-            })}
-            onClick={() => setLayout("board")}
-          >
-            <Columns03 size={14} />
-            {t("common.taskBoard.boardView")}
           </Page.Tab>
         </Page.Tabs>
       </Panel.Toolbar.Left.Portal>

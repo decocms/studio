@@ -96,7 +96,7 @@ Additional captures:
 
 - [Expanded project sidebar](assets/compact-editor-expanded.png)
 - [Page picker with name and path on one line](assets/compact-editor-page-picker.png)
-- [Tasks with List / Board tabs and filters beside New task](assets/compact-tasks-list.png)
+- [Tasks with Board / List tabs and filters beside New task](assets/compact-tasks-list.png)
 - [Library file list and shared toolbar](assets/compact-library-files.png)
 - [Library on mobile](assets/compact-library-mobile.png)
 - [Project settings — General](assets/project-settings-general.png)
@@ -317,7 +317,7 @@ separate stacking contexts so loading/iframe layers cannot cover editor controls
 A page restored from the shared selection keeps its path even before metadata
 finishes loading.
 
-Tasks uses `Page.Tabs` for List and Board, with filters in the header beside
+Tasks uses `Page.Tabs` for Board and List, with filters in the header beside
 New task through `Page.Actions secondary={…}`. Narrow panels use the existing
 filters drawer in the same action group. Library uses the same tabs for
 All files, Documents, and Media, with search and refresh on the right. Its upload
