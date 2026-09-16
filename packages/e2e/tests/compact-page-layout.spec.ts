@@ -222,7 +222,7 @@ test.describe("compact page layout", () => {
           .getByTestId("main-panel")
           .getByRole("button", { name: "Open chat", exact: true }),
       ).toHaveCount(0);
-      await picker.click();
+      await picker.getByTestId("preview-page-origin").click();
       const search = page.getByPlaceholder("Search pages and components...");
       await expect(search).toBeFocused();
       await search.fill("About");
@@ -262,7 +262,7 @@ test.describe("compact page layout", () => {
         "title",
         `${pageOrigin} · About us · /about`,
       );
-      await picker.click();
+      await picker.getByTestId("preview-page-path").click();
       await expect(page.getByRole("dialog")).not.toContainText(
         new URL(previewSite.url).host,
       );
@@ -375,18 +375,35 @@ test.describe("compact page layout", () => {
       });
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(picker).toBeVisible();
+      const pickerBounds = (await picker.boundingBox())!;
       for (const part of [
         picker.getByTestId("preview-page-origin"),
         picker.getByText("About us", { exact: true }),
         picker.getByTestId("preview-page-path"),
       ]) {
         await expect(part).toBeVisible();
+        const partBounds = (await part.boundingBox())!;
+        expect(partBounds.x).toBeGreaterThanOrEqual(pickerBounds.x);
+        expect(partBounds.x + partBounds.width).toBeLessThanOrEqual(
+          pickerBounds.x + pickerBounds.width,
+        );
         expect(
-          await part.evaluate((el) => el.scrollWidth <= el.clientWidth),
-        ).toBe(true);
+          Math.abs(
+            partBounds.y +
+              partBounds.height / 2 -
+              (pickerBounds.y + pickerBounds.height / 2),
+          ),
+        ).toBeLessThanOrEqual(1);
       }
       await expect(picker).toContainText("About us");
       await expect(picker).toContainText("/about");
+      expect(
+        await picker.getByText("About us", { exact: true }).evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getClientRects().length;
+        }),
+      ).toBe(1);
       await page.getByTestId("preview-blocks-toggle").click();
       await expect(page.getByTestId("blocks-panel")).toBeVisible();
       await expect(

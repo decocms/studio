@@ -295,9 +295,11 @@ background and pressed state follow the visible chat, including on mobile.
 Settings supplies an inactive fallback that opens chat on Home.
 
 Preview uses the existing `BlocksPanel` and `BlocksPreviewWorkspaceProvider`.
-The compact page picker trigger shows the origin (including protocol), page name,
-and path, in that order. The URL parts are muted and can truncate; the page name
-wraps when needed to remain fully readable. The popover starts with
+The compact page picker uses one button with two visual regions: a muted origin
+box (including protocol), followed by the page name, path, and dropdown arrow.
+Clicking either region opens the same picker; the origin is not a separate link.
+The text stays on one line and truncates when space is tight, with the full value
+available in the tooltip. The popover starts with
 search and uses the hover background to mark the current selection, without
 repeating the origin or adding a checkmark.
 Each popover row places the page name first and aligns its muted path to the

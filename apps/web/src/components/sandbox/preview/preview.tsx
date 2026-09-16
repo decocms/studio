@@ -1489,48 +1489,50 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     .filter(Boolean)
                     .join(" · ")
             }
-            className="flex min-h-7 w-fit min-w-0 max-w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-lg"
+            className="group/page-picker flex h-7 w-fit min-w-0 max-w-full items-stretch overflow-hidden whitespace-nowrap rounded-md border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-lg"
           >
-            {activeGlobalSection && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                <Globe02 size={11} />
-                {t("sandbox.preview.globalBadge")}
-              </span>
-            )}
-            {activeLoader && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                <Database01 size={11} />
-                {t("sandbox.preview.loaderBadge")}
-              </span>
-            )}
             {!activeGlobalSection && !activeLoader && pageOrigin && (
               <span
                 data-testid="preview-page-origin"
-                className="min-w-0 truncate font-mono text-muted-foreground"
+                className="flex min-w-0 max-w-56 items-center border-r border-border/60 bg-muted/60 px-2 font-mono text-muted-foreground"
               >
-                {pageOrigin}
+                <span className="truncate">{pageOrigin}</span>
               </span>
             )}
-            {(pageName || !pageOrigin) && (
-              <span className="min-w-0 truncate font-medium text-foreground">
-                {pageName ?? previewLabel}
-              </span>
-            )}
-            {!activeGlobalSection && !activeLoader && (
-              <span
-                data-testid="preview-page-path"
-                className="ml-auto min-w-0 truncate text-right font-mono text-muted-foreground"
-              >
-                {currentPath}
-              </span>
-            )}
-            <ChevronDown
-              size={12}
-              className={cn(
-                "ml-1 shrink-0 transition-transform",
-                pagesOpen && "rotate-180",
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
+              {activeGlobalSection && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                  <Globe02 size={11} />
+                  {t("sandbox.preview.globalBadge")}
+                </span>
               )}
-            />
+              {activeLoader && (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <Database01 size={11} />
+                  {t("sandbox.preview.loaderBadge")}
+                </span>
+              )}
+              {(pageName || !pageOrigin) && (
+                <span className="min-w-0 truncate font-medium text-foreground">
+                  {pageName ?? previewLabel}
+                </span>
+              )}
+              {!activeGlobalSection && !activeLoader && (
+                <span
+                  data-testid="preview-page-path"
+                  className="ml-auto min-w-0 truncate text-right font-mono text-muted-foreground"
+                >
+                  {currentPath}
+                </span>
+              )}
+              <ChevronDown
+                size={12}
+                className={cn(
+                  "shrink-0 transition-transform",
+                  pagesOpen && "rotate-180",
+                )}
+              />
+            </span>
           </button>
         </PopoverTrigger>
         <PopoverContent
