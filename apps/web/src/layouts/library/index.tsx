@@ -458,7 +458,7 @@ export function LibraryPage({
             </IconButton>
             {browseVolume && (
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
                 onClick={() => setNewFolderOpen(true)}
               >
