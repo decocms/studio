@@ -632,8 +632,8 @@ export function SearchToggle({
   return (
     <div
       className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-1.5 overflow-hidden rounded-full border border-border px-2.5 text-xs text-foreground transition-all duration-200 ease-out",
-        expanded ? "w-32 sm:w-44" : "w-8 px-0 justify-center",
+        "inline-flex h-7 shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card px-2.5 text-xs text-card-foreground card-shadow transition-all duration-200 ease-out",
+        expanded ? "w-32 sm:w-44" : "w-7 px-0 justify-center",
         block && "h-10 w-full px-3 text-sm sm:w-full",
       )}
     >

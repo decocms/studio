@@ -46,11 +46,9 @@ import {
   Calendar,
   CheckCircle,
   ChevronRight,
-  Columns03,
   DotsHorizontal,
   HelpCircle,
   Lightning01,
-  List,
   Plus,
   RefreshCw01,
   UserPlus01,
@@ -1190,7 +1188,6 @@ export function TaskBoardPage() {
             })}
             onClick={() => setLayout("board")}
           >
-            <Columns03 size={14} />
             {t("common.taskBoard.boardView")}
           </Page.Tab>
           <Page.Tab
@@ -1203,7 +1200,6 @@ export function TaskBoardPage() {
               clearSelection();
             }}
           >
-            <List size={14} />
             {t("common.taskBoard.listView")}
           </Page.Tab>
         </Page.Tabs>

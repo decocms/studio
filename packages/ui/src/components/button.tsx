@@ -45,13 +45,13 @@ const buttonVariants = cva(
         link: "text-foreground/80 hover:text-foreground",
         /**
          * A view tab: the pills that select which view of a page is showing.
-         * Selection is `aria-pressed`, because these navigate rather than sit
-         * in a Radix tablist — the pressed styling has to come from the same
-         * attribute that tells a screen reader which one is on, and it lifts
+         * Selection is `aria-pressed`, or `aria-current="page"` when the tab IS
+         * a link — the styling has to come from whichever attribute tells a
+         * screen reader this one is on, never a class beside it. It lifts
          * the pill the way {@link SECONDARY} does, since "selected" here is a
          * raised chip (see `ViewModeToggle`) rather than a filled one.
          */
-        tab: "text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-card aria-pressed:text-card-foreground aria-pressed:card-shadow",
+        tab: "text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-card aria-pressed:text-card-foreground aria-pressed:card-shadow aria-[current=page]:bg-card aria-[current=page]:text-card-foreground aria-[current=page]:card-shadow",
         /**
          * A row in a popover menu — full width, text leading, regular weight.
          * Every caller was reaching for `ghost` and then re-adding

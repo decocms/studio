@@ -218,20 +218,14 @@ function PageTab({
   return (
     <Button
       asChild={asChild}
-      variant="ghost"
+      variant="tab"
       size="sm"
       {...props}
       type={asChild ? undefined : "button"}
       aria-current={asChild && active ? "page" : undefined}
       aria-pressed={asChild ? undefined : active}
       data-slot="page-tab"
-      className={cn(
-        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-        active
-          ? "border-border bg-accent text-foreground"
-          : "border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-        className,
-      )}
+      className={cn("shrink-0", className)}
     />
   );
 }
