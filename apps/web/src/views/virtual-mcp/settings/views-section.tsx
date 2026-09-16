@@ -1,5 +1,5 @@
 /**
- * The Views tab: default layout preferences and the available sidebar views.
+ * Project layout: default layout preferences and the available sidebar views.
  *
  * One card, not one per source: a view from a connected app is the same kind of
  * thing as a native one, so the app's rows sit under a labelled divider inside

@@ -43,7 +43,7 @@ test.describe("project settings tabs", () => {
       "General",
       "Connections",
       "Site",
-      "Views",
+      "Project layout",
     ]);
     await expect(tabs.getByRole("link", { name: "General" })).toHaveAttribute(
       "aria-current",
@@ -82,11 +82,15 @@ test.describe("project settings tabs", () => {
     await page.reload();
     await expect(name).toHaveValue("Forma Studio");
 
-    await tabs.getByRole("link", { name: "Views", exact: true }).click();
+    await tabs
+      .getByRole("link", { name: "Project layout", exact: true })
+      .click();
     await expect(page).toHaveURL(
       (url) => url.searchParams.get("section") === "views",
     );
-    await expect(tabs.locator('[aria-current="page"]')).toHaveText("Views");
+    await expect(tabs.locator('[aria-current="page"]')).toHaveText(
+      "Project layout",
+    );
     await expect(
       content.getByRole("heading", { name: "Default layout" }),
     ).toBeVisible();
@@ -196,9 +200,11 @@ test.describe("project settings tabs", () => {
     });
     await expect(previewServer).toHaveValue("https://forma.example.com/");
     await previewServer.fill("https://preview.forma.example.com/");
-    await tabs.getByRole("link", { name: "Views", exact: true }).click();
+    await tabs
+      .getByRole("link", { name: "Project layout", exact: true })
+      .click();
     await expect(
-      tabs.getByRole("link", { name: "Views", exact: true }),
+      tabs.getByRole("link", { name: "Project layout", exact: true }),
     ).toHaveAttribute("aria-current", "page");
     await page.goBack();
     await expect(previewServer).toHaveValue(

@@ -138,7 +138,7 @@ export const virtualMcp = {
   "virtualMcp.settings.connections.heading": "Connected tools",
   "virtualMcp.settings.connections.description":
     "The MCP servers this project brings together.",
-  "virtualMcp.settings.views.projectViews": "Views",
+  "virtualMcp.settings.views.projectViews": "Project layout",
   "virtualMcp.settings.views.description":
     "Choose how your project opens and which views appear in its sidebar.",
   "virtualMcp.settings.views.defaults": "Default layout",
