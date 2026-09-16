@@ -268,7 +268,7 @@ function SpecificModelPicker({
   }
 
   return (
-    <div className="w-fit max-w-full [&_button]:rounded-lg">
+    <div className="w-fit max-w-full">
       <ModelSelector
         variant="bordered"
         placeholder={t("automations.automationConfig.pickModelPlaceholder")}

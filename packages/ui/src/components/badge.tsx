@@ -25,6 +25,10 @@ const badgeVariants = cva(
       size: {
         default: "px-2 py-0.5",
         icon: "size-5",
+        /** A token built from parts — a filter chip's field / operator / value
+         *  / remove. The sections carry their own padding and hairlines, so the
+         *  badge itself only supplies the outline and the pill shape. */
+        segmented: "h-7 p-0",
       },
     },
     defaultVariants: {

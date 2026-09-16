@@ -70,7 +70,7 @@ export function ViewModeToggle<T extends string = string>({
   const config = sizeConfig[size];
 
   return (
-    <div className={cn("relative flex gap-0 bg-muted rounded-lg", className)}>
+    <div className={cn("relative flex gap-0 bg-muted rounded-full", className)}>
       {options.map((option, i) => {
         const btn = (
           <button
@@ -82,7 +82,7 @@ export function ViewModeToggle<T extends string = string>({
             onClick={() => onValueChange(option.value)}
             aria-label={option.label}
             className={cn(
-              "relative z-10 flex items-center justify-center gap-2 rounded-lg transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
+              "relative z-10 flex items-center justify-center gap-2 rounded-full transition-colors [transition-timing-function:var(--ease-out-cubic)] duration-200",
               fullWidth
                 ? "flex-1 h-12 px-4"
                 : option.label
@@ -126,7 +126,7 @@ export function ViewModeToggle<T extends string = string>({
       {/* Sliding indicator */}
       <div
         className={cn(
-          "absolute z-0 bg-background rounded-lg border-shadow transition-all [transition-timing-function:var(--ease-out-cubic)] duration-200",
+          "absolute z-0 bg-background rounded-full border-shadow transition-all [transition-timing-function:var(--ease-out-cubic)] duration-200",
           fullWidth ? "h-12" : config.button,
         )}
         style={{

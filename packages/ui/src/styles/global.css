@@ -304,6 +304,9 @@
   --spacing-96: calc(var(--spacing) * 96);
 
   --text-sm: 0.8125rem;
+  /* Tailwind ships --text-* as a PAIR; leaving its 14px-derived sm ratio against
+     our 13px computed 18.571px, landing every text-sm row on a fraction. */
+  --text-sm--line-height: 1.25rem;
 
   --animate-device-icon-pop: device-icon-pop 150ms var(--ease-out-cubic) both;
   --animate-connection-travel: connection-travel 2.6s var(--ease-in-out-cubic)
