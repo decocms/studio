@@ -10,8 +10,8 @@ import {
 test.describe("compact page layout", () => {
   test.setTimeout(120_000);
 
-  test("page headings and actions stay in the shared header across org and settings routes", async ({
-    authedPage: { page, orgSlug },
+  test("page headings and actions stay in the shared header across org, project, and settings routes", async ({
+    authedPage: { page, orgSlug, user },
   }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await callSelfMcpTool(page.request, orgSlug, "TASK_BOARD_ITEM_CREATE", {
@@ -20,12 +20,48 @@ test.describe("compact page layout", () => {
     await page.goto(`/${orgSlug}/home`);
     const header = page.getByTestId("page-header");
     await expect(
-      header.getByRole("heading", { level: 1, name: "Home", exact: true }),
+      header.getByRole("heading", {
+        level: 1,
+        name: user.orgName,
+        exact: true,
+      }),
     ).toBeVisible({ timeout: 60_000 });
     await expect(
       header.getByRole("button", { name: "New Project" }),
     ).toBeVisible();
     await expect(page.locator('[data-slot="panel-toolbar"]')).toBeHidden();
+    await expect(
+      header.getByRole("navigation", { name: "Breadcrumbs" }),
+    ).toHaveCount(0);
+    await header.screenshot({
+      path: testInfo.outputPath("compact-org-home-header.png"),
+    });
+
+    const { item: project } = await callSelfMcpTool<{ item: { id: string } }>(
+      page.request,
+      orgSlug,
+      "COLLECTION_VIRTUAL_MCP_CREATE",
+      { data: { title: "Forma", status: "active", connections: [] } },
+    );
+    await page.goto(`/${orgSlug}/projects/${project.id}`);
+    await expect(
+      header.getByRole("heading", { level: 1, name: "Forma", exact: true }),
+    ).toBeVisible();
+    const breadcrumbs = header.getByRole("navigation", { name: "Breadcrumbs" });
+    await expect(breadcrumbs.getByRole("link")).toHaveText([user.orgName]);
+    await expect(header.getByText("Overview", { exact: true })).toHaveCount(0);
+    await header.screenshot({
+      path: testInfo.outputPath("compact-project-home-header.png"),
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+      header.getByRole("heading", { name: "Forma", exact: true }),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await breadcrumbs.getByRole("link", { name: user.orgName }).click();
+    await expect(
+      header.getByRole("heading", { name: user.orgName, exact: true }),
+    ).toBeVisible();
     const sidebar = page.locator('[data-slot="sidebar"]');
     await expect(sidebar.getByText("Projects", { exact: true })).toBeVisible();
     await expect(

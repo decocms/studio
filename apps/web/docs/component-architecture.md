@@ -82,6 +82,10 @@ On mobile, each visible page or conversation header opens the same navigation
 sheet. `ChatLayout` shows one region at a time. The sidebar chat button selects
 the conversation; its header lets the user return to the page.
 
+Home headers use the current scope as their title: the organization name on org
+home, or organization → project on project home. Ancestor scopes remain links;
+the current scope is the heading, without an extra Home or Overview segment.
+
 ## The layout on screen
 
 These captures show the compact layout running against the local E2E server
@@ -94,6 +98,8 @@ mobile, Blocks overlays the preview instead of squeezing the canvas.
 
 Additional captures:
 
+- [Organization home header](assets/compact-org-home-header.png)
+- [Project home header](assets/compact-project-home-header.png)
 - [Sidebar and chat controls with the shared button radius](assets/compact-sidebar-controls.png)
 - [Expanded project sidebar](assets/compact-editor-expanded.png)
 - [Page picker with name and path on one line](assets/compact-editor-page-picker.png)

@@ -23,11 +23,17 @@ export function RoutePageHeader({
   const project = useVirtualMCPNonBlocking(scopeId);
   const inSettings = useInSettings();
   const { toggleSidebar } = useSidebar();
-  const titleKey = useRouterState({
+  const page = useRouterState({
     select: (state) =>
-      state.matches.findLast((match) => match.staticData.pageTitle)?.staticData
-        .pageTitle,
+      state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
   });
+  const isHome = page?.mainView === "overview";
+  const projectTitle = project?.title ?? t("common.loading");
+  const title = isHome
+    ? scopeId
+      ? projectTitle
+      : org.name
+    : t(page?.pageTitle ?? "page.view");
   const separator = (
     <ChevronRight
       size={12}
@@ -37,7 +43,7 @@ export function RoutePageHeader({
   );
   return (
     <Page.Header
-      title={t(titleKey ?? "page.view")}
+      title={title}
       leading={
         <ToolbarIconButton
           className="md:hidden"
@@ -48,42 +54,44 @@ export function RoutePageHeader({
         </ToolbarIconButton>
       }
       breadcrumbs={
-        <nav
-          aria-label={t("page.breadcrumbs")}
-          className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground sm:flex"
-        >
-          <Link
-            to="/$org/home"
-            params={{ org: org.slug }}
-            className="max-w-32 truncate hover:text-foreground"
+        (!isHome || scopeId) && (
+          <nav
+            aria-label={t("page.breadcrumbs")}
+            className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground sm:flex"
           >
-            {org.name}
-          </Link>
-          {separator}
-          {inSettings ? (
-            <>
-              <Link
-                to="/$org/settings/general"
-                params={{ org: org.slug }}
-                className="truncate hover:text-foreground"
-              >
-                {t("sidebar.navDestinations.settings")}
-              </Link>
-              {separator}
-            </>
-          ) : scopeId ? (
-            <>
-              <Link
-                to="/$org/projects/$agentId"
-                params={{ org: org.slug, agentId: scopeId }}
-                className="max-w-40 truncate hover:text-foreground"
-              >
-                {project?.title ?? t("page.overview")}
-              </Link>
-              {separator}
-            </>
-          ) : null}
-        </nav>
+            <Link
+              to="/$org/home"
+              params={{ org: org.slug }}
+              className="max-w-32 truncate hover:text-foreground"
+            >
+              {org.name}
+            </Link>
+            {separator}
+            {inSettings ? (
+              <>
+                <Link
+                  to="/$org/settings/general"
+                  params={{ org: org.slug }}
+                  className="truncate hover:text-foreground"
+                >
+                  {t("sidebar.navDestinations.settings")}
+                </Link>
+                {separator}
+              </>
+            ) : scopeId && !isHome ? (
+              <>
+                <Link
+                  to="/$org/projects/$agentId"
+                  params={{ org: org.slug, agentId: scopeId }}
+                  className="max-w-40 truncate hover:text-foreground"
+                >
+                  {projectTitle}
+                </Link>
+                {separator}
+              </>
+            ) : null}
+          </nav>
+        )
       }
       actions={actions}
       navigation={navigation}

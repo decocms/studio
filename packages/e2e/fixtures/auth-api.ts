@@ -40,6 +40,7 @@ export interface SignUpResult {
   password: string;
   userId: string;
   orgSlug: string;
+  orgName: string;
 }
 
 /** Every test principal shares this password. Exported so specs that sign an
@@ -112,10 +113,15 @@ export async function signUpViaApi(
     );
   }
   const orgsBody = (await listRes.json()) as
-    | Array<{ slug: string; metadata?: { archived?: boolean } | null }>
+    | Array<{
+        slug: string;
+        name: string;
+        metadata?: { archived?: boolean } | null;
+      }>
     | {
         data?: Array<{
           slug: string;
+          name: string;
           metadata?: { archived?: boolean } | null;
         }>;
       };
@@ -134,5 +140,6 @@ export async function signUpViaApi(
     password: user.password,
     userId,
     orgSlug: org.slug,
+    orgName: org.name,
   };
 }
