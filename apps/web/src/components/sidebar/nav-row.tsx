@@ -132,16 +132,14 @@ export function SidebarBackRow({
   onSelect?: () => void;
 }) {
   return (
-    <div className="pt-3 pb-1">
-      <SidebarMenu className="shrink-0">
-        <SidebarNavRow
-          icon={<ArrowLeft size={16} />}
-          label={label}
-          className="text-sidebar-foreground/70"
-          link={link}
-          onSelect={onSelect}
-        />
-      </SidebarMenu>
-    </div>
+    <SidebarMenu className="shrink-0">
+      <SidebarNavRow
+        icon={<ArrowLeft size={16} />}
+        label={label}
+        className="text-sidebar-foreground/70"
+        link={link}
+        onSelect={onSelect}
+      />
+    </SidebarMenu>
   );
 }
