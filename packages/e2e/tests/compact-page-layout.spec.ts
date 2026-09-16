@@ -80,7 +80,7 @@ test.describe("compact page layout", () => {
     const pageHeader = await header.boundingBox();
     expect(Math.abs(sidebarHeader!.y - pageHeader!.y)).toBeLessThanOrEqual(1);
     expect(sidebarHeader!.height).toBe(pageHeader!.height);
-    await sidebar.getByRole("link", { name: "Tasks", exact: true }).click();
+    await sidebar.getByRole("link", { name: "Board", exact: true }).click();
     await expect(
       header.getByRole("heading", { name: "Tasks", exact: true }),
     ).toBeVisible();
