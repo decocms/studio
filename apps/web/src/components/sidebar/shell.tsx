@@ -59,7 +59,7 @@ export function SidebarShell({
       )}
       <SidebarContent className="gap-0 overflow-y-auto px-2 pt-3 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
         {back && (
-          <div className="sticky top-0 z-10 shrink-0 bg-sidebar pb-2">
+          <div className="sticky top-0 z-10 hidden shrink-0 bg-sidebar pb-2 not-empty:block">
             {back}
           </div>
         )}
