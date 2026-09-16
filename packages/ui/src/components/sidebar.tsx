@@ -414,7 +414,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-lg py-0 pr-0.5 pl-1.5 text-left text-sm outline-0 outline-sidebar-ring transition-[width,height,padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate group-data-[state=collapsed]/sidebar:[&>span:last-child]:hidden [&>svg]:size-4 [&>svg]:shrink-0 [&_svg:not([class*='text-'])]:text-muted-foreground hover:[&_svg:not([class*='text-'])]:text-sidebar-foreground",
+  "peer/menu-button flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-lg py-0 pr-0.5 pl-1.5 text-left text-sm outline-0 outline-sidebar-ring transition-[width,height,padding] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-2 focus-visible:-outline-offset-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground [&>span:last-child]:truncate group-data-[state=collapsed]/sidebar:[&>span:last-child]:hidden [&>svg]:size-4 [&>svg]:shrink-0 classic:[&_svg]:opacity-60 classic:hover:[&_svg]:opacity-100 compact:[&_svg:not([class*='text-'])]:text-muted-foreground compact:hover:[&_svg:not([class*='text-'])]:text-sidebar-foreground",
   {
     variants: {
       variant: {
@@ -424,7 +424,7 @@ const sidebarMenuButtonVariants = cva(
       },
       size: {
         default:
-          "group-data-[state=expanded]/sidebar:h-8 group-data-[state=expanded]/sidebar:px-2 group-data-[state=collapsed]/sidebar:size-8! group-data-[state=collapsed]/sidebar:rounded-full group-data-[state=collapsed]/sidebar:p-0! group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:justify-center text-sm",
+          "group-data-[state=expanded]/sidebar:h-8 group-data-[state=expanded]/sidebar:px-2 classic:group-data-[state=collapsed]/sidebar:w-full! classic:group-data-[state=collapsed]/sidebar:aspect-square! classic:group-data-[state=collapsed]/sidebar:max-w-[calc(var(--sidebar-width-icon)-1rem)]! classic:group-data-[state=collapsed]/sidebar:h-auto! group-data-[state=collapsed]/sidebar:p-0! group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:justify-center text-sm compact:group-data-[state=collapsed]/sidebar:size-8! compact:group-data-[state=collapsed]/sidebar:rounded-full",
         sm: "h-7 text-xs",
         lg: "h-12 text-sm p-0!",
       },

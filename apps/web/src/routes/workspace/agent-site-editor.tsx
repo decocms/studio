@@ -30,7 +30,7 @@ function SiteEditorActions() {
         <>
           <Separator
             orientation="vertical"
-            className="mx-1 data-[orientation=vertical]:h-4"
+            className="classic:hidden mx-1 data-[orientation=vertical]:h-4"
           />
           <div className="flex shrink-0 items-center justify-end gap-1">
             {runtime === "cms" ? (

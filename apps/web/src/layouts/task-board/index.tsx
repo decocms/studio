@@ -1,3 +1,6 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { Columns03, List } from "@untitledui/icons";
+import { TaskFiltersBar, TaskFiltersDrawer } from "./task-filters";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 /**
@@ -469,7 +472,7 @@ function CardAction({
           `${node.offsetWidth}px`,
         )
       }
-      className="absolute -top-0.5 right-0 h-6 gap-1.5 px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+      className="absolute -top-0.5 right-0 h-6 gap-1.5 classic:rounded-full px-2 text-xs font-medium shadow-sm pointer-events-none opacity-0 transition-opacity focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       <action.icon className={PROPERTY_GLYPH_CLASS} />
       {action.label}
@@ -821,6 +824,7 @@ function AssigneeDisplay({
 }
 
 export function TaskBoardPage() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
   const { data: orgTags = [] } = useTags();
@@ -1140,84 +1144,163 @@ export function TaskBoardPage() {
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      {/* A task takes the header over: the board stays mounted behind it so
+      {compact ? (
+        <>
+          {/* A task takes the header over: the board stays mounted behind it so
           its scroll and dnd survive, and these would otherwise paint over
           the task's own trail and title. */}
-      {!openItem && (
-        <>
-          <Page.Title>{t("taskBoard.taskBoard.tasksTitle")}</Page.Title>
-          <Page.Actions
-            secondary={
-              items.length > 0 && (
-                <>
-                  {/* No width swap: these three are ~100px together, so there
+          {!openItem && (
+            <>
+              <Page.Title>{t("taskBoard.taskBoard.tasksTitle")}</Page.Title>
+              <Page.Actions
+                secondary={
+                  items.length > 0 && (
+                    <>
+                      {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
                       drawer of the chip pickers they replaced. */}
-                  <div className="flex items-center gap-2">
-                    <SearchToggle
-                      value={filters.search}
-                      onChange={(search) =>
-                        handleFiltersChange({ ...filters, search })
-                      }
-                      label={t("taskBoard.taskFilters.searchLabel")}
-                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
-                    />
-                    <TaskFilterButton
+                      <div className="flex items-center gap-2">
+                        <SearchToggle
+                          value={filters.search}
+                          onChange={(search) =>
+                            handleFiltersChange({ ...filters, search })
+                          }
+                          label={t("taskBoard.taskFilters.searchLabel")}
+                          placeholder={t(
+                            "taskBoard.taskFilters.searchPlaceholder",
+                          )}
+                          clearLabel={t(
+                            "taskBoard.taskFilters.searchClearLabel",
+                          )}
+                        />
+                        <TaskFilterButton
+                          filters={filters}
+                          items={items}
+                          members={members}
+                          tags={orgTags}
+                          index={projectIndex}
+                          onChange={handleFiltersChange}
+                        />
+                        <BoardSettingsButton onClick={openBoardSettings} />
+                      </div>
+                    </>
+                  )
+                }
+              >
+                <Button size="sm" onClick={openCreate}>
+                  <Plus size={16} />
+                  {t("taskBoard.taskBoard.newTask")}
+                </Button>
+              </Page.Actions>
+              <Panel.Toolbar.Left.Portal>
+                <Page.Tabs>
+                  <Page.Tab
+                    active={layout === "board"}
+                    aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+                      label: t("common.taskBoard.boardView"),
+                    })}
+                    onClick={() => setLayout("board")}
+                  >
+                    {t("common.taskBoard.boardView")}
+                  </Page.Tab>
+                  <Page.Tab
+                    active={layout === "list"}
+                    aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+                      label: t("common.taskBoard.listView"),
+                    })}
+                    onClick={() => {
+                      setLayout("list");
+                      clearSelection();
+                    }}
+                  >
+                    {t("common.taskBoard.listView")}
+                  </Page.Tab>
+                </Page.Tabs>
+              </Panel.Toolbar.Left.Portal>
+            </>
+          )}
+
+          <AppliedFiltersBar
+            filters={filters}
+            items={items}
+            members={members}
+            tags={orgTags}
+            index={projectIndex}
+            onChange={handleFiltersChange}
+          />
+        </>
+      ) : (
+        <>
+          {/* Header — capped + centered to the same width as the board content so
+        they line up; content-capped, not scroll-capped. */}
+          <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
+            <h1 className="text-xl font-medium text-foreground">
+              {t("taskBoard.taskBoard.tasksTitle")}
+            </h1>
+
+            {/* Commerce orgs: a persistent unlock CTA that self-hides once the
+          diagnostic is paid. The board stays usable in the meantime. */}
+
+            {/* Toolbar — filters on the left (inline bar on desktop, a single
+          drawer button on mobile), view toggle + New task on the right. */}
+            <div className="flex flex-wrap items-center gap-2">
+              {items.length > 0 && (
+                <>
+                  <div className="sm:hidden">
+                    <TaskFiltersDrawer
                       filters={filters}
-                      items={items}
                       members={members}
                       tags={orgTags}
                       index={projectIndex}
                       onChange={handleFiltersChange}
+                      onOpenBoardSettings={openBoardSettings}
                     />
-                    <BoardSettingsButton onClick={openBoardSettings} />
+                  </div>
+                  <div className="hidden sm:block">
+                    <TaskFiltersBar
+                      filters={filters}
+                      members={members}
+                      tags={orgTags}
+                      index={projectIndex}
+                      onChange={handleFiltersChange}
+                      onOpenBoardSettings={openBoardSettings}
+                    />
                   </div>
                 </>
-              )
-            }
-          >
-            <Button size="sm" onClick={openCreate}>
-              <Plus size={16} />
-              {t("taskBoard.taskBoard.newTask")}
-            </Button>
-          </Page.Actions>
-          <Panel.Toolbar.Left.Portal>
-            <Page.Tabs>
-              <Page.Tab
-                active={layout === "board"}
-                aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-                  label: t("common.taskBoard.boardView"),
-                })}
-                onClick={() => setLayout("board")}
-              >
-                {t("common.taskBoard.boardView")}
-              </Page.Tab>
-              <Page.Tab
-                active={layout === "list"}
-                aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-                  label: t("common.taskBoard.listView"),
-                })}
-                onClick={() => {
-                  setLayout("list");
-                  clearSelection();
-                }}
-              >
-                {t("common.taskBoard.listView")}
-              </Page.Tab>
-            </Page.Tabs>
-          </Panel.Toolbar.Left.Portal>
+              )}
+
+              <div className="ml-auto flex items-center gap-2">
+                <div className="inline-flex rounded-lg bg-muted p-0.5">
+                  <LayoutToggle
+                    active={layout === "list"}
+                    onClick={() => {
+                      setLayout("list");
+                      // Selection is a board-only concept (List has no way to see
+                      // or change which cards are selected) — leaving it wedges
+                      // the floating bulk-action bar on-screen, operating on a
+                      // selection the user can no longer see.
+                      clearSelection();
+                    }}
+                    icon={List}
+                    label={t("common.taskBoard.listView")}
+                  />
+                  <LayoutToggle
+                    active={layout === "board"}
+                    onClick={() => setLayout("board")}
+                    icon={Columns03}
+                    label={t("common.taskBoard.boardView")}
+                  />
+                </div>
+
+                <Button size="sm" onClick={openCreate}>
+                  <Plus size={16} />
+                  {t("taskBoard.taskBoard.newTask")}
+                </Button>
+              </div>
+            </div>
+          </div>
         </>
       )}
-
-      <AppliedFiltersBar
-        filters={filters}
-        items={items}
-        members={members}
-        tags={orgTags}
-        index={projectIndex}
-        onChange={handleFiltersChange}
-      />
 
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
@@ -1610,7 +1693,7 @@ function SelectionBar({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              className="flex items-center gap-1.5 classic:rounded-full compact:rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
             >
               {t("taskBoard.taskBoard.actionsButton")}
             </button>
@@ -1725,7 +1808,7 @@ function SelectionBar({
           <button
             type="button"
             onClick={onAutoFix}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="flex items-center gap-1.5 classic:rounded-full compact:rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <Lightning01 size={14} />
             {t("taskBoard.taskBoard.autoFix")}
@@ -1736,7 +1819,7 @@ function SelectionBar({
           <button
             type="button"
             onClick={onRerun}
-            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+            className="flex items-center gap-1.5 classic:rounded-full compact:rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             <RefreshCw01 size={14} />
             {t("taskBoard.taskBoard.rerun")}
@@ -1748,7 +1831,7 @@ function SelectionBar({
           aria-label={t("taskBoard.taskBoard.clearSelectionButton")}
           title={t("taskBoard.taskBoard.clearSelectionButton")}
           onClick={onClear}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="flex size-8 shrink-0 items-center justify-center classic:rounded-full compact:rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <X size={16} />
         </button>
@@ -2193,7 +2276,7 @@ function HiddenLanes({
                     aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                       lane: label,
                     })}
-                    className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex size-6 shrink-0 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <DotsHorizontal size={15} />
                   </button>
@@ -2307,7 +2390,7 @@ function Lane({
               aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                 lane: label,
               })}
-              className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="ml-auto flex size-6 shrink-0 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <DotsHorizontal size={15} />
             </button>
@@ -2330,7 +2413,7 @@ function Lane({
           })}
           title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
           onClick={() => onCreate(status)}
-          className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex size-6 shrink-0 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Plus size={15} />
         </button>
@@ -2654,6 +2737,37 @@ function ListRow({
       <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
         {formatTimeAgo(new Date(item.createdAt))}
       </span>
+    </button>
+  );
+}
+
+function LayoutToggle({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: typeof List;
+  label: string;
+}) {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", { label })}
+      aria-pressed={active}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Icon size={14} />
+      {label}
     </button>
   );
 }

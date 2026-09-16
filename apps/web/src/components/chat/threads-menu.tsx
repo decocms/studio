@@ -87,19 +87,22 @@ export function ThreadsMenu() {
           className="flex w-80 flex-col gap-2 p-2"
         >
           <div className="flex shrink-0 items-center justify-between">
-            <ThreadFiltersPopover panel={panel} className="size-8" />
+            <ThreadFiltersPopover
+              panel={panel}
+              className="size-8 classic:rounded-lg"
+            />
             <div className="flex items-center gap-0.5">
               <ToolbarIconButton
                 aria-label={t("sidebar.taskGroupsList.searchChats")}
                 onClick={openSearch}
-                className="size-8"
+                className="size-8 classic:rounded-lg"
               >
                 <SearchSm size={16} />
               </ToolbarIconButton>
               <ToolbarIconButton
                 aria-label={t("sidebar.taskGroupsList.newChat")}
                 onClick={panel.newThread}
-                className="size-8"
+                className="size-8 classic:rounded-lg"
               >
                 <Edit05 size={16} />
               </ToolbarIconButton>

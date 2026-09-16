@@ -136,7 +136,7 @@ export function TableBlock({
                         n: c + 1,
                       })}
                       onClick={() => removeColumn(c)}
-                      className="absolute left-0.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground/50 opacity-0 transition-opacity hover:text-destructive group-hover/col:opacity-100 cursor-pointer"
+                      className="absolute left-0.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center classic:rounded text-muted-foreground/50 opacity-0 transition-opacity hover:text-destructive group-hover/col:opacity-100 cursor-pointer compact:rounded-lg"
                     >
                       <Trash01 size={12} />
                     </button>
@@ -167,7 +167,7 @@ export function TableBlock({
                         n: r + 1,
                       })}
                       onClick={() => removeRow(r)}
-                      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer"
+                      className="flex h-6 w-6 items-center justify-center classic:rounded text-muted-foreground/60 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 cursor-pointer compact:rounded-lg"
                     >
                       <Trash01 size={13} />
                     </button>
@@ -193,7 +193,7 @@ export function TableBlock({
         <button
           type="button"
           onClick={addColumn}
-          className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
+          className="flex items-center gap-1.5 classic:rounded-md compact:rounded-lg border border-dashed px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
         >
           <Plus size={13} />
           {t("sandbox.tableBlock.addColumn")}

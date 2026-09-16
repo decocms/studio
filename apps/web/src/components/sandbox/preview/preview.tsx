@@ -1,3 +1,5 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { LayoutAlt01, SearchLg } from "@untitledui/icons";
 import {
   Popover,
   PopoverContent,
@@ -353,6 +355,8 @@ function reloadIframeOrFallback(
 }
 
 export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
+  const compact = useCompactPageLayout();
+  const pagesContainerRef = useRef<HTMLDivElement>(null);
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
   const isMobile = useIsMobile();
@@ -575,6 +579,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     activeGlobalSection || activeLoaderKey
       ? null
       : findPageForPath(pages, currentPath, pinnedPageKey);
+  const currentPageName = activeGlobalSection
+    ? activeGlobalSection.name
+    : (activeLoader?.title ?? currentPage?.name);
   const currentPageKey = currentPage?.key ?? null;
   const currentPagePath = currentPage?.path ?? null;
 
@@ -1718,6 +1725,341 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </div>
     ) : null;
 
+  const urlGroup =
+    !compact && showPreviewToolbar ? (
+      <>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={handleRefresh}
+              aria-label={t("sandbox.preview.refresh")}
+            >
+              <RefreshCw01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t("sandbox.preview.refresh")}
+          </TooltipContent>
+        </Tooltip>
+
+        {/* The topbar always names what the iframe is showing; only HOW differs
+          by the shared content-editing gate. Enabled projects get the page
+          selector — page name, editable `:param` segments, and the dropdown
+          that also hosts "Create page". Disabled projects get the iframe's
+          domain as plain text. */}
+        {pageSelectorVisible ? (
+          <div ref={pagesContainerRef} className="relative min-w-0 w-64 shrink">
+            <div className="flex h-7 w-full min-w-0 items-center rounded-md border border-border bg-background transition-colors duration-200 hover:bg-accent">
+              {/* Not a <button>: path-template pages render `:param`
+                  inputs inline, and inputs can't nest inside a button.
+                  Keyboard toggling stays on the chevron button. */}
+              <div
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1 pl-2 pr-1"
+                onClick={() => setPagesOpen((prev) => !prev)}
+              >
+                {activeGlobalSection && (
+                  <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+                    <Globe02 size={11} />
+                    {t("sandbox.preview.globalBadge")}
+                  </span>
+                )}
+                {activeLoader && (
+                  <span className="shrink-0 inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    <Database01 size={11} />
+                    {t("sandbox.preview.loaderBadge")}
+                  </span>
+                )}
+                {/* Page name in focus, followed by the route path.
+                      Path-template segments (`:param`/`*`) stay editable
+                      inputs; plain paths render as muted text. */}
+                <span
+                  className={cn(
+                    "text-[13px] font-medium text-foreground",
+                    // A real page name keeps priority — the route path (flex-1,
+                    // below) is the first to truncate. But the name still carries
+                    // `min-w-0 truncate` so, once the path is fully shed, the name
+                    // clips with an ellipsis instead of sliding under the chevron.
+                    currentPageName == null
+                      ? "min-w-0 flex-1 truncate"
+                      : "min-w-0 shrink truncate",
+                  )}
+                >
+                  {currentPageName ?? previewLabel}
+                </span>
+                {!activeGlobalSection &&
+                  !activeLoaderKey &&
+                  currentPageName != null &&
+                  currentPath && (
+                    <span className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground">
+                      {splitPathTemplate(currentPath).map((token, i) => {
+                        if (token.type === "text") {
+                          return (
+                            <span
+                              key={`text-${i}`}
+                              className={cn(
+                                i === 0 ? "min-w-0 truncate" : "shrink-0",
+                              )}
+                            >
+                              {token.text}
+                            </span>
+                          );
+                        }
+                        const sources = pathParamSources[token.name];
+                        // Params with a source render as a modal chip; rest inline.
+                        if (sources && pickerSandboxRef) {
+                          return (
+                            <PathParamPickerChip
+                              key={`${currentPageKey}:${token.name}`}
+                              sources={sources}
+                              template={currentPath}
+                              paramName={token.name}
+                              value={pathParamValues[token.name] ?? ""}
+                              sandboxRef={pickerSandboxRef}
+                              onCommit={(value) =>
+                                setPathParamValue(token.name, value)
+                              }
+                            />
+                          );
+                        }
+                        return (
+                          <PathParamInput
+                            key={`${currentPageKey}:${token.name}`}
+                            name={token.name}
+                            value={pathParamValues[token.name] ?? ""}
+                            onCommit={(value) =>
+                              setPathParamValue(token.name, value)
+                            }
+                          />
+                        );
+                      })}
+                    </span>
+                  )}
+              </div>
+              <button
+                type="button"
+                className="flex h-full shrink-0 items-center pl-1 pr-2"
+                onClick={() => setPagesOpen((prev) => !prev)}
+                aria-label={t("sandbox.preview.choosePage")}
+                aria-expanded={pagesOpen}
+              >
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    "shrink-0 text-muted-foreground transition-transform",
+                    pagesOpen && "rotate-180",
+                  )}
+                />
+              </button>
+            </div>
+
+            {pagesOpen && (
+              <div className="absolute left-1/2 top-full z-50 mt-1.5 w-[500px] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border bg-popover shadow-lg">
+                <div className="px-2 h-10 flex items-center gap-2 border-b">
+                  <SearchLg
+                    size={14}
+                    className="shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <input
+                    type="text"
+                    value={pagesSearch}
+                    onChange={(e) => setPagesSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      const query = pagesSearch.trim();
+                      if (!query) return;
+                      // Enter only navigates when the typed path matches an
+                      // existing page exactly; otherwise it does nothing.
+                      const target = filteredPages.find(
+                        (p) => normPath(p.path) === normPath(query),
+                      );
+                      if (!target) return;
+                      e.preventDefault();
+                      setPagesOpen(false);
+                      setPagesSearch("");
+                      navigatePreviewToPage(target);
+                    }}
+                    placeholder={t("sandbox.preview.searchPagesAndComponents")}
+                    className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                    autoFocus
+                  />
+                </div>
+                <div className="p-1.5 border-b">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setPagesOpen(false);
+                      setPagesSearch("");
+                      setCreatePageError(undefined);
+                      setCreatePageDialogOpen(true);
+                    }}
+                  >
+                    <Plus
+                      size={16}
+                      className="shrink-0 text-muted-foreground"
+                    />
+                    <span className="flex-1 font-medium">
+                      {t("sandbox.preview.createNewPage")}
+                    </span>
+                  </button>
+                </div>
+                {filteredPages.length === 0 &&
+                filteredGlobalSections.length === 0 &&
+                filteredGlobalLoaders.length === 0 ? (
+                  <div className="px-4 py-5 text-center text-xs text-muted-foreground">
+                    {pages.length === 0 &&
+                    globalSections.length === 0 &&
+                    visibleGlobalLoaders.length === 0
+                      ? t("sandbox.preview.noPagesFound")
+                      : t("sandbox.preview.noSearchResults")}
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto overscroll-contain">
+                    {filteredPages.length > 0 && (
+                      <div className="p-1.5">
+                        {filteredPages.map((page) => (
+                          <button
+                            key={page.key}
+                            type="button"
+                            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setPagesOpen(false);
+                              setPagesSearch("");
+                              navigatePreviewToPage(page);
+                            }}
+                          >
+                            <LayoutAlt01
+                              size={16}
+                              className="shrink-0 text-muted-foreground"
+                            />
+                            <span className="min-w-0 flex-1 truncate font-medium">
+                              {page.name}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {page.path}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {filteredGlobalSections.length > 0 && (
+                      <div
+                        className={cn(
+                          "p-1.5",
+                          filteredPages.length > 0 && "border-t",
+                        )}
+                      >
+                        <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                          {t("sandbox.preview.globalComponents")}
+                        </div>
+                        {filteredGlobalSections.map((section) => (
+                          <button
+                            key={section.key}
+                            type="button"
+                            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setPagesOpen(false);
+                              setPagesSearch("");
+                              navigatePreviewToGlobalSection(section);
+                            }}
+                          >
+                            <Globe02
+                              size={16}
+                              className="shrink-0 text-muted-foreground"
+                            />
+                            <span className="min-w-0 flex-1 truncate font-medium">
+                              {section.name}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {section.resolveType
+                                .split("/")
+                                .pop()
+                                ?.replace(/\.tsx?$/, "")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {filteredGlobalLoaders.length > 0 && (
+                      <div
+                        className={cn(
+                          "p-1.5",
+                          (filteredPages.length > 0 ||
+                            filteredGlobalSections.length > 0) &&
+                            "border-t",
+                        )}
+                      >
+                        <div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                          {t("sandbox.preview.globalLoaders")}
+                        </div>
+                        {filteredGlobalLoaders.map((loader) => (
+                          <button
+                            key={loader.key}
+                            type="button"
+                            className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setPagesOpen(false);
+                              setPagesSearch("");
+                              navigatePreviewToLoader(loader);
+                            }}
+                          >
+                            <Database01
+                              size={16}
+                              className="shrink-0 text-muted-foreground"
+                            />
+                            <span className="min-w-0 flex-1 truncate font-medium">
+                              {loader.title}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {loader.resolveType
+                                .split("/")
+                                .pop()
+                                ?.replace(/\.tsx?$/, "")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <span className="min-w-0 truncate px-2 text-[13px] text-muted-foreground">
+            {previewLabel}
+          </span>
+        )}
+        {/* Available on every surface. Under Fast Preview `iframeSrc` is the
+          site's own page URL carrying `?__draft=<handle>@<version>`, so the
+          opened tab renders the same draft — an ordinary, shareable link. That
+          was not true of the old `/live/previews` render, which is why this
+          button used to be sandbox-only. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              aria-label={t(openPreviewLabelKey)}
+              onClick={() => void handleOpenPreview()}
+            >
+              <LinkExternal01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t(openPreviewLabelKey)}
+          </TooltipContent>
+        </Tooltip>
+      </>
+    ) : null;
+
+  // Desktop composition (portaled into the panel header's centre slot).
+  const classicUrlControls = urlGroup ? (
+    <div className="flex min-w-0 items-center gap-0.5">{urlGroup}</div>
+  ) : null;
   const canVisualEdit = display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
@@ -1758,6 +2100,56 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       </ToolbarIconButton>
     ) : null;
 
+  const floatingPreviewControls =
+    !compact && previewSurfaceActive ? (
+      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 scale-125">
+        <div className="flex items-center gap-0.5 rounded-full border bg-background/60 p-1 shadow-lg backdrop-blur-md">
+          {canVisualEdit && (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <ToolbarIconButton
+                    onClick={toggleVisualEditing}
+                    aria-pressed={effectiveEditingMode === "visual"}
+                    aria-label={t("sandbox.preview.visualEditor")}
+                    active={effectiveEditingMode === "visual"}
+                    className="rounded-full"
+                  >
+                    <CursorClick01 size={16} />
+                  </ToolbarIconButton>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {t("sandbox.preview.visualEditor")}
+                </TooltipContent>
+              </Tooltip>
+              <div className="mx-0.5 h-5 w-px bg-border" />
+            </>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <ToolbarIconButton
+                onClick={handleDeviceToggle}
+                aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+                className="rounded-full"
+              >
+                <span
+                  key={previewDeviceSize}
+                  className="flex items-center justify-center animate-device-icon-pop"
+                >
+                  {previewDeviceSize === "mobile" && <Phone02 size={16} />}
+                  {previewDeviceSize === "tablet" && <Tablet01 size={16} />}
+                  {previewDeviceSize === "desktop" && <Monitor04 size={16} />}
+                </span>
+              </ToolbarIconButton>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    ) : null;
+
   // A loader has no canvas, so its desktop Blocks form uses the whole panel.
   const blocksFullWidth =
     !!activeLoaderKey && effectiveEditingMode === "blocks";
@@ -1780,20 +2172,42 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             />
           ) : null,
         )}
-      <Panel.Toolbar.Center.Portal
-        fallback={
-          <div className="flex min-w-0 items-center justify-center border-b p-2">
+      {compact ? (
+        <>
+          <Panel.Toolbar.Center.Portal
+            fallback={
+              <div className="flex min-w-0 items-center justify-center border-b p-2">
+                {previewNavigation}
+              </div>
+            }
+          >
             {previewNavigation}
-          </div>
-        }
-      >
-        {previewNavigation}
-      </Panel.Toolbar.Center.Portal>
-      <Panel.Toolbar.Right.Portal fallback={previewTools}>
-        {previewTools}
-      </Panel.Toolbar.Right.Portal>
+          </Panel.Toolbar.Center.Portal>
+          <Panel.Toolbar.Right.Portal fallback={previewTools}>
+            {previewTools}
+          </Panel.Toolbar.Right.Portal>
+        </>
+      ) : (
+        <>
+          <Panel.Topbar.Center.Portal
+            fallback={
+              urlGroup && (
+                <div className="@container/panel-header relative flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 md:px-4">
+                  <div className="flex-1" />
+                  <div className="flex min-w-0 shrink items-center justify-center gap-0.5">
+                    {urlGroup}
+                  </div>
+                  <div className="flex-1" />
+                </div>
+              )
+            }
+          >
+            {classicUrlControls}
+          </Panel.Topbar.Center.Portal>
+        </>
+      )}
 
-      <div className="relative flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden compact:relative">
         {blocksFullWidth ? (
           <div className="relative h-full min-h-0 overflow-hidden">
             <BlocksPanel
@@ -1842,7 +2256,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               id="preview-canvas"
               defaultSize={effectiveEditingMode === "blocks" ? "70%" : "100%"}
               minSize="35%"
-              className="relative z-0 min-w-0 overflow-hidden"
+              className="min-w-0 overflow-hidden compact:relative compact:z-0"
             >
               <ResizablePanelGroup
                 orientation="horizontal"
@@ -1963,6 +2377,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       />
                     )}
 
+                    {floatingPreviewControls}
                     {previewSurfaceActive && iframeSrc && (
                       <div
                         className={cn(

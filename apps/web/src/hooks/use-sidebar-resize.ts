@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import {
   useRef,
   type PointerEvent as ReactPointerEvent,
@@ -5,13 +6,8 @@ import {
 } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
-const SIDEBAR_MIN_WIDTH = 224;
 const SIDEBAR_MAX_WIDTH = 400;
 const STORAGE_KEY = "sidebar.width";
-
-function clamp(w: number) {
-  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, w));
-}
 
 export interface SidebarResize {
   width: number;
@@ -28,8 +24,12 @@ export interface SidebarResize {
  * (and localStorage).
  */
 export function useSidebarResize(): SidebarResize {
+  const compact = useCompactPageLayout();
+  const minWidth = compact ? 224 : 240;
+  const clamp = (w: number) =>
+    Math.max(minWidth, Math.min(SIDEBAR_MAX_WIDTH, w));
   const [width, setWidth] = useLocalStorage<number>(STORAGE_KEY, (existing) =>
-    typeof existing === "number" ? clamp(existing) : SIDEBAR_MIN_WIDTH,
+    typeof existing === "number" ? clamp(existing) : minWidth,
   );
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -81,7 +81,7 @@ export function useSidebarResize(): SidebarResize {
   };
 
   const resetWidth = () => {
-    setWidth(SIDEBAR_MIN_WIDTH);
+    setWidth(minWidth);
   };
 
   return { width: clamp(width), wrapperRef, onStartResize, resetWidth };

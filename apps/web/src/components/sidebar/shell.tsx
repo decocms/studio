@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 /** The ONE sidebar shell — header, back row, body, footer — and the only place
  *  those four are spaced. Three sidebars used to hand-roll this arrangement
  *  (desktop org, mobile org, settings), each with its own padding, gaps and
@@ -47,18 +48,23 @@ export function SidebarShell({
   footer,
   sheet,
 }: SidebarShellProps) {
+  const compact = useCompactPageLayout();
   const content = (
     <>
       {header && (
         <div
           data-slot="sidebar-picker-header"
-          className="flex h-12 shrink-0 flex-row items-center gap-1 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:gap-2 group-data-[state=collapsed]/sidebar:py-2"
+          className="flex h-12 shrink-0 flex-row items-center classic:gap-2 compact:gap-1 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col compact:group-data-[state=collapsed]/sidebar:gap-2 group-data-[state=collapsed]/sidebar:py-2"
         >
           {header}
         </div>
       )}
-      <SidebarContent className="gap-0 overflow-y-auto px-2 pt-3 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
-        {back && (
+      {header && (
+        <div className="compact:hidden mt-1.5 h-px shrink-0 bg-sidebar-border" />
+      )}
+      {!compact && back && <div className="shrink-0 px-2">{back}</div>}
+      <SidebarContent className="gap-0 overflow-y-auto px-2 classic:pt-2 compact:pt-3 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
+        {compact && back && (
           <div className="sticky top-0 z-10 hidden shrink-0 bg-sidebar pb-2 not-empty:block">
             {back}
           </div>

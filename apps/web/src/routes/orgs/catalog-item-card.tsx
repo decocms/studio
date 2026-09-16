@@ -127,7 +127,7 @@ export function CatalogItemCard({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-3 text-sm font-medium"
+                  className="h-7 px-3 classic:rounded-lg text-sm font-medium"
                   disabled={connectingItemId !== null}
                   onClick={(e) => {
                     e.stopPropagation();

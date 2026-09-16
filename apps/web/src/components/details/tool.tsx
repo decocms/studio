@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Page } from "@/components/page";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -144,6 +145,7 @@ function ToolDetailsAuthenticated({
   siblings: ConnectionEntity[];
   onSelectInstance: (id: string) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   // Read replayId from search params to check for prefilled input
   const { replayId } = useSearch({ strict: false }) as { replayId?: string };
@@ -740,7 +742,13 @@ function ToolDetailsAuthenticated({
               size="xl"
               className="shrink-0"
             />
-            <Page.Title>{toolName}</Page.Title>
+            {compact ? (
+              <Page.Title>{toolName}</Page.Title>
+            ) : (
+              <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
+                {toolName}
+              </h1>
+            )}
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (

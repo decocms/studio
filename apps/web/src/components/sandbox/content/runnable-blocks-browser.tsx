@@ -277,7 +277,7 @@ export function RunnableBlocksBrowser({
             type="button"
             onClick={() => setPath([])}
             className={cn(
-              "min-w-0 truncate rounded-lg px-1 py-0.5 transition-colors hover:bg-accent hover:text-accent-foreground",
+              "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 transition-colors hover:bg-accent hover:text-accent-foreground",
               path.length === 0
                 ? "font-medium text-foreground"
                 : "text-muted-foreground",
@@ -297,7 +297,7 @@ export function RunnableBlocksBrowser({
                   type="button"
                   onClick={() => setPath(path.slice(0, index + 1))}
                   className={cn(
-                    "min-w-0 truncate rounded-lg px-1 py-0.5 transition-colors hover:bg-accent hover:text-accent-foreground",
+                    "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 transition-colors hover:bg-accent hover:text-accent-foreground",
                     isLast
                       ? "font-medium text-foreground"
                       : "text-muted-foreground",
@@ -438,7 +438,7 @@ export function RunnableBlocksBrowser({
                               type="button"
                               onClick={() => toggleSavedOpen(entry.resolveType)}
                               aria-expanded={savedOpen}
-                              className="flex items-center gap-1 self-start rounded-lg px-2.5 py-1 text-xs font-medium transition-colors hover:bg-global-section/10 cursor-pointer ml-11"
+                              className="flex items-center gap-1 self-start classic:rounded-md compact:rounded-lg px-2.5 py-1 text-xs font-medium transition-colors hover:bg-global-section/10 cursor-pointer ml-11"
                               style={{ color: GLOBAL_SECTION_ICON_COLOR }}
                             >
                               {savedOpen ? (

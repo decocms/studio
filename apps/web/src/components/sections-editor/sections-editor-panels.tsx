@@ -68,7 +68,7 @@ export function VariantRuleForm({
           <button
             type="button"
             onClick={() => setBreadcrumbPath([])}
-            className="flex shrink-0 items-center gap-0.5 rounded-lg px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="flex shrink-0 items-center gap-0.5 classic:rounded-md compact:rounded-lg px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             title={t("sectionsEditor.sectionsEditorPanels.backToRule")}
           >
             <ChevronLeft className="size-3.5" />
@@ -91,7 +91,7 @@ export function VariantRuleForm({
                   }
                   title={crumbText}
                   className={cn(
-                    "min-w-0 truncate rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                    "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                     isLast
                       ? "font-medium text-foreground"
                       : "text-muted-foreground",

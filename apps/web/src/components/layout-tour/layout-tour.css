@@ -70,7 +70,7 @@
   justify-content: center;
   height: 2rem;
   padding: 0 0.75rem;
-  border-radius: var(--radius-lg);
+  border-radius: var(--studio-control-radius, var(--radius));
   font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1;

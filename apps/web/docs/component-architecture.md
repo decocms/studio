@@ -3,6 +3,26 @@
 Studio uses four components to separate the application frame, the optional
 chat arrangement, panel surfaces, and document content.
 
+## Compact layout preference
+
+The compact presentation is opt-in through **Profile & Preferences → Compact
+layout (preview)**. `usePreferences().compactPageLayout` defaults to `false`
+and persists in this browser alongside theme and language. Changing it applies
+immediately; turning it off restores the classic presentation without changing
+project data, navigation URLs, or other preferences.
+
+Components read `useCompactPageLayout()` when their structure differs between
+layouts. `ThemeProvider` sets `data-compact-layout` on the document root so
+`compact:` and `classic:` styles also cover dialogs and other portals. Shared
+control defaults use CSS variables where callers need to override them through
+`className`. Data hooks and mutation handlers are shared by both presentations.
+
+The compact headers and toolbars described below render only when opted in.
+Browser tests default to the classic layout; compact-specific specs use
+`test.use({ compactPageLayout: true })` from the shared Playwright fixture.
+
+![Browser-local compact layout preference in Profile & Preferences](assets/compact-layout-preference.png)
+
 ## Ownership and naming
 
 | Component | Owns |

@@ -149,7 +149,7 @@ export function InboxIconButton() {
         <button
           type="button"
           aria-label={t("sidebar.inbox.title")}
-          className="relative flex size-7 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          className="relative flex size-7 shrink-0 items-center justify-center classic:rounded-md compact:rounded-lg text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
         >
           <Bell01 size={15} />
           <InboxDot />

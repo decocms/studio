@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
 import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -723,8 +724,10 @@ function PublishButton({
   isPublishing: boolean;
   onPublish: () => void;
 }) {
+  const compact = useCompactPageLayout();
   const button = (
     <Button
+      variant={compact ? "default" : "brand"}
       type="button"
       className="w-full"
       onClick={onPublish}

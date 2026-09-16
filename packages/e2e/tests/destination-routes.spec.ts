@@ -131,6 +131,8 @@ async function countOrgThreads(orgId: string): Promise<number> {
   }
 }
 
+test.use({ compactPageLayout: true });
+
 test.describe("destination routes", () => {
   /** The waits below run to SHELL_TIMEOUT_MS, past Playwright's 30s per-test
    *  default — without this the test-level timeout fires first and reports a

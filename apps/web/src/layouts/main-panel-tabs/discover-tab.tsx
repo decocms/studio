@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Page } from "@/components/page";
 /**
  * Discover — what this org does NOT have yet.
@@ -234,6 +235,7 @@ function Band({
 }
 
 export function DiscoverTab() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const steps = useSetupSteps();
@@ -244,7 +246,13 @@ export function DiscoverTab() {
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 p-6 md:p-10">
         <header className="flex flex-col gap-2">
-          <Page.Title>{t("discover.title")}</Page.Title>
+          {compact ? (
+            <Page.Title>{t("discover.title")}</Page.Title>
+          ) : (
+            <h1 className="text-2xl font-semibold text-foreground">
+              {t("discover.title")}
+            </h1>
+          )}
           <p className="max-w-prose text-sm text-muted-foreground">
             {t("discover.subtitle")}
           </p>

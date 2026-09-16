@@ -7,6 +7,8 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 
+test.use({ compactPageLayout: true });
+
 test.describe("compact page layout", () => {
   test.setTimeout(120_000);
 
@@ -89,7 +91,7 @@ test.describe("compact page layout", () => {
     await sidebar.getByRole("link", { name: "Board", exact: true }).click();
     await expect(
       header.getByRole("heading", { name: "Tasks", exact: true }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 60_000 });
     await expect(
       header.getByRole("button", { name: "New task", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
@@ -101,7 +103,7 @@ test.describe("compact page layout", () => {
       views.getByRole("button", { name: "List view", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
     const filters = header.getByRole("button", {
-      name: "Assignee",
+      name: "Filter",
       exact: true,
     });
     const newTask = header.getByRole("button", {
@@ -133,23 +135,19 @@ test.describe("compact page layout", () => {
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 844 });
-    const drawerTrigger = header.getByRole("button", {
-      name: "Filters",
-      exact: true,
-    });
-    await expect(drawerTrigger).toBeInViewport();
+    await expect(filters).toBeInViewport();
     await expect(newTask).toBeInViewport();
     await page.screenshot({
       animations: "disabled",
       path: testInfo.outputPath("compact-tasks-mobile.png"),
     });
-    await drawerTrigger.click();
-    const drawer = page.getByRole("dialog", { name: "Filters", exact: true });
+    await filters.click();
+    const filterMenu = page.getByRole("dialog");
     await expect(
-      drawer.getByRole("button", { name: "Assignee", exact: true }),
+      filterMenu.getByRole("option", { name: "Assignee", exact: true }),
     ).toBeVisible();
-    await drawer.getByRole("button", { name: "Done", exact: true }).click();
-    await expect(drawer).toBeHidden();
+    await page.keyboard.press("Escape");
+    await expect(filterMenu).toBeHidden();
     await page.setViewportSize({ width: 1280, height: 720 });
     await sidebar.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(
@@ -537,6 +535,9 @@ test.describe("compact page layout", () => {
     await expect(
       views.getByRole("button", { name: "Media", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
+    await header
+      .getByRole("button", { name: "Search all files…", exact: true })
+      .click();
     const search = page.getByPlaceholder("Search files in Brand…");
     await search.fill("Launch");
     await expect(

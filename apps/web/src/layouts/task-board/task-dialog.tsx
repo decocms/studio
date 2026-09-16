@@ -1,3 +1,12 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@decocms/ui/components/breadcrumb.tsx";
 import { useParams } from "@tanstack/react-router";
 import { taskSharePath } from "./task-route";
 import { Fragment, useRef, useState, type ReactNode } from "react";
@@ -441,6 +450,7 @@ function TaskBoardItemEditor({
   onRerun,
   isSaving,
 }: TaskEditorProps) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const { agentId } = useParams({ strict: false });
@@ -678,7 +688,7 @@ function TaskBoardItemEditor({
              prompt — it is a link for a person, so it lives here. */
         <IconButton
           asChild
-          variant="secondary"
+          variant={compact ? "secondary" : "ghost"}
           label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
         >
           <a href={item.externalUrl} target="_blank" rel="noreferrer">
@@ -689,7 +699,7 @@ function TaskBoardItemEditor({
       {item && (
         <>
           <IconButton
-            variant="secondary"
+            variant={compact ? "secondary" : "ghost"}
             label={t("taskBoard.taskDialog.shareAriaLabel")}
             onClick={() => {
               copyLink(
@@ -710,7 +720,7 @@ function TaskBoardItemEditor({
                   button itself, and IconButton would put a Tooltip root in
                   between, which silently swallows the trigger props. */}
               <Button
-                variant="secondary"
+                variant={compact ? "secondary" : "ghost"}
                 size="icon-sm"
                 aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
               >
@@ -782,7 +792,7 @@ function TaskBoardItemEditor({
       )}
       {chrome === "dialog" && (
         <IconButton
-          variant="secondary"
+          variant={compact ? "secondary" : "ghost"}
           label={t("taskBoard.taskDialog.closeAriaLabel")}
           onClick={close}
         >
@@ -799,7 +809,7 @@ function TaskBoardItemEditor({
    *  returns to is a search-param away. The key doubles as the trail's leaf, so
    *  a page shows no id chip. */
   const header =
-    chrome === "page" ? (
+    compact && chrome === "page" ? (
       <>
         <Page.Breadcrumbs
           items={[
@@ -819,7 +829,31 @@ function TaskBoardItemEditor({
       <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
         {/* Null only for a card written before the key backfill, which has
             no key to show. */}
-        {key ? (
+        {chrome === "page" ? (
+          <Breadcrumb className="-ml-2">
+            <BreadcrumbList className="text-[15px]">
+              <BreadcrumbItem>
+                {/* A button, not an anchor: leaving flushes a pending autosave
+                    and the board it returns to is a search-param away, not a
+                    document to link to. */}
+                <BreadcrumbLink
+                  asChild
+                  className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
+                >
+                  <button type="button" onClick={close}>
+                    {t("taskBoard.taskDetail.breadcrumbTasks")}
+                  </button>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage className="px-2 py-1">
+                  {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : key ? (
           <Button
             variant="ghost"
             size="sm"
@@ -1338,7 +1372,7 @@ function TaskBoardItemEditor({
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
-                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
+                            className="-mr-0.5 flex size-3.5 items-center justify-center classic:rounded-sm compact:rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
                             onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
@@ -1354,7 +1388,7 @@ function TaskBoardItemEditor({
                       <button
                         type="button"
                         aria-label={t("taskBoard.taskDialog.addTagButton")}
-                        className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="flex size-7 items-center justify-center classic:rounded-md compact:rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <Plus size={14} />
                       </button>

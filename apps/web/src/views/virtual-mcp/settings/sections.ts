@@ -16,6 +16,7 @@ export type ProjectSettingsSectionKey =
 export interface ProjectSettingsSectionDef {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   titleKey: TranslationKey;
+  descriptionKey: TranslationKey;
 }
 
 export const PROJECT_SETTINGS_SECTIONS: Record<
@@ -25,14 +26,17 @@ export const PROJECT_SETTINGS_SECTIONS: Record<
   general: {
     icon: Settings01,
     titleKey: "virtualMcp.settings.general.title",
+    descriptionKey: "virtualMcp.settings.general.description",
   },
   connections: {
     icon: Link01,
     titleKey: "virtualMcp.settings.connections.title",
+    descriptionKey: "virtualMcp.settings.connections.description",
   },
   site: {
     icon: Database01,
     titleKey: "virtualMcp.settings.site.title",
+    descriptionKey: "virtualMcp.settings.site.description",
   },
 };
 

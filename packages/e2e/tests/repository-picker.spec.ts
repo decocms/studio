@@ -1,6 +1,8 @@
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
+test.use({ compactPageLayout: true });
+
 for (const width of [1280, 390]) {
   test(`first import offers provider selection without a URL form or legacy OAuth at ${width}px`, async ({
     authedPage: { page, orgSlug },

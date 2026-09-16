@@ -129,7 +129,7 @@ function TierDropdown({
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex items-start gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-muted",
+                  "flex items-start gap-2 px-2 py-1.5 classic:rounded-md compact:rounded-lg text-left hover:bg-muted",
                 )}
               >
                 <Icon

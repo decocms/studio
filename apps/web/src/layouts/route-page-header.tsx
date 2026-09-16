@@ -5,6 +5,7 @@ import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { Page } from "@/components/page";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useInSettings } from "@/hooks/use-in-settings";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
@@ -17,6 +18,7 @@ export function RoutePageHeader({
   actions?: ReactNode;
   navigation?: ReactNode;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
@@ -44,6 +46,7 @@ export function RoutePageHeader({
       aria-hidden="true"
     />
   );
+  if (!compact) return null;
   return (
     <Page.Header
       title={title}

@@ -384,6 +384,7 @@ function InvitationActionsDropdown({
 }
 
 function OrgMembersContent() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { data } = useMembers();
   const { data: invitations } = useInvitations();
@@ -749,7 +750,11 @@ function OrgMembersContent() {
   const ctaButton = (
     <Page.Actions>
       <InviteMemberDialog
-        trigger={<Button size="sm">{t("orgs.members.inviteMember")}</Button>}
+        trigger={
+          <Button size={compact ? "sm" : "default"}>
+            {t("orgs.members.inviteMember")}
+          </Button>
+        }
       />
     </Page.Actions>
   );
@@ -1026,3 +1031,4 @@ export default function OrgMembers() {
     </SettingsGroupPage>
   );
 }
+import { useCompactPageLayout } from "@/hooks/use-preferences";

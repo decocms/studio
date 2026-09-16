@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useState } from "react";
 import { Plus, Settings01, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -16,6 +17,7 @@ import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { openPanel } = usePanelNavigate();
   const { data: automations = [], error } = useAutomations(virtualMcpId);
@@ -79,7 +81,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
       <Page.Content>
         <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title actions={newButton}>
+            <Page.Title actions={compact && newButton}>
               {t("automations.automationsList.title")}
             </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -93,6 +95,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                   className="w-full md:w-[375px]"
                 />
               )}
+              {!compact && newButton}
             </div>
           </div>
 
@@ -102,6 +105,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                 image={<Zap size={48} className="text-muted-foreground" />}
                 title={t("automations.automationsList.emptyTitle")}
                 description={t("automations.automationsList.emptyDescription")}
+                actions={!compact && newButton}
               />
             </div>
           ) : filtered.length === 0 ? (

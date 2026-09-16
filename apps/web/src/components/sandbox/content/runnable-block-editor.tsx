@@ -273,7 +273,7 @@ export function RunnableBlockEditor({
                     onClick={() => handleBreadcrumbClick(index)}
                     title={crumbText}
                     className={cn(
-                      "min-w-0 truncate rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                      "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                       isLast
                         ? "font-medium text-foreground"
                         : "text-muted-foreground",

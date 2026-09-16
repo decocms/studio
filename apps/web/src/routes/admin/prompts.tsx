@@ -135,7 +135,7 @@ export default function AdminPromptsPage() {
                   key={prompt.id}
                   onClick={() => setSelectedId(prompt.id)}
                   className={cn(
-                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    "classic:rounded-md compact:rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                     prompt.id === selected.id
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:text-foreground",

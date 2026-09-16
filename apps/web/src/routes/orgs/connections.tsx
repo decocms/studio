@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
@@ -696,6 +697,7 @@ function ConnectionResults({
 }
 
 function OrgMcpsContent() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
@@ -978,7 +980,11 @@ function OrgMcpsContent() {
 
   const ctaButton = canManage ? (
     <div className="flex items-center gap-2">
-      <Button size="sm" onClick={openCreateDialog}>
+      <Button
+        size={compact ? "sm" : "default"}
+        variant={compact ? "default" : "outline"}
+        onClick={openCreateDialog}
+      >
         <Plus size={14} className="sm:hidden" />
         <span className="hidden sm:inline">
           {t("orgs.connections.customConnection")}
@@ -1392,7 +1398,7 @@ function OrgMcpsContent() {
           {/* Title + Toolbar */}
           <Page.Container>
             <div className="flex flex-col gap-6">
-              <Page.Title actions={ctaButton}>
+              <Page.Title actions={compact && ctaButton}>
                 {t("orgs.connections.pageTitle")}
               </Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1496,6 +1502,7 @@ function OrgMcpsContent() {
                     ]}
                   />
                 </div>
+                {!compact && ctaButton}
               </div>
               <CollectionTabs
                 placement="page"

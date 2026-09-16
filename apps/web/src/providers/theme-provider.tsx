@@ -86,6 +86,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const [preferences] = usePreferences();
 
+  useLayoutEffect(() => {
+    document.documentElement.dataset.compactLayout = String(
+      preferences.compactPageLayout,
+    );
+    return () => {
+      delete document.documentElement.dataset.compactLayout;
+    };
+  }, [preferences.compactPageLayout]);
+
   // Inject theme variables synchronously before paint to avoid FOUC
   // useLayoutEffect is correct here (not useEffect) for DOM mutations that affect visual appearance
   useLayoutEffect(() => {

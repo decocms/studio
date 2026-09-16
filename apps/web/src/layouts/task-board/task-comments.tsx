@@ -283,7 +283,7 @@ function CommentActionsMenu({
         <button
           type="button"
           aria-label={t("taskBoard.taskDialog.commentActionsAriaLabel")}
-          className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+          className="ml-auto flex size-7 shrink-0 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
         >
           <DotsHorizontal size={16} />
         </button>
@@ -364,7 +364,7 @@ function CommentComposer({
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
       // otherwise inherit onto the button.
-      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="flex size-7 shrink-0 cursor-pointer items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       <ArrowUp size={16} />
     </button>

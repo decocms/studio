@@ -308,6 +308,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
+  "settings.preferences.compactPageLayout": "Compact layout (preview)",
+  "settings.preferences.compactPageLayoutDescription":
+    "Try the redesigned navigation, page headers, and controls in this browser. Turn it off to return to the current layout.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",
@@ -324,9 +327,6 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Play sounds for agent actions and notifications.",
   "settings.preferences.soundsPreview": "Preview notification sound",
-  "settings.preferences.projectSettingsGear": "Project settings shortcut",
-  "settings.preferences.projectSettingsGearDescription":
-    "Reveal a settings shortcut when you hover a project in the sidebar.",
   "settings.preferences.toolApproval": "Tool Approval",
   "settings.preferences.toolApprovalDescription":
     "Control how tools are approved before execution.",

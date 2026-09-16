@@ -31,7 +31,7 @@ function SearchInput({
   return (
     <label
       className={cn(
-        "flex items-center gap-4 rounded-lg bg-card px-3 h-8 card-shadow",
+        "flex items-center gap-4 rounded-lg bg-[var(--studio-input-background)] px-3 h-8 card-shadow",
         "focus-within:border-ring focus-within:ring-ring/20 focus-within:ring-[2px]",
         "transition-[color,box-shadow]",
         disabled && "pointer-events-none opacity-50",

@@ -12,6 +12,8 @@ const SIDEBAR = '[data-slot="sidebar"]';
 const SUBNAV = '[data-testid="settings-subnav"]';
 const HEADING = '[data-testid="page-header"]';
 
+test.use({ compactPageLayout: true });
+
 test.describe("settings sidebar", () => {
   test("advanced rows stay collapsed until asked for", async ({
     authedPage,

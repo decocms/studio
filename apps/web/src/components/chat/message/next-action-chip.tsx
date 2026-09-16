@@ -117,7 +117,7 @@ export function NextActionChip() {
       <button
         type="button"
         onClick={handleClick}
-        className="group mt-3 flex items-center gap-2 self-start rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
+        className="group mt-3 flex items-center gap-2 self-start classic:rounded-full compact:rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
       >
         <Stars02 size={12} className="shrink-0 text-purple-500" />
         <span className="font-medium text-foreground/80">

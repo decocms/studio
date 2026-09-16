@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Panel } from "@/components/panel";
 import {
   getCapabilitySections,
@@ -1458,6 +1459,7 @@ function RoleDetailPageInner({
   members: MemberLike[];
   connections: ConnectionEntity[];
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
@@ -1742,20 +1744,43 @@ function RoleDetailPageInner({
               </div>
             </Page.Title>
 
-            <Panel.Toolbar.Left.Portal>
-              <Page.Tabs>
-                {tabs.map((tab) => (
-                  <Page.Tab
-                    key={tab.id}
-                    active={activeTab === tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                  >
-                    {tab.label}
-                  </Page.Tab>
-                ))}
-              </Page.Tabs>
-            </Panel.Toolbar.Left.Portal>
-
+            {compact ? (
+              <>
+                <Panel.Toolbar.Left.Portal>
+                  <Page.Tabs>
+                    {tabs.map((tab) => (
+                      <Page.Tab
+                        key={tab.id}
+                        active={activeTab === tab.id}
+                        onClick={() => handleTabChange(tab.id)}
+                      >
+                        {tab.label}
+                      </Page.Tab>
+                    ))}
+                  </Page.Tabs>
+                </Panel.Toolbar.Left.Portal>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => handleTabChange(tab.id)}
+                      className={cn(
+                        "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex items-center",
+                        activeTab === tab.id
+                          ? "bg-accent border-border text-foreground"
+                          : "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="flex items-center justify-between gap-3">
               <SearchInput
                 value={searchQuery}

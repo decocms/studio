@@ -114,7 +114,7 @@ export function StatusGroup({
             handleToggleExpanded();
           }
         }}
-        className="group/group flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm font-medium text-foreground cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
+        className="group/group flex items-center gap-2 px-2 py-1.5 classic:rounded-md compact:rounded-lg text-sm font-medium text-foreground cursor-pointer hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 transition-colors"
       >
         <div className="relative size-5 shrink-0 flex items-center justify-center">
           <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover/group:opacity-0">

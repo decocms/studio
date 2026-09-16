@@ -130,6 +130,7 @@ export const virtualMcp = {
   "virtualMcp.settings.identity.description": "Descrição",
   "virtualMcp.settings.general.title": "Geral",
   "virtualMcp.settings.site.title": "CMS",
+  "virtualMcp.settings.site.classicTitle": "Site e sandbox",
   "virtualMcp.settings.groups.advanced": "Avançado",
   "virtualMcp.settings.connections.title": "Conexões",
   "virtualMcp.settings.views.defaults": "Layout padrão",
@@ -267,4 +268,18 @@ Defina passo a passo como o agente deve tratar as solicitações.
     "Variáveis de tempo de execução",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
     "Armazene esta chave com segurança — ela não será exibida novamente.",
+  "virtualMcp.settings.general.description":
+    "Instruções, arquivos anexados e para quem este projeto pode delegar.",
+  "virtualMcp.settings.site.description":
+    "Como as edições chegam ao site e o repositório de onde ele roda.",
+  "virtualMcp.settings.backToSettings": "Configurações",
+  "virtualMcp.settings.connections.description":
+    "Os servidores MCP que este projeto reúne.",
+  "virtualMcp.settings.views.projectViews": "Visualizações",
+  "virtualMcp.settings.value.notLinked": "Sem repositório",
+  "virtualMcp.settings.value.connectionOne": "1 conexão",
+  "virtualMcp.settings.value.connectionMany": "{count} conexões",
+  "virtualMcp.settings.value.inSidebar": "{count} na barra lateral",
+  "virtualMcp.virtualMcp.settings": "Configurações",
+  "virtualMcp.virtualMcp.testAgent": "Testar Projeto",
 } satisfies Record<keyof typeof virtualMcpEn, string>;

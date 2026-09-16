@@ -1,3 +1,5 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { ChevronRight } from "@untitledui/icons";
 import type { ComponentType, SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
 import { type LibraryFileView, matchesLibraryFileView } from "./file-view";
@@ -170,7 +172,8 @@ function FileEntries({
   children: React.ReactNode;
 }) {
   const t = useT();
-  if (view === "media") return <CardsGrid>{children}</CardsGrid>;
+  const compact = useCompactPageLayout();
+  if (!compact || view === "media") return <CardsGrid>{children}</CardsGrid>;
   return (
     <div className="@container/library-files min-w-0">
       <div className="flex items-center gap-3 border-b border-border/60 px-3 pb-2 text-xs text-muted-foreground">
@@ -297,6 +300,7 @@ export function SearchResultsView({
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const fileUrl = useOrgFsFileUrl();
@@ -338,7 +342,9 @@ export function SearchResultsView({
           const readOnly = publicSetOf(e.volume) !== null;
           return (
             <FileCard
-              layout={fileView === "media" ? "media" : "row"}
+              layout={
+                !compact ? "card" : fileView === "media" ? "media" : "row"
+              }
               size={e.size}
               key={`${e.volume}/${e.path}`}
               filename={basename(e.path)}
@@ -378,6 +384,7 @@ function RecentlyAdded({
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const recent = useOrgFsRecent();
@@ -412,7 +419,7 @@ function RecentlyAdded({
       <FileEntries view={fileView}>
         {recentlyAdded.map((e) => (
           <FileCard
-            layout={fileView === "media" ? "media" : "row"}
+            layout={!compact ? "media" : fileView === "media" ? "media" : "row"}
             key={`${e.volume}/${e.path}`}
             filename={basename(e.path)}
             updatedAt={e.updatedAt}
@@ -494,6 +501,7 @@ export function VolumeView({
   onContextMenu?: (path: string, kind: "file" | "dir") => void;
   onMove?: (fromPath: string, toDir: string) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const volume = location.volume ?? "";
@@ -669,7 +677,9 @@ export function VolumeView({
           <FileEntries view={fileView}>
             {files.map((e) => (
               <FileCard
-                layout={fileView === "media" ? "media" : "row"}
+                layout={
+                  !compact ? "card" : fileView === "media" ? "media" : "row"
+                }
                 size={e.size}
                 key={e.path}
                 filename={basename(e.path)}
@@ -701,5 +711,60 @@ export function VolumeView({
         />
       )}
     </>
+  );
+}
+
+export function Breadcrumbs({
+  segments,
+  onNavigate,
+}: {
+  segments: string[];
+  onNavigate: (path: string) => void;
+}) {
+  const { org } = useProjectContext();
+  const rest = segments[0] === HOME_MOUNT_PATH ? segments.slice(1) : segments;
+  const offset = segments.length - rest.length;
+  const atRoot = rest.length === 0;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
+      {atRoot ? (
+        <span className="truncate font-medium text-foreground">
+          {homeDisplayName(org.slug)}
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="truncate text-muted-foreground hover:text-foreground hover:underline"
+          onClick={() => onNavigate(HOME_MOUNT_PATH)}
+        >
+          {homeDisplayName(org.slug)}
+        </button>
+      )}
+      {rest.map((seg, i) => {
+        const prefix = segments.slice(0, offset + i + 1).join("/");
+        const isLast = i === rest.length - 1;
+        return (
+          <span key={prefix} className="flex min-w-0 items-center gap-1">
+            <ChevronRight
+              size={12}
+              className="shrink-0 text-muted-foreground"
+            />
+            {isLast ? (
+              <span className="truncate font-medium text-foreground">
+                {segmentLabel(seg)}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="truncate text-muted-foreground hover:text-foreground hover:underline"
+                onClick={() => onNavigate(prefix)}
+              >
+                {segmentLabel(seg)}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </div>
   );
 }

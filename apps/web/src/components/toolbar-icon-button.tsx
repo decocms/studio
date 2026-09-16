@@ -2,6 +2,7 @@ import type { ComponentProps, Ref } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 
 /**
  * Shared colors, transitions, and focus treatment for panel icon controls.
@@ -12,7 +13,7 @@ import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
  *
  * Size can vary by placement; Button owns the shared radius and disabled state.
  */
-function panelButtonChrome(active?: boolean): string {
+export function panelButtonChrome(active?: boolean): string {
   return cn(
     "[transition:background-color_180ms_ease,color_180ms_ease] hover:bg-sidebar-accent hover:text-sidebar-foreground dark:hover:bg-sidebar-accent",
     INSET_FOCUS_RING,
@@ -34,6 +35,22 @@ export function ToolbarIconButton({
   type = "button",
   ...props
 }: ToolbarIconButtonProps) {
+  const compact = useCompactPageLayout();
+  if (!compact) {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        className={cn(
+          "relative flex size-10 md:size-7 shrink-0 items-center justify-center rounded-md",
+          "max-md:[&_svg]:size-5",
+          panelButtonChrome(active),
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
   return (
     <Button
       ref={ref}

@@ -64,7 +64,7 @@ function SettingsGroupHeading({
       onClick={onToggle}
       aria-expanded={open}
       className={cn(
-        "flex w-full items-center gap-1 rounded-lg hover:text-muted-foreground",
+        "flex w-full items-center gap-1 classic:rounded-md compact:rounded-lg hover:text-muted-foreground",
         style,
       )}
     >
@@ -135,7 +135,8 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       ))}
 
-      <div className="mt-auto flex flex-col pt-4">
+      <div className="mt-auto flex flex-col compact:pt-4">
+        <div className="mx-2 my-2 border-t border-border/50 compact:hidden" />
         <SidebarMenu className="gap-0.5">
           <SidebarNavRow
             icon={

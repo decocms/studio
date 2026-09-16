@@ -387,7 +387,7 @@ function CodeBlock({
           variant="ghost"
           onClick={() => handleCopy(content)}
           aria-label={t("chat.markdown.copyCode")}
-          className="text-muted-foreground hover:text-foreground h-8 w-8"
+          className="text-muted-foreground hover:text-foreground classic:rounded-lg h-8 w-8"
         >
           {copied ? <Check size={14} /> : <Copy01 size={14} />}
         </Button>

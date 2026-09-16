@@ -75,6 +75,8 @@ async function openTask(page: Page, orgSlug: string, title: string) {
   await editorOf(page).waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
 }
 
+test.use({ compactPageLayout: true });
+
 test.describe("task description markdown editor", () => {
   test("applies markdown while typing and saves markdown", async ({
     authedPage,

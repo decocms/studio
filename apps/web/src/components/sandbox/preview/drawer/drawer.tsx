@@ -330,7 +330,7 @@ function DrawerBody({
       <button
         type="button"
         onClick={onRunActive}
-        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
+        className="flex items-center gap-1.5 classic:rounded-md compact:rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-accent"
       >
         <Play className="size-3.5" /> {t("sandbox.drawer.run")}
       </button>

@@ -6,6 +6,8 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 
+test.use({ compactPageLayout: true });
+
 test.describe("project settings tabs", () => {
   test.setTimeout(120_000);
 
@@ -56,7 +58,9 @@ test.describe("project settings tabs", () => {
     await name.fill("Forma Studio");
     await tabs.getByRole("link", { name: "Connections" }).click();
     await expect(
-      content.getByRole("heading", { name: "Connected tools" }),
+      content.getByRole("button", {
+        name: "No connections yet. Add one to get started.",
+      }),
     ).toBeVisible();
     await header
       .getByRole("button", { name: "Add connection", exact: true })
@@ -129,9 +133,9 @@ test.describe("project settings tabs", () => {
     await expect(mainView).toBeInViewport();
     await tabs.getByRole("link", { name: "General" }).click();
     await expect(name).toBeInViewport();
-    await expect(
-      content.getByRole("textbox", { name: "Description" }),
-    ).toBeInViewport();
+    const description = content.getByRole("textbox", { name: "Description" });
+    await description.scrollIntoViewIfNeeded();
+    await expect(description).toBeInViewport();
     await expect(
       header.getByRole("button", { name: "Connect", exact: true }),
     ).toBeInViewport();
@@ -140,10 +144,10 @@ test.describe("project settings tabs", () => {
     ).toBeLessThanOrEqual(390);
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveClass(/dark/);
-    const headingColor = await content
-      .getByRole("heading", { name: "Project details" })
+    const labelColor = await content
+      .getByText("Project name", { exact: true })
       .evaluate((element) => getComputedStyle(element).color);
-    await expect(name).toHaveCSS("color", headingColor);
+    await expect(name).toHaveCSS("color", labelColor);
     await page.screenshot({
       animations: "disabled",
       path: testInfo.outputPath("project-settings-mobile.png"),

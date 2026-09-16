@@ -213,7 +213,7 @@ function ShareControls({
             disabled={setShareMode.isPending}
             onClick={() => selectMode(mode)}
             className={cn(
-              "flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60",
+              "flex flex-col items-center gap-1 classic:rounded-md compact:rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:opacity-60",
               activeMode === mode
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",

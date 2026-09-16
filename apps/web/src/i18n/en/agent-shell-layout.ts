@@ -17,4 +17,6 @@ export const agentShellLayout = {
   "agentShellLayout.agentShellLayout.taskUnavailable": "Task unavailable",
   "agentShellLayout.toggleButtons.hideChat": "Hide chat",
   "agentShellLayout.toggleButtons.showChat": "Show chat",
+  "agentShellLayout.toggleButtons.hidePanel": "Hide panel",
+  "agentShellLayout.toggleButtons.showPanel": "Show panel",
 } as const;

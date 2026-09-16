@@ -359,7 +359,7 @@ function PostChip({
       onClick={() => onSelect(post.key)}
       title={`${post.title} · ${status}`}
       className={cn(
-        "w-full truncate rounded-lg border px-2 py-1 text-left text-xs font-medium transition-colors",
+        "w-full truncate classic:rounded-md compact:rounded-lg border px-2 py-1 text-left text-xs font-medium transition-colors",
         scheduled ? SCHEDULED_CHIP : UNSCHEDULED_CHIP,
         draggable && "cursor-grab active:cursor-grabbing",
         active && "ring-2 ring-primary",

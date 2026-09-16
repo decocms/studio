@@ -127,6 +127,7 @@ export const virtualMcp = {
   "virtualMcp.settings.identity.description": "Description",
   "virtualMcp.settings.general.title": "General",
   "virtualMcp.settings.site.title": "CMS",
+  "virtualMcp.settings.site.classicTitle": "Site and sandbox",
   "virtualMcp.settings.groups.advanced": "Advanced",
   "virtualMcp.settings.connections.title": "Connections",
   "virtualMcp.settings.views.defaults": "Default layout",
@@ -262,4 +263,18 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcpShareModal.runtimeVariables": "Runtime variables",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
     "Store this key securely — it won't be shown again.",
+  "virtualMcp.settings.general.description":
+    "Instructions, attached files and who this project may delegate to.",
+  "virtualMcp.settings.site.description":
+    "How edits reach the live site, and the repository it runs from.",
+  "virtualMcp.settings.backToSettings": "Settings",
+  "virtualMcp.settings.connections.description":
+    "The MCP servers this project brings together.",
+  "virtualMcp.settings.views.projectViews": "Views",
+  "virtualMcp.settings.value.notLinked": "Not linked",
+  "virtualMcp.settings.value.connectionOne": "1 connection",
+  "virtualMcp.settings.value.connectionMany": "{count} connections",
+  "virtualMcp.settings.value.inSidebar": "{count} in sidebar",
+  "virtualMcp.virtualMcp.settings": "Settings",
+  "virtualMcp.virtualMcp.testAgent": "Test Project",
 } as const;

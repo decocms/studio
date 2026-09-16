@@ -1,5 +1,6 @@
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useT } from "@/i18n/use-t";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Panel } from "@/components/panel";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PageBreadcrumbs } from "./breadcrumbs";
@@ -52,7 +53,7 @@ function PageContainer({
       data-slot="page-container"
       data-width={width}
       className={cn(
-        "mx-auto w-full px-4 py-6 md:px-8 md:py-8",
+        "mx-auto w-full px-4 classic:pt-8 classic:pb-6 classic:md:px-10 classic:md:pt-12 classic:md:pb-10 compact:py-6 compact:md:px-8 compact:md:py-8",
         CONTAINER_WIDTH[width],
         className,
       )}
@@ -66,6 +67,21 @@ function PageTitle({
   actions,
   className,
 }: PropsWithChildren<{ actions?: ReactNode; className?: string }>) {
+  const compact = useCompactPageLayout();
+  if (!compact) {
+    return (
+      <div
+        data-slot="page-title"
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-3",
+          className,
+        )}
+      >
+        <h1 className="min-w-0 text-xl font-medium">{children}</h1>
+        {actions && <div className="flex items-center gap-2">{actions}</div>}
+      </div>
+    );
+  }
   return (
     <>
       <Panel.Topbar.Title.Portal
@@ -99,6 +115,7 @@ function PageActions({
   children,
   secondary,
 }: PropsWithChildren<{ secondary?: ReactNode }>) {
+  const compact = useCompactPageLayout();
   const content = (
     // One row, one gap: the secondary controls are not a group apart from the
     // primary action, so nothing divides them and nothing spaces them differently.
@@ -107,6 +124,7 @@ function PageActions({
       {children}
     </div>
   );
+  if (!compact) return content;
   return (
     <Panel.Topbar.Right.Portal fallback={content}>
       {content}

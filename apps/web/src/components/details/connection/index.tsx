@@ -552,7 +552,7 @@ function ConnectionInspectorViewWithConnection({
       </Sheet>
 
       {/* Main page */}
-      <DetailPanel>
+      <DetailPanel hideTopbar>
         <div className="flex flex-col h-full overflow-hidden">
           <ConnectionDetailHeader
             connection={connection}

@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Suspense, useState } from "react";
 import { AlertCircle, Lock01, Plus, User01, Users01 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -85,7 +86,7 @@ function SecretRow({ secret }: { secret: SecretInfo }) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ action }: { action?: React.ReactNode }) {
   const t = useT();
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
@@ -100,6 +101,7 @@ function EmptyState() {
           {t("settings.secrets.emptyDescription")}
         </p>
       </div>
+      {action}
     </div>
   );
 }
@@ -260,6 +262,7 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
 }
 
 function SecretsContent() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const secrets = useSecrets();
   const [createOpen, setCreateOpen] = useState(false);
@@ -275,8 +278,8 @@ function SecretsContent() {
   if (secrets.length === 0) {
     return (
       <>
-        {createAction}
-        <EmptyState />
+        {compact && createAction}
+        <EmptyState action={!compact && createAction} />
         <CreateSecretDialog open={createOpen} onOpenChange={setCreateOpen} />
       </>
     );

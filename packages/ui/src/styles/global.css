@@ -33,6 +33,8 @@
 @source "../components/**/*.tsx";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant compact (&:where([data-compact-layout="true"], [data-compact-layout="true"] *));
+@custom-variant classic (&:where(:root:not([data-compact-layout="true"]), :root:not([data-compact-layout="true"]) *));
 
 @utility no-scrollbar {
   @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
@@ -87,6 +89,20 @@
 
   --secondary: oklch(0.955 0.006 80);
   --secondary-foreground: oklch(0.2 0.01 60);
+
+  /* Layout-dependent defaults remain overridable by component className. */
+  --studio-input-background: var(--background);
+  --studio-outline-foreground: var(--foreground);
+  --studio-outline-hover-background: var(--accent);
+  --studio-secondary-background: var(--secondary);
+  --studio-secondary-foreground: var(--secondary-foreground);
+  --studio-secondary-hover-background: color-mix(
+    in oklab,
+    var(--secondary) 80%,
+    transparent
+  );
+  --studio-secondary-hover-foreground: var(--secondary-foreground);
+  --studio-secondary-shadow: none;
 
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.97 0.01 17);
@@ -155,6 +171,12 @@
 
   --secondary: oklch(0.21 0.005 60);
   --secondary-foreground: oklch(0.96 0.005 60);
+  --studio-input-background: color-mix(in oklab, var(--input) 30%, transparent);
+  --studio-outline-hover-background: color-mix(
+    in oklab,
+    var(--input) 50%,
+    transparent
+  );
 
   --destructive: oklch(0.62 0.22 27);
   --destructive-foreground: oklch(0.97 0.01 17);
@@ -304,9 +326,7 @@
   --spacing-96: calc(var(--spacing) * 96);
 
   --text-sm: 0.8125rem;
-  /* Tailwind ships --text-* as a PAIR; leaving its 14px-derived sm ratio against
-     our 13px computed 18.571px, landing every text-sm row on a fraction. */
-  --text-sm--line-height: 1.25rem;
+  --text-sm--line-height: var(--studio-text-sm-line-height, calc(1.25 / 0.875));
 
   --animate-search-expand: search-expand 180ms var(--ease-out-cubic) both;
   --animate-device-icon-pop: device-icon-pop 150ms var(--ease-out-cubic) both;
@@ -373,6 +393,20 @@
     opacity: 1;
     transform: scale(1) rotate(0deg);
   }
+}
+
+:root[data-compact-layout="true"] {
+  --studio-control-radius: calc(var(--radius) * 1.333);
+  --studio-button-radius: 9999px;
+  --studio-input-background: var(--card);
+  --studio-outline-foreground: var(--card-foreground);
+  --studio-outline-hover-background: var(--accent);
+  --studio-secondary-background: var(--card);
+  --studio-secondary-foreground: var(--card-foreground);
+  --studio-secondary-hover-background: var(--accent);
+  --studio-secondary-hover-foreground: var(--accent-foreground);
+  --studio-secondary-shadow: var(--card-shadow);
+  --studio-text-sm-line-height: 1.25rem;
 }
 
 /* A search field growing out of the icon button it replaces. `from` only, so

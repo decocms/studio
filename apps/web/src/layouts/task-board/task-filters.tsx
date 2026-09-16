@@ -1,0 +1,905 @@
+/**
+ * Task board filters — assignee, priority and due date. Filtering is pure
+ * (`taskMatchesFilters`) so both the board and list views share it, and the
+ * bar is presentational: it owns no state beyond the open/closed popovers.
+ */
+
+import type { ReactNode } from "react";
+import { useState } from "react";
+import { useT } from "@/i18n/use-t.ts";
+import { Avatar } from "@decocms/ui/components/avatar.tsx";
+import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerFooter,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@decocms/ui/components/drawer.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@decocms/ui/components/popover.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@decocms/ui/components/command.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
+import {
+  Calendar,
+  Check,
+  ChevronDown,
+  Flag01,
+  FilterLines,
+  SearchSm,
+  Settings02,
+  Tag01,
+  User01,
+  X,
+} from "@untitledui/icons";
+import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
+import { getInitials } from "@/lib/get-initials";
+import {
+  entryForFilter,
+  NO_PROJECT_FILTER,
+  projectFilterNarrows,
+  type ProjectIndex,
+  type ProjectIndexEntry,
+} from "@/lib/project-index";
+import {
+  PRIORITIES,
+  PRIORITY_CONFIG,
+  SUPER_AGENT_ASSIGNEE_ID,
+  tagDotColor,
+  type Member,
+  type OrgTag,
+  type TaskBoardItemPriority,
+} from "./config";
+
+import {
+  EMPTY_FILTERS,
+  UNASSIGNED_FILTER,
+  DUE_FILTERS,
+  dueFilterLabelKey,
+  type DueFilter,
+  type TaskFilters,
+} from "./task-filters-core";
+const ANY_FILTER = "__any__";
+
+/** `index` so the project clause agrees with the chip: a filter that narrows
+ *  nothing must not offer a Clear that visibly does nothing. */
+function hasActiveFilters(f: TaskFilters, index: ProjectIndex): boolean {
+  return (
+    f.assignee !== null ||
+    f.priority !== null ||
+    f.due !== null ||
+    f.tags.length > 0 ||
+    projectFilterNarrows(f.project, index) ||
+    f.search.trim() !== ""
+  );
+}
+
+function activeFilterCount(f: TaskFilters, index: ProjectIndex): number {
+  return (
+    (f.assignee !== null ? 1 : 0) +
+    (f.priority !== null ? 1 : 0) +
+    (f.due !== null ? 1 : 0) +
+    (f.tags.length > 0 ? 1 : 0) +
+    (projectFilterNarrows(f.project, index) ? 1 : 0) +
+    (f.search.trim() !== "" ? 1 : 0)
+  );
+}
+
+/**
+ * Shared trigger styling — a compact chip that fills in when a value is set.
+ * `block` makes it a full-width row for the mobile filter drawer.
+ */
+function chipClass(active: boolean, block = false): string {
+  return cn(
+    "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium outline-none transition-colors focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20",
+    block && "h-10 w-full justify-start px-3 text-sm",
+    active
+      ? "border-transparent bg-accent text-foreground"
+      : "border-border text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+  );
+}
+
+function AssigneeFilter({
+  value,
+  members,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  members: Member[];
+  onChange: (next: string | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+
+  let glyph: ReactNode = <User01 size={14} className="shrink-0" />;
+  let label = t("taskBoard.taskFilters.assigneeLabel");
+  if (value === UNASSIGNED_FILTER) {
+    label = t("taskBoard.taskFilters.assigneeUnassigned");
+  } else if (value === SUPER_AGENT_ASSIGNEE_ID) {
+    glyph = <SuperAgentIcon size={14} />;
+    label = t("taskBoard.taskFilters.assigneeSuperAgent");
+  } else if (value) {
+    const member = members.find((m) => m.userId === value);
+    glyph = (
+      <Avatar
+        url={member?.user?.image ?? undefined}
+        fallback={getInitials(member?.user?.name)}
+        shape="circle"
+        size="2xs"
+      />
+    );
+    label = member?.user?.name ?? t("taskBoard.taskFilters.assigneeMember");
+  }
+
+  const select = (next: string | null) => {
+    onChange(next);
+    setOpen(false);
+  };
+
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={triggerClass}>
+          {glyph}
+          <span className="max-w-[10rem] truncate">{label}</span>
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 p-0">
+        <Command>
+          <CommandInput
+            placeholder={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.assigneeFilterPlaceholder")}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>
+              {t("taskBoard.taskFilters.assigneeNoMembersFound")}
+            </CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={t("taskBoard.taskFilters.assigneeAnyone")}
+                onSelect={() => select(null)}
+              >
+                {t("taskBoard.taskFilters.assigneeAnyone")}
+              </CommandItem>
+              <CommandItem
+                value={t("taskBoard.taskFilters.assigneeUnassigned")}
+                onSelect={() => select(UNASSIGNED_FILTER)}
+                className="gap-2"
+              >
+                <User01 size={16} className="text-muted-foreground" />
+                {t("taskBoard.taskFilters.assigneeUnassigned")}
+              </CommandItem>
+              <CommandItem
+                value={t("taskBoard.taskFilters.assigneeSuperAgent")}
+                onSelect={() => select(SUPER_AGENT_ASSIGNEE_ID)}
+                className="gap-2"
+              >
+                <SuperAgentIcon size={16} />
+                {t("taskBoard.taskFilters.assigneeSuperAgent")}
+              </CommandItem>
+            </CommandGroup>
+            <CommandGroup
+              heading={t("taskBoard.taskFilters.assigneeGroupMembers")}
+            >
+              {members.map((m) => (
+                <CommandItem
+                  key={m.userId}
+                  value={m.user?.name ?? m.userId}
+                  onSelect={() => select(m.userId)}
+                  className="gap-2"
+                >
+                  <Avatar
+                    url={m.user?.image ?? undefined}
+                    fallback={getInitials(m.user?.name)}
+                    shape="circle"
+                    size="2xs"
+                  />
+                  <span className="truncate">{m.user?.name ?? m.userId}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function PriorityFilter({
+  value,
+  onChange,
+  block,
+}: {
+  value: TaskBoardItemPriority | null;
+  onChange: (next: TaskBoardItemPriority | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClass}>
+          {value ? (
+            <span
+              className={cn(
+                "size-2 shrink-0 rounded-full",
+                PRIORITY_CONFIG[value].dotClassName,
+              )}
+            />
+          ) : (
+            <Flag01 size={14} className="shrink-0" />
+          )}
+          {value
+            ? t(PRIORITY_CONFIG[value].labelKey)
+            : t("taskBoard.taskFilters.priorityLabel")}
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-40">
+        <DropdownMenuRadioGroup
+          value={value ?? ANY_FILTER}
+          onValueChange={(next) =>
+            onChange(
+              next === ANY_FILTER ? null : (next as TaskBoardItemPriority),
+            )
+          }
+        >
+          <DropdownMenuRadioItem value={ANY_FILTER}>
+            {t("taskBoard.taskFilters.priorityAnyPriority")}
+          </DropdownMenuRadioItem>
+          {PRIORITIES.map((p) => (
+            <DropdownMenuRadioItem key={p} value={p} className="gap-2">
+              <span
+                className={cn(
+                  "size-2 rounded-full",
+                  PRIORITY_CONFIG[p].dotClassName,
+                )}
+              />
+              {t(PRIORITY_CONFIG[p].labelKey)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function DueDateFilter({
+  value,
+  onChange,
+  block,
+}: {
+  value: DueFilter | null;
+  onChange: (next: DueFilter | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const label = value ? t(dueFilterLabelKey(value)) : undefined;
+  const triggerClass = chipClass(value !== null, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <Calendar size={14} className="shrink-0" />
+          {label ?? t("taskBoard.taskFilters.dueDateLabel")}
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-44">
+        <DropdownMenuRadioGroup
+          value={value ?? ANY_FILTER}
+          onValueChange={(next) =>
+            onChange(next === ANY_FILTER ? null : (next as DueFilter))
+          }
+        >
+          <DropdownMenuRadioItem value={ANY_FILTER} className="gap-2">
+            <Calendar size={16} className="text-muted-foreground" />
+            {t("taskBoard.taskFilters.dueDateAnyTime")}
+          </DropdownMenuRadioItem>
+          {DUE_FILTERS.map((due) => {
+            const danger = due === "overdue";
+            return (
+              <DropdownMenuRadioItem
+                key={due}
+                value={due}
+                className={cn("gap-2", danger && "text-destructive")}
+              >
+                <Calendar
+                  size={16}
+                  className={cn(
+                    "shrink-0",
+                    danger ? "text-destructive" : "text-muted-foreground",
+                  )}
+                />
+                {t(dueFilterLabelKey(due))}
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function TagFilter({
+  value,
+  tags,
+  onChange,
+  block,
+}: {
+  value: string[];
+  tags: OrgTag[];
+  onChange: (next: string[]) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const toggle = (id: string) =>
+    onChange(
+      value.includes(id) ? value.filter((v) => v !== id) : [...value, id],
+    );
+  const label =
+    value.length === 0
+      ? t("taskBoard.taskFilters.tagsLabel")
+      : value.length === 1
+        ? (tags.find((tag) => tag.id === value[0])?.name ??
+          t("taskBoard.taskFilters.tagsLabel"))
+        : t("taskBoard.taskFilters.tagsSelectedCount", {
+            count: value.length,
+          });
+  const triggerClass = chipClass(value.length > 0, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={triggerClass}>
+          {value.length === 1 ? (
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{
+                backgroundColor: tagDotColor(
+                  tags.find((tag) => tag.id === value[0])?.color,
+                ),
+              }}
+            />
+          ) : (
+            <Tag01 size={14} className="shrink-0" />
+          )}
+          <span className="max-w-[10rem] truncate">{label}</span>
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 p-0">
+        <Command>
+          <CommandInput
+            placeholder={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.tagsFilterPlaceholder")}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>
+              {t("taskBoard.taskFilters.tagsNoTagsFound")}
+            </CommandEmpty>
+            <CommandGroup>
+              {tags.map((tag) => (
+                <CommandItem
+                  key={tag.id}
+                  value={tag.name}
+                  onSelect={() => toggle(tag.id)}
+                  className="gap-2"
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: tagDotColor(tag.color) }}
+                  />
+                  <span className="flex-1 truncate">{tag.name}</span>
+                  {value.includes(tag.id) && (
+                    <Check size={14} className="shrink-0 text-foreground" />
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** One bucket's row. How it presents itself — project avatar and name, or the
+ *  repository's glyph when no single project names it — is
+ *  {@link ProjectEntryRow}'s to decide, shared with the task detail's picker. */
+function ProjectOption({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: ProjectIndexEntry;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <CommandItem
+      /**
+       * The bucket id leads, because cmdk keys a row's HIGHLIGHT on this string
+       * and nothing else: two repo-less projects both titled "Docs" would
+       * otherwise share a value, so both would render selected, arrow-down
+       * could not move between them, and Enter would fire whichever came first
+       * in the DOM. The rest of the string is what the row is searchable BY —
+       * its name, its repository, and its siblings' names.
+       */
+      value={`${entry.id} ${entry.title} ${entry.repo ?? ""} ${entry.projects
+        .map((p) => p.title)
+        .join(" ")}`}
+      onSelect={onSelect}
+      className="gap-2"
+    >
+      <ProjectEntryRow entry={entry} />
+      {selected && <Check size={14} className="shrink-0 text-foreground" />}
+    </CommandItem>
+  );
+}
+
+/**
+ * The filter chip's own label, which has to agree with what the board is
+ * actually doing.
+ *
+ * A `vir_…` the index cannot resolve — the first frame, or a link naming a
+ * project since deleted — lets every card through, so the chip reads UNSET
+ * rather than echoing the raw id back. A chip showing `vir_01j9x…` over a
+ * board that is not narrowed is the one label here that can mislead. An
+ * unresolved repo-shaped id still narrows (an exact compare against the card's
+ * own `repo`), so that one keeps saying what it filters by.
+ */
+function projectChipLabel(
+  value: string | null,
+  entry: ProjectIndexEntry | undefined,
+  narrows: boolean,
+  t: ReturnType<typeof useT>,
+): string {
+  if (value === null || !narrows)
+    return t("taskBoard.taskFilters.projectLabel");
+  if (value === NO_PROJECT_FILTER)
+    return t("taskBoard.taskFilters.projectNone");
+  return entry?.title ?? value;
+}
+
+/**
+ * The board's project filter — the control that used to say "Repo".
+ *
+ * Its option set is the project index, so a repository is offered as the
+ * project that pins it and picking one IS picking a project. A repository no
+ * project claims is still offered, under its own heading: the board must be
+ * able to narrow to work that exists.
+ */
+function ProjectFilter({
+  value,
+  index,
+  onChange,
+  block,
+}: {
+  value: string | null;
+  index: ProjectIndex;
+  onChange: (next: string | null) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const selected = value === null ? undefined : entryForFilter(value, index);
+  const narrows = projectFilterNarrows(value, index);
+  const label = projectChipLabel(value, selected, narrows, t);
+  const select = (next: string | null) => {
+    onChange(next);
+    setOpen(false);
+  };
+  const claimed = index.entries.filter((entry) => entry.projects.length > 0);
+  const unclaimed = index.entries.filter(
+    (entry) => entry.projects.length === 0,
+  );
+  /** `narrows`, not `value !== null`: the chip must look set only when the
+   *  board is actually narrowed. */
+  const triggerClass = chipClass(narrows, block);
+  const chevronClass = cn("shrink-0 opacity-60", block && "ml-auto");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className={triggerClass}>
+          {/* The glyph follows the label: an unresolved bucket reads as unset,
+              so it must not wear a project's face either. */}
+          <ProjectEntryIcon entry={narrows ? selected : undefined} />
+          <span className="max-w-[12rem] truncate">{label}</span>
+          <ChevronDown size={12} className={chevronClass} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0">
+        <Command>
+          <CommandInput
+            placeholder={t("taskBoard.taskFilters.projectFilterPlaceholder")}
+            aria-label={t("taskBoard.taskFilters.projectFilterPlaceholder")}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>
+              {t("taskBoard.taskFilters.projectNoneFound")}
+            </CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={t("taskBoard.taskFilters.projectAny")}
+                onSelect={() => select(null)}
+              >
+                {t("taskBoard.taskFilters.projectAny")}
+              </CommandItem>
+              <CommandItem
+                value={t("taskBoard.taskFilters.projectNone")}
+                onSelect={() => select(NO_PROJECT_FILTER)}
+              >
+                {t("taskBoard.taskFilters.projectNone")}
+              </CommandItem>
+            </CommandGroup>
+            {claimed.length > 0 && (
+              <CommandGroup
+                heading={t("taskBoard.taskFilters.projectGroupProjects")}
+              >
+                {claimed.map((entry) => (
+                  <ProjectOption
+                    key={entry.id}
+                    entry={entry}
+                    selected={selected === entry}
+                    onSelect={() => select(entry.id)}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {unclaimed.length > 0 && (
+              <CommandGroup
+                heading={t("taskBoard.taskFilters.projectGroupRepos")}
+              >
+                {unclaimed.map((entry) => (
+                  <ProjectOption
+                    key={entry.id}
+                    entry={entry}
+                    selected={selected === entry}
+                    onSelect={() => select(entry.id)}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Search toggle: a plain icon button that expands into a text input on click
+ * (collapsing back once empty and blurred), rather than reserving space for a
+ * full-width input at all times.
+ */
+function SearchToggle({
+  value,
+  onChange,
+  block,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  block?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(value !== "");
+  const [focused, setFocused] = useState(false);
+
+  // Collapse a filter cleared externally while unfocused (not one emptied by typing).
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
+    if (value === "" && !focused) setOpen(false);
+  }
+
+  const expanded = open || block;
+
+  return (
+    <div
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center gap-1.5 overflow-hidden rounded-lg border border-border px-2.5 text-xs text-foreground transition-all duration-200 ease-out",
+        expanded ? "w-32 sm:w-44" : "w-8 px-0 justify-center",
+        block && "h-10 w-full px-3 text-sm sm:w-full",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={t("taskBoard.taskFilters.searchLabel")}
+        onClick={() => setOpen(true)}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <SearchSm size={14} />
+      </button>
+      {expanded && (
+        <input
+          autoFocus={!block}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            if (value === "") setOpen(false);
+          }}
+          placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+          aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
+          className="w-full min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+        />
+      )}
+      {value !== "" && (
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskFilters.searchClearLabel")}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onChange("");
+            if (!block) setOpen(false);
+          }}
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Button to the board's settings page. Navigation itself is the caller's
+ * job (passed in as `onClick`) — this component stays presentational like
+ * the rest of the bar, with no router or org dependency of its own.
+ *
+ * Icon-only with a hover tooltip in the inline bar; in the mobile drawer
+ * (`block`) the tooltip never shows (Radix tooltips are hover/focus-only,
+ * and drawer taps are touch), so it renders the label as text instead, like
+ * every other drawer control.
+ */
+function BoardSettingsButton({
+  block,
+  onClick,
+}: {
+  block?: boolean;
+  onClick: () => void;
+}) {
+  const t = useT();
+  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  const button = (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        chipClass(false, block),
+        block ? "h-10 w-full" : "w-8 justify-center px-0",
+      )}
+    >
+      <Settings02 size={14} className="shrink-0" />
+      {block && <span>{label}</span>}
+    </button>
+  );
+  if (block) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The filter controls, shared by the inline bar and the mobile drawer. */
+function FilterControls({
+  filters,
+  members,
+  tags,
+  index,
+  onChange,
+  onOpenBoardSettings,
+  block,
+}: {
+  filters: TaskFilters;
+  members: Member[];
+  tags: OrgTag[];
+  index: ProjectIndex;
+  onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
+  block?: boolean;
+}) {
+  return (
+    <>
+      <SearchToggle
+        block={block}
+        value={filters.search}
+        onChange={(search) => onChange({ ...filters, search })}
+      />
+      <AssigneeFilter
+        block={block}
+        value={filters.assignee}
+        members={members}
+        onChange={(assignee) => onChange({ ...filters, assignee })}
+      />
+      <PriorityFilter
+        block={block}
+        value={filters.priority}
+        onChange={(priority) => onChange({ ...filters, priority })}
+      />
+      <DueDateFilter
+        block={block}
+        value={filters.due}
+        onChange={(due) => onChange({ ...filters, due })}
+      />
+      <TagFilter
+        block={block}
+        value={filters.tags}
+        tags={tags}
+        onChange={(tags) => onChange({ ...filters, tags })}
+      />
+      {/* Keep the control mounted while a project filter is active even if the
+          option list empties (last project and repo removed) — otherwise it
+          silently hides tasks with no visible chip to clear. */}
+      {(index.entries.length > 0 ||
+        projectFilterNarrows(filters.project, index)) && (
+        <ProjectFilter
+          block={block}
+          value={filters.project}
+          index={index}
+          onChange={(project) => onChange({ ...filters, project })}
+        />
+      )}
+      <BoardSettingsButton block={block} onClick={onOpenBoardSettings} />
+    </>
+  );
+}
+
+/** Inline filter bar for desktop widths. */
+export function TaskFiltersBar({
+  filters,
+  members,
+  tags,
+  index,
+  onChange,
+  onOpenBoardSettings,
+}: {
+  filters: TaskFilters;
+  members: Member[];
+  tags: OrgTag[];
+  index: ProjectIndex;
+  onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <FilterLines
+        size={16}
+        className="mr-0.5 shrink-0 text-muted-foreground"
+      />
+      <FilterControls
+        filters={filters}
+        members={members}
+        tags={tags}
+        index={index}
+        onChange={onChange}
+        onOpenBoardSettings={onOpenBoardSettings}
+      />
+      {hasActiveFilters(filters, index) && (
+        <button
+          type="button"
+          onClick={() => onChange(EMPTY_FILTERS)}
+          className="ml-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {t("taskBoard.taskFilters.clearButton")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Mobile filters: a single button (with an active-count badge) that opens a
+ * bottom drawer holding the controls full-width — instead of the inline bar
+ * wrapping across several rows on a narrow header.
+ */
+export function TaskFiltersDrawer({
+  filters,
+  members,
+  tags,
+  index,
+  onChange,
+  onOpenBoardSettings,
+}: {
+  filters: TaskFilters;
+  members: Member[];
+  tags: OrgTag[];
+  index: ProjectIndex;
+  onChange: (next: TaskFilters) => void;
+  onOpenBoardSettings: () => void;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const count = activeFilterCount(filters, index);
+  const triggerClass = chipClass(count > 0);
+  return (
+    <Drawer open={open} onOpenChange={setOpen} direction="bottom">
+      <DrawerTrigger asChild>
+        <button type="button" className={triggerClass}>
+          <FilterLines size={14} className="shrink-0" />
+          {t("taskBoard.taskFilters.filterDrawerButtonLabel")}
+          {count > 0 && (
+            <span className="ml-0.5 flex size-4 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
+              {count}
+            </span>
+          )}
+        </button>
+      </DrawerTrigger>
+      <DrawerContent className="p-0">
+        <DrawerTitle className="px-4 pt-4 text-base font-medium text-foreground">
+          {t("taskBoard.taskFilters.filterDrawerTitle")}
+        </DrawerTitle>
+        <div className="flex flex-col gap-2 p-4">
+          <FilterControls
+            block
+            filters={filters}
+            members={members}
+            tags={tags}
+            index={index}
+            onChange={onChange}
+            onOpenBoardSettings={onOpenBoardSettings}
+          />
+        </div>
+        <DrawerFooter className="flex-row gap-2">
+          {count > 0 && (
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => onChange(EMPTY_FILTERS)}
+            >
+              {t("taskBoard.taskFilters.clearAllButton")}
+            </Button>
+          )}
+          <DrawerClose asChild>
+            <Button className="flex-1">
+              {t("taskBoard.taskFilters.doneButton")}
+            </Button>
+          </DrawerClose>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
+  );
+}

@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useState } from "react";
 import { CreateAgentDropdownContent } from "@/components/create-agent-dropdown";
 import {
@@ -37,6 +38,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 
 export default function AgentsListPage() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const [search, setSearch] = useState("");
@@ -75,51 +77,49 @@ export default function AgentsListPage() {
     }
   };
 
+  const createAction = canManageAgents && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm">
+          <Plus size={14} />
+          {t("routes.agentsList.createAgent")}
+        </Button>
+      </DropdownMenuTrigger>
+      <CreateAgentDropdownContent
+        onCreateFromScratch={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "scratch",
+          });
+          createVirtualMCP();
+        }}
+        onImportGitHub={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "github",
+          });
+          setGithubPickerOpen(true);
+        }}
+        onImportDeco={() => {
+          track("agent_create_clicked", {
+            source: "agents_list",
+            method: "deco",
+          });
+          setImportDecoOpen(true);
+        }}
+        isCreating={isCreating}
+        align="end"
+        showDecoImport={showDecoImport}
+      />
+    </DropdownMenu>
+  );
+
   return (
     <Page>
       <Page.Content>
         <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title
-              actions={
-                canManageAgents && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm">
-                        <Plus size={14} />
-                        {t("routes.agentsList.createAgent")}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <CreateAgentDropdownContent
-                      onCreateFromScratch={() => {
-                        track("agent_create_clicked", {
-                          source: "agents_list",
-                          method: "scratch",
-                        });
-                        createVirtualMCP();
-                      }}
-                      onImportGitHub={() => {
-                        track("agent_create_clicked", {
-                          source: "agents_list",
-                          method: "github",
-                        });
-                        setGithubPickerOpen(true);
-                      }}
-                      onImportDeco={() => {
-                        track("agent_create_clicked", {
-                          source: "agents_list",
-                          method: "deco",
-                        });
-                        setImportDecoOpen(true);
-                      }}
-                      isCreating={isCreating}
-                      align="end"
-                      showDecoImport={showDecoImport}
-                    />
-                  </DropdownMenu>
-                )
-              }
-            >
+            <Page.Title actions={compact && createAction}>
               {t("routes.agentsList.title")}
             </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -135,12 +135,14 @@ export default function AgentsListPage() {
                   }
                 }}
               />
+              {!compact && createAction}
             </div>
           </div>
 
           {filteredAgents.length === 0 && (
             <div className="flex items-center justify-center py-20">
               <EmptyState
+                actions={!compact && !search && createAction}
                 image={
                   <FolderClosed size={48} className="text-muted-foreground" />
                 }

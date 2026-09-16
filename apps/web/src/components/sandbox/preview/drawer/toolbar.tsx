@@ -173,7 +173,7 @@ function SetupTab({
       aria-expanded={active && open}
       onClick={onClick}
       className={cn(
-        "flex h-6 items-center gap-1.5 rounded-lg border px-2 text-xs",
+        "flex h-6 items-center gap-1.5 classic:rounded-md compact:rounded-lg border px-2 text-xs",
         active
           ? "border-border bg-background font-medium text-foreground shadow-sm"
           : "border-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground",
@@ -297,7 +297,7 @@ function TabButton({
   return (
     <div
       className={cn(
-        "flex h-6 items-center rounded-lg border text-xs",
+        "flex h-6 items-center classic:rounded-md compact:rounded-lg border text-xs",
         active
           ? "border-border bg-background shadow-sm"
           : "border-transparent hover:bg-background/50",
@@ -372,7 +372,7 @@ function AddScriptButton({
                 setOpen(false);
                 onRun(s);
               }}
-              className="w-full rounded-lg px-2 py-1.5 text-left text-xs hover:bg-accent"
+              className="w-full classic:rounded-md compact:rounded-lg px-2 py-1.5 text-left text-xs hover:bg-accent"
             >
               ▸ {s}
             </button>

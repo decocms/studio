@@ -212,7 +212,7 @@ function ScoreGauge({
           <button
             type="button"
             aria-label={t("reports.coverTemplate.whatIsDecoScore")}
-            className="flex shrink-0 items-center justify-center rounded-lg transition-opacity"
+            className="flex shrink-0 items-center justify-center classic:rounded-full compact:rounded-lg transition-opacity"
             style={{ opacity: tipOpen ? 0.85 : 0.4 }}
             onMouseEnter={() => setTipOpen(true)}
             onMouseLeave={() => setTipOpen(false)}
@@ -391,7 +391,7 @@ function ScanChamber({
           <button
             type="button"
             onClick={onSeeReport}
-            className="deco-cover-cta reveal flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg text-[14px] font-medium transition-colors hover:bg-black/[0.03] lg:h-12"
+            className="deco-cover-cta reveal flex h-11 shrink-0 items-center justify-center gap-2 classic:rounded-full compact:rounded-lg text-[14px] font-medium transition-colors hover:bg-black/[0.03] lg:h-12"
             data-show={active ? "true" : "false"}
             style={{
               border: `1px solid ${DECK.inputBorder}`,

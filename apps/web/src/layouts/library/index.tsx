@@ -1,3 +1,6 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { SearchLg, XClose } from "@untitledui/icons";
+import { Breadcrumbs } from "./library-views";
 /**
  * Library — the org filesystem as a Drive-like home (Figma qFc7wr91 node
  * 7870-5644).
@@ -79,6 +82,7 @@ export function LibraryPage({
   onOpenSkill?: (skillPath: string) => void;
   onOpenBrand?: (brandPath: string) => void;
 } = {}) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
@@ -93,7 +97,7 @@ export function LibraryPage({
   };
   // The home folder is the top of the tree, so a missing (or emptied) `?path=`
   // lands there rather than on a volumes listing.
-  const fileView = search.fileView ?? "all";
+  const fileView = compact ? (search.fileView ?? "all") : "all";
   const setFileView = (view: LibraryFileView) =>
     navigate({
       to: ".",
@@ -432,66 +436,6 @@ export function LibraryPage({
           </div>
         </div>
       )}
-      <Page.Breadcrumbs items={breadcrumbs} />
-      <Page.Title>
-        {currentFolder
-          ? segmentLabel(currentFolder)
-          : t("library.library.title")}
-      </Page.Title>
-      <Page.Actions
-        secondary={
-          <>
-            <SearchToggle
-              value={searchText}
-              onChange={setSearchText}
-              label={t("library.library.searchPlaceholder")}
-              placeholder={searchPlaceholder}
-              clearLabel={t("library.library.clearSearch")}
-            />
-            <IconButton
-              label={t("library.library.refresh")}
-              tooltipSide="bottom"
-              variant="secondary"
-              onClick={refresh}
-            >
-              <RefreshCw01 />
-            </IconButton>
-            {browseVolume && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setNewFolderOpen(true)}
-              >
-                <Plus size={14} />
-                <span className="hidden sm:inline">
-                  {t("library.library.newFolder")}
-                </span>
-                <span className="sr-only sm:hidden">
-                  {t("library.library.newFolder")}
-                </span>
-              </Button>
-            )}
-          </>
-        }
-      >
-        {location.readOnly ? (
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Eye size={12} />
-            {t("library.library.readOnly")}
-          </span>
-        ) : (
-          <Button
-            size="sm"
-            disabled={upload.isPending}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload01 size={14} />
-            {upload.isPending
-              ? t("library.library.uploading")
-              : t("library.library.uploadFile")}
-          </Button>
-        )}
-      </Page.Actions>
       <input
         ref={fileInputRef}
         type="file"
@@ -499,21 +443,159 @@ export function LibraryPage({
         className="hidden"
         onChange={(e) => void handleUpload(e.target.files)}
       />
-      <Panel.Toolbar.Left.Portal>
-        <Page.Tabs>
-          {(["all", "documents", "media"] as const).map((view) => (
-            <Page.Tab
-              key={view}
-              active={fileView === view}
-              onClick={() => void setFileView(view)}
-            >
-              {t(`library.library.${view}`)}
-            </Page.Tab>
-          ))}
-        </Page.Tabs>
-      </Panel.Toolbar.Left.Portal>
+      {compact && (
+        <>
+          <Page.Breadcrumbs items={breadcrumbs} />
+          <Page.Title>
+            {currentFolder
+              ? segmentLabel(currentFolder)
+              : t("library.library.title")}
+          </Page.Title>
+          <Page.Actions
+            secondary={
+              <>
+                <SearchToggle
+                  value={searchText}
+                  onChange={setSearchText}
+                  label={t("library.library.searchPlaceholder")}
+                  placeholder={searchPlaceholder}
+                  clearLabel={t("library.library.clearSearch")}
+                />
+                <IconButton
+                  label={t("library.library.refresh")}
+                  tooltipSide="bottom"
+                  variant="secondary"
+                  onClick={refresh}
+                >
+                  <RefreshCw01 />
+                </IconButton>
+                {browseVolume && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setNewFolderOpen(true)}
+                  >
+                    <Plus size={14} />
+                    <span className="hidden sm:inline">
+                      {t("library.library.newFolder")}
+                    </span>
+                    <span className="sr-only sm:hidden">
+                      {t("library.library.newFolder")}
+                    </span>
+                  </Button>
+                )}
+              </>
+            }
+          >
+            {location.readOnly ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Eye size={12} />
+                {t("library.library.readOnly")}
+              </span>
+            ) : (
+              <Button
+                size="sm"
+                disabled={upload.isPending}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload01 size={14} />
+                {upload.isPending
+                  ? t("library.library.uploading")
+                  : t("library.library.uploadFile")}
+              </Button>
+            )}
+          </Page.Actions>
+
+          <Panel.Toolbar.Left.Portal>
+            <Page.Tabs>
+              {(["all", "documents", "media"] as const).map((view) => (
+                <Page.Tab
+                  key={view}
+                  active={fileView === view}
+                  onClick={() => void setFileView(view)}
+                >
+                  {t(`library.library.${view}`)}
+                </Page.Tab>
+              ))}
+            </Page.Tabs>
+          </Panel.Toolbar.Left.Portal>
+        </>
+      )}
       <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-6 md:px-8">
+        <div className="mx-auto flex w-full flex-col classic:max-w-[900px] classic:gap-10 classic:px-6 classic:py-10 classic:lg:px-10 compact:max-w-[1200px] compact:gap-6 compact:px-4 compact:py-6 compact:md:px-8">
+          {!compact && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+                  <Breadcrumbs
+                    segments={location.segments}
+                    onNavigate={onOpenDir}
+                  />
+                </div>
+                <div className="relative w-full shrink-0 sm:w-56">
+                  <SearchLg
+                    size={16}
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <Input
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setSearchText("");
+                    }}
+                    placeholder={searchPlaceholder}
+                    className="h-9 rounded-xl pr-9 pl-9"
+                  />
+                  {searchText && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
+                      onClick={() => setSearchText("")}
+                      aria-label={t("library.library.clearSearch")}
+                    >
+                      <XClose size={14} />
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={refresh}
+                  aria-label={t("library.library.refresh")}
+                >
+                  <RefreshCw01 size={14} />
+                </Button>
+                {browseVolume && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewFolderOpen(true)}
+                  >
+                    <Plus size={14} />
+                    {t("library.library.newFolder")}
+                  </Button>
+                )}
+                {location.readOnly ? (
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Eye size={12} />
+                    {t("library.library.readOnly")}
+                  </span>
+                ) : (
+                  <Button
+                    size="sm"
+                    disabled={upload.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload01 size={14} />
+                    {upload.isPending
+                      ? t("library.library.uploading")
+                      : t("library.library.uploadFile")}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
           {searchQuery ? (
             <SearchResultsView
               fileView={fileView}

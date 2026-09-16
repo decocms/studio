@@ -57,7 +57,7 @@ export function SubscriptionPaywallDialog({
       <Dialog open onOpenChange={onOpenChange}>
         <DialogContent
           className="gap-0 p-3 sm:max-w-[440px]"
-          closeButtonClassName="z-10 bg-background/70 p-1 text-foreground backdrop-blur transition-colors hover:bg-background"
+          closeButtonClassName="z-10 classic:rounded-full bg-background/70 p-1 text-foreground backdrop-blur transition-colors hover:bg-background"
         >
           {/* Board-preview hero — one image
               image, not a second asset. */}

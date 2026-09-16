@@ -4,17 +4,13 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../lib/utils.ts";
 
-/**
- * The second-tier button: the RAISED surface (`--card`, pure white in light,
- * a step lighter than the page in dark) lifted by the design system's
- * hairline-and-drop shadow. Deliberately NO `border` — `card-shadow` already
- * draws the hairline, so a border would double it.
- */
+/** Compact layout raises secondary controls onto the card surface. Variables
+ *  keep both layouts compatible with the caller's className overrides. */
 const SECONDARY =
-  "bg-card text-card-foreground card-shadow hover:bg-accent hover:text-accent-foreground";
+  "bg-[var(--studio-secondary-background)] text-[color:var(--studio-secondary-foreground)] shadow-[var(--studio-secondary-shadow)] hover:bg-[var(--studio-secondary-hover-background)] hover:text-[color:var(--studio-secondary-hover-foreground)]";
 
 const buttonVariants = cva(
-  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/20 focus-visible:ring-[2px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] text-sm transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/20 focus-visible:ring-[2px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
@@ -22,9 +18,8 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         secondary: SECONDARY,
-        /** shadcn's name for `secondary`, kept for the call sites already on
-         *  it. One definition, so the two can never drift apart. */
-        outline: SECONDARY,
+        outline:
+          "bg-[var(--studio-input-background)] text-[color:var(--studio-outline-foreground)] hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground card-shadow",
         success:
           "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/20 dark:focus-visible:ring-success/40",
         warning:

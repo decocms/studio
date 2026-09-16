@@ -316,6 +316,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
+  "settings.preferences.compactPageLayout": "Layout compacto (prévia)",
+  "settings.preferences.compactPageLayoutDescription":
+    "Experimente a nova navegação, os cabeçalhos e os controles neste navegador. Desative para voltar ao layout atual.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",
@@ -332,9 +335,6 @@ export const settings = {
   "settings.preferences.soundsDescription":
     "Reproduza sons para ações de agentes e notificações.",
   "settings.preferences.soundsPreview": "Ouvir som de notificação",
-  "settings.preferences.projectSettingsGear": "Atalho de configurações",
-  "settings.preferences.projectSettingsGearDescription":
-    "Mostrar um atalho de configurações ao passar o mouse sobre um projeto na barra lateral.",
   "settings.preferences.toolApproval": "Aprovação de ferramentas",
   "settings.preferences.toolApprovalDescription":
     "Controle como as ferramentas são aprovadas antes da execução.",

@@ -11,6 +11,8 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../fixtures/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
+test.use({ compactPageLayout: true });
+
 test.describe("tab error boundary recovers on tab switch", () => {
   // Helper: create a clonable agent + thread + return their ids. Mirrors the
   // setup used in sandbox-drawer-site-editor.spec.ts so the drawer assertion

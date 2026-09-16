@@ -71,7 +71,7 @@ export function EventTriggerForm({
         </span>
         <button
           type="button"
-          className="ml-auto shrink-0 p-0.5 rounded-lg text-muted-foreground hover:text-foreground"
+          className="ml-auto shrink-0 p-0.5 classic:rounded text-muted-foreground hover:text-foreground compact:rounded-lg"
           onClick={onDone}
         >
           <XClose size={13} />
