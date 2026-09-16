@@ -2822,12 +2822,15 @@ function RunFailureBanner({
     failure.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
   const connectionMissing =
     failure.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
-  const reauthUrl = githubReauthUrl({
-    orgSlug,
-    repo: item.repo,
-    repositories: repositories ?? [],
-    returnTo: taskSharePath(orgSlug, item),
-  });
+  // connectionMissing has no GitHub-side reauth to run — the repo has to be re-linked in Studio.
+  const actionUrl = connectionMissing
+    ? `/${encodeURIComponent(orgSlug)}/settings/connections`
+    : githubReauthUrl({
+        orgSlug,
+        repo: item.repo,
+        repositories: repositories ?? [],
+        returnTo: taskSharePath(orgSlug, item),
+      });
 
   return (
     <Alert variant="destructive" className="mt-2 flex-col">
@@ -2847,7 +2850,7 @@ function RunFailureBanner({
       <div className="mt-3 flex flex-wrap items-center gap-2 self-start">
         {(needsGithubAuth || connectionMissing) && (
           <Button size="sm" asChild>
-            <a href={reauthUrl}>
+            <a href={actionUrl}>
               {t(
                 connectionMissing
                   ? "taskBoard.taskDialog.runFailedLinkRepo"
