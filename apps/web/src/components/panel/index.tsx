@@ -171,7 +171,7 @@ function PanelToolbar({
       {...props}
       data-slot="panel-toolbar"
       className={cn(
-        "@container/panel-toolbar relative z-10 flex min-h-11 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 px-3 py-1.5 [&:not(:has([data-toolbar-content]:not(:empty)))]:hidden",
+        "@container/panel-toolbar relative z-10 flex min-h-11 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 [&:not(:has([data-toolbar-content]:not(:empty)))]:hidden",
         className,
       )}
     />
