@@ -1494,7 +1494,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {!activeGlobalSection && !activeLoader && pageOrigin && (
               <span
                 data-testid="preview-page-origin"
-                className="flex min-w-0 max-w-56 items-center border-r border-border/60 bg-muted/60 px-2 font-mono text-muted-foreground"
+                className="flex min-w-0 max-w-56 items-center border-r border-border/60 bg-muted/60 px-2 font-mono text-muted-foreground @max-xl/panel-toolbar:max-w-1/4"
               >
                 <span className="truncate">{pageOrigin}</span>
               </span>
@@ -1678,6 +1678,46 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     )
   ) : null;
 
+  const previewNavigation =
+    showPreviewToolbar || contentEditingEnabled ? (
+      <div className="flex min-w-0 items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={handleDeviceToggle}
+              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+            >
+              {previewDeviceSize === "mobile" ? (
+                <Phone02 size={16} />
+              ) : previewDeviceSize === "tablet" ? (
+                <Tablet01 size={16} />
+              ) : (
+                <Monitor04 size={16} />
+              )}
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
+          </TooltipContent>
+        </Tooltip>
+        {urlControls}
+        <div className="flex shrink-0 items-center gap-1">
+          <ToolbarIconButton
+            onClick={handleRefresh}
+            aria-label={t("sandbox.preview.refresh")}
+          >
+            <RefreshCw01 size={16} />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={() => void handleOpenPreview()}
+            aria-label={t(openPreviewLabelKey)}
+          >
+            <LinkExternal01 size={16} />
+          </ToolbarIconButton>
+        </div>
+      </div>
+    ) : null;
+
   const canVisualEdit = display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
@@ -1719,37 +1759,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <CursorClick01 size={16} />
           </ToolbarIconButton>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ToolbarIconButton
-              onClick={handleDeviceToggle}
-              aria-label={t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-            >
-              {previewDeviceSize === "mobile" ? (
-                <Phone02 size={16} />
-              ) : previewDeviceSize === "tablet" ? (
-                <Tablet01 size={16} />
-              ) : (
-                <Monitor04 size={16} />
-              )}
-            </ToolbarIconButton>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
-          </TooltipContent>
-        </Tooltip>
-        <ToolbarIconButton
-          onClick={handleRefresh}
-          aria-label={t("sandbox.preview.refresh")}
-        >
-          <RefreshCw01 size={16} />
-        </ToolbarIconButton>
-        <ToolbarIconButton
-          onClick={() => void handleOpenPreview()}
-          aria-label={t(openPreviewLabelKey)}
-        >
-          <LinkExternal01 size={16} />
-        </ToolbarIconButton>
         {contentEditingEnabled && (
           <>
             <Separator
@@ -1815,11 +1824,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       <Panel.Toolbar.Center.Portal
         fallback={
           <div className="flex min-w-0 items-center justify-center border-b p-2">
-            {urlControls}
+            {previewNavigation}
           </div>
         }
       >
-        {urlControls}
+        {previewNavigation}
       </Panel.Toolbar.Center.Portal>
       <Panel.Toolbar.Right.Portal fallback={previewTools}>
         {previewTools}

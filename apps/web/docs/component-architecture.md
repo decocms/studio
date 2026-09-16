@@ -287,13 +287,14 @@ all feature ancestors in that menu, keeping the current title and actions visibl
 </Panel>
 
 // Deep inside the Preview feature, with its existing state and callbacks:
-<Panel.Toolbar.Center.Portal>{pagePicker}</Panel.Toolbar.Center.Portal>
+<Panel.Toolbar.Center.Portal>{previewNavigation}</Panel.Toolbar.Center.Portal>
 <Panel.Toolbar.Right.Portal>{previewTools}</Panel.Toolbar.Right.Portal>
 ```
 
 - The first row is 48px tall: breadcrumbs and title on the left, actions on the right.
-- `Panel.Toolbar.Left` holds `Page.Tabs` / `Page.Tab`; Center holds the page path;
-  Right holds local view tools. All three support `Target` / `Portal`.
+- `Panel.Toolbar.Left` holds `Page.Tabs` / `Page.Tab`; Center holds the device-size
+  toggle, page selector, Refresh, and Open in new tab, in that order. Right holds
+  visual editing and Blocks controls. All three support `Target` / `Portal`.
 - Route links use `<Page.Tab asChild><Link /></Page.Tab>` and `aria-current`.
   In-place views use buttons with `aria-pressed`. Selecting an active view leaves
   it open. Labels remain visible; long sets scroll horizontally.
