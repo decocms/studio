@@ -340,10 +340,9 @@ export const taskBoard = {
   "taskBoard.analytics.orgAll": "Todas as organizações",
   "taskBoard.analytics.rangeDays": "Últimos {days} dias",
   "taskBoard.analytics.rangeFootnote": "Período: {from} até {to}",
-  "taskBoard.analytics.bannerOrg":
-    "Você está vendo {org}, uma organização da qual não é membro.",
-  "taskBoard.analytics.bannerAll":
-    "Você está vendo os dados de todas as organizações.",
+  "taskBoard.analytics.bannerBoard": "Vendo o quadro de {org}.",
+  "taskBoard.analytics.bannerOrg": "Vendo os dados de {org}.",
+  "taskBoard.analytics.bannerAll": "Vendo os dados de todas as organizações.",
   "taskBoard.analytics.tabDelivery": "Entrega",
   "taskBoard.analytics.tabStuck": "Travados",
   "taskBoard.analytics.tabCost": "Custo",

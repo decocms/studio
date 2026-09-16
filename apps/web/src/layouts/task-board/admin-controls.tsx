@@ -25,7 +25,7 @@ export function TaskBoardAdminBanner() {
   if (!viewing) return null;
   return (
     <div className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
-      {t("taskBoard.analytics.bannerOrg", { org: viewing })}
+      {t("taskBoard.analytics.bannerBoard", { org: viewing })}
     </div>
   );
 }

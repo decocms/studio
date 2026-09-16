@@ -331,9 +331,11 @@ export const taskBoard = {
   "taskBoard.analytics.orgAll": "All organizations",
   "taskBoard.analytics.rangeDays": "Last {days} days",
   "taskBoard.analytics.rangeFootnote": "Range: {from} to {to}",
-  "taskBoard.analytics.bannerOrg":
-    "You are viewing {org}, an organization you are not a member of.",
-  "taskBoard.analytics.bannerAll": "You are viewing every organization's data.",
+  /** The board banner. Says WHOSE board is on screen — membership is not the
+   *  point and the client cannot know it anyway. */
+  "taskBoard.analytics.bannerBoard": "Viewing {org}'s board.",
+  "taskBoard.analytics.bannerOrg": "Viewing {org}'s data.",
+  "taskBoard.analytics.bannerAll": "Viewing every organization's data.",
   "taskBoard.analytics.tabDelivery": "Delivery",
   "taskBoard.analytics.tabStuck": "Stuck",
   "taskBoard.analytics.tabCost": "Cost",
