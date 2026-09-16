@@ -6,6 +6,7 @@ import * as migration210githubrepositoryauthorization from "./210-github-reposit
 import * as migration212codingagentmcpexcluded from "./212-coding-agent-mcp-excluded";
 import * as migration213bitbucketgitprovider from "./213-bitbucket-git-provider";
 import * as migration217experiments from "./217-experiments";
+import * as migration218threadmessagepartserroridx from "./218-thread-message-parts-error-idx";
 import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
 import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
@@ -470,6 +471,7 @@ const migrations: Record<string, Migration> = {
   "215-commerce-discovery-repository": migration215commercediscoveryrepository,
   "216-github-cli-auth": migration216githubcliauth,
   "217-experiments": migration217experiments,
+  "218-thread-message-parts-error-idx": migration218threadmessagepartserroridx,
 };
 
 export default migrations;
