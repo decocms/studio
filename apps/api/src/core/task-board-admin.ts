@@ -13,6 +13,13 @@ import type { Kysely } from "kysely";
 import { getSettings } from "@/settings";
 import type { Database } from "@/storage/types";
 
+/** Is THIS org one of the admin orgs? What the board's org picker is gated on:
+ *  cross-org power belongs to the admin org you are standing in, not to you
+ *  personally everywhere you go. */
+export function isAdminOrgId(orgId: string | undefined): boolean {
+  return !!orgId && getSettings().taskBoardAdminOrgIds.includes(orgId);
+}
+
 /**
  * Is this user a member of ANY admin org? Empty `STUDIO_ADMIN_ORG_IDS` = nobody.
  *

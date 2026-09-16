@@ -33,7 +33,6 @@ interface AnalyticsPayload {
 
 interface AdminOrgList {
   isTaskBoardAdmin: boolean;
-  isCrossOrgView: boolean;
   orgs: { id: string; slug: string; name: string }[];
 }
 
@@ -127,7 +126,6 @@ test.describe("task board analytics", () => {
 
     const admin = await call<AdminOrgList>("TASK_BOARD_ADMIN_ORG_LIST", {});
     expect(admin.isTaskBoardAdmin).toBe(false);
-    expect(admin.isCrossOrgView).toBe(false);
     expect(admin.orgs).toEqual([]);
 
     // "all" is a widening request, not a different question — it narrows back.

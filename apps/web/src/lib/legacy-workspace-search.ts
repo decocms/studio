@@ -29,6 +29,9 @@ export const taskBoardSearchShape = {
   due: z.string().optional(),
   tags: z.string().optional(),
   repo: z.string().optional(),
+  /** Another tenant's board, shown WITHOUT leaving this org. Admin-org only;
+   *  ignored when the caller cannot read it. See `board-org.tsx`. */
+  boardOrg: z.string().optional(),
 };
 
 /** Library-owned browse, preview, and catalog state. */

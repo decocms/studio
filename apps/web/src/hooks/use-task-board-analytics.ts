@@ -2,8 +2,9 @@
 
 import { useProjectContext } from "@/sdk";
 import { useQuery } from "@tanstack/react-query";
+import { useParams } from "@tanstack/react-router";
 import { KEYS } from "@/lib/query-keys";
-import { useStudioTools } from "@/lib/studio-tools";
+import { callStudioTool, useStudioTools } from "@/lib/studio-tools";
 import type { StudioToolOutput as ToolOutput } from "@decocms/shared/tools/tool-io";
 
 export type AnalyticsPayload = ToolOutput<"TASK_BOARD_DELIVERY">;
@@ -21,15 +22,20 @@ export const ANALYTICS_TOOLS = [
 export type AnalyticsTool = (typeof ANALYTICS_TOOLS)[number];
 
 /**
- * Server-gated, not just hidden: a non-admin gets `isTaskBoardAdmin: false` and
- * an empty list, and the analytics tools refuse a cross-org `org` regardless.
+ * Server-gated, not just hidden: `isTaskBoardAdmin` is true only inside an
+ * admin org, and only for its members; everyone else gets an empty list.
+ *
+ * Asked of the org in the PATH, never of `ProjectContext` — while the board is
+ * pointed at another tenant (`BoardOrgProvider`) the context org is that
+ * tenant, which is not an admin org, and asking it would switch the picker off
+ * the moment it was used.
  */
 export function useTaskBoardAdminOrgs() {
-  const { locator } = useProjectContext();
-  const studio = useStudioTools();
+  const pathOrg = useParams({ strict: false }).org ?? "";
   return useQuery({
-    queryKey: KEYS.taskBoardAdminOrgs(locator),
-    queryFn: () => studio.call("TASK_BOARD_ADMIN_ORG_LIST", {}),
+    queryKey: KEYS.taskBoardAdminOrgs(pathOrg),
+    enabled: !!pathOrg,
+    queryFn: () => callStudioTool(pathOrg, "TASK_BOARD_ADMIN_ORG_LIST", {}),
     staleTime: 5 * 60_000,
   });
 }

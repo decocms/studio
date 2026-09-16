@@ -15,6 +15,7 @@ import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import {
   auditTaskBoardAdminAction,
+  isAdminOrgId,
   isTaskBoardAdminCtx,
 } from "@/core/task-board-admin";
 import { requireAuth, requireOrganization } from "@/core/studio-context";
@@ -250,9 +251,6 @@ export const TASK_BOARD_ADMIN_ORG_LIST = defineTool({
   inputSchema: z.object({}),
   outputSchema: z.object({
     isTaskBoardAdmin: z.boolean(),
-    /** True when the org in the URL is not one the caller belongs to — what the
-     *  board's "you are acting on someone else's org" banner keys off. */
-    isCrossOrgView: z.boolean(),
     orgs: z.array(
       z.object({ id: z.string(), slug: z.string(), name: z.string() }),
     ),
@@ -260,16 +258,15 @@ export const TASK_BOARD_ADMIN_ORG_LIST = defineTool({
   handler: async (_input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-    if (!(await isTaskBoardAdminCtx(ctx))) {
-      return { isTaskBoardAdmin: false, isCrossOrgView: false, orgs: [] };
-    }
     const organization = requireOrganization(ctx);
+    // BOTH conditions: the org being asked about has to be an admin org, and
+    // the caller has to belong to one. Membership alone would light the picker
+    // up in every tenant the caller happens to be in.
+    if (!isAdminOrgId(organization.id) || !(await isTaskBoardAdminCtx(ctx))) {
+      return { isTaskBoardAdmin: false, orgs: [] };
+    }
     return {
       isTaskBoardAdmin: true,
-      isCrossOrgView: !(await ctx.storage.taskBoardAnalytics.isMemberOf(
-        ctx.auth?.user?.id ?? "",
-        organization.id,
-      )),
       orgs: await ctx.storage.taskBoardAnalytics.orgsWithBoardItems(),
     };
   },

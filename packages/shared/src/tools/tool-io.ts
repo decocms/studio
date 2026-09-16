@@ -821,7 +821,6 @@ export interface StudioToolIO {
     input: { [x: string]: never };
     output: {
       isTaskBoardAdmin: boolean;
-      isCrossOrgView: boolean;
       orgs: { id: string; slug: string; name: string }[];
     };
   };

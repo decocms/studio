@@ -790,17 +790,6 @@ export class TaskBoardAnalyticsStorage {
     ];
   }
 
-  /** Does this user actually belong to this org, admin powers aside? */
-  async isMemberOf(userId: string, orgId: string): Promise<boolean> {
-    const row = await this.db
-      .selectFrom("member")
-      .select(["id"])
-      .where("userId", "=", userId)
-      .where("organizationId", "=", orgId)
-      .executeTakeFirst();
-    return !!row;
-  }
-
   /** Resolve an org reference (slug or id) as typed into the `org` parameter. */
   async resolveOrgRef(
     ref: string,
