@@ -109,19 +109,6 @@ export const EMPTY_FILTERS: TaskFilters = {
   search: "",
 };
 
-/** `index` so the project clause agrees with the chip: a filter that narrows
- *  nothing must not offer a Clear that visibly does nothing. */
-function hasActiveFilters(f: TaskFilters, index: ProjectIndex): boolean {
-  return (
-    f.assignee !== null ||
-    f.priority !== null ||
-    f.due !== null ||
-    f.tags.length > 0 ||
-    projectFilterNarrows(f.project, index) ||
-    f.search.trim() !== ""
-  );
-}
-
 function activeFilterCount(f: TaskFilters, index: ProjectIndex): number {
   return (
     (f.assignee !== null ? 1 : 0) +
@@ -923,7 +910,6 @@ export function TaskFiltersBar({
   onChange: (next: TaskFilters) => void;
   onOpenBoardSettings: () => void;
 }) {
-  const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <FilterControls
@@ -934,15 +920,6 @@ export function TaskFiltersBar({
         onChange={onChange}
         onOpenBoardSettings={onOpenBoardSettings}
       />
-      {hasActiveFilters(filters, index) && (
-        <button
-          type="button"
-          onClick={() => onChange(EMPTY_FILTERS)}
-          className="ml-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          {t("taskBoard.taskFilters.clearButton")}
-        </button>
-      )}
     </div>
   );
 }

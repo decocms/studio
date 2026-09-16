@@ -251,7 +251,6 @@ export const taskBoard = {
   "taskBoard.taskFilters.assigneeSuperAgent": "Super Agent",
   "taskBoard.taskFilters.assigneeUnassigned": "Unassigned",
   "taskBoard.taskFilters.clearAllButton": "Clear all",
-  "taskBoard.taskFilters.clearButton": "Clear",
   "taskBoard.taskFilters.doneButton": "Done",
   "taskBoard.taskFilters.dueDateAnyTime": "Any time",
   "taskBoard.taskFilters.dueDateFilterDueThisWeek": "Due this week",
