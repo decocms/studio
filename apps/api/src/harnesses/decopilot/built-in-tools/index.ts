@@ -241,7 +241,7 @@ async function buildAllTools(
     tools,
     (await isJiraRun(ctx, taskId))
       ? createJiraRunTools(ctx, taskId)
-      : createTaskBoardTools(ctx),
+      : createTaskBoardTools(ctx, toolOutputMap),
   );
   // Agent-management built-ins — the Super Agent is the only agent that has
   // no connections to reach them through, and it is the one asked to create or
