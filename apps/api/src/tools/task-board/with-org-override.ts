@@ -2,10 +2,17 @@
  * Let an admin-org member aim a task-board tool at another org from chat.
  *
  * A chat tool call has no `/api/:org` path segment to rebind from, so the
- * target org has to be an explicit input. Wrapping registration is how that
- * happens once instead of in thirty handlers — and it is applied to a named
- * list, not to `CORE_TOOLS`: a global `org` param bloats every schema the model
- * reads and widens far more surface than asked for.
+ * target org has to be an explicit input. Wrapping is how that happens once
+ * instead of in thirty handlers — and only three tools are wrapped, never all
+ * of `CORE_TOOLS`: a global `org` param bloats every schema the model reads and
+ * widens far more surface than asked for.
+ *
+ * Applied at each tool's own DEFINITION, not at a registration site. It lived
+ * on the `CORE_TOOLS` list once, and the Super Agent — which imports these
+ * tools directly (`decopilot/built-in-tools/task-board-tools.ts`) and reads
+ * that list never — got the unwrapped schema and told the user, correctly,
+ * that it had no way to reach another org. Wrapping the export is the only
+ * place every consumer has to go through.
  *
  * Permission still comes from the caller's own org (`ctx.access` is carried
  * over untouched); only the data scope moves. The override builds a fresh

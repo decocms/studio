@@ -63,8 +63,10 @@ export const CORE_TOOLS = [
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
-  // Reads get the cross-org `org` param first; writes wait on quota attribution.
-  TaskBoardTools.withOrgOverride(TaskBoardTools.TASK_BOARD_ITEM_LIST),
+  // The cross-org `org` param is applied at each tool's own definition, NOT
+  // here — the Super Agent imports these tools directly (see
+  // `decopilot/built-in-tools/task-board-tools.ts`) and never reads this list.
+  TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
   TaskBoardTools.TASK_BOARD_AUTOMATION_LIST,
@@ -73,13 +75,13 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_PROMPT_LIST,
   TaskBoardTools.TASK_BOARD_PROMPT_UPSERT,
   TaskBoardTools.TASK_BOARD_PROMPT_DELETE,
-  TaskBoardTools.withOrgOverride(TaskBoardTools.TASK_BOARD_ITEM_PRS_GET),
+  TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
   TaskBoardTools.TASK_BOARD_PREVIEW_PROBE,
   TaskBoardTools.TASK_BOARD_ITEM_RERUN,
   TaskBoardTools.TASK_BOARD_RESOLVE_CONFLICT,
   TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
   TaskBoardTools.TASK_BOARD_PROMOTE_TO_PRODUCTION,
-  TaskBoardTools.withOrgOverride(TaskBoardTools.TASK_BOARD_ACTIVITY_LIST),
+  TaskBoardTools.TASK_BOARD_ACTIVITY_LIST,
   TaskBoardTools.TASK_BOARD_COMMENT_LIST,
   TaskBoardTools.TASK_BOARD_COMMENT_CREATE,
   TaskBoardTools.TASK_BOARD_COMMENT_UPDATE,
