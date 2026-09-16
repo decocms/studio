@@ -1751,7 +1751,6 @@ function RoleDetailPageInner({
                     active={activeTab === tab.id}
                     onClick={() => handleTabChange(tab.id)}
                   >
-                    <tab.icon aria-hidden="true" className="size-4 shrink-0" />
                     {tab.label}
                   </Page.Tab>
                 ))}

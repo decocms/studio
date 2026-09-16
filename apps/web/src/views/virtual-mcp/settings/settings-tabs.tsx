@@ -17,7 +17,7 @@ export function ProjectSettingsTabs({
   const tabs = (
     <Page.Tabs aria-label={t("virtualMcp.settings.navigation")}>
       {PROJECT_SETTINGS_SECTION_KEYS.map((key) => {
-        const { icon: Icon, titleKey } = PROJECT_SETTINGS_SECTIONS[key];
+        const { titleKey } = PROJECT_SETTINGS_SECTIONS[key];
         return (
           <Page.Tab key={key} active={section === key} asChild>
             <Link
@@ -28,7 +28,6 @@ export function ProjectSettingsTabs({
                 section: key === "general" ? undefined : key,
               })}
             >
-              <Icon aria-hidden="true" className="size-4 shrink-0" />
               {t(titleKey)}
             </Link>
           </Page.Tab>
