@@ -7,6 +7,8 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
+import { MissingRequiredDot } from "../missing-required-dot";
+import { useRequiredField } from "./required-field-context";
 
 const DESCRIPTION_AFFORDANCE_CLASS =
   "cursor-help underline decoration-dotted decoration-muted-foreground/50 underline-offset-4";
@@ -71,12 +73,19 @@ export function FieldLabel({
   virtualMcpId,
 }: FieldLabelProps) {
   const tooltipsEnabled = useFieldDescriptionTooltips(virtualMcpId);
+  const { required, invalid } = useRequiredField();
+  const labelBody = (
+    <Label htmlFor={htmlFor} className={labelClassName}>
+      {label}
+      {required && invalid && (
+        <MissingRequiredDot className="mt-0.5 self-start" />
+      )}
+    </Label>
+  );
   if (!tooltipsEnabled) {
     return (
       <div className="space-y-0.5">
-        <Label htmlFor={htmlFor} className={labelClassName}>
-          {label}
-        </Label>
+        {labelBody}
         {description && (
           <p className="text-xs leading-normal text-muted-foreground">
             {description}
@@ -90,9 +99,7 @@ export function FieldLabel({
       description={description}
       virtualMcpId={virtualMcpId}
     >
-      <Label htmlFor={htmlFor} className={labelClassName}>
-        {label}
-      </Label>
+      {labelBody}
     </FieldDescriptionTooltip>
   );
 }

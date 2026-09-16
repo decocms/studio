@@ -54,7 +54,13 @@ import {
 } from "./field-label";
 import type { FieldProps } from "./field-props";
 import { ArrayRowContent, SortableArrayRow } from "./array-row";
+import { hasMissingRequiredField } from "../section-required-status";
+import { MissingRequiredDot } from "../missing-required-dot";
 import { SchemaForm, renderField } from "../schema-form";
+import {
+  RequiredFieldProvider,
+  useRequiredField,
+} from "./required-field-context";
 import {
   resolveSchema,
   type LiveMeta,
@@ -128,6 +134,8 @@ export function ArrayField({
 }: FieldProps) {
   const t = useT();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
+  const { required: requiredProp, invalid: requiredInvalid } =
+    useRequiredField();
   const items = Array.isArray(value) ? value : [];
   const itemSchema = schema.items;
   const arrayFieldKey = arrayFieldKeyFromPath(path);
@@ -477,32 +485,33 @@ export function ArrayField({
             sandbox={sandbox}
           />
         ) : editorSchema ? (
-          renderField({
-            schema: editorSchema,
-            value: item,
-            onChange: (val) => updateItem(selectedIndex, val),
-            path: `${path}.${selectedIndex}`,
-            // An array item is never optional; clearing would leave a null hole.
-            required: true,
-            // A mustache `title` (e.g. "{{{city}}} {{{regionCode}}}") is an
-            // item-label template, not a display label — use the resolved item
-            // label so the header reads "SP BR" instead of the raw template.
-            label:
-              editorSchema.title && !editorSchema.title.includes("{{")
-                ? editorSchema.title
-                : itemLabel(item, selectedIndex),
-            breadcrumbPath: selection?.innerPath ?? [],
-            onBreadcrumbChange: (nextPath) => {
-              onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
-            },
-            meta,
-            decofile,
-            onSaveReferencedBlock,
-            previewBaseUrl,
-            onAddSectionItem,
-            onRequestAddSection,
-            sandbox,
-          })
+          // Reset the marker: an item's `required` is a null-hole guard, not a fill-me requirement (see RequiredFieldProvider).
+          <RequiredFieldProvider required={false} invalid={false}>
+            {renderField({
+              schema: editorSchema,
+              value: item,
+              onChange: (val) => updateItem(selectedIndex, val),
+              path: `${path}.${selectedIndex}`,
+              // An array item is never optional; clearing would leave a null hole.
+              required: true,
+              // A mustache `title` is an item-label template, not a display label — use the resolved item label.
+              label:
+                editorSchema.title && !editorSchema.title.includes("{{")
+                  ? editorSchema.title
+                  : itemLabel(item, selectedIndex),
+              breadcrumbPath: selection?.innerPath ?? [],
+              onBreadcrumbChange: (nextPath) => {
+                onBreadcrumbChange?.([...arrayItemPrefix(), ...nextPath]);
+              },
+              meta,
+              decofile,
+              onSaveReferencedBlock,
+              previewBaseUrl,
+              onAddSectionItem,
+              onRequestAddSection,
+              sandbox,
+            })}
+          </RequiredFieldProvider>
         ) : null}
       </div>
     );
@@ -515,7 +524,12 @@ export function ArrayField({
           description={schema.description}
           virtualMcpId={sandbox?.virtualMcpId}
         >
-          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+          <span className="min-w-0 truncate text-sm font-medium">
+            {label}
+            {requiredProp && requiredInvalid && (
+              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+            )}
+          </span>
         </FieldDescriptionTooltip>
         {items.length > 0 && (
           <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
@@ -559,9 +573,20 @@ export function ArrayField({
                     if (item === undefined) return null;
                     const labelText =
                       itemLabels[entry.index] ?? itemLabel(item, entry.index);
+                    const displayValue = arrayItemDisplayValue(item);
                     const imageSrc = getArrayItemImageSrc(
-                      arrayItemDisplayValue(item),
+                      displayValue,
                       itemSchema,
+                    );
+                    const missingRequired = hasMissingRequiredField(
+                      itemEditorSchema(
+                        displayValue,
+                        itemSchema,
+                        meta,
+                        containerResolveType,
+                        arrayFieldKey,
+                      ),
+                      displayValue,
                     );
                     return (
                       <SortableArrayRow
@@ -569,6 +594,7 @@ export function ArrayField({
                         sortableId={entry.id}
                         labelText={labelText}
                         imageSrc={imageSrc}
+                        missingRequired={missingRequired}
                         hidden={isArrayItemHidden(item)}
                         onToggleHidden={
                           canHideItems

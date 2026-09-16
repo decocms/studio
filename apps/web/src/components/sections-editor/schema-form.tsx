@@ -19,6 +19,10 @@ import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
+  isEmptyFieldValue,
+  RequiredFieldProvider,
+} from "./fields/required-field-context";
+import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
   isSectionMultivariateWrapperValue,
@@ -669,13 +673,14 @@ function SchemaFormBody({
                   fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 
-        return renderField({
+        const isRequired = requiredKeys.has(key);
+        const field = renderField({
           schema: propSchema,
           value: objValue[key],
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
-          required: requiredKeys.has(key),
+          required: isRequired,
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,
           hasSiblingDrillDownFields,
@@ -692,6 +697,17 @@ function SchemaFormBody({
           onRequestAddSection,
           sandbox,
         });
+        if (field === null) return null;
+        // Only real object properties get the marker (see RequiredFieldProvider).
+        return (
+          <RequiredFieldProvider
+            key={fieldPath}
+            required={isRequired}
+            invalid={isRequired && isEmptyFieldValue(objValue[key])}
+          >
+            {field}
+          </RequiredFieldProvider>
+        );
       })}
     </div>
   );
