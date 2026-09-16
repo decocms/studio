@@ -926,10 +926,6 @@ export function TaskFiltersBar({
   const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <FilterLines
-        size={16}
-        className="mr-0.5 shrink-0 text-muted-foreground"
-      />
       <FilterControls
         filters={filters}
         members={members}
