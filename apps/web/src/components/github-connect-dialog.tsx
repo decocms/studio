@@ -33,8 +33,6 @@ const flowSchema = z.object({
       installationId: z.number(),
       login: z.string(),
       avatarUrl: z.string().nullable(),
-      /** Null when the whole account is on offer, a count when only part is. */
-      repositoryCount: z.number().nullable(),
     }),
   ),
 });
@@ -69,6 +67,33 @@ function broadcast(name: string, message: string) {
   const channel = new BroadcastChannel(name);
   channel.postMessage(message);
   channel.close();
+}
+
+/** Row-shaped placeholders, so the list does not jump when the rows arrive. */
+function AccountListSkeleton() {
+  return (
+    <div aria-hidden className="divide-y divide-border">
+      {Array.from({ length: 3 }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 px-4 py-3">
+          <Skeleton className="size-8 rounded-full" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RepositoryListSkeleton() {
+  return (
+    <div aria-hidden className="space-y-2 py-1">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="flex items-center gap-2 py-1">
+          <Skeleton className="size-4 rounded-sm" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function GithubConnectDialog({
@@ -223,9 +248,7 @@ export function GithubConnectDialog({
         ) : (
           <div className="max-h-80 overflow-y-auto">
             {flow.isPending ? (
-              <div className="p-4">
-                <Skeleton className="h-20 w-full" />
-              </div>
+              <AccountListSkeleton />
             ) : flow.isError ? (
               <p role="alert" className="p-4 text-sm text-destructive">
                 {t(
@@ -256,18 +279,8 @@ export function GithubConnectDialog({
                     shape="circle"
                     muted
                   />
-                  <span className="flex-1 min-w-0 text-left">
-                    <span className="block truncate">{installation.login}</span>
-                    {installation.repositoryCount !== null && (
-                      <span className="block truncate text-xs text-muted-foreground font-normal">
-                        {t(
-                          installation.repositoryCount === 1
-                            ? "settings.repositories.githubAdministeredOne"
-                            : "settings.repositories.githubAdministered",
-                          { count: String(installation.repositoryCount) },
-                        )}
-                      </span>
-                    )}
+                  <span className="flex-1 min-w-0 text-left truncate">
+                    {installation.login}
                   </span>
                   <ArrowRight size={16} />
                 </Button>
@@ -394,7 +407,7 @@ function RepositoryGrantPicker({
         onChange={(event) => setQuery(event.target.value)}
       />
       {repositories.isPending ? (
-        <Skeleton className="h-20 w-full" />
+        <RepositoryListSkeleton />
       ) : (
         <div className="max-h-64 overflow-y-auto space-y-2">
           {choices.map((repo) => (
@@ -422,11 +435,9 @@ function RepositoryGrantPicker({
           {choices.length === 0 && (
             <p className="text-sm text-muted-foreground">
               {t(
-                repositories.hasNextPage
-                  ? "settings.repositories.githubSearchMore"
-                  : debouncedQuery
-                    ? "settings.repositories.githubSearchNoMatches"
-                    : "settings.repositories.githubNoRepos",
+                debouncedQuery
+                  ? "settings.repositories.githubSearchNoMatches"
+                  : "settings.repositories.githubNoRepos",
               )}
             </p>
           )}

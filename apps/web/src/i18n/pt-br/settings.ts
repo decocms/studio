@@ -152,8 +152,6 @@ export const settings = {
     "Nenhum repositório disponível para autorizar.",
   "settings.repositories.githubSearchNoMatches":
     "Nenhum repositório corresponde à sua busca.",
-  "settings.repositories.githubSearchMore":
-    "Carregue mais para continuar buscando nos seus repositórios.",
   "settings.repositories.githubAccessChanged":
     "Alguém alterou o acesso desta conta. Volte e revise os repositórios antes de salvar.",
   "settings.repositories.githubMoreRepos": "Carregar mais repositórios",
@@ -166,10 +164,6 @@ export const settings = {
     "Escolha sua conta pessoal do GitHub, ou uma organização onde você administra repositórios, para compartilhar com {organization}. Membros com permissão para repositórios no Studio podem usar esta conexão.",
   "settings.repositories.githubInstallHint":
     "Ainda não há nada seu para compartilhar. Instale o app do GitHub na sua conta pessoal ou nos repositórios que você administra, ou peça ao dono da conta para conectá-la ao Studio. Um repositório em que você só colabora não é seu para compartilhar.",
-  "settings.repositories.githubAdministered":
-    "{count} repositórios que você administra",
-  "settings.repositories.githubAdministeredOne":
-    "1 repositório que você administra",
   "settings.repositories.installGithubAccount": "Instalar em outra conta",
   "settings.repositories.checkGithubAccess": "Verificar acesso",
   "settings.repositories.switchGithubUser": "Usar outro login do GitHub",

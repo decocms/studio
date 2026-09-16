@@ -38,6 +38,10 @@ import {
   GithubAccountChangedError,
   githubAccountVersion,
 } from "@/storage/github-connect-flows";
+import {
+  coversSelection,
+  pageChoices,
+} from "@/git-providers/github/connect-access";
 import { readGithubAppConfig } from "@/git-providers/github/env";
 import {
   githubCliEnabled,
@@ -232,18 +236,17 @@ export const createGitProviderRoutes = () => {
     const appAuth = getGithubAppAuth();
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     try {
-      const { installations } = await appAuth.listAuthorizedInstallations(
+      const installations = await appAuth.listConnectableInstallations(
+        flow.id,
         await ctx.vault.decrypt(flow.encrypted_access_token),
       );
-      // The ids themselves are Studio's business; the chooser only needs to
-      // say whether the account comes whole or as a slice of its repositories.
       return c.json({
-        installations: installations.map(
-          ({ repositoryIds, ...installation }) => ({
-            ...installation,
-            repositoryCount: repositoryIds?.length ?? null,
-          }),
-        ),
+        installations: installations.map((installation) => ({
+          installationId: installation.installationId,
+          login: installation.login,
+          avatarUrl: installation.avatarUrl,
+          accountType: installation.accountType,
+        })),
         expiresAt: flow.expires_at,
       });
     } catch {
@@ -278,20 +281,17 @@ export const createGitProviderRoutes = () => {
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
     try {
       const userToken = await ctx.vault.decrypt(flow.encrypted_access_token);
-      const access = await appAuth.listAuthorizedInstallations(
+      const installation = await appAuth.connectableInstallation(
+        flow.id,
         userToken,
         input.data.installationId,
       );
-      const installation = access.installations.find(
-        (item) => item.installationId === input.data.installationId,
-      );
       if (!installation)
         return c.json({ error: "installation_forbidden" }, 403);
-      const choices = await appAuth.listRepositoryChoices(
+      const choices = await appAuth.delegableRepositories(
+        flow.id,
         userToken,
-        installation,
-        input.data.page,
-        input.data.query,
+        installation.installationId,
       );
       const account = await ctx.storage.gitProviderAccounts.findByExternalId({
         organizationId: owner.organizationId,
@@ -299,7 +299,7 @@ export const createGitProviderRoutes = () => {
         externalAccountId: String(installation.installationId),
       });
       return c.json({
-        ...choices,
+        ...pageChoices(choices, input.data.page, input.data.query),
         accountVersion: githubAccountVersion(account),
       });
     } catch {
@@ -338,32 +338,34 @@ export const createGitProviderRoutes = () => {
     if (!flow) return c.json({ error: "flow_expired" }, 410);
     const appAuth = getGithubAppAuth();
     if (!appAuth) return c.json({ error: "not_configured" }, 503);
-    let access;
+    // The connect judges current GitHub state, never what the chooser cached.
+    let installation;
+    let authorizedBy;
     try {
-      access = await appAuth.listAuthorizedInstallations(
-        await ctx.vault.decrypt(flow.encrypted_access_token),
+      const userToken = await ctx.vault.decrypt(flow.encrypted_access_token);
+      installation = await appAuth.connectableInstallation(
+        flow.id,
+        userToken,
         input.data.installationId,
+        { fresh: true },
       );
-    } catch {
-      return c.json({ error: "github_unavailable" }, 502);
-    }
-    const installation = access.installations.find(
-      (item) => item.installationId === input.data.installationId,
-    );
-    if (!installation) return c.json({ error: "installation_forbidden" }, 403);
-    try {
-      const permitted = await appAuth.canAuthorizeRepositories(
-        await ctx.vault.decrypt(flow.encrypted_access_token),
-        installation,
-        input.data.repositoryIds,
+      if (!installation)
+        return c.json({ error: "installation_forbidden" }, 403);
+      const delegable = await appAuth.delegableRepositories(
+        flow.id,
+        userToken,
+        installation.installationId,
+        { fresh: true },
       );
-      if (!permitted) return c.json({ error: "repositories_forbidden" }, 403);
+      if (!coversSelection(delegable, input.data.repositoryIds))
+        return c.json({ error: "repositories_forbidden" }, 403);
+      authorizedBy = await appAuth.connectingUserId(userToken);
     } catch {
       return c.json({ error: "github_unavailable" }, 502);
     }
     try {
       const account = await ctx.storage.githubConnectFlows.connect(
-        c.req.param("id"),
+        flow.id,
         owner,
         {
           organizationId: owner.organizationId,
@@ -374,12 +376,13 @@ export const createGitProviderRoutes = () => {
           login: installation.login,
           avatarUrl: installation.avatarUrl,
           installationId: installation.installationId,
-          installationAuthorizedBy: access.userId,
+          installationAuthorizedBy: authorizedBy,
           installationRepositoryIds: input.data.repositoryIds,
         },
         input.data.accountVersion,
       );
       if (!account) return c.json({ error: "flow_expired" }, 410);
+      appAuth.forgetFlow(flow.id);
       return c.json({ account: { id: account.id, login: account.login } });
     } catch (error) {
       if (error instanceof GithubAccountChangedError)
@@ -397,6 +400,7 @@ export const createGitProviderRoutes = () => {
       organizationId: ctx.organization.id,
       userId: ctx.auth.user.id,
     });
+    getGithubAppAuth()?.forgetFlow(c.req.param("id"));
     return c.body(null, 204);
   });
 

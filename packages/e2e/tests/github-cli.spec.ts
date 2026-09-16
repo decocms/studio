@@ -42,7 +42,6 @@ async function seed(request: APIRequestContext) {
           token,
           user: { id, login },
           installations: [],
-          memberships: [],
           repositories,
         },
       })

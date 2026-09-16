@@ -22,7 +22,16 @@ import { APP_BUDGET_OWNER, rememberBudgetOwner } from "./budget-owner";
 import { type GithubAppConfig, readGithubAppConfig } from "./env";
 import type { GitProviderCapability } from "../types";
 import { GitProviderError } from "../types";
-import { matchesRepoQuery } from "./client";
+import {
+  CHOICE_PAGE_SIZE,
+  delegableRepositories,
+  FlowAccessCache,
+  type InstallationRepositoriesPage,
+  InstallationRepositoriesPageSchema,
+  provesNothingDelegable,
+  remainingPages,
+  type RepositoryChoice,
+} from "./connect-access";
 import {
   githubApiBaseUrl,
   githubErrorMessage,
@@ -46,6 +55,8 @@ const JWT_REUSE_MARGIN_SECONDS = 60;
 
 /** Re-mint an installation token when less than this much life remains. */
 const DEFAULT_TOKEN_BUFFER_MS = 5 * 60_000;
+/** A connect flow's lifetime, and so the lifetime of what it learned. */
+const CONNECT_FLOW_TTL_MS = 10 * 60_000;
 
 function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");
@@ -200,27 +211,6 @@ export interface GithubInstallation {
   accountType: string;
 }
 
-/**
- * An installation the user may choose repositories from.
- *
- * `repositoryIds: null` means the user owns the account and may choose any
- * installed repository. A list identifies repositories they administer.
- * The persisted workspace grant is always a separate, explicit selection.
- */
-export interface AuthorizedInstallation extends GithubInstallation {
-  repositoryIds: number[] | null;
-}
-
-/** `GET /user/installations/{id}/repositories`, as the grant walk reads it. */
-const InstallationRepositoriesSchema = z.object({
-  repositories: z.array(
-    z.object({
-      id: z.number().int().positive().safe(),
-      permissions: z.object({ admin: z.boolean().optional() }).optional(),
-    }),
-  ),
-});
-
 interface InstallationJson {
   id?: unknown;
   account?: {
@@ -281,6 +271,7 @@ export class GithubAppAuth {
   private jwt: { value: string; exp: number } | null = null;
   private readonly cache = new Map<string, InstallationToken>();
   private readonly inFlight = new Map<string, Promise<InstallationToken>>();
+  private readonly flowAccess = new FlowAccessCache(CONNECT_FLOW_TTL_MS);
 
   constructor(config: GithubAppConfig, opts?: { apiBaseUrl?: string }) {
     this.appId = config.appId;
@@ -449,180 +440,136 @@ export class GithubAppAuth {
   }
 
   /**
-   * The installations this user may delegate from. This is their authority
-   * ceiling; the connect route separately validates the selected repositories.
-   *
-   * GitHub lists an installation whenever the user can see a single repository
-   * in it, and seeing a repository is not authority over the rest of the
-   * account. So the answer is narrowed to what the user can actually authorize:
-   *
-   * - their own personal account (`repositoryIds: null`);
-   * - an organization they own, where they may choose any installed repo;
-   * - otherwise, only the repositories of that installation they administer,
-   *   which is exactly the set GitHub would let them install the App on.
-   *
-   * An installation where none of that holds is left out entirely.
+   * The GitHub user behind a user-to-server token, by id. Read once, at
+   * connect time, to record who authorized the installation.
    */
-  async listAuthorizedInstallations(
-    userToken: string,
-    installationId?: number,
-  ): Promise<{
-    userId: string;
-    installations: AuthorizedInstallation[];
-  }> {
+  async connectingUserId(userToken: string): Promise<string> {
     const user = z
       .object({ id: z.number().int().positive().safe() })
       .parse(await this.userGet("/user", userToken, "get_connecting_user"));
-    // A connect revalidates only the selected installation, using fresh user access.
-    const installations = (await this.listUserInstallations(userToken)).filter(
-      (item) =>
-        installationId === undefined || item.installationId === installationId,
-    );
-    const ownedOrganizations = new Set<string>();
-    if (installations.some((item) => item.accountType === "Organization")) {
-      for (let page = 1; ; page++) {
-        // Unlike the per-org membership endpoint, this requires no extra App permissions.
-        const memberships = z
-          .array(
-            z.object({
-              state: z.string(),
-              role: z.string(),
-              organization: z.object({
-                id: z.number().int().positive().safe(),
-              }),
-            }),
-          )
-          .parse(
-            await this.userGet(
-              `/user/memberships/orgs?state=active&per_page=100&page=${page}`,
-              userToken,
-              "list_connecting_user_memberships",
-            ),
-          );
-        for (const membership of memberships) {
-          if (membership.state === "active" && membership.role === "admin") {
-            ownedOrganizations.add(String(membership.organization.id));
-          }
-        }
-        if (memberships.length < 100) break;
-      }
-    }
-    const authorized = await mapBounded(
-      installations,
-      4,
-      async (item): Promise<AuthorizedInstallation | null> => {
-        if (item.accountType === "User") {
-          return item.externalAccountId === String(user.id)
-            ? { ...item, repositoryIds: null }
-            : null;
-        }
-        if (ownedOrganizations.has(item.externalAccountId)) {
-          return { ...item, repositoryIds: null };
-        }
-        const repositoryIds = await this.administeredRepositories(
-          userToken,
-          item.installationId,
-        );
-        return repositoryIds.length > 0 ? { ...item, repositoryIds } : null;
-      },
-    );
-    return {
-      userId: String(user.id),
-      installations: authorized.filter((item) => item !== null),
-    };
+    return String(user.id);
   }
 
   /**
-   * Repository choices use the temporary user grant, never an installation
-   * token. An optional `query` narrows by `owner/name` substring server-side so
-   * the picker searches every installed repository, not only the pages the
-   * client happens to have loaded. `hasMore` reflects the raw page length, so
-   * the query filter never hides the remaining provider pages.
-   */
-  async listRepositoryChoices(
-    userToken: string,
-    installation: AuthorizedInstallation,
-    page: number,
-    query?: string,
-  ) {
-    const result = z
-      .object({
-        repositories: z.array(
-          z.object({
-            id: z.number().int().positive().safe(),
-            full_name: z.string().min(1),
-            permissions: z.object({ admin: z.boolean().optional() }).optional(),
-          }),
-        ),
-      })
-      .parse(
-        await this.userGet(
-          `/user/installations/${installation.installationId}/repositories?per_page=100&page=${page}`,
-          userToken,
-          "list_repository_choices",
-        ),
-      );
-    return {
-      repositories: result.repositories
-        .filter(
-          (repo) =>
-            installation.repositoryIds === null ||
-            repo.permissions?.admin === true,
-        )
-        .filter((repo) => matchesRepoQuery(repo.full_name, query))
-        .map((repo) => ({ id: repo.id, name: repo.full_name })),
-      hasMore: result.repositories.length === 100,
-    };
-  }
-
-  /** Recheck every selected id against current installation membership and admin access. */
-  async canAuthorizeRepositories(
-    userToken: string,
-    installation: AuthorizedInstallation,
-    repositoryIds: number[],
-  ): Promise<boolean> {
-    const remaining = new Set(repositoryIds);
-    for (let page = 1; ; page++) {
-      const choices = await this.listRepositoryChoices(
-        userToken,
-        installation,
-        page,
-      );
-      for (const repo of choices.repositories) remaining.delete(repo.id);
-      if (remaining.size === 0) return true;
-      if (!choices.hasMore) return false;
-    }
-  }
-
-  /**
-   * The repositories of one installation the user administers, by id.
+   * The installations a connect flow may choose from: every installation of
+   * this App the user can see, minus those where the first repository page
+   * proves they administer nothing. GitHub lists an installation whenever the
+   * user can see a single repository in it, and seeing a repository is not
+   * authority over it, so a collaborator's personal account or an
+   * organization they merely belong to is left out.
    *
-   * Ids rather than names because the grant outlives a rename. The walk stops
-   * at `MAX_TOKEN_REPOSITORIES`: a token cannot be minted for more than that
-   * anyway. Repository selection and validation paginate independently, so
-   * this preview count never limits which repositories the user can select.
+   * One `GET /user/installations` plus one repository page per installation,
+   * bounded in parallel; that page seeds the picker's cache, so opening a
+   * small account costs nothing more. Calling this is the flow's refresh
+   * signal, so it starts by forgetting what the flow had cached.
    */
-  private async administeredRepositories(
+  async listConnectableInstallations(
+    flowId: string,
+    userToken: string,
+  ): Promise<GithubInstallation[]> {
+    this.flowAccess.forget(flowId);
+    const installations = await this.listUserInstallations(userToken);
+    this.flowAccess.rememberInstallations(flowId, installations);
+    const connectable = await mapBounded(installations, 4, async (item) => {
+      const first = await this.repositoryPage(
+        userToken,
+        item.installationId,
+        1,
+      );
+      if (remainingPages(first) === 0) {
+        this.flowAccess.rememberRepositories(
+          flowId,
+          item.installationId,
+          delegableRepositories(first),
+        );
+      }
+      return provesNothingDelegable(first) ? null : item;
+    });
+    return connectable.filter((item) => item !== null);
+  }
+
+  /**
+   * One installation of the flow, from the flow's cache or a fresh
+   * `GET /user/installations`; null when the user cannot see it. `fresh`
+   * skips the cache, for the connect's judgement of current access.
+   */
+  async connectableInstallation(
+    flowId: string,
     userToken: string,
     installationId: number,
-  ): Promise<number[]> {
-    const perPage = 100;
-    const administered: number[] = [];
-    for (let page = 1; ; page++) {
-      const { repositories } = InstallationRepositoriesSchema.parse(
-        await this.userGet(
-          `/user/installations/${installationId}/repositories?per_page=${perPage}&page=${page}`,
-          userToken,
-          "list_connecting_user_repositories",
-        ),
-      );
-      for (const repository of repositories) {
-        if (repository.permissions?.admin !== true) continue;
-        administered.push(repository.id);
-        if (administered.length === MAX_TOKEN_REPOSITORIES) return administered;
-      }
-      if (repositories.length < perPage) return administered;
+    opts: { fresh?: boolean } = {},
+  ): Promise<GithubInstallation | null> {
+    let installations = opts.fresh
+      ? undefined
+      : this.flowAccess.installations(flowId);
+    if (!installations) {
+      installations = await this.listUserInstallations(userToken);
+      this.flowAccess.rememberInstallations(flowId, installations);
     }
+    return (
+      installations.find((item) => item.installationId === installationId) ??
+      null
+    );
+  }
+
+  /**
+   * Every repository of the installation the user administers, from the
+   * flow's cache or one bounded walk of `GET /user/installations/{id}/
+   * repositories`. `fresh` skips the cache: the connect itself must judge
+   * current GitHub state, not what the chooser saw minutes ago.
+   */
+  async delegableRepositories(
+    flowId: string,
+    userToken: string,
+    installationId: number,
+    opts: { fresh?: boolean } = {},
+  ): Promise<RepositoryChoice[]> {
+    if (!opts.fresh) {
+      const cached = this.flowAccess.repositories(flowId, installationId);
+      if (cached) return cached;
+    }
+    const first = await this.repositoryPage(userToken, installationId, 1);
+    const pages = [first];
+    const remaining = remainingPages(first);
+    if (remaining > 0) {
+      pages.push(
+        ...(await mapBounded(
+          Array.from({ length: remaining }, (_, index) => index + 2),
+          4,
+          (page) => this.repositoryPage(userToken, installationId, page),
+        )),
+      );
+    } else if (remaining < 0) {
+      for (
+        let page = 2;
+        pages[pages.length - 1]!.repositories.length === CHOICE_PAGE_SIZE;
+        page++
+      ) {
+        pages.push(await this.repositoryPage(userToken, installationId, page));
+      }
+    }
+    const repositories = pages.flatMap(delegableRepositories);
+    this.flowAccess.rememberRepositories(flowId, installationId, repositories);
+    return repositories;
+  }
+
+  /** The flow ended; nothing it learned is worth keeping. */
+  forgetFlow(flowId: string): void {
+    this.flowAccess.forget(flowId);
+  }
+
+  private async repositoryPage(
+    userToken: string,
+    installationId: number,
+    page: number,
+  ): Promise<InstallationRepositoriesPage> {
+    return InstallationRepositoriesPageSchema.parse(
+      await this.userGet(
+        `/user/installations/${installationId}/repositories?per_page=${CHOICE_PAGE_SIZE}&page=${page}`,
+        userToken,
+        "list_connecting_user_repositories",
+      ),
+    );
   }
 
   private async userGet(
