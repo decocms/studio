@@ -1,5 +1,4 @@
 export const sidebar = {
-  "sidebar.organization.heading": "Organization",
   "sidebar.projects.addProject": "Add project",
   "sidebar.archiveWorktreeDialog.cancel": "Cancel",
   "sidebar.archiveWorktreeDialog.confirm": "Continue",

@@ -14,7 +14,6 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useScopeId } from "@/hooks/use-project-scope";
-import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
@@ -57,34 +56,25 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** The body: org-wide destinations, then the scoped project's own rows, then
- *  Settings — LAST by construction, being a sibling of both lists rather than a
- *  member of either, so the project zone rendering nothing cannot move it.
+/** The body: the destinations you can reach from here, then the projects list.
+ *  Settings is one of those destinations, not a zone of its own — it used to sit
+ *  in a third group under an "Organization" heading, which made a row that
+ *  behaves like Home read as a different kind of thing.
  *  No Suspense boundary, deliberately. Nothing in here blocks: the destinations
  *  are literals and the project zone reads its list non-blocking, so the whole
  *  nav paints on the first frame. A boundary used to wrap this because the body
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
-  const t = useT();
-  const scopeId = useScopeId();
-  const collapsed = useSidebarCollapsed();
   return (
     <ErrorBoundary>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <NavDestinationsContent onNavigate={onNavigate} />
           <ProjectNav onNavigate={onNavigate} />
-        </div>
-        <SidebarProjectsSection onNavigate={onNavigate} />
-        <div className="flex flex-col gap-2">
-          {!scopeId && !collapsed && (
-            <p className="px-2 text-xs font-medium text-muted-foreground">
-              {t("sidebar.organization.heading")}
-            </p>
-          )}
           <NavSettingsRow onNavigate={onNavigate} />
         </div>
+        <SidebarProjectsSection onNavigate={onNavigate} />
       </div>
     </ErrorBoundary>
   );
