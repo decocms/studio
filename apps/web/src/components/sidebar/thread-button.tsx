@@ -58,7 +58,7 @@ function ThreadButton({
           aria-pressed={open}
           active={open}
           className={cn(
-            "size-7 shrink-0 rounded-full border border-sidebar-border group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8",
+            "size-7 shrink-0 group-data-[state=collapsed]/sidebar:mx-auto group-data-[state=collapsed]/sidebar:size-8",
             !open && "bg-transparent hover:bg-sidebar-accent/50",
           )}
           onClick={() => {
