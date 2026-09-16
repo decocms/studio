@@ -16,8 +16,11 @@ interface SidebarShellProps {
    *  org/project mark and the collapse toggle without the body rebuilding a
    *  second copy of them. */
   header?: ReactNode;
-  /** The "← Back to X" row. Between the header and the body, and OUTSIDE the
-   *  scroll container, so the way out is never scrolled away from. */
+  /** The "← Back to X" row, above the body and STICKY, so the way out is never
+   *  scrolled away from. Sticky rather than a sibling above the scroller
+   *  because this row only exists on some routes: a slot that is 48px in
+   *  settings and 0px on the org root moved the whole nav list when you
+   *  navigated between them. Inside, the scroll box never changes. */
   back?: ReactNode;
   /** The nav itself. The shell owns the scrolling, so a body is a plain list. */
   body: ReactNode;
@@ -54,8 +57,12 @@ export function SidebarShell({
           {header}
         </div>
       )}
-      {back && <div className="shrink-0 px-2">{back}</div>}
       <SidebarContent className="gap-0 overflow-y-auto px-2 pt-3 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
+        {back && (
+          <div className="sticky top-0 z-10 shrink-0 bg-sidebar pb-1">
+            {back}
+          </div>
+        )}
         {body}
       </SidebarContent>
       {footer}
