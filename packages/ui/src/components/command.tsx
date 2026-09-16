@@ -79,8 +79,8 @@ function CommandDialog({
   );
 }
 
-/** `sm` is for a Command used as a MENU rather than as a palette: the same
- *  rows, one step denser, so a field picker does not read like ⌘K. */
+/** `sm` is for the input of a Command used as a MENU rather than as a palette:
+ *  a shorter field, so a field picker does not read like ⌘K. */
 type CommandSize = "default" | "sm";
 
 function CommandInput({
@@ -170,11 +170,11 @@ function CommandSeparator({
 
 /** The menu-row recipe, exported so a row OUTSIDE a `Command` is the same row. */
 const commandItemVariants = cva(
-  "[&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-pointer items-center gap-2 rounded-sm px-2 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  // `min-h-8` is a stated control height, not one derived from font metrics, and
+  // a row whose content wraps still grows past it.
+  "[&_svg:not([class*='text-'])]:text-muted-foreground relative flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
-      // A stated control height, not one derived from font metrics; a row that wraps still grows.
-      size: { default: "min-h-8 py-1.5", sm: "min-h-7 py-1" },
       highlight: {
         // cmdk owns the highlight inside a list, marking the row it has selected.
         selected:
@@ -183,21 +183,18 @@ const commandItemVariants = cva(
         hover: "w-full hover:bg-accent hover:text-accent-foreground",
       },
     },
-    defaultVariants: { size: "default", highlight: "selected" },
+    defaultVariants: { highlight: "selected" },
   },
 );
 
 function CommandItem({
   className,
-  size = "default",
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item> & {
-  size?: CommandSize;
-}) {
+}: React.ComponentProps<typeof CommandPrimitive.Item>) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"
-      className={cn(commandItemVariants({ size }), className)}
+      className={cn(commandItemVariants(), className)}
       {...props}
     />
   );

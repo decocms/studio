@@ -316,7 +316,7 @@ function FieldSubmenu({
     <Popover open={open}>
       {/* The ROW is the anchor, so the panel tracks it down the list. */}
       <PopoverAnchor asChild>
-        <CommandItem size="sm" value={field.label}>
+        <CommandItem value={field.label}>
           <Glyph>{field.icon}</Glyph>
           <span className="truncate">{field.label}</span>
           <ChevronRight
@@ -359,7 +359,7 @@ function ValueRow({
   return (
     <button
       type="button"
-      className={cn(commandItemVariants({ size: "sm", highlight: "hover" }))}
+      className={cn(commandItemVariants({ highlight: "hover" }))}
       onClick={onSelect}
     >
       <Glyph>{option.glyph}</Glyph>
@@ -383,11 +383,7 @@ function FlatRow({
   onSelect: () => void;
 }) {
   return (
-    <CommandItem
-      size="sm"
-      value={`${field.label} ${option.label}`}
-      onSelect={onSelect}
-    >
+    <CommandItem value={`${field.label} ${option.label}`} onSelect={onSelect}>
       <Glyph>{field.icon}</Glyph>
       <span className="shrink-0 text-muted-foreground">{field.label}</span>
       <ChevronRight size={12} className="shrink-0 text-muted-foreground/60" />
