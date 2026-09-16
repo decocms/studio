@@ -248,6 +248,7 @@ test.describe("compact page layout", () => {
       await page.goto(`${path}?thread=${thread.item.id}&sidepanel=false`);
       const picker = page.getByTestId("preview-page-picker");
       await expect(picker).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
       await expect(
         page
           .getByTestId("page-header")
@@ -360,7 +361,7 @@ test.describe("compact page layout", () => {
       const previewDivider = page.locator(
         '[data-slot="panel-toolbar-right"] [data-slot="separator-root"]',
       );
-      expect((await previewDivider.boundingBox())?.height).toBe(16);
+      await expect(previewDivider).toHaveCount(0);
       const width = (await page.getByTestId("main-panel").boundingBox())!.width;
       await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
       await expect
@@ -438,10 +439,10 @@ test.describe("compact page layout", () => {
           return range.getClientRects().length;
         }),
       ).toBe(1);
-      await page.getByTestId("preview-blocks-toggle").click();
-      await expect(page.getByTestId("blocks-panel")).toBeVisible();
+      await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+      await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
       await expect(
-        page.getByRole("button", { name: "Close blocks", exact: true }),
+        page.getByRole("button", { name: "Content", exact: true }),
       ).toBeVisible();
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
@@ -450,6 +451,10 @@ test.describe("compact page layout", () => {
         animations: "disabled",
         path: testInfo.outputPath("compact-editor-mobile.png"),
       });
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(page.getByTestId("blocks-panel")).toBeVisible();
+      await expect(picker).toContainText("About us");
+      await expect(picker).toContainText("/about");
     } finally {
       await previewSite.close();
     }

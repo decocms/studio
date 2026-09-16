@@ -87,7 +87,7 @@ test.describe("Blocks preview mode", () => {
         !url.searchParams.has("virtualmcpid"),
     );
     await expect(contentTab).toBeVisible();
-    await expect(page.getByTestId("preview-blocks-toggle")).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toBeVisible();
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
@@ -118,7 +118,7 @@ test.describe("Blocks preview mode", () => {
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });
 
-  test("mobile opens Blocks over Preview and returns from chat to the same page", async ({
+  test("mobile uses Content for editing and returns from chat to the same Preview", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -134,14 +134,15 @@ test.describe("Blocks preview mode", () => {
     await expect(page.getByTestId("main-panel")).toBeVisible({
       timeout: 30_000,
     });
-    const blocks = page.getByTestId("preview-blocks-toggle");
-    await expect(blocks).toBeVisible();
+    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
-    await blocks.click();
-    await expect(page.getByTestId("blocks-panel")).toBeVisible();
-    await page
-      .getByRole("button", { name: "Close blocks", exact: true })
-      .click();
+    const contentTab = page.getByRole("button", {
+      name: "Content",
+      exact: true,
+    });
+    await contentTab.click();
+    await expect(contentTab).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
     await page
       .getByRole("button", { name: "Toggle sidebar", exact: true })

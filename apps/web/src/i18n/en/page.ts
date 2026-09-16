@@ -1,5 +1,4 @@
 export const page = {
-  "page.closeBlocks": "Close blocks",
   "page.overview": "Overview",
   "page.app": "App",
   "page.view": "View",
@@ -13,5 +12,4 @@ export const page = {
   "page.closeThread": "Close chat",
   "page.collapseSidebar": "Collapse sidebar",
   "page.expandSidebar": "Expand sidebar",
-  "page.blocks": "Blocks",
 } as const;

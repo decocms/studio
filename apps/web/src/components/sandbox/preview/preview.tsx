@@ -1,4 +1,3 @@
-import { Separator } from "@decocms/ui/components/separator.tsx";
 import {
   Popover,
   PopoverContent,
@@ -13,7 +12,6 @@ import {
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
-import { XClose } from "@untitledui/icons";
 import { useState, useRef, useEffect, type CSSProperties } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useChatTask } from "@/components/chat/context";
@@ -35,7 +33,6 @@ import {
   ChevronDown,
   Database01,
   Globe02,
-  LayoutAlt01,
   Plus,
   Monitor04,
   Phone02,
@@ -141,6 +138,7 @@ import {
 } from "@/components/resizable";
 import {
   defaultPreviewEditingMode,
+  isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
   toggleVisualEditingMode,
   type PreviewEditingMode,
@@ -375,6 +373,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    *  session out of the blocks editor below. */
   const cmsMode = resolveCmsMode(agent?.metadata?.ui?.layout ?? null);
   const contentEditingEnabled = isContentEditingEnabled(cmsMode);
+  const blocksEditingEnabled = isBlocksEditingEnabled({
+    contentEditingEnabled,
+    isMobile,
+  });
 
   /** Singular: Visual and Blocks cannot both be active, while device size is
    *  independent and survives a switch. Blocks starts open whenever the shared
@@ -398,8 +400,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   } | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   const blocksPanelRef = useRef<PanelImperativeHandle>(null);
-  const [previewWidth, setPreviewWidth] = useState(0);
-  const blocksOverlay = isMobile || (previewWidth > 0 && previewWidth < 720);
   // Raw Page JSON side panel open state; the page it shows follows currentPageKey.
   const [jsonPanelOpen, setJsonPanelOpen] = useState(false);
   const jsonPanelHandleRef = useRef<PageJsonPanelHandle>(null);
@@ -556,7 +556,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       section.resolveType.toLowerCase().includes(q)
     );
   });
-  const visibleGlobalLoaders = contentEditingEnabled ? globalLoaders : [];
+  const visibleGlobalLoaders = blocksEditingEnabled ? globalLoaders : [];
   const filteredGlobalLoaders = visibleGlobalLoaders.filter((loader) => {
     if (!pagesSearch) return true;
     const q = pagesSearch.toLowerCase();
@@ -750,7 +750,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production" &&
     fastPreviewEnabled &&
     inPlaceRenderEnabled &&
-    contentEditingEnabled &&
+    blocksEditingEnabled &&
     editingMode === "blocks";
   // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
   const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
@@ -1124,7 +1124,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const effectiveEditingMode = resolveEffectivePreviewEditingMode({
     editingMode,
     sandboxDisplay: display.mode === "sandbox",
-    blocksEditingEnabled: contentEditingEnabled,
+    blocksEditingEnabled,
   });
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect — DOM event subscription
@@ -1228,10 +1228,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const activateEditingMode = (mode: PreviewEditingMode) => {
-    if (mode === "blocks" && !contentEditingEnabled) return;
+    if (mode === "blocks" && !blocksEditingEnabled) return;
     const previousMode = editingMode;
-    if (!blocksOverlay && mode !== previousMode) {
-      if (mode === "blocks") blocksPanelRef.current?.resize("264px");
+    if (!isMobile && mode !== previousMode) {
+      if (mode === "blocks") blocksPanelRef.current?.resize("30%");
       else blocksPanelRef.current?.collapse();
     }
     // The JSON side panel only makes sense next to the Blocks editor.
@@ -1249,7 +1249,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const toggleVisualEditing = () => {
     activateEditingMode(
-      toggleVisualEditingMode(editingMode, contentEditingEnabled),
+      toggleVisualEditingMode(editingMode, blocksEditingEnabled),
     );
   };
 
@@ -1378,7 +1378,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   // Loaders open full-width in the Blocks panel (form + Run), no canvas.
   const navigatePreviewToLoader = (loader: SavedRunnableEntry) => {
-    if (!contentEditingEnabled) return;
+    if (!blocksEditingEnabled) return;
     setActiveGlobalSection(null);
     setActiveLoaderKey(loader.key);
     setDirectPreviewUrl(null);
@@ -1747,46 +1747,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       };
 
   const previewTools =
-    showPreviewToolbar || contentEditingEnabled ? (
-      <div className="flex items-center gap-1">
-        {canVisualEdit && (
-          <ToolbarIconButton
-            onClick={toggleVisualEditing}
-            aria-pressed={effectiveEditingMode === "visual"}
-            aria-label={t("sandbox.preview.visualEditor")}
-            active={effectiveEditingMode === "visual"}
-          >
-            <CursorClick01 size={16} />
-          </ToolbarIconButton>
-        )}
-        {contentEditingEnabled && (
-          <>
-            <Separator
-              orientation="vertical"
-              className="mx-1 data-[orientation=vertical]:h-4"
-            />
-            <Button
-              size="sm"
-              variant={
-                effectiveEditingMode === "blocks" ? "secondary" : "ghost"
-              }
-              aria-pressed={effectiveEditingMode === "blocks"}
-              data-testid="preview-blocks-toggle"
-              aria-label={t("page.blocks")}
-              onClick={() =>
-                activateEditingMode(
-                  effectiveEditingMode === "blocks" ? "preview" : "blocks",
-                )
-              }
-            >
-              <LayoutAlt01 size={14} />
-              <span className="hidden @min-lg/panel-toolbar:inline">
-                {t("page.blocks")}
-              </span>
-            </Button>
-          </>
-        )}
-      </div>
+    canVisualEdit && (showPreviewToolbar || contentEditingEnabled) ? (
+      <ToolbarIconButton
+        onClick={toggleVisualEditing}
+        aria-pressed={effectiveEditingMode === "visual"}
+        aria-label={t("sandbox.preview.visualEditor")}
+        active={effectiveEditingMode === "visual"}
+      >
+        <CursorClick01 size={16} />
+      </ToolbarIconButton>
     ) : null;
 
   // A loader has no canvas, so its desktop Blocks form uses the whole panel.
@@ -1794,17 +1763,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     !!activeLoaderKey && effectiveEditingMode === "blocks";
 
   return (
-    <div
-      className="flex flex-col w-full h-full"
-      ref={(node) => {
-        if (!node) return;
-        const measure = () => setPreviewWidth(node.clientWidth);
-        measure();
-        const observer = new ResizeObserver(measure);
-        observer.observe(node);
-        return () => observer.disconnect();
-      }}
-    >
+    <div className="flex flex-col w-full h-full">
       {/* Auto-select the first entity for a picker param with no value yet, so
           navigating to a bare dynamic-route template lands on a real page.
           Each helper renders nothing and unmounts once its param is filled. */}
@@ -1856,51 +1815,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         ) : (
           <ResizablePanelGroup
             orientation="horizontal"
-            disabled={blocksOverlay || effectiveEditingMode !== "blocks"}
+            disabled={effectiveEditingMode !== "blocks"}
             className="relative isolate"
           >
             <ResizablePanel
               ref={blocksPanelRef}
               id="preview-blocks-editor"
-              defaultSize={effectiveEditingMode === "blocks" ? "264px" : "0%"}
-              minSize={blocksOverlay ? "0%" : "220px"}
-              maxSize={blocksOverlay ? "100%" : "320px"}
+              defaultSize={effectiveEditingMode === "blocks" ? "30%" : "0%"}
+              minSize="20%"
               collapsible
               collapsedSize="0%"
-              className={cn(
-                "min-w-0 overflow-hidden",
-                blocksOverlay &&
-                  "absolute! inset-y-0 left-0 z-30 w-72! max-w-[85%]! border-r bg-background shadow-xl",
-                blocksOverlay && effectiveEditingMode !== "blocks" && "hidden!",
-              )}
+              className="min-w-0 overflow-hidden"
             >
-              <div className="flex h-full min-h-0 flex-col">
-                <div
-                  className={cn(
-                    "flex h-10 shrink-0 items-center justify-between border-b px-3 text-xs font-medium",
-                    !blocksOverlay && "hidden",
-                  )}
-                >
-                  {t("page.blocks")}
-                  <ToolbarIconButton
-                    onClick={() => activateEditingMode("preview")}
-                    aria-label={t("page.closeBlocks")}
-                  >
-                    <XClose size={14} />
-                  </ToolbarIconButton>
-                </div>
-                <div className="min-h-0 flex-1">
-                  {effectiveEditingMode === "blocks" && (
-                    <BlocksPanel
-                      virtualMcpId={virtualMcpId}
-                      externalSelection={cmsSelectedSection}
-                      onViewJsonFile={toggleJsonPanel}
-                    />
-                  )}
-                </div>
-              </div>
+              {effectiveEditingMode === "blocks" && (
+                <BlocksPanel
+                  virtualMcpId={virtualMcpId}
+                  externalSelection={cmsSelectedSection}
+                  onViewJsonFile={toggleJsonPanel}
+                />
+              )}
             </ResizablePanel>
-            {!blocksOverlay && effectiveEditingMode === "blocks" && (
+            {effectiveEditingMode === "blocks" && (
               <ResizableHandle withHandle />
             )}
             <ResizablePanel

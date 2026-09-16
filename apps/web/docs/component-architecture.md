@@ -89,12 +89,12 @@ the current scope is the heading, without an extra Home or Overview segment.
 ## The layout on screen
 
 These captures show the compact layout running against the local E2E server
-with synthetic project and page data. The desktop sidebar is collapsed; on
-mobile, Blocks overlays the preview instead of squeezing the canvas.
+with synthetic project and page data. The desktop sidebar is collapsed;
+mobile shows the preview canvas, with editing available through Content.
 
 ![Site Editor with the sidebar icon rail, compact breadcrumbs and actions, shared tabs and page picker, Blocks, and preview canvas](assets/compact-page-editor.png)
 
-![Mobile Site Editor with wrapped page tools and the Blocks overlay](assets/compact-page-mobile.png)
+![Mobile Site Editor with wrapped page tools and the preview canvas](assets/compact-page-mobile.png)
 
 Additional captures:
 
@@ -118,7 +118,7 @@ Additional captures:
 | Left icon rail | `Layout.Sidebar`: project navigation, collapse control, and chat entry point |
 | Breadcrumb and action row | `Page.Header`: route identity and primary actions in the panel topbar |
 | Preview / Content, path, and view controls | `Panel.Toolbar`: shared `Page.Tabs`, page picker, and feature-owned tools |
-| Blocks and website | `Panel.Content`: the existing Blocks editor beside, or over, the preview canvas |
+| Blocks and website | `Panel.Content`: the existing Blocks editor beside the preview canvas on desktop |
 
 ### Component boundaries before the compact header update
 
@@ -295,7 +295,7 @@ all feature ancestors in that menu, keeping the current title and actions visibl
 - The first row is 48px tall: breadcrumbs and title on the left, actions on the right.
 - `Panel.Toolbar.Left` holds `Page.Tabs` / `Page.Tab`; Center holds the device-size
   toggle, page selector, Refresh, and Open in new tab, in that order. Right holds
-  visual editing and Blocks controls. All three support `Target` / `Portal`.
+  the visual editing control. All three support `Target` / `Portal`.
 - Route links use `<Page.Tab asChild><Link /></Page.Tab>` and `aria-current`.
   In-place views use buttons with `aria-pressed`. Selecting an active view leaves
   it open. Labels remain visible; long sets scroll horizontally.
@@ -342,13 +342,11 @@ global sections, global loaders, creation, and dynamic path parameter inputs.
 Arrow keys, Enter, Escape, and focus restoration come from the existing shared
 UI primitives.
 
-Blocks starts open on desktop when CMS is enabled. It can be closed independently
-of the sidebar. Below 720px of panel width it overlays the preview canvas;
-on phones it starts closed. The same Blocks component stays mounted when the
-panel moves between docked and overlaid placement. The canvas and overlay have
-separate stacking contexts so loading/iframe layers cannot cover editor controls.
-A page restored from the shared selection keeps its path even before metadata
-finishes loading.
+Blocks is part of the desktop Preview when CMS is enabled, without a separate
+toolbar toggle. Its resizable split follows the existing main-branch behavior;
+mobile keeps the canvas visible and uses Content for editing. CMS off removes
+both editing surfaces. A page restored from the shared selection keeps its path
+even before metadata finishes loading.
 
 Action buttons use the design system's `rounded-lg` radius. `ToolbarIconButton`
 composes the shared ghost `Button`, so sidebar, chat, and editor controls inherit

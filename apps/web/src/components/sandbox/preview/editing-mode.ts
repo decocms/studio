@@ -3,6 +3,14 @@ import { isContentEditingEnabled } from "@/layouts/main-panel-tabs/content-editi
 
 export type PreviewEditingMode = "preview" | "visual" | "blocks";
 
+/** Blocks is a desktop editing surface. Content remains available on mobile. */
+export function isBlocksEditingEnabled(input: {
+  contentEditingEnabled: boolean;
+  isMobile: boolean;
+}): boolean {
+  return input.contentEditingEnabled && !input.isMobile;
+}
+
 /** Leaving Visual returns to the Blocks split whenever that surface is enabled. */
 export function toggleVisualEditingMode(
   current: PreviewEditingMode,
@@ -14,22 +22,26 @@ export function toggleVisualEditingMode(
 
 /**
  * A fresh Preview follows the same product gate as Content. When content
- * editing is enabled, desktop opens with Blocks. Mobile starts with the canvas
- * and can open Blocks over it; CMS `off` removes editing on every screen.
+ * editing is enabled, Blocks is part of the desktop Site Editor surface rather
+ * than an opt-in toolbar mode. Mobile and `off` keep the plain preview.
  */
 export function defaultPreviewEditingMode(input: {
   /** The agent's CMS mode, already normalised by `resolveCmsMode`. */
   cmsMode: CmsMode;
   isMobile: boolean;
 }): PreviewEditingMode {
-  return isContentEditingEnabled(input.cmsMode) && !input.isMobile
+  return isBlocksEditingEnabled({
+    contentEditingEnabled: isContentEditingEnabled(input.cmsMode),
+    isMobile: input.isMobile,
+  })
     ? "blocks"
     : "preview";
 }
 
 /**
  * The editor mode Preview can render. Blocks uses the same agent-level product
- * gate as Content; the current display still decides whether Visual editing can inject into the iframe.
+ * gate as Content plus its desktop-only layout constraint; the current display
+ * still decides whether Visual editing can inject into the iframe.
  */
 export function resolveEffectivePreviewEditingMode(input: {
   editingMode: PreviewEditingMode;
