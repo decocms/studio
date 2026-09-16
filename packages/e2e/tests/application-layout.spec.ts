@@ -81,7 +81,7 @@ test.describe("shared application layout", () => {
   });
 
   test("a direct mobile settings visit has working shared navigation without starting a thread runtime", async ({
-    authedPage: { page, orgSlug, user },
+    authedPage: { page, orgSlug },
   }) => {
     const pageErrors: string[] = [];
     const runtimeRequests: string[] = [];
@@ -127,7 +127,7 @@ test.describe("shared application layout", () => {
     await expect(
       page
         .getByTestId("page-header")
-        .getByRole("heading", { name: user.orgName, exact: true }),
+        .getByRole("heading", { name: "Home", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Toggle sidebar", exact: true }),

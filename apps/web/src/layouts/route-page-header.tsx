@@ -30,9 +30,12 @@ export function RoutePageHeader({
   const isHome = page?.mainView === "overview";
   const projectTitle = project?.title ?? t("common.loading");
   const title = isHome
-    ? scopeId
+    ? // A project's home names the PROJECT, since nothing else on the page
+      // does. The org's home is just Home: the org is named in the sidebar's
+      // picker, and repeating it as the page title says it twice.
+      scopeId
       ? projectTitle
-      : org.name
+      : t("sidebar.navDestinations.home")
     : t(page?.pageTitle ?? "page.view");
   const separator = (
     <ChevronRight

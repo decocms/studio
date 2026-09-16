@@ -20,12 +20,14 @@ test.describe("compact page layout", () => {
     await page.goto(`/${orgSlug}/home`);
     const header = page.getByTestId("page-header");
     await expect(
-      header.getByRole("heading", {
-        level: 1,
-        name: user.orgName,
-        exact: true,
-      }),
+      header.getByRole("heading", { level: 1, name: "Home", exact: true }),
     ).toBeVisible({ timeout: 60_000 });
+    // The org is named by the sidebar's picker, not by the page title.
+    await expect(
+      page
+        .locator('[data-slot="sidebar-picker-header"]')
+        .getByText(user.orgName),
+    ).toBeVisible();
     await expect(
       header.getByRole("button", { name: "New Project" }),
     ).toBeVisible();
@@ -65,7 +67,7 @@ test.describe("compact page layout", () => {
       .getByRole("button", { name: "All projects", exact: true })
       .click();
     await expect(
-      header.getByRole("heading", { name: user.orgName, exact: true }),
+      header.getByRole("heading", { name: "Home", exact: true }),
     ).toBeVisible();
     await expect(sidebar.getByText("Projects", { exact: true })).toBeVisible();
     await expect(
