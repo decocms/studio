@@ -10,6 +10,7 @@ import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { taskRunContextStore } from "./task-run-context";
+import { uploadsAsSandboxPaths } from "./description-uploads";
 
 /** No real comment is this long — caps the row a single POST can write. */
 const MAX_COMMENT_BODY_LENGTH = 50_000;
@@ -37,6 +38,37 @@ function requireOrg(ctx: StudioContext): string {
   return organizationId;
 }
 
+/**
+ * A comment can carry an uploaded screenshot ("make the spacing match this
+ * image"), stored the same way a description's is: a link to the org
+ * filesystem's cookie-authenticated read endpoint, which means nothing inside a
+ * sandbox. A run reading the raw body sees `![shot.png](/api/…)` and treats it
+ * as text — exactly the DANI-19 failure, where the agent guessed a padding it
+ * had never seen. The same bytes are mounted in the pod, so point the run at
+ * that path, and say so: this tool's output is data, with no prompt around it
+ * to explain that the paths are files to `Read`.
+ *
+ * Sandboxed runs only — everywhere else the original URL is a link a human can
+ * click.
+ */
+const SANDBOX_UPLOAD_HINT =
+  "Image and file links above are real paths in this sandbox, not URLs — `Read` them.";
+
+export function commentsForSandboxRun<T extends { body: string }>(
+  comments: T[],
+): { comments: T[]; hint?: string } {
+  let rewritten = false;
+  const mapped = comments.map((comment) => {
+    const body = uploadsAsSandboxPaths(comment.body);
+    if (body === comment.body) return comment;
+    rewritten = true;
+    return { ...comment, body };
+  });
+  return rewritten
+    ? { comments: mapped, hint: SANDBOX_UPLOAD_HINT }
+    : { comments };
+}
+
 export const TASK_BOARD_COMMENT_LIST = defineTool({
   name: "TASK_BOARD_COMMENT_LIST",
   description:
@@ -49,7 +81,11 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({ taskBoardItemId: z.string() }),
-  outputSchema: z.object({ comments: z.array(TaskBoardCommentSchema) }),
+  outputSchema: z.object({
+    comments: z.array(TaskBoardCommentSchema),
+    /** Sandboxed runs only, and only when a body carried an upload. */
+    hint: z.string().optional(),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -57,7 +93,9 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       input.taskBoardItemId,
       requireOrg(ctx),
     );
-    return { comments };
+    return taskRunContextStore.getStore()
+      ? commentsForSandboxRun(comments)
+      : { comments };
   },
 });
 

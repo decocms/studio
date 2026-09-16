@@ -6,10 +6,10 @@
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
  * member before handing it here.
  *
- * No attach affordance: the paperclip belongs with attachment storage. The
- * composer is a Tiptap field rather than a textarea for one reason — an
+ * The composer is a Tiptap field rather than a textarea for two reasons — an
  * `@`-mention needs a chip and a user id, not the name the user happened to
- * type.
+ * type, and a screenshot pasted, dropped or attached to it is uploaded to the
+ * org filesystem and referenced as markdown, the same way a description's is.
  */
 
 import { Fragment, useRef, useState } from "react";
@@ -21,8 +21,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   ArrowUp,
+  Attachment01,
   Check,
   ChevronSelectorVertical,
   DotsHorizontal,
@@ -40,6 +42,7 @@ import {
   MentionInput,
   type MentionInputHandle,
 } from "@/components/markdown-editor/mention-input";
+import { useEditorFileUpload } from "@/components/markdown-editor/use-file-upload";
 
 export type CommentAuthor = {
   id: string;
@@ -339,7 +342,9 @@ function CommentComposer({
 }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [empty, setEmpty] = useState(true);
+  const { uploadFile, pending } = useEditorFileUpload();
 
   const submit = () => ref.current?.submit();
 
@@ -349,6 +354,7 @@ function CommentComposer({
       placeholder={placeholder}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
+      uploadFile={uploadFile}
       className={cn(
         "w-full [&_.tiptap]:outline-none",
         variant === "root" && "min-h-10",
@@ -357,17 +363,54 @@ function CommentComposer({
   );
 
   const actions = (
-    <button
-      type="button"
-      disabled={empty}
-      onClick={submit}
-      aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
-      // cursor-pointer: the composer around it sets cursor-text, which would
-      // otherwise inherit onto the button.
-      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-    >
-      <ArrowUp size={16} />
-    </button>
+    <>
+      {pending > 0 && (
+        <span
+          className="mr-1 inline-flex shrink-0 items-center"
+          aria-live="polite"
+          role="status"
+          aria-label={t("markdownEditor.uploading")}
+        >
+          <Spinner className="size-3" />
+        </span>
+      )}
+      {/* cursor-pointer on both: the composer around them sets cursor-text,
+          which would otherwise inherit onto the buttons. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          // The composer's own click handler would steal focus back.
+          e.stopPropagation();
+          fileInputRef.current?.click();
+        }}
+        aria-label={t("taskBoard.taskDialog.commentAttachAriaLabel")}
+        className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <Attachment01 size={16} />
+      </button>
+      <button
+        type="button"
+        disabled={empty}
+        onClick={submit}
+        aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
+        className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      >
+        <ArrowUp size={16} />
+      </button>
+      {/* No `accept`: images become previews, everything else a download chip. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length > 0) ref.current?.insertFiles(files);
+          // Let the same file be picked again after a failed upload.
+          e.target.value = "";
+        }}
+      />
+    </>
   );
 
   // The whole composer is the click target, not just the one-line input inside

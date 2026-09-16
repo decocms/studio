@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { Selection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { Attachment01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -11,7 +10,8 @@ import { BubbleToolbar } from "./bubble-toolbar";
 import { markdownEditorExtensions } from "./extensions";
 import { MentionMenu, MentionMenuStore } from "./mention-suggestion";
 import { unwrapListContinuations } from "./unwrap-list-continuations";
-import { isImageFile, useEditorFileUpload } from "./use-file-upload";
+import { useEditorFileUpload } from "./use-file-upload";
+import { uploadFilesInto } from "./insert-uploads";
 
 /**
  * Block styling for the editor surface. Explicit rather than `prose`:
@@ -63,26 +63,6 @@ const PLACEHOLDER_CLASS = [
 ].join(" ");
 
 /**
- * Insert an uploaded file's node and return the position after it, so a batch
- * of pasted files stacks in the order they were picked instead of every insert
- * landing on the same stale offset.
- */
-function insertUpload(
-  view: EditorView,
-  pos: number,
-  typeName: "image" | "attachment",
-  attrs: Record<string, string>,
-): number {
-  const type = view.state.schema.nodes[typeName];
-  if (!type) return pos;
-  const tr = view.state.tr.replaceWith(pos, pos, type.create(attrs));
-  const after = tr.mapping.map(pos, 1);
-  tr.setSelection(Selection.near(tr.doc.resolve(after)));
-  view.dispatch(tr);
-  return view.state.selection.to;
-}
-
-/**
  * WYSIWYG editor that reads and writes plain markdown.
  *
  * Markdown, not HTML, is the value: descriptions are fed to agents as prompt
@@ -122,26 +102,8 @@ export function MarkdownEditor({
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside editor callbacks, never during render
   uploadRef.current = uploadFile;
 
-  const uploadInto = (view: EditorView, files: File[], at: number) => {
-    if (files.length === 0) return false;
-    void (async () => {
-      let pos = at;
-      for (const file of files) {
-        const url = await uploadRef.current(file);
-        if (!url) continue;
-        // The original file name is the only description available, and it
-        // survives into the markdown the agent reads as task context — as an
-        // image's alt text, or as an attachment link's text.
-        pos = isImageFile(file)
-          ? insertUpload(view, pos, "image", { src: url, alt: file.name })
-          : insertUpload(view, pos, "attachment", {
-              href: url,
-              name: file.name,
-            });
-      }
-    })();
-    return true;
-  };
+  const uploadInto = (view: EditorView, files: File[], at: number) =>
+    uploadFilesInto(view, files, at, (file) => uploadRef.current(file));
 
   const editor = useEditor({
     extensions: markdownEditorExtensions(placeholder, mentionStore),

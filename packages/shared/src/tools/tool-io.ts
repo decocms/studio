@@ -745,6 +745,7 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
       }[];
+      hint?: string | undefined;
     };
   };
   TASK_BOARD_COMMENT_CREATE: {
