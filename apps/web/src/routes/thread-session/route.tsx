@@ -55,8 +55,7 @@ import {
 } from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
-import { ChatLayout, useChatLayout } from "@/components/chat-layout";
-import { ContentToggle } from "@/components/chat-layout/content-toggle";
+import { ChatLayout } from "@/components/chat-layout";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { DevAgentControl } from "@/components/dev-agent/dev-agent-control";
@@ -465,7 +464,6 @@ function VmEventsBridge({
 // ---------------------------------------------------------------------------
 
 function ThreadTopbar() {
-  const layout = useChatLayout();
   const t = useT();
   const { toggleSidebar } = useSidebar();
   const { virtualMcpId, taskId } = useChatTask();
@@ -486,12 +484,6 @@ function ThreadTopbar() {
       </div>
       <Panel.Topbar.Right className="shrink-0">
         <NewChatCrumb />
-        <div className="hidden md:contents">
-          <ContentToggle
-            open={layout.contentOpen}
-            onToggle={layout.toggleContent}
-          />
-        </div>
       </Panel.Topbar.Right>
     </Panel.Topbar>
   );
