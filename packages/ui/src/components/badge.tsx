@@ -30,7 +30,8 @@ const badgeVariants = cva(
          *  badge only supplies the raised surface they sit on. Squared rather
          *  than the base's pill: a chip divided into segments needs ends that
          *  read as the same shape as the dividers between them. */
-        segmented: "h-7 rounded-lg border-transparent bg-card p-0 card-shadow",
+        segmented:
+          "h-7 gap-0 rounded-lg border-transparent bg-card p-0 card-shadow",
       },
     },
     defaultVariants: {

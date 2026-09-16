@@ -707,7 +707,6 @@ export function AppliedFiltersBar({
               index={index}
               onChange={onChange}
             />
-            <Separator orientation="vertical" />
             <IconButton
               label={t("taskBoard.viewControls.removeFilter", {
                 field: field.label,
