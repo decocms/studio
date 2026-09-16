@@ -33,6 +33,7 @@ import {
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Calendar,
+  Check,
   ChevronRight,
   FilterLines,
   Flag01,
@@ -83,6 +84,8 @@ interface FilterOption {
   label: string;
   glyph: ReactNode;
   apply: (filters: TaskFilters) => TaskFilters;
+  /** Whether this value is one the board is already narrowed by. */
+  isSelected: (filters: TaskFilters) => boolean;
 }
 
 interface FilterField {
@@ -142,12 +145,14 @@ function useFilterFields({
         label: t("taskBoard.taskFilters.assigneeUnassigned"),
         glyph: <User01 size={14} className="shrink-0 text-muted-foreground" />,
         apply: (f) => ({ ...f, assignee: UNASSIGNED_FILTER }),
+        isSelected: (f) => f.assignee === UNASSIGNED_FILTER,
       },
       {
         id: SUPER_AGENT_ASSIGNEE_ID,
         label: t("taskBoard.taskFilters.assigneeSuperAgent"),
         glyph: <SuperAgentIcon size={14} />,
         apply: (f) => ({ ...f, assignee: SUPER_AGENT_ASSIGNEE_ID }),
+        isSelected: (f) => f.assignee === SUPER_AGENT_ASSIGNEE_ID,
       },
       ...members.map((member) => ({
         id: member.userId,
@@ -161,6 +166,7 @@ function useFilterFields({
           />
         ),
         apply: (f: TaskFilters) => ({ ...f, assignee: member.userId }),
+        isSelected: (f: TaskFilters) => f.assignee === member.userId,
       })),
     ],
     valueLabel: (f) =>
@@ -188,6 +194,7 @@ function useFilterFields({
       label: t(PRIORITY_CONFIG[p].labelKey),
       glyph: <PriorityDot priority={p} />,
       apply: (f: TaskFilters) => ({ ...f, priority: p }),
+      isSelected: (f: TaskFilters) => f.priority === p,
     })),
     valueLabel: (f) =>
       f.priority ? t(PRIORITY_CONFIG[f.priority].labelKey) : "",
@@ -212,6 +219,7 @@ function useFilterFields({
         />
       ),
       apply: (f: TaskFilters) => ({ ...f, due: value }),
+      isSelected: (f: TaskFilters) => f.due === value,
     })),
     valueLabel: (f) => (f.due ? t(dueFilterLabelKey(f.due)) : ""),
     valueGlyph: () => <Calendar size={14} className="shrink-0" />,
@@ -232,6 +240,7 @@ function useFilterFields({
           ? f.tags.filter((id) => id !== tag.id)
           : [...f.tags, tag.id],
       }),
+      isSelected: (f: TaskFilters) => f.tags.includes(tag.id),
     })),
     valueLabel: (f) =>
       f.tags.length === 1
@@ -258,12 +267,14 @@ function useFilterFields({
         label: t("taskBoard.taskFilters.projectNone"),
         glyph: <ProjectEntryIcon entry={undefined} />,
         apply: (f) => ({ ...f, project: NO_PROJECT_FILTER }),
+        isSelected: (f) => f.project === NO_PROJECT_FILTER,
       },
       ...index.entries.map((entry) => ({
         id: entry.id,
         label: entry.title,
         glyph: <ProjectEntryIcon entry={entry} />,
         apply: (f: TaskFilters) => ({ ...f, project: entry.id }),
+        isSelected: (f: TaskFilters) => f.project === entry.id,
       })),
     ],
     valueLabel: (f) =>
@@ -546,6 +557,110 @@ export function TaskFilterButton({
 }
 
 /** The view row's display button — layout, then the board's own settings. */
+/** The values of ONE field, reached from the chip that already names it — so
+ *  changing "Priority is Medium" to High is a click on the value, not a trip
+ *  back through the add-filter menu. What is set floats to the top and wears a
+ *  check; the rest carry how many cards they would leave. */
+function FieldValueMenu({
+  field,
+  filters,
+  items,
+  index,
+  onChange,
+  onClose,
+}: {
+  field: FilterField;
+  filters: TaskFilters;
+  items: TaskBoardItem[];
+  index: ProjectIndex;
+  onChange: (next: TaskFilters) => void;
+  onClose: () => void;
+}) {
+  const selected = field.options.filter((option) => option.isSelected(filters));
+  const rest = field.options.filter((option) => !option.isSelected(filters));
+
+  const select = (option: FilterOption) => {
+    onChange(option.apply(filters));
+    // Tags accumulate, so the list stays open for the next one.
+    if (!field.multi) onClose();
+  };
+
+  const row = (option: FilterOption, showCount: boolean) => (
+    <button
+      key={option.id}
+      type="button"
+      className={cn(commandItemVariants({ highlight: "hover" }))}
+      onClick={() => select(option)}
+    >
+      <Glyph>{option.glyph}</Glyph>
+      <span className="truncate">{option.label}</span>
+      {showCount ? (
+        <MatchCount
+          count={
+            items.filter((item) =>
+              taskMatchesFilters(item, option.apply(filters), index),
+            ).length
+          }
+        />
+      ) : (
+        <Check size={14} className="ml-auto shrink-0" />
+      )}
+    </button>
+  );
+
+  return (
+    <div className="flex max-h-72 flex-col overflow-y-auto p-1">
+      <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+        {field.label}
+      </p>
+      {selected.map((option) => row(option, false))}
+      {selected.length > 0 && rest.length > 0 && <Separator className="my-1" />}
+      {rest.map((option) => row(option, true))}
+    </div>
+  );
+}
+
+function FieldValuePopover({
+  field,
+  filters,
+  items,
+  index,
+  onChange,
+}: {
+  field: FilterField;
+  filters: TaskFilters;
+  items: TaskBoardItem[];
+  index: ProjectIndex;
+  onChange: (next: TaskFilters) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex h-full max-w-[12rem] items-center gap-1.5 truncate px-2.5 text-foreground hover:bg-accent"
+        >
+          {field.valueGlyph(filters)}
+          {field.valueLabel(filters)}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0">
+        {open && (
+          <FieldValueMenu
+            field={field}
+            filters={filters}
+            items={items}
+            index={index}
+            onChange={onChange}
+            onClose={() => setOpen(false)}
+          />
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function AppliedFiltersBar({
   filters,
   items,
@@ -584,10 +699,13 @@ export function AppliedFiltersBar({
                 : t("taskBoard.viewControls.is")}
             </span>
             <Separator orientation="vertical" />
-            <span className="flex h-full max-w-[12rem] items-center gap-1.5 truncate px-2.5 text-foreground">
-              {field.valueGlyph(filters)}
-              {field.valueLabel(filters)}
-            </span>
+            <FieldValuePopover
+              field={field}
+              filters={filters}
+              items={items}
+              index={index}
+              onChange={onChange}
+            />
             <Separator orientation="vertical" />
             <IconButton
               label={t("taskBoard.viewControls.removeFilter", {

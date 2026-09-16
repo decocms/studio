@@ -27,8 +27,10 @@ const badgeVariants = cva(
         icon: "size-5",
         /** A token built from parts — a filter chip's field / operator / value
          *  / remove. The sections carry their own padding and hairlines, so the
-         *  badge itself only supplies the outline and the pill shape. */
-        segmented: "h-7 p-0",
+         *  badge only supplies the raised surface they sit on. Squared rather
+         *  than the base's pill: a chip divided into segments needs ends that
+         *  read as the same shape as the dividers between them. */
+        segmented: "h-7 rounded-lg border-transparent bg-card p-0 card-shadow",
       },
     },
     defaultVariants: {
