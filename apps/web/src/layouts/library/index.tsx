@@ -25,6 +25,9 @@ import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
 import {
   Eye,
+  File02,
+  Folder,
+  Image01,
   Plus,
   RefreshCw01,
   SearchLg,
@@ -461,12 +464,19 @@ export function LibraryPage({
       />
       <Panel.Toolbar.Left.Portal>
         <Page.Tabs>
-          {(["all", "documents", "media"] as const).map((view) => (
+          {(
+            [
+              { view: "all", icon: Folder },
+              { view: "documents", icon: File02 },
+              { view: "media", icon: Image01 },
+            ] as const
+          ).map(({ view, icon: Icon }) => (
             <Page.Tab
               key={view}
               active={fileView === view}
               onClick={() => void setFileView(view)}
             >
+              <Icon aria-hidden="true" className="size-4 shrink-0" />
               {t(`library.library.${view}`)}
             </Page.Tab>
           ))}

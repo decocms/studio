@@ -338,7 +338,8 @@ background; callers supply placement and size without radius overrides.
 Tasks uses `Page.Tabs` for Board and List, with filters in the header beside
 New task through `Page.Actions secondary={…}`. Narrow panels use the existing
 filters drawer in the same action group. Library uses the same tabs for
-All files, Documents, and Media, with search and refresh on the right. Its upload
+All files, Documents, and Media, with folder, document, and image icons beside
+the labels. Search and refresh sit on the right. Its upload
 action lives in the header, separated from New folder by a vertical divider.
 `Page.Actions secondary={…}` provides that grouping to other pages too.
 
