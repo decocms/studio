@@ -23,19 +23,8 @@ import {
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
 import { useT } from "@/i18n/use-t.ts";
+import { hasUnfinishedRun } from "./unfinished-run";
 import type { TaskBoardItem } from "./config";
-
-/** Thread statuses that mean the run is over. Mirrors the API's
- *  `TERMINAL_THREAD_STATUSES` — inlined rather than imported, since
- *  `apps/web` must not reach into `apps/api/src`. */
-const TERMINAL_THREAD_STATUSES = new Set(["completed", "failed", "expired"]);
-
-export function hasUnfinishedRun(item: TaskBoardItem): boolean {
-  return item.threads.some(
-    (thread) =>
-      thread.status !== null && !TERMINAL_THREAD_STATUSES.has(thread.status),
-  );
-}
 
 export function RerunDialog({
   items,

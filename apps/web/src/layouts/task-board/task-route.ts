@@ -7,7 +7,7 @@
  */
 
 import { taskKey } from "@decocms/shared/task-key";
-import { matchesTaskKey } from "@/layouts/task-board/task-filters";
+import { matchesTaskKey } from "@/layouts/task-board/task-filters-core";
 
 /** A card, as far as its URL is concerned. */
 interface TaskRouteItem {

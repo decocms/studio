@@ -4,7 +4,7 @@ import {
   parseBoardSearch,
   visibleSelection,
 } from "./filters-search";
-import { EMPTY_FILTERS, type TaskFilters } from "./task-filters";
+import { EMPTY_FILTERS, type TaskFilters } from "./task-filters-core";
 
 const filters: TaskFilters = {
   search: "login",

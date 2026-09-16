@@ -141,11 +141,13 @@ import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
-  TaskFiltersBar,
+  BoardSettingsButton,
+  SearchToggle,
   TaskFiltersDrawer,
   taskMatchesFilters,
   type TaskFilters,
 } from "./task-filters";
+import { AppliedFiltersBar, TaskFilterButton } from "./view-controls";
 import { useBoardSearch, visibleSelection } from "./filters-search";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import {
@@ -1153,15 +1155,22 @@ export function TaskBoardPage() {
                   onOpenBoardSettings={openBoardSettings}
                 />
               </div>
-              <div className="hidden @min-4xl/panel-header:block">
-                <TaskFiltersBar
+              <div className="hidden items-center gap-1 @min-4xl/panel-header:flex">
+                <SearchToggle
+                  value={filters.search}
+                  onChange={(search) =>
+                    handleFiltersChange({ ...filters, search })
+                  }
+                />
+                <TaskFilterButton
                   filters={filters}
+                  items={items}
                   members={members}
                   tags={orgTags}
                   index={projectIndex}
                   onChange={handleFiltersChange}
-                  onOpenBoardSettings={openBoardSettings}
                 />
+                <BoardSettingsButton onClick={openBoardSettings} />
               </div>
             </>
           )
@@ -1199,6 +1208,15 @@ export function TaskBoardPage() {
           </Page.Tab>
         </Page.Tabs>
       </Panel.Toolbar.Left.Portal>
+
+      <AppliedFiltersBar
+        filters={filters}
+        items={items}
+        members={members}
+        tags={orgTags}
+        index={projectIndex}
+        onChange={handleFiltersChange}
+      />
 
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
