@@ -141,8 +141,18 @@ test.describe("Site Editor breadcrumbs", () => {
       ).toBeVisible({ timeout: 60_000 });
       await expect(trail.getByRole("link")).toHaveText([user.orgName, "Forma"]);
       await expect(
-        trail.getByTitle("Site Editor", { exact: true }),
+        trail.getByRole("button", { name: "Site Editor", exact: true }),
       ).toBeVisible();
+      await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
+      await expect(trail.getByRole("listitem")).toHaveText([
+        user.orgName,
+        "Forma",
+        "Site Editor",
+        "Home",
+      ]);
+      await expect(
+        trail.getByRole("button", { name: "Show navigation path" }),
+      ).toHaveCount(0);
       const selectedUrl = page.url();
       await blocks.getByRole("button", { name: /HeroSlideShow/ }).click();
       await expect(
@@ -160,10 +170,31 @@ test.describe("Site Editor breadcrumbs", () => {
         animations: "disabled",
       });
 
+      await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
       await blocks.getByRole("button", { name: /^First slide/ }).click();
       await expect(
         header.getByRole("heading", { name: "First slide", exact: true }),
       ).toBeVisible();
+      await expect(trail.getByRole("listitem")).toHaveText([
+        user.orgName,
+        "",
+        "HeroSlideShow",
+        "First slide",
+      ]);
+      await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
+      await trail.getByRole("button", { name: "Show navigation path" }).click();
+      await expect(page.getByRole("menuitem")).toHaveText([
+        "Forma",
+        "Site Editor",
+        "Home",
+      ]);
+      await expect(
+        page.getByRole("menuitem", { name: "Forma", exact: true }),
+      ).toHaveAttribute(
+        "href",
+        `/${orgSlug}/projects/${project.vmcpId}?sidepanel=false`,
+      );
+      await page.keyboard.press("Escape");
       await blocks
         .getByRole("textbox", { name: "Description", exact: true })
         .fill("Saved through the breadcrumb");
@@ -193,6 +224,21 @@ test.describe("Site Editor breadcrumbs", () => {
       ).toHaveValue("Saved through the breadcrumb");
 
       const picker = page.getByTestId("preview-page-picker");
+      await trail.getByRole("button", { name: "Show navigation path" }).click();
+      await page
+        .getByRole("menuitem", { name: "Site Editor", exact: true })
+        .click();
+      await expect(
+        header.getByRole("heading", { name: "Home", exact: true }),
+      ).toBeVisible();
+      expect(page.url()).toBe(selectedUrl);
+      await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
+      await trail
+        .getByRole("button", { name: "Site Editor", exact: true })
+        .click();
+      await expect(
+        blocks.getByRole("button", { name: /HeroSlideShow/ }),
+      ).toBeVisible();
       await picker.click();
       await page.getByRole("option", { name: /Catalog/ }).click();
       await expect(
@@ -236,6 +282,10 @@ test.describe("Site Editor breadcrumbs", () => {
       await expect(header.getByText("Products", { exact: true })).toHaveCount(
         0,
       );
+      await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
+      await expect(
+        trail.getByRole("button", { name: "Show navigation path" }),
+      ).toHaveCount(0);
     } finally {
       await previewSite.close();
     }
@@ -246,7 +296,7 @@ test.describe("Site Editor breadcrumbs", () => {
   }, testInfo) => {
     const previewSite = await startPreviewSite();
     try {
-      const { path, search } = await createEditor(
+      const { path, search, project } = await createEditor(
         page.request,
         orgSlug,
         previewSite.url,
@@ -270,20 +320,58 @@ test.describe("Site Editor breadcrumbs", () => {
         .getByRole("button", { name: "Show navigation path", exact: true })
         .click();
       await expect(
-        page.getByRole("menuitem", { name: "Home", exact: true }),
+        page.getByRole("menuitem", { name: "Site Editor", exact: true }),
       ).toBeVisible();
       await page.screenshot({
         clip: { x: 0, y: 0, width: 900, height: 220 },
         path: testInfo.outputPath("site-editor-breadcrumb-narrow.png"),
         animations: "disabled",
       });
-      await page.getByRole("menuitem", { name: "Home", exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "Site Editor", exact: true })
+        .click();
       await expect(
-        header.getByRole("heading", { name: "Home", exact: true }),
+        header.getByRole("heading", { name: "Site Editor", exact: true }),
       ).toBeVisible();
+      await expect(header.locator('[aria-current="page"]')).toHaveCount(1);
+      await expect(
+        header.getByRole("button", { name: "Home", exact: true }),
+      ).toHaveCount(0);
+      expect(new URL(page.url()).pathname).toBe(`${path}/content`);
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(900);
+      // Closing Content through the route segment must flush edits still inside
+      // the autosave window, then unregister the editor's entire path.
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.getByRole("button", { name: "Home /", exact: true }).click();
+      await page
+        .getByPlaceholder("Page name", { exact: true })
+        .fill("Renamed Home");
+      await header
+        .getByRole("button", { name: "Site Editor", exact: true })
+        .click();
+      await expect(
+        header.getByRole("heading", { name: "Site Editor", exact: true }),
+      ).toBeVisible();
+      await expect
+        .poll(async () => {
+          const response = await page.request.get(
+            `/api/${orgSlug}/decofile/${project.vmcpId}/main`,
+          );
+          return JSON.stringify(await response.json());
+        })
+        .toContain("Renamed Home");
+      await page
+        .getByRole("button", { name: "Renamed Home /", exact: true })
+        .click();
+      await expect(
+        header.getByRole("heading", { name: "Renamed Home", exact: true }),
+      ).toBeVisible();
+      await expect(header.locator('[aria-current="page"]')).toHaveCount(1);
+      await header
+        .getByRole("button", { name: "Site Editor", exact: true })
+        .click();
       await page.setViewportSize({ width: 390, height: 844 });
       await page.getByRole("button", { name: "Preview", exact: true }).click();
       await expect(

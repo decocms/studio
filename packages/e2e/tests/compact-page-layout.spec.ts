@@ -602,9 +602,7 @@ test.describe("compact page layout", () => {
     await expect(page.getByText("September 2026", { exact: true })).toHaveCount(
       1,
     );
-    await expect(
-      breadcrumbs.getByRole("button", { name: "Library", exact: true }),
-    ).toBeVisible();
+    await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
     await breadcrumbs
       .getByRole("button", { name: "Show navigation path" })
       .click();
@@ -637,6 +635,7 @@ test.describe("compact page layout", () => {
       .getByRole("button", { name: "Show navigation path" })
       .click();
     await expect(page.getByRole("menuitem")).toHaveText([
+      user.orgName,
       "Library",
       "Brand",
       "Launch notes",
@@ -656,9 +655,11 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "Library", exact: true }),
     ).toBeInViewport();
-    await expect(
-      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
-    ).toHaveCount(0);
+    await breadcrumbs
+      .getByRole("button", { name: "Show navigation path" })
+      .click();
+    await expect(page.getByRole("menuitem")).toHaveText([user.orgName]);
+    await page.keyboard.press("Escape");
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(
@@ -686,8 +687,10 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "Tasks", exact: true }),
     ).toBeVisible();
-    await expect(header.locator('[data-slot="page-breadcrumbs"]')).toHaveCount(
-      0,
-    );
+    await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(breadcrumbs.getByRole("listitem")).toHaveText([
+      user.orgName,
+      "Tasks",
+    ]);
   });
 });

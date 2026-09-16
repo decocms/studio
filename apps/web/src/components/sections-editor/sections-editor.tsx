@@ -131,6 +131,7 @@ export function SectionsEditor({
   onSaved,
   initialEditSeo = false,
   onExitSeo,
+  onSelectRoot,
   onViewJsonFile,
   onVariantPreviewOverride,
 }: {
@@ -157,6 +158,7 @@ export function SectionsEditor({
   initialEditSeo?: boolean;
   /** Called when the user leaves inline SEO via the breadcrumb bar. */
   onExitSeo?: () => void;
+  onSelectRoot?: () => void;
   /**
    * When provided, "View JSON" opens the page's block file in the host's file
    * view (passing the decofile block key) instead of the built-in JSON modal.
@@ -2513,6 +2515,11 @@ export function SectionsEditor({
       <BlockBreadcrumbs
         crumbs={headerCrumbs}
         onSelect={handleBreadcrumbClick}
+        onSelectRoot={() => {
+          pageBlockSave.flush();
+          if (onSelectRoot) onSelectRoot();
+          else handleBreadcrumbClick(0);
+        }}
       />
       {/* Page header */}
       <div className="shrink-0">

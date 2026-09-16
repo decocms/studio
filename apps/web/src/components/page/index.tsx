@@ -3,7 +3,12 @@ import { useT } from "@/i18n/use-t";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Panel } from "@/components/panel";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { PageBreadcrumbs } from "./breadcrumbs";
+import { PageBreadcrumbs, PageHeaderBreadcrumbs } from "./breadcrumbs";
+import {
+  BreadcrumbContribution,
+  useBreadcrumbStore,
+} from "./breadcrumb-context";
+import type { BreadcrumbItem } from "./breadcrumb-model";
 import type {
   ComponentPropsWithoutRef,
   PropsWithChildren,
@@ -61,12 +66,13 @@ function PageContainer({
   );
 }
 
-/** Feature-owned titles move into the nearest page header, with a standalone fallback. */
+/** Update the route segment's label without rendering a second current item. */
 function PageTitle({
   children,
   actions,
   className,
 }: PropsWithChildren<{ actions?: ReactNode; className?: string }>) {
+  const store = useBreadcrumbStore();
   const compact = useCompactPageLayout();
   if (!compact) {
     return (
@@ -84,28 +90,19 @@ function PageTitle({
   }
   return (
     <>
-      <Panel.Topbar.Title.Portal
-        fallback={
-          <div
-            data-slot="page-title"
-            className={cn(
-              "flex flex-wrap items-center justify-between gap-3",
-              className,
-            )}
-          >
-            <h1 className="min-w-0 text-xl font-medium">{children}</h1>
-          </div>
-        }
-      >
-        <h1
+      {store ? (
+        <BreadcrumbContribution after="page" parent={{ label: children }} />
+      ) : (
+        <div
           data-slot="page-title"
-          aria-current="page"
-          title={typeof children === "string" ? children : undefined}
-          className="min-w-0 truncate text-sm font-medium"
+          className={cn(
+            "flex flex-wrap items-center justify-between gap-3",
+            className,
+          )}
         >
-          {children}
-        </h1>
-      </Panel.Topbar.Title.Portal>
+          <h1 className="min-w-0 text-xl font-medium">{children}</h1>
+        </div>
+      )}
       {actions && <PageActions>{actions}</PageActions>}
     </>
   );
@@ -134,19 +131,16 @@ function PageActions({
 
 /** Routes supply identity; feature pages contribute controls through the panel's slots. */
 function PageHeader({
-  title,
   breadcrumbs,
   leading,
   actions,
   navigation,
 }: {
-  title: ReactNode;
-  breadcrumbs?: ReactNode;
+  breadcrumbs: readonly BreadcrumbItem[];
   leading?: ReactNode;
   actions?: ReactNode;
   navigation?: ReactNode;
 }) {
-  const t = useT();
   return (
     <>
       <Panel.Topbar
@@ -155,25 +149,7 @@ function PageHeader({
       >
         <Panel.Topbar.Left className="flex-1 gap-2">
           {leading}
-          <nav
-            aria-label={t("page.breadcrumbs")}
-            className="flex min-w-0 flex-1 items-center gap-2"
-          >
-            {breadcrumbs}
-            <Panel.Topbar.Breadcrumbs.Target />
-            <Panel.Topbar.Title className="min-w-12 flex-1">
-              <Panel.Topbar.Title.Target
-                fallback={
-                  <h1
-                    aria-current="page"
-                    className="truncate text-sm font-medium"
-                  >
-                    {title}
-                  </h1>
-                }
-              />
-            </Panel.Topbar.Title>
-          </nav>
+          <PageHeaderBreadcrumbs items={breadcrumbs} />
           <Panel.Topbar.Left.Target />
         </Panel.Topbar.Left>
         <Panel.Topbar.Right className="shrink-0 gap-2">

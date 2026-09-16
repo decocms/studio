@@ -1,8 +1,10 @@
+import { Fragment } from "react";
 import { createContext, use, useRef, type ReactNode } from "react";
 import { useNavigate, type ErrorComponentProps } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Panel } from "@/components/panel";
+import { Page } from "@/components/page";
 import { SidebarThreadButtonPortal } from "@/components/sidebar/thread-button";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
@@ -254,11 +256,13 @@ function ChatLayoutContent({
   const compact = useCompactPageLayout();
   if (layout.isMobile && layout.mobileSurface !== "main") return null;
 
+  const BreadcrumbScope = compact ? Page.Breadcrumbs.Provider : Fragment;
   const panel = (
     <Panel
       data-testid="main-panel"
       variant={layout.isMobile ? "plain" : "card"}
     >
+      <BreadcrumbScope>
       {compact ? (
         <RoutePageHeader
           navigation={layout.contentNavigation}
@@ -311,6 +315,7 @@ function ChatLayoutContent({
         </div>
         {drawer}
       </Panel.Content>
+      </BreadcrumbScope>
     </Panel>
   );
 

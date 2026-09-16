@@ -1394,6 +1394,10 @@ function ContentBrowserReady({
                     openPageSeoKey === selection.key
                   }
                   onExitSeo={() => setOpenPageSeoKey(null)}
+                  onSelectRoot={() => {
+                    setSelection(null);
+                    setOpenPageSeoKey(null);
+                  }}
                 />
               )
             ) : (

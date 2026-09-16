@@ -273,54 +273,88 @@ Document pages inside a canvas panel use `Page.Content` as their scroll owner:
 
 `Page.Container` owns responsive padding and a named width: `reading` (720px),
 `standard` (the design system's `max-w-5xl`), `wide` (1200px, default), or
-`fluid`. `Page.Title` supplies the current `h1` to `Page.Header`; its `actions`
-prop and `Page.Actions` supply the header's right slot. Outside a header they
-render inline. Use `h2` for document sections and welcome text.
+`fluid`. `Page.Title` updates the route breadcrumb's label; its `actions`
+prop and `Page.Actions` supply the header's right slot. Without a breadcrumb
+provider, `Page.Title` renders an inline heading. Use `h2` for document sections
+and welcome text.
 
 ## Compact page headers and views
 
 `RoutePageHeader` adapts router `staticData.pageTitle`, organization, and project
-identity into the same `Page.Header` on org, settings, and project routes. It
-stays outside the content loading/error boundary. A feature's `Page.Title`
-replaces the fallback heading while mounted; navigating away removes the portal
-and restores the next route's fallback. Empty toolbars occupy no space.
+identity into a single array of keyed items for `Page.Header`. It stays outside
+the content loading/error boundary. `Page.Breadcrumbs.Provider` scopes changes
+to that header and its page content. Empty toolbars occupy no space.
 
-`Page.Header` owns one breadcrumb navigation region. The route supplies the
-organization/project ancestors, `Page.Breadcrumbs` adds feature ancestors through
-`Panel.Topbar.Breadcrumbs`, and `Page.Title` names the current location. Long
-feature paths collapse their middle ancestors into a menu. Narrow panels put
-all feature ancestors in that menu, keeping the current title and actions visible.
+`Page.Header` resolves that array with mounted components' contributions and
+renders **one ordered breadcrumb list**. Only the final item renders the `h1`
+and `aria-current="page"`; components do not decide which item is current.
+Route links retain client navigation, while selection callbacks stay with the
+feature. Router prefix matches cannot mark an ancestor as another current item.
+
+### Extending the breadcrumb
+
+`Page.Breadcrumbs` declares an extension anchored by `after`:
+
+- `after` identifies an existing item by its stable `key`. Route headers expose
+  `org`, `project` or `settings` where applicable, and `page` for the destination.
+- `parent` optionally changes that item's label or selection action.
+- `items` inserts the component's complete selection path, including its leaf.
+- Each anchor has one owning component. A nested component can extend any key
+  added by its parent; composition follows keys, independent of mount order.
+- Committed callback refs register contributions and clean up on replacement or
+  unmount. `useSyncExternalStore` updates the header without rerendering editors.
+  Removing an ancestor also removes its descendants from the resolved trail.
+
+Library, for example, contributes folders and makes the route's Library segment
+select the library root. It does not repeat Library or render a separate title:
 
 ```tsx
 <Page.Breadcrumbs
-  items={[
-    { key: "library", label: t("library.library.title"), onClick: openLibrary },
-    { key: parent.path, label: parent.name, onClick: openParent },
-  ]}
+  after="page"
+  parent={{ onSelect: openLibrary }}
+  items={folders.map((folder) => ({
+    key: folder.path,
+    label: folder.name,
+    onSelect: () => openFolder(folder.path),
+  }))}
 />
-<Page.Title>{folder.name}</Page.Title>
 ```
 
-Site Editor uses the same slots through `BlockBreadcrumbs`. The mounted editor
-contributes its current selection after the route identity:
+A screen that only needs a dynamic label can keep using `Page.Title`. It updates
+the `page` item through the same API. Do not combine it with another contribution
+to that same anchor; supply `parent.label` in that contribution instead.
+
+### Selection and collapse
+
+`BlockBreadcrumbs` contributes the editor's selection after `page` and supplies
+Site Editor's selection action. The editor never duplicates route labels.
+Clicking Home selects the page's section list; clicking HeroSlideShow selects
+that section's form. Selecting Site Editor resets the Preview editor to its
+root block, or closes the selection in Content. Pending page/SEO changes flush
+before the Content editor closes. These actions do not use browser history.
+
+The shared collapse rule is independent of routes and editor type:
+show trails of up to four items in full; otherwise keep the first and last two
+items and put everything between them in **one** ordered menu.
 
 ```text
 Organization > Project > Site Editor > Home
-Organization > Project > Site Editor > Home > HeroSlideShow
-Organization > Project > Site Editor > Home > HeroSlideShow > First slide
+Organization > … > Home > HeroSlideShow
+Organization > … > HeroSlideShow > First slide
 ```
 
-`SectionsEditor`, `SavedSectionEditor`, and `RunnableBlockEditor` own their
-selection state. `BlockBreadcrumbs` renders ancestors through `Page.Breadcrumbs`
-and the selected block or field through `Page.Title`. Clicking Home selects the
-page's section list; clicking HeroSlideShow selects that section's form. These
-callbacks update the editor directly and do not use browser history. There is no
-separate editing breadcrumb or back arrow inside these editors.
+Project and Site Editor remain selectable in the menu, alongside any earlier
+block selections. Below 320px of available breadcrumb space, the same function
+keeps only the leaf visible and moves all ancestors into that menu. This uses
+the existing element-width hook, so split-panel resizing also works. The menu
+and current title reserve space; long labels truncate. There is one renderer,
+with no separate desktop/mobile breadcrumb lists.
 
-The page is included as soon as its editor mounts. Switching pages, choosing a
-global section or loader, or opening another view replaces or removes the
-contribution with the editor. Shared-block notices and editing actions remain
-inside the editor. Long paths use the shared ancestor menu on narrow panels.
+`SectionsEditor`, `SavedSectionEditor`, and `RunnableBlockEditor` use the same
+adapter and retain their own selection/save behavior. The page is included as
+soon as its editor mounts. Switching pages, blocks, or views replaces/removes
+the contribution. Shared-block notices and editing actions remain inside the
+editor; its duplicate breadcrumb and back arrow are removed.
 
 ![Selected section in the shared Site Editor breadcrumb](assets/site-editor-block-breadcrumb.png)
 
@@ -328,8 +362,10 @@ inside the editor. Long paths use the shared ancestor menu on narrow panels.
 
 ```tsx
 <Panel>
-  <RoutePageHeader actions={<SiteEditorActions />} navigation={<MainPanelTabsBar {...context} />} />
-  <Panel.Content>{/* content boundary + route outlet */}</Panel.Content>
+  <Page.Breadcrumbs.Provider>
+    <RoutePageHeader actions={<SiteEditorActions />} navigation={<MainPanelTabsBar {...context} />} />
+    <Panel.Content>{/* content boundary + route outlet */}</Panel.Content>
+  </Page.Breadcrumbs.Provider>
 </Panel>
 
 // Deep inside the Preview feature, with its existing state and callbacks:
