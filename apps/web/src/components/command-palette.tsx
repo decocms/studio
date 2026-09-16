@@ -211,35 +211,35 @@ export function CommandPalette({
     {
       key: "home",
       label: t("sidebar.navDestinations.home"),
-      icon: <Home02 />,
+      icon: <Home02 aria-hidden="true" />,
       to: DESTINATION_ROUTE.home,
       params: orgParams,
     },
     {
       key: "reports",
       label: t("sidebar.navDestinations.reports"),
-      icon: <BarChartSquare02 />,
+      icon: <BarChartSquare02 aria-hidden="true" />,
       to: DESTINATION_ROUTE.reports,
       params: orgParams,
     },
     {
       key: "tasks",
       label: t("sidebar.navDestinations.tasks"),
-      icon: <Columns03 />,
+      icon: <Columns03 aria-hidden="true" />,
       to: DESTINATION_ROUTE.tasks,
       params: { org: org.slug, taskKey: undefined },
     },
     {
       key: "library",
       label: t("sidebar.navDestinations.library"),
-      icon: <Folder />,
+      icon: <Folder aria-hidden="true" />,
       to: DESTINATION_ROUTE.library,
       params: orgParams,
     },
     {
       key: "discover",
       label: t("sidebar.navDestinations.discover"),
-      icon: <Compass03 />,
+      icon: <Compass03 aria-hidden="true" />,
       to: DESTINATION_ROUTE.discover,
       params: orgParams,
     },
@@ -254,6 +254,7 @@ export function CommandPalette({
     >
       <CommandInput
         placeholder={t("commandPalette.placeholder")}
+        aria-label={t("commandPalette.placeholder")}
         value={term}
         onValueChange={setTerm}
       />
@@ -302,7 +303,11 @@ export function CommandPalette({
                   )
                 }
               >
-                <ProjectIcon icon={project.icon} name={project.title} />
+                <ProjectIcon
+                  icon={project.icon}
+                  name={project.title}
+                  aria-hidden="true"
+                />
                 <span>{project.title}</span>
               </CommandItem>
             ))}
@@ -323,7 +328,7 @@ export function CommandPalette({
               )
             }
           >
-            <Plus />
+            <Plus aria-hidden="true" />
             <span>{t("commandPalette.newProject")}</span>
           </CommandItem>
           <CommandItem
@@ -339,7 +344,7 @@ export function CommandPalette({
               )
             }
           >
-            <UserPlus01 />
+            <UserPlus01 aria-hidden="true" />
             <span>{t("commandPalette.inviteTeammate")}</span>
           </CommandItem>
           <CommandItem
@@ -356,7 +361,7 @@ export function CommandPalette({
               )
             }
           >
-            <Plus />
+            <Plus aria-hidden="true" />
             <span>{t("commandPalette.addConnection")}</span>
           </CommandItem>
           <CommandItem
@@ -372,7 +377,7 @@ export function CommandPalette({
               )
             }
           >
-            <Settings02 />
+            <Settings02 aria-hidden="true" />
             <span>{t("commandPalette.settings")}</span>
           </CommandItem>
         </CommandGroup>
@@ -387,7 +392,12 @@ export function CommandPalette({
                 onSelect={() => go(() => openHit(hit), "connection")}
               >
                 {/* 2xs matches ProjectIcon: one 16px mark for every named thing in the list. */}
-                <IntegrationIcon icon={hit.icon} name={hit.title} size="2xs" />
+                <IntegrationIcon
+                  icon={hit.icon}
+                  name={hit.title}
+                  size="2xs"
+                  aria-hidden="true"
+                />
                 <span className="truncate">{hit.title}</span>
               </CommandItem>
             ))}
@@ -403,7 +413,11 @@ export function CommandPalette({
                 keywords={remoteKeywords}
                 onSelect={() => go(() => openHit(hit), hit.type)}
               >
-                {hit.type === "thread" ? <MessageSquare01 /> : <Columns03 />}
+                {hit.type === "thread" ? (
+                  <MessageSquare01 aria-hidden="true" />
+                ) : (
+                  <Columns03 aria-hidden="true" />
+                )}
                 <span className="truncate">{hit.title}</span>
                 {hit.type === "task" && hit.key && (
                   <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
