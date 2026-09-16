@@ -225,6 +225,7 @@ function PreferencesSection() {
               type="single"
               size="sm"
               variant="outline"
+              className="gap-2 data-[variant=outline]:shadow-none"
               value={preferences.theme}
               onValueChange={(value) => {
                 if (value) {
@@ -238,18 +239,21 @@ function PreferencesSection() {
             >
               <ToggleGroupItem
                 value="light"
+                className="rounded-lg data-[variant=outline]:border-l"
                 aria-label={t("settings.preferences.themeLight")}
               >
                 <Sun size={14} />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="dark"
+                className="rounded-lg data-[variant=outline]:border-l"
                 aria-label={t("settings.preferences.themeDark")}
               >
                 <Moon01 size={14} />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="system"
+                className="rounded-lg data-[variant=outline]:border-l"
                 aria-label={t("settings.preferences.themeSystem")}
               >
                 <Monitor01 size={14} />

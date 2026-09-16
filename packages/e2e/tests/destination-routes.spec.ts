@@ -514,53 +514,54 @@ test.describe("destination routes", () => {
   });
 });
 
-test("main and chat toggles preserve the page and thread", async ({
-  authedPage: { page, orgSlug },
-}, testInfo) => {
-  const request = page.context().request;
-  const projectId = await createProject(request, orgSlug, "panel toggles");
-  const threadId = await createThread(
-    request,
-    orgSlug,
-    projectId,
-    "panel toggle chat",
-  );
-  const pathname = `/${orgSlug}/projects/${projectId}/settings`;
-  await page.goto(`${pathname}?thread=${threadId}&sidepanel=false`);
-  await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-  await expect(chatPanel(page)).toHaveCount(0);
-  const showChat = page.getByRole("button", { name: "Open chat", exact: true });
-  await expect(showChat).toBeVisible();
-  await expect(
-    mainPanel(page).getByRole("button", { name: "Open chat", exact: true }),
-  ).toHaveCount(0);
-  await showChat.click();
-  await expect(chatPanel(page)).toBeVisible();
+test.describe("classic panel controls", () => {
+  test.use({ compactPageLayout: false });
 
-  await page.getByRole("button", { name: "Hide panel", exact: true }).click();
-  await expect(mainPanel(page)).toBeHidden();
-  await expect(chatPanel(page)).toBeVisible();
-  expect(new URL(page.url()).pathname).toBe(pathname);
-  expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
-  expect(new URL(page.url()).searchParams.get("mainpanel")).toBe("false");
+  test("main and chat toggles preserve the page and thread", async ({
+    authedPage: { page, orgSlug },
+  }, testInfo) => {
+    const request = page.context().request;
+    const projectId = await createProject(request, orgSlug, "panel toggles");
+    const threadId = await createThread(
+      request,
+      orgSlug,
+      projectId,
+      "panel toggle chat",
+    );
+    const pathname = `/${orgSlug}/projects/${projectId}/settings`;
+    await page.goto(`${pathname}?thread=${threadId}&sidepanel=false`);
+    await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(chatPanel(page)).toHaveCount(0);
+    const showChat = mainPanel(page).getByRole("button", {
+      name: "Show chat",
+      exact: true,
+    });
+    await expect(showChat).toBeVisible();
+    await showChat.click();
+    await expect(chatPanel(page)).toBeVisible();
 
-  await page.reload();
-  await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
-  await expect(mainPanel(page)).toBeHidden();
-  await page.getByRole("button", { name: "Show panel", exact: true }).click();
-  await expect(mainPanel(page)).toBeVisible();
-  await expect(chatPanel(page)).toBeVisible();
-  await page
-    .locator('[data-slot="sidebar"]')
-    .getByRole("button", { name: "Close chat", exact: true })
-    .click();
-  await expect(chatPanel(page)).toHaveCount(0);
-  await expect(mainPanel(page)).toBeVisible();
-  await showChat.click();
-  await expect(chatPanel(page)).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("routing-panels.png") });
-  expect(new URL(page.url()).pathname).toBe(pathname);
-  expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
+    await page.getByRole("button", { name: "Hide panel", exact: true }).click();
+    await expect(mainPanel(page)).toBeHidden();
+    await expect(chatPanel(page)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(pathname);
+    expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
+    expect(new URL(page.url()).searchParams.get("mainpanel")).toBe("false");
+
+    await page.reload();
+    await expect(chatPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+    await expect(mainPanel(page)).toBeHidden();
+    await page.getByRole("button", { name: "Show panel", exact: true }).click();
+    await expect(mainPanel(page)).toBeVisible();
+    await expect(chatPanel(page)).toBeVisible();
+    await page.getByRole("button", { name: "Hide chat", exact: true }).click();
+    await expect(chatPanel(page)).toHaveCount(0);
+    await expect(mainPanel(page)).toBeVisible();
+    await showChat.click();
+    await expect(chatPanel(page)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("routing-panels.png") });
+    expect(new URL(page.url()).pathname).toBe(pathname);
+    expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
+  });
 });
 
 test.describe("canonical route payloads", () => {

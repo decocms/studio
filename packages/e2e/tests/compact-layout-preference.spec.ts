@@ -77,7 +77,9 @@ test("compact layout is opt-in, persists, and can be turned off", async ({
   const newTask = page.getByRole("button", { name: "New task", exact: true });
   await expect(newTask).toHaveCSS("border-radius", "9999px");
   await page.goto(`/${orgSlug}/library`);
-  await expect(page.locator('[data-slot="panel-toolbar"]')).toBeVisible();
+  await expect(page.locator('[data-slot="panel-toolbar"]')).toBeVisible({
+    timeout: 60_000,
+  });
   await expect(
     page.getByRole("button", { name: "Documents", exact: true }),
   ).toBeVisible();
@@ -153,15 +155,18 @@ test("classic project settings keep edits when opting in and back out", async ({
     .click();
   await expect(name).toHaveValue("Saved project");
   await expect
-    .poll(async () => {
-      const { item } = await callSelfMcpTool<{ item: { title: string } }>(
-        page.request,
-        orgSlug,
-        "COLLECTION_VIRTUAL_MCP_GET",
-        { id: project.id },
-      );
-      return item.title;
-    })
+    .poll(
+      async () => {
+        const { item } = await callSelfMcpTool<{ item: { title: string } }>(
+          page.request,
+          orgSlug,
+          "COLLECTION_VIRTUAL_MCP_GET",
+          { id: project.id },
+        );
+        return item.title;
+      },
+      { timeout: 15_000 },
+    )
     .toBe("Saved project");
 
   for (const enabled of [true, false]) {

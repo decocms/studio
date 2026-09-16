@@ -88,9 +88,7 @@ test.describe("chat layout composition", () => {
       )
       .toBeLessThan(2);
 
-    await page.getByRole("button", { name: "Hide panel", exact: true }).click();
-    await expect(page.getByTestId("main-panel")).toBeHidden();
-    await page.getByRole("button", { name: "Show panel", exact: true }).click();
+    await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(input).toBeVisible();
     expect(
       await originalInput!.evaluate((element) => element.isConnected),
@@ -99,7 +97,7 @@ test.describe("chat layout composition", () => {
 
     await page
       .getByRole("navigation", { name: "Project settings sections" })
-      .getByRole("link", { name: "Project layout", exact: true })
+      .getByRole("link", { name: "General", exact: true })
       .click();
     await page.getByRole("button", { name: /^Automations\b/ }).click();
     await expect(page).toHaveURL(

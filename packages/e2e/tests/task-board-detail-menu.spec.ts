@@ -133,7 +133,10 @@ for (const action of ["Delete", "Archive"] as const) {
 
     await page.locator('button:has-text("Card 1")').click();
     await expect(detail(page)).toBeVisible();
-    await detail(page).getByRole("button", { name: "More actions" }).click();
+    await page
+      .getByTestId("page-header")
+      .getByRole("button", { name: "More actions" })
+      .click();
     await page.getByRole("menuitem", { name: action }).click();
 
     // The card is gone, and so is the page that was showing it.
