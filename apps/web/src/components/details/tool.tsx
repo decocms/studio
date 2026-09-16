@@ -1,3 +1,4 @@
+import { Page } from "@/components/page";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
@@ -739,9 +740,7 @@ function ToolDetailsAuthenticated({
               size="xl"
               className="shrink-0"
             />
-            <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
-              {toolName}
-            </h1>
+            <Page.Title>{toolName}</Page.Title>
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (

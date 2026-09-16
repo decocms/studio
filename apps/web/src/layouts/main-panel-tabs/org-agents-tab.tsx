@@ -15,14 +15,14 @@ import {
   DetachedChatContext,
 } from "@/components/chat/context";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
-import { Suspense, useState, type ReactNode } from "react";
+import { Suspense, useState } from "react";
 import { SearchLg } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Page } from "@/components/page";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { RepositoryImportPicker } from "@/components/repository-import-picker.tsx";
 import { openCommandPalette } from "@/components/command-palette-store";
-import { GitBranch01 } from "@untitledui/icons";
+import { Plus } from "@untitledui/icons";
 import { ConnectPill } from "@/components/org-home/connect-pill";
 import { firstName, greetingSlot } from "@/components/org-home/greeting";
 import {
@@ -118,13 +118,7 @@ function OrgHomeBodyFallback() {
   );
 }
 
-function OrgHomeBody({
-  canManageAgents,
-  importButton,
-}: {
-  canManageAgents: boolean;
-  importButton: (source: string) => ReactNode;
-}) {
+function OrgHomeBody({ canManageAgents }: { canManageAgents: boolean }) {
   const t = useT();
   const { org } = useProjectContext();
   /** Both SUSPEND, so this component renders once with the answer to both and
@@ -150,7 +144,6 @@ function OrgHomeBody({
               ? t("home.orgAgents.importToGetStarted")
               : t("routes.agentsList.askAdminToCreate")
           }
-          actions={canManageAgents && importButton("org_home_empty")}
         />
       </div>
     );
@@ -166,10 +159,7 @@ function OrgHomeBody({
 
   return (
     <div className="flex flex-col gap-12">
-      <ProjectRoster
-        projects={agents}
-        action={canManageAgents && importButton("org_home")}
-      />
+      <ProjectRoster projects={agents} />
       {hasActivity && <ProjectFeed projects={agents} tasks={tasks} />}
     </div>
   );
@@ -195,27 +185,27 @@ export function OrgAgentsTab() {
   const importButton = (source: string) => (
     <Button
       size="sm"
-      variant="outline"
+      variant="brand"
       onClick={() => {
         track("agent_create_clicked", { source, method: "github" });
         setGithubPickerOpen(true);
       }}
     >
-      <GitBranch01 size={14} />
+      <Plus size={14} />
       {t("home.orgAgents.importFromGitHub")}
     </Button>
   );
 
   return (
     <Page>
+      {canManageAgents && (
+        <Page.Actions>{importButton("org_home")}</Page.Actions>
+      )}
       <Page.Content>
         {/* One reading column for the whole page: the search field was already
             capped at 720px, so a full-width feed under it read as a second,
             wider page stapled to the first. */}
-        <Page.Container
-          width="reading"
-          className="flex flex-col gap-12 pt-0 md:pt-0"
-        >
+        <Page.Container width="reading" className="flex flex-col gap-12">
           <div className="flex flex-col items-center gap-12 text-center">
             <ConnectPill />
             {/* Shown only for orgs that own a legacy site — the training is about
@@ -224,9 +214,9 @@ export function OrgAgentsTab() {
             {/* Greeting and search are one unit; the pill is a separate offer,
                 so the space between them is larger than the space within. */}
             <div className="flex w-full flex-col items-center gap-5">
-              <h1 className="text-3xl font-medium tracking-tight text-foreground">
+              <h2 className="text-3xl font-medium tracking-tight text-foreground">
                 {name ? t(greeting.named, { name }) : t(greeting.bare)}
-              </h1>
+              </h2>
               {taskIntakeEnabled ? (
                 <Suspense fallback={<OrgHomeBodyFallback />}>
                   <DetachedChatContext>
@@ -249,10 +239,7 @@ export function OrgAgentsTab() {
               to a board that has anything on it. The hero above paints
               immediately either way; only the grid waits. */}
           <Suspense fallback={<OrgHomeBodyFallback />}>
-            <OrgHomeBody
-              canManageAgents={canManageAgents}
-              importButton={importButton}
-            />
+            <OrgHomeBody canManageAgents={canManageAgents} />
           </Suspense>
         </Page.Container>
       </Page.Content>

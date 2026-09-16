@@ -80,7 +80,48 @@ export default function AgentsListPage() {
       <Page.Content>
         <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title>{t("routes.agentsList.title")}</Page.Title>
+            <Page.Title
+              actions={
+                canManageAgents && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="brand" size="sm">
+                        <Plus size={14} />
+                        {t("routes.agentsList.createAgent")}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <CreateAgentDropdownContent
+                      onCreateFromScratch={() => {
+                        track("agent_create_clicked", {
+                          source: "agents_list",
+                          method: "scratch",
+                        });
+                        createVirtualMCP();
+                      }}
+                      onImportGitHub={() => {
+                        track("agent_create_clicked", {
+                          source: "agents_list",
+                          method: "github",
+                        });
+                        setGithubPickerOpen(true);
+                      }}
+                      onImportDeco={() => {
+                        track("agent_create_clicked", {
+                          source: "agents_list",
+                          method: "deco",
+                        });
+                        setImportDecoOpen(true);
+                      }}
+                      isCreating={isCreating}
+                      align="end"
+                      showDecoImport={showDecoImport}
+                    />
+                  </DropdownMenu>
+                )
+              }
+            >
+              {t("routes.agentsList.title")}
+            </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <SearchInput
                 value={search}
@@ -94,42 +135,6 @@ export default function AgentsListPage() {
                   }
                 }}
               />
-              {canManageAgents && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm">
-                      <Plus size={14} />
-                      {t("routes.agentsList.createAgent")}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <CreateAgentDropdownContent
-                    onCreateFromScratch={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "scratch",
-                      });
-                      createVirtualMCP();
-                    }}
-                    onImportGitHub={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "github",
-                      });
-                      setGithubPickerOpen(true);
-                    }}
-                    onImportDeco={() => {
-                      track("agent_create_clicked", {
-                        source: "agents_list",
-                        method: "deco",
-                      });
-                      setImportDecoOpen(true);
-                    }}
-                    isCreating={isCreating}
-                    align="end"
-                    showDecoImport={showDecoImport}
-                  />
-                </DropdownMenu>
-              )}
             </div>
           </div>
 
@@ -150,46 +155,6 @@ export default function AgentsListPage() {
                     : canManageAgents
                       ? t("routes.agentsList.createAgentToGetStarted")
                       : t("routes.agentsList.askAdminToCreate")
-                }
-                actions={
-                  !search &&
-                  canManageAgents && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button size="sm">
-                          <Plus size={14} />
-                          {t("routes.agentsList.createAgent")}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <CreateAgentDropdownContent
-                        onCreateFromScratch={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "scratch",
-                          });
-                          createVirtualMCP();
-                        }}
-                        onImportGitHub={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "github",
-                          });
-                          setGithubPickerOpen(true);
-                        }}
-                        onImportDeco={() => {
-                          track("agent_create_clicked", {
-                            source: "agents_list_empty",
-                            method: "deco",
-                          });
-                          setImportDecoOpen(true);
-                        }}
-                        isCreating={isCreating}
-                        align="center"
-                        showBetaBadge
-                        showDecoImport={showDecoImport}
-                      />
-                    </DropdownMenu>
-                  )
                 }
               />
             </div>

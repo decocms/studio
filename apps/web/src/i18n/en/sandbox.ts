@@ -441,6 +441,7 @@ export const sandbox = {
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.enterToGo": "Enter to go",
   "sandbox.preview.failedToCreatePage": "Failed to create page",
+  "sandbox.preview.globalBadge": "Global",
   "sandbox.preview.globalComponents": "Global components",
   "sandbox.preview.globalLoaders": "Global loaders",
   "sandbox.preview.loaderBadge": "Loader",

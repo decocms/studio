@@ -1,16 +1,4 @@
-/**
- * Project settings, as a few places rather than one long page.
- *
- * Settings used to be a single scroll: identity, connections, instructions,
- * files, sub-projects, layout, CMS, sandbox and the delete button, stacked. It
- * read as a wall, and the things people actually come here for (the views, the
- * instructions) were the furthest down.
- *
- * So it is an index of SECTIONS, each with its own address — `?section=<key>`
- * on the settings panel. A section is a HANDFUL of related concerns, not one
- * field each: splitting per concern only moved the wall into the index.
- * The key is the URL's, so a section is linkable and Back returns to the index.
- */
+/** Project settings tabs. Existing `?section=` links keep their destinations. */
 
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
@@ -18,6 +6,7 @@ export const PROJECT_SETTINGS_SECTION_KEYS = [
   "general",
   "connections",
   "site",
+  "views",
 ] as const;
 
 export type ProjectSettingsSectionKey =
@@ -25,26 +14,33 @@ export type ProjectSettingsSectionKey =
 
 export interface ProjectSettingsSectionDef {
   titleKey: TranslationKey;
+  headingKey: TranslationKey;
   descriptionKey: TranslationKey;
 }
 
-/** Title and description, in ONE place: the index row and the section's own
- *  header read the same words, so a row can never promise a different page. */
 export const PROJECT_SETTINGS_SECTIONS: Record<
   ProjectSettingsSectionKey,
   ProjectSettingsSectionDef
 > = {
   general: {
     titleKey: "virtualMcp.settings.general.title",
+    headingKey: "virtualMcp.settings.general.heading",
     descriptionKey: "virtualMcp.settings.general.description",
   },
   connections: {
     titleKey: "virtualMcp.settings.connections.title",
+    headingKey: "virtualMcp.settings.connections.heading",
     descriptionKey: "virtualMcp.settings.connections.description",
   },
   site: {
     titleKey: "virtualMcp.settings.site.title",
+    headingKey: "virtualMcp.settings.site.heading",
     descriptionKey: "virtualMcp.settings.site.description",
+  },
+  views: {
+    titleKey: "virtualMcp.settings.views.projectViews",
+    headingKey: "virtualMcp.settings.views.projectViews",
+    descriptionKey: "virtualMcp.settings.views.description",
   },
 };
 

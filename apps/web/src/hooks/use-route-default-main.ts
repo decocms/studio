@@ -13,10 +13,13 @@
  * which sits ABOVE the destination route and so never sees a leaf validator's
  * output.
  */
+import type { TranslationKey } from "@/i18n/use-t";
 import { useRouterState } from "@tanstack/react-router";
 
 declare module "@tanstack/react-router" {
   interface StaticDataRouteOption {
+    /** Persistent page identity, available before the feature chunk or data loads. */
+    pageTitle?: TranslationKey;
     /** The tab id this route opens when no explicit visibility override exists. */
     defaultMain?: string;
     /** The semantic main view owned by the matched route. */

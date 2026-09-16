@@ -1,6 +1,8 @@
 import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
+  "sidebar.organization.heading": "Organização",
+  "sidebar.projects.addProject": "Adicionar projeto",
   "sidebar.archiveWorktreeDialog.cancel": "Cancelar",
   "sidebar.archiveWorktreeDialog.confirm": "Continuar",
   "sidebar.archiveWorktreeDialog.reclaimFailed":

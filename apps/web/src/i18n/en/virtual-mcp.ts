@@ -118,27 +118,36 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.showChatDescription":
     "Display Chat in the side panel alongside the main view.",
   "virtualMcp.layoutTabContent.siteEditor": "Site Editor",
+  "virtualMcp.settings.title": "Project settings",
+  "virtualMcp.settings.navigation": "Project settings sections",
+  "virtualMcp.settings.identity.icon": "Project icon",
+  "virtualMcp.settings.identity.iconDescription":
+    "How your project appears in the sidebar and across Studio.",
+  "virtualMcp.settings.identity.name": "Project name",
+  "virtualMcp.settings.identity.description": "Description",
   "virtualMcp.settings.general.title": "General",
+  "virtualMcp.settings.general.heading": "Project details",
   "virtualMcp.settings.general.description":
-    "Instructions, attached files and who this project may delegate to.",
-  "virtualMcp.settings.site.title": "Site and sandbox",
+    "The basics your team sees across Studio. Changes save automatically.",
+  "virtualMcp.settings.site.title": "Site",
+  "virtualMcp.settings.site.heading": "Site and sandbox",
   "virtualMcp.settings.site.description":
     "How edits reach the live site, and the repository it runs from.",
-  "virtualMcp.settings.backToSettings": "Settings",
   "virtualMcp.settings.groups.advanced": "Advanced",
   "virtualMcp.settings.connections.title": "Connections",
+  "virtualMcp.settings.connections.heading": "Connected tools",
   "virtualMcp.settings.connections.description":
     "The MCP servers this project brings together.",
   "virtualMcp.settings.views.projectViews": "Views",
+  "virtualMcp.settings.views.description":
+    "Choose how your project opens and which views appear in its sidebar.",
+  "virtualMcp.settings.views.defaults": "Default layout",
+  "virtualMcp.settings.views.sidebar": "Sidebar views",
   "virtualMcp.settings.views.open": "Open",
   "virtualMcp.settings.views.pin": "Pin to sidebar",
   "virtualMcp.settings.views.unpin": "Remove from sidebar",
   "virtualMcp.settings.views.setMainView": "Set as main view",
   "virtualMcp.settings.views.rowActions": "View options",
-  "virtualMcp.settings.value.notLinked": "Not linked",
-  "virtualMcp.settings.value.connectionOne": "1 connection",
-  "virtualMcp.settings.value.connectionMany": "{count} connections",
-  "virtualMcp.settings.value.inSidebar": "{count} in sidebar",
   "virtualMcp.subAgentsSection.addSubAgent": "Add sub-project",
   "virtualMcp.subAgentsSection.anyAgent": "Any project",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
@@ -226,12 +235,10 @@ Define step-by-step how the agent should handle requests.
   "virtualMcp.virtualMcp.publishPolicyOpenDescription":
     "Publish any change directly, without review.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
-  "virtualMcp.virtualMcp.settings": "Settings",
   "virtualMcp.virtualMcp.spaceNotFound": "Space not found",
   "virtualMcp.virtualMcp.spaceNotFoundDescription":
     "This space may have been deleted or you may not have access.",
   "virtualMcp.virtualMcp.subAgents": "Sub-projects",
-  "virtualMcp.virtualMcp.testAgent": "Test Project",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "Project URL copied to clipboard",
   "virtualMcp.virtualMcpShareModal.callFromYourApp": "Call from your app",

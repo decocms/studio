@@ -88,10 +88,9 @@ test.describe("org home — the agent roster", () => {
     await expect(page.getByText("No projects yet")).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });
-    /* Named for the repository, not for GitHub: the same control imports a
-       GitLab project, and the picker behind it lists both. */
+    // The project action opens the same provider-neutral repository picker.
     await expect(
-      page.getByRole("button", { name: "Import repository" }),
+      page.getByRole("button", { name: "New Project" }),
     ).toBeVisible();
   });
   test("Home shows the CMS training playlist when the organization owns a legacy site", async ({

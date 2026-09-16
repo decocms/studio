@@ -87,7 +87,7 @@ test.describe("Blocks preview mode", () => {
         !url.searchParams.has("virtualmcpid"),
     );
     await expect(contentTab).toBeVisible();
-    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("preview-blocks-toggle")).toBeVisible();
     await expect(page.getByTestId("blocks-panel")).toBeVisible();
     await expect(chat).toBeVisible();
     await expect(main).toBeVisible();
@@ -118,7 +118,7 @@ test.describe("Blocks preview mode", () => {
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });
 
-  test("mobile renders one workspace surface at a time without Blocks", async ({
+  test("mobile opens Blocks over Preview and returns from chat to the same page", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -131,35 +131,33 @@ test.describe("Blocks preview mode", () => {
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=false&main=preview`,
     );
 
-    // Mobile has no side-by-side split and no standalone Chat toggle: every
-    // destination (Chat, the main views, Tasks, Library) lives in the single
-    // "View" dropdown, and only one surface shows at a time.
-    const viewSelect = page.getByRole("combobox", { name: "View" });
-    await expect(viewSelect).toBeVisible({ timeout: 30_000 });
-    // Preview is the single visible surface to start.
-    await expect(page.getByTestId("main-panel")).toBeVisible();
-    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: 30_000,
+    });
+    const blocks = page.getByTestId("preview-blocks-toggle");
+    await expect(blocks).toBeVisible();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
-
-    // Pick Chat: main closes, but the view stays in the path so Preview returns.
-    await viewSelect.click();
-    await page.getByRole("option", { name: "Chat" }).click();
-    await expect(page).toHaveURL(/sidepanel=true/);
-    await expect(page).toHaveURL(/mainpanel=false/);
+    await blocks.click();
+    await expect(page.getByTestId("blocks-panel")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Close blocks", exact: true })
+      .click();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("button", { name: "Open chat", exact: true })
+      .click();
+    await expect(page.getByTestId("chat-panel")).toBeVisible();
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
-
-    // Pick Preview again: chat closes, the main panel returns.
-    await viewSelect.click();
-    await page.getByRole("option", { name: "Preview" }).click();
-    await expect(page).toHaveURL(/sidepanel=false/);
-    await expect(page).toHaveURL(
-      (url) =>
-        url.pathname === `/${orgSlug}/projects/${agentId}/site-editor` &&
-        !url.searchParams.has("virtualmcpid"),
-    );
+    await page.getByRole("combobox", { name: "View", exact: true }).click();
+    await page.getByRole("option", { name: "Preview", exact: true }).click();
     await expect(page.getByTestId("main-panel")).toBeVisible();
-    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe(
+      `/${orgSlug}/projects/${agentId}/site-editor`,
+    );
   });
 });

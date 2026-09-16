@@ -9,8 +9,8 @@ chat arrangement, panel surfaces, and document content.
 | --- | --- |
 | [`Layout`](../src/components/layout/index.tsx) | Persistent application frame: sidebar, resizing, mobile navigation, and content area |
 | [`ChatLayout`](../src/components/chat-layout/index.tsx) | Placement, visibility, and resizing of its `Thread` and `Content` regions |
-| [`Panel`](../src/components/panel/index.tsx) | A surface, its topbar regions, and its body |
-| [`Page`](../src/components/page/index.tsx) | Document content: scrolling, spacing, width, and heading |
+| [`Panel`](../src/components/panel/index.tsx) | A surface, its topbar and toolbar regions, and its body |
+| [`Page`](../src/components/page/index.tsx) | Shared breadcrumbs, heading, actions, tabs, and document scrolling, spacing, and width |
 | `*Route` | Route composition and feature-specific controls |
 | `*Page` | A feature screen rendered inside a route's panel |
 | `*Provider` / `*Context` | Shared state with an explicit lifetime; layout and domain state stay separate |
@@ -31,7 +31,7 @@ route supplies navigation and an `Outlet`; changing between Home and Settings
 keeps this frame mounted, preserving the sidebar's size and open preference.
 
 ```tsx
-<Layout expandedSidebar={inSettings} notice={<OrgNoticeBanner />}>
+<Layout notice={<OrgNoticeBanner />}>
   <Layout.Sidebar
     renderMobile={({ onClose }) => <StudioSidebarMobile onClose={onClose} />}
   >
@@ -58,7 +58,7 @@ branch.
 flowchart TD
   Org["Organization route"] --> Layout["Layout · persistent navigation + content"]
   Layout --> Sidebar["Layout.Sidebar · desktop sidebar / mobile sheet"]
-  Layout --> Inset["Layout.Content · mobile topbar + route outlet"]
+  Layout --> Inset["Layout.Content · route outlet"]
   Inset --> Settings["Organization settings route"]
   Settings --> SettingsPanel["Panel → Page"]
   Inset --> Session["Thread and runtime providers"]
@@ -68,7 +68,8 @@ flowchart TD
   Split --> Route["Destination route"]
   Route --> Content["ChatLayout.Content"]
   Content --> Surface["Panel · destination frame"]
-  Surface --> Topbar["Panel.Topbar.Left / Center / Right"]
+  Surface --> Topbar["Page.Header · breadcrumbs, title, actions"]
+  Surface --> Toolbar["Panel.Toolbar · tabs, path, tools"]
   Surface --> Body["Panel.Content"]
   Body --> Boundary["Loading / error boundary"]
   Boundary --> Feature["Feature content / child route"]
@@ -77,14 +78,44 @@ flowchart TD
   Feature --> Document["Page.Content → Container → Title"]
 ```
 
-On mobile, `Layout` supplies navigation and the shared topbar. `ChatLayout`
-shows one region at a time; its destination selector uses the shared topbar's
-center portal target. Each inner `Panel` scopes feature controls separately.
+On mobile, each visible page or conversation header opens the same navigation
+sheet. `ChatLayout` shows one region at a time. The sidebar chat button selects
+the conversation; its header lets the user return to the page.
 
 ## The layout on screen
 
-These are captures of the running app with synthetic local data. Colored
-outlines and labels were added to the DOM only for the screenshots.
+These captures show the compact layout running against the local E2E server
+with synthetic project and page data. The desktop sidebar is collapsed; on
+mobile, Blocks overlays the preview instead of squeezing the canvas.
+
+![Site Editor with the sidebar icon rail, compact breadcrumbs and actions, shared tabs and page picker, Blocks, and preview canvas](assets/compact-page-editor.png)
+
+![Mobile Site Editor with wrapped page tools and the Blocks overlay](assets/compact-page-mobile.png)
+
+Additional captures:
+
+- [Expanded project sidebar](assets/compact-editor-expanded.png)
+- [Page picker with name and path on one line](assets/compact-editor-page-picker.png)
+- [Tasks with List / Board tabs and filters beside New task](assets/compact-tasks-list.png)
+- [Library file list and shared toolbar](assets/compact-library-files.png)
+- [Library on mobile](assets/compact-library-mobile.png)
+- [Project settings — General](assets/project-settings-general.png)
+- [Project settings — Site](assets/project-settings-site.png)
+- [Project settings — Views](assets/project-settings-views.png)
+- [Project settings on mobile](assets/project-settings-mobile.png)
+
+| Visible region | Component and purpose |
+| --- | --- |
+| Left icon rail | `Layout.Sidebar`: project navigation, collapse control, and chat entry point |
+| Breadcrumb and action row | `Page.Header`: route identity and primary actions in the panel topbar |
+| Preview / Content, path, and view controls | `Panel.Toolbar`: shared `Page.Tabs`, page picker, and feature-owned tools |
+| Blocks and website | `Panel.Content`: the existing Blocks editor beside, or over, the preview canvas |
+
+### Component boundaries before the compact header update
+
+The annotated captures below document the original shared-layout refactor. Their
+component boundaries still apply; the current headers and navigation are shown
+above. Colored outlines and labels were added to the DOM for these captures.
 
 ![Shared Layout with ChatLayout regions, panel topbar controls, and content boundaries](assets/workspace-components.png)
 
@@ -213,9 +244,97 @@ Document pages inside a canvas panel use `Page.Content` as their scroll owner:
 
 `Page.Container` owns responsive padding and a named width: `reading` (720px),
 `standard` (the design system's `max-w-5xl`), `wide` (1200px, default), or
-`fluid`. `Page.Title` renders an `h1` and an optional adjacent action group.
-Keep persistent navigation in the panel topbar; keep document headings and
-form actions with the document.
+`fluid`. `Page.Title` supplies the current `h1` to `Page.Header`; its `actions`
+prop and `Page.Actions` supply the header's right slot. Outside a header they
+render inline. Use `h2` for document sections and welcome text.
+
+## Compact page headers and views
+
+`RoutePageHeader` adapts router `staticData.pageTitle`, organization, and project
+identity into the same `Page.Header` on org, settings, and project routes. It
+stays outside the content loading/error boundary. A feature's `Page.Title`
+replaces the fallback heading while mounted; navigating away removes the portal
+and restores the next route's fallback. Empty toolbars occupy no space.
+
+```tsx
+<Panel>
+  <RoutePageHeader actions={<SiteEditorActions />} navigation={<MainPanelTabsBar {...context} />} />
+  <Panel.Content>{/* content boundary + route outlet */}</Panel.Content>
+</Panel>
+
+// Deep inside the Preview feature, with its existing state and callbacks:
+<Panel.Toolbar.Center.Portal>{pagePicker}</Panel.Toolbar.Center.Portal>
+<Panel.Toolbar.Right.Portal>{previewTools}</Panel.Toolbar.Right.Portal>
+```
+
+- The first row is 48px tall: breadcrumbs and title on the left, actions on the right.
+- `Panel.Toolbar.Left` holds `Page.Tabs` / `Page.Tab`; Center holds the page path;
+  Right holds local view tools. All three support `Target` / `Portal`.
+- Route links use `<Page.Tab asChild><Link /></Page.Tab>` and `aria-current`.
+  In-place views use buttons with `aria-pressed`. Selecting an active view leaves
+  it open. Labels remain visible; long sets scroll horizontally.
+- Collection tabs opt into the shared row with `placement="page"`. Dialog tabs
+  remain inline. Feature actions use the shared `Button` sizes; primary create,
+  import, and publish actions use its `brand` variant.
+- Detail screens contribute to the surrounding header instead of adding another
+  panel and title bar.
+
+## Sidebar and Preview
+
+The sidebar keeps the existing organization/project picker and project-only
+navigation. Its 48px header aligns with the page header; section labels and
+spacing separate navigation instead of horizontal rules. At organization scope,
+Projects includes an Add project shortcut and Organization holds Settings.
+Members is available inside Settings, subject to the existing capabilities.
+Its width and collapse preference persist across Settings. The 52px
+rail retains the picker, expand button, chat button, and destinations. Opening
+chat preserves the current project, page, and thread; starting a new chat is a
+separate action inside the conversation.
+The sidebar chat toggle renders from `ChatLayout` through a shared slot, so its
+background and pressed state follow the visible chat, including on mobile.
+Settings supplies an inactive fallback that opens chat on Home.
+
+Preview uses the existing `BlocksPanel` and `BlocksPreviewWorkspaceProvider`.
+The compact page picker trigger shows the origin (including protocol), page name,
+and path, in that order. The URL parts are muted and can truncate; the page name
+wraps when needed to remain fully readable. The popover starts with
+search and uses the hover background to mark the current selection, without
+repeating the origin or adding a checkmark.
+Each popover row places the page name first and aligns its muted path to the
+right. On narrow panels the trigger sits in its own toolbar row.
+The shared popover/command picker includes page names and paths,
+global sections, global loaders, creation, and dynamic path parameter inputs.
+Arrow keys, Enter, Escape, and focus restoration come from the existing shared
+UI primitives.
+
+Blocks starts open on desktop when CMS is enabled. It can be closed independently
+of the sidebar. Below 720px of panel width it overlays the preview canvas;
+on phones it starts closed. The same Blocks component stays mounted when the
+panel moves between docked and overlaid placement. The canvas and overlay have
+separate stacking contexts so loading/iframe layers cannot cover editor controls.
+A page restored from the shared selection keeps its path even before metadata
+finishes loading.
+
+Tasks uses `Page.Tabs` for List and Board, with filters in the header beside
+New task through `Page.Actions secondary={…}`. Narrow panels use the existing
+filters drawer in the same action group. Library uses the same tabs for
+All files, Documents, and Media, with search and refresh on the right. Its upload
+action lives in the header, separated from New folder by a vertical divider.
+`Page.Actions secondary={…}` provides that grouping to other pages too.
+
+Project settings uses the same header and `Page.Tabs` for General, Connections,
+Site, and Views. General opens directly to labelled identity fields, followed by
+instructions, files, delegation, and deletion. Connections contributes its Add
+connection action through `Page.Actions`; Views separates the default layout
+from sidebar view controls. Existing `?section=` links remain valid, Views adds
+`?section=views`, and absent or unknown selections open General. Tab changes keep
+the same form and autosave queue while resetting the content scroll position.
+The previous settings index and its second breadcrumb have been removed.
+
+Library's file view is saved in `?fileView=` and applies to the current folder,
+search results, and the recent feed. All files and Documents use compact rows;
+Media uses thumbnails. Folders remain available in every view. Existing upload,
+sharing, download, rename, and drag-and-drop handlers stay with their entries.
 
 ## Migration map
 
@@ -227,8 +346,8 @@ form actions with the document.
 | `WorkspaceContext`, `useWorkspace()`, `useInsetContext()` | `useChatLayout()` for placement; domain providers and SDK hooks for agent/thread data |
 | `PanelCard`, `SidePanel`, `PanelHeader` | `Panel`, `Panel.Content`, `Panel.Topbar` |
 | `Toolbar.*` and `MainPanelHeader*` portals | `Panel.Topbar.{Left,Center,Right}.{Target,Portal}` |
-| `ViewLayout`, `ViewTabs`, `ViewActions` | `DetailPanel` and `Panel.Topbar` portals |
-| `Page.Header`, `Page.Header.Left/Right` | The surrounding panel's topbar |
+| `ViewLayout`, `ViewTabs`, `ViewActions` | `DetailPanel`, `Page.Tabs`, `Page.Actions` |
+| Former `Page.Header.Left/Right` | `Page.Header` composes the surrounding panel's title and actions |
 | `Page.Body maxWidth={…}` | `Page.Container width="…"` |
 | `PageContentClassNameProvider` | Explicit `Page.Content` props |
 

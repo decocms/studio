@@ -1,5 +1,5 @@
 export const home = {
-  "home.orgAgents.importFromGitHub": "Import repository",
+  "home.orgAgents.importFromGitHub": "New Project",
   "home.orgAgents.importToGetStarted": "Import a repository to get started.",
   "home.orgHome.connectPill": "Connect your agent to Studio",
   "home.orgHome.greetingMorning": "Good morning, {name}",

@@ -135,6 +135,7 @@ function AutomationTabInner({ id }: { id: string }) {
               {t("mainPanelTabs.automationTab.backToList")}
             </Button>
             <CollectionTabs
+              placement="page"
               tabs={[
                 {
                   id: "settings",

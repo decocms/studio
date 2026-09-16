@@ -1,3 +1,4 @@
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 /** The settings sidebar: what the settings tree puts in `SidebarShell`'s four
  *  slots, on desktop and in the mobile sheet. It is the same shell, the same
  *  header and the same row primitive the org sidebar uses — settings should
@@ -91,6 +92,7 @@ function SettingsNavIcon({ icon, badge }: { icon: ReactNode; badge?: number }) {
  *  disclosure. A fragment, so both stay direct children of the shell's body and
  *  `mt-auto` has the shell's free space to push against. */
 export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
+  const collapsed = useSidebarCollapsed();
   const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
@@ -100,7 +102,7 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
     <>
       {groups.map((group, i) => (
         <div key={group.key} className="flex flex-col">
-          {group.label && (
+          {group.label && !collapsed && (
             <SettingsGroupHeading
               group={group}
               open={isOpen(group)}
@@ -108,7 +110,7 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
               className={cn("px-2 pt-1.5 pb-0.5", i > 0 && "mt-3")}
             />
           )}
-          {isOpen(group) && (
+          {(collapsed || isOpen(group)) && (
             <SidebarMenu className="gap-0.5">
               {group.items.map((item) => (
                 <SidebarNavRow
@@ -133,8 +135,7 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       ))}
 
-      <div className="mt-auto flex flex-col">
-        <div className="mx-2 my-2 border-t border-border/50" />
+      <div className="mt-auto flex flex-col pt-4">
         <SidebarMenu className="gap-0.5">
           <SidebarNavRow
             icon={
@@ -182,7 +183,7 @@ export function SettingsBackRow({ onNavigate }: { onNavigate?: () => void }) {
 
 export function SettingsVersion() {
   return (
-    <div className="px-4 pb-1">
+    <div className="px-4 pb-1 group-data-[state=collapsed]/sidebar:hidden">
       <span className="text-xs text-muted-foreground/50">
         v{__STUDIO_VERSION__}
       </span>

@@ -33,6 +33,7 @@ export const taskBoardSearchShape = {
 
 /** Library-owned browse, preview, and catalog state. */
 export const librarySearchShape = {
+  fileView: z.enum(["all", "documents", "media"]).catch("all").optional(),
   path: z.string().optional(),
   preview: z.string().optional(),
   skill: z.string().optional(),

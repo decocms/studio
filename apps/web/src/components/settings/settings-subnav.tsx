@@ -8,7 +8,7 @@
  */
 
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { Panel } from "@/components/panel";
 import { Page } from "@/components/page";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
@@ -26,41 +26,37 @@ export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
   const { titleKey } = SETTINGS_TAB_GROUPS[group];
 
   return (
-    <div data-slot="settings-heading" className="flex flex-col gap-4">
+    <>
       <Page.Title>{t(titleKey)}</Page.Title>
       {tabs.length > 1 && (
-        <nav
-          data-slot="settings-subnav"
-          aria-label={t("settings.subnav.ariaLabel")}
-          className="bg-muted inline-flex h-10 w-fit items-center rounded-xl p-[3px] gap-0.5"
-        >
-          {tabs.map((tab) => {
-            const to = tab.to.replace("$org", org);
-            const isActive = pathname === to || pathname.startsWith(`${to}/`);
-            return (
-              <Link
-                key={tab.key}
-                to={tab.to}
-                params={{ org }}
-                onClick={() =>
-                  track("settings_subnav_clicked", {
-                    group_key: group,
-                    tab_key: tab.key,
-                  })
-                }
-                className={cn(
-                  "inline-flex h-full items-center justify-center rounded-lg border border-transparent px-3 text-sm font-medium whitespace-nowrap transition-[color,box-shadow]",
-                  isActive
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t(tab.labelKey)}
-              </Link>
-            );
-          })}
-        </nav>
+        <Panel.Toolbar.Left.Portal>
+          <Page.Tabs
+            data-testid="settings-subnav"
+            aria-label={t("settings.subnav.ariaLabel")}
+          >
+            {tabs.map((tab) => {
+              const to = tab.to.replace("$org", org);
+              const isActive = pathname === to || pathname.startsWith(`${to}/`);
+              return (
+                <Page.Tab key={tab.key} active={isActive} asChild>
+                  <Link
+                    to={tab.to}
+                    params={{ org }}
+                    onClick={() =>
+                      track("settings_subnav_clicked", {
+                        group_key: group,
+                        tab_key: tab.key,
+                      })
+                    }
+                  >
+                    {t(tab.labelKey)}
+                  </Link>
+                </Page.Tab>
+              );
+            })}
+          </Page.Tabs>
+        </Panel.Toolbar.Left.Portal>
       )}
-    </div>
+    </>
   );
 }

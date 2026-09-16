@@ -48,7 +48,7 @@ let localStorageStub: ReturnType<typeof stubLocalStorage>;
 
 beforeAll(() => {
   if (windowStubbedHere) {
-    (globalThis as unknown as { window: object }).window = {};
+    (globalThis as unknown as { window: object }).window = new EventTarget();
   }
 });
 
@@ -159,6 +159,7 @@ describe("persistQueryClient", () => {
 
     queryClient.setQueryData(["publicConfig"], { theme: "dark" });
     unsubscribe();
+    window.dispatchEvent(new Event("pagehide"));
 
     // The debounced write would have fired by now had it not been cancelled.
     await new Promise((resolve) => setTimeout(resolve, 1100));

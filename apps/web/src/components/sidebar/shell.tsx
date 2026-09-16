@@ -31,7 +31,7 @@ interface SidebarShellProps {
   sheet?: boolean;
 }
 
-/** The gutter a panel card puts above its own 48px `PanelHeader`
+/** The gutter a panel card puts above its own 48px `Page.Header`
  *  (`ChatLayout`'s `pt-1` plus its card wrapper's `p-0.5`). The sidebar has
  *  no card, so it repeats the inset here to start its header on the same line.
  *  Invisible: the gutter it exposes is `bg-sidebar`, same as the sidebar. */
@@ -47,18 +47,15 @@ export function SidebarShell({
   const content = (
     <>
       {header && (
-        <>
-          <div className="flex h-12 shrink-0 flex-row items-center gap-2 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:py-2">
-            {header}
-          </div>
-          {/* `mt-1.5` mirrors the shell's top inset, so the header sits in an
-              even band instead of crowding the rule. On the strip itself it
-              would eat the 48px box and pull the mark off the panel header. */}
-          <div className="mt-1.5 h-px shrink-0 bg-sidebar-border" />
-        </>
+        <div
+          data-slot="sidebar-picker-header"
+          className="flex h-12 shrink-0 flex-row items-center gap-1 px-2 group-data-[state=collapsed]/sidebar:h-auto group-data-[state=collapsed]/sidebar:flex-col group-data-[state=collapsed]/sidebar:gap-2 group-data-[state=collapsed]/sidebar:py-2"
+        >
+          {header}
+        </div>
       )}
       {back && <div className="shrink-0 px-2">{back}</div>}
-      <SidebarContent className="gap-0 overflow-y-auto px-2 pt-2 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
+      <SidebarContent className="gap-0 overflow-y-auto px-2 pt-3 pb-2 group-data-[state=collapsed]/sidebar:[scrollbar-width:none] group-data-[state=collapsed]/sidebar:[&::-webkit-scrollbar]:hidden">
         {body}
       </SidebarContent>
       {footer}

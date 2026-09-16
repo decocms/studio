@@ -1,4 +1,5 @@
 import { Outlet } from "@tanstack/react-router";
+import { Separator } from "@decocms/ui/components/separator.tsx";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
 import { CmsHeaderActions } from "@/components/thread/github/cms-header-actions";
@@ -25,14 +26,21 @@ function SiteEditorActions() {
       <div className="flex min-w-0 shrink items-center justify-end">
         <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
       </div>
-      <div className="flex shrink-0 items-center justify-end gap-1">
-        {agentShowsGithubHeaderActions(entity) &&
-          (runtime === "cms" ? (
-            <CmsHeaderActions virtualMcpId={entity.id} />
-          ) : (
-            <HeaderActions virtualMcpId={entity.id} />
-          ))}
-      </div>
+      {agentShowsGithubHeaderActions(entity) && (
+        <>
+          <Separator
+            orientation="vertical"
+            className="mx-1 data-[orientation=vertical]:h-4"
+          />
+          <div className="flex shrink-0 items-center justify-end gap-1">
+            {runtime === "cms" ? (
+              <CmsHeaderActions virtualMcpId={entity.id} />
+            ) : (
+              <HeaderActions virtualMcpId={entity.id} />
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }

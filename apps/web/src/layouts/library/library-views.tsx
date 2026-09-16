@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
+import { type LibraryFileView, matchesLibraryFileView } from "./file-view";
 import { ChevronRight, Stars01, Upload01, Zap } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
@@ -25,7 +26,6 @@ import {
   FileCard,
   FolderCard,
   type PublicState,
-  RecentFileCard,
   SkillCard,
   timeAgo,
 } from "./cards";
@@ -158,6 +158,32 @@ function CardsGrid({ children }: { children: React.ReactNode }) {
       <div className="grid grid-cols-1 gap-3 @[440px]:grid-cols-2 @[660px]:grid-cols-3">
         {children}
       </div>
+    </div>
+  );
+}
+
+function FileEntries({
+  view,
+  children,
+}: {
+  view: LibraryFileView;
+  children: React.ReactNode;
+}) {
+  const t = useT();
+  if (view === "media") return <CardsGrid>{children}</CardsGrid>;
+  return (
+    <div className="@container/library-files min-w-0">
+      <div className="flex items-center gap-3 border-b border-border/60 px-3 pb-2 text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1">{t("library.library.name")}</span>
+        <span className="hidden w-32 shrink-0 @min-xl/library-files:block">
+          {t("library.library.type")}
+        </span>
+        <span className="w-20 shrink-0 text-right">
+          {t("library.library.updated")}
+        </span>
+        <span className="w-6" />
+      </div>
+      {children}
     </div>
   );
 }
@@ -317,6 +343,7 @@ export function SearchResultsView({
   query,
   scope,
   stale,
+  fileView,
   onOpenFile,
   onShare,
   onDelete,
@@ -326,6 +353,7 @@ export function SearchResultsView({
   scope?: OrgFsSearchScope;
   /** The input is ahead of `query` (still inside the debounce window). */
   stale: boolean;
+  fileView: LibraryFileView;
   onOpenFile: (previewPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
@@ -346,7 +374,9 @@ export function SearchResultsView({
     });
 
   if (search.isPending) return <GridSkeleton rows={2} />;
-  const results = search.data ?? [];
+  const results = (search.data ?? []).filter((entry) =>
+    matchesLibraryFileView(entry.path, fileView),
+  );
   if (results.length === 0) {
     return (
       <EmptyNote>{t("library.libraryViews.noFilesMatch", { query })}</EmptyNote>
@@ -363,12 +393,14 @@ export function SearchResultsView({
       <SectionLabel>
         {t("library.libraryViews.searchResults", { count: results.length })}
       </SectionLabel>
-      <CardsGrid>
+      <FileEntries view={fileView}>
         {results.map((e) => {
           // Hits from the shared public sets are read-only: no share/delete.
           const readOnly = publicSetOf(e.volume) !== null;
           return (
             <FileCard
+              layout={fileView === "media" ? "media" : "row"}
+              size={e.size}
               key={`${e.volume}/${e.path}`}
               filename={basename(e.path)}
               updatedAt={e.updatedAt}
@@ -386,7 +418,7 @@ export function SearchResultsView({
             />
           );
         })}
-      </CardsGrid>
+      </FileEntries>
     </div>
   );
 }
@@ -397,10 +429,12 @@ export function SearchResultsView({
  * volume, so it would be a lie inside any single folder.
  */
 function RecentlyAdded({
+  fileView,
   onOpenFile,
   onShare,
   onDelete,
 }: {
+  fileView: LibraryFileView;
   onOpenFile: (previewPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
@@ -428,15 +462,18 @@ function RecentlyAdded({
       </div>
     );
   }
-  const recentlyAdded = (recent.data ?? []).slice(0, RECENTLY_ADDED_COUNT);
+  const recentlyAdded = (recent.data ?? [])
+    .filter((entry) => matchesLibraryFileView(entry.path, fileView))
+    .slice(0, RECENTLY_ADDED_COUNT);
   if (recentlyAdded.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-3">
       <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
-      <CardsGrid>
+      <FileEntries view={fileView}>
         {recentlyAdded.map((e) => (
-          <RecentFileCard
+          <FileCard
+            layout={fileView === "media" ? "media" : "row"}
             key={`${e.volume}/${e.path}`}
             filename={basename(e.path)}
             updatedAt={e.updatedAt}
@@ -451,7 +488,7 @@ function RecentlyAdded({
             }
           />
         ))}
-      </CardsGrid>
+      </FileEntries>
     </div>
   );
 }
@@ -496,6 +533,7 @@ export function PublicSetsView({
 export function VolumeView({
   location,
   onOpenDir,
+  fileView,
   onOpenFile,
   onOpenSkill,
   onOpenBrand,
@@ -507,6 +545,7 @@ export function VolumeView({
 }: {
   location: LibraryLocation;
   onOpenDir: (path: string) => void;
+  fileView: LibraryFileView;
   onOpenFile: (previewPath: string) => void;
   onOpenSkill: (skillPath: string) => void;
   onOpenBrand: (brandPath: string) => void;
@@ -571,7 +610,9 @@ export function VolumeView({
   const dirs = entries.filter(
     (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand,
   );
-  const files = entries.filter((e) => e.kind === "file");
+  const files = entries.filter(
+    (e) => e.kind === "file" && matchesLibraryFileView(e.path, fileView),
+  );
 
   // An empty home root still has the system folders and the recent feed to show.
   if (entries.length === 0 && !location.isHomeRoot) {
@@ -686,9 +727,11 @@ export function VolumeView({
       {files.length > 0 && (
         <div className="flex flex-col gap-3">
           <SectionLabel>{t("library.libraryViews.files")}</SectionLabel>
-          <CardsGrid>
+          <FileEntries view={fileView}>
             {files.map((e) => (
               <FileCard
+                layout={fileView === "media" ? "media" : "row"}
+                size={e.size}
                 key={e.path}
                 filename={basename(e.path)}
                 updatedAt={e.updatedAt}
@@ -704,11 +747,15 @@ export function VolumeView({
                 })}
               />
             ))}
-          </CardsGrid>
+          </FileEntries>
         </div>
+      )}
+      {fileView !== "all" && files.length === 0 && (
+        <EmptyNote>{t("library.library.noFilesInView")}</EmptyNote>
       )}
       {location.isHomeRoot && (
         <RecentlyAdded
+          fileView={fileView}
           onOpenFile={onOpenFile}
           onShare={onShare}
           onDelete={onDelete}

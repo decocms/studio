@@ -26,7 +26,7 @@ export interface PanelPayload {
   tool?: string;
   automation?: string;
   main?: string;
-  /** `settings` — the open settings section (absent = its index). */
+  /** `settings` — the selected settings tab (absent = General). */
   section?: string;
 }
 

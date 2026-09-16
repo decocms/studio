@@ -61,9 +61,7 @@ function isSystemTabId(tabId: string): tabId is SystemTabId {
   return tabId in SYSTEM_TAB_ICONS;
 }
 
-/** Surface tabs that render label-only, no leading glyph. Preview and Content
- *  read fine bare next to the icon-bearing Code tab, and their labels never
- *  collapse (see HeaderTabButton), so the button is never left empty. */
+/** Preview and Content identify themselves by their always-visible labels. */
 const ICONLESS_SYSTEM_TABS = new Set<SystemTabId>(["site-editor", "content"]);
 
 type ConnectionLike = { id: string; icon: string | null };

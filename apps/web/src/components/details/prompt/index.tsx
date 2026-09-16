@@ -19,7 +19,7 @@ import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
 import { DetailPanel } from "../detail-panel";
-import { Panel } from "@/components/panel";
+import { Page } from "@/components/page";
 import { SaveActions } from "@/components/save-actions";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -211,32 +211,23 @@ function PromptDetailContent({
 
   return (
     <DetailPanel>
-      <Panel.Topbar.Center.Portal>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate">
-            {prompt.title}
-          </span>
-          {prompt.description ? (
-            <>
-              <span className="text-xs text-muted-foreground font-normal">
-                •
-              </span>
-              <span className="text-xs text-muted-foreground font-normal truncate min-w-0 max-w-[20ch]">
-                {prompt.description}
-              </span>
-            </>
-          ) : null}
-        </div>
-      </Panel.Topbar.Center.Portal>
-
-      <Panel.Topbar.Right.Portal>
-        <SaveActions
-          onSave={() => void saveAndLock()}
-          onUndo={resetToInitial}
-          isDirty={form.formState.isDirty}
-          isSaving={isSaving}
-        />
-      </Panel.Topbar.Right.Portal>
+      <Page.Title
+        actions={
+          <SaveActions
+            onSave={() => void saveAndLock()}
+            onUndo={resetToInitial}
+            isDirty={form.formState.isDirty}
+            isSaving={isSaving}
+          />
+        }
+      >
+        {prompt.title}
+      </Page.Title>
+      {prompt.description && (
+        <p className="px-4 py-3 text-sm text-muted-foreground">
+          {prompt.description}
+        </p>
+      )}
 
       <div className="h-full">
         <PromptEditForm form={form} />

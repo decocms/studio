@@ -1,3 +1,4 @@
+import { Page } from "@/components/page";
 /**
  * Settings → Repositories — the org's first-class git integration.
  *
@@ -353,10 +354,12 @@ function RepositoriesSection({
       description={t("settings.repositories.reposDescription")}
       actions={
         rows.length > 0 ? (
-          <Button size="sm" onClick={onAdd}>
-            <Plus size={14} />
-            {t("settings.repositories.addRepository")}
-          </Button>
+          <Page.Actions>
+            <Button variant="brand" size="sm" onClick={onAdd}>
+              <Plus size={14} />
+              {t("settings.repositories.addRepository")}
+            </Button>
+          </Page.Actions>
         ) : null
       }
     >
@@ -375,10 +378,12 @@ function RepositoriesSection({
               {t("settings.repositories.reposEmptyDescription")}
             </p>
           </div>
-          <Button size="sm" onClick={onAdd}>
-            <Plus size={14} />
-            {t("settings.repositories.addRepository")}
-          </Button>
+          <Page.Actions>
+            <Button variant="brand" size="sm" onClick={onAdd}>
+              <Plus size={14} />
+              {t("settings.repositories.addRepository")}
+            </Button>
+          </Page.Actions>
         </div>
       ) : (
         <section

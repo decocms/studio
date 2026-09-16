@@ -132,7 +132,7 @@ export function SidebarBackRow({
   onSelect?: () => void;
 }) {
   return (
-    <div className="-mx-2 border-b border-sidebar-border px-2 py-2">
+    <div className="pt-3 pb-1">
       <SidebarMenu className="shrink-0">
         <SidebarNavRow
           icon={<ArrowLeft size={16} />}

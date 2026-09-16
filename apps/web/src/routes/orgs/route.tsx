@@ -2,14 +2,12 @@ import { Outlet } from "@tanstack/react-router";
 import { Layout } from "@/components/layout";
 import { OrgNoticeBanner } from "@/components/org-notice-banner";
 import { StudioSidebar, StudioSidebarMobile } from "@/components/sidebar";
-import { useInSettings } from "@/hooks/use-in-settings";
 import { useStatusSounds } from "@/hooks/use-status-sounds";
 import { useCheckoutReturn } from "@/hooks/use-checkout-return";
 import { useProjectContext } from "@/sdk";
 
 /** Stays mounted when navigating between organization and project destinations. */
 export default function OrgRoute() {
-  const inSettings = useInSettings();
   const { org } = useProjectContext();
   useStatusSounds(org.slug);
   // Stripe's return lands somewhere under the org, not always on Billing,
@@ -18,7 +16,7 @@ export default function OrgRoute() {
   useCheckoutReturn(org.id);
 
   return (
-    <Layout expandedSidebar={inSettings} notice={<OrgNoticeBanner />}>
+    <Layout notice={<OrgNoticeBanner />}>
       <Layout.Sidebar
         renderMobile={({ onClose }) => (
           <StudioSidebarMobile onClose={onClose} />

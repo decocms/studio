@@ -33,19 +33,17 @@ test.describe("shared application layout", () => {
       .toBeGreaterThan(initialWidth + 40);
     const chosenWidth = (await sidebar.boundingBox())!.width;
 
-    await sidebar.getByRole("button", { name: "Toggle sidebar" }).click();
+    await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
     await expect(sidebar).toHaveAttribute("data-state", "collapsed");
     await sidebar.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/${orgSlug}/settings/general$`));
     await expect(
       page.getByRole("heading", { name: "Organization", exact: true }),
     ).toBeVisible();
-    await expect(sidebar).toHaveAttribute("data-state", "expanded");
-    await expect
-      .poll(async () =>
-        Math.abs((await sidebar.boundingBox())!.width - chosenWidth),
-      )
-      .toBeLessThan(2);
+    await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+    await expect(
+      sidebar.getByRole("button", { name: "Open chat" }),
+    ).toBeVisible();
     expect(
       await originalSidebar!.evaluate((element) => element.isConnected),
     ).toBe(true);
@@ -66,7 +64,7 @@ test.describe("shared application layout", () => {
       await originalFrame!.evaluate((element) => element.isConnected),
     ).toBe(true);
 
-    await sidebar.getByRole("button", { name: "Toggle sidebar" }).click();
+    await sidebar.getByRole("button", { name: "Expand sidebar" }).click();
     await expect(sidebar).toHaveAttribute("data-state", "expanded");
     await expect
       .poll(async () =>
@@ -127,7 +125,9 @@ test.describe("shared application layout", () => {
     await expect(navigation).toBeHidden();
     await expect(page).toHaveURL(new RegExp(`/${orgSlug}/home$`));
     await expect(
-      page.getByRole("button", { name: "Switch to Chat", exact: true }),
+      page
+        .getByTestId("page-header")
+        .getByRole("heading", { name: "Home", exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Toggle sidebar", exact: true }),

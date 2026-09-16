@@ -1,3 +1,5 @@
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 
@@ -12,6 +14,7 @@ export interface CollectionTabsProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
   className?: string;
+  placement?: "inline" | "page";
 }
 
 export function CollectionTabs({
@@ -19,27 +22,17 @@ export function CollectionTabs({
   activeTab,
   onTabChange,
   className,
+  placement = "inline",
 }: CollectionTabsProps) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2 overflow-x-auto no-scrollbar",
-        className,
-      )}
-    >
+  const content = (
+    <Page.Tabs className={className}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
-          <button
+          <Page.Tab
             key={tab.id}
-            type="button"
+            active={isActive}
             onClick={() => onTabChange(tab.id)}
-            className={cn(
-              "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex gap-1.5 items-center",
-              isActive && "bg-accent border-border text-foreground",
-              !isActive &&
-                "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
-            )}
           >
             {tab.label}
             {tab.count !== undefined && (
@@ -55,9 +48,16 @@ export function CollectionTabs({
                 {tab.count}
               </Badge>
             )}
-          </button>
+          </Page.Tab>
         );
       })}
-    </div>
+    </Page.Tabs>
+  );
+  return placement === "page" ? (
+    <Panel.Toolbar.Left.Portal fallback={content}>
+      {content}
+    </Panel.Toolbar.Left.Portal>
+  ) : (
+    content
   );
 }

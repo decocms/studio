@@ -61,9 +61,16 @@ test.describe("chat layout composition", () => {
       .toBeGreaterThan(initialWidth + 50);
     const resizedWidth = (await chat.boundingBox())!.width;
 
-    await page.getByRole("button", { name: "Hide chat", exact: true }).click();
+    const sidebar = page.locator('[data-slot="sidebar"]');
+    await expect(
+      sidebar.getByRole("button", { name: "Close chat", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page
+      .getByTestId("side-panel")
+      .getByRole("button", { name: "Close chat", exact: true })
+      .click();
     await expect(page.getByTestId("chat-panel")).toHaveCount(0);
-    await page.getByRole("button", { name: "Show chat", exact: true }).click();
+    await page.getByRole("button", { name: "Open chat", exact: true }).click();
     await expect(page.getByTestId("chat-panel")).toBeVisible();
     await expect
       .poll(async () =>
@@ -80,7 +87,10 @@ test.describe("chat layout composition", () => {
     ).toBe(true);
     expect(new URL(page.url()).pathname).toBe(path);
 
-    const sidebar = page.locator('[data-slot="sidebar"]');
+    await page
+      .getByRole("navigation", { name: "Project settings sections" })
+      .getByRole("link", { name: "Views", exact: true })
+      .click();
     await page.getByRole("button", { name: /^Automations\b/ }).click();
     await expect(page).toHaveURL(
       (url) =>
@@ -144,7 +154,9 @@ test.describe("chat layout composition", () => {
     });
     await expect(page.getByTestId("chat-panel")).toBeVisible();
     await expect(
-      panel.getByRole("button", { name: "Hide chat" }),
+      page
+        .getByTestId("page-header")
+        .getByRole("heading", { name: "Automations", exact: true }),
     ).toBeVisible();
     expect(pageErrors).toEqual([]);
 
@@ -169,28 +181,30 @@ test.describe("chat layout composition", () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/${orgSlug}/home`);
-    const view = page.getByRole("button", {
-      name: "Switch to Chat",
+    const toggle = page.getByRole("button", {
+      name: "Toggle sidebar",
       exact: true,
     });
-    await expect(view).toBeVisible({ timeout: 90_000 });
-
+    await expect(page.getByTestId("page-header")).toBeVisible({
+      timeout: 90_000,
+    });
     for (const width of [1440, 390, 1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      if (width > 768) {
-        await expect(view).toHaveCount(0);
-      } else {
-        await expect(view).toHaveCount(1);
-        await expect(view).toBeVisible();
-      }
+      if (width > 768) await expect(toggle).toBeHidden();
+      else await expect(toggle).toBeVisible();
+      await expect(
+        page.locator('[data-testid="page-header"]:visible'),
+      ).toHaveCount(1);
     }
-
     const topbar = page.locator('[data-slot="panel-topbar"]:visible');
     await expect(topbar).toHaveCount(1);
     await expect(topbar).toHaveCSS("position", "relative");
     await expect(topbar).toHaveCSS("z-index", "10");
     const headerBounds = (await topbar.boundingBox())!;
-    const bodyBounds = (await page.getByTestId("main-panel").boundingBox())!;
+    const bodyBounds = (await page
+      .getByTestId("main-panel")
+      .locator('[data-slot="panel-content"]')
+      .boundingBox())!;
     expect(bodyBounds.y).toBeGreaterThanOrEqual(
       headerBounds.y + headerBounds.height,
     );
@@ -198,7 +212,11 @@ test.describe("chat layout composition", () => {
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(390);
 
-    await view.click();
+    await toggle.click();
+    await page
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("button", { name: "Open chat", exact: true })
+      .click();
     await expect(page.getByTestId("chat-panel")).toBeVisible();
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
     await page
@@ -206,7 +224,33 @@ test.describe("chat layout composition", () => {
       .click();
     await expect(page.getByTestId("main-panel")).toBeVisible();
     await expect(page.getByTestId("chat-panel")).toHaveCount(0);
-    await expect(view).toHaveCount(1);
+    await expect(toggle).toBeVisible();
+    const navigation = page.getByRole("dialog", {
+      name: "Navigation",
+      exact: true,
+    });
+    await toggle.click();
+    await expect(
+      navigation.getByRole("button", { name: "Open chat", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await navigation
+      .getByRole("button", { name: "Open chat", exact: true })
+      .click();
+    await expect(page.getByTestId("chat-panel")).toBeVisible();
+    await toggle.click();
+    const closeThread = navigation.getByRole("button", {
+      name: "Close chat",
+      exact: true,
+    });
+    await expect(closeThread).toHaveAttribute("aria-pressed", "true");
+    await expect(closeThread).not.toHaveCSS(
+      "background-color",
+      "rgba(0, 0, 0, 0)",
+    );
+    await closeThread.click();
+    await expect(navigation).toBeHidden();
+    await expect(page.getByTestId("chat-panel")).toHaveCount(0);
+    await expect(page.getByTestId("main-panel")).toBeVisible();
   });
 
   test("settings content scrolls inside the panel while the sidebar stays fixed", async ({

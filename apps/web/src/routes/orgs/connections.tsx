@@ -978,7 +978,7 @@ function OrgMcpsContent() {
 
   const ctaButton = canManage ? (
     <div className="flex items-center gap-2">
-      <Button variant="outline" onClick={openCreateDialog}>
+      <Button variant="brand" size="sm" onClick={openCreateDialog}>
         <Plus size={14} className="sm:hidden" />
         <span className="hidden sm:inline">
           {t("orgs.connections.customConnection")}
@@ -1392,7 +1392,9 @@ function OrgMcpsContent() {
           {/* Title + Toolbar */}
           <Page.Container>
             <div className="flex flex-col gap-6">
-              <Page.Title>{t("orgs.connections.pageTitle")}</Page.Title>
+              <Page.Title actions={ctaButton}>
+                {t("orgs.connections.pageTitle")}
+              </Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <SearchInput
@@ -1494,9 +1496,9 @@ function OrgMcpsContent() {
                     ]}
                   />
                 </div>
-                {ctaButton}
               </div>
               <CollectionTabs
+                placement="page"
                 tabs={[
                   { id: "all", label: t("orgs.connections.tabAll") },
                   {

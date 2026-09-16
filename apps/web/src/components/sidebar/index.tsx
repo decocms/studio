@@ -14,6 +14,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useScopeId } from "@/hooks/use-project-scope";
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
@@ -65,19 +66,25 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useT();
+  const scopeId = useScopeId();
+  const collapsed = useSidebarCollapsed();
   return (
     <ErrorBoundary>
-      <div className="flex flex-col gap-1">
-        <NavDestinationsContent onNavigate={onNavigate} />
-        <ProjectNav onNavigate={onNavigate} />
-        {/* Settings closes the DESTINATIONS, above the project list. The list
-            grows with the org and nests a few rows under each entry, so a row
-            pinned after it drifts further from the fixed nav it belongs to on
-            every project added — and lands at the bottom of a scroll on a big
-            org. Everything above this rule is a place; everything below is the
-            org's map. */}
-        <NavSettingsRow onNavigate={onNavigate} />
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <NavDestinationsContent onNavigate={onNavigate} />
+          <ProjectNav onNavigate={onNavigate} />
+        </div>
         <SidebarProjectsSection onNavigate={onNavigate} />
+        <div className="flex flex-col gap-2">
+          {!scopeId && !collapsed && (
+            <p className="px-2 text-xs font-medium text-muted-foreground">
+              {t("sidebar.organization.heading")}
+            </p>
+          )}
+          <NavSettingsRow onNavigate={onNavigate} />
+        </div>
       </div>
     </ErrorBoundary>
   );

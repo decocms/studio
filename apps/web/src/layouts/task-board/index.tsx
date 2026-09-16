@@ -1,3 +1,5 @@
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
 /**
  * Task board — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
@@ -1136,22 +1138,12 @@ export function TaskBoardPage() {
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      {/* Header — capped + centered to the same width as the board content so
-        they line up; content-capped, not scroll-capped. */}
-      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-4 px-4 pt-6 sm:px-8 sm:pt-8">
-        <h1 className="text-xl font-medium text-foreground">
-          {t("taskBoard.taskBoard.tasksTitle")}
-        </h1>
-
-        {/* Commerce orgs: a persistent unlock CTA that self-hides once the
-          diagnostic is paid. The board stays usable in the meantime. */}
-
-        {/* Toolbar — filters on the left (inline bar on desktop, a single
-          drawer button on mobile), view toggle + New task on the right. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {items.length > 0 && (
+      <Page.Title>{t("taskBoard.taskBoard.tasksTitle")}</Page.Title>
+      <Page.Actions
+        secondary={
+          items.length > 0 && (
             <>
-              <div className="sm:hidden">
+              <div className="@min-4xl/panel-header:hidden">
                 <TaskFiltersDrawer
                   filters={filters}
                   members={members}
@@ -1161,7 +1153,7 @@ export function TaskBoardPage() {
                   onOpenBoardSettings={openBoardSettings}
                 />
               </div>
-              <div className="hidden sm:block">
+              <div className="hidden @min-4xl/panel-header:block">
                 <TaskFiltersBar
                   filters={filters}
                   members={members}
@@ -1172,38 +1164,41 @@ export function TaskBoardPage() {
                 />
               </div>
             </>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <div className="inline-flex rounded-lg bg-muted p-0.5">
-              <LayoutToggle
-                active={layout === "list"}
-                onClick={() => {
-                  setLayout("list");
-                  // Selection is a board-only concept (List has no way to see
-                  // or change which cards are selected) — leaving it wedges
-                  // the floating bulk-action bar on-screen, operating on a
-                  // selection the user can no longer see.
-                  clearSelection();
-                }}
-                icon={List}
-                label={t("common.taskBoard.listView")}
-              />
-              <LayoutToggle
-                active={layout === "board"}
-                onClick={() => setLayout("board")}
-                icon={Columns03}
-                label={t("common.taskBoard.boardView")}
-              />
-            </div>
-
-            <Button size="sm" onClick={openCreate}>
-              <Plus size={16} />
-              {t("taskBoard.taskBoard.newTask")}
-            </Button>
-          </div>
-        </div>
-      </div>
+          )
+        }
+      >
+        <Button variant="brand" size="sm" onClick={openCreate}>
+          <Plus size={16} />
+          {t("taskBoard.taskBoard.newTask")}
+        </Button>
+      </Page.Actions>
+      <Panel.Toolbar.Left.Portal>
+        <Page.Tabs>
+          <Page.Tab
+            active={layout === "list"}
+            aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+              label: t("common.taskBoard.listView"),
+            })}
+            onClick={() => {
+              setLayout("list");
+              clearSelection();
+            }}
+          >
+            <List size={14} />
+            {t("common.taskBoard.listView")}
+          </Page.Tab>
+          <Page.Tab
+            active={layout === "board"}
+            aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+              label: t("common.taskBoard.boardView"),
+            })}
+            onClick={() => setLayout("board")}
+          >
+            <Columns03 size={14} />
+            {t("common.taskBoard.boardView")}
+          </Page.Tab>
+        </Page.Tabs>
+      </Panel.Toolbar.Left.Portal>
 
       {items.length === 0 ? (
         <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
@@ -1740,37 +1735,6 @@ function SelectionBar({
         </button>
       </div>
     </div>
-  );
-}
-
-function LayoutToggle({
-  active,
-  onClick,
-  icon: Icon,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: typeof List;
-  label: string;
-}) {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", { label })}
-      aria-pressed={active}
-      className={cn(
-        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      <Icon size={14} />
-      {label}
-    </button>
   );
 }
 

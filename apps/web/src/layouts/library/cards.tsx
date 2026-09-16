@@ -407,6 +407,8 @@ export function FolderCard({
 }
 
 export function FileCard({
+  layout = "card",
+  size = 0,
   filename,
   updatedAt,
   downloadUrl,
@@ -419,6 +421,8 @@ export function FileCard({
   onDragStart,
   onContextMenu,
 }: {
+  layout?: "card" | "row" | "media";
+  size?: number;
   filename: string;
   updatedAt: string;
   downloadUrl: string;
@@ -439,16 +443,31 @@ export function FileCard({
       draggable={draggable}
       onDragStart={onDragStart}
       onContextMenu={onContextMenu}
+      className={cn(
+        layout === "row" &&
+          "flex-row items-center gap-3 rounded-none border-0 border-b border-border/60 px-3 py-3",
+      )}
     >
-      <CardHeader
-        icon={
-          <FileTypeIcon filename={filename} className="h-8 w-6.5 shrink-0" />
-        }
-        name={filename}
-        meta={timeAgo(updatedAt)}
-        subtitle={subtitle ?? describeFileType(filename)}
-        publicState={publicState}
-        actions={
+      {layout === "row" ? (
+        <>
+          <FileTypeIcon filename={filename} className="h-7 w-6 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span className="truncate">{filename}</span>
+              {publicState && <PublicBadge state={publicState} t={t} />}
+            </div>
+            {subtitle && (
+              <p className="truncate text-xs text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <span className="hidden w-32 shrink-0 truncate text-xs text-muted-foreground @min-xl/library-files:block">
+            {describeFileType(filename)}
+          </span>
+          <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
+            {timeAgo(updatedAt)}
+          </span>
           <FileActions
             downloadUrl={downloadUrl}
             filename={filename}
@@ -456,9 +475,31 @@ export function FileCard({
             onDelete={onDelete}
             t={t}
           />
-        }
-        t={t}
-      />
+        </>
+      ) : (
+        <CardHeader
+          icon={
+            <FileTypeIcon filename={filename} className="h-8 w-6.5 shrink-0" />
+          }
+          name={filename}
+          meta={timeAgo(updatedAt)}
+          subtitle={subtitle ?? describeFileType(filename)}
+          publicState={publicState}
+          actions={
+            <FileActions
+              downloadUrl={downloadUrl}
+              filename={filename}
+              onShare={onShare}
+              onDelete={onDelete}
+              t={t}
+            />
+          }
+          t={t}
+        />
+      )}
+      {layout === "media" && (
+        <Thumb filename={filename} size={size} downloadUrl={downloadUrl} />
+      )}
     </CardShell>
   );
 }
@@ -756,52 +797,5 @@ function Thumb({
     <div className="aspect-[400/265] w-full overflow-hidden rounded-lg border border-border/60 bg-muted/30">
       {inner}
     </div>
-  );
-}
-
-/** "Recently added" card — file card plus a content thumbnail. */
-export function RecentFileCard(props: {
-  filename: string;
-  updatedAt: string;
-  size: number;
-  downloadUrl: string;
-  /** Overrides the file-type description (e.g. the containing folder). */
-  subtitle?: string;
-  publicState?: PublicState;
-  onOpen: () => void;
-  onShare?: () => void;
-  onDelete?: () => void;
-}) {
-  const t = useT();
-  return (
-    <CardShell onOpen={props.onOpen}>
-      <CardHeader
-        icon={
-          <FileTypeIcon
-            filename={props.filename}
-            className="h-8 w-6.5 shrink-0"
-          />
-        }
-        name={props.filename}
-        meta={timeAgo(props.updatedAt)}
-        subtitle={props.subtitle ?? describeFileType(props.filename)}
-        publicState={props.publicState}
-        actions={
-          <FileActions
-            downloadUrl={props.downloadUrl}
-            filename={props.filename}
-            onShare={props.onShare}
-            onDelete={props.onDelete}
-            t={t}
-          />
-        }
-        t={t}
-      />
-      <Thumb
-        filename={props.filename}
-        size={props.size}
-        downloadUrl={props.downloadUrl}
-      />
-    </CardShell>
   );
 }

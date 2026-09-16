@@ -1,4 +1,4 @@
-/** ONE Settings row, two targets, always the sidebar's last element.
+/** Settings targets the current scope.
  *  Scoped to a project it opens THAT project's settings panel; unscoped, the
  *  org's settings tree. It is a sibling of the two nav lists rather than a
  *  member of either, because "last" is a property of the list's ORDER — owned

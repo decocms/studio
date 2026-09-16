@@ -1,0 +1,16 @@
+export const page = {
+  "page.closeBlocks": "Close blocks",
+  "page.overview": "Overview",
+  "page.app": "App",
+  "page.view": "View",
+  "page.file": "File",
+  "page.document": "Document",
+  "page.item": "Item",
+  "page.breadcrumbs": "Breadcrumbs",
+  "page.views": "Page views",
+  "page.openThread": "Open chat",
+  "page.closeThread": "Close chat",
+  "page.collapseSidebar": "Collapse sidebar",
+  "page.expandSidebar": "Expand sidebar",
+  "page.blocks": "Blocks",
+} as const;

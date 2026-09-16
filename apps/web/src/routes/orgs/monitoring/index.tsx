@@ -736,6 +736,7 @@ function MonitoringDashboardContent({
           <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
           <div className="flex items-center justify-between gap-4">
             <CollectionTabs
+              placement="page"
               tabs={tabs}
               activeTab={tab}
               onTabChange={(tabId) =>
@@ -1069,6 +1070,7 @@ export default function MonitoringDashboard() {
                   <div className="flex flex-col gap-4">
                     <Page.Title>{t("orgs.monitoring.title")}</Page.Title>
                     <CollectionTabs
+                      placement="page"
                       tabs={[
                         {
                           id: "overview",

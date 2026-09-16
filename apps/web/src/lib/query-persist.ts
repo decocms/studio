@@ -163,8 +163,17 @@ export function persistQueryClient(queryClient: QueryClient): () => void {
     timer = setTimeout(write, WRITE_DEBOUNCE_MS);
   });
 
+  // A reload within the debounce window must hydrate the latest saved values.
+  const flushPendingWrite = () => {
+    if (timer == null) return;
+    clearTimeout(timer);
+    write();
+  };
+  window.addEventListener("pagehide", flushPendingWrite);
+
   return () => {
     if (timer != null) clearTimeout(timer);
+    window.removeEventListener("pagehide", flushPendingWrite);
     unsubscribe();
   };
 }

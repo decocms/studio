@@ -469,7 +469,7 @@ The web UI (`apps/web/src`) is internationalized by a zero-dependency module at
 
 - `Layout` owns the persistent application frame and its `Sidebar` / `Content` regions. Organization and settings routes share this frame; keep thread and runtime providers scoped to the route branch that uses them.
 - `ChatLayout` adds optional chat placement, visibility, and resizing through `ChatLayout.Thread` / `ChatLayout.Content`. Its context and `useChatLayout()` expose layout state; read agent and thread data from their domain providers and SDK hooks.
-- `Panel` owns a surface and `Panel.Topbar.Left/Center/Right` controls. Deep feature controls use the corresponding `.Target` / `.Portal` pair, scoped to the nearest panel.
+- `Panel` owns the surface, `Topbar`, and `Toolbar` slots. `Page.Header` composes the shared compact title/breadcrumb/action row; `RoutePageHeader` supplies router `staticData.pageTitle` as a loading-safe fallback. Feature `Page.Title` / `Page.Actions` contribute via portals. View tabs use `Page.Tabs` / `Page.Tab` in `Panel.Toolbar.Left`; path selectors and tools use `Panel.Toolbar.Center/Right`. Deep controls use `.Target` / `.Portal`, scoped to the nearest panel.
 - Route components use `*Route` and compose their content directly; feature screens may use `*Page`. Chat destinations use `ChatLayout.Content` with their own actions and drawer; organization Settings composes `Panel`. Keep suspending feature reads below the content boundary.
 - `Page.Content` owns document scrolling; `Page.Container` owns width and spacing; `Page.Title` owns the heading. Canvas editors manage their own inner panes inside `Panel.Content`.
 - See [the architecture guide](apps/web/docs/component-architecture.md) for examples and the migration map.

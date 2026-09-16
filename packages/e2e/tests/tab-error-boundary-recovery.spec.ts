@@ -77,8 +77,8 @@ test.describe("tab error boundary recovers on tab switch", () => {
     });
     await expect(
       page
-        .getByTestId("main-panel")
-        .getByRole("button", { name: "Hide panel", exact: true }),
+        .getByTestId("page-header")
+        .getByRole("heading", { name: "Settings", exact: true }),
     ).toBeVisible();
 
     // Switch to the preview tab — renders cleanly, no leftover error.

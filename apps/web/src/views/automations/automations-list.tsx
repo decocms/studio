@@ -68,7 +68,12 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const newButton = (
-    <Button size="sm" onClick={handleNew} disabled={create.isPending}>
+    <Button
+      variant="brand"
+      size="sm"
+      onClick={handleNew}
+      disabled={create.isPending}
+    >
       <Plus size={14} />
       {t("automations.automationsList.newAutomation")}
     </Button>
@@ -79,7 +84,9 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
       <Page.Content>
         <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title>{t("automations.automationsList.title")}</Page.Title>
+            <Page.Title actions={newButton}>
+              {t("automations.automationsList.title")}
+            </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {automations.length > 0 && (
                 <SearchInput
@@ -91,7 +98,6 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                   className="w-full md:w-[375px]"
                 />
               )}
-              {newButton}
             </div>
           </div>
 
@@ -101,7 +107,6 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                 image={<Zap size={48} className="text-muted-foreground" />}
                 title={t("automations.automationsList.emptyTitle")}
                 description={t("automations.automationsList.emptyDescription")}
-                actions={newButton}
               />
             </div>
           ) : filtered.length === 0 ? (

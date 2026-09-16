@@ -1,3 +1,4 @@
+import { Page } from "@/components/page";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
@@ -746,11 +747,15 @@ function OrgMembersContent() {
   ];
 
   const ctaButton = (
-    <div className="flex items-center gap-2">
+    <Page.Actions>
       <InviteMemberDialog
-        trigger={<Button>{t("orgs.members.inviteMember")}</Button>}
+        trigger={
+          <Button size="sm" variant="brand">
+            {t("orgs.members.inviteMember")}
+          </Button>
+        }
       />
-    </div>
+    </Page.Actions>
   );
 
   // Build unified rows for table

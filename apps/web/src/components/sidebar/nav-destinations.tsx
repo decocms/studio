@@ -233,7 +233,7 @@ function useNavDestinations(): NavDestination[] {
   );
 }
 
-/** The destination list. New chat lives in the panel header (NewChatCrumb) and
+/** The destination list. Chat opens from the sidebar header, and
  *  chat search lives in the chat panel's threads menu, so this renders
  *  destinations only. Collapsed, it becomes an icon rail — `SidebarNavRow`
  *  supplies the tooltips and the accessible names. */

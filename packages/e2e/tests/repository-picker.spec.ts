@@ -8,7 +8,7 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 720 });
     await page.goto(`/${orgSlug}/home`);
     await page
-      .getByRole("button", { name: "Import repository", exact: true })
+      .getByRole("button", { name: "New Project", exact: true })
       .click();
     const dialog = page.getByRole("dialog");
     // One entry point, not a button per provider-and-method combination.
@@ -86,10 +86,11 @@ test("repository management shares the searchable picker and lives outside Stora
     await callSelfMcpTool(page.request, orgSlug, "REPOSITORY_LINK", { url });
   }
   await page.goto(`/${orgSlug}/settings/repositories`);
-  await expect(page.locator('[data-slot="settings-heading"]')).toHaveText(
-    "Repositories",
-    { timeout: 15000 },
-  );
+  await expect(
+    page
+      .getByTestId("page-header")
+      .getByRole("heading", { name: "Repositories", exact: true }),
+  ).toBeVisible({ timeout: 15000 });
   await page
     .getByRole("button", { name: "Add repository", exact: true })
     .click();
@@ -130,9 +131,7 @@ test("home imports an already linked GitLab repository as an agent without a Git
     { url: "https://gitlab.com/example-group/nested/import-project" },
   );
   await page.goto(`/${orgSlug}/home`);
-  await page
-    .getByRole("button", { name: "Import repository", exact: true })
-    .click();
+  await page.getByRole("button", { name: "New Project", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: /example-group\/nested\/import-project/ })

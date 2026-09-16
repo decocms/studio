@@ -8,13 +8,16 @@
  * mounts, different framing. The breadcrumb is the only place the current
  * folder is named, which frees the header row for the search box.
  *
- * Search sits in that row and follows you: cross-volume at the home root,
+ * Search sits in the shared page toolbar and follows you: cross-volume at the home root,
  * narrowed to the current folder's subtree anywhere else. Browse location lives
  * in `?path=` and the open preview in `?preview=`, so both are linkable and
  * survive reload.
  */
 
 import { useRef, useState } from "react";
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
+import { type LibraryFileView } from "./file-view";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
@@ -88,6 +91,7 @@ export function LibraryPage({
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const search = useSearch({ strict: false }) as {
+    fileView?: LibraryFileView;
     path?: string;
     preview?: string;
     skill?: string;
@@ -95,6 +99,15 @@ export function LibraryPage({
   };
   // The home folder is the top of the tree, so a missing (or emptied) `?path=`
   // lands there rather than on a volumes listing.
+  const fileView = search.fileView ?? "all";
+  const setFileView = (view: LibraryFileView) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        fileView: view === "all" ? undefined : view,
+      }),
+    });
   const browsePath = search.path || HOME_MOUNT_PATH;
   const parsedLocation = parseLibraryPath(browsePath);
   // Synced-repo volumes are mirrors of their GitHub source: local writes would
@@ -400,89 +413,110 @@ export function LibraryPage({
           </div>
         </div>
       )}
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
-          {/* One header row: the breadcrumb names the location (no heading
-              repeating it), and the reclaimed space holds the search box. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-              <Breadcrumbs
-                segments={location.segments}
-                onNavigate={onOpenDir}
-              />
-            </div>
-            <div className="relative w-full shrink-0 sm:w-56">
-              <SearchLg
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setSearchText("");
-                }}
-                placeholder={searchPlaceholder}
-                className="h-9 rounded-xl pr-9 pl-9"
-              />
-              {searchText && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
-                  onClick={() => setSearchText("")}
-                  aria-label={t("library.library.clearSearch")}
-                >
-                  <XClose size={14} />
-                </Button>
-              )}
-            </div>
+      <Page.Title>{t("library.library.title")}</Page.Title>
+      <Page.Actions
+        secondary={
+          browseVolume ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setNewFolderOpen(true)}
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">
+                {t("library.library.newFolder")}
+              </span>
+              <span className="sr-only sm:hidden">
+                {t("library.library.newFolder")}
+              </span>
+            </Button>
+          ) : undefined
+        }
+      >
+        {location.readOnly ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Eye size={12} />
+            {t("library.library.readOnly")}
+          </span>
+        ) : (
+          <Button
+            variant="brand"
+            size="sm"
+            disabled={upload.isPending}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload01 size={14} />
+            {upload.isPending
+              ? t("library.library.uploading")
+              : t("library.library.uploadFile")}
+          </Button>
+        )}
+      </Page.Actions>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => void handleUpload(e.target.files)}
+      />
+      <Panel.Toolbar.Left.Portal>
+        <Page.Tabs>
+          {(["all", "documents", "media"] as const).map((view) => (
+            <Page.Tab
+              key={view}
+              active={fileView === view}
+              onClick={() => void setFileView(view)}
+            >
+              {t(`library.library.${view}`)}
+            </Page.Tab>
+          ))}
+        </Page.Tabs>
+      </Panel.Toolbar.Left.Portal>
+      <Panel.Toolbar.Right.Portal>
+        <div className="relative w-44 @min-3xl/panel-toolbar:w-56">
+          <SearchLg
+            size={14}
+            className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSearchText("");
+            }}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className="h-7 rounded-md border-transparent bg-transparent pr-8 pl-7 text-xs shadow-none hover:bg-accent/60 focus-visible:border-input"
+          />
+          {searchText && (
             <Button
               variant="ghost"
               size="icon"
-              onClick={refresh}
-              aria-label={t("library.library.refresh")}
+              className="absolute top-1/2 right-0.5 size-6 -translate-y-1/2"
+              onClick={() => setSearchText("")}
+              aria-label={t("library.library.clearSearch")}
             >
-              <RefreshCw01 size={14} />
+              <XClose size={12} />
             </Button>
-            {browseVolume && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setNewFolderOpen(true)}
-              >
-                <Plus size={14} />
-                {t("library.library.newFolder")}
-              </Button>
-            )}
-            {location.readOnly ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Eye size={12} />
-                {t("library.library.readOnly")}
-              </span>
-            ) : (
-              <Button
-                size="sm"
-                disabled={upload.isPending}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload01 size={14} />
-                {upload.isPending
-                  ? t("library.library.uploading")
-                  : t("library.library.uploadFile")}
-              </Button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => void handleUpload(e.target.files)}
-            />
-          </div>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={refresh}
+          aria-label={t("library.library.refresh")}
+        >
+          <RefreshCw01 size={14} />
+        </Button>
+      </Panel.Toolbar.Right.Portal>
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-6 md:px-8">
+          <Breadcrumbs segments={location.segments} onNavigate={onOpenDir} />
 
           {searchQuery ? (
             <SearchResultsView
+              fileView={fileView}
               query={searchQuery}
               scope={searchScope}
               stale={searchText.trim() !== searchQuery}
@@ -494,6 +528,7 @@ export function LibraryPage({
             <PublicSetsView onOpenDir={onOpenDir} />
           ) : (
             <VolumeView
+              fileView={fileView}
               // remount on volume switch so list state never bleeds across
               key={location.volume}
               location={location}

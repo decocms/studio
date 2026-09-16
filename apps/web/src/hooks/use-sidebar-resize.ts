@@ -5,7 +5,7 @@ import {
 } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
-const SIDEBAR_MIN_WIDTH = 240;
+const SIDEBAR_MIN_WIDTH = 224;
 const SIDEBAR_MAX_WIDTH = 400;
 const STORAGE_KEY = "sidebar.width";
 

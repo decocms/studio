@@ -1,24 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   defaultPreviewEditingMode,
-  isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
   toggleVisualEditingMode,
 } from "./editing-mode";
-
-describe("isBlocksEditingEnabled", () => {
-  test("keeps Blocks desktop-only within the shared content-editing gate", () => {
-    expect(
-      isBlocksEditingEnabled({ contentEditingEnabled: true, isMobile: false }),
-    ).toBe(true);
-    expect(
-      isBlocksEditingEnabled({ contentEditingEnabled: true, isMobile: true }),
-    ).toBe(false);
-    expect(
-      isBlocksEditingEnabled({ contentEditingEnabled: false, isMobile: false }),
-    ).toBe(false);
-  });
-});
 
 describe("toggleVisualEditingMode", () => {
   test("activates Visual from Preview or Blocks", () => {

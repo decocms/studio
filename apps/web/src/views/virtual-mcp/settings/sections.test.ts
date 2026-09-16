@@ -10,16 +10,16 @@ describe("project settings sections", () => {
   test("every key has a title and a description", () => {
     for (const key of PROJECT_SETTINGS_SECTION_KEYS) {
       expect(PROJECT_SETTINGS_SECTIONS[key].titleKey).toBeString();
+      expect(PROJECT_SETTINGS_SECTIONS[key].headingKey).toBeString();
       expect(PROJECT_SETTINGS_SECTIONS[key].descriptionKey).toBeString();
     }
   });
 
-  test("an unknown or absent value lands on the index, not a blank page", () => {
+  test("only known tabs are accepted, including Views", () => {
     expect(isProjectSettingsSectionKey(undefined)).toBe(false);
     expect(isProjectSettingsSectionKey("")).toBe(false);
     expect(isProjectSettingsSectionKey("layout")).toBe(false);
-    /** The views are listed on the index, so `views` is not a section. */
-    expect(isProjectSettingsSectionKey("views")).toBe(false);
+    expect(isProjectSettingsSectionKey("views")).toBe(true);
     expect(isProjectSettingsSectionKey("general")).toBe(true);
   });
 

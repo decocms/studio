@@ -527,12 +527,13 @@ test("main and chat toggles preserve the page and thread", async ({
   await page.goto(`${pathname}?thread=${threadId}&sidepanel=false`);
   await expect(mainPanel(page)).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
   await expect(chatPanel(page)).toHaveCount(0);
-  const showChat = page.getByRole("button", { name: "Show chat", exact: true });
+  const showChat = page.getByRole("button", { name: "Open chat", exact: true });
   await expect(showChat).toBeVisible();
-  await expect(showChat).toHaveText("Show chat");
   await expect(
-    mainPanel(page).getByRole("button", { name: "Show chat", exact: true }),
-  ).toBeVisible();
+    mainPanel(page).getByRole("button", { name: "Open chat", exact: true }),
+  ).toHaveCount(0);
+  await showChat.click();
+  await expect(chatPanel(page)).toBeVisible();
 
   await page.getByRole("button", { name: "Hide panel", exact: true }).click();
   await expect(mainPanel(page)).toBeHidden();
@@ -547,7 +548,10 @@ test("main and chat toggles preserve the page and thread", async ({
   await page.getByRole("button", { name: "Show panel", exact: true }).click();
   await expect(mainPanel(page)).toBeVisible();
   await expect(chatPanel(page)).toBeVisible();
-  await page.getByRole("button", { name: "Hide chat", exact: true }).click();
+  await page
+    .getByTestId("side-panel")
+    .getByRole("button", { name: "Close chat", exact: true })
+    .click();
   await expect(chatPanel(page)).toHaveCount(0);
   await expect(mainPanel(page)).toBeVisible();
   await showChat.click();

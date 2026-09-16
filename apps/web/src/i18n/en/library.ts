@@ -1,4 +1,12 @@
 export const library = {
+  "library.library.title": "Library",
+  "library.library.all": "All files",
+  "library.library.documents": "Documents",
+  "library.library.media": "Media",
+  "library.library.name": "Name",
+  "library.library.type": "Type",
+  "library.library.updated": "Updated",
+  "library.library.noFilesInView": "No matching files in this folder.",
   "library.brandComponentsPreview.allChip": "All",
   "library.brandComponentsPreview.emailPlaceholder": "you@example.com",
   "library.brandComponentsPreview.errorBadge": "Error",

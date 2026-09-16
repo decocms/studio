@@ -1,3 +1,4 @@
+import { page } from "./page";
 import { virtualMcp } from "./virtual-mcp.ts";
 import { user } from "./user.ts";
 import { tools } from "./tools.ts";
@@ -87,4 +88,5 @@ export const ptBR = {
   ...settings,
   ...announcements,
   ...assets,
+  ...page,
 } satisfies Record<TranslationKey, string>;
