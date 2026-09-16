@@ -119,6 +119,8 @@ import {
 } from "./pr-card-actions";
 import { previewRouteUrl } from "./preview-routes";
 import { lastRunFailure } from "./run-failure";
+import { githubReauthUrl } from "./github-reauth-url";
+import { useRepositories } from "@/hooks/use-git-providers";
 import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
@@ -2812,6 +2814,7 @@ function RunFailureBanner({
 }) {
   const t = useT();
   const { data: activity } = useTaskBoardActivity(item.id);
+  const { data: repositories } = useRepositories();
   const failure = lastRunFailure(activity ?? []);
   if (!failure) return null;
 
@@ -2819,6 +2822,12 @@ function RunFailureBanner({
     failure.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
   const connectionMissing =
     failure.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
+  const reauthUrl = githubReauthUrl({
+    orgSlug,
+    repo: item.repo,
+    repositories: repositories ?? [],
+    returnTo: taskSharePath(orgSlug, item),
+  });
 
   return (
     <Alert variant="destructive" className="mt-2 flex-col">
@@ -2838,7 +2847,7 @@ function RunFailureBanner({
       <div className="mt-3 flex flex-wrap items-center gap-2 self-start">
         {(needsGithubAuth || connectionMissing) && (
           <Button size="sm" asChild>
-            <a href={`/${orgSlug}/settings/connections`}>
+            <a href={reauthUrl}>
               {t(
                 connectionMissing
                   ? "taskBoard.taskDialog.runFailedLinkRepo"
