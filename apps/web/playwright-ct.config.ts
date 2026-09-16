@@ -70,6 +70,12 @@ export default defineConfig({
             find: /^@\/hooks\/use-mention-members$/,
             replacement: stub("use-mention-members.ts"),
           },
+          // The branch picker's release store: same useProjectContext() issue,
+          // and the list is fixture data as far as the picker's filtering cares.
+          {
+            find: /^\.\/use-releases$/,
+            replacement: stub("use-releases.ts"),
+          },
           // FieldLabel's useVirtualMCP call hits the same useProjectContext() issue as above.
           {
             find: /^@\/sdk\/hooks\/use-virtual-mcp$/,
