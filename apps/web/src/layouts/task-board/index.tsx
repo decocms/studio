@@ -1148,7 +1148,11 @@ export function TaskBoardPage() {
             secondary={
               items.length > 0 && (
                 <>
-                  <div className="@min-4xl/panel-header:hidden">
+                  {/* The drawer is for a genuinely narrow panel. The threshold
+                      used to be 56rem, sized for the chip row that used to live
+                      here — three icon buttons need a fraction of that, and at
+                      56rem they vanished the moment the chat opened. */}
+                  <div className="@md/panel-header:hidden">
                     <TaskFiltersDrawer
                       filters={filters}
                       members={members}
@@ -1158,7 +1162,7 @@ export function TaskBoardPage() {
                       onOpenBoardSettings={openBoardSettings}
                     />
                   </div>
-                  <div className="hidden items-center gap-2 @min-4xl/panel-header:flex">
+                  <div className="hidden items-center gap-2 @md/panel-header:flex">
                     <SearchToggle
                       value={filters.search}
                       onChange={(search) =>
