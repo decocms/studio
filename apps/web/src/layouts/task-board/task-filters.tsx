@@ -627,39 +627,49 @@ export function SearchToggle({
     if (value === "" && !focused) setOpen(false);
   }
 
-  const expanded = open || block;
+  /** Collapsed, this IS one of the icon buttons beside it — the same component,
+   *  so the hover, the focus ring, the glyph and the hit area cannot drift from
+   *  them. The field below only exists once there is something to type into. */
+  if (!open && !block) {
+    return (
+      <IconButton
+        label={t("taskBoard.taskFilters.searchLabel")}
+        tooltipSide="bottom"
+        variant="secondary"
+        onClick={() => setOpen(true)}
+      >
+        <SearchSm />
+      </IconButton>
+    );
+  }
 
   return (
     <div
       className={cn(
-        "inline-flex h-7 shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card px-2.5 text-xs text-card-foreground card-shadow transition-all duration-200 ease-out",
-        expanded ? "w-32 sm:w-44" : "w-7 px-0 justify-center",
-        block && "h-10 w-full px-3 text-sm sm:w-full",
+        "inline-flex shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card text-card-foreground card-shadow",
+        block
+          ? "h-10 w-full px-3"
+          : "h-7 w-32 animate-search-expand px-2.5 sm:w-44",
       )}
     >
-      <button
-        type="button"
-        aria-label={t("taskBoard.taskFilters.searchLabel")}
-        onClick={() => setOpen(true)}
-        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <SearchSm size={14} />
-      </button>
-      {expanded && (
-        <input
-          autoFocus={!block}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false);
-            if (value === "") setOpen(false);
-          }}
-          placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-          aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
-          className="w-full min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-        />
-      )}
+      {/* Decoration now: the button it replaced is the collapsed state. */}
+      <SearchSm className="size-4 shrink-0 text-muted-foreground" />
+      <input
+        autoFocus={!block}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          if (value === "") setOpen(false);
+        }}
+        placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+        aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
+        className={cn(
+          "w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground",
+          block ? "text-sm" : "text-xs",
+        )}
+      />
       {value !== "" && (
         <button
           type="button"
@@ -678,16 +688,6 @@ export function SearchToggle({
   );
 }
 
-/**
- * Button to the board's settings page. Navigation itself is the caller's
- * job (passed in as `onClick`) — this component stays presentational like
- * the rest of the bar, with no router or org dependency of its own.
- *
- * Icon-only with a hover tooltip in the inline bar; in the mobile drawer
- * (`block`) the tooltip never shows (Radix tooltips are hover/focus-only,
- * and drawer taps are touch), so it renders the label as text instead, like
- * every other drawer control.
- */
 /** `block` is the mobile drawer, where this is a labelled row rather than a glyph. */
 export function BoardSettingsButton({
   block,

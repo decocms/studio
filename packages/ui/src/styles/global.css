@@ -308,6 +308,7 @@
      our 13px computed 18.571px, landing every text-sm row on a fraction. */
   --text-sm--line-height: 1.25rem;
 
+  --animate-search-expand: search-expand 180ms var(--ease-out-cubic) both;
   --animate-device-icon-pop: device-icon-pop 150ms var(--ease-out-cubic) both;
   --animate-connection-travel: connection-travel 2.6s var(--ease-in-out-cubic)
     infinite;
@@ -371,6 +372,16 @@
   to {
     opacity: 1;
     transform: scale(1) rotate(0deg);
+  }
+}
+
+/* A search field growing out of the icon button it replaces. `from` only, so
+   the browser interpolates up to whatever width the field resolves to — that
+   target is responsive and a keyframe cannot name it. */
+@keyframes search-expand {
+  from {
+    width: 1.75rem;
+    opacity: 0;
   }
 }
 
