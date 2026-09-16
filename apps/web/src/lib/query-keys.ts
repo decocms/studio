@@ -760,6 +760,10 @@ export const KEYS = {
   // Storefront "." shortcut: resolve a site name → project editor.
   editorResolve: (site: string) => ["editor-resolve", site] as const,
 
+  // `deco.studio/<owner>/<repo>/<pr>` shortlink: resolve a PR → project + branch.
+  prResolve: (owner: string, repo: string, pr: string) =>
+    ["pr-resolve", owner, repo, pr] as const,
+
   // Web search blob content (fetched from object storage)
   webSearchBlob: (url: string) => ["web-search-blob", url] as const,
 

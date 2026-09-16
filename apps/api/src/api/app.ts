@@ -117,6 +117,7 @@ import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import { createEditorResolveRoutes } from "./routes/editor-resolve";
+import { createPrResolveRoutes } from "./routes/pr-resolve";
 import {
   ORGANIZATION_NOTICES_API_PREFIX,
   createOrganizationNoticeSiteResolutionRoutes,
@@ -2371,6 +2372,10 @@ export async function createApp(options: CreateAppOptions = {}) {
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());
+
+  // `deco.studio/<owner>/<repo>/<pr>` shortlink: resolve (repo, PR) → project +
+  // branch. Instance-level (the org is what we are looking up), like the above.
+  app.route("/api/_pr-resolve", createPrResolveRoutes());
 
   // User-scoped, cross-organization reads (project search). Instance-level for
   // the same reason as the two above: `/api/:org` would bind the request to one
