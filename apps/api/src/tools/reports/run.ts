@@ -75,16 +75,25 @@ export const REPORTS_RUN = defineTool({
       cdConnectionId,
       organization.id,
     );
-    const configState = cdConnection?.configuration_state as
-      | Record<string, unknown>
-      | string
-      | null
-      | undefined;
-    const state =
-      configState && typeof configState === "object" ? configState : null;
-    const repository = fromWire(state?.repository);
+
+    const ConfigurationStateSchema = z
+      .object({
+        repository: z.unknown().optional(),
+        github_repo: z.string().optional(),
+      })
+      .passthrough()
+      .nullable()
+      .optional();
+
+    const state = ConfigurationStateSchema.parse(
+      cdConnection?.configuration_state,
+    );
+
+    const repository = state ? fromWire(state.repository) : undefined;
     const legacy =
-      typeof state?.github_repo === "string" && state.github_repo.length > 0
+      state &&
+      typeof state.github_repo === "string" &&
+      state.github_repo.length > 0
         ? state.github_repo
         : undefined;
 
