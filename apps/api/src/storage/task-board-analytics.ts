@@ -740,6 +740,16 @@ export class TaskBoardAnalyticsStorage {
           and coalesce(t.failure_kind, 'error') not in ('superseded','ended_after_delivery','cancelled','abandoned','credits')
           and ${inRange("l.created_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
         group by 1
+      ),
+      cost as (
+        select i.organization_id as org_id,
+               sum(coalesce((p.metadata->'usage'->'providerMetadata'->'openrouter'->'usage'->>'cost')::numeric, 0)) as usd,
+               count(distinct l.thread_id) as threads
+        from task_board_item_threads l
+        join thread_message_parts p on p.thread_id = l.thread_id and p.kind = 'finish'
+        join task_board_items i on i.id = l.task_board_item_id
+        where ${inRange("l.created_at", q)} and ${orgIn(q.orgIds, "i.organization_id")}
+        group by 1
       )
       select c.org_slug as "Org",
              c.org_id   as "Org ID",
@@ -749,10 +759,12 @@ export class TaskBoardAnalyticsStorage {
                    / nullif(count(*), 0), 0) as "PR %",
              round(max(r.p50)::numeric, 0) as "Review p50",
              round(max(r.p90)::numeric, 0) as "Review p90",
+             round(max(co.usd) / nullif(max(co.threads), 0), 4) as "$ / thread",
              coalesce(max(e.n), 0) as "Errors"
       from completed c
       left join review r on r.org_id = c.org_id
       left join errs   e on e.org_id = c.org_id
+      left join cost   co on co.org_id = c.org_id
       group by 1, 2 order by 3 desc
     `);
 
@@ -778,6 +790,7 @@ export class TaskBoardAnalyticsStorage {
           "PR %",
           "Review p50",
           "Review p90",
+          "$ / thread",
           "Errors",
         ],
         scorecard,
