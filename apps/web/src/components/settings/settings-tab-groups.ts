@@ -11,6 +11,15 @@
 
 import type { CapabilityId } from "@/hooks/use-capability";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import {
+  CpuChip01,
+  GitBranch01,
+  HardDrive,
+  Server01,
+  Shield01,
+  Users03,
+} from "@untitledui/icons";
+import type { ComponentType, SVGProps } from "react";
 
 export type SettingsGroupKey =
   | "connect"
@@ -23,6 +32,7 @@ export interface SettingsTabDef {
   /** Stable id for React keys and analytics — never localized. */
   key: string;
   labelKey: TranslationKey;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   /** `$org`-templated route path, same shape as the sidebar's `to`. */
   to: string;
   /** Capability required to see this tab. Omitted = visible to every member. */
@@ -63,12 +73,14 @@ export const SETTINGS_TAB_GROUPS: Record<
     tabs: [
       {
         key: "members",
+        icon: Users03,
         labelKey: "orgs.members.title",
         to: "/$org/settings/members",
         requires: "members:manage",
       },
       {
         key: "roles",
+        icon: Shield01,
         labelKey: "settings.roles.pageTitle",
         to: "/$org/settings/roles",
         privilegedOnly: true,
@@ -81,12 +93,14 @@ export const SETTINGS_TAB_GROUPS: Record<
     tabs: [
       {
         key: "ai-providers",
+        icon: CpuChip01,
         labelKey: "settings.nav.aiProviders",
         to: "/$org/settings/ai-providers",
         requires: "ai-providers:manage",
       },
       {
         key: "infra",
+        icon: Server01,
         labelKey: "settings.subnav.infrastructure",
         to: "/$org/settings/infra-billing",
         requires: "members:manage",
@@ -106,12 +120,14 @@ export const SETTINGS_TAB_GROUPS: Record<
     tabs: [
       {
         key: "buckets",
+        icon: HardDrive,
         labelKey: "settings.nav.buckets",
         to: "/$org/settings/buckets",
         requires: "file-configs:manage",
       },
       {
         key: "synced-repos",
+        icon: GitBranch01,
         labelKey: "settings.nav.syncedRepos",
         to: "/$org/settings/synced-repos",
         requires: "file-configs:manage",

@@ -35,6 +35,7 @@ export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
             aria-label={t("settings.subnav.ariaLabel")}
           >
             {tabs.map((tab) => {
+              const Icon = tab.icon;
               const to = tab.to.replace("$org", org);
               const isActive = pathname === to || pathname.startsWith(`${to}/`);
               return (
@@ -49,6 +50,7 @@ export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
                       })
                     }
                   >
+                    <Icon aria-hidden="true" className="size-4 shrink-0" />
                     {t(tab.labelKey)}
                   </Link>
                 </Page.Tab>

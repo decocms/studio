@@ -303,6 +303,9 @@ Settings supplies an inactive fallback that opens chat on Home.
 
 Preview and Content tabs show their globe and document icons beside the labels,
 using the shared tab icon mapping.
+Project settings, organization settings, and role tabs use matching 16px icons
+beside their labels, defined with each tab's metadata. Icons are decorative for
+screen readers, and the tab strips scroll horizontally on narrow screens.
 
 Preview uses the existing `BlocksPanel` and `BlocksPreviewWorkspaceProvider`.
 The compact page picker uses one button with two visual regions: a muted origin

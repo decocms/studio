@@ -16,20 +16,24 @@ export function ProjectSettingsTabs({
   const t = useT();
   const tabs = (
     <Page.Tabs aria-label={t("virtualMcp.settings.navigation")}>
-      {PROJECT_SETTINGS_SECTION_KEYS.map((key) => (
-        <Page.Tab key={key} active={section === key} asChild>
-          <Link
-            to="."
-            activeOptions={{ exact: true, explicitUndefined: true }}
-            search={(previous) => ({
-              ...previous,
-              section: key === "general" ? undefined : key,
-            })}
-          >
-            {t(PROJECT_SETTINGS_SECTIONS[key].titleKey)}
-          </Link>
-        </Page.Tab>
-      ))}
+      {PROJECT_SETTINGS_SECTION_KEYS.map((key) => {
+        const { icon: Icon, titleKey } = PROJECT_SETTINGS_SECTIONS[key];
+        return (
+          <Page.Tab key={key} active={section === key} asChild>
+            <Link
+              to="."
+              activeOptions={{ exact: true, explicitUndefined: true }}
+              search={(previous) => ({
+                ...previous,
+                section: key === "general" ? undefined : key,
+              })}
+            >
+              <Icon aria-hidden="true" className="size-4 shrink-0" />
+              {t(titleKey)}
+            </Link>
+          </Page.Tab>
+        );
+      })}
     </Page.Tabs>
   );
   return (

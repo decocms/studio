@@ -72,11 +72,16 @@ import {
 } from "@/components/settings/settings-section";
 import {
   AlertTriangle,
+  Building02,
   ChevronDown,
   ChevronRight,
+  CpuChip01,
+  Folder,
   Lock01,
   Plus,
+  Users03,
   X,
+  ZapSquare,
 } from "@untitledui/icons";
 
 // ============================================================================
@@ -1628,16 +1633,30 @@ function RoleDetailPageInner({
           {
             id: "mcp" as const,
             label: t("settings.orgRoleDetail.mcpPermissions"),
+            icon: ZapSquare,
           },
         ]
       : []),
     {
       id: "org" as const,
       label: t("settings.orgRoleDetail.organizationPermissions"),
+      icon: Building02,
     },
-    { id: "models" as const, label: t("settings.orgRoleDetail.models") },
-    { id: "projects" as const, label: t("settings.orgRoleDetail.projects") },
-    { id: "members" as const, label: t("settings.orgRoleDetail.members") },
+    {
+      id: "models" as const,
+      label: t("settings.orgRoleDetail.models"),
+      icon: CpuChip01,
+    },
+    {
+      id: "projects" as const,
+      label: t("settings.orgRoleDetail.projects"),
+      icon: Folder,
+    },
+    {
+      id: "members" as const,
+      label: t("settings.orgRoleDetail.members"),
+      icon: Users03,
+    },
   ];
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -1732,6 +1751,7 @@ function RoleDetailPageInner({
                     active={activeTab === tab.id}
                     onClick={() => handleTabChange(tab.id)}
                   >
+                    <tab.icon aria-hidden="true" className="size-4 shrink-0" />
                     {tab.label}
                   </Page.Tab>
                 ))}
