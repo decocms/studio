@@ -22,6 +22,7 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import {
   Alert,
   AlertDescription,
@@ -664,7 +665,7 @@ function TaskBoardItemEditor({
   /** The task's own actions. A page hands them to the page header beside
    *  its trail; a dialog has no header to give them to. */
   const actions = (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-2">
       {/* Autosave has no button, so this is the only sign of a write. */}
       {item && isSaving && (
         <span className="mr-1 text-sm text-muted-foreground">
@@ -675,27 +676,21 @@ function TaskBoardItemEditor({
         /* The card's issue in the tracker it came from. It used to be the
              first line of the description, which put it in every agent
              prompt — it is a link for a person, so it lives here. */
-        <Button
+        <IconButton
           asChild
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
-          title={item.externalUrl}
-          className="text-muted-foreground hover:text-foreground"
+          variant="secondary"
+          label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
         >
           <a href={item.externalUrl} target="_blank" rel="noreferrer">
             <LinkExternal01 size={16} />
           </a>
-        </Button>
+        </IconButton>
       )}
       {item && (
         <>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("taskBoard.taskDialog.shareAriaLabel")}
-            title={t("taskBoard.taskDialog.shareTitle")}
-            className="text-muted-foreground hover:text-foreground"
+          <IconButton
+            variant="secondary"
+            label={t("taskBoard.taskDialog.shareAriaLabel")}
             onClick={() => {
               copyLink(
                 `${window.location.origin}${taskSharePath(org.slug, item, agentId)}`,
@@ -704,18 +699,20 @@ function TaskBoardItemEditor({
             }}
           >
             {linkCopied ? <Check size={16} /> : <Link03 size={16} />}
-          </Button>
+          </IconButton>
           {/* Non-modal: a modal menu blocks outside pointer events by
                     setting `pointer-events: none` on <body>, and half these
                     items unmount the dialog they live in — leaving that style
                     behind with no layer to restore it. */}
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
+              {/* A plain Button, not IconButton: `asChild` has to land on the
+                  button itself, and IconButton would put a Tooltip root in
+                  between, which silently swallows the trigger props. */}
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="icon-sm"
                 aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
-                className="text-muted-foreground hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
               >
                 <DotsHorizontal size={16} />
               </Button>
@@ -784,15 +781,13 @@ function TaskBoardItemEditor({
         </>
       )}
       {chrome === "dialog" && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t("taskBoard.taskDialog.closeAriaLabel")}
-          className="text-muted-foreground hover:text-foreground"
+        <IconButton
+          variant="secondary"
+          label={t("taskBoard.taskDialog.closeAriaLabel")}
           onClick={close}
         >
           <X size={16} />
-        </Button>
+        </IconButton>
       )}
     </div>
   );
