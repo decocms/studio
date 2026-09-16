@@ -683,7 +683,7 @@ export function AppliedFiltersBar({
   if (activeIds.length === 0) return null;
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 overflow-x-auto px-2 no-scrollbar">
+    <div className="mx-3 flex h-11 shrink-0 items-center gap-2 overflow-x-auto rounded-xl border border-border px-2 no-scrollbar">
       {activeIds.map((id) => {
         const field = fields.find((candidate) => candidate.id === id);
         if (!field) return null;
