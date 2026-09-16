@@ -1138,75 +1138,82 @@ export function TaskBoardPage() {
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      <Page.Title>{t("taskBoard.taskBoard.tasksTitle")}</Page.Title>
-      <Page.Actions
-        secondary={
-          items.length > 0 && (
-            <>
-              <div className="@min-4xl/panel-header:hidden">
-                <TaskFiltersDrawer
-                  filters={filters}
-                  members={members}
-                  tags={orgTags}
-                  index={projectIndex}
-                  onChange={handleFiltersChange}
-                  onOpenBoardSettings={openBoardSettings}
-                />
-              </div>
-              <div className="hidden items-center gap-2 @min-4xl/panel-header:flex">
-                <SearchToggle
-                  value={filters.search}
-                  onChange={(search) =>
-                    handleFiltersChange({ ...filters, search })
-                  }
-                  label={t("taskBoard.taskFilters.searchLabel")}
-                  placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-                  clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
-                />
-                <TaskFilterButton
-                  filters={filters}
-                  items={items}
-                  members={members}
-                  tags={orgTags}
-                  index={projectIndex}
-                  onChange={handleFiltersChange}
-                />
-                <BoardSettingsButton onClick={openBoardSettings} />
-              </div>
-            </>
-          )
-        }
-      >
-        <Button size="sm" onClick={openCreate}>
-          <Plus size={16} />
-          {t("taskBoard.taskBoard.newTask")}
-        </Button>
-      </Page.Actions>
-      <Panel.Toolbar.Left.Portal>
-        <Page.Tabs>
-          <Page.Tab
-            active={layout === "board"}
-            aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-              label: t("common.taskBoard.boardView"),
-            })}
-            onClick={() => setLayout("board")}
+      {/* A task takes the header over: the board stays mounted behind it so
+          its scroll and dnd survive, and these would otherwise paint over
+          the task's own trail and title. */}
+      {!openItem && (
+        <>
+          <Page.Title>{t("taskBoard.taskBoard.tasksTitle")}</Page.Title>
+          <Page.Actions
+            secondary={
+              items.length > 0 && (
+                <>
+                  <div className="@min-4xl/panel-header:hidden">
+                    <TaskFiltersDrawer
+                      filters={filters}
+                      members={members}
+                      tags={orgTags}
+                      index={projectIndex}
+                      onChange={handleFiltersChange}
+                      onOpenBoardSettings={openBoardSettings}
+                    />
+                  </div>
+                  <div className="hidden items-center gap-2 @min-4xl/panel-header:flex">
+                    <SearchToggle
+                      value={filters.search}
+                      onChange={(search) =>
+                        handleFiltersChange({ ...filters, search })
+                      }
+                      label={t("taskBoard.taskFilters.searchLabel")}
+                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
+                    />
+                    <TaskFilterButton
+                      filters={filters}
+                      items={items}
+                      members={members}
+                      tags={orgTags}
+                      index={projectIndex}
+                      onChange={handleFiltersChange}
+                    />
+                    <BoardSettingsButton onClick={openBoardSettings} />
+                  </div>
+                </>
+              )
+            }
           >
-            {t("common.taskBoard.boardView")}
-          </Page.Tab>
-          <Page.Tab
-            active={layout === "list"}
-            aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-              label: t("common.taskBoard.listView"),
-            })}
-            onClick={() => {
-              setLayout("list");
-              clearSelection();
-            }}
-          >
-            {t("common.taskBoard.listView")}
-          </Page.Tab>
-        </Page.Tabs>
-      </Panel.Toolbar.Left.Portal>
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={16} />
+              {t("taskBoard.taskBoard.newTask")}
+            </Button>
+          </Page.Actions>
+          <Panel.Toolbar.Left.Portal>
+            <Page.Tabs>
+              <Page.Tab
+                active={layout === "board"}
+                aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+                  label: t("common.taskBoard.boardView"),
+                })}
+                onClick={() => setLayout("board")}
+              >
+                {t("common.taskBoard.boardView")}
+              </Page.Tab>
+              <Page.Tab
+                active={layout === "list"}
+                aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+                  label: t("common.taskBoard.listView"),
+                })}
+                onClick={() => {
+                  setLayout("list");
+                  clearSelection();
+                }}
+              >
+                {t("common.taskBoard.listView")}
+              </Page.Tab>
+            </Page.Tabs>
+          </Panel.Toolbar.Left.Portal>
+        </>
+      )}
 
       <AppliedFiltersBar
         filters={filters}

@@ -58,8 +58,12 @@ const AUTOSAVE_POLL_TIMEOUT_MS = 15_000;
  * timeout above.
  */
 async function closeTask(page: Page) {
-  // The breadcrumb, not Escape: in the editor, Escape only blurs.
-  await detailOf(page).getByRole("button", { name: "Tasks" }).click();
+  // The breadcrumb, not Escape: in the editor, Escape only blurs. It lives in
+  // the page header now, not inside the detail.
+  await page
+    .getByTestId("page-header")
+    .getByRole("button", { name: "Tasks" })
+    .click();
   await expect(detailOf(page)).toHaveCount(0);
 }
 

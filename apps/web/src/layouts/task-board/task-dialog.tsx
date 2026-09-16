@@ -7,14 +7,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@decocms/ui/components/breadcrumb.tsx";
+import { Page } from "@/components/page";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -671,31 +664,24 @@ function TaskBoardItemEditor({
   const header = (
     <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
       {chrome === "page" ? (
-        /* The page's way back out. The key doubles as the trail's leaf, so
-             there is no separate id chip in this chrome. */
-        <Breadcrumb className="-ml-2">
-          <BreadcrumbList className="text-[15px]">
-            <BreadcrumbItem>
-              {/* A button, not an anchor: leaving flushes a pending autosave
-                    and the board it returns to is a search-param away, not a
-                    document to link to. */}
-              <BreadcrumbLink
-                asChild
-                className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
-              >
-                <button type="button" onClick={close}>
-                  {t("taskBoard.taskDetail.breadcrumbTasks")}
-                </button>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage className="px-2 py-1">
-                {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
-              </BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+        /* The trail belongs to the page header, the way Library's folder trail
+           does. Still a button rather than a link: leaving flushes a pending
+           autosave, and the board it returns to is a search-param away. The key
+           doubles as the trail's leaf, so this chrome shows no id chip. */
+        <>
+          <Page.Breadcrumbs
+            items={[
+              {
+                key: "tasks",
+                label: t("taskBoard.taskDetail.breadcrumbTasks"),
+                onClick: close,
+              },
+            ]}
+          />
+          <Page.Title>
+            {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
+          </Page.Title>
+        </>
       ) : /* Null only for a card written before the key backfill, which has
               no key to show. */
       key ? (

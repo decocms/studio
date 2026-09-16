@@ -3,7 +3,7 @@
  *
  * Opening a card is a navigation, not a modal: the card owns the path
  * `/$org/tasks/DECO-01`, which renders it in place of the lanes, and the
- * breadcrumb leads back out to the bare board. These tests pin that contract
+ * page header's breadcrumb leads back out to the bare board. These tests pin it
  * at both ends — the URL a card click produces, and the fact that a menu item
  * which destroys the card lands you back on a working board.
  *
@@ -67,7 +67,10 @@ test("clicking a card navigates to it and the breadcrumb comes back", async ({
   // The lanes are out of view while the task holds the panel.
   await expect(page.locator('button:has-text("Card 0")')).toBeHidden();
 
-  await detail(page).getByRole("button", { name: "Tasks" }).click();
+  await page
+    .getByTestId("page-header")
+    .getByRole("button", { name: "Tasks" })
+    .click();
   await expect(detail(page)).toHaveCount(0);
   await expect(page).not.toHaveURL(cardUrl(orgSlug));
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
@@ -104,7 +107,10 @@ test("closing a task does not leave it one Back away", async ({
   /* Leaving replaces the task's entry instead of stacking a second one: if it
      pushed, Back would re-open the task just closed, and a few open/close
      cycles would bury whatever the board was reached from. */
-  await detail(page).getByRole("button", { name: "Tasks" }).click();
+  await page
+    .getByTestId("page-header")
+    .getByRole("button", { name: "Tasks" })
+    .click();
   await expect(detail(page)).toHaveCount(0);
   expect(await depth()).toBe(atBoard + 1);
 
