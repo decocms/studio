@@ -12,6 +12,19 @@ export function gatewayAdminConfigured(): boolean {
   return settings.aiGatewayEnabled && !!settings.aiGatewayAdminToken;
 }
 
+/** A gateway refusal that retrying cannot fix. Carried as a type rather than a
+ *  status check at each call site, because only the webhook's THROW/ACK choice
+ *  depends on it. */
+export class GatewayAdminPermanentError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GatewayAdminPermanentError";
+  }
+}
+
 async function postGatewayAdmin(
   path: string,
   body: Record<string, unknown>,
@@ -29,7 +42,23 @@ async function postGatewayAdmin(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${label} failed (${res.status}): ${text}`);
+    // A 4xx from a gateway that ANSWERED is a decision, not an outage: an
+    // unknown plan id, a malformed body, a rejected token. The gateway's plans
+    // route returns 400 for every one of them. Retrying a decision changes
+    // nothing, and the caller here is a Stripe webhook — so throwing would
+    // 500 the route and have Stripe redeliver a deterministic failure on its
+    // full schedule, which ends with Stripe DISABLING the endpoint and every
+    // org's billing events going with it. Distinguish it so the webhook can
+    // acknowledge loudly instead. 408/429 are excluded: those do pass.
+    const permanent =
+      res.status >= 400 &&
+      res.status < 500 &&
+      res.status !== 408 &&
+      res.status !== 429;
+    const message = `${label} failed (${res.status}): ${text}`;
+    throw permanent
+      ? new GatewayAdminPermanentError(res.status, message)
+      : new Error(message);
   }
 }
 

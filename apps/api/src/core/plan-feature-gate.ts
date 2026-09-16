@@ -197,7 +197,14 @@ async function fetchOrgPlanState(
   if (!adapter?.getEntitlements) return null;
 
   const userId = ctx.auth.user?.id ?? ctx.auth.apiKey?.userId;
-  if (!userId) return hit?.state ?? null;
+  // No user to mint a JWT for is a read that cannot be made, which is the same
+  // position the catch block is in — so it gets the same ceiling. Without it
+  // this path served the stale entry for ever: `at` is never advanced here, so
+  // nothing ages the entry out, and an org cached as Free before an upgrade
+  // stayed denied on every call that arrives without a user. MAX_STALE_MS is
+  // documented as the ceiling on serving stale; it has to apply wherever stale
+  // is served.
+  if (!userId) return servedStaleOrNull(organizationId, hit);
 
   try {
     const jwt = await mintGatewayJwt(userId);
@@ -259,14 +266,22 @@ async function fetchOrgPlanState(
         detail,
       );
     }
-    // A stale entry has a ceiling. Past it, the honest answer is "no answer",
-    // which fails open — see MAX_STALE_MS.
-    if (hit && Date.now() - hit.at >= MAX_STALE_MS) {
-      planStateCache.delete(organizationId);
-      return null;
-    }
-    return hit?.state ?? null;
+    return servedStaleOrNull(organizationId, hit);
   }
+}
+
+/** A stale entry has a ceiling. Past it, the honest answer is "no answer",
+ *  which fails open — see MAX_STALE_MS. Shared by both paths that cannot get a
+ *  fresh read, so the ceiling cannot apply to one and not the other. */
+function servedStaleOrNull(
+  organizationId: string,
+  hit: { state: OrgPlanState; at: number } | undefined,
+): OrgPlanState | null {
+  if (hit && Date.now() - hit.at >= MAX_STALE_MS) {
+    planStateCache.delete(organizationId);
+    return null;
+  }
+  return hit?.state ?? null;
 }
 
 /**

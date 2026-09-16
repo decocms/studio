@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   checkoutIdempotencyKey,
   computeTopUpChargeCents,
+  topUpIdempotencyKey,
   plannedOrphanRefunds,
   taxAndAddressParams,
   toStripeForm,
@@ -231,5 +232,64 @@ describe("checkoutIdempotencyKey", () => {
         lastStripeEventAt: null,
       }),
     );
+  });
+});
+
+describe("topUpIdempotencyKey", () => {
+  /** 2026-09-15T18:00:00Z, and a second later. */
+  const AT = Date.parse("2026-09-15T18:00:00Z");
+
+  test("two clicks a second apart collapse to one top-up session", () => {
+    // The whole point: without a key the second click was a second Checkout
+    // Session with its own id, so the webhook's `stripe-topup:<sessionId>`
+    // dedupe could not collapse it either — two charges, two credits.
+    const first = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT,
+    });
+    const second = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT + 1_000,
+    });
+    expect(second).toBe(first);
+  });
+
+  test("a deliberate repeat purchase later gets its own session", () => {
+    // The reason this is a time bucket and not the subscription key's
+    // watermark salt: a top-up writes no billing row, so a constant salt would
+    // hand the second purchase the first, already-completed session for a full
+    // 24h and the org simply could not top up again.
+    const first = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT,
+    });
+    const later = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT + 5 * 60_000,
+    });
+    expect(later).not.toBe(first);
+  });
+
+  test("org, amount and currency each separate the key", () => {
+    const base = {
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl" as const,
+      nowMs: AT,
+    };
+    const key = topUpIdempotencyKey(base);
+    expect(topUpIdempotencyKey({ ...base, organizationId: "org_2" })).not.toBe(
+      key,
+    );
+    expect(topUpIdempotencyKey({ ...base, amountCents: 2000 })).not.toBe(key);
+    expect(topUpIdempotencyKey({ ...base, currency: "usd" })).not.toBe(key);
   });
 });

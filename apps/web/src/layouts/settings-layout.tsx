@@ -17,6 +17,7 @@ import {
 } from "@/layouts/shell-controls";
 import { useProjectContext } from "@/sdk";
 import { useStatusSounds } from "../hooks/use-status-sounds";
+import { useCheckoutReturn } from "@/hooks/use-checkout-return";
 
 /** 3.125rem → 34px collapsed-rail buttons, matching the expanded toolbar's.
  *  Keep in sync with org-shell-layout. */
@@ -27,6 +28,10 @@ function SettingsInset() {
 
   /** Org-wide SSE sound notifications. */
   useStatusSounds(org.slug);
+
+  /** Both Stripe return URLs land under `/$org/settings`, so this is the one
+   *  place that has to notice a payment came back. */
+  useCheckoutReturn(org.id);
 
   const content = (
     <MainPanelBoundary>

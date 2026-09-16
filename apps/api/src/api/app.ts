@@ -26,6 +26,11 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerSubscriptionSweepWorkflow,
+  setSubscriptionSweepRuntime,
+} from "@/billing/dbos-subscription-sweep";
+import { startPlanCacheBroadcast } from "@/billing/plan-cache-broadcast";
+import {
   registerNotificationDigestWorkflow,
   setNotificationDigestRuntime,
 } from "@/notifications/dbos-digest";
@@ -1262,6 +1267,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   const flipConnection = () => natsProvider?.getConnection() ?? null;
   initFlipBroadcast(flipConnection);
   natsProvider?.onReady(() => initFlipBroadcast(flipConnection));
+
+  // Cross-pod plan-cache invalidation, same shape and same lane. Without it a
+  // plan change only reached the pod that handled it, so for the 60s TTL the
+  // features a customer had just bought worked or not depending on which
+  // replica answered. Local-only without NATS, which for one pod is already
+  // correct.
+  startPlanCacheBroadcast(flipConnection);
+  natsProvider?.onReady(() => startPlanCacheBroadcast(flipConnection));
   streamBuffer.init().catch((err) => {
     console.warn(
       "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
@@ -1680,6 +1693,9 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Hourly: the paid tiers whose `subscription.deleted` never arrived.
+  setSubscriptionSweepRuntime({ db: database.db });
+
   // Every 10 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
@@ -1961,6 +1977,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();

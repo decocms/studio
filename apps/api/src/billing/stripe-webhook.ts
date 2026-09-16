@@ -19,7 +19,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { invalidateOrgFeaturesCache } from "@/core/plan-feature-gate";
+import { invalidateOrgFeaturesEverywhere } from "./plan-cache-broadcast";
 import { getDb } from "@/database";
 import { captureOrgEvent, deterministicUuid } from "@/posthog";
 import {
@@ -31,7 +31,11 @@ import {
   refundSubscriptionPayments,
   StripeApiError,
 } from "./stripe-api";
-import { creditGatewayTopUp, setGatewayOrgPlan } from "./gateway-admin";
+import {
+  creditGatewayTopUp,
+  GatewayAdminPermanentError,
+  setGatewayOrgPlan,
+} from "./gateway-admin";
 import { getSettings } from "../settings";
 
 const SIGNATURE_TOLERANCE_SEC = 300;
@@ -406,8 +410,25 @@ export async function applyStripeEvent(
       if (s(obj.payment_status) !== "paid") {
         return { handled: false, reason: "payment not confirmed" };
       }
-      const billing = await storage.getBilling(organizationId);
-      if (!billing) return { handled: false, reason: "unknown org" };
+      // Self-heal the row rather than refuse. A paid subscription checkout for
+      // an org with no billing row used to answer "unknown org" — a 200 to
+      // Stripe, no plan granted, no orphan cancel and no refund, i.e. money
+      // taken and nothing delivered, silently. The row is seeded at org
+      // creation, but `claimTaskUnderLimit` already self-heals a missing one
+      // for exactly the orgs whose seed never ran, so this path must not be
+      // the one place that treats absence as fatal.
+      const billing = await storage.ensureBilling(organizationId);
+      if (!billing) {
+        // The organization itself is gone, so there is nothing to bind to and
+        // nothing a redelivery would fix. Loud, because a paid session pointed
+        // at a nonexistent org is money taken for an org that cannot receive
+        // it — someone has to reverse it by hand.
+        console.error(
+          "stripe webhook: PAID checkout for an org that does not exist",
+          { organizationId, eventId: event.id },
+        );
+        return { handled: false, reason: "unknown org" };
+      }
       // Never rebind over a DIFFERENT live subscription (deleted unbinds,
       // so a legitimate re-subscribe passes).
       const subscriptionId = idOf(obj.subscription);
@@ -428,6 +449,21 @@ export async function applyStripeEvent(
           reason: "subscription checkout without sub id",
         };
       }
+      // STALENESS FIRST, and the order is the whole point. The refusal below
+      // reverses a subscription — it cancels it AND refunds every invoice it
+      // collected — so it must never see an event that describes the past.
+      //
+      // The sequence it got wrong: a checkout for sub_A 500s (a gateway blip
+      // makes `setGatewayOrgPlan` throw, deliberately, so Stripe retries for up
+      // to three days); meanwhile the org cancels, `subscription.deleted`
+      // unbinds, and the org re-subscribes as sub_B. The redelivered sub_A
+      // event then finds sub_B in the slot, reads as a rebind, and REFUNDS
+      // sub_A's paid invoices — money the org owed for service it had already
+      // used. Nothing about that event was concurrent; it was simply old, and
+      // the watermark already knew.
+      if (isStale(event, billing)) {
+        return { handled: false, reason: "stale event" };
+      }
       if (
         billing.stripeSubscriptionId &&
         billing.stripeSubscriptionId !== subscriptionId
@@ -441,9 +477,6 @@ export async function applyStripeEvent(
           reason: "org already bound to another subscription",
           orphanSubscriptionId: subscriptionId,
         };
-      }
-      if (isStale(event, billing)) {
-        return { handled: false, reason: "stale event" };
       }
       // Compare-and-set, not a plain write. The read above cannot settle this:
       // two checkout completions racing for the same org both read a null
@@ -682,17 +715,41 @@ export async function processStripeEvent(
   // gateway. Failing soft here would leave an org paying for a tier it does
   // not have, or holding one it stopped paying for — both silently.
   if (result.handled && result.planChange) {
-    await setGatewayOrgPlan({
-      organizationId: result.organizationId,
-      planId: result.planChange.planId,
-      note: result.planChange.note,
-    });
-    // Same courtesy `AI_PLAN_SET` does after a downgrade. Only this process —
-    // the cache is a per-pod Map and other pods wait out their 60s TTL — but
-    // the grant path did not invalidate at all, so a customer who had just
-    // paid could be refused their new features by the very pod that took the
-    // webhook.
-    invalidateOrgFeaturesCache(result.organizationId);
+    try {
+      await setGatewayOrgPlan({
+        organizationId: result.organizationId,
+        planId: result.planChange.planId,
+        note: result.planChange.note,
+      });
+    } catch (err) {
+      // A gateway DECISION (4xx: unknown plan id, malformed body, rejected
+      // token) will answer the same way for ever, so throwing here would have
+      // Stripe redeliver it on its full multi-day schedule and then DISABLE the
+      // endpoint — taking every other org's billing events down with it. Ack it
+      // and page instead; an operator has to place this plan by hand.
+      // Everything else (5xx, timeout, DNS) still throws, because that is the
+      // case redelivery exists for.
+      if (!(err instanceof GatewayAdminPermanentError)) throw err;
+      console.error(
+        "stripe webhook: gateway REFUSED the plan change — the org has been " +
+          "charged (or cancelled) and its entitlement did NOT move. Place it " +
+          "by hand through the gateway admin API.",
+        {
+          organizationId: result.organizationId,
+          planId: result.planChange.planId,
+          eventId: event.id,
+          status: err.status,
+          error: err.message,
+        },
+      );
+      return result;
+    }
+    // Same courtesy `AI_PLAN_SET` does after a downgrade, and fleet-wide: the
+    // gate's cache is a per-pod Map, so dropping only this one left the
+    // features a customer had just paid for working or not depending on which
+    // replica their next request reached, for the whole 60s TTL. The
+    // cancellation direction is the same minute in reverse.
+    invalidateOrgFeaturesEverywhere(result.organizationId);
   }
   // Undo a refused-but-paid subscription completely: stop the billing AND give
   // back what it already took. Cancelling alone left the customer charged twice

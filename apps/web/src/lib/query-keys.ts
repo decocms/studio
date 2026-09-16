@@ -643,6 +643,11 @@ export const KEYS = {
   aiPlanEntitlements: (orgId: string) =>
     ["ai-plan-entitlements", orgId] as const,
   aiPlanCatalog: (orgId: string) => ["ai-plan-catalog", orgId] as const,
+  /** The bounded poll that runs after Stripe redirects back, until the webhook
+   *  has landed the new tier — see `use-checkout-return.ts`. Holds a tick
+   *  counter, never a value anything renders. */
+  checkoutReturnPoll: (orgId: string) =>
+    ["checkout-return-poll", orgId] as const,
   aiPlanPrices: () => ["ai-plan-prices"] as const,
   // Whether the org has a Stripe account/subscription behind its plan.
   orgBillingAccount: (orgId: string) => ["org-billing-account", orgId] as const,

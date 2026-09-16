@@ -300,6 +300,53 @@ export function computeTopUpChargeCents(
   return Math.round(amountCents * (1 + feePercent / 100));
 }
 
+/** How wide a window collapses into one top-up session. See below. */
+const TOPUP_IDEMPOTENCY_WINDOW_MS = 2 * 60_000;
+
+/**
+ * The key that makes two clicks one top-up.
+ *
+ * `createOrgCheckoutSession` has carried one of these from the start, with a
+ * docblock on why refunding a double charge is not equivalent (Stripe keeps its
+ * fee, and the customer still saw two charges). The top-up beside it carried
+ * nothing, so a double-click, a second tab or an impatient retry bought the
+ * credits twice — and the two sessions have different ids, so the webhook's
+ * `stripe-topup:<sessionId>` dedupe cannot collapse them either. It is not lost
+ * money, the org receives both credits; it is still two charges nobody asked
+ * for.
+ *
+ * Salted with a TIME BUCKET rather than the billing row's watermark, which is
+ * what the subscription key uses. A top-up deliberately writes no billing row
+ * and moves no watermark (see the webhook: "Orthogonal to the subscription"),
+ * so that salt is constant here — and a constant salt would collapse a
+ * legitimate SECOND purchase of the same amount into the first, already
+ * completed, session for the whole 24h Stripe honours the key. A repeat top-up
+ * is a normal thing to want; two of them one second apart is not.
+ *
+ * The bucket is therefore the smallest thing that separates the two: clicks
+ * seconds apart share it and collapse, a deliberate repeat two minutes later
+ * gets its own session. Two clicks straddling a boundary still produce two
+ * sessions — that is exactly today's behaviour, so the window is a strict
+ * improvement on it rather than a guarantee.
+ */
+export function topUpIdempotencyKey(input: {
+  organizationId: string;
+  amountCents: number;
+  currency: "usd" | "brl";
+  nowMs?: number;
+}): string {
+  const bucket = Math.floor(
+    (input.nowMs ?? Date.now()) / TOPUP_IDEMPOTENCY_WINDOW_MS,
+  );
+  return [
+    "topup",
+    input.organizationId,
+    input.currency,
+    input.amountCents,
+    bucket,
+  ].join(":");
+}
+
 export async function createTopUpCheckoutSession(input: {
   organizationId: string;
   /** Amount in the PAYMENT currency's cents (BRL centavos for brl). */
@@ -330,6 +377,12 @@ export async function createTopUpCheckoutSession(input: {
       ? `Studio AI credits (R$ ${(input.amountCents / 100).toFixed(2)})`
       : `Studio AI credits ($${(input.amountCents / 100).toFixed(2)})`;
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    // Two clicks, one session — see topUpIdempotencyKey.
+    idempotencyKey: topUpIdempotencyKey({
+      organizationId: input.organizationId,
+      amountCents: input.amountCents,
+      currency: input.currency,
+    }),
     params: {
       mode: "payment",
       // Reuse the org's saved customer when it exists (same card as the
@@ -377,6 +430,10 @@ export async function createBillingPortalSession(input: {
 export interface StripeSubscription {
   id: string;
   customer: string;
+  /** Stripe's own vocabulary (`active`, `past_due`, `canceled`, …). Read by the
+   *  reconciliation sweep through `mapSubscriptionStatus`, which is the same
+   *  mapping the webhook applies to the event payload. */
+  status?: string;
   /** Unix seconds. Recent API versions moved this onto the items. */
   current_period_end?: number;
   /** `data[].id` is the subscription ITEM id, which is what a price swap

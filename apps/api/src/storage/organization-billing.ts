@@ -51,6 +51,36 @@ export class OrganizationBillingStorage {
     return row ? toBillingRow(row) : null;
   }
 
+  /**
+   * The org's billing row, creating the empty one if the creation-time seed
+   * never ran. Same self-heal `claimTaskUnderLimit` does, and for the same
+   * reason: the row is a lock anchor and a binding slot, never a fact about
+   * the org, so its absence must not decide anything.
+   *
+   * The webhook needs it because "no row" there meant a PAID checkout was
+   * acknowledged and dropped — no plan, no refund, no orphan cleanup.
+   *
+   * Null only when the org itself does not exist (the foreign key refuses the
+   * insert). That IS "unknown org", and it is the one case the caller should
+   * still acknowledge and drop: redelivering cannot conjure the organization.
+   */
+  async ensureBilling(
+    organizationId: string,
+  ): Promise<OrganizationBillingRow | null> {
+    const existing = await this.getBilling(organizationId);
+    if (existing) return existing;
+    try {
+      await this.db
+        .insertInto("organization_billing")
+        .values({ organization_id: organizationId })
+        .onConflict((oc) => oc.column("organization_id").doNothing())
+        .execute();
+    } catch {
+      return null;
+    }
+    return await this.getBilling(organizationId);
+  }
+
   /** Resolve the org behind a Stripe subscription id (unique-indexed). */
   async getBillingByStripeSubscriptionId(
     stripeSubscriptionId: string,
@@ -61,6 +91,41 @@ export class OrganizationBillingStorage {
       .where("stripe_subscription_id", "=", stripeSubscriptionId)
       .executeTakeFirst();
     return row ? toBillingRow(row) : null;
+  }
+
+  /**
+   * Orgs whose paid period ended and whose row nobody has touched since.
+   *
+   * The reconciliation input. Every other path back to Free is a WEBHOOK, and a
+   * webhook is the one part of this system we do not control: Stripe gives up
+   * after ~3 days of 5xx and disables an endpoint that keeps failing. Nothing
+   * else notices — `current_period_end` is written and then read only by the
+   * task-quota bucket key — so a lost `subscription.deleted` left an org holding
+   * a paid tier, a funded provider key and every gated feature, permanently.
+   *
+   * A row that renewed normally has had `current_period_end` pushed forward by
+   * `invoice.paid`, so it is not here. Being here means the last thing we heard
+   * is older than the period it described.
+   *
+   * `status <> 'canceled'` because a canceled row has already been reconciled —
+   * its period end is simply the last one it had. Ordered oldest-first so a
+   * backlog drains deterministically under the tick limit.
+   */
+  async listSubscriptionsPastPeriodEnd(
+    before: Date,
+    limit: number,
+  ): Promise<OrganizationBillingRow[]> {
+    const rows = await this.db
+      .selectFrom("organization_billing")
+      .selectAll()
+      .where("stripe_subscription_id", "is not", null)
+      .where("status", "<>", "canceled")
+      .where("current_period_end", "is not", null)
+      .where("current_period_end", "<", before)
+      .orderBy("current_period_end", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map(toBillingRow);
   }
 
   /** Webhook write: subscription identity / status / period end + the event
