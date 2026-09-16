@@ -130,7 +130,7 @@ export const virtualMcp = {
   "virtualMcp.settings.groups.advanced": "Advanced",
   "virtualMcp.settings.connections.title": "Connections",
   "virtualMcp.settings.views.defaults": "Default layout",
-  "virtualMcp.settings.views.sidebar": "Sidebar views",
+  "virtualMcp.settings.views.sidebar": "Views",
   "virtualMcp.settings.views.open": "Open",
   "virtualMcp.settings.views.pin": "Pin to sidebar",
   "virtualMcp.settings.views.unpin": "Remove from sidebar",
