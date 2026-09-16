@@ -34,6 +34,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { getInitials } from "@/lib/get-initials";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import { useT } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
@@ -140,7 +141,6 @@ import { useStudioTools } from "@/lib/studio-tools";
 import {
   EMPTY_FILTERS,
   BoardSettingsButton,
-  SearchToggle,
   TaskFiltersDrawer,
   taskMatchesFilters,
   type TaskFilters,
@@ -1159,6 +1159,9 @@ export function TaskBoardPage() {
                   onChange={(search) =>
                     handleFiltersChange({ ...filters, search })
                   }
+                  label={t("taskBoard.taskFilters.searchLabel")}
+                  placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+                  clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
                 />
                 <TaskFilterButton
                   filters={filters}

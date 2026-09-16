@@ -10,6 +10,7 @@ import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import {
   Drawer,
   DrawerClose,
@@ -45,11 +46,9 @@ import {
   ChevronDown,
   Flag01,
   FilterLines,
-  SearchSm,
   Settings02,
   Tag01,
   User01,
-  X,
 } from "@untitledui/icons";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
@@ -607,87 +606,6 @@ function ProjectFilter({
  * (collapsing back once empty and blurred), rather than reserving space for a
  * full-width input at all times.
  */
-export function SearchToggle({
-  value,
-  onChange,
-  block,
-}: {
-  value: string;
-  onChange: (next: string) => void;
-  block?: boolean;
-}) {
-  const t = useT();
-  const [open, setOpen] = useState(value !== "");
-  const [focused, setFocused] = useState(false);
-
-  // Collapse a filter cleared externally while unfocused (not one emptied by typing).
-  const [prevValue, setPrevValue] = useState(value);
-  if (value !== prevValue) {
-    setPrevValue(value);
-    if (value === "" && !focused) setOpen(false);
-  }
-
-  /** Collapsed, this IS one of the icon buttons beside it — the same component,
-   *  so the hover, the focus ring, the glyph and the hit area cannot drift from
-   *  them. The field below only exists once there is something to type into. */
-  if (!open && !block) {
-    return (
-      <IconButton
-        label={t("taskBoard.taskFilters.searchLabel")}
-        tooltipSide="bottom"
-        variant="secondary"
-        onClick={() => setOpen(true)}
-      >
-        <SearchSm />
-      </IconButton>
-    );
-  }
-
-  return (
-    <div
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 overflow-hidden rounded-full bg-card text-card-foreground card-shadow",
-        block
-          ? "h-10 w-full px-3"
-          : "h-7 w-32 animate-search-expand px-2.5 sm:w-44",
-      )}
-    >
-      {/* Decoration now: the button it replaced is the collapsed state. */}
-      <SearchSm className="size-4 shrink-0 text-muted-foreground" />
-      <input
-        autoFocus={!block}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => {
-          setFocused(false);
-          if (value === "") setOpen(false);
-        }}
-        placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
-        aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
-        className={cn(
-          "w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground",
-          block ? "text-sm" : "text-xs",
-        )}
-      />
-      {value !== "" && (
-        <button
-          type="button"
-          aria-label={t("taskBoard.taskFilters.searchClearLabel")}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            onChange("");
-            if (!block) setOpen(false);
-          }}
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <X size={14} />
-        </button>
-      )}
-    </div>
-  );
-}
-
 /** `block` is the mobile drawer, where this is a labelled row rather than a glyph. */
 export function BoardSettingsButton({
   block,
@@ -738,12 +656,16 @@ function FilterControls({
   onOpenBoardSettings: () => void;
   block?: boolean;
 }) {
+  const t = useT();
   return (
     <>
       <SearchToggle
-        block={block}
+        expanded={block}
         value={filters.search}
         onChange={(search) => onChange({ ...filters, search })}
+        label={t("taskBoard.taskFilters.searchLabel")}
+        placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+        clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
       />
       <AssigneeFilter
         block={block}

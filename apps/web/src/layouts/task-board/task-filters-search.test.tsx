@@ -11,7 +11,8 @@ import type { ReactNode } from "react";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
 import { buildProjectIndex } from "@/lib/project-index";
 import type { OrgTag } from "./config";
-import { EMPTY_FILTERS, SearchToggle } from "./task-filters";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
+import { EMPTY_FILTERS } from "./task-filters";
 import { TaskFilterButton } from "./view-controls";
 
 const TAG: OrgTag = {
@@ -123,26 +124,38 @@ describe("search toggle — collapses when cleared externally", () => {
 
   test("an unfocused search chip collapses when the filters are reset", () => {
     const { getByPlaceholderText, queryByPlaceholderText, rerender } = render(
-      <SearchToggle value="login" onChange={() => {}} />,
+      <SearchToggle
+        value="login"
+        onChange={() => {}}
+        placeholder="Search tasks…"
+      />,
     );
 
     const input = getByPlaceholderText("Search tasks…");
     fireEvent.blur(input);
 
-    rerender(<SearchToggle value="" onChange={() => {}} />);
+    rerender(
+      <SearchToggle value="" onChange={() => {}} placeholder="Search tasks…" />,
+    );
 
     expect(queryByPlaceholderText("Search tasks…")).toBeNull();
   });
 
   test("a focused search box stays open while backspaced to empty", () => {
     const { getByPlaceholderText, rerender } = render(
-      <SearchToggle value="login" onChange={() => {}} />,
+      <SearchToggle
+        value="login"
+        onChange={() => {}}
+        placeholder="Search tasks…"
+      />,
     );
 
     const input = getByPlaceholderText("Search tasks…");
     fireEvent.focus(input);
 
-    rerender(<SearchToggle value="" onChange={() => {}} />);
+    rerender(
+      <SearchToggle value="" onChange={() => {}} placeholder="Search tasks…" />,
+    );
 
     expect(getByPlaceholderText("Search tasks…")).not.toBeNull();
   });

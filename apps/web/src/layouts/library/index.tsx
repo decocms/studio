@@ -23,16 +23,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import {
-  Eye,
-  Plus,
-  RefreshCw01,
-  SearchLg,
-  Upload01,
-  XClose,
-} from "@untitledui/icons";
+import { Eye, Plus, RefreshCw01, Upload01 } from "@untitledui/icons";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -445,21 +440,38 @@ export function LibraryPage({
       </Page.Title>
       <Page.Actions
         secondary={
-          browseVolume ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setNewFolderOpen(true)}
+          <>
+            <SearchToggle
+              value={searchText}
+              onChange={setSearchText}
+              label={t("library.library.searchPlaceholder")}
+              placeholder={searchPlaceholder}
+              clearLabel={t("library.library.clearSearch")}
+            />
+            <IconButton
+              label={t("library.library.refresh")}
+              tooltipSide="bottom"
+              variant="secondary"
+              onClick={refresh}
             >
-              <Plus size={14} />
-              <span className="hidden sm:inline">
-                {t("library.library.newFolder")}
-              </span>
-              <span className="sr-only sm:hidden">
-                {t("library.library.newFolder")}
-              </span>
-            </Button>
-          ) : undefined
+              <RefreshCw01 />
+            </IconButton>
+            {browseVolume && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setNewFolderOpen(true)}
+              >
+                <Plus size={14} />
+                <span className="hidden sm:inline">
+                  {t("library.library.newFolder")}
+                </span>
+                <span className="sr-only sm:hidden">
+                  {t("library.library.newFolder")}
+                </span>
+              </Button>
+            )}
+          </>
         }
       >
         {location.readOnly ? (
@@ -500,44 +512,6 @@ export function LibraryPage({
           ))}
         </Page.Tabs>
       </Panel.Toolbar.Left.Portal>
-      <Panel.Toolbar.Right.Portal>
-        <div className="relative w-44 @min-3xl/panel-toolbar:w-56">
-          <SearchLg
-            size={14}
-            className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setSearchText("");
-            }}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            className="h-7 rounded-md border-transparent bg-transparent pr-8 pl-7 text-xs shadow-none hover:bg-accent/60 focus-visible:border-input"
-          />
-          {searchText && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-1/2 right-0.5 size-6 -translate-y-1/2"
-              onClick={() => setSearchText("")}
-              aria-label={t("library.library.clearSearch")}
-            >
-              <XClose size={12} />
-            </Button>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={refresh}
-          aria-label={t("library.library.refresh")}
-        >
-          <RefreshCw01 size={14} />
-        </Button>
-      </Panel.Toolbar.Right.Portal>
       <div className="h-full overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-4 py-6 md:px-8">
           {searchQuery ? (
