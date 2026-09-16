@@ -1489,7 +1489,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     .filter(Boolean)
                     .join(" · ")
             }
-            className="flex min-h-7 w-fit min-w-0 max-w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-lg"
+            className="flex min-h-7 w-fit min-w-0 max-w-full items-center gap-2 whitespace-nowrap rounded-md px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-lg"
           >
             {activeGlobalSection && (
               <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
@@ -1512,7 +1512,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               </span>
             )}
             {(pageName || !pageOrigin) && (
-              <span className="min-w-0 whitespace-normal wrap-anywhere font-medium text-foreground">
+              <span className="min-w-0 truncate font-medium text-foreground">
                 {pageName ?? previewLabel}
               </span>
             )}
