@@ -366,7 +366,13 @@ function RecordSection({
         </CollapsibleTrigger>
         {action}
       </div>
-      <CollapsibleContent>{children}</CollapsibleContent>
+      {/* Radix clips this to animate its HEIGHT, and a card inside draws its
+          hairline outside its own box. So the clip box grows by a margin, which
+          leaves the animated height alone, and an inner pad puts the content
+          back where it was. Padding here instead would stop it collapsing. */}
+      <CollapsibleContent className="-mx-2 -mb-2">
+        <div className="px-2 pb-2">{children}</div>
+      </CollapsibleContent>
     </Collapsible>
   );
 }
