@@ -997,9 +997,11 @@ function VirtualMcpDetailViewWithData({
           className="@container/project-settings"
         >
           <SettingsPage>
+            {/* Its own sections, so SettingsPage spaces them like every other
+                pair rather than the tighter rhythm inside the identity block. */}
+            {section === "general" && <ProjectViewsSection views={views} />}
             {section === "general" && (
               <div className="flex flex-col gap-4">
-                <ProjectViewsSection views={views} />
                 <ProjectIdentity form={form} onCommit={flushAndSave} />
                 <div className="flex flex-wrap items-center gap-2 px-4 text-xs text-muted-foreground">
                   <User
