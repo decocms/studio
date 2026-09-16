@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   fromWire,
   legacyGithubRepo,
+  type ReportsRepositoryRef,
 } from "@decocms/shared/reports/repository-ref";
 import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { defineTool } from "../../core/define-tool";
@@ -17,6 +18,44 @@ const ReportsRunOutputSchema = z.object({
   triggered: z.boolean(),
   reason: z.string().optional(),
 });
+
+const ConfigurationStateSchema = z
+  .object({
+    repository: z.unknown().optional(),
+    github_repo: z.string().optional(),
+  })
+  .passthrough()
+  .nullable()
+  .optional();
+
+/**
+ * The repository a run should be scoped to, from the CD connection's
+ * `configuration_state` — decrypted JSON with no runtime shape guarantee, so a
+ * malformed value (a corrupted decrypt, a pre-migration row) degrades to "no
+ * repository" instead of failing the run.
+ */
+export function resolveRunRepository(configurationState: unknown): {
+  repository: ReportsRepositoryRef | undefined;
+  githubRepo: string | undefined;
+} {
+  const parsed = ConfigurationStateSchema.safeParse(configurationState);
+  const state = parsed.success ? parsed.data : undefined;
+
+  const repository =
+    (state ? fromWire(state.repository) : undefined) ?? undefined;
+  const legacy =
+    state &&
+    typeof state.github_repo === "string" &&
+    state.github_repo.length > 0
+      ? state.github_repo
+      : undefined;
+
+  return {
+    repository: repository ?? undefined,
+    githubRepo:
+      (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
+  };
+}
 
 export const REPORTS_RUN = defineTool({
   name: "REPORTS_RUN",
@@ -76,33 +115,15 @@ export const REPORTS_RUN = defineTool({
       organization.id,
     );
 
-    const ConfigurationStateSchema = z
-      .object({
-        repository: z.unknown().optional(),
-        github_repo: z.string().optional(),
-      })
-      .passthrough()
-      .nullable()
-      .optional();
-
-    const state = ConfigurationStateSchema.parse(
+    const { repository, githubRepo } = resolveRunRepository(
       cdConnection?.configuration_state,
     );
-
-    const repository = state ? fromWire(state.repository) : undefined;
-    const legacy =
-      state &&
-      typeof state.github_repo === "string" &&
-      state.github_repo.length > 0
-        ? state.github_repo
-        : undefined;
 
     return triggerReportsRun({
       siteUrl: normalized.value,
       orgId: organization.id,
-      repository: repository ?? undefined,
-      githubRepo:
-        (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
+      repository,
+      githubRepo,
     });
   },
 });
