@@ -1174,7 +1174,7 @@ export function TaskBoardPage() {
           )
         }
       >
-        <Button variant="brand" size="sm" onClick={openCreate}>
+        <Button size="sm" onClick={openCreate}>
           <Plus size={16} />
           {t("taskBoard.taskBoard.newTask")}
         </Button>

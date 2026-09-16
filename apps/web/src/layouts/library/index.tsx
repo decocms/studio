@@ -469,7 +469,6 @@ export function LibraryPage({
           </span>
         ) : (
           <Button
-            variant="brand"
             size="sm"
             disabled={upload.isPending}
             onClick={() => fileInputRef.current?.click()}

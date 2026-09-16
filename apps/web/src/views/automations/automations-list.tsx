@@ -68,12 +68,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const newButton = (
-    <Button
-      variant="brand"
-      size="sm"
-      onClick={handleNew}
-      disabled={create.isPending}
-    >
+    <Button size="sm" onClick={handleNew} disabled={create.isPending}>
       <Plus size={14} />
       {t("automations.automationsList.newAutomation")}
     </Button>

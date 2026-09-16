@@ -185,7 +185,6 @@ export function OrgAgentsTab() {
   const importButton = (source: string) => (
     <Button
       size="sm"
-      variant="brand"
       onClick={() => {
         track("agent_create_clicked", { source, method: "github" });
         setGithubPickerOpen(true);

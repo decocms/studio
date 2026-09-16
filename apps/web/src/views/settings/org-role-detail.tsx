@@ -1698,7 +1698,6 @@ function RoleDetailPageInner({
                       {t("settings.orgRoleDetail.cancel")}
                     </Button>
                     <Button
-                      variant="brand"
                       size="sm"
                       onClick={handleSubmit}
                       disabled={

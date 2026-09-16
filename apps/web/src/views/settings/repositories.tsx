@@ -355,7 +355,7 @@ function RepositoriesSection({
       actions={
         rows.length > 0 ? (
           <Page.Actions>
-            <Button variant="brand" size="sm" onClick={onAdd}>
+            <Button size="sm" onClick={onAdd}>
               <Plus size={14} />
               {t("settings.repositories.addRepository")}
             </Button>
@@ -379,7 +379,7 @@ function RepositoriesSection({
             </p>
           </div>
           <Page.Actions>
-            <Button variant="brand" size="sm" onClick={onAdd}>
+            <Button size="sm" onClick={onAdd}>
               <Plus size={14} />
               {t("settings.repositories.addRepository")}
             </Button>

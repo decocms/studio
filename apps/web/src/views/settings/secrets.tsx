@@ -266,7 +266,7 @@ function SecretsContent() {
 
   const createAction = (
     <Page.Actions>
-      <Button variant="brand" size="sm" onClick={() => setCreateOpen(true)}>
+      <Button size="sm" onClick={() => setCreateOpen(true)}>
         <Plus size={14} />
         {t("settings.secrets.newSecret")}
       </Button>

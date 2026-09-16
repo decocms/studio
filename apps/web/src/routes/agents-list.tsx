@@ -85,7 +85,7 @@ export default function AgentsListPage() {
                 canManageAgents && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="brand" size="sm">
+                      <Button size="sm">
                         <Plus size={14} />
                         {t("routes.agentsList.createAgent")}
                       </Button>

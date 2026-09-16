@@ -984,7 +984,7 @@ function VirtualMcpDetailViewWithData({
         secondary={section === "connections" ? connectButton : undefined}
       >
         {section === "connections" ? (
-          <Button variant="brand" size="sm" onClick={handleOpenAddDialog}>
+          <Button size="sm" onClick={handleOpenAddDialog}>
             <Plus size={14} />
             {t("virtualMcp.virtualMcp.addConnection")}
           </Button>

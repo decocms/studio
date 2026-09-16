@@ -331,11 +331,7 @@ function RolesPageContent() {
           }}
         />
         <Page.Actions>
-          <Button
-            variant="brand"
-            size="sm"
-            onClick={() => setActiveRole("new")}
-          >
+          <Button size="sm" onClick={() => setActiveRole("new")}>
             <Plus size={16} />
             {t("settings.roles.createRole")}
           </Button>

@@ -749,11 +749,7 @@ function OrgMembersContent() {
   const ctaButton = (
     <Page.Actions>
       <InviteMemberDialog
-        trigger={
-          <Button size="sm" variant="brand">
-            {t("orgs.members.inviteMember")}
-          </Button>
-        }
+        trigger={<Button size="sm">{t("orgs.members.inviteMember")}</Button>}
       />
     </Page.Actions>
   );
