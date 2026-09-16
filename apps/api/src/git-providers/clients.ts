@@ -347,12 +347,13 @@ export function principalForToken(
   provider: GitProviderKind,
   host: string,
   token: string,
+  workspace?: string | null,
 ): Promise<ProviderPrincipal> {
   switch (provider) {
     case "gitlab":
       return gitlabCurrentUser(host, token);
     case "bitbucket":
-      return bitbucketPrincipalForToken(host, token);
+      return bitbucketPrincipalForToken(host, token, workspace);
     case "github":
       throw new GitProviderError({
         provider,

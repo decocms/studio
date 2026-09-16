@@ -1058,7 +1058,7 @@ function VirtualMcpDetailViewWithData({
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-10">
             {!hideOwnTitle && (
               <Page.Title
@@ -1458,7 +1458,7 @@ function VirtualMcpDetailViewWithData({
               </ProjectSettingsDetail>
             )}
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
 
       {/* Dialogs */}

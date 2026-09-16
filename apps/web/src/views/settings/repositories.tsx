@@ -75,6 +75,9 @@ function authKindLabel(
   account: GitAccount,
   t: ReturnType<typeof useT>,
 ): string {
+  if (account.authKind === "github_cli") {
+    return t("settings.repositories.authKindGithubCli");
+  }
   if (account.authKind === "github_app") {
     return t("settings.repositories.authKindGithubApp");
   }

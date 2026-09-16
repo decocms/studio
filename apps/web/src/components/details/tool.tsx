@@ -49,7 +49,7 @@ import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
-import { ViewLayout } from "./layout";
+import { DetailPanel } from "./detail-panel";
 import {
   OAuthAuthenticationState,
   ManualAuthRequiredState,
@@ -727,7 +727,7 @@ function ToolDetailsAuthenticated({
   );
 
   return (
-    <ViewLayout breadcrumb={breadcrumb}>
+    <DetailPanel leading={breadcrumb}>
       <div className="flex flex-col h-full overflow-hidden @container">
         {/* Header */}
         <div className="flex flex-col gap-3 py-7 px-8 bg-background border-b border-border shrink-0">
@@ -796,7 +796,7 @@ function ToolDetailsAuthenticated({
           </div>
         </div>
       </div>
-    </ViewLayout>
+    </DetailPanel>
   );
 }
 

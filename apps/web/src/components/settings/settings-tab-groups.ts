@@ -4,7 +4,7 @@
  *  tabs — Connect, whose API keys tab is now a section on its own page — and
  *  still lives here, because the page chrome reads its title from this file.
  *
- * Both the sidebar (`settings-layout.tsx`) and the in-page tab strip
+ * Both the settings sidebar and the in-page tab strip
  * (`settings-subnav.tsx`) read this file, so a row and its tabs can never
  * disagree about which routes belong together.
  */

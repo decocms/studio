@@ -481,10 +481,7 @@ test("reconnect asks which GitHub user to authorize and cancellation is visible"
     "Authorization was cancelled",
   );
   await expect(
-    page.getByRole("link", {
-      name: "Add GitHub account or organization",
-      exact: true,
-    }),
+    page.getByRole("button", { name: "Add account", exact: true }),
   ).toBeVisible();
 });
 

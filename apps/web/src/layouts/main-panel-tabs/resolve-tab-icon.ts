@@ -23,6 +23,7 @@ export type TabKind = "system" | "agent" | "expanded" | "file";
 export type TabIcon =
   | { kind: "component"; Component: IconComponent }
   | { kind: "url"; src: string }
+  | { kind: "none" }
   | { kind: "fallback" };
 
 export type SystemTabId =
@@ -60,6 +61,11 @@ function isSystemTabId(tabId: string): tabId is SystemTabId {
   return tabId in SYSTEM_TAB_ICONS;
 }
 
+/** Surface tabs that render label-only, no leading glyph. Preview and Content
+ *  read fine bare next to the icon-bearing Code tab, and their labels never
+ *  collapse (see HeaderTabButton), so the button is never left empty. */
+const ICONLESS_SYSTEM_TABS = new Set<SystemTabId>(["site-editor", "content"]);
+
 type ConnectionLike = { id: string; icon: string | null };
 
 /**
@@ -96,6 +102,7 @@ export function resolveTabIcon(args: {
   if (args.kind === "system") {
     // Unknown system tab id → fall back instead of an undefined Component.
     if (!isSystemTabId(args.tabId)) return { kind: "fallback" };
+    if (ICONLESS_SYSTEM_TABS.has(args.tabId)) return { kind: "none" };
     return { kind: "component", Component: SYSTEM_TAB_ICONS[args.tabId] };
   }
 

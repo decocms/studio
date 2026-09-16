@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
   type Crumb,
@@ -73,11 +73,12 @@ export function SavedSectionEditor({
   ) => void;
 }) {
   const t = useT();
-  const inset = useInsetContext();
-  const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
-      : null;
+  const task = useOptionalChatTask();
+  const sessionAgentId = task?.virtualMcpId;
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
+  const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
 
   // Seed once: this component is remounted (via `key`) when blockKey changes.
   const [seed] = useState(() => seedFromBlock(blockKey, decofile));
@@ -107,7 +108,7 @@ export function SavedSectionEditor({
   const blockData = decofile[blockKey] as Record<string, unknown> | undefined;
   const title = blockData ? globalSectionLabel(blockKey, blockData) : blockKey;
 
-  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const threadId = task?.taskId ?? null;
   const sandbox = {
     orgSlug,
     virtualMcpId,

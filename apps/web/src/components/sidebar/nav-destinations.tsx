@@ -25,6 +25,7 @@ import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import {
   DESTINATION_ROUTE,
+  PROJECT_ROUTE,
   routeExistsInScope,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
@@ -151,9 +152,16 @@ function useNavDestinations(): NavDestination[] {
             icon: <Home02 size={16} />,
             isActive:
               leafPath === DESTINATION_ROUTE.home ||
-              leafPath === DESTINATION_ROUTE.orgIndex,
+              leafPath === DESTINATION_ROUTE.orgIndex ||
+              leafPath === PROJECT_ROUTE.root ||
+              leafPath === `${PROJECT_ROUTE.root}/`,
             trackAs: "overview",
-            link: { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
+            link: scopeId
+              ? {
+                  to: PROJECT_ROUTE.root,
+                  params: { org: org.slug, agentId: scopeId },
+                }
+              : { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
           },
     reports:
       routeExistsInScope(DESTINATION_ROUTE.reports, scopeId) &&
@@ -163,9 +171,16 @@ function useNavDestinations(): NavDestination[] {
             key: "reports",
             label: t("sidebar.navDestinations.reports"),
             icon: <BarChartSquare02 size={16} />,
-            isActive: leafPath === DESTINATION_ROUTE.reports,
+            isActive:
+              leafPath === DESTINATION_ROUTE.reports ||
+              leafPath === PROJECT_ROUTE.reports,
             trackAs: "reports",
-            link: { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
+            link: scopeId
+              ? {
+                  to: PROJECT_ROUTE.reports,
+                  params: { org: org.slug, agentId: scopeId },
+                }
+              : { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
           }
         : null,
     board:
@@ -175,15 +190,21 @@ function useNavDestinations(): NavDestination[] {
             key: "board",
             label: t("sidebar.navDestinations.tasks"),
             icon: <Columns03 size={16} />,
-            isActive: leafPath === DESTINATION_ROUTE.tasks,
+            isActive:
+              leafPath === DESTINATION_ROUTE.tasks ||
+              leafPath === PROJECT_ROUTE.tasks,
             trackAs: "board",
             dataTour: LAYOUT_TOUR_ANCHORS.tasks,
             link: {
-              to: DESTINATION_ROUTE.tasks,
+              to: scopeId ? PROJECT_ROUTE.tasks : DESTINATION_ROUTE.tasks,
               /** Explicitly cleared: params merge with the current match, so an open
                *  card would otherwise keep its segment and this link would go
                *  nowhere. Tasks means the lanes. */
-              params: { org: org.slug, taskKey: undefined },
+              params: {
+                org: org.slug,
+                agentId: scopeId ?? undefined,
+                taskKey: undefined,
+              },
               /** Entering a project SEEDS the board's Project filter with it — a
                *  hint on entry, not a lock: clearing the filter stays cleared
                *  until you enter the project again. The `?repo=` value is a

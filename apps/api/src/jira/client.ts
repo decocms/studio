@@ -656,6 +656,27 @@ export class JiraClient {
     );
   }
 
+  /**
+   * The issue's web links, oldest first.
+   *
+   * What a review run needs before anything else: the pull request it is
+   * supposed to review is on the card as one of these, put there by the run
+   * that implemented the issue.
+   */
+  async listRemoteLinks(
+    issueIdOrKey: string,
+  ): Promise<Array<{ url: string; title: string }>> {
+    const links = await this.request<
+      Array<{ object?: { url?: unknown; title?: unknown } }>
+    >(`/rest/api/3/issue/${encodeURIComponent(issueIdOrKey)}/remotelink`);
+    return links.flatMap((link) => {
+      const url = link.object?.url;
+      if (typeof url !== "string" || url === "") return [];
+      const title = link.object?.title;
+      return [{ url, title: typeof title === "string" ? title : url }];
+    });
+  }
+
   /** Attachments on the issue. */
   async listAttachments(issueId: string): Promise<JiraAttachment[]> {
     const issue = await this.request<{

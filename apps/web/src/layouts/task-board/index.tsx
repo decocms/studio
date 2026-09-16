@@ -155,7 +155,6 @@ import {
 import { ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
-import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import {
   findTaskByKeyOrId,
   taskRouteSegment,
@@ -167,7 +166,7 @@ import type { TiptapDoc } from "@/components/chat/types";
 import { toast } from "sonner";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
-void import("../agent-shell-layout/index.tsx").catch(() => {});
+void import("../../routes/thread-session/route.tsx").catch(() => {});
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -978,8 +977,8 @@ export function TaskBoardPage() {
   const closeTask = () => {
     if (openTaskKey)
       navigate({
-        to: DESTINATION_ROUTE.tasks,
-        params: { org: org.slug, taskKey: undefined },
+        to: ".",
+        params: (prev) => ({ ...prev, taskKey: undefined }),
         search: (prev: Record<string, unknown>) => prev,
         replace: true,
       });
@@ -1089,8 +1088,11 @@ export function TaskBoardPage() {
    */
   const openTask = (item: TaskBoardItem) => {
     navigate({
-      to: DESTINATION_ROUTE.tasks,
-      params: { org: org.slug, taskKey: taskRouteSegment(org.slug, item) },
+      to: ".",
+      params: (prev) => ({
+        ...prev,
+        taskKey: taskRouteSegment(org.slug, item),
+      }),
       search: (prev: Record<string, unknown>) => prev,
     });
   };
@@ -1111,8 +1113,8 @@ export function TaskBoardPage() {
   if (staleTaskKey) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.tasks}
-        params={{ org: org.slug, taskKey: undefined }}
+        to="."
+        params={(prev) => ({ ...prev, taskKey: undefined })}
         search={(prev: Record<string, unknown>) => prev}
         replace
       />
@@ -1122,8 +1124,8 @@ export function TaskBoardPage() {
   if (canonicalKey && canonicalKey !== openTaskKey) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.tasks}
-        params={{ org: org.slug, taskKey: canonicalKey }}
+        to="."
+        params={(prev) => ({ ...prev, taskKey: canonicalKey })}
         search={(prev: Record<string, unknown>) => prev}
         replace
       />
@@ -2116,7 +2118,7 @@ function Lanes({
         </div>
       </div>
       {/* Portal to body so the overlay's `position: fixed` resolves against the
-          viewport rather than the workspace PanelCard's transformed containing
+          viewport rather than the workspace Panel's transformed containing
           block (which would offset the card from the cursor). */}
       {createPortal(
         // No drop animation: because the lane opens a live gap under the

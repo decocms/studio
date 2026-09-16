@@ -204,7 +204,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     });
   }
 
-  const onProject = leafPath === DESTINATION_ROUTE.agents;
+  const onProject = leafPath.startsWith(DESTINATION_ROUTE.projects);
 
   return (
     <SidebarMenu className="gap-1">

@@ -43,6 +43,10 @@ import {
 } from "@decocms/ui/components/command.tsx";
 import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
+import {
+  canonicalThreadRouteTarget,
+  navigateToTabRouteTarget,
+} from "@/layouts/main-panel-tabs/tab-route";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
@@ -50,6 +54,7 @@ import { track } from "@/lib/posthog-client";
 import {
   KEYS,
   SELF_MCP_ALIAS_ID,
+  getWellKnownDecopilotVirtualMCP,
   useMCPClientNonBlocking,
   useProjectContext,
 } from "@/sdk";
@@ -177,14 +182,16 @@ export function CommandPalette({
       });
       return;
     }
-    navigate({
-      to: DESTINATION_ROUTE.agents,
-      params: { org: org.slug, panel: undefined },
-      search: {
-        virtualmcpid: hit.virtual_mcp_id ?? undefined,
-        thread: hit.id,
-      },
-    });
+    const decopilotId = getWellKnownDecopilotVirtualMCP(org.id).id;
+    navigateToTabRouteTarget(
+      navigate,
+      canonicalThreadRouteTarget({
+        org: org.slug,
+        agentId: hit.virtual_mcp_id ?? decopilotId,
+        superAgentId: decopilotId,
+      }),
+      { search: () => ({ thread: hit.id }), replace: false },
+    );
   };
 
   /** The one thing that keeps a server-matched row on screen: cmdk scores an
@@ -288,9 +295,8 @@ export function CommandPalette({
                   go(
                     () =>
                       navigate({
-                        to: DESTINATION_ROUTE.agents,
-                        params: { org: org.slug, panel: undefined },
-                        search: { virtualmcpid: project.id },
+                        to: DESTINATION_ROUTE.projects,
+                        params: { org: org.slug, agentId: project.id },
                       }),
                     "project",
                   )
@@ -310,11 +316,8 @@ export function CommandPalette({
               go(
                 () =>
                   navigate({
-                    to: DESTINATION_ROUTE.agents,
-                    params: { org: org.slug, panel: undefined },
-                    /** "New project" is the Super Agent, so the scope is
-                     *  explicitly cleared rather than inherited. */
-                    search: { virtualmcpid: undefined },
+                    to: DESTINATION_ROUTE.home,
+                    params: orgParams,
                   }),
                 "new_project",
               )

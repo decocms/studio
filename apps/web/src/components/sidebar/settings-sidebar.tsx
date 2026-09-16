@@ -12,14 +12,12 @@ import { authClient } from "@/lib/auth-client";
 import { track } from "@/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/lib/query-persist";
 import { useProjectContext } from "@/sdk";
-import { SidebarPickerHeaderMobile } from "./header";
 import { SidebarBackRow, SidebarNavRow } from "./nav-row";
 import {
   type SettingsNavGroup,
   useIsActiveSettingsPath,
   useSettingsSidebarGroups,
 } from "./settings-nav-items";
-import { SidebarShell } from "./shell";
 
 /** Open/closed state for the collapsible groups. A group starts open when it
  *  holds the page you're on, so a deep link into Advanced never lands you in a
@@ -189,27 +187,5 @@ export function SettingsVersion() {
         v{__STUDIO_VERSION__}
       </span>
     </div>
-  );
-}
-
-/** The mobile sheet: the same four slots as desktop, with the shared mobile
- *  header strip — the SAME picker, so org and project can be switched from
- *  settings exactly as from anywhere else, and a close button in place of the
- *  desktop collapse toggle. It carries no agent switcher: that reads the thread
- *  manager, which this route tree does not mount.
- *
- *  The back row is NOT optional here. Settings is its own route tree, so none
- *  of the org's destinations are reachable from inside it, and the toolbar this
- *  sheet hangs off carries only the hamburger — without this row a phone can
- *  leave settings only with the browser's back button. */
-export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
-  return (
-    <SidebarShell
-      sheet
-      header={<SidebarPickerHeaderMobile onClose={onClose} />}
-      back={<SettingsBackRow onNavigate={onClose} />}
-      body={<SettingsNav onNavigate={onClose} />}
-      footer={<SettingsVersion />}
-    />
   );
 }

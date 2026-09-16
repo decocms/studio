@@ -5,7 +5,7 @@
  * Also handles MCP configuration state and scopes validation.
  */
 
-import { clientFromConnection } from "@/mcp-clients";
+import { notifyMcpConfiguration } from "./on-configuration";
 import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -382,21 +382,11 @@ export const COLLECTION_CONNECTIONS_UPDATE = defineTool({
     // Ignore errors but await for the response before responding
     if (savedConfigurationChanged && finalState && finalScopes) {
       try {
-        // Create client - pool manages lifecycle, best-effort call
-        const client = await clientFromConnection(
-          connectionForCallback,
-          ctx,
-          false,
-        );
-
-        await client.callTool({
-          name: "ON_MCP_CONFIGURATION",
-          arguments: {
-            state: finalState,
-            scopes: finalScopes,
-            firstRun,
-            ...(vaultBootstrap ? { vault: vaultBootstrap } : {}),
-          },
+        await notifyMcpConfiguration(ctx, connectionForCallback, {
+          state: finalState,
+          scopes: finalScopes,
+          firstRun,
+          ...(vaultBootstrap ? { vault: vaultBootstrap } : {}),
         });
       } catch (error) {
         console.error("Failed to invoke ON_MCP_CONFIGURATION callback", error);

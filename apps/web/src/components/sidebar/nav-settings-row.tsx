@@ -40,7 +40,8 @@ export function NavSettingsRow({ onNavigate }: { onNavigate?: () => void }) {
    *  sidebar, so this row is not rendered while it is open. */
   const isActive =
     leafPath.startsWith("/$org/settings") ||
-    (leafPath === DESTINATION_ROUTE.agents && activePanel === "settings");
+    (leafPath.startsWith(DESTINATION_ROUTE.projects) &&
+      activePanel === "settings");
 
   /** One label for both targets. Which settings it opens is already said by
    *  the sidebar it sits in — a project's sidebar names the project at the top

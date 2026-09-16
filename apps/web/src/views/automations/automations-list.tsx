@@ -27,7 +27,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
     return (
       <Page>
         <Page.Content>
-          <Page.Body>
+          <Page.Container>
             <div className="flex items-center justify-center py-20">
               <EmptyState
                 image={
@@ -42,7 +42,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                 }
               />
             </div>
-          </Page.Body>
+          </Page.Container>
         </Page.Content>
       </Page>
     );
@@ -77,7 +77,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <Page.Title>{t("automations.automationsList.title")}</Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -126,7 +126,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
               ))}
             </div>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

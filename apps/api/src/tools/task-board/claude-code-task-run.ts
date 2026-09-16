@@ -31,11 +31,7 @@ import {
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
-import {
-  JIRA_DEFAULT_LEAD,
-  jiraRunFinishInstructions,
-  jiraRunVerifyInstructions,
-} from "./jira-run-prompt";
+import { studioToolNamespaceFact } from "./jira-run-prompt";
 import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
@@ -62,6 +58,53 @@ export interface TaskRepo {
 }
 
 /**
+ * What the card already decided about where its work happens.
+ *
+ * Two rungs because cards were written at two different times: the id is what
+ * a sender records now, the name is all an older card (or a human typing into
+ * the field) has.
+ */
+export interface PreferredTaskRepo {
+  /** The card's first-class repository. */
+  repositoryId?: string | null;
+  /** The card's `owner/name`. */
+  repo?: string | null;
+}
+
+/**
+ * Narrow the org's clonable repos to what the card asked for, if anything.
+ *
+ * The id wins over the name, and falls THROUGH to it rather than failing: an
+ * id that matches nothing means the repository was unlinked since the card was
+ * written, and the name may still find its replacement. An ask that matches
+ * nothing at either rung narrows to nothing — which is the conservative
+ * answer, because it sends the run to the mid-run pick instead of binding it
+ * to a repository the card did not name.
+ *
+ * Pure, and exported for its test.
+ */
+export function narrowToPreferredRepo(
+  choices: RepoChoice[],
+  preferred?: PreferredTaskRepo,
+): RepoChoice[] {
+  const repositoryId = preferred?.repositoryId;
+  const repo = preferred?.repo;
+  if (repositoryId) {
+    const byId = choices.filter(
+      (choice) => choice.repository?.id === repositoryId,
+    );
+    if (byId.length > 0) return byId;
+  }
+  if (repo) {
+    return choices.filter(
+      (choice) =>
+        `${choice.owner}/${choice.name}`.toLowerCase() === repo.toLowerCase(),
+    );
+  }
+  return repositoryId ? [] : choices;
+}
+
+/**
  * The org's single clonable repo, or null when the answer is ambiguous.
  *
  * "Single" counts REPOSITORIES, not connections — see `mergeRepoChoices`, which
@@ -70,21 +113,16 @@ export interface TaskRepo {
  * both point at. Counting connections made a genuinely one-repo org look
  * ambiguous and silently dropped every task to Decopilot.
  *
+ * `preferred` is what the card already decided, so a multi-repo org still binds
+ * a checkout before dispatch — see {@link narrowToPreferredRepo}.
+ *
  * Pure, so the counting rule is unit-tested without a StudioContext.
  */
 export function pickSoleTaskRepo(
   choices: RepoChoice[],
-  /** The card's own `repo`, when it has one: narrow to it first, so a
-   *  multi-repo org still binds a checkout before dispatch. An unknown or
-   *  ambiguous name narrows to nothing and falls back to the mid-run pick. */
-  preferredRepo?: string,
+  preferred?: PreferredTaskRepo,
 ): TaskRepo | null {
-  if (preferredRepo)
-    choices = choices.filter(
-      (choice) =>
-        `${choice.owner}/${choice.name}`.toLowerCase() ===
-        preferredRepo.toLowerCase(),
-    );
+  choices = narrowToPreferredRepo(choices, preferred);
   if (choices.length !== 1) return null;
   const chosen = choices[0]!;
   return {
@@ -137,7 +175,7 @@ export interface TaskRepoChoiceOption {
 export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
-  preferredRepo?: string,
+  preferred?: PreferredTaskRepo,
 ): Promise<TaskRepoChoice> {
   if (!agentSandboxEnabled()) {
     console.warn(
@@ -148,7 +186,7 @@ export async function resolveTaskRepoChoice(
   }
   try {
     const choices = await listOrgRepoChoices(ctx, organizationId);
-    const repo = pickSoleTaskRepo(choices, preferredRepo);
+    const repo = pickSoleTaskRepo(choices, preferred);
     if (repo) return { repo };
     if (choices.length === 0) {
       console.warn(
@@ -216,11 +254,15 @@ export function buildClaudeCodeTaskPrompt(
   // A column rule's own instruction, when the caller passed one. Dropping it
   // here (the Decopilot builder never did) silently ignored every Jira status
   // rule's prompt on any org with a repo to work in.
+  // A Jira run is told nothing beyond the issue, the pod's own facts, and the
+  // instruction its column rule carries. Everything a person could write —
+  // how to finish, how to report, how to review — is in that instruction,
+  // where they can read and change it (see `jira-run-prompt.ts`).
   const jiraRun = opts?.source?.kind === "jira";
   const lines: string[] = [
     opts?.instruction?.trim() ||
       (jiraRun
-        ? JIRA_DEFAULT_LEAD
+        ? ""
         : `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`),
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
@@ -300,6 +342,11 @@ export function buildClaudeCodeTaskPrompt(
     );
   }
 
+  if (jiraRun) {
+    lines.push(studioToolNamespaceFact("mcp__studio__"), "");
+    return lines.join("\n").trimStart();
+  }
+
   lines.push(
     "How to finish:",
     "- Make the change, commit it, push the branch, and open a pull request" +
@@ -312,14 +359,7 @@ export function buildClaudeCodeTaskPrompt(
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    // A Jira run is the only one that CAN check the preview: the reviewer of
-    // one writes its verdict to the hidden anchor card, so handing over
-    // "for a reviewer to check" reports to nobody.
-    ...(jiraRun
-      ? jiraRunVerifyInstructions()
-      : [
-          `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
-        ]),
+    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
     // The sandbox's state — installed or not, dev server or not — is NOT
     // stated here. It is decided by the claim, minutes after this string is
     // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
@@ -331,11 +371,6 @@ export function buildClaudeCodeTaskPrompt(
     // it, which a run that died right after `gh pr create` could never do.
     `- Open the ${cli.changeRequest} from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.`,
   );
-
-  if (jiraRun) {
-    lines.push(...jiraRunFinishInstructions("mcp__studio__"), "");
-    return lines.join("\n");
-  }
 
   lines.push(
     // A tool call, NOT a line in the PR body: the first version of this read

@@ -1390,7 +1390,7 @@ function OrgMcpsContent() {
 
         <Page.Content>
           {/* Title + Toolbar */}
-          <Page.Body>
+          <Page.Container>
             <div className="flex flex-col gap-6">
               <Page.Title>{t("orgs.connections.pageTitle")}</Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1540,7 +1540,7 @@ function OrgMcpsContent() {
                 </div>
               </Suspense>
             </div>
-          </Page.Body>
+          </Page.Container>
         </Page.Content>
       </Page>
     </>

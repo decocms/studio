@@ -13,7 +13,7 @@ import {
 } from "@decocms/ui/components/select.tsx";
 import { getCommerceDiscoveryAgentId, useProjectContext } from "@/sdk";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
-import { mobileSurfaceSearch } from "@/hooks/use-layout-state";
+import { mobileSurfaceSearch } from "@/hooks/use-chat-layout-state";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { usePanelNavigate } from "./use-panel-navigate";
 import { shouldDeepLinkSourceTab } from "./source-system-tabs";

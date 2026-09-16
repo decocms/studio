@@ -717,7 +717,10 @@ async function enqueueReviewerForTask(
   // reviewer could reach its verdict and never record it. Falls back to
   // Decopilot when the org has no importable repo, exactly as the Super Agent
   // does — with no repo there is no checkout to review anyway.
-  const choice = await resolveTaskRepoChoice(ctx, organizationId);
+  const choice = await resolveTaskRepoChoice(ctx, organizationId, {
+    repositoryId: task.repositoryId,
+    repo: task.repo,
+  });
   const repo = choice && "repo" in choice ? choice.repo : null;
   const sandboxed = choice !== null;
   const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());

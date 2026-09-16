@@ -302,6 +302,81 @@ describe("triggerCommerceDiscoveryRun", () => {
     });
   });
 
+  test("forwards the repository identity, snake_case, for any provider", async () => {
+    let body: unknown;
+    await triggerCommerceDiscoveryRun(
+      {
+        siteUrl: "https://example.com",
+        orgId: "org_123",
+        repository: {
+          repositoryId: "repo_1",
+          provider: "gitlab",
+          host: "gitlab.example.dev",
+          path: "group/sub/project",
+          defaultBranch: "main",
+          webUrl: "https://gitlab.example.dev/group/sub/project",
+        },
+      },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async (input, init) => {
+          body = await new Request(input, init).json();
+          return Response.json({
+            url: "example.com",
+            scope: "private",
+            run: {},
+          });
+        },
+      },
+    );
+    expect(body).toEqual({
+      org_id: "org_123",
+      repository: {
+        repository_id: "repo_1",
+        provider: "gitlab",
+        host: "gitlab.example.dev",
+        path: "group/sub/project",
+        default_branch: "main",
+        web_url: "https://gitlab.example.dev/group/sub/project",
+      },
+    });
+  });
+
+  test("a github.com repository goes out under both spellings for the window", async () => {
+    let body: unknown;
+    await triggerCommerceDiscoveryRun(
+      {
+        siteUrl: "https://example.com",
+        orgId: "org_123",
+        repository: {
+          repositoryId: "repo_2",
+          provider: "github",
+          host: "github.com",
+          path: "acme/storefront",
+        },
+        githubRepo: "acme/storefront",
+      },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async (input, init) => {
+          body = await new Request(input, init).json();
+          return Response.json({
+            url: "example.com",
+            scope: "private",
+            run: {},
+          });
+        },
+      },
+    );
+    expect(body).toMatchObject({
+      org_id: "org_123",
+      github_repo: "acme/storefront",
+      repository: { repository_id: "repo_2", path: "acme/storefront" },
+    });
+  });
+
   test("treats a 409 (not upgraded yet) as a soft skip, not a throw", async () => {
     const out = await triggerCommerceDiscoveryRun(
       { siteUrl: "https://example.com", orgId: "org_123" },

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/i18n/use-t";
 import { KEYS } from "@/lib/query-keys";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import {
   ChevronDown,
   ChevronLeft,
@@ -177,7 +177,8 @@ export function SectionsEditor({
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
   const t = useT();
-  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const task = useOptionalChatTask();
+  const threadId = task?.taskId ?? null;
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
     : null;
@@ -185,11 +186,11 @@ export function SectionsEditor({
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
-  const inset = useInsetContext();
-  const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
-      : null;
+  const sessionAgentId = task?.virtualMcpId;
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
+  const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
   // Section-gallery previews render against the sandbox dev server, falling
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({

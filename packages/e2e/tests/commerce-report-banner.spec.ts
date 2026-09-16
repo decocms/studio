@@ -16,7 +16,7 @@
  * Covered:
  *   1. Org without the CD connection → no banner, home intact.
  *   2. Completed diagnostic → "ready" banner; click navigates to the
- *      report app (the CD project's chat path, a fresh `?thread=` and a pinned main tab).
+ *      report app at its canonical project URL.
  *   3. Live run → "generating" banner.
  *   4. CD connection whose MCP is unreachable → no banner, home intact.
  */
@@ -214,14 +214,17 @@ test.describe("commerce report banner", () => {
       await expect(banner).toContainText("minha-loja.example");
 
       await banner.click();
-      // Agent and view are both path here; only the view's param stays search.
+      // The project, connection, and tool are all part of the canonical path.
       await expect(page).toHaveURL(
-        new RegExp(
-          `/${orgSlug}/agents/app\\?.*virtualmcpid=commerce-discovery_`,
-        ),
+        (url) =>
+          url.pathname ===
+          `/${orgSlug}/projects/commerce-discovery_${orgId}/apps/${cdConnectionId(orgId)}/${REPORT_TOOL}`,
         { timeout: 15_000 },
       );
-      expect(new URL(page.url()).searchParams.get("tool")).toBe(REPORT_TOOL);
+      const search = new URL(page.url()).searchParams;
+      expect(search.has("virtualmcpid")).toBe(false);
+      expect(search.has("connection")).toBe(false);
+      expect(search.has("tool")).toBe(false);
     } finally {
       await mcp.stop();
     }

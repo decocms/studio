@@ -427,12 +427,12 @@ export function OrgStorePage() {
       <Suspense fallback={<Skeleton className="h-64 w-full" />}>
         <Page>
           <Page.Content>
-            <Page.Body>
+            <Page.Container>
               <SettingsPage>
                 <Page.Title>{t("settings.orgStore.pageTitle")}</Page.Title>
                 <OrgStoreContent />
               </SettingsPage>
-            </Page.Body>
+            </Page.Container>
           </Page.Content>
         </Page>
       </Suspense>

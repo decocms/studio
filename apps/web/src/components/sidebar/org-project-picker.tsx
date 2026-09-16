@@ -236,34 +236,28 @@ function PickerContent({
    *  inside settings, so this is where that has to be answered. */
   const scopeTo = (id: string | null) => {
     track("scope_set", { scoped: id !== null, fromSettings: inSettings });
-    if (inSettings) {
-      navigate({
-        to: "/$org",
-        params: { org: org.slug },
-        search: { virtualmcpid: id ?? undefined },
-      });
-    } else {
-      setScope(id);
-    }
+    setScope(id);
     onClose();
   };
 
   const travelTo = (slug: string, projectId?: string) => {
     track("org_project_travel", { scoped: !!projectId });
-    navigate({
-      to: "/$org",
-      params: { org: slug },
-      search: projectId ? { virtualmcpid: projectId } : {},
-    });
+    if (projectId) {
+      navigate({
+        to: "/$org/projects/$agentId",
+        params: { org: slug, agentId: projectId },
+      });
+    } else {
+      navigate({ to: "/$org/home", params: { org: slug } });
+    }
     onClose();
   };
 
   const createProject = () => {
     track("picker_new_project");
     navigate({
-      to: "/$org/agents/{-$panel}",
-      params: { org: org.slug, panel: undefined },
-      search: { virtualmcpid: undefined },
+      to: "/$org/home",
+      params: { org: org.slug },
     });
     onClose();
   };

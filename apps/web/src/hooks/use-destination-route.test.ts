@@ -24,7 +24,7 @@ describe("routeExistsInScope", () => {
   test.each([
     ["Home", DESTINATION_ROUTE.home],
     ["Tasks", DESTINATION_ROUTE.tasks],
-    ["Agents", DESTINATION_ROUTE.agents],
+    ["Agents", DESTINATION_ROUTE.projects],
     ["Discover", DESTINATION_ROUTE.discover],
     ["the org index", DESTINATION_ROUTE.orgIndex],
     ["the legacy thread route", DESTINATION_ROUTE.legacyThread],

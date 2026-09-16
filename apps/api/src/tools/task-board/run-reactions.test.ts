@@ -269,6 +269,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     assigneeId: SUPER_AGENT_ASSIGNEE_ID,
     assignedBy: null,
     repo: null,
+    repositoryId: null,
     dueDate: null,
     sortOrder: 0,
     keySeq: 1,
