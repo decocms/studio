@@ -63,15 +63,15 @@ describe("COLLECTION_CONNECTIONS_DELETE", () => {
     expect(deleteConnection).not.toHaveBeenCalled();
   });
 
-  it("refuses to delete a connection a thread is pinned to as its repo", async () => {
-    // Regression: deleting it would strand the thread's sandbox permanently.
+  it("deletes a connection a thread is pinned to as its repo", async () => {
+    // Inverted: this used to throw CONNECTION_IN_USE_BY_THREAD, which reached
+    // the user as a raw JSON toast with no way out. An old chat is not a reason
+    // the owner can't delete their own connection.
     const { ctx, deleteConnection } = makeCtx({ referencedByThread: true });
 
-    await expect(
-      COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx),
-    ).rejects.toThrow(/CONNECTION_IN_USE_BY_THREAD/);
+    await COLLECTION_CONNECTIONS_DELETE.handler({ id: "conn_repo" }, ctx);
 
-    expect(deleteConnection).not.toHaveBeenCalled();
+    expect(deleteConnection).toHaveBeenCalledWith("conn_repo");
   });
 
   it("deletes a connection with no thread pinned to it", async () => {
