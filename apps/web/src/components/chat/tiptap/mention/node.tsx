@@ -1,7 +1,9 @@
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils.tsx";
+import { OrgFileOpenContext } from "@/components/chat/org-file-open-context";
 import { useT } from "@/i18n/use-t.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { JSONContent, mergeAttributes, Node } from "@tiptap/core";
+import { useContext } from "react";
 import {
   NodeViewWrapper,
   ReactNodeViewRenderer,
@@ -28,6 +30,24 @@ export interface MentionAttrs<T = unknown> {
   kind?: "prompt" | "resource" | "skill" | "task";
   /** Argument values the user typed in PromptArgsDialog. Only meaningful for prompt mentions. */
   args?: Record<string, string>;
+}
+
+/**
+ * Where a skill chip's SKILL.md lives in the Library ("<volume>/<path…>"), or
+ * null for a chip that can't say.
+ *
+ * The chip carries its own `volume` + `path` rather than being parsed back out
+ * of `sandboxPath`: a skill on a synced-repo volume mounts at `org/<volume>/…`,
+ * which is indistinguishable from an org-slug-prefixed path by reading alone.
+ * A chip in a draft saved before those fields existed returns null and stays
+ * inert, which is exactly what it did before.
+ */
+export function skillMdBrowsePath(metadata: unknown): string | null {
+  if (typeof metadata !== "object" || metadata === null) return null;
+  const { volume, path } = metadata as { volume?: unknown; path?: unknown };
+  if (typeof volume !== "string" || volume === "") return null;
+  if (typeof path !== "string" || path === "") return null;
+  return `${volume}/${path}/SKILL.md`;
 }
 
 // ============================================================================
@@ -110,17 +130,26 @@ export function isMentionNodeAt(
 
 function MentionNodeView(props: NodeViewProps) {
   const { node, selected, view, editor, getPos } = props;
-  const { name, char, kind, id, args } = node.attrs as MentionAttrs;
+  const { name, char, kind, id, args, metadata } = node.attrs as MentionAttrs;
   const t = useT();
+  const fileOpen = useContext(OrgFileOpenContext);
 
   const isSelected = selected && view.editable;
   const isTask = kind === "task";
   const isAgent = char === "@";
-  // Clickable when editable AND it's a "/" mention that's either a known
-  // prompt or a legacy chip without `kind` (we'll re-verify in the handler).
-  // Resources and skills have no edit dialog — their chip is inert.
-  const isClickable =
+  // Editable when it's a "/" mention that's either a known prompt or a legacy
+  // chip without `kind` (we re-verify in the handler). A resource chip is
+  // inert — there is nothing to edit and nowhere to go.
+  const isEditable =
     view.editable && char === "/" && (kind === "prompt" || kind === undefined);
+  // A skill chip opens the skill instead. Its content is a file in the
+  // Library, so the chip should be the way to go read what you just inserted —
+  // which matters most where the chip's text is NOT shown inline. Requires the
+  // file-open context: on a surface that has no Library to open into (see
+  // OrgFileOpenProvider) the chip stays inert rather than swallowing clicks.
+  const skillPath = kind === "skill" ? skillMdBrowsePath(metadata) : null;
+  const opensSkill = !!fileOpen && !!skillPath;
+  const isClickable = isEditable || opensSkill;
 
   const triggerEdit = () => {
     const storage = getMentionStorage(editor);
@@ -137,11 +166,19 @@ function MentionNodeView(props: NodeViewProps) {
     });
   };
 
+  const activate = () => {
+    if (opensSkill && skillPath) {
+      fileOpen.open(skillPath);
+      return;
+    }
+    triggerEdit();
+  };
+
   const handleClick = (e: React.MouseEvent) => {
     if (!isClickable) return;
     e.preventDefault();
     e.stopPropagation();
-    triggerEdit();
+    activate();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -149,7 +186,7 @@ function MentionNodeView(props: NodeViewProps) {
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
     e.stopPropagation();
-    triggerEdit();
+    activate();
   };
 
   return (
@@ -160,9 +197,10 @@ function MentionNodeView(props: NodeViewProps) {
       tabIndex={isClickable ? 0 : undefined}
       aria-label={
         isClickable
-          ? t("chat.mention.editPrompt", {
-              name: name ? toTitleCase(name) : "",
-            })
+          ? t(
+              opensSkill ? "chat.mention.openSkill" : "chat.mention.editPrompt",
+              { name: name ? toTitleCase(name) : "" },
+            )
           : undefined
       }
       className={cn(
