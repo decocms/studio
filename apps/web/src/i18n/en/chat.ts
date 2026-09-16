@@ -505,6 +505,7 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} more",
   "chat.webSearch.title": "Web search",
   "chat.mention.editPrompt": "Edit {name} prompt arguments",
+  "chat.mention.openSkill": "Open skill {name}",
   "chat.mention.noItemsFound": "No items found",
   "chat.modelPreferences.customizeModel": "Customize {tier} model",
   "chat.modelPreferences.reset": "Reset",

@@ -74,6 +74,11 @@ interface SlashItem extends BaseItem {
 export interface SkillMentionMeta {
   /** Sandbox dir the skill's files are mounted under (for omitted files). */
   sandboxPath: string;
+  /** Where the skill lives in the Library, so the chip can open it. Kept as
+   *  the two fields rather than parsed back out of `sandboxPath`, which can't
+   *  distinguish a synced-repo volume from an org-slug-prefixed path. */
+  volume: string;
+  path: string;
   /** Markdown/text docs, inlined (content baked) at select time. */
   files: OrgFsSkillFile[];
   /** Relative paths of files left on disk (scripts/assets/oversized). */
@@ -161,6 +166,8 @@ async function fetchAndInsertSkill(
     );
     const metadata: SkillMentionMeta = {
       sandboxPath: skill.sandboxPath,
+      volume: skill.volume,
+      path: skill.path,
       files,
       omittedPaths,
     };

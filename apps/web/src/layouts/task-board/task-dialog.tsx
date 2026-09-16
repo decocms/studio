@@ -73,6 +73,7 @@ import {
   Link03,
   Tag01,
   Trash03,
+  User01,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -664,6 +665,11 @@ function TaskBoardItemEditor({
   const assignedBy = item?.assignedBy
     ? members.find((m) => m.userId === item.assignedBy)
     : undefined;
+  /** Who filed the task. Read-only; `system`-authored (Reports import) shows
+   *  as "Report", a departed author resolves to no member. */
+  const creator = item
+    ? members.find((m) => m.userId === item.createdBy)
+    : undefined;
   const StatusIcon = laneVisual(status).icon;
   // Reports-generated tasks: content (title/description/priority) is owned by
   // the reports sync, which refreshes it on open items — TASK_BOARD_ITEM_UPDATE
@@ -1173,6 +1179,41 @@ function TaskBoardItemEditor({
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {item && (
+                <div
+                  className="inline-flex h-9 items-center justify-start gap-2 px-3 text-sm font-medium text-foreground"
+                  title={t("taskBoard.taskDialog.createdByLabel")}
+                >
+                  {isReportsTask(item) ? (
+                    <>
+                      <Lightning01
+                        size={16}
+                        className="text-muted-foreground"
+                      />
+                      {t("taskBoard.taskDialog.createdBySystemLabel")}
+                    </>
+                  ) : creator ? (
+                    <>
+                      <Avatar
+                        url={creator.user?.image ?? undefined}
+                        fallback={getInitials(creator.user?.name)}
+                        shape="circle"
+                        size="2xs"
+                      />
+                      <span className="truncate">
+                        {creator.user?.name ??
+                          t("taskBoard.taskDialog.unknownCreatorLabel")}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <User01 size={16} className="text-muted-foreground" />
+                      {t("taskBoard.taskDialog.unknownCreatorLabel")}
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col">
                 {/* modal: without it the parent Dialog's scroll-lock
@@ -2853,7 +2894,7 @@ function RunFailureBanner({
     failure.code === SANDBOX_START_ERROR_CODES.githubNotAuthenticated;
   const connectionMissing =
     failure.code === SANDBOX_START_ERROR_CODES.githubConnectionMissing;
-  const reauthUrl = githubReauthUrl({
+  const reauth = githubReauthUrl({
     orgSlug,
     repo: item.repo,
     repositories: repositories ?? [],
@@ -2873,12 +2914,19 @@ function RunFailureBanner({
                 ? t("taskBoard.taskDialog.runFailedGithubAuth")
                 : failure.message}
           </AlertDescription>
+          {needsGithubAuth && reauth.ownerOnly && reauth.owner && (
+            <AlertDescription>
+              {t("taskBoard.taskDialog.runFailedGithubOwnerOnly", {
+                owner: reauth.owner,
+              })}
+            </AlertDescription>
+          )}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 self-start">
         {(needsGithubAuth || connectionMissing) && (
           <Button size="sm" asChild>
-            <a href={reauthUrl}>
+            <a href={reauth.url}>
               {t(
                 connectionMissing
                   ? "taskBoard.taskDialog.runFailedLinkRepo"

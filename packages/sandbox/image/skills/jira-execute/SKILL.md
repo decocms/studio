@@ -63,8 +63,13 @@ report — the issue is the only place your work becomes visible.
   may have edited the card while you worked.
 - `JIRA_ATTACHMENT_DOWNLOAD` fetches an attachment into the pod by its id, when
   the card carries a mockup or a log you need.
-- `JIRA_ISSUE_TRANSITION` moves the issue on. Do this LAST, after the links and
-  the comment are on the card.
+- `JIRA_ISSUE_TRANSITION` hands the issue over — LAST, after the links and the
+  comment are on the card. Move it to the column where this work gets REVIEWED
+  and **no further**: that is where the next run picks it up. Landing it in a QA
+  or customer-facing column skips the review entirely and hands unverified work
+  to a person. Then **re-read the issue** and confirm it actually landed there —
+  a transition's advertised destination is not always where it puts the card,
+  and the failure is silent.
 
 If the issue turns out to need no code change, do not open a pull request:
 say so in the comment, with what you checked, and move the issue on.

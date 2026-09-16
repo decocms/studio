@@ -30,6 +30,7 @@ export type ToolCategory =
   | "Users"
   | "API Keys"
   | "Tags"
+  | "Experiments"
   | "AI Providers"
   | "Secrets"
   | "File Configs"
@@ -132,6 +133,13 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // Experiment tools
+  "EXPERIMENT_LIST",
+  "EXPERIMENT_GET",
+  "EXPERIMENT_CREATE",
+  "EXPERIMENT_UPDATE",
+  "EXPERIMENT_DELETE",
+  "EXPERIMENT_RESULTS",
   // Automation tools
   "AUTOMATION_CREATE",
   "AUTOMATION_GET",
@@ -303,6 +311,13 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_DELETE",
   "TASK_BOARD_DISMISSED_LIST",
   "TASK_BOARD_DISMISSED_RESTORE",
+  "TASK_BOARD_ADMIN_ORG_LIST",
+  "TASK_BOARD_DELIVERY",
+  "TASK_BOARD_STUCK",
+  "TASK_BOARD_COST",
+  "TASK_BOARD_QUALITY",
+  "TASK_BOARD_ERRORS",
+  "TASK_BOARD_TENANTS",
   "TASK_ADD_REPO",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
@@ -713,6 +728,37 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete organization tag",
     category: "Tags",
     dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_LIST",
+    description: "List a site's A/B experiments",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_GET",
+    description: "Get one A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_CREATE",
+    description: "Create an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_UPDATE",
+    description: "Update an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_DELETE",
+    description: "Delete an A/B experiment",
+    category: "Experiments",
+    dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_RESULTS",
+    description: "A/B results for one experiment",
+    category: "Experiments",
   },
   {
     name: "MEMBER_TAGS_GET",
@@ -1483,6 +1529,46 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_ADMIN_ORG_LIST",
+    description:
+      "Whether the caller may read every org's task board, and the orgs that have board items",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_DELIVERY",
+    description:
+      "Task board throughput and flow — completions, PR rate, lead vs cycle time, dwell by lane",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_STUCK",
+    description: "Task board work that is stuck right now, and WIP by age",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COST",
+    description:
+      "Task board spend — total, per task, per shipped PR, and the coverage % behind those figures",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_QUALITY",
+    description:
+      "Task board quality — first-pass yield, rework, autonomy, abandonment, retry burn",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ERRORS",
+    description:
+      "Task board run failures — counts, kinds, live error feed, error signatures, superseded runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_TENANTS",
+    description: "Per-tenant task board scorecard and queue wait",
+    category: "Task Board",
+  },
+  {
     name: "TASK_ADD_REPO",
     description:
       "Clone an organization repository into the sandbox of the task run calling it",
@@ -1629,6 +1715,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_DELETE",
       "TASK_BOARD_DISMISSED_LIST",
       "TASK_BOARD_DISMISSED_RESTORE",
+      "TASK_BOARD_ADMIN_ORG_LIST",
+      "TASK_BOARD_DELIVERY",
+      "TASK_BOARD_STUCK",
+      "TASK_BOARD_COST",
+      "TASK_BOARD_QUALITY",
+      "TASK_BOARD_ERRORS",
+      "TASK_BOARD_TENANTS",
       "NOTIFICATION_LIST",
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
@@ -2089,6 +2182,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     Users: [],
     "API Keys": [],
     Tags: [],
+    Experiments: [],
     "AI Providers": [],
     Secrets: [],
     "File Configs": [],

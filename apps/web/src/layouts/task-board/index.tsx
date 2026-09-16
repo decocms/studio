@@ -34,6 +34,8 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
+import { BoardOrgProvider } from "./board-org";
 import { getInitials } from "@/lib/get-initials";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -823,7 +825,18 @@ function AssigneeDisplay({
   );
 }
 
+/** The board, pointed at whichever org `?boardOrg=` names (normally your own).
+ *  The swap has to wrap the board rather than live inside it: every hook below
+ *  reads the org off `ProjectContext`. */
 export function TaskBoardPage() {
+  return (
+    <BoardOrgProvider>
+      <TaskBoardBody />
+    </BoardOrgProvider>
+  );
+}
+
+function TaskBoardBody() {
   const compact = useCompactPageLayout();
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
@@ -1187,6 +1200,7 @@ export function TaskBoardPage() {
                   )
                 }
               >
+                <TaskBoardAdminControls />
                 <Button size="sm" onClick={openCreate}>
                   <Plus size={16} />
                   {t("taskBoard.taskBoard.newTask")}
@@ -1220,6 +1234,9 @@ export function TaskBoardPage() {
             </>
           )}
 
+          <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-8">
+            <TaskBoardAdminBanner />
+          </div>
           <AppliedFiltersBar
             filters={filters}
             items={items}
@@ -1237,6 +1254,8 @@ export function TaskBoardPage() {
             <h1 className="text-xl font-medium text-foreground">
               {t("taskBoard.taskBoard.tasksTitle")}
             </h1>
+
+            <TaskBoardAdminBanner />
 
             {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
@@ -1270,6 +1289,7 @@ export function TaskBoardPage() {
               )}
 
               <div className="ml-auto flex items-center gap-2">
+                <TaskBoardAdminControls />
                 <div className="inline-flex rounded-lg bg-muted p-0.5">
                   <LayoutToggle
                     active={layout === "list"}

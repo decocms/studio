@@ -4,10 +4,12 @@ import {
   FieldDescriptionTooltip,
   useFieldDescriptionTooltips,
 } from "./field-label";
+import { MissingRequiredDot } from "../missing-required-dot";
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
 import { SchemaForm } from "../schema-form";
 import { useObjectFieldExpansion } from "../object-field-expansion";
+import { useRequiredField } from "./required-field-context";
 
 export function ObjectField({
   schema,
@@ -33,6 +35,7 @@ export function ObjectField({
   const toggleOpen = () =>
     expansion ? expansion.toggle(path) : setLocalOpen((prev) => !prev);
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
+  const { required, invalid } = useRequiredField();
   const objValue =
     value != null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -95,7 +98,12 @@ export function ObjectField({
           description={schema.description}
           virtualMcpId={sandbox?.virtualMcpId}
         >
-          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+          <span className="min-w-0 truncate text-sm font-medium">
+            {label}
+            {required && invalid && (
+              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+            )}
+          </span>
         </FieldDescriptionTooltip>
       </button>
 

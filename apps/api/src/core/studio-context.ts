@@ -301,6 +301,7 @@ import type {
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
+import type { ExperimentStorage } from "../storage/experiments";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
 import type { AutomationsStorage } from "../storage/automations";
@@ -327,6 +328,7 @@ import type { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
+import type { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -364,6 +366,7 @@ export interface StudioStorage {
   threads: OrgScopedThreadStorage;
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
+  experiments: ExperimentStorage;
   aiProviderKeys: AIProviderKeyStorage;
   subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
   secrets: SecretStorage;
@@ -379,6 +382,7 @@ export interface StudioStorage {
   taskBoard: TaskBoardStorage;
   columnAutomations: ColumnAutomationStorage;
   taskBoardPrompts: TaskBoardPromptStorage;
+  taskBoardAnalytics: TaskBoardAnalyticsStorage;
   notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;

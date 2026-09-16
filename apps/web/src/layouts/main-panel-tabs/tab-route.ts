@@ -44,6 +44,7 @@ export type TabRouteLocation =
         | "hosting"
         | "e2e"
         | "analytics"
+        | "experiments"
         | "monitor";
     }
   | { kind: "automations"; automationId?: string }
@@ -100,6 +101,7 @@ export type TabRouteTarget =
         | typeof PROJECT_ROUTE.hosting
         | typeof PROJECT_ROUTE.e2e
         | typeof PROJECT_ROUTE.analytics
+        | typeof PROJECT_ROUTE.experiments
         | typeof PROJECT_ROUTE.monitor;
       params: AgentParams;
       search: {};
@@ -234,6 +236,7 @@ const AGENT_SECTION_BY_TAB: Readonly<
   hosting: "hosting",
   e2e: "e2e",
   analytics: "analytics",
+  experiments: "experiments",
   cdn: "monitor",
 };
 
@@ -632,6 +635,7 @@ export function navigateToTabRouteTarget(
     case PROJECT_ROUTE.hosting:
     case PROJECT_ROUTE.e2e:
     case PROJECT_ROUTE.analytics:
+    case PROJECT_ROUTE.experiments:
     case PROJECT_ROUTE.monitor:
       navigate({
         to: target.to,

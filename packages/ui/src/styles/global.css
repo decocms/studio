@@ -40,6 +40,17 @@
   @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
 }
 
+/* Keep the scrollbar visible at rest (the global default only reveals it on
+   hover), so a scrollable list reads as scrollable without hovering it. */
+@utility always-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+  }
+}
+
 @utility border-shadow {
   box-shadow: var(--shadow-border);
 }

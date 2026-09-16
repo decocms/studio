@@ -141,6 +141,7 @@ describe("FlowAccessCache", () => {
         login: "acme",
         avatarUrl: null,
         accountType: "Organization",
+        htmlUrl: null,
       },
     ];
     cache.rememberInstallations("flow-a", installations);

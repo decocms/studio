@@ -56,6 +56,21 @@ export const KEYS = {
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
 
+  // Cross-org task board admin: whether the caller is one, and the orgs to pick.
+  // Keyed by the org SLUG IN THE PATH, not the locator — the board's context org
+  // moves when an admin points it at another tenant; the answer must not.
+  taskBoardAdminOrgs: (pathOrgSlug: string) =>
+    [pathOrgSlug, "task-board-admin-orgs"] as const,
+
+  // One analytics tool's payload for a given org + range
+  taskBoardAnalytics: (
+    locator: ProjectLocator,
+    tool: string,
+    org: string,
+    from: string,
+    to: string,
+  ) => [locator, "task-board-analytics", tool, org, from, to] as const,
+
   // The current user's unread notifications in this org
   notifications: (locator: ProjectLocator) =>
     [locator, "notifications"] as const,
@@ -463,6 +478,10 @@ export const KEYS = {
 
   // Tags (scoped by locator)
   tags: (locator: string) => [locator, "tags"] as const,
+  experiments: (locator: string, site: string) =>
+    [locator, "experiments", site] as const,
+  experimentResults: (locator: string, site: string, key: string) =>
+    [locator, "experiments", site, key, "results"] as const,
   memberTags: (locator: string, memberId: string) =>
     [locator, "member-tags", memberId] as const,
 

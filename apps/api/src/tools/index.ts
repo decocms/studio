@@ -22,6 +22,7 @@ import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
 import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
+import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
@@ -62,6 +63,9 @@ export const CORE_TOOLS = [
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
+  // The cross-org `org` param is applied at each tool's own definition, NOT
+  // here — the Super Agent imports these tools directly (see
+  // `decopilot/built-in-tools/task-board-tools.ts`) and never reads this list.
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
@@ -85,6 +89,13 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
   TaskBoardTools.TASK_ADD_REPO,
+  TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
+  TaskBoardTools.TASK_BOARD_DELIVERY,
+  TaskBoardTools.TASK_BOARD_STUCK,
+  TaskBoardTools.TASK_BOARD_COST,
+  TaskBoardTools.TASK_BOARD_QUALITY,
+  TaskBoardTools.TASK_BOARD_ERRORS,
+  TaskBoardTools.TASK_BOARD_TENANTS,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,
   OrganizationTools.BRAND_CONTEXT_CREATE,
@@ -170,6 +181,12 @@ export const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+  ExperimentTools.EXPERIMENT_LIST,
+  ExperimentTools.EXPERIMENT_GET,
+  ExperimentTools.EXPERIMENT_CREATE,
+  ExperimentTools.EXPERIMENT_UPDATE,
+  ExperimentTools.EXPERIMENT_DELETE,
+  ExperimentTools.EXPERIMENT_RESULTS,
 
   // Automation tools
   AutomationTools.AUTOMATION_CREATE,

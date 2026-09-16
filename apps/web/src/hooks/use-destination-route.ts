@@ -51,6 +51,7 @@ export const PROJECT_ROUTE = {
   hosting: "/$org/projects/$agentId/hosting",
   e2e: "/$org/projects/$agentId/e2e",
   analytics: "/$org/projects/$agentId/analytics",
+  experiments: "/$org/projects/$agentId/experiments",
   monitor: "/$org/projects/$agentId/cdn",
 } as const;
 

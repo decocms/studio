@@ -520,6 +520,7 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} mais",
   "chat.webSearch.title": "Busca na web",
   "chat.mention.editPrompt": "Editar argumentos do prompt {name}",
+  "chat.mention.openSkill": "Abrir a skill {name}",
   "chat.mention.noItemsFound": "Nenhum item encontrado",
   "chat.modelPreferences.customizeModel": "Personalizar modelo de {tier}",
   "chat.modelPreferences.reset": "Redefinir",

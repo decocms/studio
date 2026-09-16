@@ -212,6 +212,33 @@ describe("resolveConfig deployment admin emails", () => {
   });
 });
 
+describe("resolveConfig task board admin orgs", () => {
+  it("defaults to an empty list — deployed is not enabled", () => {
+    const result = resolveConfig(flags, {});
+
+    expect(result.settings.taskBoardAdminOrgIds).toEqual([]);
+  });
+
+  it("trims and drops blanks, and never touches case (org ids are exact)", () => {
+    const result = resolveConfig(flags, {
+      STUDIO_ADMIN_ORG_IDS: " Org_AbC , org_two ,,",
+    });
+
+    expect(result.settings.taskBoardAdminOrgIds).toEqual([
+      "Org_AbC",
+      "org_two",
+    ]);
+  });
+
+  it("stays independent of the deployment admin allowlist", () => {
+    const result = resolveConfig(flags, {
+      DEPLOYMENT_ADMIN_EMAILS: "alice@example.com",
+    });
+
+    expect(result.settings.taskBoardAdminOrgIds).toEqual([]);
+  });
+});
+
 describe("resolveConfig pod name", () => {
   it("generates a random id when POD_NAME is unset", () => {
     const result = resolveConfig(flags, {});

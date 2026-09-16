@@ -5,6 +5,7 @@ import { requireAuth } from "@/core/studio-context";
 import { listRepoScopeLabels } from "@decocms/shared/github-repo-scope";
 import { TaskBoardItemSchema } from "./schema";
 import { recoverStalledTasks } from "./stall-recovery";
+import { withOrgOverride } from "./with-org-override";
 
 /** A board column as the client renders it — mirrors `BoardColumn` in shared. */
 const BoardColumnSchema = z.object({
@@ -13,7 +14,7 @@ const BoardColumnSchema = z.object({
   position: z.number(),
 });
 
-export const TASK_BOARD_ITEM_LIST = defineTool({
+const TASK_BOARD_ITEM_LIST_TOOL = defineTool({
   name: "TASK_BOARD_ITEM_LIST",
   description:
     "List all task board items for the organization, plus the `owner/name` " +
@@ -73,3 +74,8 @@ export const TASK_BOARD_ITEM_LIST = defineTool({
     return { items, repos, columns: CANONICAL_COLUMNS };
   },
 });
+
+/** Exported already wrapped: every consumer — `CORE_TOOLS`, and the Super
+ *  Agent's built-ins, which import this module directly — has to come
+ *  through here, so the cross-org `org` param cannot be missed by one of them. */
+export const TASK_BOARD_ITEM_LIST = withOrgOverride(TASK_BOARD_ITEM_LIST_TOOL);

@@ -14,6 +14,7 @@ type IdPrefixes =
   | "msg"
   | "tag"
   | "mtag"
+  | "exp"
   | "proj"
   | "ppc"
   | "pc"

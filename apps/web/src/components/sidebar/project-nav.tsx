@@ -9,6 +9,7 @@
 import type { ReactNode } from "react";
 import {
   BarChartSquare02,
+  Beaker02,
   CheckDone01,
   Globe02,
   Grid01,
@@ -148,6 +149,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     cdn: {
       label: t("common.mainPanelTabs.cdn"),
       icon: <Globe02 size={16} />,
+    },
+    experiments: {
+      label: t("experiments.title"),
+      icon: <Beaker02 size={16} />,
     },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {

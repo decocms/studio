@@ -2922,6 +2922,7 @@ export function SectionsEditor({
               rawSections={rawSections}
               sections={parsedSections}
               meta={meta}
+              decofile={decofile}
               selectedIndex={selectedSectionIndex}
               onSelect={handleSelectSection}
               onReorder={handleReorder}

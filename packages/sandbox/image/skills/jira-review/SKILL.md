@@ -73,7 +73,12 @@ report.
   implementing run did not already put it on the issue.
 - `JIRA_ISSUE_GET` re-reads the issue before you report — a person may have
   edited the card, or answered a question on it, while you worked.
-- `JIRA_ISSUE_TRANSITION` carries the verdict: move the issue ON when it passes,
-  and BACK to the column the implementing run works in when it does not. Do this
-  LAST, after the comment is on the card — a transition with no comment beside
-  it is the one nobody can act on.
+- `JIRA_ISSUE_TRANSITION` carries the verdict: on a pass, the column your team
+  hands reviewed work to; on a fail, BACK to the column the implementing run
+  works in. Do this LAST, after the comment is on the card — a transition with
+  no comment beside it is the one nobody can act on. Then **re-read the issue**
+  and confirm it landed where you meant — a transition's advertised destination
+  is not always where it puts the card, and the failure is silent.
+- If you cannot tell which column is which, say so in your comment and leave the
+  issue where it is. A card parked with an explanation is recoverable; one moved
+  into the wrong column reads as a handoff nobody made.

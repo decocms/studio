@@ -58,6 +58,8 @@ import { getSectionDisplayTitle } from "./section-title";
 import type { LiveMeta } from "./resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR, type RawSection } from "./section-types";
 import { parseSections, type ParsedSection } from "./parse-sections";
+import { sectionHasMissingRequiredField } from "./section-required-status";
+import { MissingRequiredDot } from "./missing-required-dot";
 
 export { parseSections, type ParsedSection, type RawSection };
 
@@ -105,10 +107,12 @@ function SectionRowContent({
   section,
   raw,
   meta,
+  decofile,
 }: {
   section: ParsedSection;
   raw: RawSection | undefined;
   meta: LiveMeta | null | undefined;
+  decofile: Record<string, unknown>;
 }) {
   const saved = section.isSavedBlock === true;
   const multivariate = section.isMultivariate === true;
@@ -119,6 +123,12 @@ function SectionRowContent({
     raw && meta && !saved && !multivariate
       ? getSectionDisplayTitle(raw, meta)
       : undefined;
+  const missingRequired = sectionHasMissingRequiredField(
+    raw,
+    section,
+    decofile,
+    meta,
+  );
 
   return (
     <>
@@ -149,6 +159,9 @@ function SectionRowContent({
       >
         {dynamicTitle ?? section.label}
       </span>
+      {missingRequired && (
+        <MissingRequiredDot className="absolute -right-0.5 -top-0.5" />
+      )}
     </>
   );
 }
@@ -198,7 +211,7 @@ function sectionRowClassName(section: ParsedSection, selected: boolean) {
   const multivariate = section.isMultivariate === true;
 
   return cn(
-    "group flex select-none items-center gap-2 rounded-md px-2 py-2.5",
+    "group relative flex select-none items-center gap-2 rounded-md px-2 py-2.5",
     selected
       ? "bg-accent text-accent-foreground"
       : saved
@@ -215,6 +228,7 @@ function SortableSectionItem({
   section,
   raw,
   meta,
+  decofile,
   sortableId,
   selected,
   onSelect,
@@ -229,6 +243,7 @@ function SortableSectionItem({
   section: ParsedSection;
   raw: RawSection | undefined;
   meta: LiveMeta | null | undefined;
+  decofile: Record<string, unknown>;
   sortableId: string;
   selected: boolean;
   onSelect: () => void;
@@ -283,7 +298,12 @@ function SortableSectionItem({
         sectionRowClassName(section, selected),
       )}
     >
-      <SectionRowContent section={section} raw={raw} meta={meta} />
+      <SectionRowContent
+        section={section}
+        raw={raw}
+        meta={meta}
+        decofile={decofile}
+      />
 
       {!section.isMultivariate && (
         <Tooltip>
@@ -444,6 +464,7 @@ export function SectionList({
   rawSections,
   sections,
   meta,
+  decofile,
   selectedIndex,
   onSelect,
   onReorder,
@@ -461,6 +482,7 @@ export function SectionList({
   rawSections: RawSection[];
   sections: ParsedSection[];
   meta: LiveMeta | null | undefined;
+  decofile: Record<string, unknown>;
   selectedIndex: number | null;
   onSelect: (index: number) => void;
   onReorder?: (fromIndex: number, toIndex: number) => void;
@@ -588,6 +610,7 @@ export function SectionList({
                   section={section}
                   raw={rawSections[entry.index]}
                   meta={meta}
+                  decofile={decofile}
                   selected={selectedIndex === entry.index}
                   onSelect={() => handleSelect(entry.index)}
                   onDelete={() => onDelete(entry.index)}
@@ -620,6 +643,7 @@ export function SectionList({
                   section={activeSection}
                   raw={activeRaw}
                   meta={meta}
+                  decofile={decofile}
                 />
               </div>
             ) : null}

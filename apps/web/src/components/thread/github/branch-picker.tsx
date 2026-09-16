@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type Ref, useRef, useState } from "react";
 import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -126,6 +126,8 @@ export function BranchPicker({
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  // Scroll the selected row into view when the popover opens.
+  const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
 
@@ -293,7 +295,10 @@ export function BranchPicker({
         className="w-[min(300px,calc(100vw-2rem))] p-1.5"
         align="start"
         // Don't steal focus onto the first row: it fires that row's branch tooltip.
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+        }}
       >
         {spawnsNewChat && (
           <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
@@ -316,7 +321,7 @@ export function BranchPicker({
         ) : (
           <>
             {/* Scroll the list, not the popover: the rows below must stay reachable. */}
-            <div className="flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
+            <div className="always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
               {unlisted &&
                 value &&
                 (editing === value ? (
@@ -328,6 +333,7 @@ export function BranchPicker({
                   />
                 ) : (
                   <ReleaseRow
+                    rowRef={selectedRowRef}
                     dot={releaseDotClass("orange")}
                     label={t("thread.branchPicker.defaultVersionName")}
                     branch={value}
@@ -356,6 +362,7 @@ export function BranchPicker({
                 ) : (
                   <ReleaseRow
                     key={r.branch}
+                    rowRef={r.branch === value ? selectedRowRef : undefined}
                     dot={releaseDotClass(r.color)}
                     label={r.name}
                     branch={r.branch}
@@ -472,6 +479,7 @@ function RenameInput({
 /** A version row: click to switch, with a ⋯ menu to rename (always) and discard
  *  (only a stored release — an unlisted branch has nothing to discard). */
 function ReleaseRow({
+  rowRef,
   dot,
   label,
   branch,
@@ -480,6 +488,7 @@ function ReleaseRow({
   onRename,
   onDelete,
 }: {
+  rowRef?: Ref<HTMLDivElement>;
   dot: string;
   label: string;
   branch: string;
@@ -491,6 +500,7 @@ function ReleaseRow({
   const t = useT();
   return (
     <div
+      ref={rowRef}
       className={cn(
         "group flex items-center classic:rounded-md compact:rounded-lg",
         selected ? "bg-accent" : "hover:bg-accent/60",

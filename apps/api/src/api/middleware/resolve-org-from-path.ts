@@ -3,6 +3,10 @@ import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
 
+import {
+  auditTaskBoardAdminAction,
+  isTaskBoardAdminUser,
+} from "../../core/task-board-admin";
 import { isBrowserNavigation } from "../utils/browser-navigation";
 
 /**
@@ -188,7 +192,19 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       .where("organizationId", "=", org.id)
       .executeTakeFirst();
 
-    if (!membership) {
+    if (membership) {
+      pathRole = membership.role;
+    } else if (await isTaskBoardAdminUser(db, userId)) {
+      // Widens every org-scoped route, not just the board — see isTaskBoardAdminUser.
+      auditTaskBoardAdminAction({
+        action: "org_scope_admit",
+        actorUserId: userId,
+        targetOrgId: org.id,
+        method: c.req.method,
+        route: c.req.path,
+      });
+      pathRole = "owner";
+    } else {
       // Public-share reads + password unlock are reachable by anyone, incl.
       // signed-in non-members — let them fall through to the route (which serves
       // only shared content and 403s the rest). All other routes stay gated.
@@ -206,8 +222,6 @@ export const resolveOrgFromPath: MiddlewareHandler<{
       }
       // pathRole stays undefined; the org is still resolved + rebound below so
       // the read route can stat the file and serve it if it's public.
-    } else {
-      pathRole = membership.role;
     }
   }
 

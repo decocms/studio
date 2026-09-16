@@ -11,6 +11,12 @@
  * installation that actually failed rather than whichever one is first. With no
  * repo, no matching repository, or a repository nothing holds credentials for,
  * there is no installation to reconfigure and the answer is to install the App.
+ *
+ * `ownerOnly` says the destination is an organization's settings page. GitHub
+ * answers 404 there — not 403 — for anyone who merely belongs to the
+ * organization, so a member who clicks lands on a bare Not Found with nothing
+ * naming the wall they hit. Only an owner can accept an App's new permissions,
+ * so the banner says so instead of promising the click will work.
  */
 export function githubReauthUrl({
   orgSlug,
@@ -22,12 +28,24 @@ export function githubReauthUrl({
   repo: string | null;
   repositories: { path: string; accountId: string | null }[];
   returnTo: string;
-}): string {
+}): { url: string; ownerOnly: boolean; owner: string | null } {
   const base = `/api/${encodeURIComponent(orgSlug)}/git-providers/github`;
   const accountId = repo
     ? repositories.find((r) => r.path === repo)?.accountId
     : null;
-  return accountId
-    ? `${base}/accounts/${encodeURIComponent(accountId)}/manage`
-    : `${base}/install?returnTo=${encodeURIComponent(returnTo)}`;
+  if (!accountId) {
+    return {
+      url: `${base}/install?returnTo=${encodeURIComponent(returnTo)}`,
+      ownerOnly: false,
+      owner: null,
+    };
+  }
+  // `owner/name`; a single-segment path is a user account, whose settings page
+  // the user reaches themselves.
+  const owner = repo?.includes("/") ? repo.split("/")[0]! : null;
+  return {
+    url: `${base}/accounts/${encodeURIComponent(accountId)}/manage`,
+    ownerOnly: owner !== null,
+    owner,
+  };
 }

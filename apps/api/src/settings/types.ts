@@ -40,6 +40,13 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
+  /** Org ids whose members may read and act across every org's task board
+   *  (STUDIO_ADMIN_ORG_IDS, CSV). Access control, not product gating.
+   *
+   *  Deliberately independent of `deploymentAdminEmails`: a deployment admin
+   *  does NOT implicitly get cross-org kanban, and a member of an admin org
+   *  does NOT get /api/_admin. Never union the two. */
+  taskBoardAdminOrgIds: string[];
   /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
    *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
    *  no impersonation. Unset = header ignored entirely. */

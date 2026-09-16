@@ -159,6 +159,7 @@ export const VirtualMcpSidebarViewSchema = z.enum([
   "analytics",
   "cdn",
   "automations",
+  "experiments",
 ]);
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;

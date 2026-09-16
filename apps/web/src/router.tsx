@@ -804,6 +804,20 @@ const agentAnalyticsRoute = createRoute({
   ),
 });
 
+const agentExperimentsRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/experiments",
+  staticData: {
+    defaultMain: "experiments",
+    mainView: "experiments",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-experiments.tsx"),
+  ),
+});
+
 const agentMonitorRoute = createRoute({
   pendingComponent: ChatLayoutPending,
   errorComponent: ChatLayoutError,
@@ -1009,6 +1023,21 @@ const tasksRoute = createRoute({
     });
   },
   component: lazyRouteComponent(() => import("./routes/workspace/tasks.tsx")),
+});
+
+/** The task board's Grafana dashboards, in-product. Admin orgs only. */
+const taskBoardAnalyticsRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/taskboard-analytics",
+  staticData: {
+    defaultMain: "board",
+    mainView: "board",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/taskboard-analytics.tsx"),
+  ),
 });
 
 /** The org's Reports report. Org-wide, so no project segment. */
@@ -1499,6 +1528,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentHostingRoute,
   agentE2eRoute,
   agentAnalyticsRoute,
+  agentExperimentsRoute,
   agentMonitorRoute,
   agentAppRoute,
   agentViewRoute,
@@ -1517,6 +1547,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   legacyAgentsIndexRoute,
   legacyAgentsDeepRoute,
   tasksRoute,
+  taskBoardAnalyticsRoute,
   reportsRoute,
   libraryRoute,
   discoverRoute,
