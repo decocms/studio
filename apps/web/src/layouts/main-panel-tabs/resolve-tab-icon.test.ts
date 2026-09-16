@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LayoutAlt04, Lightning01 } from "@untitledui/icons";
+import { File02, Globe01, LayoutAlt04, Lightning01 } from "@untitledui/icons";
 import { resolveTabIcon, SYSTEM_TAB_ICONS } from "./resolve-tab-icon";
 
 type TestConn = { id: string; icon: string | null };
@@ -41,24 +41,24 @@ describe("resolveTabIcon", () => {
     ).toEqual({ kind: "component", Component: LayoutAlt04 });
   });
 
-  test("site-editor (Preview) is glyphless → none", () => {
+  test("site-editor (Preview) resolves to the globe icon", () => {
     expect(
       resolveTabIcon({
         tabId: "site-editor",
         kind: "system",
         connections: conns,
       }),
-    ).toEqual({ kind: "none" });
+    ).toEqual({ kind: "component", Component: Globe01 });
   });
 
-  test("content (Content) is glyphless → none", () => {
+  test("content resolves to the document icon", () => {
     expect(
       resolveTabIcon({
         tabId: "content",
         kind: "system",
         connections: conns,
       }),
-    ).toEqual({ kind: "none" });
+    ).toEqual({ kind: "component", Component: File02 });
   });
 
   test("system tab with an id absent from SYSTEM_TAB_ICONS → fallback", () => {

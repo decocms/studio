@@ -23,7 +23,5 @@ export function TabIconGlyph({
       />
     );
   }
-  // A tab that opts out of a leading glyph (label-only) renders nothing.
-  if (icon.kind === "none") return null;
   return <Package className={className} />;
 }

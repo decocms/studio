@@ -42,11 +42,12 @@ export function MainPanelTabsBar({
               openPanel(tab.id);
             }}
           >
-            {tab.kind !== "system" && (
-              <span className="flex size-4 items-center justify-center">
-                <TabIconGlyph icon={tab.icon} />
-              </span>
-            )}
+            <span
+              aria-hidden="true"
+              className="flex size-4 shrink-0 items-center justify-center"
+            >
+              <TabIconGlyph icon={tab.icon} />
+            </span>
             {tab.title}
           </Page.Tab>
         );

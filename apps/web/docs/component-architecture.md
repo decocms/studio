@@ -301,6 +301,9 @@ The sidebar chat toggle renders from `ChatLayout` through a shared slot, so its
 background and pressed state follow the visible chat, including on mobile.
 Settings supplies an inactive fallback that opens chat on Home.
 
+Preview and Content tabs show their globe and document icons beside the labels,
+using the shared tab icon mapping.
+
 Preview uses the existing `BlocksPanel` and `BlocksPreviewWorkspaceProvider`.
 The compact page picker uses one button with two visual regions: a muted origin
 box (including protocol), followed by the page name, path, and dropdown arrow.
