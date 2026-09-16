@@ -17,6 +17,26 @@ describe("local GitHub CLI request boundary", () => {
     ).toBe(true);
   });
 
+  test("accepts *.localhost subdomains matching the configured origin", () => {
+    const url = "http://cms-required-prop-indicator.localhost";
+    expect(isLocalGithubCliRequest("127.0.0.1", url, url)).toBe(true);
+    expect(
+      isLocalGithubCliRequest(
+        "127.0.0.1",
+        "http://my-branch.localhost:4000",
+        "http://my-branch.localhost:4000",
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a lookalike host that only ends in .localhost mid-string", () => {
+    // `localhost.evil.example` is remote; only a trailing `.localhost` is local.
+    const url = "https://localhost.evil.example";
+    expect(isLocalGithubCliRequest("127.0.0.1", url, url)).toBe(false);
+    const spoof = "http://evil.example/.localhost";
+    expect(isLocalGithubCliRequest("127.0.0.1", spoof, spoof)).toBe(false);
+  });
+
   test("rejects missing or remote socket addresses even with a local origin", () => {
     for (const address of [undefined, "192.168.1.2", "203.0.113.1"]) {
       expect(
