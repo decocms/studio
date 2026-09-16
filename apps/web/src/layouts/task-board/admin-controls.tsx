@@ -17,15 +17,16 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import { BarChartSquare02 } from "@untitledui/icons";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { useBoardOrgSlug } from "./board-org";
+import { useBoardOrgSlug, useBoardOrgTarget } from "./board-org";
 
 export function TaskBoardAdminBanner() {
   const t = useT();
-  const viewing = useBoardOrgSlug();
-  if (!viewing) return null;
+  // Validated target — must match what BoardOrgProvider actually applies.
+  const target = useBoardOrgTarget();
+  if (!target) return null;
   return (
     <div className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
-      {t("taskBoard.analytics.bannerOrg", { org: viewing })}
+      {t("taskBoard.analytics.bannerOrg", { org: target.slug })}
     </div>
   );
 }

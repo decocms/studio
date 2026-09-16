@@ -31,10 +31,28 @@ export function useBoardOrgSlug(): string | null {
   return boardOrg && boardOrg !== pathOrg ? boardOrg : null;
 }
 
+/**
+ * The `?boardOrg=` target, but only once it is confirmed valid — a slug the
+ * server did not list (bogus, or the caller is not an admin) resolves to
+ * null. Whether the swap actually applies, not just whether it was asked for:
+ * the banner must not claim a viewing org that `BoardOrgProvider` rejected.
+ */
+export function useBoardOrgTarget(): {
+  id: string;
+  slug: string;
+  name: string;
+} | null {
+  const slug = useBoardOrgSlug();
+  const { data } = useTaskBoardAdminOrgs();
+  if (!slug) return null;
+  return data?.orgs.find((o) => o.slug === slug) ?? null;
+}
+
 export function BoardOrgProvider({ children }: PropsWithChildren) {
   const { project } = useProjectContext();
   const slug = useBoardOrgSlug();
-  const { data, isLoading } = useTaskBoardAdminOrgs();
+  const { isLoading } = useTaskBoardAdminOrgs();
+  const target = useBoardOrgTarget();
 
   if (!slug) return children;
   // Wait rather than paint your own board first: a swap after the fact would
@@ -48,7 +66,6 @@ export function BoardOrgProvider({ children }: PropsWithChildren) {
   }
   // Fails closed: a slug the server did not list (bogus, or the caller is not
   // an admin) is ignored, not trusted.
-  const target = data?.orgs.find((o) => o.slug === slug);
   if (!target) return children;
 
   return (
