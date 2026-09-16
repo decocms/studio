@@ -1703,16 +1703,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
-            onClick={handleRefresh}
-            aria-label={t("sandbox.preview.refresh")}
-          >
-            <RefreshCw01 size={16} />
-          </ToolbarIconButton>
-          <ToolbarIconButton
             onClick={() => void handleOpenPreview()}
             aria-label={t(openPreviewLabelKey)}
           >
             <LinkExternal01 size={16} />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleRefresh}
+            aria-label={t("sandbox.preview.refresh")}
+          >
+            <RefreshCw01 size={16} />
           </ToolbarIconButton>
         </div>
       </div>

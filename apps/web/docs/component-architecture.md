@@ -294,7 +294,7 @@ all feature ancestors in that menu, keeping the current title and actions visibl
 
 - The first row is 48px tall: breadcrumbs and title on the left, actions on the right.
 - `Panel.Toolbar.Left` holds `Page.Tabs` / `Page.Tab`; Center holds the device-size
-  toggle, page selector, Refresh, and Open in new tab, in that order. Right holds
+  toggle, page selector, Open in new tab, and Refresh, in that order. Right holds
   the visual editing control. All three support `Target` / `Portal`.
 - Route links use `<Page.Tab asChild><Link /></Page.Tab>` and `aria-current`.
   In-place views use buttons with `aria-pressed`. Selecting an active view leaves
