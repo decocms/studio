@@ -5,7 +5,7 @@
  * the caller renders that with a Back button. Statuses are the blog app's own
  * `PostStatus` vocabulary; deleting a post is a soft delete into Archived.
  */
-import { type ReactNode, Suspense, useState } from "react";
+import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarDate,
@@ -19,6 +19,7 @@ import {
   Plus,
   Stars02,
   Trash01,
+  Upload01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Badge } from "@decocms/ui/components/badge.tsx";
@@ -81,7 +82,13 @@ import {
   type PostMeta,
   type PostStatus,
   POST_STATUSES,
+  sectionResolveTypes,
 } from "./blog-data";
+import {
+  buildImportedPostPayload,
+  parseImportedContent,
+  sectionsToBlocks,
+} from "./import-content";
 import { PickList, str } from "./blocks/primitives";
 
 export type PostsView = "board" | "list";
@@ -166,6 +173,9 @@ export function PostsWorkspace({
   const [expanded, setExpanded] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateSeed, setGenerateSeed] = useState<IdeaSeed | undefined>();
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   // Lanes by status, not by index: a reordered board can't reopen the wrong one.
   const [collapsedLanes, setCollapsedLanes] = useLocalStorage<string[]>(
     LOCALSTORAGE_KEYS.blogBoardCollapsedLanes(),
@@ -235,6 +245,31 @@ export function PostsWorkspace({
     const key = planningPostKey(newPostId());
     const payload = emptyDraftPostPayload({ title: "", now: new Date() });
     save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
+    onOpen(key);
+  };
+
+  /**
+   * Import externally-authored HTML/Markdown into a review-ready post — no AI,
+   * no credits. Parsed onto the site's own blocks so it renders on-brand.
+   */
+  const importContent = () => {
+    const parsed = parseImportedContent(importText);
+    const blocks = sectionsToBlocks(parsed.sections, sectionResolveTypes(meta));
+    if (blocks.length === 0 && !parsed.title.trim()) {
+      toast.error(t("sandbox.postBoard.importEmpty"));
+      return;
+    }
+    const key = planningPostKey(newPostId());
+    const payload = buildImportedPostPayload({
+      title: parsed.title,
+      blocks,
+      takenSlugs: posts.map((p) => p.slug).filter(Boolean),
+      now: new Date(),
+    });
+    save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
+    setImportOpen(false);
+    setImportText("");
+    toast.success(t("sandbox.postBoard.imported"));
     onOpen(key);
   };
 
@@ -498,6 +533,15 @@ export function PostsWorkspace({
                   </span>
                 </div>
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                <Upload01 size={14} />
+                <div className="flex flex-col">
+                  <span>{t("sandbox.postBoard.importContent")}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t("sandbox.postBoard.importContentHint")}
+                  </span>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <GeneratePostDialog
@@ -509,6 +553,56 @@ export function PostsWorkspace({
             seed={generateSeed}
             onGenerate={(briefing) => void generatePost(briefing)}
           />
+          <Dialog open={importOpen} onOpenChange={setImportOpen}>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>{t("sandbox.postBoard.importTitle")}</DialogTitle>
+                <DialogDescription>
+                  {t("sandbox.postBoard.importDescription")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <Textarea
+                  value={importText}
+                  rows={12}
+                  autoFocus
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder={t("sandbox.postBoard.importPlaceholder")}
+                  className="resize-none font-mono text-xs"
+                />
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".html,.htm,.md,.markdown,.txt"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setImportText(await file.text());
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Upload01 size={14} />
+                  {t("sandbox.postBoard.importUpload")}
+                </Button>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  disabled={!importText.trim()}
+                  onClick={importContent}
+                >
+                  <Upload01 size={14} />
+                  {t("sandbox.postBoard.importRun")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

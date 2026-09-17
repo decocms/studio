@@ -538,6 +538,18 @@ export const sandbox = {
     "Escrever com IA, a partir do seu contexto",
   "sandbox.postBoard.newPostWrite": "Escrever",
   "sandbox.postBoard.newPostWriteHint": "Começar um rascunho vazio você mesmo",
+  "sandbox.postBoard.importContent": "Importar conteúdo",
+  "sandbox.postBoard.importContentHint":
+    "Traga o HTML ou Markdown que você já escreveu",
+  "sandbox.postBoard.importTitle": "Importar conteúdo",
+  "sandbox.postBoard.importDescription":
+    "Cole o HTML ou Markdown que você já escreveu. Vira um rascunho editável no seu design system — sem IA, sem créditos.",
+  "sandbox.postBoard.importPlaceholder": "Cole seu HTML ou Markdown aqui…",
+  "sandbox.postBoard.importUpload": "Enviar um arquivo",
+  "sandbox.postBoard.importRun": "Importar",
+  "sandbox.postBoard.importEmpty":
+    "Nada para importar — o conteúdo estava vazio.",
+  "sandbox.postBoard.imported": "Importado — revise e publique.",
   "sandbox.postBoard.noFormat": "Sem formato",
   "sandbox.postBoard.noPillar": "Sem pilar",
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",

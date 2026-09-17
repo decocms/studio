@@ -528,6 +528,17 @@ export const sandbox = {
     "Write it with AI, from your context",
   "sandbox.postBoard.newPostWrite": "Write",
   "sandbox.postBoard.newPostWriteHint": "Start an empty draft yourself",
+  "sandbox.postBoard.importContent": "Import content",
+  "sandbox.postBoard.importContentHint":
+    "Bring in HTML or Markdown you already wrote",
+  "sandbox.postBoard.importTitle": "Import content",
+  "sandbox.postBoard.importDescription":
+    "Paste HTML or Markdown you already wrote. It becomes an editable draft in your design system — no AI, no credits.",
+  "sandbox.postBoard.importPlaceholder": "Paste your HTML or Markdown here…",
+  "sandbox.postBoard.importUpload": "Upload a file",
+  "sandbox.postBoard.importRun": "Import",
+  "sandbox.postBoard.importEmpty": "Nothing to import — the content was empty.",
+  "sandbox.postBoard.imported": "Imported — review and publish.",
   "sandbox.postBoard.noFormat": "No format",
   "sandbox.postBoard.noPillar": "No pillar",
   "sandbox.postBoard.readyToSchedule": "Ready to schedule",
