@@ -165,9 +165,11 @@ test.describe("Site Editor breadcrumbs", () => {
         trail.getByRole("button", { name: "Home", exact: true }),
       ).toBeVisible();
       await expect(blocks.getByRole("navigation")).toHaveCount(0);
+      // The trail itself lives in the page header, but the panel keeps its own
+      // way up a level: the back arrow leads the editing row.
       await expect(
         blocks.getByRole("button", { name: "Back", exact: true }),
-      ).toHaveCount(0);
+      ).toBeVisible();
       await page.screenshot({
         path: testInfo.outputPath("site-editor-block-breadcrumb.png"),
         animations: "disabled",
