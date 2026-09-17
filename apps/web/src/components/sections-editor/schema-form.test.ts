@@ -4,6 +4,7 @@ import { renderField, SchemaForm } from "./schema-form";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
 import { BooleanField } from "./fields/boolean-field";
+import { NumberField } from "./fields/number-field";
 import { StringField } from "./fields/string-field";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -160,5 +161,26 @@ describe("renderField – boolean schema wins over stored value type", () => {
       value: "hello",
     });
     expect(typeOf(el)).toBe(StringField);
+  });
+
+  // Same regression class: a number/integer flag mis-seeded with `""` used to render a text input.
+  test("number schema with a string value renders a number input", () => {
+    const el = renderField({
+      ...baseProps,
+      path: "priority",
+      schema: { type: "number" },
+      value: "",
+    });
+    expect(typeOf(el)).toBe(NumberField);
+  });
+
+  test("integer schema with a string value renders a number input", () => {
+    const el = renderField({
+      ...baseProps,
+      path: "priority",
+      schema: { type: "integer" },
+      value: "",
+    });
+    expect(typeOf(el)).toBe(NumberField);
   });
 });
