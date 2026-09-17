@@ -139,7 +139,8 @@ async function mergeOneIssue(
     }
 
     const outcomes: PrOutcome[] = [];
-    const conflicted: Array<{ number: number; url: string }> = [];
+    const conflicted: Array<{ number: number; url: string; head?: string }> =
+      [];
     /**
      * Whether this pass actually did anything — i.e. found a pull request
      * still open and tried to land it.
@@ -187,7 +188,12 @@ async function mergeOneIssue(
       if (outcome.merged) {
         outcomes.push({ repo, url: pr.url, status: "merged" });
       } else if (outcome.reason === "conflict") {
-        conflicted.push({ number: pr.number, url: pr.url });
+        // head pins the rebase run to this PR's own branch, not a fresh one.
+        conflicted.push({
+          number: pr.number,
+          url: pr.url,
+          head: current?.head,
+        });
         outcomes.push({ repo, url: pr.url, status: "resolving" });
       } else {
         outcomes.push({
