@@ -92,9 +92,11 @@ export function FloatingReleaseCard() {
     startLayoutTour(t, { onOrgHome, inProject, onSiteEditor });
   };
 
+  /** Preference first, `markSeen` second — marking seen unmounts this card, so
+   *  the write is issued while the hook that owns it is still mounted. */
   const enableNewLayout = () => {
-    markSeen(candidate.id);
     setPreferences((prev) => ({ ...prev, compactPageLayout: true }));
+    markSeen(candidate.id);
   };
 
   return (
