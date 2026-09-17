@@ -16,8 +16,7 @@
 import { taskKey } from "@decocms/shared/task-key";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { emailTemplate } from "@/auth/email-template";
-import { createEmailSender, findEmailProvider } from "@/auth/email-providers";
-import { getConfig } from "@/core/config";
+import { resolveTransactionalSender } from "@/auth/email-providers";
 import { getBaseUrl } from "@/core/server-constants";
 import type { StudioContext } from "@/core/studio-context";
 import type { TaskBoardItem } from "@/storage/types";
@@ -69,17 +68,6 @@ export function buildPrReadyEmail(params: {
   };
 }
 
-/** The digest reuses the invitation provider; so does this. Null when the
- *  deployment has no email provider configured — then nothing is sent. */
-function resolveSender() {
-  const auth = getConfig().auth;
-  const providers = auth.emailProviders ?? [];
-  const provider = auth.inviteEmailProviderId
-    ? findEmailProvider(providers, auth.inviteEmailProviderId)
-    : providers[0];
-  return provider ? createEmailSender(provider) : null;
-}
-
 export async function emailReporterPrReady(
   ctx: StudioContext,
   item: TaskBoardItem,
@@ -114,7 +102,7 @@ export async function emailReporterPrReady(
       .executeTakeFirst();
     if (!org?.slug) return;
 
-    const sender = resolveSender();
+    const sender = resolveTransactionalSender();
     if (!sender) return;
 
     const { subject, html } = buildPrReadyEmail({

@@ -7,6 +7,7 @@
  * - Other email-based features
  */
 
+import { getConfig } from "@/core/config";
 import { Resend, SendGrid } from "./known-email-providers";
 
 // Provider-specific config types
@@ -77,4 +78,20 @@ export function findEmailProvider(
   id: string,
 ): EmailProviderConfig | undefined {
   return providers.find((p) => p.id === id);
+}
+
+/**
+ * The deployment's configured transactional sender, or null when it has none
+ * — then nothing is sent, and nothing is stamped as sent.
+ *
+ * Every non-auth mail reuses the invitation provider: one configured sender,
+ * no second provider abstraction and no new env var.
+ */
+export function resolveTransactionalSender() {
+  const auth = getConfig().auth;
+  const providers = auth.emailProviders ?? [];
+  const provider = auth.inviteEmailProviderId
+    ? findEmailProvider(providers, auth.inviteEmailProviderId)
+    : providers[0];
+  return provider ? createEmailSender(provider) : null;
 }
