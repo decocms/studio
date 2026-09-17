@@ -96,7 +96,11 @@ function LayoutSidebar({
       <>
         {children}
         <SidebarResizeHandle
+          width={resize.width}
+          minWidth={resize.minWidth}
+          maxWidth={resize.maxWidth}
           onPointerDown={resize.onStartResize}
+          onKeyDown={resize.onKeyDownResize}
           onDoubleClick={resize.resetWidth}
         />
       </>

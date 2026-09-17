@@ -1,18 +1,23 @@
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import {
   useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
 const SIDEBAR_MAX_WIDTH = 400;
+const KEYBOARD_STEP = 16;
 const STORAGE_KEY = "sidebar.width";
 
 export interface SidebarResize {
   width: number;
+  minWidth: number;
+  maxWidth: number;
   wrapperRef: RefObject<HTMLDivElement | null>;
   onStartResize: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onKeyDownResize: (e: ReactKeyboardEvent<HTMLDivElement>) => void;
   resetWidth: () => void;
 }
 
@@ -84,5 +89,23 @@ export function useSidebarResize(): SidebarResize {
     setWidth(minWidth);
   };
 
-  return { width: clamp(width), wrapperRef, onStartResize, resetWidth };
+  // ARIA window-splitter keys: arrows step, Home/End jump to the ends.
+  const onKeyDownResize = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft") setWidth(clamp(width - KEYBOARD_STEP));
+    else if (e.key === "ArrowRight") setWidth(clamp(width + KEYBOARD_STEP));
+    else if (e.key === "Home") setWidth(minWidth);
+    else if (e.key === "End") setWidth(SIDEBAR_MAX_WIDTH);
+    else return;
+    e.preventDefault();
+  };
+
+  return {
+    width: clamp(width),
+    minWidth,
+    maxWidth: SIDEBAR_MAX_WIDTH,
+    wrapperRef,
+    onStartResize,
+    onKeyDownResize,
+    resetWidth,
+  };
 }
