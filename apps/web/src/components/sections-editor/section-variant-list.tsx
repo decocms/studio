@@ -13,6 +13,7 @@ import {
   DotsGrid,
   DotsHorizontal,
   Edit03,
+  LayoutAlt01,
   Plus,
   Trash01,
 } from "@untitledui/icons";
@@ -42,6 +43,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 
 const VARIANT_ICON_COLOR = "oklch(0.65 0.15 160)";
@@ -129,31 +131,47 @@ function VariantRowContent({
   onDelete?: () => void;
 }) {
   const t = useT();
+  const compact = useCompactPageLayout();
 
   return (
     <>
-      {/* One slot for both: variant icon at rest, drag grip on hover or
-          keyboard focus, and the grip alone on the dragging clone. */}
-      <span className="relative size-4 shrink-0">
-        <Cube01
-          className={cn(
-            "absolute inset-0 size-4 transition-opacity",
-            dragging
-              ? "opacity-0"
-              : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
-          )}
-          style={{ color: VARIANT_ICON_COLOR }}
-        />
-        <DotsGrid
-          aria-hidden
-          className={cn(
-            "absolute inset-0 size-4 transition-opacity",
-            dragging
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",
-          )}
-        />
-      </span>
+      {compact ? (
+        /* One slot for both: variant icon at rest, drag grip on hover or
+           keyboard focus, and the grip alone on the dragging clone. */
+        <span className="relative size-4 shrink-0">
+          <Cube01
+            className={cn(
+              "absolute inset-0 size-4 transition-opacity",
+              dragging
+                ? "opacity-0"
+                : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
+            )}
+            style={{ color: VARIANT_ICON_COLOR }}
+          />
+          <DotsGrid
+            aria-hidden
+            className={cn(
+              "absolute inset-0 size-4 transition-opacity",
+              dragging
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",
+            )}
+          />
+        </span>
+      ) : (
+        <>
+          <DotsGrid
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground/40 transition-opacity",
+              dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+          />
+          <LayoutAlt01
+            className="h-4 w-4 shrink-0"
+            style={{ color: VARIANT_ICON_COLOR }}
+          />
+        </>
+      )}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {label}
       </span>

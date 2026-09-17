@@ -11,12 +11,15 @@ import { ChevronRight, DotsHorizontal } from "@untitledui/icons";
 import { useSyncExternalStore, type ComponentPropsWithRef } from "react";
 import { useT } from "@/i18n/use-t";
 import { useElementWidth } from "@/hooks/use-element-width";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import {
   BreadcrumbContribution,
   BreadcrumbProvider,
   useBreadcrumbStore,
 } from "./breadcrumb-context";
 import {
+  CLASSIC_MAX_UNCOLLAPSED_ITEMS,
+  COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS,
   collapseBreadcrumbs,
   resolveBreadcrumbs,
   type BreadcrumbExtension,
@@ -124,8 +127,17 @@ function BreadcrumbSegment({
 
 function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
   const t = useT();
+  // Named for the preference, because the second argument below is the other
+  // kind of compact: a container too narrow for a path, whatever the layout.
+  const compactLayout = useCompactPageLayout();
   const [width, ref] = useElementWidth();
-  const entries = collapseBreadcrumbs(items, width >= 0 && width < 320);
+  const entries = collapseBreadcrumbs(
+    items,
+    width >= 0 && width < 320,
+    compactLayout
+      ? COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS
+      : CLASSIC_MAX_UNCOLLAPSED_ITEMS,
+  );
   return (
     <nav
       ref={ref}

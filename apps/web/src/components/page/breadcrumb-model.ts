@@ -41,14 +41,20 @@ type BreadcrumbEntry<T> =
 
 /**
  * How deep a trail gets before it is worth hiding any of it. Reading the whole
- * path beats saving a little width, so collapsing starts one past this.
+ * path beats saving a little width, so collapsing starts one past the limit.
+ * The limit belongs to the page layout, so the caller passes it in — it says
+ * nothing about `collapseBreadcrumbs`' own `compact` argument, which is width.
  */
-const MAX_UNCOLLAPSED_ITEMS = 5;
+export const CLASSIC_MAX_UNCOLLAPSED_ITEMS = 4;
+
+/** The consistent layout's header fits one more ancestor before collapsing. */
+export const COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS = 5;
 
 /** Replace one ancestor range with a menu, keeping the leaf in the same list. */
 export function collapseBreadcrumbs<T>(
   items: readonly T[],
   compact = false,
+  maxUncollapsedItems: number = CLASSIC_MAX_UNCOLLAPSED_ITEMS,
 ): BreadcrumbEntry<T>[] {
   const entries: BreadcrumbEntry<T>[] = items.map((item) => ({
     type: "item",
@@ -56,7 +62,7 @@ export function collapseBreadcrumbs<T>(
   }));
   // `compact` is the container being too narrow to show a path at all, not the
   // layout preference — there, only the leaf survives whatever the depth.
-  if (items.length <= (compact ? 1 : MAX_UNCOLLAPSED_ITEMS)) return entries;
+  if (items.length <= (compact ? 1 : maxUncollapsedItems)) return entries;
 
   const start = compact ? 0 : 1;
   const end = items.length - (compact ? 1 : 2);

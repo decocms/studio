@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -14,6 +15,7 @@ import {
   Eye,
   EyeOff,
   Flag01,
+  LayoutAlt01,
   Plus,
   Trash01,
   Zap,
@@ -116,6 +118,7 @@ function SectionRowContent({
   meta: LiveMeta | null | undefined;
   decofile: Record<string, unknown>;
 }) {
+  const compact = useCompactPageLayout();
   const saved = section.isSavedBlock === true;
   const multivariate = section.isMultivariate === true;
   const imageSrc =
@@ -132,8 +135,8 @@ function SectionRowContent({
     meta,
   );
 
-  // A multivariate row stands for several versions of one block, so it gets the
-  // stacked cube rather than the single one.
+  // Compact only: a multivariate row stands for several versions of one block,
+  // so it gets the stacked cube rather than the single one.
   const RowIcon = multivariate ? LayersThree01 : Cube01;
   const iconStyle = saved
     ? { color: GLOBAL_SECTION_ICON_COLOR }
@@ -143,19 +146,23 @@ function SectionRowContent({
 
   return (
     <>
-      {/* The block icon and the drag grip share one fixed slot: icon at rest,
-          grip on hover or keyboard focus. Only ever one is painted, so the
-          swap never shifts the label. */}
-      <span className="relative size-4 shrink-0">
-        <RowIcon
-          className="absolute inset-0 size-4 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
-          style={iconStyle}
-        />
-        <DotsGrid
-          aria-hidden
-          className="absolute inset-0 size-4 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
-        />
-      </span>
+      {compact ? (
+        /* The block icon and the drag grip share one fixed slot: icon at rest,
+           grip on hover or keyboard focus. Only ever one is painted, so the
+           swap never shifts the label. */
+        <span className="relative size-4 shrink-0">
+          <RowIcon
+            className="absolute inset-0 size-4 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
+            style={iconStyle}
+          />
+          <DotsGrid
+            aria-hidden
+            className="absolute inset-0 size-4 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
+          />
+        </span>
+      ) : (
+        <DotsGrid className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+      )}
       {imageSrc && (
         <img
           src={imageSrc}
@@ -163,6 +170,9 @@ function SectionRowContent({
           referrerPolicy="no-referrer"
           className="h-12 max-w-[100px] shrink-0 rounded object-cover"
         />
+      )}
+      {!compact && (
+        <LayoutAlt01 className="h-4 w-4 shrink-0" style={iconStyle} />
       )}
       <span
         className={cn(
@@ -269,6 +279,7 @@ function SortableSectionItem({
   onDetach: () => void;
 }) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const isAsyncRender = raw
     ? isLazyResolveType(raw.__resolveType ?? "")
     : false;
@@ -439,7 +450,11 @@ function SortableSectionItem({
                 onMakeReusable();
               }}
             >
-              <Globe01 className="h-4 w-4" />
+              {compact ? (
+                <Globe01 className="h-4 w-4" />
+              ) : (
+                <LayoutAlt01 className="h-4 w-4" />
+              )}
               {t("sectionsEditor.sectionList.makeReusableMenuItem")}
             </DropdownMenuItem>
           )}
@@ -450,7 +465,11 @@ function SortableSectionItem({
                 onDetach();
               }}
             >
-              <Cube01 className="h-4 w-4" />
+              {compact ? (
+                <Cube01 className="h-4 w-4" />
+              ) : (
+                <LayoutAlt01 className="h-4 w-4" />
+              )}
               {t("sectionsEditor.sectionList.detachMenuItem")}
             </DropdownMenuItem>
           )}

@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import {
   DndContext,
@@ -146,33 +147,38 @@ function PageVariantRowContent({
   onDelete?: () => void;
 }) {
   const t = useT();
+  const compact = useCompactPageLayout();
   return (
     <>
-      {/* One slot for both: matcher icon at rest, drag grip on hover or
-          keyboard focus, and the grip alone on the dragging clone. The row
-          itself is the drag target, so the grip is an affordance, not a
-          handle. */}
-      <span className="relative size-4 shrink-0">
-        <span
-          className={cn(
-            "absolute inset-0 flex items-center justify-center transition-opacity",
-            dragging
-              ? "opacity-0"
-              : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
-          )}
-        >
-          <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+      {compact ? (
+        /* One slot for both: matcher icon at rest, drag grip on hover or
+           keyboard focus, and the grip alone on the dragging clone. The row
+           itself is the drag target, so the grip is an affordance, not a
+           handle. */
+        <span className="relative size-4 shrink-0">
+          <span
+            className={cn(
+              "absolute inset-0 flex items-center justify-center transition-opacity",
+              dragging
+                ? "opacity-0"
+                : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
+            )}
+          >
+            <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+          </span>
+          <DotsGrid
+            aria-hidden
+            className={cn(
+              "absolute inset-0 size-4 transition-opacity",
+              dragging
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",
+            )}
+          />
         </span>
-        <DotsGrid
-          aria-hidden
-          className={cn(
-            "absolute inset-0 size-4 transition-opacity",
-            dragging
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",
-          )}
-        />
-      </span>
+      ) : (
+        <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+      )}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {label}
       </span>

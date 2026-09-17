@@ -1,4 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
@@ -183,6 +184,9 @@ export function SectionsEditor({
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
+  // Classic keeps the breadcrumb shape it has always had; the merged
+  // section-and-variant crumb is a compact-layout change.
+  const compact = useCompactPageLayout();
   const sessionAgentId = task?.virtualMcpId;
   const agent = useVirtualMCPNonBlocking(
     sessionAgentId === virtualMcpId ? virtualMcpId : null,
@@ -1892,12 +1896,17 @@ export function SectionsEditor({
         ? [globalBlockName, ...fieldBreadcrumbs]
         : [
             activePage!.name,
-            // The section and its selected variant are one destination, so they
-            // are one crumb — naming both keeps the variant legible even when
-            // the switcher is hidden several fields deep.
-            isEditingMultivariateSection && activeSectionFlagVariant
-              ? `${selectedParsed!.variantOf ?? selectedParsed!.label} · ${activeSectionFlagVariant.label}`
-              : selectedParsed!.label,
+            // Compact names the section and its selected variant in one crumb:
+            // they are one destination, and saying both keeps the variant
+            // legible even when the switcher is hidden several fields deep.
+            // Classic keeps the two separate crumbs it has always had.
+            ...(isEditingMultivariateSection && activeSectionFlagVariant
+              ? compact
+                ? [
+                    `${selectedParsed!.variantOf ?? selectedParsed!.label} · ${activeSectionFlagVariant.label}`,
+                  ]
+                : [selectedParsed!.label, activeSectionFlagVariant.label]
+              : [selectedParsed!.label]),
             ...fieldBreadcrumbs,
           ]
       : [];
@@ -2502,7 +2511,19 @@ export function SectionsEditor({
       return;
     }
 
-    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - 1));
+    // Classic still spends a crumb on the variant, so it sits at index 2 and
+    // the field crumbs start one position later than they do in compact.
+    const variantCrumbs =
+      !compact && isEditingMultivariateSection && activeSectionFlagVariant
+        ? 1
+        : 0;
+    if (variantCrumbs === 1 && index === 2) {
+      setFieldBreadcrumbs([]);
+      setFormResetKey((key) => key + 1);
+      return;
+    }
+
+    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - 1 - variantCrumbs));
   };
 
   return (

@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import { Cube01, SearchMd } from "@untitledui/icons";
+import { Cube01, LayoutAlt01, SearchMd } from "@untitledui/icons";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import {
   extractSectionCatalog,
@@ -123,6 +124,7 @@ function LazySectionPreview({
 }) {
   const { ref, iframeActive } = useLazyPreviewVisible(scrollRootRef, slotId);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const PlaceholderIcon = useCompactPageLayout() ? Cube01 : LayoutAlt01;
 
   return (
     <div
@@ -131,13 +133,13 @@ function LazySectionPreview({
     >
       {!iframeActive ? (
         <div className="flex h-full items-center justify-center">
-          <Cube01 className="h-8 w-8 text-muted-foreground/30" />
+          <PlaceholderIcon className="h-8 w-8 text-muted-foreground/30" />
         </div>
       ) : (
         <>
           {!iframeLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
-              <Cube01 className="h-8 w-8 animate-pulse text-muted-foreground/40" />
+              <PlaceholderIcon className="h-8 w-8 animate-pulse text-muted-foreground/40" />
             </div>
           )}
           <iframe
@@ -166,6 +168,8 @@ function SectionGalleryCard({
   scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: () => void;
 }) {
+  const CardIcon = useCompactPageLayout() ? Cube01 : LayoutAlt01;
+
   return (
     <button
       type="button"
@@ -184,7 +188,7 @@ function SectionGalleryCard({
         slotId={entry.resolveType}
       />
       <div className="flex items-center gap-2 border-t px-3 py-2.5">
-        <Cube01
+        <CardIcon
           className="h-4 w-4 shrink-0"
           style={
             entry.isSavedBlock
