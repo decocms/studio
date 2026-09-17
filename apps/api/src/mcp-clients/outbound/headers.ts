@@ -75,13 +75,13 @@ export function serializeRunMetadataHeader(
 }
 
 /**
- * Drop any org-configured custom connection header whose value is unsafe
- * (outside the HTTP header ByteString range) or oversized — unlike
- * `configuration_state`/`metadata`, `connection_headers.headers` has no
- * schema-level size or byte-range check, but flows straight into every
- * outbound request's headers, where an unsafe value throws in `fetch`/undici
- * and an oversized one gets the request rejected with 431 by the downstream
- * server/proxy.
+ * Drop any org-configured custom connection header whose key or value is
+ * unsafe (outside the HTTP header ByteString range, or containing a raw
+ * CR/LF) or oversized — unlike `configuration_state`/`metadata`,
+ * `connection_headers.headers` has no schema-level size or byte-range check,
+ * but flows straight into every outbound request's headers, where an unsafe
+ * key or value throws in `fetch`/undici and an oversized value gets the
+ * request rejected with 431 by the downstream server/proxy.
  */
 export function sanitizeCustomHeaders(
   headers: Record<string, string> | undefined,
@@ -90,7 +90,11 @@ export function sanitizeCustomHeaders(
   const safe: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     const byteLength = new TextEncoder().encode(value).length;
-    if (byteLength > MAX_HEADER_VALUE_BYTES || !isHeaderSafe(value)) {
+    if (
+      !isHeaderSafe(key) ||
+      byteLength > MAX_HEADER_VALUE_BYTES ||
+      !isHeaderSafe(value)
+    ) {
       console.warn(
         `[Proxy] Dropping unsafe or oversized custom header "${key}"`,
       );

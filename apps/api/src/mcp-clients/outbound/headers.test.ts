@@ -123,6 +123,15 @@ describe("sanitizeCustomHeaders CR/LF guard", () => {
       }),
     ).toEqual({});
   });
+
+  test("drops a header whose key contains an injected CRLF", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "X-Api-Key": "abc123",
+        "X-Injected\r\nX-Evil: 1": "value",
+      }),
+    ).toEqual({ "X-Api-Key": "abc123" });
+  });
 });
 
 describe("sanitizeCustomHeaders", () => {
