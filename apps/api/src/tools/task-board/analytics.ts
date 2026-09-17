@@ -24,24 +24,29 @@ import type { AnalyticsQuery } from "@/storage/task-board-analytics";
 
 const DEFAULT_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 
-const AnalyticsInputSchema = z.object({
-  org: z
-    .string()
-    .optional()
-    .describe(
-      'Org slug or id to report on. Omit for the current org. "all" is the cross-tenant aggregate (admin orgs only).',
-    ),
-  from: z
-    .string()
-    .datetime({ offset: true })
-    .optional()
-    .describe("ISO start of the range. Defaults to 30 days ago."),
-  to: z
-    .string()
-    .datetime({ offset: true })
-    .optional()
-    .describe("ISO end of the range. Defaults to now."),
-});
+const AnalyticsInputSchema = z
+  .object({
+    org: z
+      .string()
+      .optional()
+      .describe(
+        'Org slug or id to report on. Omit for the current org. "all" is the cross-tenant aggregate (admin orgs only).',
+      ),
+    from: z
+      .string()
+      .datetime({ offset: true })
+      .optional()
+      .describe("ISO start of the range. Defaults to 30 days ago."),
+    to: z
+      .string()
+      .datetime({ offset: true })
+      .optional()
+      .describe("ISO end of the range. Defaults to now."),
+  })
+  .refine((v) => !v.from || !v.to || Date.parse(v.from) <= Date.parse(v.to), {
+    message: "`from` must not be after `to`",
+    path: ["from"],
+  });
 
 const StatSectionSchema = z.object({
   kind: z.literal("stat"),
