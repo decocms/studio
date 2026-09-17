@@ -403,6 +403,17 @@ export const sandbox = {
   "sandbox.mediaBlocks.calloutTitle": "Callout title",
   "sandbox.mediaBlocks.destinationUrlPlaceholder":
     "https://destination-url.com",
+  "sandbox.linkSuggest.button": "Suggest links",
+  "sandbox.linkSuggest.hint":
+    "Find phrases to link to your other posts (uses AI credits)",
+  "sandbox.linkSuggest.noCandidates": "No other posts to link to yet",
+  "sandbox.linkSuggest.title": "Suggested internal links",
+  "sandbox.linkSuggest.description":
+    "Pick which phrases to link to your other posts. Nothing changes until you apply.",
+  "sandbox.linkSuggest.none": "No internal links to suggest.",
+  "sandbox.linkSuggest.apply": "Apply {count}",
+  "sandbox.linkSuggest.applied": "Applied {count} link(s)",
+  "sandbox.linkSuggest.failed": "Could not suggest links",
   "sandbox.linkPicker.tabPost": "Post",
   "sandbox.linkPicker.tabProduct": "Product",
   "sandbox.linkPicker.searchPosts": "Search your posts…",

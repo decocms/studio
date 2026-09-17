@@ -45,6 +45,8 @@ import {
 import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
 import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
+import { SuggestLinksButton } from "./link-suggestions";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
@@ -110,6 +112,7 @@ export function PostEditor({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
+  const hasAi = useHostedAiProviderKeys().length > 0;
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
@@ -244,6 +247,13 @@ export function PostEditor({
                     </TooltipContent>
                   </Tooltip>
                 )}
+                <SuggestLinksButton
+                  decofile={decofile}
+                  sections={asBlocks(post.sections)}
+                  currentKey={blockKey}
+                  hasAi={hasAi}
+                  onApply={(next) => setField("sections", next)}
+                />
                 <SaveStatus isPending={save.isPending} isError={save.isError} />
                 <Button
                   type="button"

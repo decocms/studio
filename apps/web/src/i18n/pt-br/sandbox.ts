@@ -410,6 +410,17 @@ export const sandbox = {
   "sandbox.mediaBlocks.calloutText": "Texto do destaque…",
   "sandbox.mediaBlocks.calloutTitle": "Título do destaque",
   "sandbox.mediaBlocks.destinationUrlPlaceholder": "https://url-de-destino.com",
+  "sandbox.linkSuggest.button": "Sugerir links",
+  "sandbox.linkSuggest.hint":
+    "Encontrar trechos para linkar com seus outros posts (usa créditos de IA)",
+  "sandbox.linkSuggest.noCandidates": "Ainda não há outros posts para linkar",
+  "sandbox.linkSuggest.title": "Links internos sugeridos",
+  "sandbox.linkSuggest.description":
+    "Escolha quais trechos linkar com seus outros posts. Nada muda até você aplicar.",
+  "sandbox.linkSuggest.none": "Nenhum link interno para sugerir.",
+  "sandbox.linkSuggest.apply": "Aplicar {count}",
+  "sandbox.linkSuggest.applied": "{count} link(s) aplicado(s)",
+  "sandbox.linkSuggest.failed": "Não foi possível sugerir links",
   "sandbox.linkPicker.tabPost": "Post",
   "sandbox.linkPicker.tabProduct": "Produto",
   "sandbox.linkPicker.searchPosts": "Buscar seus posts…",

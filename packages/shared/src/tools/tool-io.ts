@@ -1197,6 +1197,14 @@ export interface StudioToolIO {
       }[];
     };
   };
+  BLOG_LINK_SUGGEST: {
+    input: {
+      body: string;
+      posts: { title: string; slug: string }[];
+      count?: number | undefined;
+    };
+    output: { suggestions: { quote: string; slug: string }[] };
+  };
   BRAND_GET: {
     input: { id?: string | undefined };
     output: {
