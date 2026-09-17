@@ -5,7 +5,10 @@ import {
   pollInteraction,
   submitInteraction,
 } from "./gemini-interactions";
-import { fetchWithTransientRetry } from "./fetch-transient-retry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
 
 function fetchModelsPageWithRetry(url: URL, apiKey: string): Promise<Response> {
@@ -109,7 +112,7 @@ export const googleAdapter: ProviderAdapter = {
           // Key goes via header, not `?key=`: outbound fetches are OTel-traced with the full URL, see observability/instrumentations/fetch.ts.
           const res = await fetchModelsPageWithRetry(url, apiKey);
           if (!res.ok) {
-            throw new Error(`Google listModels failed: ${res.status}`);
+            await throwResponseError("Google listModels", res);
           }
           const data: { models: GoogleModel[]; nextPageToken?: string } =
             await res.json();

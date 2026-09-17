@@ -1,6 +1,9 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
-import { fetchWithTransientRetry } from "./fetch-transient-retry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 
 function fetchModelsWithRetry(
   baseUrl: string,
@@ -69,7 +72,7 @@ export const openaiCompatibleAdapter: ProviderAdapter = {
 
         const res = await fetchModelsWithRetry(baseUrl, headers);
         if (!res.ok) {
-          throw new Error(`OpenAI-compatible listModels failed: ${res.status}`);
+          await throwResponseError("OpenAI-compatible listModels", res);
         }
         const body: { data: Array<{ id: string; owned_by?: string }> } =
           await res.json();

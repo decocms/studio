@@ -1,6 +1,9 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { ModelCapability } from "@decocms/shared/sdk";
-import { fetchWithTransientRetry } from "./fetch-transient-retry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 import type {
   StudioProvider,
   ModelInfo,
@@ -56,7 +59,7 @@ export const openrouterAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
-      throw new Error(`OpenRouter OAuth exchange failed: ${res.status}`);
+      await throwResponseError("OpenRouter OAuth exchange", res);
     }
     const data = await res.json();
     return { apiKey: data.key, userId: data.user_id };
@@ -117,8 +120,7 @@ export const openrouterAdapter: ProviderAdapter = {
 
         // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
         const res = await fetchModelsWithRetry(headers);
-        if (!res.ok)
-          throw new Error(`OpenRouter listModels failed: ${res.status}`);
+        if (!res.ok) await throwResponseError("OpenRouter listModels", res);
         const { data }: { data: OpenRouterAPIModel[] } = await res.json();
         const models = data.map(mapV1Model);
 

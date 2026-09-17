@@ -1,7 +1,10 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { ModelCapability } from "@decocms/shared/sdk";
 import type { StudioProvider, ModelInfo, ProviderAdapter } from "../types";
-import { fetchWithTransientRetry } from "./fetch-transient-retry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 
 const LLMAPI_BASE_URL = "https://api.llmapi.ai/v1";
 const LLMAPI_ICON_URL =
@@ -64,7 +67,7 @@ export const llmapiAdapter: ProviderAdapter = {
       async listModels(): Promise<ModelInfo[]> {
         const res = await fetchModelsWithRetry(apiKey);
         if (!res.ok) {
-          throw new Error(`LLMAPI listModels failed: ${res.status}`);
+          await throwResponseError("LLMAPI listModels", res);
         }
         const { data }: { data: LlmapiModel[] } = await res.json();
         return data.map((m) => {

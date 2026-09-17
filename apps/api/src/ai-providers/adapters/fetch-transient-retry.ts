@@ -39,3 +39,16 @@ export async function fetchWithTransientRetry(
     throw err;
   }
 }
+
+/**
+ * Drain and report a non-ok response instead of throwing on status alone —
+ * an unread body otherwise leaks the connection and drops the provider's
+ * error detail.
+ */
+export async function throwResponseError(
+  label: string,
+  res: Response,
+): Promise<never> {
+  const body = await res.text().catch(() => "");
+  throw new Error(`${label} failed: ${res.status}${body ? ` ${body}` : ""}`);
+}
