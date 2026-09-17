@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
-import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   ArrowUpRight,
@@ -739,33 +738,25 @@ function TestRunRow() {
  */
 function MergeRow() {
   const t = useT();
+  const { org } = useProjectContext();
   const merge = useMergeJiraPrs();
   const [issueKeys, setIssueKeys] = useState("");
-  const [results, setResults] = useState<
-    StudioToolIO["JIRA_PR_MERGE"]["output"]["results"]
-  >([]);
+  const [started, setStarted] = useState<string[]>([]);
   const parsed = parseIssueKeys(issueKeys);
   const canRun = parsed.keys.length > 0 && !merge.isPending;
 
   const run = () => {
     if (!canRun) return;
-    setResults([]);
+    setStarted([]);
     merge.mutate(
       { issueKey: issueKeys },
       {
-        onSuccess: (r) => setResults(r.results),
+        onSuccess: (r) => setStarted(r.issueKeys),
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.mergeFailed"))),
       },
     );
   };
-
-  const merged = results.filter((r) => r.status === "merged");
-  const rest = results.filter((r) => r.status !== "merged");
-  // An issue can carry a pull request per repository, so a row is a pull
-  // request and the issue key repeats. Label each with its repo when it does.
-  const label = (r: (typeof results)[number]) =>
-    r.repo ? `${r.issueKey} (${r.repo.split("/").pop()})` : r.issueKey;
 
   return (
     <SettingsCardItem
@@ -797,21 +788,30 @@ function MergeRow() {
                 })}
           </Button>
         </div>
-        <BatchResult
-          started={merged.map(label)}
-          failed={rest.map((r) => ({
-            issueKey: label(r),
-            error:
-              r.status === "resolving"
-                ? t("settings.jira.mergeResolving")
-                : r.status === "no_pr"
-                  ? t("settings.jira.mergeNoPr")
-                  : r.status === "not_open"
-                    ? t("settings.jira.mergeNotOpen")
-                    : (r.detail ?? r.status),
-          }))}
-          startedLabel={t("settings.jira.mergeMerged")}
-        />
+        {/* The batch is durable and asynchronous, so this card cannot show
+            what each pull request did — the outcome is a comment on each
+            issue, which is where the rest of the integration reports. */}
+        {started.length > 0 && (
+          <div className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 text-xs">
+            <p>
+              <Check size={12} className="mr-1 inline text-success" />
+              {t("settings.jira.mergeStarted")}
+              <span className="ml-1 font-mono">{started.join(", ")}</span>
+            </p>
+            <p className="text-muted-foreground">
+              {t("settings.jira.mergeWhereResults")}
+            </p>
+          </div>
+        )}
+        <Link
+          to="/$org/settings/monitor"
+          params={{ org: org.slug }}
+          search={{ tab: "threads" }}
+          className="flex w-fit items-center gap-1 text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          {t("settings.jira.testRunWatch")}
+          <ArrowUpRight size={12} />
+        </Link>
       </div>
     </SettingsCardItem>
   );

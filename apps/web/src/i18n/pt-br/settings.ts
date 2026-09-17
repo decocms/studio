@@ -108,6 +108,9 @@ export const settings = {
   "settings.jira.mergeResolving":
     "conflito \u2014 um agent está rebaseando; mergeie de novo quando terminar",
   "settings.jira.mergeNoPr": "sem pull request nesta issue",
+  "settings.jira.mergeStarted": "Mergeando",
+  "settings.jira.mergeWhereResults":
+    "O que cada pull request fez sai como comentário na issue \u2014 o lote segue mesmo se você sair desta página.",
   "settings.jira.mergeNotOpen":
     "o PR mais novo dela está fechado \u2014 alguém fechou, então ressuscitar um anterior é decisão de pessoa",
   "settings.jira.mergeFailed": "Não consegui mergear",

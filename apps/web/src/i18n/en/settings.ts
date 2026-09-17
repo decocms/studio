@@ -103,6 +103,9 @@ export const settings = {
   "settings.jira.mergeResolving":
     "conflict \u2014 an agent is rebasing it; merge again when it finishes",
   "settings.jira.mergeNoPr": "no pull request on this issue",
+  "settings.jira.mergeStarted": "Merging",
+  "settings.jira.mergeWhereResults":
+    "What each pull request did is posted as a comment on its issue \u2014 the batch keeps going even if you leave this page.",
   "settings.jira.mergeNotOpen":
     "its newest pull request is closed \u2014 a person closed it, so reviving an older one is their call",
   "settings.jira.mergeFailed": "Could not merge",
