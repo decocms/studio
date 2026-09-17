@@ -124,6 +124,48 @@ describe("COLLECTION_THREADS_UPDATE", () => {
     ).rejects.toThrow(/Virtual MCP not found/i);
   });
 
+  it("rejects branch=null when re-pointing to a github-linked vMCP in the same update", async () => {
+    const nonGithubVmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      { title: "no-gh", connections: [], status: "active", pinned: false },
+    );
+    const created = await COLLECTION_THREADS_CREATE.handler(
+      { data: { virtual_mcp_id: nonGithubVmcp.id, title: "t" } },
+      env.ctx,
+    );
+
+    const githubVmcp = await env.ctx.storage.virtualMcps.create(
+      env.orgId,
+      env.userId,
+      {
+        title: "gh",
+        connections: [],
+        status: "active",
+        pinned: false,
+        metadata: {
+          githubRepo: {
+            owner: "a",
+            name: "b",
+            url: "https://github.com/a/b",
+            installationId: 1,
+            connectionId: "c",
+          },
+        },
+      },
+    );
+
+    await expect(
+      COLLECTION_THREADS_UPDATE.handler(
+        {
+          id: created.item.id,
+          data: { virtual_mcp_id: githubVmcp.id, branch: null },
+        },
+        env.ctx,
+      ),
+    ).rejects.toThrow(/branch.*null.*github/i);
+  });
+
   it("preserves the immutable runtime stamp across an unrelated metadata write", async () => {
     const vmcp = await env.ctx.storage.virtualMcps.create(
       env.orgId,

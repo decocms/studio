@@ -21,6 +21,7 @@ import {
   ThreadEntitySchema,
   ThreadUpdateDataSchema,
 } from "@decocms/shared/thread/schema";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import { stripServerManagedMetadata } from "../strip-server-managed-metadata";
 
@@ -70,20 +71,29 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
       throw new Error("Thread not found in organization");
     }
 
+    let effectiveVmcp: VirtualMCPEntity | undefined;
     if (data.virtual_mcp_id !== undefined) {
       // Guards against re-pointing a thread at another org's agent.
-      await requireOwnedVirtualMcp(
+      effectiveVmcp = await requireOwnedVirtualMcp(
         ctx.storage.virtualMcps,
         data.virtual_mcp_id,
         organization.id,
       );
     }
 
-    if (data.branch === null && existing.virtual_mcp_id) {
-      const vmcp = await ctx.storage.virtualMcps.findById(
-        existing.virtual_mcp_id,
-        organization.id,
-      );
+    // Check the vMCP this update points to, not the one being replaced.
+    const effectiveVirtualMcpId =
+      data.virtual_mcp_id !== undefined
+        ? data.virtual_mcp_id
+        : existing.virtual_mcp_id;
+
+    if (data.branch === null && effectiveVirtualMcpId) {
+      const vmcp =
+        effectiveVmcp ??
+        (await ctx.storage.virtualMcps.findById(
+          effectiveVirtualMcpId,
+          organization.id,
+        ));
       const githubRepo = (vmcp?.metadata as GithubRepoMeta | null | undefined)
         ?.githubRepo;
       if (githubRepo) {
