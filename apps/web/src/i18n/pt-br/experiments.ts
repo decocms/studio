@@ -13,7 +13,6 @@ export const experiments = {
   "experiments.col.key": "Chave",
   "experiments.col.status": "Status",
   "experiments.col.variants": "Variantes",
-  "experiments.col.created": "Criado",
   "experiments.dialog.newTitle": "Novo experimento",
   "experiments.dialog.key": "Chave",
   "experiments.dialog.name": "Nome",
