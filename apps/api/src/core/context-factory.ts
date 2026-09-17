@@ -1681,7 +1681,7 @@ export async function createStudioContextFactory(
         wellKnownForwardableHeaders: Object.fromEntries(
           wellKnownForwardableHeaders
             .map((header) => [header, req?.headers.get(header) ?? null])
-            .filter(([_, value]) => value !== null),
+            .filter(([, value]) => value !== null),
         ),
         userAgent:
           (req ? readStudioHeader(req.headers, "client") : null) ||

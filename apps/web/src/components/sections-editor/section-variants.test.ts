@@ -516,9 +516,8 @@ describe("section-variants", () => {
     });
 
     expect(result?.newVariantIndex).toBe(2);
-    expect((result?.section as { variants: unknown[] }).variants).toHaveLength(
-      3,
-    );
+    const section = result?.section as { variants: unknown[] };
+    expect(section.variants).toHaveLength(3);
   });
 
   it("appendSectionVariant rejects hidden sections", () => {
