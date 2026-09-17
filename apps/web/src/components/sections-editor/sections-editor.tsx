@@ -1892,10 +1892,12 @@ export function SectionsEditor({
         ? [globalBlockName, ...fieldBreadcrumbs]
         : [
             activePage!.name,
-            selectedParsed!.label,
-            ...(isEditingMultivariateSection && activeSectionFlagVariant
-              ? [activeSectionFlagVariant.label]
-              : []),
+            // The section and its selected variant are one destination, so they
+            // are one crumb — naming both keeps the variant legible even when
+            // the switcher is hidden several fields deep.
+            isEditingMultivariateSection && activeSectionFlagVariant
+              ? `${selectedParsed!.variantOf ?? selectedParsed!.label} · ${activeSectionFlagVariant.label}`
+              : selectedParsed!.label,
             ...fieldBreadcrumbs,
           ]
       : [];
@@ -2500,14 +2502,7 @@ export function SectionsEditor({
       return;
     }
 
-    if (isEditingMultivariateSection && index === 2) {
-      setFieldBreadcrumbs([]);
-      setFormResetKey((key) => key + 1);
-      return;
-    }
-
-    const fieldBase = isEditingMultivariateSection ? 2 : 1;
-    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - fieldBase));
+    setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - 1));
   };
 
   return (
