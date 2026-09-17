@@ -347,6 +347,7 @@ function VmEventsBridge({
         t("thread.branchPicker.defaultVersionName"),
       ),
       color: nextReleaseColor(draftReleases.length),
+      createdBy: userId,
       createdAt: new Date().toISOString(),
     }).catch(() => {});
   }, [
@@ -354,6 +355,7 @@ function VmEventsBridge({
     currentBranch,
     draftReleases,
     createDraftRelease,
+    userId,
     t,
   ]);
 
