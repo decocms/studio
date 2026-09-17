@@ -5928,7 +5928,14 @@ export interface StudioToolIO {
     output: {
       results: {
         issueKey: string;
-        status: "error" | "merged" | "resolving" | "blocked" | "no_pr";
+        status:
+          | "error"
+          | "merged"
+          | "resolving"
+          | "blocked"
+          | "not_open"
+          | "no_pr";
+        repo?: string | undefined;
         prUrl?: string | undefined;
         detail?: string | undefined;
       }[];

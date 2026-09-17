@@ -762,6 +762,10 @@ function MergeRow() {
 
   const merged = results.filter((r) => r.status === "merged");
   const rest = results.filter((r) => r.status !== "merged");
+  // An issue can carry a pull request per repository, so a row is a pull
+  // request and the issue key repeats. Label each with its repo when it does.
+  const label = (r: (typeof results)[number]) =>
+    r.repo ? `${r.issueKey} (${r.repo.split("/").pop()})` : r.issueKey;
 
   return (
     <SettingsCardItem
@@ -794,15 +798,17 @@ function MergeRow() {
           </Button>
         </div>
         <BatchResult
-          started={merged.map((r) => r.issueKey)}
+          started={merged.map(label)}
           failed={rest.map((r) => ({
-            issueKey: r.issueKey,
+            issueKey: label(r),
             error:
               r.status === "resolving"
                 ? t("settings.jira.mergeResolving")
                 : r.status === "no_pr"
                   ? t("settings.jira.mergeNoPr")
-                  : (r.detail ?? r.status),
+                  : r.status === "not_open"
+                    ? t("settings.jira.mergeNotOpen")
+                    : (r.detail ?? r.status),
           }))}
           startedLabel={t("settings.jira.mergeMerged")}
         />

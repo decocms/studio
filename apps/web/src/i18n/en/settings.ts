@@ -103,6 +103,8 @@ export const settings = {
   "settings.jira.mergeResolving":
     "conflict \u2014 an agent is rebasing it; merge again when it finishes",
   "settings.jira.mergeNoPr": "no pull request on this issue",
+  "settings.jira.mergeNotOpen":
+    "its newest pull request is closed \u2014 a person closed it, so reviving an older one is their call",
   "settings.jira.mergeFailed": "Could not merge",
   "settings.jira.mergeHelp":
     "Merged in the order given, because landing one moves the base under the next.",
