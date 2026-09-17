@@ -164,7 +164,6 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ pillars: z.array(PillarSchema) }),
       system: SYSTEM,
-      temperature: 0.6,
       prompt,
     });
 

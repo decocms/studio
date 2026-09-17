@@ -88,7 +88,6 @@ async function searchCompetitors(
       schema: CompetitorsSchema,
       system: COMPETITOR_SYSTEM,
       prompt: `Brand: ${brand.companyName}\nWrite the values in: ${brand.language || "the brand's own language"}\n\nResearch:\n${text}`,
-      temperature: 0.2,
     });
     return object.competitors;
   } catch (err) {
@@ -165,7 +164,6 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       prompt: input.blocks
         .map((b) => `# Block: ${b.key}\n\n${b.content}`)
         .join("\n\n---\n\n"),
-      temperature: 0.2,
     });
 
     // The blocks can't name competitors, so search only when they didn't.

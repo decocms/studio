@@ -249,8 +249,6 @@ export const BLOG_THEME_SUGGEST = defineTool({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ themes: z.array(ThemeSchema) }),
       system: SYSTEM,
-      // Variety is the product here, unlike the extract's fidelity to evidence.
-      temperature: 0.7,
       prompt,
     });
 

@@ -174,7 +174,6 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ formats: z.array(FormatSchema) }),
       system: SYSTEM,
-      temperature: 0.6,
       prompt,
     });
 

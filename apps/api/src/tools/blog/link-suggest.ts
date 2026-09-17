@@ -123,7 +123,6 @@ export const BLOG_LINK_SUGGEST = defineTool({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ suggestions: z.array(LinkSuggestionSchema) }),
       system: SYSTEM,
-      temperature: 0.3,
       prompt,
     });
 

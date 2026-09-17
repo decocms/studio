@@ -282,7 +282,6 @@ export const BLOG_POST_DRAFT = defineTool({
         sections: z.array(SectionSchema),
       }),
       system: SYSTEM,
-      temperature: 0.7,
       prompt,
     });
 
