@@ -85,7 +85,12 @@ function SearchToggle({
           if (value === "") setOpen(false);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onChange("");
+          if (event.key !== "Escape") return;
+          onChange("");
+          if (!expanded) {
+            setOpen(false);
+            event.currentTarget.blur();
+          }
         }}
         placeholder={placeholder}
         aria-label={placeholder}
