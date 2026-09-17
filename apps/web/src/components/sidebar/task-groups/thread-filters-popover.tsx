@@ -45,6 +45,7 @@ function FilterRow<T extends string>({
         size="sm"
         value={value}
         onValueChange={(v) => v && onChange(v as T)}
+        aria-label={label}
         className="gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5"
       >
         {options.map((opt) => (
