@@ -23,12 +23,12 @@ export interface Release {
   title: string;
   eyebrow?: string;
   bullets: ReleaseBullet[];
-  /** `href` navigates; `action` is handled by the card — either opening the
-   *  desktop-app download dialog, or starting the new-layout product tour. */
+  /** `href` navigates; `action` is one of: download-app | start-tour | enable-new-layout. */
   cta?:
     | { label: string; href: string }
     | { label: string; action: "download-app" }
-    | { label: string; action: "start-tour" };
+    | { label: string; action: "start-tour" }
+    | { label: string; action: "enable-new-layout" };
   learnMoreHref?: string;
 }
 
@@ -37,6 +37,30 @@ export interface Release {
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
 const ALL_RELEASES: Release[] = [
+  {
+    id: "new-layout",
+    date: "2026-09-17",
+    eyebrow: "Now Available",
+    title: "New Layout",
+    bullets: [
+      {
+        icon: Monitor01,
+        title: "Unified page headers",
+        body: "Every page now has a clear header with navigation breadcrumbs and actions, making it easy to orient yourself and move around.",
+      },
+      {
+        icon: FilterLines,
+        title: "Consistent sidebar navigation",
+        body: "Settings and project pages now use a predictable sidebar for sections, instead of scattered tabs and buttons.",
+      },
+      {
+        icon: Stars02,
+        title: "Refined controls & mobile",
+        body: "Buttons and toolbars have been redesigned for clarity. The layout adapts gracefully to smaller screens with the same consistent structure.",
+      },
+    ],
+    cta: { label: "Try it now", action: "enable-new-layout" },
+  },
   {
     id: "unified-workspace-layout",
     date: "2026-09-01",
