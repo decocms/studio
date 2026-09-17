@@ -140,6 +140,17 @@ function classifyModel(modelId: string): TierId | null {
   return result;
 }
 
+// Browse mode: shortlist first, but a search term always scans all models.
+export function pickBrowseModels(
+  allModels: AiProviderModel[],
+  shortlistSet: Set<string>,
+  normalizedSearch: string,
+): AiProviderModel[] {
+  if (normalizedSearch) return allModels;
+  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
+  return shortlisted.length > 0 ? shortlisted : allModels;
+}
+
 function groupByTier(
   models: AiProviderModel[],
 ): Record<TierId | "other", AiProviderModel[]> {
@@ -552,10 +563,9 @@ function ConnectionModelList({
     );
   }
 
-  // Browse mode: show shortlisted models (fall back to all if none match)
-  const shortlisted = allModels.filter((m) => shortlistSet.has(m.modelId));
-  const browseable = shortlisted.length > 0 ? shortlisted : allModels;
-  const grouped = groupByTier(applySearch(browseable));
+  const grouped = groupByTier(
+    applySearch(pickBrowseModels(allModels, shortlistSet, normalizedSearch)),
+  );
 
   return (
     <div className="flex-1 overflow-y-auto px-0.5 pt-1 [touch-action:pan-y]">
