@@ -70,6 +70,27 @@ describe("applyLinkToBlocks", () => {
     expect(result.applied).toBe(false);
     expect(result.blocks).toBe(blocks);
   });
+
+  test("matches a quote across entities the model saw decoded", () => {
+    const { blocks, applied } = applyLinkToBlocks(
+      [P("malas&nbsp;de couro &amp; mochilas")],
+      "malas de couro & mochilas",
+      "/blog/couro",
+    );
+    expect(applied).toBe(true);
+    expect(blocks[0]?.html).toBe(
+      '<a href="/blog/couro">malas&nbsp;de couro &amp; mochilas</a>',
+    );
+  });
+
+  test("skips a quote whose span crosses an inline tag (no broken markup)", () => {
+    const result = applyLinkToBlocks(
+      [P("produtos de <strong>couro</strong> aqui")],
+      "de couro",
+      "/x",
+    );
+    expect(result.applied).toBe(false);
+  });
 });
 
 describe("applyLinksToBlocks", () => {
