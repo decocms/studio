@@ -603,13 +603,14 @@ test.describe("compact page layout", () => {
       1,
     );
     await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
-    await breadcrumbs
-      .getByRole("button", { name: "Show navigation path" })
-      .click();
+    // Five deep is short enough to read in full, so every ancestor is its own
+    // button and there is no overflow menu to open.
     await expect(
-      page.getByRole("menuitem", { name: "Brand", exact: true }),
+      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
+    ).toHaveCount(0);
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Brand", exact: true }),
     ).toBeVisible();
-    await page.keyboard.press("Escape");
     await page.screenshot({
       animations: "disabled",
       path: testInfo.outputPath("compact-library-breadcrumbs.png"),

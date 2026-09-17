@@ -39,6 +39,12 @@ type BreadcrumbEntry<T> =
   | { type: "item"; item: T }
   | { type: "menu"; items: readonly T[] };
 
+/**
+ * How deep a trail gets before it is worth hiding any of it. Reading the whole
+ * path beats saving a little width, so collapsing starts one past this.
+ */
+const MAX_UNCOLLAPSED_ITEMS = 5;
+
 /** Replace one ancestor range with a menu, keeping the leaf in the same list. */
 export function collapseBreadcrumbs<T>(
   items: readonly T[],
@@ -48,7 +54,9 @@ export function collapseBreadcrumbs<T>(
     type: "item",
     item,
   }));
-  if (items.length <= (compact ? 1 : 4)) return entries;
+  // `compact` is the container being too narrow to show a path at all, not the
+  // layout preference — there, only the leaf survives whatever the depth.
+  if (items.length <= (compact ? 1 : MAX_UNCOLLAPSED_ITEMS)) return entries;
 
   const start = compact ? 0 : 1;
   const end = items.length - (compact ? 1 : 2);

@@ -119,31 +119,21 @@ describe("breadcrumb collapse", () => {
     ]);
     expect(collapseBreadcrumbs([], true)).toEqual([]);
   });
-  test.each([0, 1, 2, 3, 4])("keeps a %i-item trail intact", (length) => {
+  test.each([0, 1, 2, 3, 4, 5])("keeps a %i-item trail intact", (length) => {
     const items = Array.from({ length }, (_, index) => index);
     expect(collapseBreadcrumbs(items)).toEqual(
       items.map((item) => ({ type: "item", item })),
     );
   });
 
-  test("collapses Project and Site Editor together, keeping the page and block", () => {
-    expect(
-      collapseBreadcrumbs([
-        "Org",
-        "Project",
-        "Site Editor",
-        "Home",
-        "HeroSlideShow",
-      ]),
-    ).toEqual([
-      { type: "item", item: "Org" },
-      { type: "menu", items: ["Project", "Site Editor"] },
-      { type: "item", item: "Home" },
-      { type: "item", item: "HeroSlideShow" },
-    ]);
+  test("renders a full five-item trail rather than hiding its middle", () => {
+    const items = ["Org", "Project", "Site Editor", "Home", "HeroSlideShow"];
+    expect(collapseBreadcrumbs(items)).toEqual(
+      items.map((item) => ({ type: "item", item })),
+    );
   });
 
-  test("keeps one ordered menu and the immediate parent at any depth", () => {
+  test("starts collapsing at six, keeping one menu and the immediate parent", () => {
     const items = [
       "Org",
       "Project",
