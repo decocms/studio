@@ -35,6 +35,18 @@ function fieldUsesDefault(
   return value[key] === undefined;
 }
 
+/** Type-appropriate empty value when a field stops inheriting the default. */
+function emptySeedForField(
+  propSchema: SchemaProperty | undefined,
+  key: string,
+): unknown {
+  if (propSchema?.type === "boolean") return false;
+  if (propSchema?.type === "number" || propSchema?.type === "integer") return 0;
+  // `type` always needs a concrete value.
+  if (key === "type") return "website";
+  return "";
+}
+
 /**
  * Admin's BaseSEOForm for General pages: curated fields plus per-field
  * "Use default" on page SEO (inherits site SEO when unset).
@@ -77,9 +89,7 @@ export function GeneralSeoForm({
       nextValue[key] =
         seed !== undefined && seed !== null
           ? seed
-          : key === "type"
-            ? "website"
-            : "";
+          : emptySeedForField(properties[key], key);
     }
     onChange(nextValue);
   };

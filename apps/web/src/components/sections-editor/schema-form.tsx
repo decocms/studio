@@ -356,13 +356,15 @@ export function renderField(props: FieldProps) {
 
   const effectiveProps = { ...props, value: effectiveValue };
 
-  // Determine render type
+  // Determine render type. A boolean schema wins over a stringy stored value.
   const renderType: string =
-    value === null || value === undefined
-      ? (schema.type ?? typeof effectiveValue)
-      : Array.isArray(effectiveValue)
-        ? "array"
-        : typeof effectiveValue;
+    schema.type === "boolean"
+      ? "boolean"
+      : value === null || value === undefined
+        ? (schema.type ?? typeof effectiveValue)
+        : Array.isArray(effectiveValue)
+          ? "array"
+          : typeof effectiveValue;
 
   if (renderType === "array" || Array.isArray(effectiveValue)) {
     return <ArrayField key={props.path} {...effectiveProps} />;
