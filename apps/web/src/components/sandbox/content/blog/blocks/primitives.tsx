@@ -170,3 +170,14 @@ export function parseJsonArray<T>(value: unknown): T[] {
     return [];
   }
 }
+
+/**
+ * Some decofiles store a JSON-collection field already parsed (an array or
+ * object) instead of the JSON-encoded string the block editors expect. Pass
+ * it through unchanged when it's already a string; otherwise re-encode it so
+ * downstream parsing (e.g. `parseJsonArray`) never silently sees an empty
+ * value and drops the stored data.
+ */
+export function jsonField(value: unknown, fallback: unknown = []): string {
+  return typeof value === "string" ? value : JSON.stringify(value ?? fallback);
+}
