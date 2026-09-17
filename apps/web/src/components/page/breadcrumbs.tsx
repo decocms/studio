@@ -201,7 +201,13 @@ function PageBreadcrumbsRoot(extension: BreadcrumbExtension) {
   return store ? (
     <BreadcrumbContribution {...extension} />
   ) : (
-    <BreadcrumbTrail items={extension.items ?? []} />
+    // No store means nobody is collecting contributions, so this renders in
+    // place. Wrap it: the nav is flex-1 for the page header's horizontal row,
+    // and a contributor whose own layout is a flex column would otherwise have
+    // it stretch to fill the panel.
+    <div className="min-w-0 shrink-0 border-b px-3 py-2">
+      <BreadcrumbTrail items={extension.items ?? []} />
+    </div>
   );
 }
 

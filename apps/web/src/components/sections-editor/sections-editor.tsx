@@ -2568,15 +2568,21 @@ export function SectionsEditor({
           {backButton}
         </div>
       )}
-      <BlockBreadcrumbs
-        crumbs={headerCrumbs}
-        onSelect={handleBreadcrumbClick}
-        onSelectRoot={() => {
-          pageBlockSave.flush();
-          if (onSelectRoot) onSelectRoot();
-          else handleBreadcrumbClick(0);
-        }}
-      />
+      {/* Compact contributes even a lone crumb, since the page header is the
+          only place the page name shows there. Classic renders the trail in
+          place, and at the page root that lone crumb would just repeat the
+          name already sitting in the panel's own name field. */}
+      {(compact || headerCrumbs.length > 1) && (
+        <BlockBreadcrumbs
+          crumbs={headerCrumbs}
+          onSelect={handleBreadcrumbClick}
+          onSelectRoot={() => {
+            pageBlockSave.flush();
+            if (onSelectRoot) onSelectRoot();
+            else handleBreadcrumbClick(0);
+          }}
+        />
+      )}
       {/* Page header */}
       <div className="shrink-0">
         {showGlobalBanner || isEditing || editingSeo ? (

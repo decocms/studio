@@ -122,6 +122,46 @@ async function createEditor(
   };
 }
 
+test.describe("Site Editor blocks editor, classic layout", () => {
+  test.use({ compactPageLayout: false });
+
+  test("names the page once, in its own field", async ({
+    authedPage: { page, orgSlug },
+  }) => {
+    test.setTimeout(120_000);
+    page.setDefaultTimeout(15_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const previewSite = await startPreviewSite();
+    try {
+      const { path, search } = await createEditor(
+        page.request,
+        orgSlug,
+        previewSite.url,
+      );
+      await page.goto(`${path}?${search}`);
+      const blocks = page.getByTestId("blocks-panel");
+      await expect(
+        blocks.getByPlaceholder("Page name", { exact: true }),
+      ).toHaveValue("Home", { timeout: 60_000 });
+      // Classic renders the trail in place rather than contributing it to a
+      // page header, so at the page root a lone crumb would repeat the name
+      // the panel already shows in its own field.
+      await expect(page.getByTestId("page-header")).toHaveCount(0);
+      await expect(blocks.getByRole("navigation")).toHaveCount(0);
+      await expect(blocks.getByText("Home", { exact: true })).toHaveCount(0);
+      // Drilling into a section gives the trail something to say, so it
+      // appears — and it must not stretch down the panel.
+      await blocks.getByRole("button", { name: /HeroSlideShow/ }).click();
+      const trail = blocks.getByRole("navigation");
+      await expect(trail).toHaveCount(1);
+      const trailBox = (await trail.boundingBox())!;
+      expect(trailBox.height).toBeLessThan(80);
+    } finally {
+      await previewSite.close();
+    }
+  });
+});
+
 test.describe("Site Editor breadcrumbs", () => {
   test.setTimeout(120_000);
 
