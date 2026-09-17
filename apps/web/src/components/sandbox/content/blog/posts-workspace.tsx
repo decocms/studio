@@ -554,7 +554,7 @@ export function PostsWorkspace({
             onGenerate={(briefing) => void generatePost(briefing)}
           />
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
-            <DialogContent className="sm:max-w-2xl">
+            <DialogContent className="max-h-[85vh] sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>{t("sandbox.postBoard.importTitle")}</DialogTitle>
                 <DialogDescription>
@@ -562,13 +562,14 @@ export function PostsWorkspace({
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
+                {/* [field-sizing:fixed] + a pinned height: a large paste scrolls
+                    inside the box instead of growing the dialog off-screen. */}
                 <Textarea
                   value={importText}
-                  rows={12}
                   autoFocus
                   onChange={(e) => setImportText(e.target.value)}
                   placeholder={t("sandbox.postBoard.importPlaceholder")}
-                  className="resize-none font-mono text-xs"
+                  className="h-72 resize-none overflow-y-auto font-mono text-xs [field-sizing:fixed]"
                 />
                 <input
                   ref={fileInput}
