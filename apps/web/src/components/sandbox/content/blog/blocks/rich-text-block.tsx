@@ -76,6 +76,8 @@ export function RichTextBlock({
         class: cn(
           "prose prose-sm dark:prose-invert max-w-none focus:outline-none",
           "leading-relaxed [&_p]:my-0",
+          // Make links visibly links while editing (the site renders its own style).
+          "[&_a]:cursor-pointer [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2",
         ),
       },
     },
