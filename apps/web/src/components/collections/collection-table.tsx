@@ -129,7 +129,19 @@ export function CollectionTable<T = Record<string, unknown>>({
                 onRowClick ? "cursor-pointer" : "",
                 extraClasses,
               )}
+              role={onRowClick ? "button" : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
+              onKeyDown={
+                onRowClick
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRowClick(row);
+                      }
+                    }
+                  : undefined
+              }
             >
               {columns.map((col) => (
                 <TableCell
