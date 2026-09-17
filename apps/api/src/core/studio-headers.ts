@@ -5,7 +5,7 @@ export const STUDIO_HEADERS = {
   runMetadata: "x-studio-run-metadata",
 } as const;
 
-const LEGACY_HEADERS = {
+export const LEGACY_HEADERS = {
   token: "x-mesh-token",
   client: "x-mesh-client",
   properties: "x-mesh-properties",
