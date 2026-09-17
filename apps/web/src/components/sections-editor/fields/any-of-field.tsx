@@ -4,7 +4,7 @@ import {
   ChevronRight,
   DotsHorizontal,
   Globe01,
-  LayoutAlt01,
+  Cube01,
 } from "@untitledui/icons";
 import {
   Select,
@@ -151,7 +151,7 @@ function CollapsibleLoaderConfig({
             <DropdownMenuContent align="end" className="w-48">
               {globalBlockKey && onDetach && (
                 <DropdownMenuItem onClick={onDetach}>
-                  <LayoutAlt01 className="h-4 w-4" />
+                  <Cube01 className="h-4 w-4" />
                   {t("sectionsEditor.anyOfField.detach")}
                 </DropdownMenuItem>
               )}

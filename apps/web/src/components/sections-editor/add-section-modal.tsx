@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import { LayoutAlt01, SearchMd } from "@untitledui/icons";
+import { Cube01, SearchMd } from "@untitledui/icons";
 import {
   Dialog,
   DialogContent,
@@ -131,13 +131,13 @@ function LazySectionPreview({
     >
       {!iframeActive ? (
         <div className="flex h-full items-center justify-center">
-          <LayoutAlt01 className="h-8 w-8 text-muted-foreground/30" />
+          <Cube01 className="h-8 w-8 text-muted-foreground/30" />
         </div>
       ) : (
         <>
           {!iframeLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
-              <LayoutAlt01 className="h-8 w-8 animate-pulse text-muted-foreground/40" />
+              <Cube01 className="h-8 w-8 animate-pulse text-muted-foreground/40" />
             </div>
           )}
           <iframe
@@ -184,7 +184,7 @@ function SectionGalleryCard({
         slotId={entry.resolveType}
       />
       <div className="flex items-center gap-2 border-t px-3 py-2.5">
-        <LayoutAlt01
+        <Cube01
           className="h-4 w-4 shrink-0"
           style={
             entry.isSavedBlock

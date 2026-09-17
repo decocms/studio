@@ -9,10 +9,10 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import {
   Copy01,
+  Cube01,
   DotsGrid,
   DotsHorizontal,
   Edit03,
-  LayoutAlt01,
   Plus,
   Trash01,
 } from "@untitledui/icons";
@@ -135,7 +135,7 @@ function VariantRowContent({
       {/* One slot for both: variant icon at rest, drag grip on hover or
           keyboard focus, and the grip alone on the dragging clone. */}
       <span className="relative size-4 shrink-0">
-        <LayoutAlt01
+        <Cube01
           className={cn(
             "absolute inset-0 size-4 transition-opacity",
             dragging

@@ -6,12 +6,13 @@ import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
+  Cube01,
+  Globe01,
   DotsGrid,
   DotsHorizontal,
   Eye,
   EyeOff,
   Flag01,
-  LayoutAlt01,
   Plus,
   Trash01,
   Zap,
@@ -142,7 +143,7 @@ function SectionRowContent({
           grip on hover or keyboard focus. Only ever one is painted, so the
           swap never shifts the label. */}
       <span className="relative size-4 shrink-0">
-        <LayoutAlt01
+        <Cube01
           className="absolute inset-0 size-4 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
           style={iconStyle}
         />
@@ -434,7 +435,7 @@ function SortableSectionItem({
                 onMakeReusable();
               }}
             >
-              <LayoutAlt01 className="h-4 w-4" />
+              <Globe01 className="h-4 w-4" />
               {t("sectionsEditor.sectionList.makeReusableMenuItem")}
             </DropdownMenuItem>
           )}
@@ -445,7 +446,7 @@ function SortableSectionItem({
                 onDetach();
               }}
             >
-              <LayoutAlt01 className="h-4 w-4" />
+              <Cube01 className="h-4 w-4" />
               {t("sectionsEditor.sectionList.detachMenuItem")}
             </DropdownMenuItem>
           )}
