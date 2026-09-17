@@ -105,6 +105,26 @@ describe("serializeRunMetadataHeader", () => {
   });
 });
 
+describe("sanitizeCustomHeaders CR/LF guard", () => {
+  test("drops a header value containing a raw CRLF", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "X-Api-Key": "abc123",
+        "X-Injected": "value\r\nX-Evil: 1",
+      }),
+    ).toEqual({ "X-Api-Key": "abc123" });
+  });
+
+  test("drops a header value containing a lone LF or CR", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "X-Lf": "value\ninjected",
+        "X-Cr": "value\rinjected",
+      }),
+    ).toEqual({});
+  });
+});
+
 describe("sanitizeCustomHeaders", () => {
   test("returns an empty object for undefined headers", () => {
     expect(sanitizeCustomHeaders(undefined)).toEqual({});

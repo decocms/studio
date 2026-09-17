@@ -43,13 +43,17 @@ export function stripBindingMetadata(value: unknown): unknown {
 // Common HTTP servers/proxies reject a single header line above ~8-16KB.
 const MAX_HEADER_VALUE_BYTES = 8 * 1024;
 
-/** HTTP header values must be ByteStrings (code points 0-255) — `fetch`/undici
- *  throws on anything outside that range instead of encoding it. Run metadata
- *  can carry arbitrary webhook-supplied text (e.g. non-Latin issue titles), so
- *  this must be checked before the value is ever handed to a request's headers. */
+/** HTTP header values must be ByteStrings (code points 0-255) with no CR/LF —
+ *  `fetch`/undici throws on either violation instead of encoding/stripping it.
+ *  Run metadata can carry arbitrary webhook-supplied text (e.g. non-Latin issue
+ *  titles) and custom connection headers are org-configured free text (e.g.
+ *  pasted with a trailing newline), so this must be checked before the value
+ *  is ever handed to a request's headers — otherwise one bad value throws and
+ *  fails the whole outbound request instead of just being dropped. */
 function isHeaderSafe(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
-    if (value.charCodeAt(i) > 255) return false;
+    const code = value.charCodeAt(i);
+    if (code > 255 || code === 13 || code === 10) return false;
   }
   return true;
 }
