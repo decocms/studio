@@ -126,7 +126,7 @@ test.describe("Site Editor breadcrumbs", () => {
   test.setTimeout(120_000);
 
   test("the header appends the selected page and block and selects ancestors without browser navigation", async ({
-    authedPage: { page, orgSlug, user },
+    authedPage: { page, orgSlug },
   }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const previewSite = await startPreviewSite();
@@ -143,13 +143,12 @@ test.describe("Site Editor breadcrumbs", () => {
       await expect(
         header.getByRole("heading", { name: "Home", exact: true }),
       ).toBeVisible({ timeout: 60_000 });
-      await expect(trail.getByRole("link")).toHaveText([user.orgName, "Forma"]);
+      await expect(trail.getByRole("link")).toHaveText(["Forma"]);
       await expect(
         trail.getByRole("button", { name: "Site Editor", exact: true }),
       ).toBeVisible();
       await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
       await expect(trail.getByRole("listitem")).toHaveText([
-        user.orgName,
         "Forma",
         "Site Editor",
         "Home",
@@ -180,25 +179,24 @@ test.describe("Site Editor breadcrumbs", () => {
         header.getByRole("heading", { name: "First slide", exact: true }),
       ).toBeVisible();
       await expect(trail.getByRole("listitem")).toHaveText([
-        user.orgName,
-        "",
+        "Forma",
+        "Site Editor",
+        "Home",
         "HeroSlideShow",
         "First slide",
       ]);
       await expect(trail.locator('[aria-current="page"]')).toHaveCount(1);
-      await trail.getByRole("button", { name: "Show navigation path" }).click();
-      await expect(page.getByRole("menuitem")).toHaveText([
-        "Forma",
-        "Site Editor",
-        "Home",
-      ]);
+      // Five deep stays whole, so every ancestor keeps its own control and its
+      // own link target instead of moving into a menu.
       await expect(
-        page.getByRole("menuitem", { name: "Forma", exact: true }),
+        trail.getByRole("button", { name: "Show navigation path" }),
+      ).toHaveCount(0);
+      await expect(
+        trail.getByRole("link", { name: "Forma", exact: true }),
       ).toHaveAttribute(
         "href",
         `/${orgSlug}/projects/${project.vmcpId}?sidepanel=false`,
       );
-      await page.keyboard.press("Escape");
       await blocks
         .getByRole("textbox", { name: "Description", exact: true })
         .fill("Saved through the breadcrumb");
@@ -228,9 +226,8 @@ test.describe("Site Editor breadcrumbs", () => {
       ).toHaveValue("Saved through the breadcrumb");
 
       const picker = page.getByTestId("preview-page-picker");
-      await trail.getByRole("button", { name: "Show navigation path" }).click();
-      await page
-        .getByRole("menuitem", { name: "Site Editor", exact: true })
+      await trail
+        .getByRole("button", { name: "Site Editor", exact: true })
         .click();
       await expect(
         header.getByRole("heading", { name: "Home", exact: true }),

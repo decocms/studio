@@ -463,12 +463,10 @@ export function LibraryPage({
                     variant="secondary"
                     size="sm"
                     onClick={() => setNewFolderOpen(true)}
+                    aria-label={t("library.library.newFolder")}
                   >
                     <Plus size={14} />
-                    <span className="hidden sm:inline">
-                      {t("library.library.newFolder")}
-                    </span>
-                    <span className="sr-only sm:hidden">
+                    <span className="hidden @lg/panel-header:inline">
                       {t("library.library.newFolder")}
                     </span>
                   </Button>
@@ -486,11 +484,18 @@ export function LibraryPage({
                 size="sm"
                 disabled={upload.isPending}
                 onClick={() => fileInputRef.current?.click()}
+                aria-label={
+                  upload.isPending
+                    ? t("library.library.uploading")
+                    : t("library.library.uploadFile")
+                }
               >
                 <Upload01 size={14} />
-                {upload.isPending
-                  ? t("library.library.uploading")
-                  : t("library.library.uploadFile")}
+                <span className="hidden @lg/panel-header:inline">
+                  {upload.isPending
+                    ? t("library.library.uploading")
+                    : t("library.library.uploadFile")}
+                </span>
               </Button>
             )}
           </Page.Actions>

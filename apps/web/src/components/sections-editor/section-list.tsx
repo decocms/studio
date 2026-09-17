@@ -7,6 +7,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
   Cube01,
+  Cube04,
   Globe01,
   DotsGrid,
   DotsHorizontal,
@@ -131,6 +132,9 @@ function SectionRowContent({
     meta,
   );
 
+  // A multivariate row stands for several versions of one block, so it gets the
+  // stacked cube rather than the single one.
+  const RowIcon = multivariate ? Cube04 : Cube01;
   const iconStyle = saved
     ? { color: GLOBAL_SECTION_ICON_COLOR }
     : multivariate
@@ -143,7 +147,7 @@ function SectionRowContent({
           grip on hover or keyboard focus. Only ever one is painted, so the
           swap never shifts the label. */}
       <span className="relative size-4 shrink-0">
-        <Cube01
+        <RowIcon
           className="absolute inset-0 size-4 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
           style={iconStyle}
         />
