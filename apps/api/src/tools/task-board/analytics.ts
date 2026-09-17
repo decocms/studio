@@ -33,9 +33,14 @@ const AnalyticsInputSchema = z.object({
     ),
   from: z
     .string()
+    .datetime({ offset: true })
     .optional()
     .describe("ISO start of the range. Defaults to 30 days ago."),
-  to: z.string().optional().describe("ISO end of the range. Defaults to now."),
+  to: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe("ISO end of the range. Defaults to now."),
 });
 
 const StatSectionSchema = z.object({
