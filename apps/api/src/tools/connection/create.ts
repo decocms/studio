@@ -14,7 +14,7 @@ import {
 } from "../../core/studio-context";
 import { getSettings } from "../../settings";
 import { getMcpListCache } from "../../mcp-clients/mcp-list-cache";
-import { clientFromConnection } from "../../mcp-clients";
+import { notifyMcpConfiguration } from "./on-configuration";
 import {
   deriveCredentialGrants,
   injectSelfSentinel,
@@ -198,19 +198,15 @@ export const COLLECTION_CONNECTIONS_CREATE = defineTool({
           );
         createdWorkloadTokenId = record.id;
 
-        const client = await clientFromConnection(connection, ctx, false);
-        await client.callTool({
-          name: "ON_MCP_CONFIGURATION",
-          arguments: {
-            state: configurationState,
-            scopes: configurationScopes,
-            firstRun: true,
-            vault: {
-              baseUrl: ctx.baseUrl,
-              org: organization.slug ?? organization.id,
-              subjectConnectionId: connection.id,
-              token: plaintextToken,
-            },
+        await notifyMcpConfiguration(ctx, connection, {
+          state: configurationState as Record<string, unknown>,
+          scopes: configurationScopes as string[],
+          firstRun: true,
+          vault: {
+            baseUrl: ctx.baseUrl,
+            org: organization.slug ?? organization.id,
+            subjectConnectionId: connection.id,
+            token: plaintextToken,
           },
         });
       } catch (error) {
