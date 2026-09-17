@@ -7,7 +7,7 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
   Cube01,
-  Cube04,
+  LayersThree01,
   Globe01,
   DotsGrid,
   DotsHorizontal,
@@ -134,7 +134,7 @@ function SectionRowContent({
 
   // A multivariate row stands for several versions of one block, so it gets the
   // stacked cube rather than the single one.
-  const RowIcon = multivariate ? Cube04 : Cube01;
+  const RowIcon = multivariate ? LayersThree01 : Cube01;
   const iconStyle = saved
     ? { color: GLOBAL_SECTION_ICON_COLOR }
     : multivariate
