@@ -312,10 +312,12 @@ export async function enqueueSuperAgentForTask(
     const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
     const pr =
       opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
-    const pinnedRef = reusesPrBranch
-      ? (opts?.pr?.head ??
-        (pr ? await resolveRerunBranch(ctx, task, pr.number) : null))
-      : null;
+    // A caller-supplied head (Jira's continuePr) always wins over the flag.
+    const pinnedRef =
+      opts?.pr?.head ??
+      (reusesPrBranch && pr
+        ? await resolveRerunBranch(ctx, task, pr.number)
+        : null);
     // The prompt must name the same PR the sandbox booted on. Only widened when
     // the flag is on: naming a PR the run is NOT pinned to is the combination
     // that produced the duplicates.
