@@ -1,29 +1,47 @@
 import { useRef, useState } from "react";
-import { Bold01, Italic01, Underline01 } from "@untitledui/icons";
+import {
+  Bold01,
+  File02,
+  Italic01,
+  Tag01,
+  Underline01,
+} from "@untitledui/icons";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  type LinkSource,
   RichTextLinkControl,
   ToolbarButton,
 } from "@/components/sections-editor/rich-text-link-control";
+import type { PreviewProxyRef } from "@/components/sections-editor/preview-fetch-url";
+import { useT } from "@/i18n/use-t.ts";
+import { PostLinkPicker, ProductLinkPicker } from "./link-pickers";
 
 /**
  * Inline rich-text editor for Paragraph blocks. Renders the paragraph as
  * formatted text (not a form field) and edits it in place — select text to
  * bold/italic/underline/link via the toolbar that appears while focused.
- * Stores the block's `html` field.
+ * Stores the block's `html` field. When a decofile/sandbox is available, the
+ * link control also offers "link to a post" and "link to a product".
  */
 export function RichTextBlock({
   html,
   placeholder,
   onChange,
+  decofile,
+  sandboxRef,
 }: {
   html: string;
   placeholder?: string;
   onChange: (html: string) => void;
+  /** The site's blocks — enables linking to another post. */
+  decofile?: Record<string, unknown>;
+  /** A running preview — enables linking to a catalog product. */
+  sandboxRef?: PreviewProxyRef | null;
 }) {
+  const t = useT();
   // Keep the latest onChange reachable from TipTap's onUpdate without
   // recreating the editor (which would reset selection/undo on every keystroke).
   const onChangeRef = useRef(onChange);
@@ -84,6 +102,26 @@ export function RichTextBlock({
 
   if (!editor) return null;
 
+  const linkSources: LinkSource[] = [];
+  if (decofile) {
+    linkSources.push({
+      id: "post",
+      label: t("sandbox.linkPicker.tabPost"),
+      icon: <File02 size={12} />,
+      render: (apply) => <PostLinkPicker decofile={decofile} onPick={apply} />,
+    });
+  }
+  if (sandboxRef) {
+    linkSources.push({
+      id: "product",
+      label: t("sandbox.linkPicker.tabProduct"),
+      icon: <Tag01 size={12} />,
+      render: (apply) => (
+        <ProductLinkPicker sandboxRef={sandboxRef} onPick={apply} />
+      ),
+    });
+  }
+
   return (
     <div className="relative">
       {(marks.isFocused || linkOpen) && (
@@ -114,6 +152,7 @@ export function RichTextBlock({
             active={marks.link}
             open={linkOpen}
             onOpenChange={setLinkOpen}
+            sources={linkSources}
           />
         </div>
       )}

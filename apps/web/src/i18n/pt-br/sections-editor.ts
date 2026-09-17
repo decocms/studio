@@ -163,6 +163,7 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.applyLinkLabel": "Aplicar link",
   "sectionsEditor.richTextLinkControl.linkButtonLabel": "Link",
   "sectionsEditor.richTextLinkControl.newTabLabel": "Nova aba",
+  "sectionsEditor.richTextLinkControl.tabUrl": "URL",
   "sectionsEditor.richTextLinkControl.removeLinkLabel": "Remover link",
   "sectionsEditor.richTextLinkControl.sameTabLabel": "Mesma aba",
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "URL do link",

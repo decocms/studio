@@ -27,6 +27,8 @@ export interface ProductPickerOption {
   id: string;
   label: string;
   image?: string;
+  /** PDP path/URL, when the loader reports one — used to link to the product. */
+  url?: string;
 }
 
 /** A category surfaced by the tree loader, selectable to filter products. */
@@ -154,7 +156,11 @@ export function productOptionsFromPayload(
       : null;
     const image =
       typeof imageEntry?.url === "string" ? imageEntry.url : undefined;
-    options.push({ id, label, image });
+    const url =
+      (typeof product.url === "string" && product.url) ||
+      (typeof variant?.url === "string" && variant.url) ||
+      undefined;
+    options.push({ id, label, image, url });
   }
   return options;
 }

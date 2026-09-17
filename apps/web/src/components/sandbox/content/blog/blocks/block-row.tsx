@@ -24,6 +24,7 @@ export function BlockRow({
   onChange,
   onDelete,
   onDuplicate,
+  decofile,
   sandboxRef,
 }: {
   id: string;
@@ -32,6 +33,7 @@ export function BlockRow({
   onChange: (next: RawBlock) => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  decofile?: Record<string, unknown>;
   sandboxRef?: PreviewProxyRef | null;
 }) {
   const t = useT();
@@ -87,6 +89,7 @@ export function BlockRow({
         block={block}
         meta={meta}
         onChange={onChange}
+        decofile={decofile}
         sandboxRef={sandboxRef}
       />
     </div>

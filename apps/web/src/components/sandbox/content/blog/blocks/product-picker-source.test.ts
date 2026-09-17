@@ -135,6 +135,20 @@ describe("productOptionsFromPayload", () => {
     ]);
   });
 
+  test("captures the PDP url from the product or its variant", () => {
+    expect(
+      productOptionsFromPayload([
+        { productID: "1", name: "A", url: "/a/p" },
+        { productID: "2", name: "B", isVariantOf: { url: "/b/p" } },
+        { productID: "3", name: "C" },
+      ]),
+    ).toEqual([
+      { id: "1", label: "A", image: undefined, url: "/a/p" },
+      { id: "2", label: "B", image: undefined, url: "/b/p" },
+      { id: "3", label: "C", image: undefined, url: undefined },
+    ]);
+  });
+
   test("reads products from a ProductListingPage shape", () => {
     expect(
       productOptionsFromPayload({

@@ -273,6 +273,7 @@ export function PostEditor({
                   value={asBlocks(post.sections)}
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
+                  decofile={decofile}
                   sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
                   emptyMessage={t("sandbox.postEditor.noContentYet")}
                 />

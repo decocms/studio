@@ -41,12 +41,15 @@ export function BlockDocument({
   value,
   onChange,
   meta,
+  decofile,
   sandboxRef,
   emptyMessage = "No content yet. Use ⊕ to add your first block.",
 }: {
   value: RawBlock[];
   onChange: (next: RawBlock[]) => void;
   meta: LiveMeta;
+  /** The site's blocks — enables linking to another post from rich text. */
+  decofile?: Record<string, unknown>;
   /** Running sandbox coords — enables the VTEX product picker in blocks. */
   sandboxRef?: PreviewProxyRef | null;
   emptyMessage?: string;
@@ -148,6 +151,7 @@ export function BlockDocument({
                 onChange={(v) => updateAt(index, v)}
                 onDelete={() => removeAt(index)}
                 onDuplicate={() => duplicateAt(index)}
+                decofile={decofile}
                 sandboxRef={sandboxRef}
               />
               <InsertBlockDivider
