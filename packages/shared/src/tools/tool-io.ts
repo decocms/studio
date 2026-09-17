@@ -72,6 +72,7 @@ export interface StudioToolIO {
         | null
         | undefined;
       enabled_plugins?: string[] | null | undefined;
+      coding_agent_mcp_excluded?: string[] | null | undefined;
       registry_config?:
         | {
             registries: Record<string, { enabled: boolean }>;
@@ -5912,10 +5913,14 @@ export interface StudioToolIO {
   JIRA_RUN_START: {
     input: { issueKey: string; prompt?: string | null | undefined };
     output: {
-      issueKey: string;
-      issueUrl: string;
-      itemId: string;
-      supersededThreadIds: string[];
+      started: {
+        issueKey: string;
+        issueUrl: string;
+        itemId: string;
+        supersededThreadIds: string[];
+      }[];
+      failed: { issueKey: string; error: string }[];
+      unreadable: string[];
     };
   };
   JIRA_ISSUE_GET: {

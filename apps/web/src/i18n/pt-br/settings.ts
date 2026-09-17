@@ -83,16 +83,17 @@ export const settings = {
   "settings.jira.noColumnsYet": "Este board ainda não tem colunas",
   "settings.jira.columnsFailed":
     "Não foi possível carregar as colunas do board",
-  "settings.jira.testRunLabel": "Testar em uma issue",
+  "settings.jira.testRunLabel": "Rodar na mão",
   "settings.jira.testRunDescription":
-    "Rode o agente em uma única issue agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
-  "settings.jira.testRunIssuePlaceholder": "ABC-123 ou um link",
+    "Rode o agente em uma issue ou num lote agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
+  "settings.jira.issueKeysPlaceholder":
+    "ABC-123, ou um link — um por linha, ou separados por vírgula",
+  "settings.jira.issueKeysCount": "{count} issue(s)",
+  "settings.jira.issueKeysUnreadable": "não consegui ler: {items}",
   "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
-  "settings.jira.testRun": "Rodar agente",
+  "settings.jira.testRun": "Rodar agente {count}",
   "settings.jira.testRunRunning": "Iniciando\u2026",
-  "settings.jira.testRunStarted": "Agente iniciado em {issueKey}",
-  "settings.jira.testRunTookOver":
-    "Agente reiniciado em {issueKey} \u2014 o run que já estava nela foi interrompido",
+  "settings.jira.testRunStarted": "Iniciado em",
   "settings.jira.testRunFailed": "Não foi possível iniciar o run",
   "settings.jira.testRunHelp":
     "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",

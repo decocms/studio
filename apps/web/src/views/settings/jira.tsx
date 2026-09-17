@@ -10,6 +10,8 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
+import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
+import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   ArrowUpRight,
   Check,
@@ -373,6 +375,94 @@ function AutomationsRow({ boardId }: { boardId: string }) {
 }
 
 /**
+ * The issue field both manual actions share.
+ *
+ * It takes SEVERAL issues because that is how they are actually used: a person
+ * pasting a column of links off a board, or typing a handful of keys. It parses
+ * as you type and reports the count, so "10 issues" is visible BEFORE the
+ * button that starts ten paid runs — and so a key it could not read is caught
+ * here rather than discovered as a missing run afterwards.
+ */
+function IssueKeysField({
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+  ariaLabel: string;
+}) {
+  const t = useT();
+  const { keys, invalid } = parseIssueKeys(value);
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <Textarea
+        value={value}
+        rows={3}
+        disabled={disabled}
+        onChange={(e: { target: { value: string } }) =>
+          onChange(e.target.value)
+        }
+        placeholder={t("settings.jira.issueKeysPlaceholder")}
+        aria-label={ariaLabel}
+        className="font-mono text-xs"
+        spellCheck={false}
+      />
+      {value.trim() !== "" && (
+        <p className="text-xs text-muted-foreground">
+          {t("settings.jira.issueKeysCount", { count: String(keys.length) })}
+          {invalid.length > 0 && (
+            <span className="text-destructive">
+              {" · "}
+              {t("settings.jira.issueKeysUnreadable", {
+                items: invalid.slice(0, 3).join(", "),
+              })}
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What one manual action reports back.
+ *
+ * A toast is the wrong shape for a batch: ten issues produce ten outcomes, and
+ * the two that failed are the ones worth reading. So the result stays on the
+ * card until the next run, with the failures named.
+ */
+function BatchResult({
+  started,
+  failed,
+  startedLabel,
+}: {
+  started: string[];
+  failed: Array<{ issueKey: string; error: string }>;
+  startedLabel: string;
+}) {
+  if (started.length === 0 && failed.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 text-xs">
+      {started.length > 0 && (
+        <p>
+          <Check size={12} className="mr-1 inline text-success" />
+          {startedLabel}
+          <span className="ml-1 font-mono">{started.join(", ")}</span>
+        </p>
+      )}
+      {failed.map((f) => (
+        <p key={f.issueKey} className="text-destructive">
+          <span className="font-mono">{f.issueKey}</span> — {f.error}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/**
  * The prompt field, as the chat's composer.
  *
  * A Jira run is told the issue, the pod's facts, and this — nothing else. What
@@ -539,32 +629,43 @@ function StatusAutomationCard({
  * reworded, none of which is true of waiting for a real transition. It is a
  * real run on the real issue, which is why the copy says so.
  */
+/**
+ * Run the agent on issues, by hand — the answer to "will this prompt do the
+ * right thing?" without turning a rule on for every card that lands in a
+ * column.
+ *
+ * Deliberately independent of the rules above: no rule has to exist, the
+ * integration can be off, and the same issue can be re-run while the prompt is
+ * reworded, none of which is true of waiting for a real transition. These are
+ * real runs on the real issues, which is why the copy says so.
+ */
 function TestRunRow() {
   const t = useT();
   const { org } = useProjectContext();
   const start = useStartJiraRun();
-  const [issueKey, setIssueKey] = useState("");
+  const [issueKeys, setIssueKeys] = useState("");
   const [prompt, setPrompt] = useState("");
-  const canRun = issueKey.trim() !== "" && !start.isPending;
+  const [result, setResult] = useState<{
+    started: string[];
+    failed: Array<{ issueKey: string; error: string }>;
+  } | null>(null);
+  const parsed = parseIssueKeys(issueKeys);
+  const canRun = parsed.keys.length > 0 && !start.isPending;
 
   const run = () => {
     if (!canRun) return;
+    setResult(null);
     start.mutate(
       {
-        issueKey: issueKey.trim(),
+        issueKey: issueKeys,
         prompt: prompt.trim() === "" ? null : prompt.trim(),
       },
       {
-        onSuccess: (result) =>
-          toast.success(
-            result.supersededThreadIds.length > 0
-              ? t("settings.jira.testRunTookOver", {
-                  issueKey: result.issueKey,
-                })
-              : t("settings.jira.testRunStarted", {
-                  issueKey: result.issueKey,
-                }),
-          ),
+        onSuccess: (r) =>
+          setResult({
+            started: r.started.map((s) => s.issueKey),
+            failed: r.failed,
+          }),
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.testRunFailed"))),
       },
@@ -577,18 +678,21 @@ function TestRunRow() {
       description={t("settings.jira.testRunDescription")}
     >
       <div className="mt-3 flex w-full flex-col gap-3">
-        <div className="flex items-start gap-2">
-          <Input
-            value={issueKey}
-            onChange={(e) => setIssueKey(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") run();
-            }}
-            placeholder={t("settings.jira.testRunIssuePlaceholder")}
-            aria-label={t("settings.jira.testRunIssueAriaLabel")}
-            className="max-w-56 font-mono text-xs"
-            autoComplete="off"
-          />
+        <IssueKeysField
+          value={issueKeys}
+          onChange={setIssueKeys}
+          disabled={start.isPending}
+          ariaLabel={t("settings.jira.testRunIssueAriaLabel")}
+        />
+        <PromptEditor
+          value=""
+          onChange={setPrompt}
+          placeholder={t("settings.jira.promptPlaceholder")}
+        />
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            {t("settings.jira.testRunHelp")}
+          </p>
           <Button
             size="sm"
             className="shrink-0"
@@ -598,17 +702,16 @@ function TestRunRow() {
             <Play size={14} />
             {start.isPending
               ? t("settings.jira.testRunRunning")
-              : t("settings.jira.testRun")}
+              : t("settings.jira.testRun", {
+                  count: String(parsed.keys.length || ""),
+                })}
           </Button>
         </div>
-        <PromptEditor
-          value=""
-          onChange={setPrompt}
-          placeholder={t("settings.jira.promptPlaceholder")}
+        <BatchResult
+          started={result?.started ?? []}
+          failed={result?.failed ?? []}
+          startedLabel={t("settings.jira.testRunStarted")}
         />
-        <p className="text-xs text-muted-foreground">
-          {t("settings.jira.testRunHelp")}
-        </p>
         <Link
           to="/$org/settings/monitor"
           params={{ org: org.slug }}
