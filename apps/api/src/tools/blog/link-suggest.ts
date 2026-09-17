@@ -1,8 +1,8 @@
-import { generateObject } from "ai";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { resolveTier } from "../../core/resolve-tier";
+import { retryGenerateObject } from "./generate-object";
 
 /**
  * One proposed internal link: a phrase that appears verbatim in the post body,
@@ -119,7 +119,7 @@ export const BLOG_LINK_SUGGEST = defineTool({
       `## Your task\nPropose up to ${input.count} internal links.`,
     ].join("\n\n");
 
-    const { object } = await generateObject({
+    const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ suggestions: z.array(LinkSuggestionSchema) }),
       system: SYSTEM,

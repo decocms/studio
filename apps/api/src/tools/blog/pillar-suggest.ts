@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
@@ -160,7 +160,7 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
       .filter(Boolean)
       .join("\n\n");
 
-    const { object } = await generateObject({
+    const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ pillars: z.array(PillarSchema) }),
       system: SYSTEM,
