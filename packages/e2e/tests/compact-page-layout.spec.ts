@@ -667,10 +667,13 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "September 2026", exact: true }),
     ).toBeVisible();
+    // Five deep again, so the volume is its own button rather than a menu item.
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
+    ).toHaveCount(0);
     await breadcrumbs
-      .getByRole("button", { name: "Show navigation path" })
+      .getByRole("button", { name: "uploads", exact: true })
       .click();
-    await page.getByRole("menuitem", { name: "uploads", exact: true }).click();
     await expect(
       header.getByRole("heading", { name: "uploads", exact: true }),
     ).toBeVisible();
