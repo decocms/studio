@@ -15,6 +15,7 @@ import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
 } from "../registry/discover-tools";
+import { sanitizeCustomHeaders } from "@/mcp-clients/outbound/headers";
 import type { ConnectionParameters, ToolDefinition } from "./schema";
 import { isStdioParameters } from "./schema";
 
@@ -105,7 +106,8 @@ export function buildConnectionRequestHeaders(
 
   const params = connection.connection_headers;
   if (params && !isStdioParameters(params) && params.headers) {
-    Object.assign(headers, params.headers);
+    // Drop an unsafe/oversized header instead of failing the whole fetch.
+    Object.assign(headers, sanitizeCustomHeaders(params.headers));
   }
 
   return headers;
