@@ -17,7 +17,8 @@
  * final test fails if the two lists drift.
  */
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { readOxlintConfig } from "./read-oxlintrc.ts";
 
 // Each case spawns a real oxlint subprocess; CI runs these alongside the other
 // plugin suites, so allow generous headroom over the 5s bun default.
@@ -97,11 +98,9 @@ const FIXTURES: Record<string, { path: string; code: string }> = {
 };
 
 /** The plugins the repo actually enforces, read from the real config. */
-const registered: string[] = (
-  JSON.parse(readFileSync(`${ROOT}/.oxlintrc.json`, "utf8")) as {
-    jsPlugins: string[];
-  }
-).jsPlugins.map((p) => p.replace(/^.*\//, "").replace(/\.js$/, ""));
+const registered: string[] = readOxlintConfig(ROOT).jsPlugins.map((p) =>
+  p.replace(/^.*\//, "").replace(/\.js$/, ""),
+);
 
 beforeAll(() => {
   rmSync(TMP, { recursive: true, force: true });

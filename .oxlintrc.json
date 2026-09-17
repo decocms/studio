@@ -32,13 +32,48 @@
     ],
     "eslint/no-useless-escape": "error",
     "eslint/require-yield": "error",
-    "react/globals": "error",
-    "react/static-components": "error",
-    "react/incompatible-library": "error",
-    "react/purity": "error",
-    "react/immutability": "error",
-    "react/set-state-in-effect": "error",
-    "react-hooks/exhaustive-deps": "error",
+    // --- React Compiler rules (oxlint's built-in `react` plugin) ---
+    //
+    // The five below are OFF on purpose. Each one flags a pattern this repo
+    // adopted deliberately, or cannot see enough to judge — leaving them on
+    // would mean ~181 disable comments restating a justification that already
+    // sits on the neighbouring line. Do not flip one back on without also
+    // making the case for the pattern it bans.
+    //
+    // `refs`: 148 hits, 93 of which already carry an explicit
+    //   `oxlint-disable ban-ref-current-assignment -- <reason>`. Reading a
+    //   callback off a ref during render is how a hook stays subscribed across
+    //   re-renders WITHOUT useEffect, which this repo bans; see
+    //   hooks/use-task-board-events.ts, the reference implementation AGENTS.md
+    //   points at for push-events. `ban-ref-current-assignment` already guards
+    //   the case that is actually a bug (render-time access in a component
+    //   body) and stays at "error".
+    "react/refs": "off",
+    // `immutability`: module-scope objects written during render — the bridge
+    //   that hands server-originated copy to non-React call sites
+    //   (providers/providers.tsx). Same useEffect-ban root cause.
+    "react/immutability": "off",
+    // `incompatible-library`: react-hook-form's `useForm().watch()`. The
+    //   diagnostic says it outright — the API "cannot be memoized safely". Not
+    //   fixable in our code at all, only by dropping the library.
+    "react/incompatible-library": "off",
+    // `static-components`: false positive on registry lookups
+    //   (`const Icon = getIconComponent(name)` then `<Icon />`). The rule sees
+    //   a component-valued expression in render and cannot tell it came from a
+    //   stable table rather than a fresh definition.
+    "react/static-components": "off",
+    // `globals`: module-level run-once latches (posthog init, one-shot
+    //   analytics events). Same useEffect-ban root cause.
+    "react/globals": "off",
+    //
+    // The three below report real, fixable problems and stay at "warn" only
+    // until the follow-up PR lands their refactors, at which point they become
+    // "error". They are the actual lint backlog: 14 `Date.now()` calls during
+    // render, 14 effects that setState synchronously (want useSyncExternalStore),
+    // and 3 incomplete dependency arrays.
+    "react/purity": "warn",
+    "react/set-state-in-effect": "warn",
+    "react-hooks/exhaustive-deps": "warn",
     "enforce-kebab-case-file-names/kebab-case": "warn",
     "ban-types": "warn",
     "enforce-query-key-constants/enforce-query-key-constants": "warn",

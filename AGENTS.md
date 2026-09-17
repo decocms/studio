@@ -505,6 +505,29 @@ produce a diagnostic; adding a plugin to `.oxlintrc.json` means adding its
 fixture there, and the suite fails if the two lists drift. Pin `oxlint`
 exactly (no `^`) and re-run `bun test ./plugins` on every bump.
 
+### Lint severity: a warning nothing gates on is not a rule
+
+`bun run lint` fails CI on **errors only**, so a rule left at `"warn"` is a
+rule the repo has decided not to enforce. Every rule is therefore either
+`"error"` (it must hold) or `"off"` with a comment saying why — `.oxlintrc.json`
+allows comments, and `biome.json` has an override so `bun run fmt` keeps them.
+
+`"warn"` means exactly one thing here: **a known backlog with a PR behind it.**
+Today that is `react/purity`, `react/set-state-in-effect` and
+`react-hooks/exhaustive-deps` — 31 real findings whose fixes are behavioural
+refactors, promoted to `"error"` as they land. Do not park a new rule at
+`"warn"` to get it "mostly on"; it will be ignored.
+
+Turning a rule **off** needs the same standard as adding one. Five of oxlint's
+React Compiler rules are off because they flag patterns this repo chose on
+purpose — reading callbacks off refs and module-scope latches are how a hook
+stays subscribed without `useEffect`, which is banned — or because the rule
+cannot see enough to judge (a registry lookup is not a component defined during
+render, and `react-hook-form`'s `watch()` is unfixable from our side). Each
+carries its reasoning in `.oxlintrc.json`. The case that is genuinely a bug,
+render-time `.current` access in a component body, is still caught by our own
+`ban-ref-current-assignment` at `"error"`.
+
 ### TypeScript
 - Favor explicit types over `any`
 - Use Zod for runtime validation and schema definitions
