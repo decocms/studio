@@ -378,17 +378,8 @@ export function renderField(props: FieldProps) {
     case "number":
     case "integer":
       return <NumberField key={props.path} {...effectiveProps} />;
-    case "string": {
-      // Format-based widgets
-      const fmt = schema.format;
-      if (fmt === "color-input" || fmt === "color") {
-        return <StringField key={props.path} {...effectiveProps} />;
-      }
-      if (fmt === "textarea" || fmt === "rich-text" || fmt === "html") {
-        return <StringField key={props.path} {...effectiveProps} />;
-      }
+    case "string":
       return <StringField key={props.path} {...effectiveProps} />;
-    }
     case "object":
       if (
         effectiveValue !== null &&
