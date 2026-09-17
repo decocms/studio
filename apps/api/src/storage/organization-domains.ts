@@ -109,21 +109,33 @@ export class OrganizationDomainStorage
     const id = crypto.randomUUID();
     const verificationStatus = input.verificationStatus ?? "pending";
 
-    await this.db
-      .insertInto("organization_domains")
-      .values({
-        id,
-        organization_id: organizationId,
-        domain: normalizedDomain,
-        join_mode: input.joinMode ?? "off",
-        verification_status: verificationStatus,
-        verification_method: input.verificationMethod ?? null,
-        verification_token: input.verificationToken ?? null,
-        verified_at: verificationStatus === "verified" ? now : null,
-        created_at: now,
-        updated_at: now,
-      })
-      .execute();
+    try {
+      await this.db
+        .insertInto("organization_domains")
+        .values({
+          id,
+          organization_id: organizationId,
+          domain: normalizedDomain,
+          join_mode: input.joinMode ?? "off",
+          verification_status: verificationStatus,
+          verification_method: input.verificationMethod ?? null,
+          verification_token: input.verificationToken ?? null,
+          verified_at: verificationStatus === "verified" ? now : null,
+          created_at: now,
+          updated_at: now,
+        })
+        .execute();
+    } catch (error) {
+      // Concurrent add() raced past the existing-domain check; fall back to the winner's row.
+      if ((error as { code?: string }).code === "23505") {
+        const winner = await this.getByOrgAndDomain(
+          organizationId,
+          normalizedDomain,
+        );
+        if (winner) return winner;
+      }
+      throw error;
+    }
 
     const result = await this.getById(id);
     if (!result) {
