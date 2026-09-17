@@ -337,11 +337,14 @@ export function renderField(props: FieldProps) {
     if (blockRefForm) return blockRefForm;
   }
 
-  // If value is null/undefined, try to produce a typed default from schema
+  // Typed default from schema for a missing or mis-seeded (non-object) value.
   const effectiveValue =
     value === null || value === undefined
       ? defaultForType(schema.type, schema.default)
-      : value;
+      : schema.type === "object" &&
+          (typeof value !== "object" || Array.isArray(value))
+        ? defaultForType(schema.type, schema.default)
+        : value;
 
   if (effectiveValue === null || effectiveValue === undefined) {
     if (isSecretBlock(value)) {
