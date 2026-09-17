@@ -1351,7 +1351,7 @@ function RegistrationResult({
           {notes.map((n, i) => (
             <li
               key={i}
-              className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+              className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning"
             >
               {n}
             </li>
@@ -1702,7 +1702,7 @@ function EditAnalyticsDialog({
             {quotaError ? (
               <span className="text-xs text-destructive">{quotaError}</span>
             ) : quotaCleared ? (
-              <span className="text-xs text-amber-600 dark:text-amber-500">
+              <span className="text-xs text-warning">
                 Leaving this blank keeps the current cap — clearing a quota
                 isn't a patch. Unregister + re-register to make it uncapped.
               </span>

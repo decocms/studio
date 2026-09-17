@@ -477,20 +477,33 @@ The web UI (`apps/web/src`) is internationalized by a zero-dependency module at
 ### React 19 Patterns
 
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
-- **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.ts`)—prefer alternatives
-- **DO NOT** use `useMemo`/`useCallback`/`memo` (banned by `plugins/ban-memoization.ts`)—React 19 compiler handles optimization
-- Tailwind v4 design system with tokens enforced by `plugins/ensure-tailwind-design-system-tokens.ts`
+- **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.js`)—prefer alternatives
+- **DO NOT** use `useMemo`/`useCallback`/`memo` (banned by `plugins/ban-memoization.js`)—React 19 compiler handles optimization
+- Tailwind v4 design system with tokens enforced by `plugins/ensure-tailwind-design-system-tokens.js`—use `text-success`, `bg-special`, `text-warning`, never a raw palette class like `text-emerald-600`
 
 ### Custom Oxlint Plugins
-Located in `plugins/`:
-- `enforce-kebab-case-file-names.ts` - kebab-case for shared package files
-- `enforce-query-key-constants.ts` - query keys must use constants
-- `ban-use-effect.ts` - ban useEffect
-- `ban-memoization.ts` - ban useMemo/useCallback/memo
-- `ensure-tailwind-design-system-tokens.ts` - enforce Tailwind consistency
+Located in `plugins/`, every one registered in `.oxlintrc.json`:
+- `enforce-kebab-case-file-names.js` - kebab-case for shared package files
+- `enforce-query-key-constants.js` - query keys must use constants
+- `ban-use-effect.js` - ban useEffect
+- `ban-memoization.js` - ban useMemo/useCallback/memo
+- `require-cn-classname.js` - className interpolation goes through `cn()`
+- `ban-direct-auth-client-organization.js` - org-scoped auth calls go through `useOrgAuthClient()`
+- `ban-ref-current-assignment.js` - no `.current` access during render
+- `ensure-tailwind-design-system-tokens.js` - design system tokens, not raw Tailwind palette
 - `ban-cross-tree-imports.js` - prevent packages from reaching into app source
 - `ban-web-server-imports.js` - enforce the `apps/web` ↛ `apps/api/src` boundary
 - `ban-e2e-app-imports.js` - deny-by-default import allowlist for the `packages/e2e` suite (see E2E isolation below)
+- `ban-git-provider-reachthrough.js` - nothing reaches past `@/git-providers` into a provider dir
+
+oxlint's JS plugin support is experimental and **a plugin that throws does not
+fail the lint** — it is reported as a diagnostic with no rule code, and
+`oxlint` still exits 0. A silently dead plugin is indistinguishable from a
+clean codebase, so a green `bun run lint` proves nothing by itself. Every
+plugin therefore has a fixture in `plugins/js-plugins-smoke.test.ts` that must
+produce a diagnostic; adding a plugin to `.oxlintrc.json` means adding its
+fixture there, and the suite fails if the two lists drift. Pin `oxlint`
+exactly (no `^`) and re-run `bun test ./plugins` on every bump.
 
 ### TypeScript
 - Favor explicit types over `any`

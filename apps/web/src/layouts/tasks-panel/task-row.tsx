@@ -99,7 +99,7 @@ export function TaskRow({
             <Zap
               size={12}
               aria-label={t("tasksPanel.taskRow.automationTriggered")}
-              className="shrink-0 text-blue-500"
+              className="shrink-0 text-special"
             />
           )}
           <div className="text-sm text-foreground truncate">

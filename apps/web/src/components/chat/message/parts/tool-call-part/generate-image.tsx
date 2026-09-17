@@ -187,7 +187,7 @@ export function GenerateImagePart({ part, latency }: GenerateImagePartProps) {
   return (
     <div className="flex flex-col gap-2">
       <ToolCallShell
-        icon={<Image01 size={14} className="text-pink-500" />}
+        icon={<Image01 size={14} className="text-special" />}
         title={t("chat.generateImage.generatedImage")}
         summary={modelLabel}
         state="idle"

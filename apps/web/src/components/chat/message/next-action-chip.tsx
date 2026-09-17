@@ -119,7 +119,7 @@ export function NextActionChip() {
         onClick={handleClick}
         className="group mt-3 flex items-center gap-2 self-start classic:rounded-full compact:rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
       >
-        <Stars02 size={12} className="shrink-0 text-purple-500" />
+        <Stars02 size={12} className="shrink-0 text-special" />
         <span className="font-medium text-foreground/80">
           {t("chat.nextActionChip.next")}
         </span>
