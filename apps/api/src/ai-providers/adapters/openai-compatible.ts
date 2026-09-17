@@ -1,46 +1,16 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { retry, RetryError } from "@decocms/shared/std";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
+import { fetchWithTransientRetry } from "./fetch-transient-retry";
 
-/** A transient (5xx / 429) status from the models GET. */
-class TransientModelsListError extends Error {}
-
-/**
- * A GET is always safe to retry — no side effect. So a single flaky 5xx/429
- * from a custom endpoint doesn't fail the whole listModels call.
- */
-async function fetchModelsWithRetry(
+function fetchModelsWithRetry(
   baseUrl: string,
   headers: Record<string, string>,
 ): Promise<Response> {
-  try {
-    return await retry(
-      async () => {
-        const res = await fetch(`${baseUrl}/models`, {
-          headers,
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (res.status >= 500 || res.status === 429) {
-          const body = await res.text().catch(() => "");
-          throw new TransientModelsListError(
-            `OpenAI-compatible listModels failed: ${res.status} ${body}`,
-          );
-        }
-        return res;
-      },
-      {
-        maxAttempts: 3,
-        minTimeout: 200,
-        maxTimeout: 2_000,
-        isRetriable: (err) => err instanceof TransientModelsListError,
-      },
-    );
-  } catch (err) {
-    if (err instanceof RetryError && err.cause instanceof Error) {
-      throw err.cause;
-    }
-    throw err;
-  }
+  return fetchWithTransientRetry(
+    "OpenAI-compatible listModels",
+    `${baseUrl}/models`,
+    { headers, signal: AbortSignal.timeout(15_000) },
+  );
 }
 
 function parseCredential(raw: string): { baseUrl: string; apiKey: string } {

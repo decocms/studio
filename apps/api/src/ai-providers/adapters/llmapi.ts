@@ -1,49 +1,21 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { ModelCapability } from "@decocms/shared/sdk";
-import { retry, RetryError } from "@decocms/shared/std";
 import type { StudioProvider, ModelInfo, ProviderAdapter } from "../types";
+import { fetchWithTransientRetry } from "./fetch-transient-retry";
 
 const LLMAPI_BASE_URL = "https://api.llmapi.ai/v1";
 const LLMAPI_ICON_URL =
   "https://llmapi.ai/wp-content/uploads/2026/01/Frame-2085662993.png";
 
-/** A transient (5xx / 429) status from the models GET. */
-class TransientListModelsError extends Error {}
-
-/**
- * A GET is always safe to retry — no side effect. So a single flaky 5xx/429
- * from LLMAPI no longer fails every org's model list for this provider, same
- * pattern as openrouter.ts and google.ts in this directory.
- */
-async function fetchModelsWithRetry(apiKey: string): Promise<Response> {
-  try {
-    return await retry(
-      async () => {
-        const res = await fetch(`${LLMAPI_BASE_URL}/models`, {
-          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (res.status >= 500 || res.status === 429) {
-          const body = await res.text().catch(() => "");
-          throw new TransientListModelsError(
-            `LLMAPI listModels failed: ${res.status} ${body}`,
-          );
-        }
-        return res;
-      },
-      {
-        maxAttempts: 3,
-        minTimeout: 200,
-        maxTimeout: 2_000,
-        isRetriable: (err) => err instanceof TransientListModelsError,
-      },
-    );
-  } catch (err) {
-    if (err instanceof RetryError && err.cause instanceof Error) {
-      throw err.cause;
-    }
-    throw err;
-  }
+function fetchModelsWithRetry(apiKey: string): Promise<Response> {
+  return fetchWithTransientRetry(
+    "LLMAPI listModels",
+    `${LLMAPI_BASE_URL}/models`,
+    {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
 }
 
 // Shape of an entry in llmapi's OpenRouter-style /v1/models payload. Only the
