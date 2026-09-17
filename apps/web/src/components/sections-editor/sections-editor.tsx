@@ -2537,30 +2537,35 @@ export function SectionsEditor({
     setFieldBreadcrumbs(fieldBreadcrumbs.slice(0, index - 1 - variantCrumbs));
   };
 
+  const backButton =
+    headerCrumbs.length > 1 ? (
+      <button
+        type="button"
+        onClick={() =>
+          handleBreadcrumbClick(
+            headerBackTargetIndex(headerCrumbs.length, {
+              isMultivariateSectionTop,
+            }),
+          )
+        }
+        title={t("sectionsEditor.sectionsEditor.back")}
+        aria-label={t("sectionsEditor.sectionsEditor.back")}
+        className={cn(
+          "shrink-0 inline-flex size-6 items-center justify-center classic:rounded-md compact:rounded-lg transition-colors",
+          showGlobalBanner
+            ? "text-foreground/80 hover:bg-global-section/15"
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        )}
+      >
+        <ChevronLeft className="size-4" />
+      </button>
+    ) : null;
+
   return (
     <div className="flex h-full min-w-0 w-full flex-col">
-      {headerCrumbs.length > 1 && (
+      {!compact && backButton && (
         <div className="flex min-w-0 shrink-0 items-center gap-2 px-3 py-2">
-          <button
-            type="button"
-            onClick={() =>
-              handleBreadcrumbClick(
-                headerBackTargetIndex(headerCrumbs.length, {
-                  isMultivariateSectionTop,
-                }),
-              )
-            }
-            title={t("sectionsEditor.sectionsEditor.back")}
-            aria-label={t("sectionsEditor.sectionsEditor.back")}
-            className={cn(
-              "shrink-0 inline-flex size-6 items-center justify-center classic:rounded-md compact:rounded-lg transition-colors",
-              showGlobalBanner
-                ? "text-foreground/80 hover:bg-global-section/15"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-            )}
-          >
-            <ChevronLeft className="size-4" />
-          </button>
+          {backButton}
         </div>
       )}
       <BlockBreadcrumbs
@@ -2575,7 +2580,7 @@ export function SectionsEditor({
       {/* Page header */}
       <div className="shrink-0">
         {showGlobalBanner || isEditing || editingSeo ? (
-          showEditingActions && (
+          (showEditingActions || (compact && backButton)) && (
             <div
               className={cn(
                 "border-b px-3 py-2.5",
@@ -2584,6 +2589,7 @@ export function SectionsEditor({
               )}
             >
               <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                {compact && backButton}
                 {!isGlobalBlockMode && hasMultipleVariants && activeVariant && (
                   <button
                     type="button"
