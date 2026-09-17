@@ -127,11 +127,12 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
   if (issue.comments.length > 0) {
     lines.push("", "## Comments");
     let budget = MAX_COMMENTS_CHARS;
-    for (const c of issue.comments) {
+    for (const [index, c] of issue.comments.entries()) {
       const body = clip(c.body, Math.max(0, budget));
       lines.push(`**${c.author}** (${c.created}):`, body, "");
       budget -= body.length;
-      if (budget <= 0) {
+      const isLast = index === issue.comments.length - 1;
+      if (budget <= 0 && !isLast) {
         lines.push("[… older comments omitted]");
         break;
       }

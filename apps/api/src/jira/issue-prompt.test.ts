@@ -57,4 +57,42 @@ describe("renderIssueForPrompt", () => {
     expect(text).toContain("[… truncated]");
     expect(text.length).toBeLessThan(13_000);
   });
+
+  /** The comment budget is spent per-comment; landing on exactly zero after
+   *  the LAST comment must not claim comments were omitted when none were. */
+  it("does not claim omitted comments when the last one exhausts the budget", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      comments: [
+        {
+          author: "Ana",
+          created: "2026-09-01T10:00:00Z",
+          body: "x".repeat(6_000),
+        },
+        {
+          author: "Bo",
+          created: "2026-09-01T11:00:00Z",
+          body: "x".repeat(6_000),
+        },
+      ],
+    });
+    expect(text).toContain("**Bo**");
+    expect(text).not.toContain("[… older comments omitted]");
+  });
+
+  it("still reports omitted comments when one is dropped entirely", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      comments: [
+        {
+          author: "Ana",
+          created: "2026-09-01T10:00:00Z",
+          body: "x".repeat(12_000),
+        },
+        { author: "Bo", created: "2026-09-01T11:00:00Z", body: "second" },
+      ],
+    });
+    expect(text).toContain("[… older comments omitted]");
+    expect(text).not.toContain("**Bo**");
+  });
 });
