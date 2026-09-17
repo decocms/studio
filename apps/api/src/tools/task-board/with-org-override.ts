@@ -84,7 +84,6 @@ async function scopedTo(
   }
   const target = await ctx.storage.taskBoardAnalytics.resolveOrgRef(ref);
   if (!target) throw new Error(`Organization not found: ${ref}`);
-  if (!ctx.db) throw new Error("No database on context");
 
   const scoped = await buildOrgContext(ctx.db, target.id);
   if (!scoped) throw new Error(`Organization not found: ${ref}`);
