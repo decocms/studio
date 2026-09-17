@@ -9,6 +9,7 @@ import { type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
@@ -647,6 +648,7 @@ function TestRunRow() {
   const start = useStartJiraRun();
   const [issueKeys, setIssueKeys] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [continuePr, setContinuePr] = useState(false);
   const [result, setResult] = useState<{
     started: string[];
     failed: Array<{ issueKey: string; error: string }>;
@@ -661,6 +663,7 @@ function TestRunRow() {
       {
         issueKey: issueKeys,
         prompt: prompt.trim() === "" ? null : prompt.trim(),
+        continuePr,
       },
       {
         onSuccess: (r) =>
@@ -691,6 +694,16 @@ function TestRunRow() {
           onChange={setPrompt}
           placeholder={t("settings.jira.promptPlaceholder")}
         />
+        {/* Off by default and never inferred: a REVIEW run on an issue that
+            has a pull request must not be told to push to the one it is
+            reviewing. */}
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
+          <Checkbox
+            checked={continuePr}
+            onCheckedChange={(v) => setContinuePr(v === true)}
+          />
+          {t("settings.jira.continuePr")}
+        </label>
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {t("settings.jira.testRunHelp")}

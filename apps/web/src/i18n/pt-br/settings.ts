@@ -97,6 +97,8 @@ export const settings = {
   "settings.jira.testRunFailed": "Não foi possível iniciar o run",
   "settings.jira.testRunHelp":
     "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",
+  "settings.jira.continuePr":
+    "Continuar o pull request que a issue já carrega (re-run depois de um review pedir mudanças)",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.jira.mergeLabel": "Mergear os pull requests",
   "settings.jira.mergeDescription":

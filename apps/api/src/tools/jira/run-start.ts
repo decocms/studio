@@ -19,6 +19,8 @@ import {
   requireOrganization,
 } from "@/core/studio-context";
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
+import { JiraClient } from "@/jira/client";
+import { openPrForIssue } from "@/jira/open-pr";
 import { startJiraRunForIssue } from "@/jira/trigger";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "@/tools/task-board/schema";
 
@@ -56,6 +58,16 @@ export const JIRA_RUN_START = defineTool({
       .nullable()
       .optional()
       .describe("What to do with the issue; null for the agent's default."),
+    continuePr: z
+      .boolean()
+      .optional()
+      .describe(
+        "Continue the pull request the issue already carries instead of " +
+          "opening a new one — what a re-run after a review asked for " +
+          "changes wants. Off by default, and deliberately not inferred: a " +
+          "REVIEW run on the same issue must not be told to push to the pull " +
+          "request it is reviewing.",
+      ),
   }),
   outputSchema: z.object({
     /**
@@ -109,6 +121,13 @@ export const JIRA_RUN_START = defineTool({
       );
     }
     const instruction = input.prompt?.trim() ? input.prompt.trim() : null;
+    const jira = input.continuePr
+      ? new JiraClient(
+          integration.siteUrl,
+          integration.email,
+          integration.apiToken,
+        )
+      : null;
 
     // Sequential on purpose. Each start reads the issue from Jira and claims a
     // run slot, and firing a paste of twenty at once turns one fat finger into
@@ -123,11 +142,16 @@ export const JIRA_RUN_START = defineTool({
     const failed: Array<{ issueKey: string; error: string }> = [];
     for (const key of keys) {
       try {
+        // Resolved per issue, not once: each has its own pull request, and one
+        // that has none (or several) simply starts fresh.
+        const pr = jira
+          ? await openPrForIssue(ctx, organization.id, jira, key)
+          : null;
         const { item, issue, supersededThreadIds } = await startJiraRunForIssue(
           ctx,
           integration,
           key,
-          { instruction, actorId: userId },
+          { instruction, actorId: userId, ...(pr ? { pr } : {}) },
         );
         started.push({
           issueKey: issue.key,

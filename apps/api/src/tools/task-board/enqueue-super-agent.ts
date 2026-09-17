@@ -66,8 +66,14 @@ export type SuperAgentPromptOpts = {
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
   /** The PR already under review, so the re-run updates it in place instead
-   *  of opening a second PR. */
-  pr?: { number: number; url: string };
+   *  of opening a second PR.
+   *
+   *  `head` lets a caller that resolved the branch ITSELF supply it — the Jira
+   *  path does, because `resolveRerunBranch` reads the BOARD's linked pull
+   *  requests and a Jira anchor deliberately has none. Without it the prompt
+   *  would name a pull request the sandbox is not booted on, which is the
+   *  combination that produced duplicates. */
+  pr?: { number: number; url: string; head?: string };
   /** This re-run exists to resolve a merge conflict on `pr` (not reviewer
    *  feedback): the lead instructs a checkout + base merge + push. Requires
    *  `pr` — without it the conflict lead is skipped (a conflict instruction
@@ -306,10 +312,10 @@ export async function enqueueSuperAgentForTask(
     const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
     const pr =
       opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
-    const pinnedRef =
-      reusesPrBranch && pr
-        ? await resolveRerunBranch(ctx, task, pr.number)
-        : null;
+    const pinnedRef = reusesPrBranch
+      ? (opts?.pr?.head ??
+        (pr ? await resolveRerunBranch(ctx, task, pr.number) : null))
+      : null;
     // The prompt must name the same PR the sandbox booted on. Only widened when
     // the flag is on: naming a PR the run is NOT pinned to is the combination
     // that produced the duplicates.

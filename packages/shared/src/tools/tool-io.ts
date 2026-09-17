@@ -5911,7 +5911,11 @@ export interface StudioToolIO {
     output: { removed: boolean };
   };
   JIRA_RUN_START: {
-    input: { issueKey: string; prompt?: string | null | undefined };
+    input: {
+      issueKey: string;
+      prompt?: string | null | undefined;
+      continuePr?: boolean | undefined;
+    };
     output: {
       started: {
         issueKey: string;

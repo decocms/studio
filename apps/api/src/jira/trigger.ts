@@ -187,7 +187,7 @@ export async function startJiraRunForIssue(
      * longer merges — rebase and push the SAME one", which is what the merge
      * action escalates to when the provider refuses on a conflict.
      */
-    pr?: { number: number; url: string };
+    pr?: { number: number; url: string; head?: string };
     resolveConflict?: boolean;
   },
 ): Promise<{
@@ -225,7 +225,7 @@ async function dispatchJiraRun(
     instruction: string | null;
     actorId: string;
     userInitiated?: boolean;
-    pr?: { number: number; url: string };
+    pr?: { number: number; url: string; head?: string };
     resolveConflict?: boolean;
   },
 ): Promise<void> {

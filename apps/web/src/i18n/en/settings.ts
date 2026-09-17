@@ -92,6 +92,8 @@ export const settings = {
   "settings.jira.testRunFailed": "Could not start the run",
   "settings.jira.testRunHelp":
     "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type “/” to insert the same skill the column rule would use.",
+  "settings.jira.continuePr":
+    "Continue the pull request the issue already carries (a re-run after a review asked for changes)",
   "settings.jira.testRunWatch": "Watch runs in Monitor",
   "settings.jira.mergeLabel": "Merge the pull requests",
   "settings.jira.mergeDescription":
