@@ -127,4 +127,17 @@ describe("readCappedBody", () => {
     expect(result.content).toBe("part-one-part-two");
     expect(result.truncated).toBe(false);
   });
+
+  test("a chunk landing exactly on the cap with more chunks after is still truncated", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("abcd"));
+        controller.enqueue(new TextEncoder().encode("efgh"));
+        controller.close();
+      },
+    });
+    const result = await readCappedBody(new Response(stream), 4);
+    expect(result.content).toBe("abcd");
+    expect(result.truncated).toBe(true);
+  });
 });
