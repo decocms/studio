@@ -59,6 +59,7 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "Lista",
   "sidebar.taskGroupsList.viewStatus": "Status",
+  "sidebar.taskGroupsList.toggleStatusGroup": "Alternar grupo {status}",
   "sidebar.inbox.title": "Caixa de entrada",
   "sidebar.inbox.markAllRead": "Marcar tudo como lido",
   "sidebar.inbox.emptyTitle": "Nada por aqui ainda",

@@ -106,6 +106,9 @@ export function StatusGroup({
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
+        aria-label={t("sidebar.taskGroupsList.toggleStatusGroup", {
+          status: t(config.labelKey),
+        })}
         onClick={handleToggleExpanded}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;

@@ -55,6 +55,7 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "List",
   "sidebar.taskGroupsList.viewStatus": "Status",
+  "sidebar.taskGroupsList.toggleStatusGroup": "Toggle {status} group",
   "sidebar.inbox.title": "Inbox",
   "sidebar.inbox.markAllRead": "Mark all read",
   "sidebar.inbox.emptyTitle": "Nothing here yet",
