@@ -93,6 +93,19 @@ export const settings = {
   "settings.jira.testRunHelp":
     "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type “/” to insert the same skill the column rule would use.",
   "settings.jira.testRunWatch": "Watch runs in Monitor",
+  "settings.jira.mergeLabel": "Merge the pull requests",
+  "settings.jira.mergeDescription":
+    "Land the pull request each issue carries as a web link. A green one merges straight away and costs no agent run \u2014 only a merge conflict starts one, to rebase and push the same pull request.",
+  "settings.jira.mergeIssueAriaLabel": "Jira issue keys or links to merge",
+  "settings.jira.merge": "Merge {count}",
+  "settings.jira.mergeRunning": "Merging\u2026",
+  "settings.jira.mergeMerged": "Merged",
+  "settings.jira.mergeResolving":
+    "conflict \u2014 an agent is rebasing it; merge again when it finishes",
+  "settings.jira.mergeNoPr": "no pull request on this issue",
+  "settings.jira.mergeFailed": "Could not merge",
+  "settings.jira.mergeHelp":
+    "Merged in the order given, because landing one moves the base under the next.",
   "settings.syncedRepos.pageDescription":
     "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",

@@ -212,6 +212,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_AUTOMATION_UPSERT",
   "JIRA_AUTOMATION_DELETE",
   "JIRA_RUN_START",
+  "JIRA_PR_MERGE",
   "JIRA_ISSUE_GET",
   "JIRA_COMMENT_ADD",
   "JIRA_ISSUE_TRANSITION",
@@ -1041,7 +1042,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_RUN_START",
-    description: "Run the agent on one Jira issue now, to try a rule out",
+    description: "Run the agent on Jira issues now, to try a rule out",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_PR_MERGE",
+    description: "Merge the pull request a Jira issue carries as a web link",
     category: "Jira",
   },
   {

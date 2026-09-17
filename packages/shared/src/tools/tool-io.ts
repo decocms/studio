@@ -5923,6 +5923,17 @@ export interface StudioToolIO {
       unreadable: string[];
     };
   };
+  JIRA_PR_MERGE: {
+    input: { issueKey: string };
+    output: {
+      results: {
+        issueKey: string;
+        status: "error" | "merged" | "resolving" | "blocked" | "no_pr";
+        prUrl?: string | undefined;
+        detail?: string | undefined;
+      }[];
+    };
+  };
   JIRA_ISSUE_GET: {
     input: { [x: string]: never };
     output: { key: string; url: string; status: string; markdown: string };
@@ -8358,8 +8369,8 @@ export interface StudioToolIO {
       reason?:
         | "error"
         | "not_found"
-        | "conflict"
         | "blocked"
+        | "conflict"
         | "rate_limited"
         | undefined;
       detail?: string | undefined;

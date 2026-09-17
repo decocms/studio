@@ -98,6 +98,19 @@ export const settings = {
   "settings.jira.testRunHelp":
     "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
+  "settings.jira.mergeLabel": "Mergear os pull requests",
+  "settings.jira.mergeDescription":
+    "Mergeia o pull request que cada issue carrega como web link. Um PR verde mergeia na hora e não custa run \u2014 só um conflito dispara uma, pra rebasear e empurrar o mesmo PR.",
+  "settings.jira.mergeIssueAriaLabel": "Chaves ou links das issues a mergear",
+  "settings.jira.merge": "Mergear {count}",
+  "settings.jira.mergeRunning": "Mergeando\u2026",
+  "settings.jira.mergeMerged": "Mergeado",
+  "settings.jira.mergeResolving":
+    "conflito \u2014 um agent está rebaseando; mergeie de novo quando terminar",
+  "settings.jira.mergeNoPr": "sem pull request nesta issue",
+  "settings.jira.mergeFailed": "Não consegui mergear",
+  "settings.jira.mergeHelp":
+    "Mergeados na ordem dada, porque mergear um move a base do próximo.",
   "settings.syncedRepos.pageDescription":
     "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",

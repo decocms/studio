@@ -11,11 +11,13 @@ import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
+import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import {
   ArrowUpRight,
   Check,
   ChevronSelectorVertical,
+  GitMerge,
   Play,
   Plus,
   Trash01,
@@ -67,6 +69,7 @@ import {
   useJiraBoards,
   useJiraIntegration,
   useSetJiraAutomation,
+  useMergeJiraPrs,
   useStartJiraRun,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
@@ -726,6 +729,88 @@ function TestRunRow() {
   );
 }
 
+/**
+ * Land the pull requests, by hand.
+ *
+ * Same field, same shape as the run card above — this is the second half of
+ * one surface, not a different feature. Sequential on purpose: merging one
+ * moves the base under the next, so a batch of pull requests that share a file
+ * resolves in order rather than all conflicting at once.
+ */
+function MergeRow() {
+  const t = useT();
+  const merge = useMergeJiraPrs();
+  const [issueKeys, setIssueKeys] = useState("");
+  const [results, setResults] = useState<
+    StudioToolIO["JIRA_PR_MERGE"]["output"]["results"]
+  >([]);
+  const parsed = parseIssueKeys(issueKeys);
+  const canRun = parsed.keys.length > 0 && !merge.isPending;
+
+  const run = () => {
+    if (!canRun) return;
+    setResults([]);
+    merge.mutate(
+      { issueKey: issueKeys },
+      {
+        onSuccess: (r) => setResults(r.results),
+        onError: (err) =>
+          toast.error(errorMessage(err, t("settings.jira.mergeFailed"))),
+      },
+    );
+  };
+
+  const merged = results.filter((r) => r.status === "merged");
+  const rest = results.filter((r) => r.status !== "merged");
+
+  return (
+    <SettingsCardItem
+      title={t("settings.jira.mergeLabel")}
+      description={t("settings.jira.mergeDescription")}
+    >
+      <div className="mt-3 flex w-full flex-col gap-3">
+        <IssueKeysField
+          value={issueKeys}
+          onChange={setIssueKeys}
+          disabled={merge.isPending}
+          ariaLabel={t("settings.jira.mergeIssueAriaLabel")}
+        />
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            {t("settings.jira.mergeHelp")}
+          </p>
+          <Button
+            size="sm"
+            className="shrink-0"
+            disabled={!canRun}
+            onClick={run}
+          >
+            <GitMerge size={14} />
+            {merge.isPending
+              ? t("settings.jira.mergeRunning")
+              : t("settings.jira.merge", {
+                  count: String(parsed.keys.length || ""),
+                })}
+          </Button>
+        </div>
+        <BatchResult
+          started={merged.map((r) => r.issueKey)}
+          failed={rest.map((r) => ({
+            issueKey: r.issueKey,
+            error:
+              r.status === "resolving"
+                ? t("settings.jira.mergeResolving")
+                : r.status === "no_pr"
+                  ? t("settings.jira.mergeNoPr")
+                  : (r.detail ?? r.status),
+          }))}
+          startedLabel={t("settings.jira.mergeMerged")}
+        />
+      </div>
+    </SettingsCardItem>
+  );
+}
+
 function EnabledRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -829,6 +914,7 @@ function JiraContent() {
       <BoardRow integration={data} />
       {data.boardId && <AutomationsRow boardId={data.boardId} />}
       <TestRunRow />
+      <MergeRow />
       <EnabledRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>
