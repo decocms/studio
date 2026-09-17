@@ -8,6 +8,10 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, test } from "../fixtures/test";
 
+// RoutePageHeader renders nothing outside the compact layout, so the whole
+// composed trail this file asserts on only exists with the preference on.
+test.use({ compactPageLayout: true });
+
 async function createEditor(
   api: APIRequestContext,
   orgSlug: string,
@@ -316,19 +320,25 @@ test.describe("Site Editor breadcrumbs", () => {
       await expect(
         header.getByRole("heading", { name: "HeroSlideShow", exact: true }),
       ).toBeInViewport();
-      await header
-        .getByRole("button", { name: "Show navigation path", exact: true })
-        .click();
+      // Five deep renders in full, so the ancestor is a button rather than a
+      // menu item. What this test is really about is that it stays selectable
+      // at this width and the page still does not scroll sideways.
       await expect(
-        page.getByRole("menuitem", { name: "Site Editor", exact: true }),
+        header.getByRole("button", {
+          name: "Show navigation path",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await expect(
+        header.getByRole("button", { name: "Site Editor", exact: true }),
       ).toBeVisible();
       await page.screenshot({
         clip: { x: 0, y: 0, width: 900, height: 220 },
         path: testInfo.outputPath("site-editor-breadcrumb-narrow.png"),
         animations: "disabled",
       });
-      await page
-        .getByRole("menuitem", { name: "Site Editor", exact: true })
+      await header
+        .getByRole("button", { name: "Site Editor", exact: true })
         .click();
       await expect(
         header.getByRole("heading", { name: "Site Editor", exact: true }),

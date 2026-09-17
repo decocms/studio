@@ -166,7 +166,7 @@ function PageVariantRowContent({
         <DotsGrid
           aria-hidden
           className={cn(
-            "absolute inset-0 size-4 text-muted-foreground/50 transition-opacity",
+            "absolute inset-0 size-4 transition-opacity",
             dragging
               ? "opacity-100"
               : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",

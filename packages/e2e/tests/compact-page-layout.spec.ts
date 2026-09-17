@@ -573,7 +573,7 @@ test.describe("compact page layout", () => {
   });
 
   test("Library uses one header trail for nested folders and volumes", async ({
-    authedPage: { page, orgSlug, user },
+    authedPage: { page, orgSlug },
   }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const folder = "Brand/Launch notes/September 2026";
@@ -636,7 +636,6 @@ test.describe("compact page layout", () => {
       .getByRole("button", { name: "Show navigation path" })
       .click();
     await expect(page.getByRole("menuitem")).toHaveText([
-      user.orgName,
       "Library",
       "Brand",
       "Launch notes",
@@ -656,11 +655,10 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "Library", exact: true }),
     ).toBeInViewport();
-    await breadcrumbs
-      .getByRole("button", { name: "Show navigation path" })
-      .click();
-    await expect(page.getByRole("menuitem")).toHaveText([user.orgName]);
-    await page.keyboard.press("Escape");
+    // Library alone is the whole trail here, so there is nothing to collapse.
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
+    ).toHaveCount(0);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(
@@ -689,9 +687,6 @@ test.describe("compact page layout", () => {
       header.getByRole("heading", { name: "Tasks", exact: true }),
     ).toBeVisible();
     await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
-    await expect(breadcrumbs.getByRole("listitem")).toHaveText([
-      user.orgName,
-      "Tasks",
-    ]);
+    await expect(breadcrumbs.getByRole("listitem")).toHaveText(["Tasks"]);
   });
 });

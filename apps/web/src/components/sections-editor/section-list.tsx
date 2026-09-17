@@ -149,7 +149,7 @@ function SectionRowContent({
         />
         <DotsGrid
           aria-hidden
-          className="absolute inset-0 size-4 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
+          className="absolute inset-0 size-4 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
         />
       </span>
       {imageSrc && (
