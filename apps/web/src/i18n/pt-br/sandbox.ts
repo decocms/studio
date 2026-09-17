@@ -184,6 +184,8 @@ export const sandbox = {
   "sandbox.envVarsField.valuePlaceholder": "valor",
   "sandbox.fileExplorer.askTheAiPlaceholder": "Pergunte à IA...",
   "sandbox.fileExplorer.deleteFailed": "Falha ao deletar",
+  "sandbox.fileExplorer.discardUnsavedChangesConfirm":
+    "Este arquivo tem alterações não salvas. Fechar mesmo assim?",
   "sandbox.fileExplorer.failedToCopyText": "Falha ao copiar {label}",
   "sandbox.fileExplorer.failedToLoadFolder": "Falha ao carregar pasta",
   "sandbox.fileExplorer.failedToOpenFile": "Falha ao abrir arquivo",
