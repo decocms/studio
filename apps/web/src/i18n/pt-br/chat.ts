@@ -190,6 +190,8 @@ export const chat = {
   "chat.generic.openInPanel": "Abrir no painel",
   "chat.generic.preparing": "Preparando...",
   "chat.generic.runningFor": "Executando há {elapsed}",
+  "chat.generic.waitingFor": "Aguardando {duration}",
+  "chat.generic.wrappingUp": "Finalizando…",
   "chat.generic.retry": "Tentar novamente",
   "chat.generic.tool.bash": "Executar Comando",
   "chat.generic.tool.edit": "Editar Arquivo",

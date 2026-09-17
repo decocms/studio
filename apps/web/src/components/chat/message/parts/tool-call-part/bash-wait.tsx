@@ -106,12 +106,15 @@ export function BashWaitSummary({
   durationMs: number;
   anchorMs: number | null;
 }) {
+  const t = useT();
   useClockTick(1000);
   const startedAt = useCallStartedAt(toolCallId, anchorMs);
   const remaining = startedAt + durationMs - Date.now();
   return (
     <span className="tabular-nums">
-      {remaining > 0 ? `Waiting ${formatDuration(remaining)}` : "Wrapping up…"}
+      {remaining > 0
+        ? t("chat.generic.waitingFor", { duration: formatDuration(remaining) })
+        : t("chat.generic.wrappingUp")}
     </span>
   );
 }

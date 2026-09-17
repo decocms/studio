@@ -184,6 +184,8 @@ export const chat = {
   "chat.generic.openInPanel": "Open in panel",
   "chat.generic.preparing": "Preparing...",
   "chat.generic.runningFor": "Running for {elapsed}",
+  "chat.generic.waitingFor": "Waiting {duration}",
+  "chat.generic.wrappingUp": "Wrapping up…",
   "chat.generic.retry": "Retry",
   "chat.generic.tool.bash": "Run Command",
   "chat.generic.tool.edit": "Edit File",
