@@ -88,7 +88,6 @@ export const settings = {
     "Rode o agente em uma única issue agora, sem regra e sem habilitar a integração \u2014 assim você vê o que um prompt faz antes que ele rode em toda issue que entra em um status.",
   "settings.jira.testRunIssuePlaceholder": "ABC-123 ou um link",
   "settings.jira.testRunIssueAriaLabel": "Chave ou link da issue do Jira",
-  "settings.jira.testRunPromptAriaLabel": "Instrução para este teste",
   "settings.jira.testRun": "Rodar agente",
   "settings.jira.testRunRunning": "Iniciando\u2026",
   "settings.jira.testRunStarted": "Agente iniciado em {issueKey}",

@@ -83,7 +83,6 @@ export const settings = {
     "Run the agent on a single issue now, without a rule and without enabling the integration \u2014 so you can see what a prompt does before it runs on every issue entering a status.",
   "settings.jira.testRunIssuePlaceholder": "ABC-123 or a link",
   "settings.jira.testRunIssueAriaLabel": "Jira issue key or link",
-  "settings.jira.testRunPromptAriaLabel": "Instruction for this test run",
   "settings.jira.testRun": "Run agent",
   "settings.jira.testRunRunning": "Starting\u2026",
   "settings.jira.testRunStarted": "Agent started on {issueKey}",
