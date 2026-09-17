@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Copy01,
@@ -114,6 +115,7 @@ function SectionRowContent({
   meta: LiveMeta | null | undefined;
   decofile: Record<string, unknown>;
 }) {
+  const compact = useCompactPageLayout();
   const saved = section.isSavedBlock === true;
   const multivariate = section.isMultivariate === true;
   const imageSrc =
@@ -130,9 +132,31 @@ function SectionRowContent({
     meta,
   );
 
+  const iconStyle = saved
+    ? { color: GLOBAL_SECTION_ICON_COLOR }
+    : multivariate
+      ? { color: "oklch(0.65 0.15 160)" }
+      : undefined;
+
   return (
     <>
-      <DotsGrid className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+      {compact ? (
+        // The block icon and the drag grip share one fixed slot: icon at
+        // rest, grip on hover or keyboard focus. Only ever one is painted,
+        // so swapping them never shifts the label.
+        <span className="relative size-4 shrink-0">
+          <LayoutAlt01
+            className="absolute inset-0 size-4 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
+            style={iconStyle}
+          />
+          <DotsGrid
+            aria-hidden
+            className="absolute inset-0 size-4 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
+          />
+        </span>
+      ) : (
+        <DotsGrid className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+      )}
       {imageSrc && (
         <img
           src={imageSrc}
@@ -141,16 +165,9 @@ function SectionRowContent({
           className="h-12 max-w-[100px] shrink-0 rounded object-cover"
         />
       )}
-      <LayoutAlt01
-        className="h-4 w-4 shrink-0"
-        style={
-          saved
-            ? { color: GLOBAL_SECTION_ICON_COLOR }
-            : multivariate
-              ? { color: "oklch(0.65 0.15 160)" }
-              : undefined
-        }
-      />
+      {!compact && (
+        <LayoutAlt01 className="h-4 w-4 shrink-0" style={iconStyle} />
+      )}
       <span
         className={cn(
           "min-w-0 flex-1 truncate text-sm font-medium",
