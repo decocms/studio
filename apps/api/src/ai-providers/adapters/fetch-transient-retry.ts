@@ -16,7 +16,15 @@ export async function fetchWithTransientRetry(
   try {
     return await retry(
       async () => {
-        const res = await fetch(url, init);
+        let res: Response;
+        try {
+          res = await fetch(url, init);
+        } catch (err) {
+          // A thrown fetch (DNS blip, reset, our own timeout) is as transient as a 5xx.
+          throw new TransientFetchError(
+            `${label} failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
         if (res.status >= 500 || res.status === 429) {
           const body = await res.text().catch(() => "");
           throw new TransientFetchError(
