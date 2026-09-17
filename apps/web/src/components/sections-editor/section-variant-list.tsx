@@ -132,16 +132,28 @@ function VariantRowContent({
 
   return (
     <>
-      <DotsGrid
-        className={cn(
-          "h-4 w-4 shrink-0 text-muted-foreground/40 transition-opacity",
-          dragging ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-        )}
-      />
-      <LayoutAlt01
-        className="h-4 w-4 shrink-0"
-        style={{ color: VARIANT_ICON_COLOR }}
-      />
+      {/* One slot for both: variant icon at rest, drag grip on hover or
+          keyboard focus, and the grip alone on the dragging clone. */}
+      <span className="relative size-4 shrink-0">
+        <LayoutAlt01
+          className={cn(
+            "absolute inset-0 size-4 transition-opacity",
+            dragging
+              ? "opacity-0"
+              : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
+          )}
+          style={{ color: VARIANT_ICON_COLOR }}
+        />
+        <DotsGrid
+          aria-hidden
+          className={cn(
+            "absolute inset-0 size-4 text-muted-foreground/50 transition-opacity",
+            dragging
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",
+          )}
+        />
+      </span>
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {label}
       </span>
