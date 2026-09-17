@@ -250,6 +250,65 @@ describe("formatMatcher", () => {
       });
       expect(result).toBe("Hidden AND Hidden");
     });
+
+    test("parenthesises a nested multi whose operator differs", () => {
+      // Without the parentheses this flattens to "Mobile OR Desktop AND 50% of
+      // sessions", which ordinary precedence reads as a different rule.
+      const result = formatMatcher({
+        __resolveType: "website/matchers/multi.ts",
+        op: "AND",
+        matchers: [
+          {
+            __resolveType: "website/matchers/multi.ts",
+            op: "OR",
+            matchers: [
+              { __resolveType: "website/matchers/device.ts", mobile: true },
+              { __resolveType: "website/matchers/device.ts", desktop: true },
+            ],
+          },
+          { __resolveType: "website/matchers/random.ts", traffic: 0.5 },
+        ],
+      });
+      expect(result).toBe("(Mobile OR Desktop) AND 50% of sessions");
+    });
+
+    test("leaves a nested multi with the same operator unparenthesised", () => {
+      const result = formatMatcher({
+        __resolveType: "website/matchers/multi.ts",
+        op: "AND",
+        matchers: [
+          {
+            __resolveType: "website/matchers/multi.ts",
+            op: "AND",
+            matchers: [
+              { __resolveType: "website/matchers/device.ts", mobile: true },
+              { __resolveType: "website/matchers/never.ts" },
+            ],
+          },
+          { __resolveType: "website/matchers/device.ts", desktop: true },
+        ],
+      });
+      expect(result).toBe("Mobile AND Hidden AND Desktop");
+    });
+
+    test("leaves a single-child nested multi unparenthesised", () => {
+      // One child prints no operator of its own, so there is nothing to group.
+      const result = formatMatcher({
+        __resolveType: "website/matchers/multi.ts",
+        op: "AND",
+        matchers: [
+          {
+            __resolveType: "$live/matchers/MatchMulti.ts",
+            op: "OR",
+            matchers: [
+              { __resolveType: "website/matchers/device.ts", mobile: true },
+            ],
+          },
+          { __resolveType: "website/matchers/device.ts", desktop: true },
+        ],
+      });
+      expect(result).toBe("Mobile AND Desktop");
+    });
   });
 
   describe("depth guard", () => {

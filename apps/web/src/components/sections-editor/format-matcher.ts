@@ -5,6 +5,28 @@ const capitalize = (s: string) =>
 
 const MAX_FORMAT_DEPTH = 5;
 
+/** Matcher modules that compose other matchers with AND / OR. */
+export const MULTI_MATCHER_RESOLVE_TYPES = new Set([
+  "website/matchers/multi.ts",
+  "$live/matchers/MatchMulti.ts",
+]);
+
+/**
+ * A nested `multi` is flattened into its parent's join, so the result reads by
+ * ordinary boolean precedence — `multi(AND, [multi(OR, [a, b]), c])` would
+ * print "a OR b AND c", which means something else. Parenthesise a child whose
+ * operator differs from its parent's. A child with fewer than two matchers
+ * prints no operator of its own, so it needs no parentheses.
+ */
+function childNeedsParens(child: unknown, parentOp: string): boolean {
+  if (!child || typeof child !== "object" || Array.isArray(child)) return false;
+  const obj = child as Record<string, unknown>;
+  const rt = typeof obj.__resolveType === "string" ? obj.__resolveType : "";
+  if (!MULTI_MATCHER_RESOLVE_TYPES.has(rt)) return false;
+  if (!Array.isArray(obj.matchers) || obj.matchers.length < 2) return false;
+  return (obj.op === "OR" ? "OR" : "AND") !== parentOp;
+}
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -151,7 +173,10 @@ export function formatMatcher(
       if (matchers && matchers.length > 0) {
         const safeOp = op === "OR" ? "OR" : "AND";
         return matchers
-          .map((m) => formatMatcher(m, depth + 1))
+          .map((m) => {
+            const text = formatMatcher(m, depth + 1);
+            return childNeedsParens(m, safeOp) ? `(${text})` : text;
+          })
           .join(` ${safeOp} `);
       }
       return labelFromResolveType(rt);
