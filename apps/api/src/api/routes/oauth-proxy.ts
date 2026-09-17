@@ -181,6 +181,8 @@ export async function fetchProtectedResourceMetadata(
     ) {
       return response;
     }
+
+    if (i < urls.length - 1) await drainDiscardedBody(response);
   }
 
   return response;
@@ -682,6 +684,11 @@ class RetriableServerResponse {
   constructor(readonly response: Response) {}
 }
 
+/** Consume a body we're discarding so its connection can be reused; never call on a response returned to a caller. */
+async function drainDiscardedBody(response: Response): Promise<void> {
+  await response.text().catch(() => {});
+}
+
 async function fetchMetadataWithRetry(
   url: string,
   init: RequestInit,
@@ -690,11 +697,16 @@ async function fetchMetadataWithRetry(
     timeoutMs = METADATA_FETCH_TIMEOUT_MS,
   }: { attempts?: number; timeoutMs?: number } = {},
 ): Promise<Response> {
+  let attempt = 0;
   try {
     return await retry(
       async () => {
+        attempt++;
         const res = await fetchWithTimeout(url, init, timeoutMs);
-        if (res.status >= 500) throw new RetriableServerResponse(res);
+        if (res.status >= 500) {
+          if (attempt < attempts) await drainDiscardedBody(res);
+          throw new RetriableServerResponse(res);
+        }
         return res;
       },
       { maxAttempts: attempts, minTimeout: 150, multiplier: 2, jitter: 0 },
@@ -746,8 +758,8 @@ export async function fetchAuthorizationServerMetadata(
   const urlsToTry = authorizationServerMetadataUrls(authServerUrl);
 
   let response: Response | null = null;
-  for (const tryUrl of urlsToTry) {
-    response = await fetchMetadataWithRetry(tryUrl, {
+  for (let i = 0; i < urlsToTry.length; i++) {
+    response = await fetchMetadataWithRetry(urlsToTry[i]!, {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -760,6 +772,8 @@ export async function fetchAuthorizationServerMetadata(
     if (response.status !== 404 && response.status !== 401) {
       return response;
     }
+
+    if (i < urlsToTry.length - 1) await drainDiscardedBody(response);
   }
 
   // Return the last response (will be an error)
