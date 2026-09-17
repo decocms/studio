@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { TASK_BOARD_DELIVERY } from "./analytics";
+import type { StudioContext } from "@/core/studio-context";
+import { resolveScope, TASK_BOARD_DELIVERY } from "./analytics";
+
+const nonAdminCtx = {
+  organization: { id: "org-1", slug: "acme" },
+  auth: { user: { id: "user-1" } },
+  db: undefined,
+} as unknown as StudioContext;
 
 describe("task board analytics input schema", () => {
   test("rejects a non-ISO from/to instead of crashing downstream", () => {
@@ -36,5 +43,39 @@ describe("task board analytics input schema", () => {
         to: "2024-01-01T02:00:00+02:00",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("resolveScope cross-tenant guard", () => {
+  test("a non-admin caller asking for another named org is rejected, not routed to that org's data", async () => {
+    await expect(
+      resolveScope(
+        { org: "some-other-org" },
+        nonAdminCtx,
+        "TASK_BOARD_DELIVERY",
+      ),
+    ).rejects.toThrow(
+      "Not allowed to read another organization's task board analytics",
+    );
+  });
+
+  test('a non-admin caller asking for "all" gets their own org\'s data, not an error', async () => {
+    const { query, org } = await resolveScope(
+      { org: "all" },
+      nonAdminCtx,
+      "TASK_BOARD_DELIVERY",
+    );
+    expect(org).toBe("acme");
+    expect(query.orgIds).toEqual(["org-1"]);
+  });
+
+  test("omitting org scopes to the caller's own org", async () => {
+    const { query, org } = await resolveScope(
+      {},
+      nonAdminCtx,
+      "TASK_BOARD_DELIVERY",
+    );
+    expect(org).toBe("acme");
+    expect(query.orgIds).toEqual(["org-1"]);
   });
 });

@@ -96,7 +96,7 @@ type AnalyticsOutput = z.infer<typeof AnalyticsOutputSchema>;
  * applied for analytics, so both the "all" aggregate and a named other org go
  * through one check.
  */
-async function resolveScope(
+export async function resolveScope(
   input: AnalyticsInput,
   ctx: StudioContext,
   toolName: string,
