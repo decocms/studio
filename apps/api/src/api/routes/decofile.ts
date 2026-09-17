@@ -45,6 +45,7 @@ import {
 import { signDraftToken, verifyDraftToken } from "@/decofile/draft-token";
 import { repoGitRebase } from "@/decofile/git-compat";
 import { readDecofileSnapshot } from "@/decofile/read-decofile";
+import { projectPlanningPostsForPreview } from "@/decofile/blog-draft-projection";
 import type { Env } from "../hono-env";
 
 interface DecofileScope {
@@ -275,7 +276,8 @@ export function createDecofileRoutes() {
       // draft token, so the preview pointer it builds never carries a stale
       // grant.
       if (!scope.userId) {
-        return c.body(snapshot.decofile, 200, {
+        // Preview-only: render unscheduled planning posts (see blog-draft-projection).
+        return c.body(projectPlanningPostsForPreview(snapshot.decofile), 200, {
           ...headers,
           "content-type": "application/json",
         });

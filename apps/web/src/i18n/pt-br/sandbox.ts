@@ -610,8 +610,6 @@ export const sandbox = {
   "sandbox.postEditor.postTitlePlaceholder": "Título do post",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Defina o slug do post (e sua categoria) mais o pageSlug do aplicativo de blog para visualizar",
-  "sandbox.postEditor.previewRequiresLive":
-    "Agende ou publique este post para visualizá-lo no seu site",
   "sandbox.postEditor.previewTooltip":
     "Abrir visualização do post em uma nova aba",
   "sandbox.postEditor.scheduledDatetimeDescription":
