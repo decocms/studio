@@ -263,58 +263,60 @@ function ChatLayoutContent({
       variant={layout.isMobile ? "plain" : "card"}
     >
       <BreadcrumbScope>
-      {compact ? (
-        <RoutePageHeader
-          navigation={layout.contentNavigation}
-          actions={
-            <>
-              {layout.contentActions}
-              {actions}
-            </>
-          }
-        />
-      ) : (
-        <>
-          {!layout.isMobile && layout.contentOpen && (
-            <Panel.Topbar>
-              <Panel.Topbar.Left className="gap-0.5">
-                <PanelCollapseToggle
-                  side="left"
-                  open={layout.threadOpen}
-                  onToggle={layout.toggleThread}
-                />
-                {layout.contentNavigation}
-                <Panel.Topbar.Left.Target />
-              </Panel.Topbar.Left>
-              <Panel.Topbar.Center>
-                <div className="flex min-w-0 items-center @max-sm/panel-header:hidden">
-                  <Panel.Topbar.Center.Target />
-                </div>
-              </Panel.Topbar.Center>
-              <Panel.Topbar.Right>
-                <Panel.Topbar.Right.Target />
+        {compact ? (
+          <RoutePageHeader
+            navigation={layout.contentNavigation}
+            actions={
+              <>
                 {layout.contentActions}
                 {actions}
-                <PanelCollapseToggle
-                  side="right"
-                  open={layout.contentOpen}
-                  onToggle={layout.toggleContent}
-                />
-              </Panel.Topbar.Right>
-            </Panel.Topbar>
-          )}
-        </>
-      )}
-      <Panel.Content>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ErrorBoundary key={layout.contentKey}>
-            <MainPanelBoundary>
-              <ContentBody routeId={layout.contentKey}>{children}</ContentBody>
-            </MainPanelBoundary>
-          </ErrorBoundary>
-        </div>
-        {drawer}
-      </Panel.Content>
+              </>
+            }
+          />
+        ) : (
+          <>
+            {!layout.isMobile && layout.contentOpen && (
+              <Panel.Topbar>
+                <Panel.Topbar.Left className="gap-0.5">
+                  <PanelCollapseToggle
+                    side="left"
+                    open={layout.threadOpen}
+                    onToggle={layout.toggleThread}
+                  />
+                  {layout.contentNavigation}
+                  <Panel.Topbar.Left.Target />
+                </Panel.Topbar.Left>
+                <Panel.Topbar.Center>
+                  <div className="flex min-w-0 items-center @max-sm/panel-header:hidden">
+                    <Panel.Topbar.Center.Target />
+                  </div>
+                </Panel.Topbar.Center>
+                <Panel.Topbar.Right>
+                  <Panel.Topbar.Right.Target />
+                  {layout.contentActions}
+                  {actions}
+                  <PanelCollapseToggle
+                    side="right"
+                    open={layout.contentOpen}
+                    onToggle={layout.toggleContent}
+                  />
+                </Panel.Topbar.Right>
+              </Panel.Topbar>
+            )}
+          </>
+        )}
+        <Panel.Content>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ErrorBoundary key={layout.contentKey}>
+              <MainPanelBoundary>
+                <ContentBody routeId={layout.contentKey}>
+                  {children}
+                </ContentBody>
+              </MainPanelBoundary>
+            </ErrorBoundary>
+          </div>
+          {drawer}
+        </Panel.Content>
       </BreadcrumbScope>
     </Panel>
   );

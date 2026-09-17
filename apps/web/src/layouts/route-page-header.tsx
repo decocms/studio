@@ -43,11 +43,20 @@ export function RoutePageHeader({
   if (!compact) return null;
   const breadcrumbs: BreadcrumbItem[] = [];
   if (inSettings) {
-    breadcrumbs.push({ key: "settings", label: t("sidebar.navDestinations.settings"),
-      link: { to: "/$org/settings/general", params: { org: org.slug } } });
+    breadcrumbs.push({
+      key: "settings",
+      label: t("sidebar.navDestinations.settings"),
+      link: { to: "/$org/settings/general", params: { org: org.slug } },
+    });
   } else if (scopeId && !isHome) {
-    breadcrumbs.push({ key: "project", label: projectTitle,
-      link: { to: "/$org/projects/$agentId", params: { org: org.slug, agentId: scopeId } } });
+    breadcrumbs.push({
+      key: "project",
+      label: projectTitle,
+      link: {
+        to: "/$org/projects/$agentId",
+        params: { org: org.slug, agentId: scopeId },
+      },
+    });
   }
   breadcrumbs.push({ key: "page", label: title });
   return (

@@ -818,17 +818,18 @@ function TaskBoardItemEditor({
     compact && chrome === "page" ? (
       <>
         <Page.Breadcrumbs
+          after="page"
+          parent={{
+            label: t("taskBoard.taskDetail.breadcrumbTasks"),
+            onSelect: close,
+          }}
           items={[
             {
-              key: "tasks",
-              label: t("taskBoard.taskDetail.breadcrumbTasks"),
-              onClick: close,
+              key: "task",
+              label: key ?? t("taskBoard.taskDetail.breadcrumbTask"),
             },
           ]}
         />
-        <Page.Title>
-          {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
-        </Page.Title>
         <Page.Actions>{actions}</Page.Actions>
       </>
     ) : (
