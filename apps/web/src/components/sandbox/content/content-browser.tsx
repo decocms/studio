@@ -1316,6 +1316,7 @@ function ContentBrowserReady({
                 virtualMcpId={virtualMcpId}
                 branch={branch}
                 decofile={decofile}
+                meta={meta}
                 view={postsView}
                 groupBy={postsGroupBy}
                 selectedKey={

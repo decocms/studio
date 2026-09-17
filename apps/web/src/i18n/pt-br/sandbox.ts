@@ -652,6 +652,17 @@ export const sandbox = {
   "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.collapse": "Recolher para o painel",
   "sandbox.postBoard.close": "Fechar",
+  "sandbox.postBoard.newPostBlank": "Escrever do zero",
+  "sandbox.postBoard.importContent": "Importar conteúdo",
+  "sandbox.postBoard.importTitle": "Importar conteúdo",
+  "sandbox.postBoard.importDescription":
+    "Cole o HTML ou Markdown que você já escreveu. Vira um rascunho editável no seu design system — sem IA, sem créditos.",
+  "sandbox.postBoard.importPlaceholder": "Cole seu HTML ou Markdown aqui…",
+  "sandbox.postBoard.importUpload": "Enviar um arquivo",
+  "sandbox.postBoard.importRun": "Importar",
+  "sandbox.postBoard.importEmpty":
+    "Nada para importar — o conteúdo estava vazio.",
+  "sandbox.postBoard.imported": "Importado — revise e publique.",
   "sandbox.preview.catchAllParamLabel": "caminho",
   "sandbox.preview.choosePage": "Escolher página",
   "sandbox.preview.clickElementToAsk":

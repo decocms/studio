@@ -5,7 +5,7 @@
  * the caller renders that with a Back button. Lane/status labels stay English
  * in every locale (product terms).
  */
-import { type ReactNode, Suspense, useState } from "react";
+import { type ReactNode, Suspense, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarDate,
@@ -13,10 +13,12 @@ import {
   ChevronDown,
   ChevronRight,
   Columns03,
+  File02,
   List,
   Loading02,
   Plus,
   Stars02,
+  Upload01,
 } from "@untitledui/icons";
 import { toast } from "sonner";
 import { Badge } from "@decocms/ui/components/badge.tsx";
@@ -31,10 +33,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@decocms/ui/components/dialog.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
@@ -59,7 +68,13 @@ import {
   type PostMeta,
   type PostStatus,
   POST_STATUSES,
+  sectionResolveTypes,
 } from "./blog-data";
+import {
+  buildImportedPostPayload,
+  parseImportedContent,
+  sectionsToBlocks,
+} from "./import-content";
 import { str } from "./blocks/primitives";
 
 export type PostsView = "board" | "list";
@@ -92,6 +107,7 @@ export function PostsWorkspace({
   virtualMcpId,
   branch,
   decofile,
+  meta,
   view,
   groupBy,
   selectedKey,
@@ -105,6 +121,7 @@ export function PostsWorkspace({
   virtualMcpId: string;
   branch: string;
   decofile: Record<string, unknown>;
+  meta: LiveMeta;
   view: PostsView;
   groupBy: PostsGroupBy;
   /** The open post — a highlighted row in list mode, an open drawer in board mode. */
@@ -136,6 +153,9 @@ export function PostsWorkspace({
   const [guidance, setGuidance] = useState("");
   const [count, setCount] = useState(3);
   const [expanded, setExpanded] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const posts = listAllPostsWithMeta(decofile);
   const payloadOf = (key: string) =>
@@ -183,6 +203,31 @@ export function PostsWorkspace({
     const key = planningPostKey(newPostId());
     const payload = emptyIdeaPayload({ title: "", now: new Date() });
     save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
+    onOpen(key);
+  };
+
+  /**
+   * Import externally-authored HTML/Markdown into a review-ready post — no AI,
+   * no credits. Parsed onto the site's own blocks so it renders on-brand.
+   */
+  const importContent = () => {
+    const parsed = parseImportedContent(importText);
+    const blocks = sectionsToBlocks(parsed.sections, sectionResolveTypes(meta));
+    if (blocks.length === 0 && !parsed.title.trim()) {
+      toast.error(t("sandbox.postBoard.importEmpty"));
+      return;
+    }
+    const key = planningPostKey(newPostId());
+    const payload = buildImportedPostPayload({
+      title: parsed.title,
+      blocks,
+      takenSlugs: posts.map((p) => p.slug).filter(Boolean),
+      now: new Date(),
+    });
+    save.mutate({ blockKey: key, data: buildPlanningPostBlock(key, payload) });
+    setImportOpen(false);
+    setImportText("");
+    toast.success(t("sandbox.postBoard.imported"));
     onOpen(key);
   };
 
@@ -384,12 +429,77 @@ export function PostsWorkspace({
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button type="button" size="sm" onClick={createIdea}>
-            <Plus size={14} />
-            {t("sandbox.postBoard.newPost")}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm">
+                <Plus size={14} />
+                {t("sandbox.postBoard.newPost")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={createIdea}>
+                <File02 size={14} />
+                {t("sandbox.postBoard.newPostBlank")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                <Upload01 size={14} />
+                {t("sandbox.postBoard.importContent")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t("sandbox.postBoard.importTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("sandbox.postBoard.importDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Textarea
+              value={importText}
+              rows={12}
+              autoFocus
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={t("sandbox.postBoard.importPlaceholder")}
+              className="resize-none font-mono text-xs"
+            />
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".html,.htm,.md,.markdown,.txt"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (file) setImportText(await file.text());
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInput.current?.click()}
+            >
+              <Upload01 size={14} />
+              {t("sandbox.postBoard.importUpload")}
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              disabled={!importText.trim()}
+              onClick={importContent}
+            >
+              <Upload01 size={14} />
+              {t("sandbox.postBoard.importRun")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {posts.length === 0 ? (
         <EmptyState
