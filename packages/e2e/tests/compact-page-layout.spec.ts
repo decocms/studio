@@ -573,7 +573,7 @@ test.describe("compact page layout", () => {
   });
 
   test("Library uses one header trail for nested folders and volumes", async ({
-    authedPage: { page, orgSlug },
+    authedPage: { page, orgSlug, user },
   }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const folder = "Brand/Launch notes/September 2026";

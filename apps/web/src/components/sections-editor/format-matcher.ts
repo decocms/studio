@@ -6,7 +6,7 @@ const capitalize = (s: string) =>
 const MAX_FORMAT_DEPTH = 5;
 
 /** Matcher modules that compose other matchers with AND / OR. */
-export const MULTI_MATCHER_RESOLVE_TYPES = new Set([
+const MULTI_MATCHER_RESOLVE_TYPES = new Set([
   "website/matchers/multi.ts",
   "$live/matchers/MatchMulti.ts",
 ]);
