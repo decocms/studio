@@ -527,6 +527,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Open the Stripe billing portal for an owned site",
     category: "Organizations",
   },
+  {
+    name: "ORGANIZATION_HAS_SITE",
+    description:
+      "Whether this organization owns at least one legacy deco.cx site",
+    category: "Organizations",
+  },
   // Connection tools
   {
     name: "COLLECTION_CONNECTIONS_CREATE",
