@@ -18,7 +18,9 @@
  */
 
 import { tool, zodSchema, type JSONValue, type ToolSet } from "ai";
+import type { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
+import type { Tool as StudioTool } from "@/core/define-tool";
 import { truncateForModel } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { TASK_BOARD_ITEM_CREATE } from "@/tools/task-board/create";
 import { TASK_BOARD_ITEM_LIST } from "@/tools/task-board/list";
@@ -59,82 +61,30 @@ export function createTaskBoardTools(
       value: output as JSONValue,
     };
 
+  const wrap = (def: StudioTool<z.ZodTypeAny, z.ZodTypeAny>) =>
+    tool({
+      description: def.description,
+      inputSchema: zodSchema(def.inputSchema),
+      execute: (input) => def.execute(input, ctx),
+      toModelOutput,
+    });
+
   return {
-    TASK_BOARD_ITEM_LIST: tool({
-      description: TASK_BOARD_ITEM_LIST.description,
-      inputSchema: zodSchema(TASK_BOARD_ITEM_LIST.inputSchema),
-      execute: (input) => TASK_BOARD_ITEM_LIST.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_ITEM_CREATE: tool({
-      description: TASK_BOARD_ITEM_CREATE.description,
-      inputSchema: zodSchema(TASK_BOARD_ITEM_CREATE.inputSchema),
-      execute: (input) => TASK_BOARD_ITEM_CREATE.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_ITEM_UPDATE: tool({
-      description: TASK_BOARD_ITEM_UPDATE.description,
-      inputSchema: zodSchema(TASK_BOARD_ITEM_UPDATE.inputSchema),
-      execute: (input) => TASK_BOARD_ITEM_UPDATE.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_ITEM_DELETE: tool({
-      description: TASK_BOARD_ITEM_DELETE.description,
-      inputSchema: zodSchema(TASK_BOARD_ITEM_DELETE.inputSchema),
-      execute: (input) => TASK_BOARD_ITEM_DELETE.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_ITEM_PRS_GET: tool({
-      description: TASK_BOARD_ITEM_PRS_GET.description,
-      inputSchema: zodSchema(TASK_BOARD_ITEM_PRS_GET.inputSchema),
-      execute: (input) => TASK_BOARD_ITEM_PRS_GET.execute(input, ctx),
-      toModelOutput,
-    }),
+    TASK_BOARD_ITEM_LIST: wrap(TASK_BOARD_ITEM_LIST),
+    TASK_BOARD_ITEM_CREATE: wrap(TASK_BOARD_ITEM_CREATE),
+    TASK_BOARD_ITEM_UPDATE: wrap(TASK_BOARD_ITEM_UPDATE),
+    TASK_BOARD_ITEM_DELETE: wrap(TASK_BOARD_ITEM_DELETE),
+    TASK_BOARD_ITEM_PRS_GET: wrap(TASK_BOARD_ITEM_PRS_GET),
     // The board's analytics, and the orgs a cross-org read may name.
     // Without these the agent cannot answer the questions the two Grafana
     // dashboards answer, and cannot discover the orgs the `org` parameter on
     // the read tools above accepts — it can only be handed a slug and guess.
-    TASK_BOARD_ADMIN_ORG_LIST: tool({
-      description: TASK_BOARD_ADMIN_ORG_LIST.description,
-      inputSchema: zodSchema(TASK_BOARD_ADMIN_ORG_LIST.inputSchema),
-      execute: (input) => TASK_BOARD_ADMIN_ORG_LIST.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_DELIVERY: tool({
-      description: TASK_BOARD_DELIVERY.description,
-      inputSchema: zodSchema(TASK_BOARD_DELIVERY.inputSchema),
-      execute: (input) => TASK_BOARD_DELIVERY.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_STUCK: tool({
-      description: TASK_BOARD_STUCK.description,
-      inputSchema: zodSchema(TASK_BOARD_STUCK.inputSchema),
-      execute: (input) => TASK_BOARD_STUCK.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_COST: tool({
-      description: TASK_BOARD_COST.description,
-      inputSchema: zodSchema(TASK_BOARD_COST.inputSchema),
-      execute: (input) => TASK_BOARD_COST.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_QUALITY: tool({
-      description: TASK_BOARD_QUALITY.description,
-      inputSchema: zodSchema(TASK_BOARD_QUALITY.inputSchema),
-      execute: (input) => TASK_BOARD_QUALITY.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_ERRORS: tool({
-      description: TASK_BOARD_ERRORS.description,
-      inputSchema: zodSchema(TASK_BOARD_ERRORS.inputSchema),
-      execute: (input) => TASK_BOARD_ERRORS.execute(input, ctx),
-      toModelOutput,
-    }),
-    TASK_BOARD_TENANTS: tool({
-      description: TASK_BOARD_TENANTS.description,
-      inputSchema: zodSchema(TASK_BOARD_TENANTS.inputSchema),
-      execute: (input) => TASK_BOARD_TENANTS.execute(input, ctx),
-      toModelOutput,
-    }),
+    TASK_BOARD_ADMIN_ORG_LIST: wrap(TASK_BOARD_ADMIN_ORG_LIST),
+    TASK_BOARD_DELIVERY: wrap(TASK_BOARD_DELIVERY),
+    TASK_BOARD_STUCK: wrap(TASK_BOARD_STUCK),
+    TASK_BOARD_COST: wrap(TASK_BOARD_COST),
+    TASK_BOARD_QUALITY: wrap(TASK_BOARD_QUALITY),
+    TASK_BOARD_ERRORS: wrap(TASK_BOARD_ERRORS),
+    TASK_BOARD_TENANTS: wrap(TASK_BOARD_TENANTS),
   };
 }
