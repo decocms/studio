@@ -633,7 +633,7 @@ export const settings = {
     "Os recursos do {plan} param imediatamente.",
   "settings.plans.downgradeCancel": "Manter meu plano",
   "settings.paywall.bullets.kanban.1":
-    "Um board que o time inteiro compartilha",
+    "Agentes que fazem o trabalho e movem os cards",
   "settings.paywall.bullets.kanban.2":
     "Um board que o time inteiro compartilha",
   "settings.paywall.bullets.kanban.3": "Colunas, tags e prioridades",
