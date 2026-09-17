@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
 import { fetchWithTransientRetry } from "./fetch-transient-retry";
+import { useChatCompletions } from "./openai-chat-completions";
 
 function fetchModelsWithRetry(
   baseUrl: string,
@@ -50,14 +51,7 @@ export const openaiCompatibleAdapter: ProviderAdapter = {
       name: "openai-compatible",
     });
 
-    // Wrap so that languageModel() uses the chat completions API
-    // (/v1/chat/completions) instead of the OpenAI Responses API (/responses)
-    // which most compatible servers don't support.
-    const aiSdk: typeof openai = Object.assign(
-      (...args: Parameters<typeof openai>) => openai.chat(...args),
-      openai,
-      { languageModel: openai.chat },
-    );
+    const aiSdk = useChatCompletions(openai);
 
     return {
       info: this.info,

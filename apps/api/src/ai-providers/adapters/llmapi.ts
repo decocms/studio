@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { ModelCapability } from "@decocms/shared/sdk";
 import type { StudioProvider, ModelInfo, ProviderAdapter } from "../types";
 import { fetchWithTransientRetry } from "./fetch-transient-retry";
+import { useChatCompletions } from "./openai-chat-completions";
 
 const LLMAPI_BASE_URL = "https://api.llmapi.ai/v1";
 const LLMAPI_ICON_URL =
@@ -49,13 +50,7 @@ export const llmapiAdapter: ProviderAdapter = {
       name: "llmapi",
     });
 
-    // Route languageModel() through /chat/completions (llmapi doesn't serve the
-    // OpenAI Responses API). Same wrapper the openai-compatible adapter uses.
-    const aiSdk: typeof openai = Object.assign(
-      (...args: Parameters<typeof openai>) => openai.chat(...args),
-      openai,
-      { languageModel: openai.chat },
-    );
+    const aiSdk = useChatCompletions(openai);
 
     return {
       info: this.info,
