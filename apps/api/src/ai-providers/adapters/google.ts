@@ -123,21 +123,29 @@ export const googleAdapter: ProviderAdapter = {
           .filter((m: GoogleModel) => m.lifecycleState !== "DEPRECATED")
           .map((m: GoogleModel) => {
             const id = m.name.replace("models/", "");
-            return {
-              modelId: id,
-              providerId: "google" as const,
-              title: m.displayName,
-              description: m.description,
-              logo: null,
-              capabilities: deriveCapabilities(m),
-              limits: {
-                contextWindow: m.inputTokenLimit,
-                maxOutputTokens: m.outputTokenLimit,
-              },
-              costs: null,
-              ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
-            };
-          });
+            return { m, id, capabilities: deriveCapabilities(m) };
+          })
+          .filter(
+            // Excludes embedding/AQA/tuning-only base models Google also lists.
+            ({ m, id, capabilities }) =>
+              capabilities.length > 0 ||
+              m.supportedGenerationMethods.includes("generateContent") ||
+              isInteractionsOnlyModel(id),
+          )
+          .map(({ m, id, capabilities }) => ({
+            modelId: id,
+            providerId: "google" as const,
+            title: m.displayName,
+            description: m.description,
+            logo: null,
+            capabilities,
+            limits: {
+              contextWindow: m.inputTokenLimit,
+              maxOutputTokens: m.outputTokenLimit,
+            },
+            costs: null,
+            ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
+          }));
       },
     };
   },

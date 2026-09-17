@@ -55,11 +55,21 @@ describe("googleAdapter.listModels", () => {
   test("follows nextPageToken instead of truncating the catalog", async () => {
     const pages: Record<string, unknown> = {
       "": {
-        models: [{ name: "models/gemini-a", supportedGenerationMethods: [] }],
+        models: [
+          {
+            name: "models/gemini-a",
+            supportedGenerationMethods: ["generateContent"],
+          },
+        ],
         nextPageToken: "page-2",
       },
       "page-2": {
-        models: [{ name: "models/gemini-b", supportedGenerationMethods: [] }],
+        models: [
+          {
+            name: "models/gemini-b",
+            supportedGenerationMethods: ["generateContent"],
+          },
+        ],
       },
     };
     const requestedTokens: string[] = [];
@@ -88,7 +98,12 @@ describe("googleAdapter.listModels", () => {
       }
       return new Response(
         JSON.stringify({
-          models: [{ name: "models/gemini-a", supportedGenerationMethods: [] }],
+          models: [
+            {
+              name: "models/gemini-a",
+              supportedGenerationMethods: ["generateContent"],
+            },
+          ],
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
@@ -114,5 +129,51 @@ describe("googleAdapter.listModels", () => {
       "Google listModels failed: 401",
     );
     expect(calls).toBe(1);
+  });
+
+  test("drops embedding/AQA models but keeps chat, image, and research models", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          models: [
+            {
+              name: "models/gemini-2.5-flash",
+              displayName: "Gemini 2.5 Flash",
+              supportedGenerationMethods: ["generateContent"],
+            },
+            {
+              name: "models/text-embedding-004",
+              displayName: "Text Embedding 004",
+              supportedGenerationMethods: ["embedContent"],
+            },
+            {
+              name: "models/aqa",
+              displayName: "Model for AQA",
+              supportedGenerationMethods: ["generateAnswer"],
+            },
+            {
+              name: "models/imagen-3.0-generate-002",
+              displayName: "Imagen 3",
+              supportedGenerationMethods: ["predict"],
+            },
+            {
+              name: "models/deep-research-preview-04-2026",
+              displayName: "Deep Research",
+              supportedGenerationMethods: ["generateAnswer"],
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+    const models = await provider.listModels();
+
+    expect(models.map((m) => m.modelId)).toEqual([
+      "gemini-2.5-flash",
+      "imagen-3.0-generate-002",
+      "deep-research-preview-04-2026",
+    ]);
   });
 });
