@@ -596,6 +596,8 @@ export const sandbox = {
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Set the post slug (and its category) plus the blog app's pageSlug to preview",
+  "sandbox.postEditor.previewRequiresLive":
+    "Schedule or publish this post to preview it on your site",
   "sandbox.postEditor.previewTooltip": "Open the post preview in a new tab",
   "sandbox.postEditor.scheduledDatetimeDescription":
     "When this post goes live. The site publishes it on its own once this moment passes.",

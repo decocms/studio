@@ -155,6 +155,10 @@ export function PostEditor({
 
   const missing = missingPostFields(post);
   const hasErrors = missing.length > 0;
+  /** Only scheduled/published are live blocks the storefront can resolve — a planning post has no route to preview. */
+  const previewStatus = postStatus(post);
+  const isLivePost =
+    previewStatus === "scheduled" || previewStatus === "published";
   const missingLabel =
     missing.length === 1
       ? t("sandbox.postEditor.missingFieldSingular", {
@@ -249,14 +253,16 @@ export function PostEditor({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!previewUrl}
+                  disabled={!previewUrl || !isLivePost}
                   title={
-                    previewUrl
-                      ? t("sandbox.postEditor.previewTooltip")
-                      : t("sandbox.postEditor.previewRequiresSlugAndCategory")
+                    !isLivePost
+                      ? t("sandbox.postEditor.previewRequiresLive")
+                      : previewUrl
+                        ? t("sandbox.postEditor.previewTooltip")
+                        : t("sandbox.postEditor.previewRequiresSlugAndCategory")
                   }
                   onClick={() => {
-                    if (previewUrl) {
+                    if (previewUrl && isLivePost) {
                       window.open(previewUrl, "_blank", "noopener,noreferrer");
                     }
                   }}
