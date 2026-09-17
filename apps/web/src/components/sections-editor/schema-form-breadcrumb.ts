@@ -319,6 +319,27 @@ export function siblingFieldLabel(
   return collides ? humanize(key) : base;
 }
 
+/**
+ * Header crumb index the back button ("<") should navigate to.
+ *
+ * Normally back targets the parent of the last crumb (`crumbCount - 2`). The
+ * exception is a multivariate section in the classic layout, which spends two
+ * crumbs — the section label and the variant label — on one destination, since
+ * the variant list and the selected variant's form render as a single view.
+ * There `crumbCount - 2` points at the redundant section crumb, so back would
+ * only clear an already-empty field trail and appear to do nothing. Treat that
+ * variant top as a direct child of the section list so back exits the section.
+ *
+ * Compact merges those two crumbs into one, so it never sets the flag.
+ */
+export function headerBackTargetIndex(
+  crumbCount: number,
+  opts: { isMultivariateSectionTop: boolean },
+): number {
+  if (opts.isMultivariateSectionTop) return 0;
+  return crumbCount - 2;
+}
+
 /** Map a header crumb index to the breadcrumb trail (`headerCrumbs = [title, ...breadcrumbs]`). */
 export function breadcrumbsForHeaderClick(
   breadcrumbs: Crumb[],

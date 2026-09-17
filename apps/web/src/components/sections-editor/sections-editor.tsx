@@ -9,6 +9,7 @@ import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
   Code01,
   Globe01,
@@ -52,6 +53,7 @@ import { useSectionPreviewBase } from "./use-section-preview-base";
 import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
+import { headerBackTargetIndex } from "./schema-form-breadcrumb";
 import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
 import {
   buildMatcherBlockData,
@@ -1935,6 +1937,15 @@ export function SectionsEditor({
     showGlobalBanner ||
     (!isGlobalBlockMode && hasMultipleVariants && !!activeVariant) ||
     canAddSectionVariant;
+  // Classic spends a crumb on the section AND one on its variant even though
+  // both land on the same view, so back has to skip past the redundant one.
+  // Compact merges them, so there is nothing to skip.
+  const isMultivariateSectionTop =
+    !compact &&
+    !editingSeo &&
+    !isGlobalBlockMode &&
+    isEditingMultivariateSection &&
+    fieldBreadcrumbs.length === 0;
   const handleAddPageVariant = () => {
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
@@ -2528,6 +2539,30 @@ export function SectionsEditor({
 
   return (
     <div className="flex h-full min-w-0 w-full flex-col">
+      {headerCrumbs.length > 1 && (
+        <div className="flex min-w-0 shrink-0 items-center gap-2 px-3 py-2">
+          <button
+            type="button"
+            onClick={() =>
+              handleBreadcrumbClick(
+                headerBackTargetIndex(headerCrumbs.length, {
+                  isMultivariateSectionTop,
+                }),
+              )
+            }
+            title={t("sectionsEditor.sectionsEditor.back")}
+            aria-label={t("sectionsEditor.sectionsEditor.back")}
+            className={cn(
+              "shrink-0 inline-flex size-6 items-center justify-center classic:rounded-md compact:rounded-lg transition-colors",
+              showGlobalBanner
+                ? "text-foreground/80 hover:bg-global-section/15"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+        </div>
+      )}
       <BlockBreadcrumbs
         crumbs={headerCrumbs}
         onSelect={handleBreadcrumbClick}

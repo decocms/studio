@@ -8,6 +8,7 @@ import {
   type Crumb,
   crumbLabel,
   fieldDisplayLabel,
+  headerBackTargetIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
   prependCrumbIfAbsent,
@@ -29,6 +30,34 @@ describe("normalizeBreadcrumbLabel", () => {
     const nfd = "cafe\u0301";
     const nfc = "caf\u00e9";
     expect(normalizeBreadcrumbLabel(nfd)).toBe(normalizeBreadcrumbLabel(nfc));
+  });
+});
+
+describe("headerBackTargetIndex", () => {
+  test("targets the parent of the last crumb by default", () => {
+    // [page, section] → back exits the section (index 0).
+    expect(headerBackTargetIndex(2, { isMultivariateSectionTop: false })).toBe(
+      0,
+    );
+    // [page, section, field] → back returns to the section top (index 1).
+    expect(headerBackTargetIndex(3, { isMultivariateSectionTop: false })).toBe(
+      1,
+    );
+  });
+
+  test("exits the section from a classic multivariate section top", () => {
+    // Classic spends [page, section, variant] on one destination, so index 1
+    // is the redundant section crumb and a no-op. Back must exit instead.
+    expect(headerBackTargetIndex(3, { isMultivariateSectionTop: true })).toBe(
+      0,
+    );
+  });
+
+  test("compact merges those crumbs, so the flag never applies there", () => {
+    // [page, "Section · Variant"] → back exits the section, no special case.
+    expect(headerBackTargetIndex(2, { isMultivariateSectionTop: false })).toBe(
+      0,
+    );
   });
 });
 

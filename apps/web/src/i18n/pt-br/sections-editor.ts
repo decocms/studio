@@ -203,6 +203,7 @@ export const sectionsEditor = {
     "Remover todas as variantes",
   "sectionsEditor.sectionVariantList.rename": "Renomear",
   "sectionsEditor.sectionVariantList.title": "Variantes",
+  "sectionsEditor.sectionsEditor.back": "Voltar",
   "sectionsEditor.sectionsEditor.cannotDeleteOnlyVariant":
     "Não é possível excluir a única variante.",
   "sectionsEditor.sectionsEditor.couldNotAddVariant":

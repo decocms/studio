@@ -194,6 +194,7 @@ export const sectionsEditor = {
     "Remove all variants",
   "sectionsEditor.sectionVariantList.rename": "Rename",
   "sectionsEditor.sectionVariantList.title": "Variants",
+  "sectionsEditor.sectionsEditor.back": "Back",
   "sectionsEditor.sectionsEditor.cannotDeleteOnlyVariant":
     "Cannot delete the only variant.",
   "sectionsEditor.sectionsEditor.couldNotAddVariant": "Could not add variant.",
