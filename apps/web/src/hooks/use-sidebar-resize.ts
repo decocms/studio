@@ -75,6 +75,7 @@ export function useSidebarResize(): SidebarResize {
       }
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
@@ -83,6 +84,7 @@ export function useSidebarResize(): SidebarResize {
     document.body.style.cursor = "col-resize";
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
   };
 
   const resetWidth = () => {
