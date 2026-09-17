@@ -12,6 +12,11 @@
  * rest of the integration writes: a comment on the issue. That is also the
  * first time a merge leaves any trace on the card at all.
  *
+ * A conflict does not end it. The workflow sleeps durably and looks again, up
+ * to three times over half an hour, because the thing it is waiting for is an
+ * agent with a checkout rebasing a branch — minutes, not seconds. That loop is
+ * what makes "merge" one action instead of "merge, wait, notice, merge again".
+ *
  * Replay safety rests on reading each pull request's state before merging it.
  * A step that crashed between merging and commenting re-runs whole, and the
  * second pass sees `merged` and reports it instead of merging again — so the
@@ -85,18 +90,38 @@ function line(o: PrOutcome): string {
 async function mergeOneIssue(
   input: JiraPrMergeInput,
   issueKey: string,
-): Promise<{ issueKey: string; outcomes: PrOutcome[]; error?: string }> {
+  /** False on a retry pass: the conflicting pull requests already have a run
+   *  rebasing them, and a second would supersede the first. */
+  escalate = true,
+): Promise<{
+  issueKey: string;
+  outcomes: PrOutcome[];
+  conflicted: boolean;
+  error?: string;
+}> {
   try {
     const ctx = await buildOrgContext(
       requireRuntime().db,
       input.organizationId,
     );
-    if (!ctx) return { issueKey, outcomes: [], error: "organization is gone" };
+    if (!ctx) {
+      return {
+        issueKey,
+        outcomes: [],
+        conflicted: false,
+        error: "organization is gone",
+      };
+    }
     const integration = await ctx.storage.jiraIntegrations.getByOrg(
       input.organizationId,
     );
     if (!integration) {
-      return { issueKey, outcomes: [], error: "Jira is no longer connected" };
+      return {
+        issueKey,
+        outcomes: [],
+        conflicted: false,
+        error: "Jira is no longer connected",
+      };
     }
     const jira = new JiraClient(
       integration.siteUrl,
@@ -105,7 +130,12 @@ async function mergeOneIssue(
     );
     const prs = pullRequestsFromLinks(await jira.listRemoteLinks(issueKey));
     if (prs.length === 0) {
-      return { issueKey, outcomes: [], error: "no pull request on this issue" };
+      return {
+        issueKey,
+        outcomes: [],
+        conflicted: false,
+        error: "no pull request on this issue",
+      };
     }
 
     const outcomes: PrOutcome[] = [];
@@ -172,7 +202,7 @@ async function mergeOneIssue(
     // ONE run per issue however many of its pull requests conflict: a run
     // accumulates checkouts, so the same agent rebases both halves, and two
     // runs on one issue would supersede each other anyway.
-    if (conflicted.length > 0) {
+    if (conflicted.length > 0 && escalate) {
       await startJiraRunForIssue(ctx, integration, issueKey, {
         instruction:
           conflicted.length === 1
@@ -198,24 +228,65 @@ async function mergeOneIssue(
           console.warn("[jira-pr-merge] comment failed", issueKey, err);
         });
     }
-    return { issueKey, outcomes };
+    return { issueKey, outcomes, conflicted: conflicted.length > 0 };
   } catch (err) {
     return {
       issueKey,
       outcomes: [],
+      conflicted: false,
       error: err instanceof Error ? err.message : String(err),
     };
   }
 }
 
+/**
+ * How long to wait before looking again at an issue whose pull request was
+ * conflicting, and how many times.
+ *
+ * The run that rebases is an agent with a checkout: it clones, reads the
+ * conflict, resolves it and pushes, which is minutes, not seconds. So the
+ * retry is a DURABLE sleep — the workflow is a row until the wakeup time, and
+ * survives the pod that started it going away.
+ *
+ * Bounded, not a target. If three passes over half an hour have not landed it,
+ * the branch is moving under the agent or the conflict is not mechanical, and
+ * re-dispatching forever costs a paid run each time. Stop and leave the last
+ * comment on the card saying what it was blocked on.
+ */
+const RETRY_AFTER_MS = 10 * 60_000;
+const MAX_RETRIES = 3;
+
 async function jiraPrMergeWorkflowFn(input: JiraPrMergeInput): Promise<void> {
   // Sequential, and that is the point rather than a concession: merging one
   // moves the base under the next, so a batch of pull requests that touch a
   // file in common resolves in order instead of all conflicting at once.
+  let pending: string[] = [];
   for (const issueKey of input.issueKeys) {
-    await DBOS.runStep(() => mergeOneIssue(input, issueKey), {
+    const r = await DBOS.runStep(() => mergeOneIssue(input, issueKey), {
       name: `merge:${issueKey}`,
     });
+    if (r.conflicted) pending.push(issueKey);
+  }
+
+  // The loop the feature was missing: an agent is rebasing those, and nothing
+  // else would ever come back to land them. Escalation is off from here on —
+  // the first pass already dispatched a run per issue, and a second would
+  // supersede it mid-rebase.
+  for (
+    let attempt = 1;
+    attempt <= MAX_RETRIES && pending.length > 0;
+    attempt++
+  ) {
+    await DBOS.sleepms(RETRY_AFTER_MS);
+    const stillPending: string[] = [];
+    for (const issueKey of pending) {
+      const r = await DBOS.runStep(
+        () => mergeOneIssue(input, issueKey, false),
+        { name: `remerge:${attempt}:${issueKey}` },
+      );
+      if (r.conflicted) stillPending.push(issueKey);
+    }
+    pending = stillPending;
   }
 }
 
