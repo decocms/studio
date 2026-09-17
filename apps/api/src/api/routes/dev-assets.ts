@@ -124,6 +124,24 @@ export function getContentType(key: string): string {
   return contentTypes[ext] || "application/octet-stream";
 }
 
+/**
+ * Response headers guarding against a mislabelled-as-executable upload:
+ * `nosniff` always, plus a sandbox CSP for HTML/SVG so member-authored
+ * content can't run with studio's origin (same posture as fs-bytes.ts).
+ */
+export function getContentSecurityHeaders(
+  contentType: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (contentType === "text/html" || contentType === "image/svg+xml") {
+    headers["Content-Security-Policy"] =
+      "sandbox allow-scripts allow-modals allow-same-origin";
+  }
+  return headers;
+}
+
 // ============================================================================
 // Routes
 // ============================================================================
@@ -218,6 +236,7 @@ export const createDevAssetsRoutes = (opts: CreateDevAssetsRoutesOptions) => {
           "Content-Type": contentType,
           "Content-Length": file.size.toString(),
           "Cache-Control": "private, max-age=3600",
+          ...getContentSecurityHeaders(contentType),
         },
       });
     } catch (err) {
