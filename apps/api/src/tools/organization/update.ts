@@ -21,7 +21,7 @@ export const ORGANIZATION_UPDATE = defineTool({
   inputSchema: z.object({
     id: z.string(),
     name: z.string().min(1).max(255).optional(),
-    description: z.string().optional(),
+    description: z.string().max(500).optional(),
   }),
 
   outputSchema: z.object({
