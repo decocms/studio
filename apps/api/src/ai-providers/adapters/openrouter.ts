@@ -1,9 +1,9 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import type { ModelCapability } from "@decocms/shared/sdk";
 import {
   fetchWithTransientRetry,
   throwResponseError,
 } from "./fetch-transient-retry";
+import { deriveModalityCapabilities } from "./model-capabilities";
 import type {
   StudioProvider,
   ModelInfo,
@@ -91,22 +91,14 @@ export const openrouterAdapter: ProviderAdapter = {
             title: m.name,
             description: m.description ?? null,
             logo: null,
-            capabilities: [
-              ...new Set([
-                // OpenRouter uses "image" in input_modalities to mean vision (can see images).
-                // Map it to "vision" so we distinguish from "image" (image generation output).
-                ...m.architecture.input_modalities.map((mod) =>
-                  mod === "image" ? "vision" : mod,
-                ),
-                ...m.architecture.output_modalities,
-                ...(m.supported_parameters?.includes("tools")
-                  ? (["tools"] as const)
-                  : []),
-                ...(m.supported_parameters?.includes("reasoning")
-                  ? (["reasoning"] as const)
-                  : []),
-              ]),
-            ] as ModelCapability[],
+            capabilities: deriveModalityCapabilities(
+              m.architecture.input_modalities,
+              m.architecture.output_modalities,
+              m.supported_parameters,
+              m.supported_parameters?.includes("reasoning")
+                ? ["reasoning"]
+                : [],
+            ),
             limits: {
               contextWindow,
               maxOutputTokens,
