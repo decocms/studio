@@ -179,11 +179,35 @@ function resolveSender() {
   return provider ? createEmailSender(provider) : null;
 }
 
+/** Validates an email address has basic format correctness. */
+export function isValidEmail(email: string): boolean {
+  if (email.length > 254) return false;
+  if (email.length < 3) return false;
+  if (email.includes(" ")) return false;
+  const atIndex = email.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex === email.length - 1) return false;
+  const domain = email.substring(atIndex + 1);
+  if (!domain.includes(".")) return false;
+  return true;
+}
+
 async function sendOne(rows: PendingRow[]): Promise<void> {
   const sender = resolveSender();
   if (!sender) throw new Error("no email provider configured");
+  const email = rows[0]!.email;
+  if (!isValidEmail(email)) {
+    throw new Error(`invalid recipient email: ${email.substring(0, 50)}`);
+  }
   const { subject, html } = buildDigestEmail(rows, getBaseUrl());
-  await sender({ to: rows[0]!.email, subject, html });
+  if (subject.length > 1000) {
+    throw new Error(
+      `digest subject too long: ${subject.length} chars (max 1000)`,
+    );
+  }
+  if (html.length > 1000000) {
+    throw new Error(`digest html too long: ${html.length} bytes (max 1MB)`);
+  }
+  await sender({ to: email, subject, html });
 }
 
 async function pruneOld(before: Date): Promise<void> {
