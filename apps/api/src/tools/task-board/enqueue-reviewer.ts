@@ -717,7 +717,10 @@ async function enqueueReviewerForTask(
   // reviewer could reach its verdict and never record it. Falls back to
   // Decopilot when the org has no importable repo, exactly as the Super Agent
   // does — with no repo there is no checkout to review anyway.
-  const choice = await resolveTaskRepoChoice(ctx, organizationId);
+  const choice = await resolveTaskRepoChoice(ctx, organizationId, {
+    repositoryId: task.repositoryId,
+    repo: task.repo,
+  });
   const repo = choice && "repo" in choice ? choice.repo : null;
   const sandboxed = choice !== null;
   const priorReviewAt = priorCycleReviewAt(task, kind, cycleAt.getTime());
@@ -779,7 +782,7 @@ async function enqueueReviewerForTask(
     "How to work:",
     `- Call \`${prsGetTool}\` with the task id below to find the pull request under review.`,
     repo
-      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `- The repository ${repo.owner}/${repo.name} is already cloned at your working directory and \`git\` and its CLI (\`gh\` for GitHub, \`glab\` for GitLab; Bitbucket has no CLI — use the REST API with \`curl\` and \`$BITBUCKET_TOKEN\`) are authenticated — check the PR's branch out there to inspect / exercise the change. ${SHALLOW_CHECKOUT_NOTE}`
       : sandboxed
         ? `- Your working directory is EMPTY. Call \`mcp__studio__TASK_ADD_REPO\` ${
             pinnedRepo

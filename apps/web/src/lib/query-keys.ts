@@ -56,6 +56,21 @@ export const KEYS = {
   taskBoardActivity: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-activity", itemId] as const,
 
+  // Cross-org task board admin: whether the caller is one, and the orgs to pick.
+  // Keyed by the org SLUG IN THE PATH, not the locator — the board's context org
+  // moves when an admin points it at another tenant; the answer must not.
+  taskBoardAdminOrgs: (pathOrgSlug: string) =>
+    [pathOrgSlug, "task-board-admin-orgs"] as const,
+
+  // One analytics tool's payload for a given org + range
+  taskBoardAnalytics: (
+    locator: ProjectLocator,
+    tool: string,
+    org: string,
+    from: string,
+    to: string,
+  ) => [locator, "task-board-analytics", tool, org, from, to] as const,
+
   // The current user's unread notifications in this org
   notifications: (locator: ProjectLocator) =>
     [locator, "notifications"] as const,
@@ -82,81 +97,51 @@ export const KEYS = {
   // domain at once, e.g. after an in-place login unlocks the full deck.
   reportAll: (domain: string) => ["report", domain] as const,
 
-  commerceDiscoveryConnection: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "connection", orgId, connectionId] as const,
+  reportsConnection: (orgId: string, connectionId: string) =>
+    ["reports", "connection", orgId, connectionId] as const,
   // Owner diagnostic (get_my_diagnostic) polled by the home report banner —
   // keyed per org + connection so a credential rotation forces a fresh fetch.
-  commerceDiscoveryDiagnostic: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "diagnostic", orgId, connectionId] as const,
-  commerceDiscoveryVirtualMcp: (orgId: string, virtualMcpId: string) =>
-    ["commerce-discovery", "virtual-mcp", orgId, virtualMcpId] as const,
+  reportsDiagnostic: (orgId: string, connectionId: string) =>
+    ["reports", "diagnostic", orgId, connectionId] as const,
+  reportsVirtualMcp: (orgId: string, virtualMcpId: string) =>
+    ["reports", "virtual-mcp", orgId, virtualMcpId] as const,
 
-  // Commerce companion discovery (Commerce Discovery's live config schema,
+  // Commerce companion discovery (Reports's live config schema,
   // candidate connections satisfying a binding, and the registry batch).
-  commerceDiscoveryCompanionSchema: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-schema", orgId, connectionId] as const,
-  commerceDiscoveryCompanionConnections: (orgId: string, key: string) =>
-    ["commerce-discovery", "companion-connections", orgId, key] as const,
+  reportsCompanionSchema: (orgId: string, connectionId: string) =>
+    ["reports", "companion-schema", orgId, connectionId] as const,
+  reportsCompanionConnections: (orgId: string, key: string) =>
+    ["reports", "companion-connections", orgId, key] as const,
   // Prefix for every companion-connections query in an org, regardless of the
   // requirements-signature `key`. Use with invalidateQueries to refetch all
   // variants after a connection is created/linked/updated.
-  commerceDiscoveryCompanionConnectionsPrefix: (orgId: string) =>
-    ["commerce-discovery", "companion-connections", orgId] as const,
-  commerceDiscoveryCompanionRegistry: (orgId: string, key: string) =>
-    ["commerce-discovery", "companion-registry", orgId, key] as const,
-  commerceDiscoveryCompanionOAuthStatus: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-oauth-status",
-      orgId,
-      connectionId,
-    ] as const,
-  commerceDiscoveryCompanionGaProperties: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-ga-properties",
-      orgId,
-      connectionId,
-    ] as const,
-  commerceDiscoveryCompanionGscSites: (orgId: string, connectionId: string) =>
-    ["commerce-discovery", "companion-gsc-sites", orgId, connectionId] as const,
+  reportsCompanionConnectionsPrefix: (orgId: string) =>
+    ["reports", "companion-connections", orgId] as const,
+  reportsCompanionRegistry: (orgId: string, key: string) =>
+    ["reports", "companion-registry", orgId, key] as const,
+  reportsCompanionOAuthStatus: (orgId: string, connectionId: string) =>
+    ["reports", "companion-oauth-status", orgId, connectionId] as const,
+  reportsCompanionGaProperties: (orgId: string, connectionId: string) =>
+    ["reports", "companion-ga-properties", orgId, connectionId] as const,
+  reportsCompanionGscSites: (orgId: string, connectionId: string) =>
+    ["reports", "companion-gsc-sites", orgId, connectionId] as const,
   // GitHub repo picker: repos matching a server-side search (empty = default
   // page) for the companion connection. Keyed by query so each search term is
   // cached independently.
-  commerceDiscoveryCompanionGithubRepos: (
+  reportsCompanionGithubRepos: (
     orgId: string,
     connectionId: string,
     query: string,
   ) =>
-    [
-      "commerce-discovery",
-      "companion-github-repos",
-      orgId,
-      connectionId,
-      query,
-    ] as const,
-  // The repo currently selected on the Commerce Discovery connection
+    ["reports", "companion-github-repos", orgId, connectionId, query] as const,
+  // The repo currently selected on the Reports connection
   // (github_repo), read once for prefill — independent of the search query.
-  commerceDiscoveryCompanionGithubSelected: (
-    orgId: string,
-    connectionId: string,
-  ) =>
-    [
-      "commerce-discovery",
-      "companion-github-selected",
-      orgId,
-      connectionId,
-    ] as const,
-  // Per-(org, siteUrl) connection status from commerce-discovery — the single
+  reportsCompanionGithubSelected: (orgId: string, connectionId: string) =>
+    ["reports", "companion-github-selected", orgId, connectionId] as const,
+  // Per-(org, siteUrl) connection status from reports — the single
   // source of truth for "Conectado" across both lanes (OAuth + shared-SA).
-  commerceDiscoveryConnectionStatus: (orgId: string, siteUrl: string) =>
-    ["commerce-discovery", "connection-status", orgId, siteUrl] as const,
+  reportsConnectionStatus: (orgId: string, siteUrl: string) =>
+    ["reports", "connection-status", orgId, siteUrl] as const,
 
   connectionActivity: (
     connectionId: string,
@@ -493,6 +478,10 @@ export const KEYS = {
 
   // Tags (scoped by locator)
   tags: (locator: string) => [locator, "tags"] as const,
+  experiments: (locator: string, site: string) =>
+    [locator, "experiments", site] as const,
+  experimentResults: (locator: string, site: string, key: string) =>
+    [locator, "experiments", site, key, "results"] as const,
   memberTags: (locator: string, memberId: string) =>
     [locator, "member-tags", memberId] as const,
 
@@ -638,6 +627,19 @@ export const KEYS = {
    *  invalidate all search/imageOnly listings after an upload or delete. */
   filePickerObjectsByConfig: (orgId: string, configId: string) =>
     ["file-picker-objects", orgId, configId] as const,
+
+  // Plan, feature flags and the AI usage bar (org-wide, not per user)
+  aiPlanEntitlements: (orgId: string) =>
+    ["ai-plan-entitlements", orgId] as const,
+  aiPlanCatalog: (orgId: string) => ["ai-plan-catalog", orgId] as const,
+  /** The bounded poll that runs after Stripe redirects back, until the webhook
+   *  has landed the new tier — see `use-checkout-return.ts`. Holds a tick
+   *  counter, never a value anything renders. */
+  checkoutReturnPoll: (orgId: string) =>
+    ["checkout-return-poll", orgId] as const,
+  aiPlanPrices: () => ["ai-plan-prices"] as const,
+  // Whether the org has a Stripe account/subscription behind its plan.
+  orgBillingAccount: (orgId: string) => ["org-billing-account", orgId] as const,
 
   // AI provider credits balance (scoped by org + keyId)
   aiProviderCredits: (orgId: string, keyId: string) =>

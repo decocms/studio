@@ -12,6 +12,19 @@ export function gatewayAdminConfigured(): boolean {
   return settings.aiGatewayEnabled && !!settings.aiGatewayAdminToken;
 }
 
+/** A gateway refusal that retrying cannot fix. Carried as a type rather than a
+ *  status check at each call site, because only the webhook's THROW/ACK choice
+ *  depends on it. */
+export class GatewayAdminPermanentError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GatewayAdminPermanentError";
+  }
+}
+
 async function postGatewayAdmin(
   path: string,
   body: Record<string, unknown>,
@@ -29,8 +42,76 @@ async function postGatewayAdmin(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${label} failed (${res.status}): ${text}`);
+    // A 4xx from a gateway that ANSWERED is a decision, not an outage: an
+    // unknown plan id, a malformed body, a rejected token. The gateway's plans
+    // route returns 400 for every one of them. Retrying a decision changes
+    // nothing, and the caller here is a Stripe webhook — so throwing would
+    // 500 the route and have Stripe redeliver a deterministic failure on its
+    // full schedule, which ends with Stripe DISABLING the endpoint and every
+    // org's billing events going with it. Distinguish it so the webhook can
+    // acknowledge loudly instead. 408/429 are excluded: those do pass.
+    const permanent =
+      res.status >= 400 &&
+      res.status < 500 &&
+      res.status !== 408 &&
+      res.status !== 429;
+    const message = `${label} failed (${res.status}): ${text}`;
+    throw permanent
+      ? new GatewayAdminPermanentError(res.status, message)
+      : new Error(message);
   }
+}
+
+/**
+ * Place the org on a gateway plan.
+ *
+ * Through the gateway's ADMIN route, not the user-facing
+ * `PUT /api/teams/:orgId/plan`: that one requires a user JWT and there is no
+ * user in a webhook. The admin token is the right authority here anyway — the
+ * caller is Stripe telling us what was paid for.
+ *
+ * `free` is a real plan id at the gateway; the gateway's admin route routes it
+ * through `removeOrgPlan`, so a cancellation also clears any per-org override.
+ * THROWS on failure: the webhook lets Stripe redeliver, and placing a plan is
+ * idempotent.
+ *
+ * The two unconfigured cases are NOT the same, and collapsing them into one
+ * silent `return` is what made a paid upgrade grant nothing and a cancellation
+ * revoke nothing, with no log, no throw and no boot check — against this
+ * docblock, the caller's own comment and the rollout doc, all three of which
+ * say it throws. Stripe saw a 200 and never redelivered, and `AI_PLAN_SET`
+ * cannot repair it because it accepts nothing but `free`.
+ */
+export async function setGatewayOrgPlan(input: {
+  organizationId: string;
+  planId: string;
+  note: string;
+}): Promise<void> {
+  const settings = getSettings();
+  if (!settings.aiGatewayEnabled) {
+    // No gateway in this deployment (self-hosted), so there are no
+    // entitlements to place. Not an error: the subscription itself is still
+    // valid and the billing row is still written.
+    return;
+  }
+  if (!settings.aiGatewayAdminToken) {
+    // There IS a gateway and we cannot write to it. That is a payment taken
+    // for an entitlement never granted, so it throws and Stripe retries until
+    // the token is restored — exactly what `creditGatewayTopUp` does, for a
+    // liability that is no larger.
+    throw new Error(
+      "DECO_AI_GATEWAY_ADMIN_TOKEN is not set — cannot place the gateway plan",
+    );
+  }
+  await postGatewayAdmin(
+    "/api/admin/plans",
+    {
+      orgId: input.organizationId,
+      planId: input.planId,
+      note: input.note,
+    },
+    "gateway plan change",
+  );
 }
 
 /**

@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use tauri::{AppHandle, AssetResolver, Wry};
 
@@ -7,7 +6,7 @@ use tauri::{AppHandle, AssetResolver, Wry};
 /// Tauri-independent static asset contract.
 pub struct TauriUiAssets {
     resolver: AssetResolver<Wry>,
-    known_paths: Arc<HashSet<String>>,
+    known_paths: HashSet<String>,
     index: local_api::UiAsset,
     content_security_policy: String,
 }
@@ -22,16 +21,23 @@ impl TauriUiAssets {
         let index = resolver
             .get("index.html".to_string())
             .ok_or_else(|| "the bundled frontend does not contain index.html".to_string())?;
-        let content_security_policy = index
-            .csp_header()
-            .map(|value| crate::csp::for_http_asset(value, selftest_mode))
+        // The HTTP entry uses external, same-origin scripts. Tauri's generated
+        // asset policy also hashes every JS chunk; this route-split bundle made
+        // it exceed WKWebView's 16 KiB policy limit and lose later directives.
+        let content_security_policy = app
+            .config()
+            .app
+            .security
+            .csp
+            .as_ref()
+            .map(|value| crate::csp::for_http_asset(&value.to_string(), selftest_mode))
             .ok_or_else(|| {
-                "the bundled frontend index has no Content-Security-Policy".to_string()
+                "the bundled frontend has no configured Content-Security-Policy".to_string()
             })?;
 
         Ok(Self {
             resolver,
-            known_paths: Arc::new(known_paths),
+            known_paths,
             index: convert_asset(index, "index.html"),
             content_security_policy,
         })

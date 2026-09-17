@@ -9,8 +9,10 @@ import { sleep } from "@decocms/shared/std";
 import { expect, test } from "../fixtures/test";
 
 const SIDEBAR = '[data-slot="sidebar"]';
-const SUBNAV = '[data-slot="settings-subnav"]';
-const HEADING = '[data-slot="settings-heading"]';
+const SUBNAV = '[data-testid="settings-subnav"]';
+const HEADING = '[data-testid="page-header"]';
+
+test.use({ compactPageLayout: true });
 
 test.describe("settings sidebar", () => {
   test("advanced rows stay collapsed until asked for", async ({

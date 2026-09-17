@@ -1,18 +1,8 @@
-/**
- * Project settings, as a few places rather than one long page.
- *
- * Settings used to be a single scroll: identity, connections, instructions,
- * files, sub-projects, layout, CMS, sandbox and the delete button, stacked. It
- * read as a wall, and the things people actually come here for (the views, the
- * instructions) were the furthest down.
- *
- * So it is an index of SECTIONS, each with its own address — `?section=<key>`
- * on the settings panel. A section is a HANDFUL of related concerns, not one
- * field each: splitting per concern only moved the wall into the index.
- * The key is the URL's, so a section is linkable and Back returns to the index.
- */
+/** Project settings tabs. Existing `?section=` links keep their destinations. */
 
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { Database01, Link01, Settings01 } from "@untitledui/icons";
+import type { ComponentType, SVGProps } from "react";
 
 export const PROJECT_SETTINGS_SECTION_KEYS = [
   "general",
@@ -24,25 +14,27 @@ export type ProjectSettingsSectionKey =
   (typeof PROJECT_SETTINGS_SECTION_KEYS)[number];
 
 export interface ProjectSettingsSectionDef {
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
   titleKey: TranslationKey;
   descriptionKey: TranslationKey;
 }
 
-/** Title and description, in ONE place: the index row and the section's own
- *  header read the same words, so a row can never promise a different page. */
 export const PROJECT_SETTINGS_SECTIONS: Record<
   ProjectSettingsSectionKey,
   ProjectSettingsSectionDef
 > = {
   general: {
+    icon: Settings01,
     titleKey: "virtualMcp.settings.general.title",
     descriptionKey: "virtualMcp.settings.general.description",
   },
   connections: {
+    icon: Link01,
     titleKey: "virtualMcp.settings.connections.title",
     descriptionKey: "virtualMcp.settings.connections.description",
   },
   site: {
+    icon: Database01,
     titleKey: "virtualMcp.settings.site.title",
     descriptionKey: "virtualMcp.settings.site.description",
   },

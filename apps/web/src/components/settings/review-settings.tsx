@@ -154,7 +154,7 @@ function isStudioOwned(orgId: string, connectionId: string): boolean {
     WellKnownOrgMCPId.REGISTRY,
     WellKnownOrgMCPId.COMMUNITY_REGISTRY,
     WellKnownOrgMCPId.DEV_ASSETS,
-    WellKnownOrgMCPId.COMMERCE_DISCOVERY,
+    WellKnownOrgMCPId.REPORTS,
   ].some((id) => id(orgId) === connectionId);
 }
 

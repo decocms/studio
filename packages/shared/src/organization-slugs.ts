@@ -26,6 +26,7 @@ export const RESERVED_ORGANIZATION_SLUGS: ReadonlySet<string> = new Set([
   "onboarding",
   "org",
   "report",
+  "reports-onboarding",
   "reset-password",
 ]);
 

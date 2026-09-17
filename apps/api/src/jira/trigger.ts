@@ -178,7 +178,18 @@ export async function startJiraRunForIssue(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
   issueKey: string,
-  opts: { instruction: string | null; actorId: string },
+  opts: {
+    instruction: string | null;
+    actorId: string;
+    /**
+     * Hand the run an EXISTING pull request to continue instead of opening
+     * one. `resolveConflict` further leads it with "this is approved but no
+     * longer merges — rebase and push the SAME one", which is what the merge
+     * action escalates to when the provider refuses on a conflict.
+     */
+    pr?: { number: number; url: string };
+    resolveConflict?: boolean;
+  },
 ): Promise<{
   item: TaskBoardItem;
   issue: IssueForPrompt;
@@ -196,6 +207,8 @@ export async function startJiraRunForIssue(
   await dispatchJiraRun(ctx, integration, item, issue, {
     instruction: opts.instruction,
     actorId: opts.actorId,
+    ...(opts.pr ? { pr: opts.pr } : {}),
+    ...(opts.resolveConflict ? { resolveConflict: true } : {}),
     // A person asked for this run, like a card's Re-run.
     userInitiated: true,
   });
@@ -212,6 +225,8 @@ async function dispatchJiraRun(
     instruction: string | null;
     actorId: string;
     userInitiated?: boolean;
+    pr?: { number: number; url: string };
+    resolveConflict?: boolean;
   },
 ): Promise<void> {
   const orgId = integration.organizationId;
@@ -225,6 +240,8 @@ async function dispatchJiraRun(
     await enqueueSuperAgentForTask(ctx, delegated, {
       instruction: opts.instruction ?? DEFAULT_JIRA_INSTRUCTION,
       ...(opts.userInitiated ? { userInitiated: true } : {}),
+      ...(opts.pr ? { pr: opts.pr } : {}),
+      ...(opts.resolveConflict ? { resolveConflict: true } : {}),
       source: {
         kind: "jira",
         issueKey: issue.key,

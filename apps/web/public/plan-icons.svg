@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="scale-icon" viewBox="0 0 16 16" fill="none">
+    <rect x="6.3999" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.2666" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.42017" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46655" y="1.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.59998" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 6.3999 5.86719)" fill="currentColor"/>
+    <rect x="9.59998" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 6.3999 4.80469)" fill="currentColor"/>
+    <rect x="10.6666" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 5.33325 4.80469)" fill="currentColor"/>
+    <rect x="9.59998" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 6.3999 3.73438)" fill="currentColor"/>
+    <rect x="10.6666" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 5.33325 3.73438)" fill="currentColor"/>
+    <rect x="11.7332" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 4.2666 3.73438)" fill="currentColor"/>
+    <rect x="10.6666" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 5.33325 2.66797)" fill="currentColor"/>
+    <rect x="9.59998" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.59998" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.3999" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.3999" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.3999" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.3999" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33325" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33325" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.19995" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 12.7999 8)" fill="currentColor"/>
+    <rect x="3.19995" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 12.7999 6.9375)" fill="currentColor"/>
+    <rect x="2.1333" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 13.8666 8)" fill="currentColor"/>
+    <rect x="2.1333" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 13.8666 6.9375)" fill="currentColor"/>
+    <rect x="2.1333" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 13.8666 5.86719)" fill="currentColor"/>
+    <rect x="3.19995" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 12.7999 9.07031)" fill="currentColor"/>
+    <rect x="7.46655" y="13.3359" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6666" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7332" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 4.2666 12.2695)" fill="currentColor"/>
+    <rect x="11.7332" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 4.2666 11.2031)" fill="currentColor"/>
+    <rect x="12.7999" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 3.19995 12.2695)" fill="currentColor"/>
+    <rect x="12.7999" y="13.3359" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect width="1.06667" height="1.06667" transform="matrix(-1 0 0 1 3.19995 13.3359)" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="starter-icon" viewBox="0 0 16 16" fill="none">
+    <rect x="8.00012" y="11.7344" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.00012" y="10.6641" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.00012" y="9.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.00012" y="8.53516" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.00012" y="7.46484" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.00012" y="6.39844" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.93347" y="5.33594" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.86682" y="5.33594" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.93347" y="4.26562" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.86682" y="4.26562" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.86682" y="3.19922" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.80005" y="3.19922" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.80005" y="4.26562" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.06677" y="6.39844" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.06677" y="5.33594" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.1334" y="5.33594" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.1334" y="4.26562" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.2001" y="5.33594" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.2001" y="4.26562" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.1334" y="6.39844" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.93347" y="8.53516" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.86682" y="8.53516" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.86682" y="9.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.80005" y="10.6641" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.79999" y="8.53516" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.80005" y="9.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.7334" y="10.6641" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.7334" y="9.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="growth-icon" viewBox="0 0 16 16" fill="none">
+    <rect x="7.4668" y="13.3359" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="12.2695" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53345" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.6001" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.6001" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6667" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6667" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7334" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6667" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7334" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53345" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.6001" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.6001" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6667" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6667" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7334" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6667" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7334" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.40002" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.40002" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.40002" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.26672" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.26672" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53345" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.4668" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53345" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53345" y="1.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.6001" y="1.60156" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.6001" y="2.66797" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.40002" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.26672" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.26672" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.20007" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.20007" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.26672" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="free-icon" viewBox="0 0 16 16" fill="none">
+    <rect x="7.46667" y="11.2031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46667" y="10.1328" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46667" y="9.07031" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="7.46667" y="8" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.40002" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.59998" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6666" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="8.53333" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.59998" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="9.59998" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6666" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7333" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="10.6666" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="11.7333" y="3.73438" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.2666" y="6.9375" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="6.40002" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.2666" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.19995" y="5.86719" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="3.19995" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="4.2666" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+    <rect x="5.33337" y="4.80469" width="1.06667" height="1.06667" fill="currentColor"/>
+  </symbol>
+</svg>

@@ -92,5 +92,9 @@
  * `jira-push` queue; in-flight v10 instances strand by design, the same way v7
  * stranded the billing sweeps. Nothing a person is waiting on: the pushes
  * mirrored board edits onto issues the board no longer copies.
+ *
+ * Version 12 adds `jiraPrMergeWorkflow`, whose steps are named per issue key.
+ * A new workflow only needs the bump because the source guard keys on the
+ * fileset; there are no v11 instances of it to strand.
  */
-export const DBOS_WORKFLOW_VERSION = "11";
+export const DBOS_WORKFLOW_VERSION = "12";

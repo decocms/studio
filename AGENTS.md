@@ -429,11 +429,13 @@ Above-the-fold variants will flash control first, because flags resolve after
 - A comment that takes a paragraph to justify a workaround is a signal the code is wrong, not the comment—fix the code, don't explain it away
 
 ### "Thread" vs "Chat" naming
-The domain concept is a **thread** — that's the name on the backend and in all code: DB columns/tables, storage, tools, API routes, wire payloads, query keys, types, hooks, variables, functions. Do NOT rename any of these to "chat".
+The domain concept is a **thread** — that's the name on the backend and in domain code: DB columns/tables, storage, tools, API routes, wire payloads, query keys, types, hooks, variables, functions. Do NOT rename any of these to "chat".
 
 User-facing copy calls it a **chat** — anything a person reads in the UI: JSX text, button/menu labels, placeholders, tooltips, `aria-label`s, headings, empty states, toasts/error messages. Write these as "chat".
 
-So a `thread`-named identifier can render "New chat" in a label; keep the code identifier as `thread` and only the displayed string as "chat". When in doubt: if it crosses the wire or lives in code, it's "thread"; if a user reads it, it's "chat".
+So a `thread`-named identifier can render "New chat" in a label; keep the domain identifier as `thread` and the displayed string as "chat".
+
+**UI composition exception:** `Chat`, `ChatLayout`, and their layout-only types and hooks (such as `useChatLayout`) name the conversation interface and its arrangement. This does not extend to domain state: use `threadId`, thread types, and thread API contracts even inside those components. `ChatLayout.Thread` names the conversation region; `ChatLayout.Content` names the adjacent route region.
 
 ### Internationalization (i18n)
 
@@ -463,22 +465,45 @@ The web UI (`apps/web/src`) is internationalized by a zero-dependency module at
 - `packages/ui` stays i18n-free: its few built-in English defaults are overridable via props;
   pass translated strings from the app.
 
+### UI layout composition
+
+- `Layout` owns the persistent application frame and its `Sidebar` / `Content` regions. Organization and settings routes share this frame; keep thread and runtime providers scoped to the route branch that uses them.
+- `ChatLayout` adds optional chat placement, visibility, and resizing through `ChatLayout.Thread` / `ChatLayout.Content`. Its context and `useChatLayout()` expose layout state; read agent and thread data from their domain providers and SDK hooks.
+- `Panel` owns the surface, `Topbar`, and `Toolbar` slots. `Page.Header` composes the shared compact title/breadcrumb/action row; `RoutePageHeader` supplies router `staticData.pageTitle` as a loading-safe fallback. Feature `Page.Title` / `Page.Actions` contribute via portals. View tabs use `Page.Tabs` / `Page.Tab` in `Panel.Toolbar.Left`; path selectors and tools use `Panel.Toolbar.Center/Right`. Deep controls use `.Target` / `.Portal`, scoped to the nearest panel.
+- Route components use `*Route` and compose their content directly; feature screens may use `*Page`. Chat destinations use `ChatLayout.Content` with their own actions and drawer; organization Settings composes `Panel`. Keep suspending feature reads below the content boundary.
+- `Page.Content` owns document scrolling; `Page.Container` owns width and spacing; `Page.Title` owns the heading. Canvas editors manage their own inner panes inside `Panel.Content`.
+- See [the architecture guide](apps/web/docs/component-architecture.md) for examples and the migration map.
+
 ### React 19 Patterns
+
 - Uses React 19 with React Compiler (babel-plugin-react-compiler)
-- **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.ts`)—prefer alternatives
-- **DO NOT** use `useMemo`/`useCallback`/`memo` (banned by `plugins/ban-memoization.ts`)—React 19 compiler handles optimization
-- Tailwind v4 design system with tokens enforced by `plugins/ensure-tailwind-design-system-tokens.ts`
+- **DO NOT** use `useEffect` (banned by `plugins/ban-use-effect.js`)—prefer alternatives
+- **DO NOT** use `useMemo`/`useCallback`/`memo` (banned by `plugins/ban-memoization.js`)—React 19 compiler handles optimization
+- Tailwind v4 design system with tokens enforced by `plugins/ensure-tailwind-design-system-tokens.js`—use `text-success`, `bg-special`, `text-warning`, never a raw palette class like `text-emerald-600`
 
 ### Custom Oxlint Plugins
-Located in `plugins/`:
-- `enforce-kebab-case-file-names.ts` - kebab-case for shared package files
-- `enforce-query-key-constants.ts` - query keys must use constants
-- `ban-use-effect.ts` - ban useEffect
-- `ban-memoization.ts` - ban useMemo/useCallback/memo
-- `ensure-tailwind-design-system-tokens.ts` - enforce Tailwind consistency
+Located in `plugins/`, every one registered in `.oxlintrc.json`:
+- `enforce-kebab-case-file-names.js` - kebab-case for shared package files
+- `enforce-query-key-constants.js` - query keys must use constants
+- `ban-use-effect.js` - ban useEffect
+- `ban-memoization.js` - ban useMemo/useCallback/memo
+- `require-cn-classname.js` - className interpolation goes through `cn()`
+- `ban-direct-auth-client-organization.js` - org-scoped auth calls go through `useOrgAuthClient()`
+- `ban-ref-current-assignment.js` - no `.current` access during render
+- `ensure-tailwind-design-system-tokens.js` - design system tokens, not raw Tailwind palette
 - `ban-cross-tree-imports.js` - prevent packages from reaching into app source
 - `ban-web-server-imports.js` - enforce the `apps/web` ↛ `apps/api/src` boundary
 - `ban-e2e-app-imports.js` - deny-by-default import allowlist for the `packages/e2e` suite (see E2E isolation below)
+- `ban-git-provider-reachthrough.js` - nothing reaches past `@/git-providers` into a provider dir
+
+oxlint's JS plugin support is experimental and **a plugin that throws does not
+fail the lint** — it is reported as a diagnostic with no rule code, and
+`oxlint` still exits 0. A silently dead plugin is indistinguishable from a
+clean codebase, so a green `bun run lint` proves nothing by itself. Every
+plugin therefore has a fixture in `plugins/js-plugins-smoke.test.ts` that must
+produce a diagnostic; adding a plugin to `.oxlintrc.json` means adding its
+fixture there, and the suite fails if the two lists drift. Pin `oxlint`
+exactly (no `^`) and re-run `bun test ./plugins` on every bump.
 
 ### TypeScript
 - Favor explicit types over `any`

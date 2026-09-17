@@ -1,6 +1,9 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { ChevronRight } from "@untitledui/icons";
 import type { ComponentType, SVGProps } from "react";
 import { useProjectContext } from "@/sdk";
-import { ChevronRight, Stars01, Upload01, Zap } from "@untitledui/icons";
+import { type LibraryFileView, matchesLibraryFileView } from "./file-view";
+import { Stars01, Upload01, Zap } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import {
@@ -25,7 +28,6 @@ import {
   FileCard,
   FolderCard,
   type PublicState,
-  RecentFileCard,
   SkillCard,
   timeAgo,
 } from "./cards";
@@ -162,6 +164,33 @@ function CardsGrid({ children }: { children: React.ReactNode }) {
   );
 }
 
+function FileEntries({
+  view,
+  children,
+}: {
+  view: LibraryFileView;
+  children: React.ReactNode;
+}) {
+  const t = useT();
+  const compact = useCompactPageLayout();
+  if (!compact || view === "media") return <CardsGrid>{children}</CardsGrid>;
+  return (
+    <div className="@container/library-files min-w-0">
+      <div className="flex items-center gap-3 border-b border-border/60 px-3 pb-2 text-xs text-muted-foreground">
+        <span className="min-w-0 flex-1">{t("library.library.name")}</span>
+        <span className="hidden w-32 shrink-0 @min-xl/library-files:block">
+          {t("library.library.type")}
+        </span>
+        <span className="w-20 shrink-0 text-right">
+          {t("library.library.updated")}
+        </span>
+        <span className="w-6" />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function GridSkeleton({ rows = 1 }: { rows?: number }) {
   return (
     <CardsGrid>
@@ -247,67 +276,6 @@ function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
 }
 
 /**
- * Location trail — the only place the current folder is named (there's no page
- * heading duplicating it). The org's home volume IS the top of the tree, so its
- * segment folds into the root crumb, which is labelled with the org itself; the
- * sibling volumes (uploads/outputs/public) hang off that crumb.
- */
-export function Breadcrumbs({
-  segments,
-  onNavigate,
-}: {
-  segments: string[];
-  onNavigate: (path: string) => void;
-}) {
-  const { org } = useProjectContext();
-  const rest = segments[0] === HOME_MOUNT_PATH ? segments.slice(1) : segments;
-  const offset = segments.length - rest.length;
-  const atRoot = rest.length === 0;
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
-      {atRoot ? (
-        <span className="truncate font-medium text-foreground">
-          {homeDisplayName(org.slug)}
-        </span>
-      ) : (
-        <button
-          type="button"
-          className="truncate text-muted-foreground hover:text-foreground hover:underline"
-          onClick={() => onNavigate(HOME_MOUNT_PATH)}
-        >
-          {homeDisplayName(org.slug)}
-        </button>
-      )}
-      {rest.map((seg, i) => {
-        const prefix = segments.slice(0, offset + i + 1).join("/");
-        const isLast = i === rest.length - 1;
-        return (
-          <span key={prefix} className="flex min-w-0 items-center gap-1">
-            <ChevronRight
-              size={12}
-              className="shrink-0 text-muted-foreground"
-            />
-            {isLast ? (
-              <span className="truncate font-medium text-foreground">
-                {segmentLabel(seg)}
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="truncate text-muted-foreground hover:text-foreground hover:underline"
-                onClick={() => onNavigate(prefix)}
-              >
-                {segmentLabel(seg)}
-              </button>
-            )}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
  * Search results, shown in place of whatever listing is active while the search
  * box has a query. Cross-volume at the home root, narrowed to the current
  * folder's subtree everywhere else (`scope`) — so the placeholder's promise
@@ -317,6 +285,7 @@ export function SearchResultsView({
   query,
   scope,
   stale,
+  fileView,
   onOpenFile,
   onShare,
   onDelete,
@@ -326,10 +295,12 @@ export function SearchResultsView({
   scope?: OrgFsSearchScope;
   /** The input is ahead of `query` (still inside the debounce window). */
   stale: boolean;
+  fileView: LibraryFileView;
   onOpenFile: (previewPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const fileUrl = useOrgFsFileUrl();
@@ -346,7 +317,9 @@ export function SearchResultsView({
     });
 
   if (search.isPending) return <GridSkeleton rows={2} />;
-  const results = search.data ?? [];
+  const results = (search.data ?? []).filter((entry) =>
+    matchesLibraryFileView(entry.path, fileView),
+  );
   if (results.length === 0) {
     return (
       <EmptyNote>{t("library.libraryViews.noFilesMatch", { query })}</EmptyNote>
@@ -363,12 +336,16 @@ export function SearchResultsView({
       <SectionLabel>
         {t("library.libraryViews.searchResults", { count: results.length })}
       </SectionLabel>
-      <CardsGrid>
+      <FileEntries view={fileView}>
         {results.map((e) => {
           // Hits from the shared public sets are read-only: no share/delete.
           const readOnly = publicSetOf(e.volume) !== null;
           return (
             <FileCard
+              layout={
+                !compact ? "card" : fileView === "media" ? "media" : "row"
+              }
+              size={e.size}
               key={`${e.volume}/${e.path}`}
               filename={basename(e.path)}
               updatedAt={e.updatedAt}
@@ -386,7 +363,7 @@ export function SearchResultsView({
             />
           );
         })}
-      </CardsGrid>
+      </FileEntries>
     </div>
   );
 }
@@ -397,14 +374,17 @@ export function SearchResultsView({
  * volume, so it would be a lie inside any single folder.
  */
 function RecentlyAdded({
+  fileView,
   onOpenFile,
   onShare,
   onDelete,
 }: {
+  fileView: LibraryFileView;
   onOpenFile: (previewPath: string) => void;
   onShare: (target: ShareTarget) => void;
   onDelete: (pending: PendingDelete) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const recent = useOrgFsRecent();
@@ -428,15 +408,18 @@ function RecentlyAdded({
       </div>
     );
   }
-  const recentlyAdded = (recent.data ?? []).slice(0, RECENTLY_ADDED_COUNT);
+  const recentlyAdded = (recent.data ?? [])
+    .filter((entry) => matchesLibraryFileView(entry.path, fileView))
+    .slice(0, RECENTLY_ADDED_COUNT);
   if (recentlyAdded.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-3">
       <SectionLabel>{t("library.libraryViews.recentlyAdded")}</SectionLabel>
-      <CardsGrid>
+      <FileEntries view={fileView}>
         {recentlyAdded.map((e) => (
-          <RecentFileCard
+          <FileCard
+            layout={!compact ? "media" : fileView === "media" ? "media" : "row"}
             key={`${e.volume}/${e.path}`}
             filename={basename(e.path)}
             updatedAt={e.updatedAt}
@@ -451,7 +434,7 @@ function RecentlyAdded({
             }
           />
         ))}
-      </CardsGrid>
+      </FileEntries>
     </div>
   );
 }
@@ -496,6 +479,7 @@ export function PublicSetsView({
 export function VolumeView({
   location,
   onOpenDir,
+  fileView,
   onOpenFile,
   onOpenSkill,
   onOpenBrand,
@@ -507,6 +491,7 @@ export function VolumeView({
 }: {
   location: LibraryLocation;
   onOpenDir: (path: string) => void;
+  fileView: LibraryFileView;
   onOpenFile: (previewPath: string) => void;
   onOpenSkill: (skillPath: string) => void;
   onOpenBrand: (brandPath: string) => void;
@@ -516,6 +501,7 @@ export function VolumeView({
   onContextMenu?: (path: string, kind: "file" | "dir") => void;
   onMove?: (fromPath: string, toDir: string) => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const volume = location.volume ?? "";
@@ -571,7 +557,9 @@ export function VolumeView({
   const dirs = entries.filter(
     (e) => e.kind === "dir" && !e.hasSkill && !e.hasBrand,
   );
-  const files = entries.filter((e) => e.kind === "file");
+  const files = entries.filter(
+    (e) => e.kind === "file" && matchesLibraryFileView(e.path, fileView),
+  );
 
   // An empty home root still has the system folders and the recent feed to show.
   if (entries.length === 0 && !location.isHomeRoot) {
@@ -686,9 +674,13 @@ export function VolumeView({
       {files.length > 0 && (
         <div className="flex flex-col gap-3">
           <SectionLabel>{t("library.libraryViews.files")}</SectionLabel>
-          <CardsGrid>
+          <FileEntries view={fileView}>
             {files.map((e) => (
               <FileCard
+                layout={
+                  !compact ? "card" : fileView === "media" ? "media" : "row"
+                }
+                size={e.size}
                 key={e.path}
                 filename={basename(e.path)}
                 updatedAt={e.updatedAt}
@@ -704,16 +696,75 @@ export function VolumeView({
                 })}
               />
             ))}
-          </CardsGrid>
+          </FileEntries>
         </div>
+      )}
+      {fileView !== "all" && files.length === 0 && (
+        <EmptyNote>{t("library.library.noFilesInView")}</EmptyNote>
       )}
       {location.isHomeRoot && (
         <RecentlyAdded
+          fileView={fileView}
           onOpenFile={onOpenFile}
           onShare={onShare}
           onDelete={onDelete}
         />
       )}
     </>
+  );
+}
+
+export function Breadcrumbs({
+  segments,
+  onNavigate,
+}: {
+  segments: string[];
+  onNavigate: (path: string) => void;
+}) {
+  const { org } = useProjectContext();
+  const rest = segments[0] === HOME_MOUNT_PATH ? segments.slice(1) : segments;
+  const offset = segments.length - rest.length;
+  const atRoot = rest.length === 0;
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1 text-sm">
+      {atRoot ? (
+        <span className="truncate font-medium text-foreground">
+          {homeDisplayName(org.slug)}
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="truncate text-muted-foreground hover:text-foreground hover:underline"
+          onClick={() => onNavigate(HOME_MOUNT_PATH)}
+        >
+          {homeDisplayName(org.slug)}
+        </button>
+      )}
+      {rest.map((seg, i) => {
+        const prefix = segments.slice(0, offset + i + 1).join("/");
+        const isLast = i === rest.length - 1;
+        return (
+          <span key={prefix} className="flex min-w-0 items-center gap-1">
+            <ChevronRight
+              size={12}
+              className="shrink-0 text-muted-foreground"
+            />
+            {isLast ? (
+              <span className="truncate font-medium text-foreground">
+                {segmentLabel(seg)}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="truncate text-muted-foreground hover:text-foreground hover:underline"
+                onClick={() => onNavigate(prefix)}
+              >
+                {segmentLabel(seg)}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </div>
   );
 }

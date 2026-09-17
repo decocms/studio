@@ -32,7 +32,9 @@ import {
 import type { Database } from "@/storage/types";
 import { getGithubAppAuth } from "./github/app-auth";
 import { GithubProviderClient } from "./github/client";
+import { githubCliEnabled, githubCliTokenSource } from "./github/cli-auth";
 import { GitlabProviderClient } from "./gitlab/client";
+import { BitbucketProviderClient } from "./bitbucket/client";
 import {
   type GitProviderClient,
   GitProviderError,
@@ -93,6 +95,13 @@ function grantKind(
  */
 export function accountIsServable(account: GitProviderAccountRecord): boolean {
   if (account.status !== "active") return false;
+  if (account.authKind === "github_cli") {
+    return (
+      account.type === "github" &&
+      account.host === "github.com" &&
+      githubCliEnabled()
+    );
+  }
   if (account.type === "github" && account.authKind === "github_app") {
     return (
       getGithubAppAuth() !== null &&
@@ -134,6 +143,12 @@ export function clientForAccount(
   );
   switch (account.type) {
     case "github": {
+      if (account.authKind === "github_cli") {
+        return new GithubProviderClient({
+          host: account.host,
+          tokenSource: githubCliTokenSource(account),
+        });
+      }
       if (account.authKind === "github_app") {
         const appAuth = getGithubAppAuth();
         if (!appAuth || account.installationId === null) {
@@ -169,6 +184,17 @@ export function clientForAccount(
           grantKind(account.authKind),
         ),
       });
+    case "bitbucket":
+      return new BitbucketProviderClient({
+        // `login` is a workspace slug for a pasted token, a user for OAuth.
+        workspace: account.authKind === "token" ? account.login : null,
+        host: account.host,
+        tokenSource: grantTokenSource(
+          credentials,
+          account.id,
+          grantKind(account.authKind),
+        ),
+      });
   }
 }
 
@@ -181,6 +207,7 @@ export interface RepoCredential {
 /** The token kind an account's stored credential produces, before minting it. */
 function tokenKindOf(account: GitProviderAccountRecord): GitTokenKind {
   if (account.authKind === "github_app") return "installation";
+  if (account.authKind === "github_cli") return "token";
   return grantKind(account.authKind);
 }
 

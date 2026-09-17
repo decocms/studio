@@ -6,59 +6,39 @@
  * real path of its own, then the org's main agent (`useMainAgentId`), then
  * Home.
  */
-import { Navigate, useSearch } from "@tanstack/react-router";
+import { getRouteApi, Navigate } from "@tanstack/react-router";
 import { useProjectContext } from "@/sdk";
 import { DESTINATION_ROUTE } from "@/hooks/use-destination-route";
+import { LegacyCanonicalNavigate } from "@/layouts/legacy-main-redirect";
+import { translateLegacyMainParam } from "@/lib/legacy-route-translation";
 
-/**
- * `?main=` values that became destinations of their own. A deep link minted
- * before the promotion (a shared `/$org?main=board&task=…`) keeps working by
- * landing on the path instead of the overlay — the same table
- * `translateLegacyThreadRoute` applies to `/$org/$taskId`.
- */
-const DESTINATION_BY_MAIN_TAB = {
-  board: DESTINATION_ROUTE.tasks,
-  files: DESTINATION_ROUTE.library,
-  reports: DESTINATION_ROUTE.reports,
-  overview: DESTINATION_ROUTE.home,
-} as const;
-
-type PromotedMainTab = keyof typeof DESTINATION_BY_MAIN_TAB;
-
-function isPromotedMainTab(main: string | undefined): main is PromotedMainTab {
-  return !!main && main in DESTINATION_BY_MAIN_TAB;
-}
+const route = getRouteApi("/shell/$org/org-shell/");
 
 export default function OrgHome() {
   const { org } = useProjectContext();
   /** `main` carries a legacy deep link into a view (e.g. `board` = Tasks,
-   *  `files` = Library) through the redirect. The four destination-backed
+   *  `files` = Library) through the redirect. The destination-backed
    *  values land on their own page below; every other value rides along to the
-   *  chat route verbatim, where `<LegacyMainRedirect />` retires it into the
-   *  `{-$panel}` segment — the single place that translation lives. `task`
-   *  rides along to the board only, which is the one destination that retires
-   *  it into its path. */
-  const { connect, siteUrl, main, task, sidepanel, virtualmcpid } = useSearch({
-    strict: false,
-  }) as {
-    connect?: string;
-    siteUrl?: string;
-    main?: string;
-    task?: string;
-    sidepanel?: boolean;
-    virtualmcpid?: string;
-  };
+   *  agent route, where `<LegacyMainRedirect />` retires it into its canonical
+   *  child route. `task` rides along to the board only, which is the one
+   *  destination that retires it into its path. */
+  const search = route.useSearch();
+  const { main, virtualmcpid } = search;
 
   // A promoted `?main=` outranks everything: the URL already says which page.
-  if (isPromotedMainTab(main)) {
-    return (
-      <Navigate
-        to={DESTINATION_BY_MAIN_TAB[main]}
-        params={{ org: org.slug }}
-        search={{ connect, siteUrl, task, sidepanel }}
-        replace
-      />
-    );
+  // Use the shared translator so each destination reclaims its own payload
+  // (Library `path`, Tasks filters/card, and shared layout state) before the
+  // compatibility schema is left behind.
+  if (main !== undefined) {
+    const translation = translateLegacyMainParam({
+      org: org.slug,
+      agentId: virtualmcpid,
+      main,
+      search,
+    });
+    if (translation?.kind === "canonical") {
+      return <LegacyCanonicalNavigate target={translation} />;
+    }
   }
 
   /** The scope the URL NAMES, and nothing else. This resolver is where
@@ -67,14 +47,15 @@ export default function OrgHome() {
    *  through to the org home — which is the page worth landing on now that it
    *  opens on the org's agents. Nothing here reads org settings any more, so
    *  the landing no longer waits on a query before it can decide. */
-  const project = virtualmcpid ?? null;
+  const project = virtualmcpid?.trim() || null;
 
   if (project) {
     return (
       <Navigate
-        to={DESTINATION_ROUTE.agents}
-        params={{ org: org.slug, panel: undefined }}
-        search={{ virtualmcpid: project, connect, siteUrl, sidepanel, main }}
+        to={DESTINATION_ROUTE.projects}
+        params={{ org: org.slug, agentId: project }}
+        search={{ ...search, virtualmcpid: undefined }}
+        hash={true}
         replace
       />
     );
@@ -86,7 +67,8 @@ export default function OrgHome() {
     <Navigate
       to={DESTINATION_ROUTE.home}
       params={{ org: org.slug }}
-      search={{ connect, siteUrl, sidepanel, main, virtualmcpid }}
+      search={{ ...search, virtualmcpid: undefined }}
+      hash={true}
       replace
     />
   );

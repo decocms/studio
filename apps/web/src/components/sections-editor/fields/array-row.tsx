@@ -22,6 +22,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
+import { MissingRequiredDot } from "../missing-required-dot";
 
 // Width/margin snap instantly (no visible slide) while opacity does the
 // actual animating. On reveal the snap has no delay, so the button is
@@ -65,9 +66,11 @@ function actionButtonVisibilityClass(reserved: boolean, active: boolean) {
 export function ArrayRowContent({
   labelText,
   imageSrc,
+  missingRequired,
 }: {
   labelText: string;
   imageSrc?: string;
+  missingRequired?: boolean;
 }) {
   return (
     <>
@@ -82,6 +85,7 @@ export function ArrayRowContent({
           />
         )}
         <span className="min-w-0 truncate">{labelText}</span>
+        {missingRequired && <MissingRequiredDot className="self-start" />}
       </div>
     </>
   );
@@ -92,6 +96,7 @@ export function SortableArrayRow({
   labelText,
   imageSrc,
   hidden,
+  missingRequired,
   onToggleHidden,
   onOpen,
   onDuplicate,
@@ -101,6 +106,7 @@ export function SortableArrayRow({
   labelText: string;
   imageSrc?: string;
   hidden?: boolean;
+  missingRequired?: boolean;
   onToggleHidden?: () => void;
   onOpen: () => void;
   onDuplicate: () => void;
@@ -136,7 +142,7 @@ export function SortableArrayRow({
         }
       }}
       className={cn(
-        "group flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
+        "group relative flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
         isDragging ? "cursor-grabbing" : "cursor-pointer",
       )}
       title={labelText}
@@ -158,6 +164,9 @@ export function SortableArrayRow({
       >
         {labelText}
       </span>
+      {missingRequired && (
+        <MissingRequiredDot className="absolute -right-0.5 -top-0.5" />
+      )}
       {onToggleHidden && (
         <Tooltip>
           <TooltipTrigger asChild>

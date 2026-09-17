@@ -40,6 +40,71 @@ export function stripBindingMetadata(value: unknown): unknown {
   return value;
 }
 
+// Common HTTP servers/proxies reject a single header line above ~8-16KB.
+const MAX_HEADER_VALUE_BYTES = 8 * 1024;
+
+/** HTTP header values must be ByteStrings (code points 0-255) with no CR/LF —
+ *  `fetch`/undici throws on either violation instead of encoding/stripping it.
+ *  Run metadata can carry arbitrary webhook-supplied text (e.g. non-Latin issue
+ *  titles) and custom connection headers are org-configured free text (e.g.
+ *  pasted with a trailing newline), so this must be checked before the value
+ *  is ever handed to a request's headers — otherwise one bad value throws and
+ *  fails the whole outbound request instead of just being dropped. */
+function isHeaderSafe(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code > 255 || code === 13 || code === 10) return false;
+  }
+  return true;
+}
+
+/**
+ * Serialize run metadata for the outbound run-metadata header, dropping it
+ * (rather than truncating, which would produce invalid JSON) when it's too
+ * large, or unsafe, to forward as a header.
+ */
+export function serializeRunMetadataHeader(
+  runMetadata: Record<string, string> | undefined,
+): string | null {
+  if (!runMetadata || Object.keys(runMetadata).length === 0) return null;
+  const serialized = JSON.stringify(runMetadata);
+  // Cap is in bytes, not UTF-16 code units, so measure the encoded size.
+  const byteLength = new TextEncoder().encode(serialized).length;
+  if (byteLength > MAX_HEADER_VALUE_BYTES) return null;
+  return isHeaderSafe(serialized) ? serialized : null;
+}
+
+/**
+ * Drop any org-configured custom connection header whose key or value is
+ * unsafe (outside the HTTP header ByteString range, or containing a raw
+ * CR/LF) or oversized — unlike `configuration_state`/`metadata`,
+ * `connection_headers.headers` has no schema-level size or byte-range check,
+ * but flows straight into every outbound request's headers, where an unsafe
+ * key or value throws in `fetch`/undici and an oversized value gets the
+ * request rejected with 431 by the downstream server/proxy.
+ */
+export function sanitizeCustomHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!headers) return {};
+  const safe: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const byteLength = new TextEncoder().encode(value).length;
+    if (
+      !isHeaderSafe(key) ||
+      byteLength > MAX_HEADER_VALUE_BYTES ||
+      !isHeaderSafe(value)
+    ) {
+      console.warn(
+        `[Proxy] Dropping unsafe or oversized custom header "${key}"`,
+      );
+      continue;
+    }
+    safe[key] = value;
+  }
+  return safe;
+}
+
 /**
  * Build request headers for HTTP-based connections
  * Handles configuration token issuance and OAuth token refresh
@@ -148,14 +213,17 @@ async function _buildRequestHeaders(
 
   // Forward per-run metadata (e.g. from a webhook trigger) so a downstream MCP
   // server can read run-scoped context from the request instead of a tool arg.
-  if (
+  const runMetadataHeader = serializeRunMetadataHeader(
+    ctx.metadata.runMetadata,
+  );
+  if (runMetadataHeader) {
+    writeStudioHeader(headers, "runMetadata", runMetadataHeader);
+  } else if (
     ctx.metadata.runMetadata &&
     Object.keys(ctx.metadata.runMetadata).length > 0
   ) {
-    writeStudioHeader(
-      headers,
-      "runMetadata",
-      JSON.stringify(ctx.metadata.runMetadata),
+    console.warn(
+      `[Proxy] runMetadata for connection ${connectionId} exceeds ${MAX_HEADER_VALUE_BYTES} bytes, dropping header`,
     );
   }
 

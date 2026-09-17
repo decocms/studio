@@ -98,7 +98,7 @@ const EDITOR_BASE_OPTIONS: EditorProps["options"] = {
 };
 
 const LoadingPlaceholder = (
-  <div className="flex items-center justify-center h-full w-full text-gray-400">
+  <div className="flex items-center justify-center h-full w-full text-muted-foreground">
     <Spinner size="sm" />
   </div>
 );

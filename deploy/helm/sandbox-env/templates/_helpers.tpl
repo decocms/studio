@@ -492,3 +492,7 @@ that cannot mount, or one that silently mounts nothing:
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{- define "sandbox-env.signingKeySecretName" -}}
+{{- printf "studio-sandbox-signing-key-%s" (include "sandbox-env.envName" .) -}}
+{{- end }}

@@ -1,6 +1,17 @@
 import type { GuidePrompt } from "./index";
+import {
+  START_TASK_PROMPT,
+  START_TASK_PROMPT_NAME,
+} from "@decocms/shared/task-intake";
 
 export const prompts: GuidePrompt[] = [
+  {
+    name: START_TASK_PROMPT_NAME,
+    title: "Start task",
+    description:
+      "Find the right repository, create a task, and start the agent.",
+    text: () => START_TASK_PROMPT,
+  },
   {
     name: "task",
     title: "Create Task",

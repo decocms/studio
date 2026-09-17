@@ -45,5 +45,6 @@ export { ORGANIZATION_MEMBER_UPDATE_ROLE } from "./member-update-role";
 
 // Billing (per-org subscription)
 export { ORGANIZATION_BILLING_CHECKOUT_START } from "./billing-checkout";
+export { ORGANIZATION_BILLING_PLAN_PRICES } from "./billing-plan-prices";
 export { ORGANIZATION_BILLING_PORTAL } from "./billing-portal";
 export { ORGANIZATION_TASK_QUOTA_GET } from "./task-quota-get";

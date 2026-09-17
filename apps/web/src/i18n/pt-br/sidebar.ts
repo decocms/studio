@@ -1,6 +1,7 @@
 import type { sidebar as sidebarEn } from "../en/sidebar.ts";
 
 export const sidebar = {
+  "sidebar.projects.addProject": "Adicionar projeto",
   "sidebar.archiveWorktreeDialog.cancel": "Cancelar",
   "sidebar.archiveWorktreeDialog.confirm": "Continuar",
   "sidebar.archiveWorktreeDialog.reclaimFailed":
@@ -18,7 +19,7 @@ export const sidebar = {
   "sidebar.navDestinations.library": "Biblioteca",
   "sidebar.navDestinations.reports": "Relatórios",
   "sidebar.navDestinations.settings": "Configurações",
-  "sidebar.navDestinations.tasks": "Tarefas",
+  "sidebar.navDestinations.tasks": "Board",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.siteEditor": "Editor do site",
   "sidebar.projects.heading": "Projetos",
@@ -37,12 +38,10 @@ export const sidebar = {
   "sidebar.picker.title": "Organiza\u00e7\u00f5es e projetos",
   "sidebar.picker.moreExist":
     "H\u00e1 mais projetos do que cabem aqui \u2014 continue digitando",
-  "sidebar.picker.verbLeaves": "\u00b7 sai de {name}",
   "sidebar.picker.verbTravel": "Abrir {name}",
   "sidebar.showMoreButton.ariaLabel": "Mostrar mais tarefas",
   "sidebar.showMoreButton.loading": "Carregando…",
   "sidebar.showMoreButton.showMore": "Mostrar mais",
-  "sidebar.sidebarFooter.addConnection": "Adicionar conexão",
   "sidebar.sidebarFooter.inviteMembers": "Convidar membros",
   "sidebar.sidebarResizeHandle.ariaLabel": "Redimensionar barra lateral",
   "sidebar.sidebarResizeHandle.title":
@@ -60,6 +59,7 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "Lista",
   "sidebar.taskGroupsList.viewStatus": "Status",
+  "sidebar.taskGroupsList.toggleStatusGroup": "Alternar grupo {status}",
   "sidebar.inbox.title": "Caixa de entrada",
   "sidebar.inbox.markAllRead": "Marcar tudo como lido",
   "sidebar.inbox.emptyTitle": "Nada por aqui ainda",

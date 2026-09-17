@@ -73,6 +73,7 @@ export function CollectionTable<T = Record<string, unknown>>({
         <TableRow className="h-9 hover:bg-transparent border-b border-border">
           {columns.map((col, idx) => {
             const isActiveSort = sortKey === col.id;
+            const isSortable = col.sortable && onSort;
             return (
               <TableHead
                 key={col.id}
@@ -83,8 +84,27 @@ export function CollectionTable<T = Record<string, unknown>>({
                   col.rowClassName,
                   col.cellClassName,
                 )}
-                onClick={
-                  col.sortable && onSort ? () => onSort(col.id) : undefined
+                aria-sort={
+                  isActiveSort && sortDirection
+                    ? sortDirection === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : col.sortable
+                      ? "none"
+                      : undefined
+                }
+                role={isSortable ? "button" : undefined}
+                tabIndex={isSortable ? 0 : undefined}
+                onClick={isSortable ? () => onSort(col.id) : undefined}
+                onKeyDown={
+                  isSortable
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSort(col.id);
+                        }
+                      }
+                    : undefined
                 }
               >
                 <span className="flex items-center gap-1">

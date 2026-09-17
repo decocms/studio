@@ -133,7 +133,7 @@ export function InsertBlockDivider({
           <button
             type="button"
             aria-label={t("sandbox.blockPicker.insertBlockButton")}
-            className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background text-muted-foreground transition-all hover:border-primary hover:text-primary cursor-pointer"
+            className="relative z-10 flex h-6 w-6 items-center justify-center classic:rounded-full compact:rounded-lg border bg-background text-muted-foreground transition-all hover:border-primary hover:text-primary cursor-pointer"
           >
             <Plus size={14} />
           </button>

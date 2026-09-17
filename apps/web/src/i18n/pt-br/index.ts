@@ -1,3 +1,4 @@
+import { page } from "./page";
 import { virtualMcp } from "./virtual-mcp.ts";
 import { user } from "./user.ts";
 import { tools } from "./tools.ts";
@@ -28,11 +29,13 @@ import { deck } from "./deck.ts";
 import { discover } from "./discover.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
+import { experiments } from "./experiments.ts";
 import { common } from "./common.ts";
-import { commerceOnboarding } from "./commerce-onboarding.ts";
+import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
 import { chat } from "./chat.ts";
+import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
 import { agentShellLayout } from "./agent-shell-layout.ts";
 import { admin } from "./admin.ts";
@@ -58,6 +61,7 @@ export const ptBR = {
   ...orgs,
   ...monitoring,
   ...mainPanelTabs,
+  ...experiments,
   ...markdownEditor,
   ...library,
   ...layouts,
@@ -74,10 +78,11 @@ export const ptBR = {
   ...commandPalette,
   ...connections,
   ...common,
-  ...commerceOnboarding,
+  ...reportsOnboarding,
   ...collections,
   ...chooseEditor,
   ...chat,
+  ...credits,
   ...automations,
   ...agentShellLayout,
   ...admin,
@@ -85,4 +90,5 @@ export const ptBR = {
   ...settings,
   ...announcements,
   ...assets,
+  ...page,
 } satisfies Record<TranslationKey, string>;

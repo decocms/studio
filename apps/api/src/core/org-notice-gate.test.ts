@@ -56,6 +56,24 @@ describe("isBlockableOrgRequest", () => {
     ).toBe(false);
   });
 
+  it("lets the notice service reactivate only through its exact route", () => {
+    expect(
+      isBlockableOrgRequest(
+        "DELETE",
+        "/api/acme/internal/organization-notices",
+      ),
+    ).toBe(false);
+    expect(
+      isBlockableOrgRequest(
+        "POST",
+        "/api/acme/internal/organization-notices/anything",
+      ),
+    ).toBe(true);
+    expect(
+      isBlockableOrgRequest("POST", "/api/acme/internal/anything-else"),
+    ).toBe(true);
+  });
+
   it("ignores a path with no route under the org segment", () => {
     expect(isBlockableOrgRequest("POST", "/api/acme")).toBe(false);
     expect(isBlockableOrgRequest("POST", "/api/acme/")).toBe(false);

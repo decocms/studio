@@ -2019,6 +2019,13 @@ export interface TaskBoardItem {
   /** `owner/name` of the repo (site) this task pertains to. Nullable: tasks
    *  created org-wide (no site context) carry none. */
   repo: string | null;
+  /**
+   * The first-class repository this task was written against, when its writer
+   * knew it. Preferred over `repo` when binding a run's checkout: a name can
+   * match two rows in an org that mirrors a repository across hosts, an id
+   * cannot. Null for a card that names only a name, or none at all.
+   */
+  repositoryId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -2252,8 +2259,8 @@ export interface NotificationTable {
 
 // ============================== Git providers ===============================
 
-export type GitProviderKindColumn = "github" | "gitlab";
-export type GitAuthKindColumn = "github_app" | "oauth" | "token";
+export type GitProviderKindColumn = "github" | "gitlab" | "bitbucket";
+export type GitAuthKindColumn = "github_app" | "oauth" | "token" | "github_cli";
 export type GitAccountStatusColumn = "active" | "revoked";
 
 export interface GitProviderAccountTable {
@@ -2341,6 +2348,53 @@ export interface RepositoryTable {
   created_by: string | null;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** A/B experiments — per-site metadata (the traffic-split block lives in the
+ *  site's decofile, not here). */
+export interface ExperimentVariant {
+  id: string;
+  weight: number;
+  role?: "control" | "treatment" | null;
+}
+
+export interface ExperimentTable {
+  id: string;
+  organization_id: string;
+  /** Admin site slug the experiment belongs to. */
+  site: string;
+  /** Stable per-site key (also the decofile block key). */
+  key: string;
+  name: string;
+  /** draft | running | paused | ended. */
+  status: string;
+  goals: JsonObject<string[]>;
+  variants: JsonObject<ExperimentVariant[]>;
+  started_at: ColumnType<
+    Date | null,
+    Date | string | null,
+    Date | string | null
+  >;
+  ended_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+  created_by: string;
+  created_at: ColumnType<Date, Date | string, never>;
+  updated_at: ColumnType<Date, Date | string, Date | string>;
+}
+
+export interface Experiment {
+  id: string;
+  organizationId: string;
+  site: string;
+  key: string;
+  name: string;
+  status: "draft" | "running" | "paused" | "ended";
+  goals: string[];
+  variants: ExperimentVariant[];
+  startedAt: string | null;
+  endedAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Database extends PrivateRegistryDatabase {
@@ -2432,6 +2486,7 @@ export interface Database extends PrivateRegistryDatabase {
 
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
+  experiments: ExperimentTable;
 
   // Deployment-admin billing warning / block pinned on an org
   organization_notices: OrganizationNoticeTable;

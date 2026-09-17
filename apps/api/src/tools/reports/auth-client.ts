@@ -1,13 +1,17 @@
-import { COMMERCE_DISCOVERY_MCP_URL } from "@decocms/shared/sdk";
+import { REPORTS_MCP_URL } from "@decocms/shared/sdk";
 import { retry, RetryError } from "@decocms/shared/std";
+import {
+  type ReportsRepositoryRef,
+  toWire,
+} from "@decocms/shared/reports/repository-ref";
 import { z } from "zod";
 import { getSettings } from "../../settings";
 import type { Settings } from "../../settings";
 
-const DEFAULT_INTERNAL_API_URL = new URL(COMMERCE_DISCOVERY_MCP_URL).origin;
+const DEFAULT_INTERNAL_API_URL = new URL(REPORTS_MCP_URL).origin;
 
 /**
- * None of these calls carried a timeout — a hung Commerce Discovery request
+ * None of these calls carried a timeout — a hung Reports request
  * (dead connection, stalled upstream) would block the calling tool call
  * indefinitely. 15s matches the jira client's REQUEST_TIMEOUT_MS for the same
  * kind of external-service call.
@@ -31,41 +35,41 @@ type FetchImpl = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-export interface CommerceDiscoveryAuthInput {
+export interface ReportsAuthInput {
   siteUrl: string;
   orgId: string;
   orgName?: string;
-  /** Claiming user's email — Commerce Discovery sends the run-completion
+  /** Claiming user's email — Reports sends the run-completion
    *  email (the onboarding "generating" screen's promise) to this address. */
   email?: string;
   /** Deep link back to this workspace's report, used in that email. */
   reportUrl?: string;
 }
 
-export type CommerceDiscoveryProvider = "ga4" | "gsc";
+export type ReportsProvider = "ga4" | "gsc";
 
-export interface CommerceDiscoveryBindInput {
+export interface ReportsBindInput {
   siteUrl: string;
   orgId: string;
-  provider: CommerceDiscoveryProvider;
+  provider: ReportsProvider;
   /** ga4: bare numeric property id; gsc: site (sc-domain:… / URL-prefix). */
   resourceId: string;
 }
 
 /** Verified ⇒ the resource is bound to this store; rejected ⇒ an actionable
  *  pt-BR reason the form shows inline (wrong domain, SA not granted yet, …). */
-export type CommerceDiscoveryBindResult =
+export type ReportsBindResult =
   | { ok: true; resourceId: string; evidence: string }
   | { ok: false; reason: string; detail: string };
 
-export interface CommerceDiscoveryAuthOptions {
+export interface ReportsAuthOptions {
   baseUrl?: string;
   apiKey?: string;
   fetchImpl?: FetchImpl;
   settings?: Pick<Settings, "reportsInternalApiUrl" | "reportsInternalApiKey">;
 }
 
-export function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
+export function resolveBaseUrl(options: ReportsAuthOptions): string {
   if (options.baseUrl) return options.baseUrl.replace(/\/+$/, "");
   const settings = options.settings ?? getSettings();
   return (settings.reportsInternalApiUrl ?? DEFAULT_INTERNAL_API_URL).replace(
@@ -75,18 +79,16 @@ export function resolveBaseUrl(options: CommerceDiscoveryAuthOptions): string {
 }
 
 /**
- * Resolve the Commerce Discovery MCP endpoint URL from env settings, so the
+ * Resolve the Reports MCP endpoint URL from env settings, so the
  * CD connection's `connection_url` always targets the same instance as the
  * internal API (prod vs. stg). Falls back to the hardcoded constant when no
  * REPORTS_INTERNAL_API_URL (or legacy CD) override is set.
  */
-export function resolveCommerceDiscoveryMcpUrl(
-  options: CommerceDiscoveryAuthOptions = {},
-): string {
+export function resolveReportsMcpUrl(options: ReportsAuthOptions = {}): string {
   return `${resolveBaseUrl(options)}/api/v2/mcp`;
 }
 
-export function resolveApiKey(options: CommerceDiscoveryAuthOptions): string {
+export function resolveApiKey(options: ReportsAuthOptions): string {
   const apiKey =
     options.apiKey ?? (options.settings ?? getSettings()).reportsInternalApiKey;
 
@@ -104,16 +106,16 @@ function domainFromSiteUrl(siteUrl: string): string {
 }
 
 /**
- * Structured claim-failure codes returned by Commerce Discovery's
+ * Structured claim-failure codes returned by Reports's
  * `/upgrade` endpoint. `unknown` is our catch-all for any other error string
  * (missing_org_id, invalid_domain, …) or a non-structured/network failure.
  */
-export type CommerceDiscoveryClaimCode =
+export type ReportsClaimCode =
   | "ownership_unverified"
   | "already_claimed_by_other_org"
   | "unknown";
 
-function isClaimCode(value: unknown): value is CommerceDiscoveryClaimCode {
+function isClaimCode(value: unknown): value is ReportsClaimCode {
   return (
     value === "ownership_unverified" || value === "already_claimed_by_other_org"
   );
@@ -124,7 +126,7 @@ function isClaimCode(value: unknown): value is CommerceDiscoveryClaimCode {
  * `email` is the logged-in user's email (who tried to claim); `domain` is the
  * site being claimed. Both may be absent, so the mapper degrades gracefully.
  */
-export interface CommerceDiscoveryClaimContext {
+export interface ReportsClaimContext {
   email?: string;
   domain?: string;
 }
@@ -136,13 +138,13 @@ export interface CommerceDiscoveryClaimContext {
  * This lives at the studio boundary (not the UI) because only the thrown
  * Error's `.message` string survives the MCP self-tool-call boundary — the
  * structured `code` does not reach the web app (see `parseSelfToolResult` /
- * `getToolErrorMessage` in commerce-onboarding.tsx, which only read
+ * `getToolErrorMessage` in reports-onboarding.tsx, which only read
  * `result.content[].text`). Building the friendly string here makes
  * `error.message` already user-ready in the onboarding banner.
  */
-export function commerceDiscoveryClaimMessagePtBr(
-  code: CommerceDiscoveryClaimCode,
-  context: CommerceDiscoveryClaimContext = {},
+export function reportsClaimMessagePtBr(
+  code: ReportsClaimCode,
+  context: ReportsClaimContext = {},
 ): string {
   switch (code) {
     case "ownership_unverified": {
@@ -153,7 +155,7 @@ export function commerceDiscoveryClaimMessagePtBr(
     case "already_claimed_by_other_org":
       return "Este site já pertence a outra organização. Fale com o suporte para transferir o acesso.";
     case "unknown":
-      return "Não foi possível configurar o Commerce Discovery. Tente novamente ou fale com o suporte.";
+      return "Não foi possível configurar o Reports. Tente novamente ou fale com o suporte.";
     default: {
       const _exhaustive: never = code;
       return _exhaustive;
@@ -166,15 +168,12 @@ export function commerceDiscoveryClaimMessagePtBr(
  * response JSON's `error` field. Its `.message` is already the friendly pt-BR
  * text — the seam chosen because the code cannot cross the MCP tool boundary.
  */
-export class CommerceDiscoveryClaimError extends Error {
-  readonly code: CommerceDiscoveryClaimCode;
+export class ReportsClaimError extends Error {
+  readonly code: ReportsClaimCode;
 
-  constructor(
-    code: CommerceDiscoveryClaimCode,
-    context: CommerceDiscoveryClaimContext = {},
-  ) {
-    super(commerceDiscoveryClaimMessagePtBr(code, context));
-    this.name = "CommerceDiscoveryClaimError";
+  constructor(code: ReportsClaimCode, context: ReportsClaimContext = {}) {
+    super(reportsClaimMessagePtBr(code, context));
+    this.name = "ReportsClaimError";
     this.code = code;
   }
 }
@@ -182,7 +181,7 @@ export class CommerceDiscoveryClaimError extends Error {
 /** Parse the `error` code from an `/upgrade` failure response body. */
 async function parseClaimErrorCode(
   response: Response,
-): Promise<CommerceDiscoveryClaimCode> {
+): Promise<ReportsClaimCode> {
   const parsed = (await parseJsonResponse(response)) as
     | { error?: unknown }
     | undefined;
@@ -190,7 +189,7 @@ async function parseClaimErrorCode(
 }
 
 /**
- * Parse a response body as JSON without throwing — Commerce Discovery is an
+ * Parse a response body as JSON without throwing — Reports is an
  * external service, and an unparseable body on an otherwise-`ok` response
  * (empty body, HTML error page, truncated stream, …) must degrade to the
  * schema's "missing field" error instead of an unhandled `SyntaxError`.
@@ -206,7 +205,7 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 }
 
 async function responseErrorMessage(response: Response): Promise<string> {
-  const fallback = `Commerce Discovery auth failed with status ${response.status}.`;
+  const fallback = `Reports auth failed with status ${response.status}.`;
   const text = await response.text().catch(() => "");
   if (!text) return fallback;
 
@@ -218,15 +217,15 @@ async function responseErrorMessage(response: Response): Promise<string> {
         : typeof parsed.message === "string"
           ? parsed.message
           : null;
-    return error ? `Commerce Discovery auth failed: ${error}.` : fallback;
+    return error ? `Reports auth failed: ${error}.` : fallback;
   } catch {
     return fallback;
   }
 }
 
-export async function fetchCommerceDiscoveryAuth(
-  input: CommerceDiscoveryAuthInput,
-  options: CommerceDiscoveryAuthOptions = {},
+export async function fetchReportsAuth(
+  input: ReportsAuthInput,
+  options: ReportsAuthOptions = {},
 ) {
   const baseUrl = resolveBaseUrl(options);
   const apiKey = resolveApiKey(options);
@@ -258,7 +257,7 @@ export async function fetchCommerceDiscoveryAuth(
     // the email + domain the client already holds, so the onboarding banner
     // shows correct per-code guidance verbatim.
     const code = await parseClaimErrorCode(response);
-    throw new CommerceDiscoveryClaimError(code, {
+    throw new ReportsClaimError(code, {
       email: input.email,
       domain,
     });
@@ -268,9 +267,7 @@ export async function fetchCommerceDiscoveryAuth(
     await parseJsonResponse(response),
   );
   if (!parsed.success) {
-    throw new Error(
-      "Commerce Discovery auth response did not include a token.",
-    );
+    throw new Error("Reports auth response did not include a token.");
   }
 
   return { authorizationToken: parsed.data.token };
@@ -279,7 +276,7 @@ export async function fetchCommerceDiscoveryAuth(
 /**
  * Bind a GA4 property / GSC site to a store via the shared service account —
  * the consent-free lane for the unverified-OAuth workaround. The client grants
- * `deco-reader@…` access to the resource and types its id; Commerce Discovery
+ * `deco-reader@…` access to the resource and types its id; Reports
  * VERIFIES the resource belongs to this domain before persisting (ga4: a web
  * stream's defaultUri points here; gsc: the site id embeds the host). With a
  * shared SA, knowing an id is never enough — the verification is the auth.
@@ -288,10 +285,10 @@ export async function fetchCommerceDiscoveryAuth(
  * another store (409) is returned as { ok: false, reason, detail } — the detail
  * is client-safe pt-BR the UI shows inline. Unexpected statuses still throw.
  */
-export async function bindCommerceDiscoveryResource(
-  input: CommerceDiscoveryBindInput,
-  options: CommerceDiscoveryAuthOptions = {},
-): Promise<CommerceDiscoveryBindResult> {
+export async function bindReportsResource(
+  input: ReportsBindInput,
+  options: ReportsAuthOptions = {},
+): Promise<ReportsBindResult> {
   const baseUrl = resolveBaseUrl(options);
   const apiKey = resolveApiKey(options);
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -344,9 +341,7 @@ export async function bindCommerceDiscoveryResource(
     await parseJsonResponse(response),
   );
   if (!parsed.success || !parsed.data.binding) {
-    throw new Error(
-      "Commerce Discovery bind response did not include a binding.",
-    );
+    throw new Error("Reports bind response did not include a binding.");
   }
   return {
     ok: true,
@@ -356,15 +351,22 @@ export async function bindCommerceDiscoveryResource(
 }
 
 /**
- * Trigger the Commerce Discovery report run for a store — called once the
+ * Trigger the Reports report run for a store — called once the
  * user has connected their data sources ("See full report"). This is the run
  * whose private probes resolve creds and whose completion fires the enriched
  * agent loop. Soft-tolerant: a 409 (report not upgraded yet) is returned as
  * { triggered: false } rather than thrown, so the UI can still open the report.
  */
-export async function triggerCommerceDiscoveryRun(
-  input: { siteUrl: string; orgId: string; githubRepo?: string },
-  options: CommerceDiscoveryAuthOptions = {},
+export async function triggerReportsRun(
+  input: {
+    siteUrl: string;
+    orgId: string;
+    /** The repository, as an identity any provider can carry. */
+    repository?: ReportsRepositoryRef;
+    /** The legacy github.com `owner/name`, for the deprecation window. */
+    githubRepo?: string;
+  },
+  options: ReportsAuthOptions = {},
 ): Promise<{ triggered: boolean; reason?: string }> {
   const baseUrl = resolveBaseUrl(options);
   const apiKey = resolveApiKey(options);
@@ -380,11 +382,14 @@ export async function triggerCommerceDiscoveryRun(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    // github_repo (optional) is the repo the client picked in the GitHub
-    // companion. Commerce Discovery threads it to the enriched-agent hand-off so
-    // repo-audit targets the right repo; absent ⇒ GitHub not connected.
+    /**
+     * Both spellings of the repository the client picked; Reports
+     * threads whichever it understands to the enriched-agent hand-off so the
+     * audit targets the right one. Absent ⇒ no repository linked.
+     */
     body: JSON.stringify({
       org_id: input.orgId,
+      ...(input.repository ? { repository: toWire(input.repository) } : {}),
       ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -408,7 +413,7 @@ class TransientStatusResponseError extends Error {}
  * A GET is always safe to retry — unlike the /upgrade, /bindings, and /run
  * POSTs above (each idempotent only because the callee de-dupes on its own
  * side, not because a retry can't double an effect), this call has no side
- * effect at all. So a single flaky 5xx from Commerce Discovery no longer
+ * effect at all. So a single flaky 5xx from Reports no longer
  * fails the whole "Conectado" status read.
  */
 async function fetchStatusWithRetry(
@@ -459,7 +464,7 @@ const ConnectionStatusSchema = z.object({
   ),
 });
 
-export type CommerceDiscoveryConnectionStatus = z.infer<
+export type ReportsConnectionStatus = z.infer<
   typeof ConnectionStatusSchema
 >["providers"];
 
@@ -472,11 +477,11 @@ export type CommerceDiscoveryConnectionStatus = z.infer<
  * the UI tell "site not readable for this org" apart from "nothing connected"
  * — without it, an existing SA binding silently renders as disconnected.
  */
-export async function fetchCommerceDiscoveryConnectionStatus(
+export async function fetchReportsConnectionStatus(
   input: { siteUrl: string; orgId: string },
-  options: CommerceDiscoveryAuthOptions = {},
+  options: ReportsAuthOptions = {},
 ): Promise<{
-  providers: CommerceDiscoveryConnectionStatus;
+  providers: ReportsConnectionStatus;
   claimed: boolean;
 }> {
   const baseUrl = resolveBaseUrl(options);

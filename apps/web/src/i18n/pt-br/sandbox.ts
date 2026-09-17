@@ -669,6 +669,7 @@ export const sandbox = {
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.enterToGo": "Enter para ir",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
+  "sandbox.preview.globalBadge": "Global",
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.globalLoaders": "Loaders globais",
   "sandbox.preview.loaderBadge": "Loader",

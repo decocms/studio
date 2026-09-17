@@ -41,6 +41,7 @@ import {
 } from "@/components/monitoring/hooks.ts";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { useT } from "@/i18n/use-t.ts";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 import {
   buildFilledStatsData,
   computeHeatmapView,
@@ -201,6 +202,12 @@ function ModelLeaderboardTable({
   models: ModelMetric[];
   mode?: "calls" | "tokens" | "cost";
 }) {
+  // §6: below Ultra neither the model's NAME nor a dollar figure is the org's
+  // to see. `monitoring` is a Pro feature but `model_choice` is Ultra-only, so
+  // this table was showing both to every Pro org. Gated INSIDE the component,
+  // not at its six call sites, so a seventh cannot forget.
+  const showModels = useModelDisclosure();
+  if (!showModels) return null;
   if (models.length === 0) return null;
 
   const valueOf = (m: ModelMetric) =>
@@ -501,6 +508,12 @@ export function OverviewTabContent({
   const totalOutputTokens = llmStats?.totalOutputTokens ?? 0;
   const totalTokens = llmStats?.totalTokens ?? 0;
   const totalCostUsd = llmStats?.totalCostUsd ?? 0;
+  // The same §6 rule `ModelLeaderboardTable` applies, and half the reason it
+  // gives — "nor a dollar figure". The leaderboard was gated while the card's
+  // headline figure and its cost time series, three lines below it, were not:
+  // a Pro org was told it spent $41.87 this week and shown the shape of that
+  // spend, and only denied the per-model breakdown.
+  const showCost = useModelDisclosure();
   const connectionBreakdown = serverStats?.connectionBreakdown ?? [];
 
   const [latencyMetric, setLatencyMetric] = useState<"avg" | "p95">("avg");
@@ -699,32 +712,34 @@ export function OverviewTabContent({
           <ModelLeaderboardTable models={llmModels} mode="tokens" />
         </MonitoringMetricCard>
 
-        <MonitoringMetricCard
-          title={t("orgs.overview.cost")}
-          value={totalCostUsd > 0 ? formatUsd(totalCostUsd) : "—"}
-          action={
-            totalCostUsd === 0 ? (
-              <span className="text-xs text-muted-foreground">
-                {t("orgs.overview.noCostData")}
-              </span>
-            ) : undefined
-          }
-        >
-          <KPIChart
-            data={llmStatsData.data}
-            dataKey="costUsd"
-            colorNum={5}
-            chartHeight="h-[80px] md:h-[120px]"
-            ariaLabel={t("orgs.overview.costAriaLabel")}
-          />
-          {totalCostUsd > 0 ? (
-            <ModelLeaderboardTable models={llmModels} mode="cost" />
-          ) : (
-            <div className="flex items-center justify-center h-20 text-center text-xs text-muted-foreground px-4">
-              {t("orgs.overview.costProvidersNotice")}
-            </div>
-          )}
-        </MonitoringMetricCard>
+        {showCost ? (
+          <MonitoringMetricCard
+            title={t("orgs.overview.cost")}
+            value={totalCostUsd > 0 ? formatUsd(totalCostUsd) : "—"}
+            action={
+              totalCostUsd === 0 ? (
+                <span className="text-xs text-muted-foreground">
+                  {t("orgs.overview.noCostData")}
+                </span>
+              ) : undefined
+            }
+          >
+            <KPIChart
+              data={llmStatsData.data}
+              dataKey="costUsd"
+              colorNum={5}
+              chartHeight="h-[80px] md:h-[120px]"
+              ariaLabel={t("orgs.overview.costAriaLabel")}
+            />
+            {totalCostUsd > 0 ? (
+              <ModelLeaderboardTable models={llmModels} mode="cost" />
+            ) : (
+              <div className="flex items-center justify-center h-20 text-center text-xs text-muted-foreground px-4">
+                {t("orgs.overview.costProvidersNotice")}
+              </div>
+            )}
+          </MonitoringMetricCard>
+        ) : null}
       </div>
 
       {/* AI Usage — Latency + Errors */}

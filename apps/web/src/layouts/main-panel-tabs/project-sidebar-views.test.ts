@@ -28,6 +28,7 @@ const nativePresence = (
   e2e: present.includes("e2e"),
   analytics: present.includes("analytics"),
   cdn: present.includes("cdn"),
+  experiments: present.includes("experiments"),
 });
 
 describe("project sidebar views", () => {

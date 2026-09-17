@@ -209,6 +209,11 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
+  const handleCompactLayoutChange = (checked: boolean) => {
+    track("preferences_compact_page_layout_toggled", { enabled: checked });
+    setPreferences((prev) => ({ ...prev, compactPageLayout: checked }));
+  };
+
   return (
     <SettingsSection title={t("settings.preferences.title")}>
       <SettingsCard>
@@ -220,6 +225,7 @@ function PreferencesSection() {
               type="single"
               size="sm"
               variant="outline"
+              className="gap-2 data-[variant=outline]:shadow-none"
               value={preferences.theme}
               onValueChange={(value) => {
                 if (value) {
@@ -233,18 +239,21 @@ function PreferencesSection() {
             >
               <ToggleGroupItem
                 value="light"
+                className="rounded-lg data-[variant=outline]:border-l"
                 aria-label={t("settings.preferences.themeLight")}
               >
                 <Sun size={14} />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="dark"
+                className="rounded-lg data-[variant=outline]:border-l"
                 aria-label={t("settings.preferences.themeDark")}
               >
                 <Moon01 size={14} />
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="system"
+                className="rounded-lg data-[variant=outline]:border-l"
                 aria-label={t("settings.preferences.themeSystem")}
               >
                 <Monitor01 size={14} />
@@ -327,7 +336,7 @@ function PreferencesSection() {
                   track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
                 }}
-                className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
+                className="size-6 classic:rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer compact:rounded-lg"
               >
                 <Play size={11} />
               </button>
@@ -345,30 +354,16 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title={t("settings.preferences.projectSettingsGear")}
-          description={t("settings.preferences.projectSettingsGearDescription")}
-          onClick={() => {
-            track("preferences_project_settings_gear_toggled", {
-              enabled: !preferences.showProjectSettingsGear,
-            });
-            setPreferences((prev) => ({
-              ...prev,
-              showProjectSettingsGear: !prev.showProjectSettingsGear,
-            }));
-          }}
+          title={t("settings.preferences.compactPageLayout")}
+          description={t("settings.preferences.compactPageLayoutDescription")}
+          onClick={() =>
+            handleCompactLayoutChange(!preferences.compactPageLayout)
+          }
           action={
             <Switch
-              aria-label={t("settings.preferences.projectSettingsGear")}
-              checked={preferences.showProjectSettingsGear}
-              onCheckedChange={(checked) => {
-                track("preferences_project_settings_gear_toggled", {
-                  enabled: checked,
-                });
-                setPreferences((prev) => ({
-                  ...prev,
-                  showProjectSettingsGear: checked,
-                }));
-              }}
+              aria-label={t("settings.preferences.compactPageLayout")}
+              checked={preferences.compactPageLayout}
+              onCheckedChange={handleCompactLayoutChange}
             />
           }
         />
@@ -438,13 +433,13 @@ export function ProfilePreferencesPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.title")}</Page.Title>
             <ProfileSection />
             <PreferencesSection />
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

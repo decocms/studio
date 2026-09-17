@@ -1,10 +1,25 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type { ModelCapability } from "@decocms/shared/sdk";
 import type { StudioProvider, ModelInfo, ProviderAdapter } from "../types";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 
 const LLMAPI_BASE_URL = "https://api.llmapi.ai/v1";
 const LLMAPI_ICON_URL =
   "https://llmapi.ai/wp-content/uploads/2026/01/Frame-2085662993.png";
+
+function fetchModelsWithRetry(apiKey: string): Promise<Response> {
+  return fetchWithTransientRetry(
+    "LLMAPI listModels",
+    `${LLMAPI_BASE_URL}/models`,
+    {
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+}
 
 // Shape of an entry in llmapi's OpenRouter-style /v1/models payload. Only the
 // fields we read — the endpoint returns much more (per-provider routing, etc).
@@ -50,12 +65,9 @@ export const llmapiAdapter: ProviderAdapter = {
       aiSdk,
 
       async listModels(): Promise<ModelInfo[]> {
-        const res = await fetch(`${LLMAPI_BASE_URL}/models`, {
-          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-          signal: AbortSignal.timeout(15_000),
-        });
+        const res = await fetchModelsWithRetry(apiKey);
         if (!res.ok) {
-          throw new Error(`LLMAPI listModels failed: ${res.status}`);
+          await throwResponseError("LLMAPI listModels", res);
         }
         const { data }: { data: LlmapiModel[] } = await res.json();
         return data.map((m) => {

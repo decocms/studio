@@ -668,8 +668,8 @@ export function UnifiedAuthForm({
               disabled={isLoading}
               onClick={() => void handleSocialSignIn(provider.name)}
               className={cn(
-                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
-                compact ? "h-11 rounded-lg" : "h-12 rounded-xl",
+                "flex w-full items-center justify-center gap-3 bg-background px-3 text-sm font-medium text-foreground card-shadow transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50 compact:rounded-lg",
+                compact ? "h-11" : "h-12",
               )}
             >
               {provider.icon && (

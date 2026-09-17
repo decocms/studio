@@ -95,11 +95,13 @@ describe("detectSkills (integration)", () => {
       dirPath: "slides",
       name: "slides",
       description: "Make decks.",
+      disableModelInvocation: false,
     });
     expect(byDir.get("pdf")).toEqual({
       dirPath: "pdf",
       name: "pdf", // frontmatter absent → dir basename
       description: "Read PDFs.",
+      disableModelInvocation: false,
     });
   });
 

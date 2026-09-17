@@ -1,7 +1,7 @@
 import type { home as homeEn } from "../en/home.ts";
 
 export const home = {
-  "home.orgAgents.importFromGitHub": "Importar reposit\u00f3rio",
+  "home.orgAgents.importFromGitHub": "Novo projeto",
   "home.orgAgents.importToGetStarted":
     "Importe um reposit\u00f3rio para come\u00e7ar.",
   "home.orgHome.connectPill": "Conecte seu agente ao Studio",

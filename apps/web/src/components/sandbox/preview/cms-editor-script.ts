@@ -386,6 +386,13 @@ export const CMS_EDITOR_SCRIPT = `(function() {
       }
       return;
     }
+    // Parent-driven clear: the cross-origin iframe can't self-detect a frame exit.
+    if (e.data && e.data.type === "cms-editor::clear-hover") {
+      highlight.style.display = "none";
+      badge.style.display = "none";
+      lastSection = null;
+      return;
+    }
     if (e.data && e.data.type === "cms-editor::deactivate") {
       highlight.remove();
       badge.remove();

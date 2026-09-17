@@ -40,7 +40,7 @@ export function PathParamInput({
           placeholder={label}
           title={t("sandbox.preview.valueForParam", { label })}
           spellCheck={false}
-          className="absolute inset-0 rounded-sm bg-violet-500/15 px-1 text-[12px] text-violet-600 outline-none placeholder:text-violet-500/60 focus:bg-violet-500/25 dark:text-violet-400"
+          className="absolute inset-0 rounded-sm bg-special/15 px-1 text-[12px] text-special outline-none placeholder:text-special/60 focus:bg-special/25"
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setFocused(true)}

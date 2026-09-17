@@ -40,6 +40,17 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
+  /** Org ids whose members may read and act across every org's task board
+   *  (STUDIO_ADMIN_ORG_IDS, CSV). Access control, not product gating.
+   *
+   *  Deliberately independent of `deploymentAdminEmails`: a deployment admin
+   *  does NOT implicitly get cross-org kanban, and a member of an admin org
+   *  does NOT get /api/_admin. Never union the two. */
+  taskBoardAdminOrgIds: string[];
+  /** Shared secret for server-to-server calls to /api/_admin (DEPLOYMENT_ADMIN_TOKEN),
+   *  sent as `x-deployment-admin-token`. Read-only routes and member-add only —
+   *  no impersonation. Unset = header ignored entirely. */
+  deploymentAdminToken: string | undefined;
 
   // Observability
   // HTTP URL of the ClickHouse instance holding the OTel-native `otel_logs`
@@ -81,8 +92,47 @@ export interface Settings {
   stripeWebhookSecret: string | undefined;
   stripeSecretKey: string | undefined;
   /** The flat monthly org-subscription price (created in the Stripe
-   *  dashboard); quantity is always 1. */
+   *  dashboard); quantity is always 1. The fallback when a checkout names no
+   *  plan, and the price a deployment with no tiers subscribes on. */
   stripeOrgPriceId: string | undefined;
+  /**
+   * Which gateway plan each subscription Price grants, parsed from
+   * STRIPE_PLAN_PRICE_IDS (`price_abc=pro,price_def=ultra`).
+   *
+   * This is the join between money and entitlement, and without it a plan is
+   * something a user simply asks for: `AI_PLAN_SET` takes no payment, so an
+   * org admin could hand itself Ultra by clicking it. A price in this map is
+   * the only thing that can grant a paid tier, and a subscription leaving
+   * `active` takes it away again — see `planIdForStripe`.
+   *
+   * Empty → no plan is granted or revoked by Stripe, and paid tiers can only
+   * be placed by an operator through the gateway's admin API.
+   */
+  stripePlanPriceIds: Record<string, string>;
+  /**
+   * The Customer Portal configuration used for a TIER CHANGE, and only that.
+   *
+   * Deliberately not the account default. The default configuration also backs
+   * `ORGANIZATION_BILLING_PORTAL` — the full self-serve portal — so listing the
+   * tier products there would let any customer switch plans freely, including a
+   * legacy deco.cx subscriber on a much more expensive price dropping itself to
+   * the cheapest new tier. A `flow_data` session is pinned to one price and
+   * cannot wander, so the upgrade path gets its own configuration and the full
+   * portal keeps offering no plan switching at all.
+   *
+   * Its `subscription_update` must list every purchasable plan's product, and
+   * must set `billing_cycle_anchor=unchanged` — `reset` would move an upgraded
+   * org off the 1st-of-month cycle that `firstOfNextMonthUnix` put it on, and
+   * silently undo the alignment between billing and the allowance.
+   *
+   * Unset → Stripe uses the account default, whose product list holds only the
+   * legacy deco.cx plans (Developer, Professional, Grow, Start, Landing, Grátis)
+   * and none of the tiers, so a tier change is refused with Stripe's own message
+   * rather than charging anything. That default is also why the tiers must not
+   * simply be added to it: doing so would put them in the same switchable pool
+   * as the legacy plans, in both directions.
+   */
+  stripePortalConfigurationId: string | undefined;
   /** The single catalog Product every top-up charge hangs off (created once in
    *  the Stripe dashboard). Top-up amounts are arbitrary, so the Price is
    *  ad-hoc per checkout — but it must point at THIS product, or Stripe's
@@ -91,6 +141,16 @@ export interface Settings {
   stripeTopupProductId: string | undefined;
   /** Fee on AI-credit top-ups, percent (default 15 — gateway parity). */
   topupFeePercent: number;
+
+  /**
+   * Master switch for tiered plans (STUDIO_PLANS_ENABLED, default off). Off →
+   * `getOrgPlanState` answers nothing, so every feature gate is open, no model
+   * pin is honoured and no budget is enforced; the browser is told too (via
+   * /api/config) so it stops asking. Separate from `aiGatewayEnabled` on
+   * purpose: deco prod has a gateway and must keep behaving as it does today
+   * until this is set.
+   */
+  plansEnabled: boolean;
 
   // Task-execution quota (billing/task-quota.ts). Dormant unless enforced —
   // self-hosted deployments never turn it on.

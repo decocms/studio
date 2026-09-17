@@ -56,7 +56,7 @@ function SettingsAutomationsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <Page.Title>{t("settings.automations.pageTitle")}</Page.Title>
             {automations.length > 0 && (
@@ -105,7 +105,7 @@ function SettingsAutomationsPage() {
               ))}
             </div>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

@@ -131,6 +131,12 @@ export type DefaultHomeAgentsConfig = z.infer<
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  home_task_intake_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Show Task mode on the Home composer and allow reports to start tasks.",
+    ),
   demo_mode: z
     .boolean()
     .optional()
@@ -215,6 +221,12 @@ export const OrgFlagsSchema = z.object({
     .optional()
     .describe(
       "Per-site E2E tab (end-to-end test runs). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. `HOSTING_CONTROL_PLANE_GA` opens it (and its peers) to every org at once.",
+    ),
+  experiments_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Per-site Experiments tab (A/B tests + variant results). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org.",
     ),
   monitor_enabled: z
     .boolean()

@@ -61,7 +61,7 @@ export function BlockRow({
       <button
         type="button"
         aria-label={t("sandbox.blockRow.dragToReorder")}
-        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100"
+        className="absolute left-1 top-1.5 flex h-6 w-6 cursor-grab items-center justify-center classic:rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground active:cursor-grabbing group-hover/row:opacity-100 compact:rounded-lg"
         {...attributes}
         {...listeners}
       >
@@ -72,7 +72,7 @@ export function BlockRow({
           type="button"
           aria-label={t("sandbox.blockRow.duplicateBlock")}
           onClick={onDuplicate}
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+          className="flex h-6 w-6 items-center justify-center classic:rounded text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer compact:rounded-lg"
         >
           <Copy01 size={14} />
         </button>
@@ -80,7 +80,7 @@ export function BlockRow({
           type="button"
           aria-label={t("sandbox.blockRow.deleteBlock")}
           onClick={onDelete}
-          className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-destructive cursor-pointer"
+          className="flex h-6 w-6 items-center justify-center classic:rounded text-muted-foreground hover:bg-muted hover:text-destructive cursor-pointer compact:rounded-lg"
         >
           <Trash01 size={14} />
         </button>

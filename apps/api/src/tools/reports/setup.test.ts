@@ -4,7 +4,7 @@ import type { StudioContext } from "../../core/studio-context";
 const USER_ID = "user_1";
 const ORG_ID = "org_1";
 
-// setup.ts imports fetchCommerceDiscoveryAuth at module top with no injection
+// setup.ts imports fetchReportsAuth at module top with no injection
 // seam, so we stub the module before importing the tool. This lets us assert
 // that SETUP always calls the per-site claim (/upgrade) even when a per-org
 // connection already exists with a token.
@@ -15,12 +15,11 @@ const fetchAuthMock = mock(
 );
 
 mock.module("./auth-client", () => ({
-  fetchCommerceDiscoveryAuth: fetchAuthMock,
-  resolveCommerceDiscoveryMcpUrl: () =>
-    "https://reports-stg.decocms.com/api/v2/mcp",
+  fetchReportsAuth: fetchAuthMock,
+  resolveReportsMcpUrl: () => "https://reports-stg.decocms.com/api/v2/mcp",
 }));
 
-const { COMMERCE_DISCOVERY_SETUP } = await import("./setup");
+const { REPORTS_SETUP } = await import("./setup");
 
 interface StubConnection {
   id: string;
@@ -114,7 +113,7 @@ function makeCtx(opts: {
   } as unknown as StudioContext;
 }
 
-describe("COMMERCE_DISCOVERY_SETUP", () => {
+describe("REPORTS_SETUP", () => {
   test("claims the site and syncs token + metadata even when a connection with a token already exists", async () => {
     fetchAuthMock.mockClear();
     const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
@@ -130,10 +129,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       connectionUpdate: (id, data) => updates.push({ id, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
-      { siteUrl: "https://new-site.com" },
-      ctx,
-    );
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
 
     // The per-site claim (/upgrade) must be called for the current site.
     expect(fetchAuthMock).toHaveBeenCalledTimes(1);
@@ -145,7 +141,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
     expect(claimArg.orgId).toBe(ORG_ID);
 
     /** The completion-email CTA ("diagnóstico completo") must deep-link to the
-     *  report app view, not /commerce-onboarding; chatDefaultOpen selects Chat. */
+     *  report app view, not /reports-onboarding; chatDefaultOpen selects Chat. */
     const reportUrl = (claimArg as unknown as { reportUrl?: string })
       .reportUrl!;
     expect(reportUrl).toContain(
@@ -175,10 +171,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
-      { siteUrl: "https://new-site.com" },
-      ctx,
-    );
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
 
     expect(upserts).toEqual([
       {
@@ -201,10 +194,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
-      { siteUrl: "https://new-site.com" },
-      ctx,
-    );
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
 
     expect(upserts).toEqual([
       {
@@ -226,10 +216,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
-      { siteUrl: "https://new-site.com" },
-      ctx,
-    );
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
 
     expect(upserts).toEqual([
       {
@@ -248,10 +235,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
-      { siteUrl: "https://new-site.com" },
-      ctx,
-    );
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
 
     expect(upserts).toHaveLength(0);
   });
@@ -266,10 +250,7 @@ describe("COMMERCE_DISCOVERY_SETUP", () => {
       settingsUpsert: (orgId, data) => upserts.push({ orgId, data }),
     });
 
-    await COMMERCE_DISCOVERY_SETUP.handler(
-      { siteUrl: "https://new-site.com" },
-      ctx,
-    );
+    await REPORTS_SETUP.handler({ siteUrl: "https://new-site.com" }, ctx);
 
     expect(upserts).toHaveLength(0);
   });

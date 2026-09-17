@@ -242,6 +242,7 @@ export {
   JIRA_AUTOMATION_LIST,
   JIRA_AUTOMATION_UPSERT,
 } from "./automations";
+export { JIRA_PR_MERGE } from "./pr-merge";
 export { JIRA_RUN_START } from "./run-start";
 export {
   JIRA_ATTACHMENT_DOWNLOAD,

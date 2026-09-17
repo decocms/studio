@@ -10,7 +10,7 @@
  * Black-box: the studio server reaches this over HTTP only — no app imports.
  * Uses `node:http` (NOT `Bun.serve`) so it typechecks under the suite's Node
  * types and runs under either node or bun (same rationale as
- * commerce-upgrade-mock.ts).
+ * reports-upgrade-mock.ts).
  *
  * Git model (per "owner/repo"):
  *   - blobs:   content-addressed utf-8 strings
@@ -962,14 +962,15 @@ export function createGithubStubServer(): Server {
     {
       installations: UserInstallation[];
       user: { id: number; login: string };
-      memberships: Array<{
-        state: string;
-        role: string;
-        organization: { id: number };
-      }>;
       identityStatus?: number;
-      membershipsStatus?: number;
       repositoryDelayMs?: number;
+      repositories?: Array<{
+        id: number;
+        full_name: string;
+        private: boolean;
+        html_url: string;
+        default_branch: string;
+      }>;
     }
   >();
   const codes = new Map<string, string>();
@@ -1012,13 +1013,15 @@ export function createGithubStubServer(): Server {
           token: string;
           installations: UserInstallation[];
           user: { id: number; login: string };
-          memberships: Array<{
-            state: string;
-            role: string;
-            organization: { id: number };
-          }>;
           identityStatus?: number;
-          membershipsStatus?: number;
+          repositoryDelayMs?: number;
+          repositories?: Array<{
+            id: number;
+            full_name: string;
+            private: boolean;
+            html_url: string;
+            default_branch: string;
+          }>;
         };
         users.set(body.token, body);
         json(res, 200, { ok: true });
@@ -1049,33 +1052,32 @@ export function createGithubStubServer(): Server {
         );
         return;
       }
-      if (
-        req.method === "GET" &&
-        (url.pathname === "/user" || url.pathname === "/user/memberships/orgs")
-      ) {
-        const user = users.get(
-          req.headers.authorization?.replace(/^Bearer /, "") ?? "",
-        );
+      if (req.method === "GET" && url.pathname === "/user/repos") {
+        const user = users.get(userToken);
         if (!user) {
           json(res, 401, { message: "Bad credentials" });
           return;
         }
-        if (url.pathname === "/user") {
-          json(
-            res,
-            user.identityStatus ?? 200,
-            user.identityStatus ? { message: "Denied" } : user.user,
-          );
-        } else {
-          const page = Number(url.searchParams.get("page") ?? 1);
-          json(
-            res,
-            user.membershipsStatus ?? 200,
-            user.membershipsStatus
-              ? { message: "Denied" }
-              : user.memberships.slice((page - 1) * 100, page * 100),
-          );
+        const page = Number(url.searchParams.get("page") ?? 1);
+        const perPage = Number(url.searchParams.get("per_page") ?? 30);
+        json(
+          res,
+          200,
+          (user.repositories ?? []).slice((page - 1) * perPage, page * perPage),
+        );
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/user") {
+        const user = users.get(userToken);
+        if (!user) {
+          json(res, 401, { message: "Bad credentials" });
+          return;
         }
+        json(
+          res,
+          user.identityStatus ?? 200,
+          user.identityStatus ? { message: "Denied" } : user.user,
+        );
         return;
       }
       const installationRepositories =

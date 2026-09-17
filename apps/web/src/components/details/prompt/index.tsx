@@ -1,3 +1,5 @@
+import { Panel } from "@/components/panel";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
@@ -18,7 +20,8 @@ import { PromptSchema } from "@decocms/bindings/prompt";
 import { Suspense } from "react";
 import { useForm, type UseFormReturn } from "react-hook-form";
 import { z } from "zod";
-import { ViewActions, ViewLayout, ViewTabs } from "../layout";
+import { DetailPanel } from "../detail-panel";
+import { Page } from "@/components/page";
 import { SaveActions } from "@/components/save-actions";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -136,6 +139,7 @@ function PromptDetailContent({
   providerId: string;
   promptId: string;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const client = useMCPClient({
@@ -209,38 +213,61 @@ function PromptDetailContent({
   }
 
   return (
-    <ViewLayout>
-      <ViewTabs>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium text-foreground truncate">
+    <DetailPanel>
+      {compact ? (
+        <>
+          <Page.Title
+            actions={
+              <SaveActions
+                onSave={() => void saveAndLock()}
+                onUndo={resetToInitial}
+                isDirty={form.formState.isDirty}
+                isSaving={isSaving}
+              />
+            }
+          >
             {prompt.title}
-          </span>
-          {prompt.description ? (
-            <>
-              <span className="text-xs text-muted-foreground font-normal">
-                •
+          </Page.Title>
+          {prompt.description && (
+            <p className="px-4 py-3 text-sm text-muted-foreground">
+              {prompt.description}
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <Panel.Topbar.Center.Portal>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm font-medium text-foreground truncate">
+                {prompt.title}
               </span>
-              <span className="text-xs text-muted-foreground font-normal truncate min-w-0 max-w-[20ch]">
-                {prompt.description}
-              </span>
-            </>
-          ) : null}
-        </div>
-      </ViewTabs>
+              {prompt.description ? (
+                <>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    •
+                  </span>
+                  <span className="text-xs text-muted-foreground font-normal truncate min-w-0 max-w-[20ch]">
+                    {prompt.description}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </Panel.Topbar.Center.Portal>
 
-      <ViewActions>
-        <SaveActions
-          onSave={() => void saveAndLock()}
-          onUndo={resetToInitial}
-          isDirty={form.formState.isDirty}
-          isSaving={isSaving}
-        />
-      </ViewActions>
-
+          <Panel.Topbar.Right.Portal>
+            <SaveActions
+              onSave={() => void saveAndLock()}
+              onUndo={resetToInitial}
+              isDirty={form.formState.isDirty}
+              isSaving={isSaving}
+            />
+          </Panel.Topbar.Right.Portal>
+        </>
+      )}
       <div className="h-full">
         <PromptEditForm form={form} />
       </div>
-    </ViewLayout>
+    </DetailPanel>
   );
 }
 

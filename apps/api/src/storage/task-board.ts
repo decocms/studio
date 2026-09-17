@@ -321,6 +321,8 @@ export class TaskBoardStorage {
     assignedBy?: string | null;
     /** `owner/name` of the repo (site) this task pertains to. */
     repo?: string | null;
+    /** The first-class repository the card was written against, when known. */
+    repositoryId?: string | null;
     dueDate?: string | null;
     /** Sender-minted finding identity — see task-board-import. */
     externalKey?: string | null;
@@ -356,6 +358,7 @@ export class TaskBoardStorage {
           assignee_id: params.assigneeId ?? null,
           assigned_by: params.assignedBy ?? null,
           repo: params.repo ?? null,
+          repository_id: params.repositoryId ?? null,
           due_date: params.dueDate ?? null,
           external_key: params.externalKey ?? null,
           external_url: params.externalUrl ?? null,
@@ -404,6 +407,7 @@ export class TaskBoardStorage {
       assigneeId?: string | null;
       assignedBy?: string | null;
       repo?: string | null;
+      repositoryId?: string | null;
       dueDate?: string | null;
       externalUrl?: string | null;
       previewRoutes?: string[] | null;
@@ -428,6 +432,9 @@ export class TaskBoardStorage {
           ? { assigned_by: data.assignedBy }
           : {}),
         ...(data.repo !== undefined ? { repo: data.repo } : {}),
+        ...(data.repositoryId !== undefined
+          ? { repository_id: data.repositoryId }
+          : {}),
         ...(data.dueDate !== undefined ? { due_date: data.dueDate } : {}),
         ...(data.externalUrl !== undefined
           ? { external_url: data.externalUrl }
@@ -2507,6 +2514,7 @@ export class TaskBoardStorage {
     assignee_id: string | null;
     assigned_by: string | null;
     repo: string | null;
+    repository_id?: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
     preview_routes?: string[] | null;
@@ -2531,6 +2539,7 @@ export class TaskBoardStorage {
       assigneeId: row.assignee_id,
       assignedBy: row.assigned_by,
       repo: row.repo,
+      repositoryId: row.repository_id ?? null,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

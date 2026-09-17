@@ -1121,7 +1121,7 @@ export default function AdminOrgsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
             <SearchInput
               value={search}
@@ -1154,7 +1154,7 @@ export default function AdminOrgsPage() {
               }
             />
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

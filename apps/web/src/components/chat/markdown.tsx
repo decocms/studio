@@ -9,7 +9,6 @@ import React, {
   useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -156,9 +155,8 @@ function MarkdownImage(props: React.ImgHTMLAttributes<HTMLImageElement>) {
   );
 }
 
-// Memoize the plugins arrays to prevent re-creating them on every render
+// No rehype-raw: it would render embedded raw HTML unsanitized (XSS).
 const remarkPluginsMemo = [remarkGfm];
-const rehypePluginsMemo = [rehypeRaw];
 
 // Extend shared markdown components with chat-specific overrides (table with CSV
 // copy, image lightbox, clickable org-file references).
@@ -354,7 +352,6 @@ const MemoizedMarkdownBlock = memo(
     return (
       <ReactMarkdown
         remarkPlugins={remarkPluginsMemo}
-        rehypePlugins={rehypePluginsMemo}
         components={animate ? animatedComponents : markdownComponents}
       >
         {content}
@@ -387,7 +384,7 @@ function CodeBlock({
           variant="ghost"
           onClick={() => handleCopy(content)}
           aria-label={t("chat.markdown.copyCode")}
-          className="text-muted-foreground hover:text-foreground rounded-lg h-8 w-8"
+          className="text-muted-foreground hover:text-foreground classic:rounded-lg h-8 w-8"
         >
           {copied ? <Check size={14} /> : <Copy01 size={14} />}
         </Button>

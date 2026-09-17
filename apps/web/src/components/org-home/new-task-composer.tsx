@@ -55,7 +55,7 @@ function AttributePill({
         <button
           type="button"
           className={cn(
-            "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-border px-2.5 text-xs transition-colors",
+            "inline-flex h-7 cursor-pointer items-center gap-1.5 classic:rounded-full compact:rounded-lg border border-border px-2.5 text-xs transition-colors",
             /* Solid either way. Dashed reads as a placeholder, and these are
                real controls whether or not you have picked a value yet — the
                difference between set and unset is the label and the glyph. */

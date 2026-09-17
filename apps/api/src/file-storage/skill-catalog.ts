@@ -40,6 +40,13 @@ export interface SkillCatalogEntry {
   description: string | null;
   /** Provenance shown to the model (`public:<set>` or `home`). */
   source: string;
+  /**
+   * `disable-model-invocation: true` in the SKILL.md — the skill is for a
+   * person to insert by hand, so it is kept out of `<available-skills>` and
+   * out of the `skill` tool. It still appears in the catalog because the `/`
+   * menu, which IS a person picking one, reads the same list.
+   */
+  disableModelInvocation: boolean;
   /** Sandbox path of the skill folder (e.g. `org/public/core/slides`). */
   sandboxPath: string;
   /** OrgFs volume the skill lives on (`home` or `public-<set>`). */
@@ -84,6 +91,7 @@ export interface DetectedSkill {
   /** Frontmatter `name`, falling back to the dir basename. */
   name: string;
   description: string | null;
+  disableModelInvocation: boolean;
 }
 
 /** One claimed skill folder, awaiting its `SKILL.md` read. */
@@ -148,6 +156,7 @@ async function readSkills(
           ...dir,
           name: meta.name ?? basename(dir.dirPath),
           description: meta.description,
+          disableModelInvocation: meta.disableModelInvocation,
         };
       } catch {
         // Skill dir without a readable SKILL.md (sync race, vanished file) —
@@ -183,10 +192,11 @@ export async function detectSkills(
   );
   // Drop the volume `readSkills` threads through for the multi-volume caller —
   // a single-volume scan already knows it, and leaking it widens the shape.
-  return read.map(({ dirPath, name, description }) => ({
+  return read.map(({ dirPath, name, description, disableModelInvocation }) => ({
     dirPath,
     name,
     description,
+    disableModelInvocation,
   }));
 }
 
@@ -210,6 +220,7 @@ async function buildPublicEntries(
         id: `${set}/${s.dirPath}`,
         name: s.name,
         description: s.description,
+        disableModelInvocation: s.disableModelInvocation,
         source: `public:${set}`,
         sandboxPath: orgFsSandboxPath(volume, s.dirPath),
         volume,
@@ -283,6 +294,7 @@ async function buildOrgEntries(
           id: `home/${s.dirPath}`,
           name: s.name,
           description: s.description,
+          disableModelInvocation: s.disableModelInvocation,
           source: "home",
           sandboxPath: orgFsSandboxPath(HOME_VOLUME, s.dirPath),
           volume: HOME_VOLUME,
@@ -292,6 +304,7 @@ async function buildOrgEntries(
           id: `repo/${s.volume}/${s.dirPath}`,
           name: s.name,
           description: s.description,
+          disableModelInvocation: s.disableModelInvocation,
           source: `repo:${s.volume}`,
           sandboxPath: orgFsSandboxPath(s.volume, s.dirPath),
           volume: s.volume,

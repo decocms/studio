@@ -45,6 +45,9 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.useValue": 'Usar "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Selecionar...",
   "sectionsEditor.enumField.clearOption": "Nenhum",
+  "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
+  "sectionsEditor.field.missingRequiredTooltip":
+    "Campo obrigatório não preenchido.",
   "sectionsEditor.fileField.browseButton": "Procurar",
   "sectionsEditor.fileField.dropFileHint":
     "Solte um arquivo ou clique para procurar",

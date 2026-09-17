@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
@@ -696,6 +697,7 @@ function ConnectionResults({
 }
 
 function OrgMcpsContent() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
@@ -978,7 +980,11 @@ function OrgMcpsContent() {
 
   const ctaButton = canManage ? (
     <div className="flex items-center gap-2">
-      <Button variant="outline" onClick={openCreateDialog}>
+      <Button
+        size={compact ? "sm" : "default"}
+        variant={compact ? "default" : "outline"}
+        onClick={openCreateDialog}
+      >
         <Plus size={14} className="sm:hidden" />
         <span className="hidden sm:inline">
           {t("orgs.connections.customConnection")}
@@ -1390,9 +1396,11 @@ function OrgMcpsContent() {
 
         <Page.Content>
           {/* Title + Toolbar */}
-          <Page.Body>
+          <Page.Container>
             <div className="flex flex-col gap-6">
-              <Page.Title>{t("orgs.connections.pageTitle")}</Page.Title>
+              <Page.Title actions={compact && ctaButton}>
+                {t("orgs.connections.pageTitle")}
+              </Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <SearchInput
@@ -1494,9 +1502,10 @@ function OrgMcpsContent() {
                     ]}
                   />
                 </div>
-                {ctaButton}
+                {!compact && ctaButton}
               </div>
               <CollectionTabs
+                placement="page"
                 tabs={[
                   { id: "all", label: t("orgs.connections.tabAll") },
                   {
@@ -1540,7 +1549,7 @@ function OrgMcpsContent() {
                 </div>
               </Suspense>
             </div>
-          </Page.Body>
+          </Page.Container>
         </Page.Content>
       </Page>
     </>

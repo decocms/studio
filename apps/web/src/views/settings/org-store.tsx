@@ -162,6 +162,7 @@ function RegistryItem({
   onToggle,
   onDelete,
   href,
+  disabled,
 }: {
   name: string;
   description: string;
@@ -170,6 +171,7 @@ function RegistryItem({
   onToggle: (enabled: boolean) => void;
   onDelete?: () => void;
   href?: string;
+  disabled?: boolean;
 }) {
   const t = useT();
   const navigate = useNavigate();
@@ -178,7 +180,7 @@ function RegistryItem({
   const handleClick = () => {
     if (href) {
       navigate({ to: href, params: { org } });
-    } else {
+    } else if (!disabled) {
       onToggle(!enabled);
     }
   };
@@ -237,6 +239,7 @@ function RegistryItem({
           )}
           <Switch
             checked={enabled}
+            disabled={disabled}
             onClick={(e) => e.stopPropagation()}
             onCheckedChange={(checked) => onToggle(checked)}
           />
@@ -253,7 +256,8 @@ function OrgStoreContent() {
   const registryConnections = useRegistryConnections();
   const connectionActions = useConnectionActions();
   const registryConfig = useRegistryConfig();
-  const { mutateAsync: updateRegistryConfig } = useUpdateRegistryConfig();
+  const { mutateAsync: updateRegistryConfig, isPending: isTogglingRegistry } =
+    useUpdateRegistryConfig();
   const queryClient = useQueryClient();
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -323,6 +327,7 @@ function OrgStoreContent() {
               icon={decoStoreConnection.icon}
               enabled={isRegistryEnabled(decoStoreId)}
               onToggle={(enabled) => handleToggle(decoStoreId, enabled)}
+              disabled={isTogglingRegistry}
             />
           ) : (
             <SettingsCardItem
@@ -374,6 +379,7 @@ function OrgStoreContent() {
               enabled={isRegistryEnabled(registry.id)}
               onToggle={(enabled) => handleToggle(registry.id, enabled)}
               onDelete={() => handleDelete(registry.id)}
+              disabled={isTogglingRegistry}
             />
           ))}
         </SettingsCard>
@@ -390,6 +396,7 @@ function OrgStoreContent() {
               onToggle={(enabled) =>
                 handleToggle(effectiveCommunityId, enabled)
               }
+              disabled={isTogglingRegistry}
             />
           ) : (
             <SettingsCardItem
@@ -427,12 +434,12 @@ export function OrgStorePage() {
       <Suspense fallback={<Skeleton className="h-64 w-full" />}>
         <Page>
           <Page.Content>
-            <Page.Body>
+            <Page.Container>
               <SettingsPage>
                 <Page.Title>{t("settings.orgStore.pageTitle")}</Page.Title>
                 <OrgStoreContent />
               </SettingsPage>
-            </Page.Body>
+            </Page.Container>
           </Page.Content>
         </Page>
       </Suspense>

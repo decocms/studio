@@ -25,6 +25,13 @@ const badgeVariants = cva(
       size: {
         default: "px-2 py-0.5",
         icon: "size-5",
+        /** A token built from parts — a filter chip's field / operator / value
+         *  / remove. The sections carry their own padding and hairlines, so the
+         *  badge only supplies the raised surface they sit on. Squared rather
+         *  than the base's pill: a chip divided into segments needs ends that
+         *  read as the same shape as the dividers between them. */
+        segmented:
+          "h-7 gap-0 rounded-lg border-transparent bg-card p-0 card-shadow",
       },
     },
     defaultVariants: {

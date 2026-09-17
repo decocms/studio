@@ -99,7 +99,7 @@ export function TaskRow({
             <Zap
               size={12}
               aria-label={t("tasksPanel.taskRow.automationTriggered")}
-              className="shrink-0 text-blue-500"
+              className="shrink-0 text-special"
             />
           )}
           <div className="text-sm text-foreground truncate">
@@ -164,7 +164,7 @@ export function TaskRow({
                   e.stopPropagation();
                   onArchive();
                 }}
-                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-8 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="[grid-area:slot] opacity-0 pointer-events-none group-hover/row:opacity-100 group-hover/row:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto transition-opacity flex size-8 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
               >
                 <Archive size={14} />
               </button>

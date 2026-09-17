@@ -30,6 +30,7 @@ export type ToolCategory =
   | "Users"
   | "API Keys"
   | "Tags"
+  | "Experiments"
   | "AI Providers"
   | "Secrets"
   | "File Configs"
@@ -85,6 +86,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_MEMBER_UPDATE_ROLE",
   "ORGANIZATION_BILLING_CHECKOUT_START",
   "ORGANIZATION_BILLING_PORTAL",
+  "ORGANIZATION_BILLING_PLAN_PRICES",
   "ORGANIZATION_TASK_QUOTA_GET",
   // Legacy deco.cx infra billing
   "INFRA_BILLING_SITES_LIST",
@@ -97,10 +99,11 @@ const ALL_TOOL_NAMES = [
   "COLLECTION_CONNECTIONS_UPDATE",
   "COLLECTION_CONNECTIONS_DELETE",
   "CONNECTION_TEST",
-  "COMMERCE_DISCOVERY_SETUP",
-  "COMMERCE_DISCOVERY_RUN",
-  "COMMERCE_DISCOVERY_BIND",
-  "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+  "REPORTS_SETUP",
+  "REPORTS_RUN",
+  "REPORTS_BIND",
+  "REPORTS_CONNECTION_STATUS",
+  "REPORTS_SET_REPOSITORY",
   // Virtual MCP tools
   "COLLECTION_VIRTUAL_MCP_CREATE",
   "COLLECTION_VIRTUAL_MCP_LIST",
@@ -137,6 +140,13 @@ const ALL_TOOL_NAMES = [
   "TAGS_DELETE",
   "MEMBER_TAGS_GET",
   "MEMBER_TAGS_SET",
+  // Experiment tools
+  "EXPERIMENT_LIST",
+  "EXPERIMENT_GET",
+  "EXPERIMENT_CREATE",
+  "EXPERIMENT_UPDATE",
+  "EXPERIMENT_DELETE",
+  "EXPERIMENT_RESULTS",
   // Automation tools
   "AUTOMATION_CREATE",
   "AUTOMATION_GET",
@@ -168,6 +178,9 @@ const ALL_TOOL_NAMES = [
   "AI_PROVIDER_PROVISION_KEY",
   "AI_PROVIDER_TOPUP_URL",
   "AI_PROVIDER_CREDITS",
+  "AI_PLAN_ENTITLEMENTS",
+  "AI_PLAN_LIST",
+  "AI_PLAN_SET",
 
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   "CLAUDE_SUBSCRIPTION_CONNECT",
@@ -206,6 +219,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_AUTOMATION_UPSERT",
   "JIRA_AUTOMATION_DELETE",
   "JIRA_RUN_START",
+  "JIRA_PR_MERGE",
   "JIRA_ISSUE_GET",
   "JIRA_COMMENT_ADD",
   "JIRA_ISSUE_TRANSITION",
@@ -305,6 +319,13 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_COMMENT_DELETE",
   "TASK_BOARD_DISMISSED_LIST",
   "TASK_BOARD_DISMISSED_RESTORE",
+  "TASK_BOARD_ADMIN_ORG_LIST",
+  "TASK_BOARD_DELIVERY",
+  "TASK_BOARD_STUCK",
+  "TASK_BOARD_COST",
+  "TASK_BOARD_QUALITY",
+  "TASK_BOARD_ERRORS",
+  "TASK_BOARD_TENANTS",
   "TASK_ADD_REPO",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
@@ -520,6 +541,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Organizations",
   },
   {
+    name: "ORGANIZATION_BILLING_PLAN_PRICES",
+    description: "Read each plan's monthly price from Stripe",
+    category: "Organizations",
+  },
+  {
     name: "ORGANIZATION_TASK_QUOTA_GET",
     description: "Get the org's auto-task quota usage",
     category: "Organizations",
@@ -538,6 +564,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "INFRA_BILLING_PORTAL",
     description: "Open the Stripe billing portal for an owned site",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_HAS_SITE",
+    description:
+      "Whether this organization owns at least one legacy deco.cx site",
     category: "Organizations",
   },
   // Connection tools
@@ -573,23 +605,28 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_SETUP",
-    description: "Set up Commerce Discovery",
+    name: "REPORTS_SETUP",
+    description: "Set up Reports",
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_RUN",
-    description: "Run Commerce Discovery",
+    name: "REPORTS_RUN",
+    description: "Run Reports",
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_BIND",
-    description: "Bind Commerce Discovery data source",
+    name: "REPORTS_BIND",
+    description: "Bind Reports data source",
     category: "Connections",
   },
   {
-    name: "COMMERCE_DISCOVERY_CONNECTION_STATUS",
-    description: "Read Commerce Discovery connection status",
+    name: "REPORTS_CONNECTION_STATUS",
+    description: "Read Reports connection status",
+    category: "Connections",
+  },
+  {
+    name: "REPORTS_SET_REPOSITORY",
+    description: "Set the Reports repository",
     category: "Connections",
   },
   {
@@ -736,6 +773,37 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Delete organization tag",
     category: "Tags",
     dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_LIST",
+    description: "List a site's A/B experiments",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_GET",
+    description: "Get one A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_CREATE",
+    description: "Create an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_UPDATE",
+    description: "Update an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_DELETE",
+    description: "Delete an A/B experiment",
+    category: "Experiments",
+    dangerous: true,
+  },
+  {
+    name: "EXPERIMENT_RESULTS",
+    description: "A/B results for one experiment",
+    category: "Experiments",
   },
   {
     name: "MEMBER_TAGS_GET",
@@ -901,6 +969,21 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     description: "Get current credit balance for a provider",
     category: "AI Providers",
   },
+  {
+    name: "AI_PLAN_ENTITLEMENTS",
+    description: "Get the org's plan, feature flags and AI usage bar",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_LIST",
+    description: "List the plans an organization can move to",
+    category: "AI Providers",
+  },
+  {
+    name: "AI_PLAN_SET",
+    description: "Change the organization's plan",
+    category: "AI Providers",
+  },
   // Secrets tools
   {
     name: "SECRET_CREATE",
@@ -997,7 +1080,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_RUN_START",
-    description: "Run the agent on one Jira issue now, to try a rule out",
+    description: "Run the agent on Jira issues now, to try a rule out",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_PR_MERGE",
+    description: "Merge the pull request a Jira issue carries as a web link",
     category: "Jira",
   },
   {
@@ -1491,6 +1579,46 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_ADMIN_ORG_LIST",
+    description:
+      "Whether the caller may read every org's task board, and the orgs that have board items",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_DELIVERY",
+    description:
+      "Task board throughput and flow — completions, PR rate, lead vs cycle time, dwell by lane",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_STUCK",
+    description: "Task board work that is stuck right now, and WIP by age",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_COST",
+    description:
+      "Task board spend — total, per task, per shipped PR, and the coverage % behind those figures",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_QUALITY",
+    description:
+      "Task board quality — first-pass yield, rework, autonomy, abandonment, retry burn",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_ERRORS",
+    description:
+      "Task board run failures — counts, kinds, live error feed, error signatures, superseded runs",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_TENANTS",
+    description: "Per-tenant task board scorecard and queue wait",
+    category: "Task Board",
+  },
+  {
     name: "TASK_ADD_REPO",
     description:
       "Clone an organization repository into the sandbox of the task run calling it",
@@ -1553,6 +1681,16 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDERS_ACTIVE",
       "AI_PROVIDER_KEY_LIST",
       "AI_PROVIDER_CREDITS",
+      "AI_PLAN_ENTITLEMENTS",
+      "AI_PLAN_LIST",
+      // Read-only, and the plan catalog and every paywall quote from it — a
+      // member who may see the tiers may see what they cost.
+      "ORGANIZATION_BILLING_PLAN_PRICES",
+      // NOT AI_PLAN_SET — it lives in `ai-providers:manage` only. It changes
+      // the org's plan and takes no payment, so granting it to every member
+      // let any member hand its org every feature (including `ai_service`)
+      // for free. Reading the plan and the catalog stays basic-usage: the
+      // billing card and the plan picker need both.
       "AI_PROVIDER_TOPUP_URL",
       // Object storage access
       "LIST_OBJECTS",
@@ -1627,6 +1765,13 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_COMMENT_DELETE",
       "TASK_BOARD_DISMISSED_LIST",
       "TASK_BOARD_DISMISSED_RESTORE",
+      "TASK_BOARD_ADMIN_ORG_LIST",
+      "TASK_BOARD_DELIVERY",
+      "TASK_BOARD_STUCK",
+      "TASK_BOARD_COST",
+      "TASK_BOARD_QUALITY",
+      "TASK_BOARD_ERRORS",
+      "TASK_BOARD_TENANTS",
       "NOTIFICATION_LIST",
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",
@@ -1708,10 +1853,11 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_CONNECTIONS_CREATE",
       "COLLECTION_CONNECTIONS_UPDATE",
       "COLLECTION_CONNECTIONS_DELETE",
-      "COMMERCE_DISCOVERY_SETUP",
-      "COMMERCE_DISCOVERY_RUN",
-      "COMMERCE_DISCOVERY_BIND",
-      "COMMERCE_DISCOVERY_CONNECTION_STATUS",
+      "REPORTS_SETUP",
+      "REPORTS_RUN",
+      "REPORTS_BIND",
+      "REPORTS_CONNECTION_STATUS",
+      "REPORTS_SET_REPOSITORY",
     ],
     dangerous: true,
   },
@@ -1806,6 +1952,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "AI_PROVIDER_PROVISION_KEY",
       "AI_PROVIDER_TOPUP_URL",
       "AI_PROVIDER_CREDITS",
+      "AI_PLAN_ENTITLEMENTS",
+      "AI_PLAN_LIST",
+      "AI_PLAN_SET",
       "CLAUDE_SUBSCRIPTION_CONNECT",
       "CLAUDE_SUBSCRIPTION_STATUS",
       "CLAUDE_SUBSCRIPTION_DISCONNECT",
@@ -2083,6 +2232,7 @@ export function getToolsByCategory(): Record<ToolCategory, ToolMetadata[]> {
     Users: [],
     "API Keys": [],
     Tags: [],
+    Experiments: [],
     "AI Providers": [],
     Secrets: [],
     "File Configs": [],

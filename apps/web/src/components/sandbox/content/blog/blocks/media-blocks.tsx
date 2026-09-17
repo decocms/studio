@@ -42,7 +42,7 @@ export function BlockImageBlock({
               type="button"
               onClick={() => onChange({ ...block, size: s })}
               className={cn(
-                "rounded px-2 py-0.5 transition-colors cursor-pointer",
+                "classic:rounded px-2 py-0.5 transition-colors cursor-pointer compact:rounded-lg",
                 size === s
                   ? "bg-accent text-accent-foreground"
                   : "hover:bg-muted",

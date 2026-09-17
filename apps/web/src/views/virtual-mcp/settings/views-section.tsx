@@ -1,6 +1,6 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 /**
- * The Views card on the settings index: every view this project can open, in
- * sidebar order, plus the two settings that say where it lands.
+ * Project layout: default layout preferences and the available sidebar views.
  *
  * One card, not one per source: a view from a connected app is the same kind of
  * thing as a native one, so the app's rows sit under a labelled divider inside
@@ -57,7 +57,180 @@ function AppHeaderRow({ icon, title }: { icon: string | null; title: string }) {
   );
 }
 
-export function ProjectViewsSection({ views }: { views: ProjectViews }) {
+function CompactProjectViewsSection({ views }: { views: ProjectViews }) {
+  const t = useT();
+  return (
+    <>
+      <SettingsSection title={t("virtualMcp.settings.views.defaults")}>
+        <SettingsCard>
+          <SettingsCardItem
+            title={t("virtualMcp.layoutTabContent.mainView")}
+            description={t("virtualMcp.layoutTabContent.mainViewDescription")}
+            action={
+              <Select
+                value={views.defaultMainView}
+                onValueChange={views.setMainView}
+              >
+                <SelectTrigger
+                  aria-label={t("virtualMcp.layoutTabContent.mainView")}
+                  className="w-36 h-8 text-sm shrink-0 @min-xl/project-settings:w-44"
+                >
+                  <SelectValue
+                    placeholder={t("virtualMcp.layoutTabContent.noMainView")}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {views.defaultMainOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            }
+          />
+          <SettingsCardItem
+            title={t("virtualMcp.layoutTabContent.showChat")}
+            description={t("virtualMcp.layoutTabContent.showChatDescription")}
+            action={
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <span className="shrink-0">
+                    <Switch
+                      aria-label={t("virtualMcp.layoutTabContent.showChat")}
+                      checked={views.noMainView ? true : views.chatDefaultOpen}
+                      disabled={views.noMainView}
+                      onCheckedChange={views.setChatDefaultOpen}
+                    />
+                  </span>
+                </TooltipTrigger>
+                {views.noMainView && (
+                  <TooltipContent side="top">
+                    {t("virtualMcp.layoutTabContent.chatAlwaysShown")}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            }
+          />
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title={t("virtualMcp.settings.views.sidebar")}>
+        <SettingsCard>
+          {views.projectViews.map((viewId) => {
+            const pinned = views.pinned(viewId);
+            return (
+              <SettingsCardItem
+                key={viewId}
+                icon={<SidebarViewIcon viewId={viewId} />}
+                title={views.labels[viewId]}
+                onClick={() => views.openView(viewId)}
+                action={
+                  <div className="flex items-center gap-1">
+                    <ViewRowActions
+                      pinned={pinned}
+                      canSetMainView={pinned && !views.isMainView(viewId)}
+                      onOpen={() => views.openView(viewId)}
+                      onTogglePin={() => views.togglePin(viewId, !pinned)}
+                      onSetMainView={() => views.setMainView(viewId)}
+                    />
+                    <span
+                      onClick={() => views.openView(viewId)}
+                      className="flex cursor-pointer items-center text-muted-foreground"
+                    >
+                      <ChevronRight size={16} />
+                    </span>
+                  </div>
+                }
+              />
+            );
+          })}
+
+          {/** App views, each group behind the divider that names its app. */}
+          {views.connectionsData.flatMap((conn) => [
+            <AppHeaderRow
+              key={`${conn.id}:header`}
+              icon={conn.icon}
+              title={conn.title}
+            />,
+            ...conn.uiTools.map((tool) => {
+              const pinnedView = views.pinnedAppViews.find(
+                (v) => v.connectionId === conn.id && v.toolName === tool.name,
+              );
+              const pinned = !!pinnedView;
+              const tabId = formatPinnedViewTabId(conn.id, tool.name);
+              const mainViewValue = `ext-apps:${conn.id}:${tool.name}`;
+              return (
+                <SettingsCardItem
+                  key={`${conn.id}:${tool.name}`}
+                  onClick={() => views.openView(tabId)}
+                  icon={
+                    pinned ? (
+                      // A control, not the row: it must not also open.
+                      <span onClick={stopRowClick}>
+                        <SimpleIconPicker
+                          value={pinnedView.icon ?? null}
+                          onChange={(icon) =>
+                            views.setAppViewIcon(conn.id, tool.name, icon)
+                          }
+                        />
+                      </span>
+                    ) : (
+                      <Lightning01 size={16} />
+                    )
+                  }
+                  title={
+                    pinned ? (
+                      <span onClick={stopRowClick}>
+                        <Input
+                          value={pinnedView.label}
+                          onChange={(e) =>
+                            views.setAppViewLabel(
+                              conn.id,
+                              tool.name,
+                              e.target.value,
+                            )
+                          }
+                          onBlur={views.commitAppViewLabel}
+                          aria-label={tool.title ?? toTitleCase(tool.name)}
+                          className="h-7 w-full max-w-52 text-sm"
+                        />
+                      </span>
+                    ) : (
+                      (tool.title ?? toTitleCase(tool.name))
+                    )
+                  }
+                  action={
+                    <div className="flex items-center gap-1">
+                      <ViewRowActions
+                        pinned={pinned}
+                        canSetMainView={
+                          pinned && !views.isMainView(mainViewValue)
+                        }
+                        onOpen={() => views.openView(tabId)}
+                        onTogglePin={() =>
+                          views.toggleAppViewPin(conn.id, tool.name)
+                        }
+                        onSetMainView={() => views.setMainView(mainViewValue)}
+                      />
+                      <span
+                        onClick={() => views.openView(tabId)}
+                        className="flex cursor-pointer items-center text-muted-foreground"
+                      >
+                        <ChevronRight size={16} />
+                      </span>
+                    </div>
+                  }
+                />
+              );
+            }),
+          ])}
+        </SettingsCard>
+      </SettingsSection>
+    </>
+  );
+}
+
+function ClassicProjectViewsSection({ views }: { views: ProjectViews }) {
   const t = useT();
   return (
     <SettingsSection title={t("virtualMcp.settings.views.projectViews")}>
@@ -217,5 +390,14 @@ export function ProjectViewsSection({ views }: { views: ProjectViews }) {
         />
       </SettingsCard>
     </SettingsSection>
+  );
+}
+
+export function ProjectViewsSection(props: { views: ProjectViews }) {
+  const compact = useCompactPageLayout();
+  return compact ? (
+    <CompactProjectViewsSection {...props} />
+  ) : (
+    <ClassicProjectViewsSection {...props} />
   );
 }

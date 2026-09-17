@@ -132,10 +132,19 @@ export async function mintGatewayJwt(
   expiresIn = 3600,
 ): Promise<string> {
   const settings = getSettings();
-  const gwSecret = settings.studioJwtSecret ?? settings.betterAuthSecret;
+  // With plans on there is NO fallback: signing with BETTER_AUTH_SECRET when it
+  // does not match the gateway's MESH_JWT_SECRET 401s every entitlements call,
+  // and the gates read a 401 as "no answer" and open. resolveConfig already
+  // refuses to boot in that state; this keeps the invariant for any settings
+  // object built by another path.
+  const gwSecret = settings.plansEnabled
+    ? settings.studioJwtSecret
+    : (settings.studioJwtSecret ?? settings.betterAuthSecret);
   if (!gwSecret) {
     throw new Error(
-      "A deterministic JWT secret is required to mint gateway JWTs — set STUDIO_JWT_SECRET or BETTER_AUTH_SECRET",
+      settings.plansEnabled
+        ? "STUDIO_JWT_SECRET (or MESH_JWT_SECRET) is required to mint gateway JWTs when STUDIO_PLANS_ENABLED is set — BETTER_AUTH_SECRET is deliberately not a fallback, see resolve-config"
+        : "A deterministic JWT secret is required to mint gateway JWTs — set STUDIO_JWT_SECRET or BETTER_AUTH_SECRET",
     );
   }
   const secret = new TextEncoder().encode(gwSecret);

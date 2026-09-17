@@ -12,7 +12,7 @@
  */
 
 import { apiBaseUrlFor } from "@decocms/shared/git-providers";
-import { GitProviderError } from "../types";
+import { flattenErrorStrings, GitProviderError } from "../types";
 import { gitlabRetryAfterMs } from "./client";
 
 /** Matches every other GitLab caller: one REST call, not a download. */
@@ -31,22 +31,14 @@ export function gitlabApiBaseUrl(host: string): string {
  * this text, so flattening every shape is load-bearing, not cosmetic.
  */
 export function gitlabErrorMessage(bodyText: string): string {
-  const flatten = (value: unknown): string[] => {
-    if (typeof value === "string") return value.length > 0 ? [value] : [];
-    if (Array.isArray(value)) return value.flatMap(flatten);
-    if (value !== null && typeof value === "object") {
-      return Object.values(value).flatMap(flatten);
-    }
-    return [];
-  };
   try {
     const parsed: unknown = JSON.parse(bodyText);
     if (parsed !== null && typeof parsed === "object") {
       const record = parsed as Record<string, unknown>;
       const parts = [
-        ...flatten(record.message),
-        ...flatten(record.error),
-        ...flatten(record.error_description),
+        ...flattenErrorStrings(record.message),
+        ...flattenErrorStrings(record.error),
+        ...flattenErrorStrings(record.error_description),
       ];
       if (parts.length > 0) return parts.join("; ");
     }

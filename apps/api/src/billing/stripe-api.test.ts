@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  checkoutIdempotencyKey,
   computeTopUpChargeCents,
+  topUpIdempotencyKey,
+  plannedOrphanRefunds,
   taxAndAddressParams,
   toStripeForm,
 } from "./stripe-api";
@@ -92,5 +95,201 @@ describe("toUsdCreditCents (BRL top-up FX)", () => {
     expect(toUsdCreditCents(5500, "brl", 5.5)).toBe(1000); // R$55 @5.5 = $10
     expect(toUsdCreditCents(1000, "usd", 5.5)).toBe(1000);
     expect(toUsdCreditCents(999, "brl", 5.5)).toBe(182); // rounds
+  });
+});
+
+/**
+ * The double charge, undone. Two checkouts completing before either binds is a
+ * double-click or a second tab; the webhook refuses the second and used to only
+ * CANCEL it, which stops future billing and returns nothing — leaving the
+ * customer charged twice for the one subscription they kept.
+ */
+describe("plannedOrphanRefunds", () => {
+  const SUB = "sub_orphan";
+
+  test("refunds what the orphan's paid invoice actually collected", () => {
+    expect(
+      plannedOrphanRefunds(SUB, [
+        { id: "in_1", amount_paid: 25000, payment_intent: "pi_1" },
+      ]),
+    ).toEqual([
+      {
+        paymentIntent: "pi_1",
+        amountCents: 25000,
+        idempotencyKey: "orphan-refund:sub_orphan:in_1",
+      },
+    ]);
+  });
+
+  test("a key per INVOICE, so two paid invoices are two refunds", () => {
+    const planned = plannedOrphanRefunds(SUB, [
+      { id: "in_1", amount_paid: 25000, payment_intent: "pi_1" },
+      { id: "in_2", amount_paid: 500000, payment_intent: "pi_2" },
+    ]);
+    expect(planned.map((p) => p.idempotencyKey)).toEqual([
+      "orphan-refund:sub_orphan:in_1",
+      "orphan-refund:sub_orphan:in_2",
+    ]);
+    expect(planned.reduce((s, p) => s + p.amountCents, 0)).toBe(525000);
+  });
+
+  test("the key is stable across a webhook redelivery — Stripe replays, not re-refunds", () => {
+    const once = plannedOrphanRefunds(SUB, [
+      { id: "in_1", amount_paid: 25000, payment_intent: "pi_1" },
+    ]);
+    const again = plannedOrphanRefunds(SUB, [
+      { id: "in_1", amount_paid: 25000, payment_intent: "pi_1" },
+    ]);
+    expect(again[0]?.idempotencyKey).toBe(once[0]?.idempotencyKey);
+  });
+
+  test("collects nothing back from invoices that collected nothing", () => {
+    // A downgrade's credit invoice and a zero proration are both `paid` with
+    // amount_paid 0 — refunding those would send money that never arrived.
+    expect(
+      plannedOrphanRefunds(SUB, [
+        { id: "in_credit", amount_paid: 0, payment_intent: "pi_x" },
+        { id: "in_neg", amount_paid: -474999, payment_intent: "pi_y" },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("skips an invoice with no card payment to reverse", () => {
+    // Settled from customer balance: paid, non-zero, but no payment intent.
+    expect(
+      plannedOrphanRefunds(SUB, [
+        { id: "in_bal", amount_paid: 25000, payment_intent: null },
+        { id: "in_none", amount_paid: 25000 },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("reads an expanded payment intent as well as a bare id", () => {
+    expect(
+      plannedOrphanRefunds(SUB, [
+        { id: "in_1", amount_paid: 25000, payment_intent: { id: "pi_exp" } },
+      ])[0]?.paymentIntent,
+    ).toBe("pi_exp");
+  });
+});
+
+describe("checkoutIdempotencyKey", () => {
+  const AT = new Date("2026-09-15T18:00:00Z");
+
+  test("two clicks for the same org and plan collapse to one session", () => {
+    // Stripe replays the first response for a repeated key, so both callers
+    // get the SAME Checkout Session — and a Session completes at most once.
+    expect(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        planId: "pro",
+        lastStripeEventAt: AT,
+      }),
+    ).toBe(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        planId: "pro",
+        lastStripeEventAt: AT,
+      }),
+    );
+  });
+
+  test("different orgs never share a session", () => {
+    expect(checkoutIdempotencyKey({ organizationId: "org_1" })).not.toBe(
+      checkoutIdempotencyKey({ organizationId: "org_2" }),
+    );
+  });
+
+  test("a changed plan is a different purchase", () => {
+    expect(
+      checkoutIdempotencyKey({ organizationId: "org_1", planId: "pro" }),
+    ).not.toBe(
+      checkoutIdempotencyKey({ organizationId: "org_1", planId: "ultra" }),
+    );
+  });
+
+  test("the watermark salt frees the org after its situation changes", () => {
+    // Subscribe, cancel, come back inside Stripe's 24h key window: without the
+    // salt the org would be handed its own already-completed session and could
+    // never re-subscribe.
+    expect(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        lastStripeEventAt: AT,
+      }),
+    ).not.toBe(
+      checkoutIdempotencyKey({
+        organizationId: "org_1",
+        lastStripeEventAt: new Date(AT.getTime() + 1000),
+      }),
+    );
+  });
+
+  test("a never-billed org is stable rather than random", () => {
+    expect(checkoutIdempotencyKey({ organizationId: "org_new" })).toBe(
+      checkoutIdempotencyKey({
+        organizationId: "org_new",
+        lastStripeEventAt: null,
+      }),
+    );
+  });
+});
+
+describe("topUpIdempotencyKey", () => {
+  /** 2026-09-15T18:00:00Z, and a second later. */
+  const AT = Date.parse("2026-09-15T18:00:00Z");
+
+  test("two clicks a second apart collapse to one top-up session", () => {
+    // The whole point: without a key the second click was a second Checkout
+    // Session with its own id, so the webhook's `stripe-topup:<sessionId>`
+    // dedupe could not collapse it either — two charges, two credits.
+    const first = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT,
+    });
+    const second = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT + 1_000,
+    });
+    expect(second).toBe(first);
+  });
+
+  test("a deliberate repeat purchase later gets its own session", () => {
+    // The reason this is a time bucket and not the subscription key's
+    // watermark salt: a top-up writes no billing row, so a constant salt would
+    // hand the second purchase the first, already-completed session for a full
+    // 24h and the org simply could not top up again.
+    const first = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT,
+    });
+    const later = topUpIdempotencyKey({
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl",
+      nowMs: AT + 5 * 60_000,
+    });
+    expect(later).not.toBe(first);
+  });
+
+  test("org, amount and currency each separate the key", () => {
+    const base = {
+      organizationId: "org_1",
+      amountCents: 1000,
+      currency: "brl" as const,
+      nowMs: AT,
+    };
+    const key = topUpIdempotencyKey(base);
+    expect(topUpIdempotencyKey({ ...base, organizationId: "org_2" })).not.toBe(
+      key,
+    );
+    expect(topUpIdempotencyKey({ ...base, amountCents: 2000 })).not.toBe(key);
+    expect(topUpIdempotencyKey({ ...base, currency: "usd" })).not.toBe(key);
   });
 });

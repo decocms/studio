@@ -7,7 +7,7 @@
  */
 
 import { taskKey } from "@decocms/shared/task-key";
-import { matchesTaskKey } from "@/layouts/task-board/task-filters";
+import { matchesTaskKey } from "@/layouts/task-board/task-filters-core";
 
 /** A card, as far as its URL is concerned. */
 interface TaskRouteItem {
@@ -24,6 +24,22 @@ interface TaskRouteItem {
  */
 export function taskRouteSegment(orgSlug: string, item: TaskRouteItem): string {
   return taskKey(orgSlug, item.keySeq) ?? item.id;
+}
+
+/** Canonical share path for a task. Project-owned task pages retain their
+ * structural scope so a pasted link restores the project sidebar and
+ * breadcrumb; organization Tasks keeps the shorter org path. Every dynamic
+ * segment is encoded at this single write boundary. */
+export function taskSharePath(
+  orgSlug: string,
+  item: TaskRouteItem,
+  projectId?: string,
+): string {
+  const org = encodeURIComponent(orgSlug);
+  const task = encodeURIComponent(taskRouteSegment(orgSlug, item));
+  return projectId
+    ? `/${org}/projects/${encodeURIComponent(projectId)}/tasks/${task}`
+    : `/${org}/tasks/${task}`;
 }
 
 /**
