@@ -110,6 +110,18 @@ async function mergeOneIssue(
 
     const outcomes: PrOutcome[] = [];
     const conflicted: Array<{ number: number; url: string }> = [];
+    /**
+     * Whether this pass actually did anything — i.e. found a pull request
+     * still open and tried to land it.
+     *
+     * Re-merging is the NORMAL second half of this feature (merge, conflict,
+     * an agent rebases, merge again), and a person will also re-fire a batch
+     * to see where it got to. Every one of those passes over an
+     * already-merged issue would otherwise add another identical comment to
+     * the customer's card. The merge itself is idempotent; the record of it
+     * has to be too.
+     */
+    let acted = false;
     for (const pr of prs) {
       const repo = pr.repo.path;
       const client = await changeRequestClientForOrigin(
@@ -138,6 +150,9 @@ async function mergeOneIssue(
         });
         continue;
       }
+      // Past the state check, so the pull request was open: whatever happens
+      // now is news.
+      acted = true;
       const outcome = await client.merge(pr.number);
       if (outcome.merged) {
         outcomes.push({ repo, url: pr.url, status: "merged" });
@@ -174,12 +189,15 @@ async function mergeOneIssue(
     }
 
     // The record, on the card. Nothing else writes it — a merge used to leave
-    // no trace on the issue at all.
-    await jira
-      .addComment(issueKey, [`**Merge**`, ...outcomes.map(line)].join("\n"))
-      .catch((err) => {
-        console.warn("[jira-pr-merge] comment failed", issueKey, err);
-      });
+    // no trace on the issue at all. Silent when this pass changed nothing: the
+    // comment from the pass that DID change something already says it.
+    if (acted) {
+      await jira
+        .addComment(issueKey, [`**Merge**`, ...outcomes.map(line)].join("\n"))
+        .catch((err) => {
+          console.warn("[jira-pr-merge] comment failed", issueKey, err);
+        });
+    }
     return { issueKey, outcomes };
   } catch (err) {
     return {
