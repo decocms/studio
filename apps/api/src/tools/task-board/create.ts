@@ -26,7 +26,7 @@ import {
   type ChangeRequestRef,
   findChangeRequestIn,
 } from "./change-request-extract";
-import { findDuplicateTask } from "./duplicate-check";
+import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
@@ -81,7 +81,13 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     item: TaskBoardItemSchema,
     /** True when `item` is a pre-existing card returned in place of a new one. */
     deduplicated: z.boolean(),
-    /** The model's one-line reason for the match; null unless deduplicated. */
+    /** What the duplicate check concluded: `off` when not requested, `matched`
+     *  when `item` is the existing card, `no_match` when it ran and found
+     *  nothing, `skipped` when it could not run (no model tier, provider error,
+     *  unparseable answer) and the card was created without a check. */
+    duplicateCheck: z.enum(["off", "matched", "no_match", "skipped"]),
+    /** The model's one-line reason for a match, or why the check was skipped;
+     *  null otherwise. */
     duplicateReason: z.string().nullable(),
   }),
   handler: async (input, ctx) => {
@@ -142,20 +148,24 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       }
     }
 
+    let duplicateCheck: DuplicateOutcome | null = null;
     if (input.onDuplicate === "return_existing") {
-      const duplicate = await findDuplicateTask(ctx, organizationId, {
+      duplicateCheck = await findDuplicateTask(ctx, organizationId, {
         title: input.title,
         description: input.description,
         repo: input.repo,
-      }).catch((err) => {
+      }).catch((err): DuplicateOutcome => {
         console.error("[task-board] duplicate check failed", err);
-        return null;
+        return {
+          status: "skipped",
+          reason: err instanceof Error ? err.message : String(err),
+        };
       });
-      if (duplicate) {
+      if (duplicateCheck.status === "matched") {
         return returnExistingCard(ctx, {
           organizationId,
-          existing: duplicate.item,
-          reason: duplicate.reason,
+          existing: duplicateCheck.item,
+          reason: duplicateCheck.reason,
           draft: input,
           pr,
         });
@@ -222,7 +232,15 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     emitTaskBoardUpdated(organizationId, item);
     await reactToSuperAgentDelegation(ctx, item);
 
-    return { item, deduplicated: false, duplicateReason: null };
+    const checkStatus: "off" | "no_match" | "skipped" =
+      duplicateCheck?.status ?? "off";
+    return {
+      item,
+      deduplicated: false,
+      duplicateCheck: checkStatus,
+      duplicateReason:
+        duplicateCheck?.status === "skipped" ? duplicateCheck.reason : null,
+    };
   },
 });
 
@@ -252,6 +270,7 @@ async function returnExistingCard(
 ): Promise<{
   item: TaskBoardItem;
   deduplicated: boolean;
+  duplicateCheck: "matched";
   duplicateReason: string | null;
 }> {
   const { organizationId, existing, reason, draft, pr } = params;
@@ -287,5 +306,10 @@ async function returnExistingCard(
     (await ctx.storage.taskBoard.getById(existing.id, organizationId)) ??
     existing;
   if (pr) emitTaskBoardUpdated(organizationId, item);
-  return { item, deduplicated: true, duplicateReason: reason };
+  return {
+    item,
+    deduplicated: true,
+    duplicateCheck: "matched",
+    duplicateReason: reason,
+  };
 }

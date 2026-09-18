@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { z } from "zod";
 import type { TaskBoardItem } from "@/storage/types";
 import { TASK_BOARD_ITEM_CREATE } from "./create";
 import {
@@ -8,6 +9,7 @@ import {
   buildDuplicatePrompt,
   isOpenForDuplicateCheck,
   MAX_DUPLICATE_CANDIDATES,
+  parseModelJson,
   selectBatchCandidates,
   selectDuplicateCandidates,
   tokenize,
@@ -250,7 +252,7 @@ describe("TASK_BOARD_ITEM_CREATE onDuplicate", () => {
   it("output always carries the dedup verdict", () => {
     const shape = TASK_BOARD_ITEM_CREATE.outputSchema.shape;
     expect(Object.keys(shape).sort()).toEqual(
-      ["deduplicated", "duplicateReason", "item"].sort(),
+      ["deduplicated", "duplicateCheck", "duplicateReason", "item"].sort(),
     );
   });
 });
@@ -387,5 +389,34 @@ describe("buildBatchDuplicatePrompt", () => {
     );
     expect(prompt).toContain("- draft 3 (acme/web): Login broken — on Safari");
     expect(prompt).toContain(`- [${c.id}] (todo) Fix login`);
+  });
+});
+
+describe("parseModelJson", () => {
+  const schema = z.object({
+    duplicateOf: z.string().nullable(),
+    n: z.number(),
+  });
+
+  it("reads bare, fenced, and prose-wrapped JSON", () => {
+    const want = { duplicateOf: "tbi_1", n: 1 };
+    expect(parseModelJson('{"duplicateOf":"tbi_1","n":1}', schema)).toEqual(
+      want,
+    );
+    expect(
+      parseModelJson('```json\n{"duplicateOf":"tbi_1","n":1}\n```', schema),
+    ).toEqual(want);
+    expect(
+      parseModelJson(
+        'Sure! Here is the verdict: {"duplicateOf":"tbi_1","n":1} Hope that helps.',
+        schema,
+      ),
+    ).toEqual(want);
+  });
+
+  it("returns null for no JSON, broken JSON, or the wrong shape", () => {
+    expect(parseModelJson("no duplicate found", schema)).toBeNull();
+    expect(parseModelJson('{"duplicateOf": "tbi_1", ', schema)).toBeNull();
+    expect(parseModelJson('{"duplicateOf": 5, "n": "x"}', schema)).toBeNull();
   });
 });

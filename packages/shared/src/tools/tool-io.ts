@@ -436,6 +436,7 @@ export interface StudioToolIO {
         updatedAt: string;
       };
       deduplicated: boolean;
+      duplicateCheck: "off" | "matched" | "no_match" | "skipped";
       duplicateReason: string | null;
     };
   };
@@ -2333,7 +2334,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -2599,8 +2600,8 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
-                            | "manual"
                             | "off"
+                            | "manual"
                             | "auto"
                             | "on"
                             | null
@@ -2801,7 +2802,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3034,7 +3035,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3258,7 +3259,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3476,8 +3477,8 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
-                            | "manual"
                             | "off"
+                            | "manual"
                             | "auto"
                             | "on"
                             | null
@@ -3686,7 +3687,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3908,7 +3909,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -5155,7 +5156,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"

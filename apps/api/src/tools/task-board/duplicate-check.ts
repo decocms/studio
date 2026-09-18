@@ -11,7 +11,7 @@
  *
  * Shape, mirroring `pr-open-board-reaction.ts`:
  * - a pure, lexical pre-filter picks the candidate cards (bounded prompt cost);
- * - one `generateObject` call on the org's "fast" tier says whether one of them
+ * - one JSON-answer call on the org's "fast" tier says whether one of them
  *   already tracks the drafted work;
  * - a pure gate accepts the verdict only at high confidence and only for an id
  *   that was actually offered.
@@ -26,7 +26,7 @@
  * PR-open reaction already established.
  */
 
-import { generateObject } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import { resolveTier } from "@/core/resolve-tier";
@@ -243,9 +243,39 @@ ${cardList}`;
 }
 
 /**
- * One structured call to the org's "fast" tier. Null when there is no
+ * The JSON object a model was asked for, out of whatever it actually wrote:
+ * bare, fenced, or wrapped in a sentence. Null when nothing parses or the
+ * shape is wrong. Exported for its tests.
+ */
+export function parseModelJson<T>(
+  text: string,
+  schema: z.ZodType<T>,
+): T | null {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/, "")
+    .trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    const parsed = schema.safeParse(JSON.parse(cleaned.slice(start, end + 1)));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One JSON-answer call to the org's "fast" tier. Plain `generateText` with the
+ * schema described in the prompt, not `generateObject`: the fast slot is
+ * whatever cheap model the org's provider offers, and native structured-output
+ * mode is not something every one of them supports through every gateway.
+ *
+ * Resolves to the parsed answer, or to a `skipped` reason when there is no
  * provider, the call fails, or the answer does not parse — every caller reads
- * null as "no duplicate" and creates.
+ * that as "no duplicate" and creates.
  */
 async function askFastTier<T>(
   ctx: StudioContext,
@@ -253,41 +283,39 @@ async function askFastTier<T>(
   schema: z.ZodType<T>,
   system: string,
   prompt: string,
-): Promise<T | null> {
+): Promise<{ answer: T } | { skipped: string }> {
   try {
     const tier = await resolveTier(ctx, "fast");
     const provider = await ctx.aiProviders.activate(tier.credentialId, orgId);
     const model = provider.aiSdk.languageModel(tier.modelId);
-    const { object } = await generateObject({
+    const { text } = await generateText({
       model,
-      schema,
       system,
       prompt,
       temperature: 0,
+      maxOutputTokens: 1200,
     });
-    return object;
+    const answer = parseModelJson(text, schema);
+    if (!answer) {
+      console.warn("[task-board] duplicate check: unparseable answer", {
+        modelId: tier.modelId,
+        head: text.slice(0, 200),
+      });
+      return { skipped: `unparseable answer from ${tier.modelId}` };
+    }
+    return { answer };
   } catch (err) {
     console.warn("[task-board] duplicate check failed, creating anyway", err);
-    return null;
+    return { skipped: err instanceof Error ? err.message : String(err) };
   }
 }
 
-/** Ask which candidate, if any, already tracks the draft. */
-async function judgeDuplicate(
-  ctx: StudioContext,
-  orgId: string,
-  draft: TaskDraft,
-  candidates: readonly TaskBoardItem[],
-): Promise<DuplicateVerdict | null> {
-  if (candidates.length === 0) return null;
-  return askFastTier(
-    ctx,
-    orgId,
-    DuplicateVerdictSchema,
-    SYSTEM,
-    buildDuplicatePrompt(draft, candidates),
-  );
-}
+/** What the check concluded, for the caller and for whoever reads the tool's
+ *  output: a match, a clean miss, or a check that could not run. */
+export type DuplicateOutcome =
+  | { status: "matched"; item: TaskBoardItem; reason: string }
+  | { status: "no_match" }
+  | { status: "skipped"; reason: string };
 
 /**
  * Batch form, for the reports import, which lands up to 100 findings at once.
@@ -443,28 +471,40 @@ export async function findDuplicatesForBatch(
   const items = await ctx.storage.taskBoard.list(orgId);
   const candidates = selectBatchCandidates(items, drafts);
   if (candidates.length === 0) return new Map();
-  const verdict = await askFastTier(
+  const asked = await askFastTier(
     ctx,
     orgId,
     BatchDuplicateVerdictSchema,
     BATCH_SYSTEM,
     buildBatchDuplicatePrompt(drafts, candidates),
   );
-  return acceptBatchDuplicates(verdict, drafts, candidates);
+  if ("skipped" in asked) return new Map();
+  return acceptBatchDuplicates(asked.answer, drafts, candidates);
 }
 
 /**
- * The whole check: candidates, verdict, gate. Resolves to the existing card
- * that already tracks the draft, or null when the card should be created.
+ * The whole check: candidates, verdict, gate. `matched` carries the existing
+ * card; `no_match` and `skipped` both mean "create", but the caller tells them
+ * apart so a check that never ran is not mistaken for a clean miss.
  */
 export async function findDuplicateTask(
   ctx: StudioContext,
   orgId: string,
   draft: TaskDraft,
-): Promise<{ item: TaskBoardItem; reason: string } | null> {
+): Promise<DuplicateOutcome> {
   const items = await ctx.storage.taskBoard.list(orgId);
   const candidates = selectDuplicateCandidates(items, draft);
-  const verdict = await judgeDuplicate(ctx, orgId, draft, candidates);
-  const match = acceptDuplicate(verdict, candidates);
-  return match && verdict ? { item: match, reason: verdict.reason } : null;
+  if (candidates.length === 0) return { status: "no_match" };
+  const asked = await askFastTier(
+    ctx,
+    orgId,
+    DuplicateVerdictSchema,
+    SYSTEM,
+    buildDuplicatePrompt(draft, candidates),
+  );
+  if ("skipped" in asked) return { status: "skipped", reason: asked.skipped };
+  const match = acceptDuplicate(asked.answer, candidates);
+  return match
+    ? { status: "matched", item: match, reason: asked.answer.reason }
+    : { status: "no_match" };
 }
