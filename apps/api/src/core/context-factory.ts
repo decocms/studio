@@ -65,7 +65,10 @@ import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
 import { buildWildcardPermission } from "./permission-wildcard";
-import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+import {
+  isOrgArchived,
+  ORG_ARCHIVED_ERROR,
+} from "@decocms/shared/organization/org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
@@ -872,7 +875,7 @@ async function authenticateRequest(
       });
 
       if (isOrgArchived({ metadata: membership?.orgMetadata })) {
-        throw new Error("Organization is archived");
+        throw new Error(ORG_ARCHIVED_ERROR);
       }
 
       const role = membership?.role;
@@ -1187,7 +1190,7 @@ async function authenticateRequest(
         );
 
         if (isOrgArchived({ metadata: membership?.orgMetadata })) {
-          throw new Error("Organization is archived");
+          throw new Error(ORG_ARCHIVED_ERROR);
         }
 
         if (membership) {
@@ -1223,11 +1226,8 @@ async function authenticateRequest(
           session?: { activeOrganizationId?: string };
         } | null;
 
-        if (orgData) {
-          if (isOrgArchived(orgData)) {
-            throw new Error("Organization is archived");
-          }
-
+        // A stale active org means no fallback context, not a failed request.
+        if (orgData && !isOrgArchived(orgData)) {
           organization = {
             id: orgData.id,
             slug: orgData.slug,
@@ -1242,7 +1242,7 @@ async function authenticateRequest(
 
           // Browser sessions use Better Auth's hasPermission API
           // No need to fetch permissions - they're checked via the API
-        } else {
+        } else if (!orgData) {
           organization = {
             id: session.session.activeOrganizationId,
             slug: "",
@@ -1267,6 +1267,10 @@ async function authenticateRequest(
     }
   } catch (error) {
     const err = error as Error & { body?: unknown };
+    // An explicitly requested archived org is an answer, not an auth failure.
+    if (err.message === ORG_ARCHIVED_ERROR) {
+      throw error;
+    }
     console.error(
       "[Auth] Session check failed:",
       JSON.stringify(
