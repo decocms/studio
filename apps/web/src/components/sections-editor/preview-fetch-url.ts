@@ -49,6 +49,18 @@ export function buildPreviewInvokePath(ref: PreviewProxyRef): string {
   return proxyBase(ref, "preview-invoke");
 }
 
+/**
+ * `POST /api/:org/sandbox/:virtualMcpId/:branch/catalog-invoke` — the
+ * sandbox-optional sibling of `preview-invoke`. It resolves the site origin
+ * from the running sandbox when there is one, and from the site's public deco
+ * runtime (`previewServerUrl`) otherwise, so the blog product picker can browse
+ * the real catalog even with no sandbox (local/CMS mode). The server restricts
+ * it to the read-only VTEX catalog loaders.
+ */
+export function buildCatalogInvokePath(ref: PreviewProxyRef): string {
+  return proxyBase(ref, "catalog-invoke");
+}
+
 function isBrowserReachableLocalPreview(previewUrl: string): boolean {
   try {
     const { hostname } = new URL(previewUrl);

@@ -409,9 +409,7 @@ export function ProductPickerDialog({
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">
               {mode === "category"
                 ? t("sandbox.productPickerDialog.pickCategoryPrompt")
-                : mode === "cluster"
-                  ? t("sandbox.productPickerDialog.enterClusterPrompt")
-                  : t("sandbox.productPickerDialog.typeToSearchPrompt")}
+                : t("sandbox.productPickerDialog.enterClusterPrompt")}
             </p>
           )}
         </div>

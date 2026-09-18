@@ -37,9 +37,18 @@ describe("categoryPathToFacets", () => {
 });
 
 describe("buildProductRequests", () => {
-  test("returns nothing for a blank term", () => {
-    expect(buildProductRequests("search", "")).toEqual([]);
-    expect(buildProductRequests("search", "   ")).toEqual([]);
+  test("blank search term browses the default catalog listing", () => {
+    const expected = [
+      {
+        resolveType: VTEX_PRODUCT_LIST_RESOLVE_TYPE,
+        props: { count: PRODUCT_PICKER_COUNT },
+      },
+    ];
+    expect(buildProductRequests("search", "")).toEqual(expected);
+    expect(buildProductRequests("search", "   ")).toEqual(expected);
+  });
+
+  test("cluster/category need a selection — blank yields no requests", () => {
     expect(buildProductRequests("cluster", "")).toEqual([]);
     expect(buildProductRequests("category", "")).toEqual([]);
   });

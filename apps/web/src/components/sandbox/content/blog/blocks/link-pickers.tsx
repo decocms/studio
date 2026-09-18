@@ -169,7 +169,6 @@ export function ProductLinkPicker({
       `${sandboxRef.orgSlug}/${sandboxRef.virtualMcpId}/${sandboxRef.branch}`,
       `product-link:${debounced}`,
     ),
-    enabled: debounced.length > 0,
     queryFn: async () => {
       const [request] = buildProductRequests("search", debounced);
       if (!request) return [] as ProductPickerOption[];
@@ -190,10 +189,6 @@ export function ProductLinkPicker({
         <p className="flex items-center justify-center gap-1.5 px-1.5 py-3 text-xs text-muted-foreground">
           <Loading02 size={12} className="animate-spin" />
           {t("sandbox.linkPicker.searching")}
-        </p>
-      ) : debounced.length === 0 ? (
-        <p className="px-1.5 py-3 text-center text-xs text-muted-foreground">
-          {t("sandbox.linkPicker.typeToSearch")}
         </p>
       ) : options.length === 0 ? (
         <p className="px-1.5 py-3 text-center text-xs text-muted-foreground">
