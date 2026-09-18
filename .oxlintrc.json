@@ -66,14 +66,13 @@
     //   analytics events). Same useEffect-ban root cause.
     "react/globals": "off",
     //
-    // The three below report real, fixable problems and stay at "warn" only
-    // until the follow-up PR lands their refactors, at which point they become
-    // "error". They are the actual lint backlog: 14 `Date.now()` calls during
-    // render, 14 effects that setState synchronously (want useSyncExternalStore),
-    // and 3 incomplete dependency arrays.
-    "react/purity": "warn",
-    "react/set-state-in-effect": "warn",
-    "react-hooks/exhaustive-deps": "warn",
+    // The three below are enforced. Their findings were real and are fixed;
+    // the handful of sites that legitimately cannot comply carry a scoped
+    // disable naming the reason (a subscription lifecycle whose setState IS
+    // the payload, or a rule that does not narrow to the render phase).
+    "react/purity": "error",
+    "react/set-state-in-effect": "error",
+    "react-hooks/exhaustive-deps": "error",
     "enforce-kebab-case-file-names/kebab-case": "warn",
     "ban-types": "warn",
     "enforce-query-key-constants/enforce-query-key-constants": "warn",

@@ -234,7 +234,11 @@ export function SandboxEventsProvider({
     return buf;
   };
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect — SSE subscription lifecycle requires cleanup on unmount; single EventSource with reconnect logic
+  // oxlint-disable react/set-state-in-effect
+  // The resets below are the first step of the subscription lifecycle (tear
+  // down the previous key's state before opening the next stream), not a
+  // value derivable during render.
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- SSE subscription lifecycle requires cleanup on unmount; single EventSource with reconnect logic
   useEffect(() => {
     // Reset on key change so stale data doesn't linger across branches.
     setPhase(null);
@@ -628,6 +632,7 @@ export function SandboxEventsProvider({
     queryClient,
     isDenoRuntime,
   ]);
+  // oxlint-enable react/set-state-in-effect
 
   const value: SandboxEventsValue = {
     phase,

@@ -505,18 +505,24 @@ produce a diagnostic; adding a plugin to `.oxlintrc.json` means adding its
 fixture there, and the suite fails if the two lists drift. Pin `oxlint`
 exactly (no `^`) and re-run `bun test ./plugins` on every bump.
 
-### Lint severity: a warning nothing gates on is not a rule
+### Lint severity: error or off, never warn
 
 `bun run lint` fails CI on **errors only**, so a rule left at `"warn"` is a
-rule the repo has decided not to enforce. Every rule is therefore either
-`"error"` (it must hold) or `"off"` with a comment saying why — `.oxlintrc.json`
-allows comments, and `biome.json` has an override so `bun run fmt` keeps them.
+rule the repo has decided not to enforce — it is noise that trains everyone to
+ignore lint output. Every rule is therefore either `"error"` (it must hold) or
+`"off"` with a comment saying why. `.oxlintrc.json` allows comments, and
+`biome.json` has an override so `bun run fmt` keeps them. **There are currently
+zero `"warn"` rules, and a PR should not add one** — if a rule is worth turning
+on, fix its findings in the same PR; if it is not, turn it off and say why.
 
-`"warn"` means exactly one thing here: **a known backlog with a PR behind it.**
-Today that is `react/purity`, `react/set-state-in-effect` and
-`react-hooks/exhaustive-deps` — 31 real findings whose fixes are behavioural
-refactors, promoted to `"error"` as they land. Do not park a new rule at
-`"warn"` to get it "mostly on"; it will be ignored.
+An individual site that genuinely cannot comply gets a scoped
+`oxlint-disable`/`oxlint-disable-next-line` naming the rule **and the reason**,
+not a downgrade of the rule for everyone. Two placement traps: a directive
+applies to the line immediately after it, so a multi-line justification has to
+sit *above* the directive, not between it and the code; and some rules anchor
+their diagnostic on the offending expression rather than the construct (for
+example `react/set-state-in-effect` reports the `setState` call, not the
+`useEffect`), which needs a `disable`/`enable` block around the effect.
 
 Turning a rule **off** needs the same standard as adding one. Five of oxlint's
 React Compiler rules are off because they flag patterns this repo chose on

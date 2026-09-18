@@ -878,6 +878,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const sharedTarget = workspace.state.target;
+  // oxlint-disable react/set-state-in-effect
+  // Not a pure state sync: the same pass writes the last page to storage and
+  // steers the mounted iframe, so it has to run after commit.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes the independent Blocks selection with the mounted Preview iframe
   useEffect(() => {
     if (!sharedTarget || !sectionPreviewBase || !meta) return;
@@ -919,6 +922,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
   }, [sharedTarget, sectionPreviewBase, meta, pathParamsByPage]);
+  // oxlint-enable react/set-state-in-effect
 
   // Publish the page Preview is showing to the shared workspace so the Blocks
   // panel follows it — Blocks has no page navigator, it edits whatever page

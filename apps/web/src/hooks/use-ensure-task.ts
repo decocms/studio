@@ -76,17 +76,24 @@ export function useEnsureTask(
   type FetchState = undefined | "pending" | null | Task;
   const [fetchedTask, setFetchedTask] = useState<FetchState>(undefined);
 
-  // Reset fetchedTask whenever the target id changes so we don't carry
-  // stale state across navigation.
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
+  // Reset fetchedTask whenever the target id changes so we don't carry stale
+  // state across navigation. Done during render rather than in an effect, so
+  // the fetch effect below never observes the previous id's result for one
+  // commit.
+  const [prevId, setPrevId] = useState(id);
+  if (prevId !== id) {
+    setPrevId(id);
     setFetchedTask(undefined);
-  }, [id]);
+  }
 
   // When the local list doesn't contain the thread AND the watcher has
   // finished its initial load, try to fetch the row from the server before
   // falling back to CREATE. This covers direct links to threads beyond
   // page 0 or to archived threads.
+  //
+  // The state here records an async fetch's progress and result, which render
+  // cannot derive — only the reset above was a prop sync.
+  // oxlint-disable react/set-state-in-effect
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   useEffect(() => {
     if (id === null) return;
@@ -105,6 +112,7 @@ export function useEnsureTask(
       setFetchedTask(row); // null if not found, Task if found
     });
   }, [id, localHit, threadsStatus.kind, fetchedTask, manager]);
+  // oxlint-enable react/set-state-in-effect
 
   const ensureCreate = useMutation<Task, Error, string>({
     mutationFn: async (taskId) =>

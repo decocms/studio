@@ -1502,6 +1502,10 @@ export function ActiveTaskProvider({
   // threads, and the stored status gates duplicate sends across remounts.
   const autosendSearch = useSearch({ strict: false }) as { autosend?: string };
   const shouldAutosend = autosendSearch.autosend === AUTOSEND_QUERY_VALUE;
+  // oxlint-disable react/set-state-in-effect
+  // The send is the effect's payload, not a state sync: it fires once per
+  // claimed autosend and there is no render-time expression for "has this
+  // thread already sent".
   // oxlint-disable-next-line ban-use-effect/ban-use-effect, react-hooks/exhaustive-deps -- storage status, not function identity, gates duplicate sends
   useEffect(() => {
     if (!shouldAutosend) return;
@@ -1524,6 +1528,7 @@ export function ActiveTaskProvider({
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- storage claim and task-scoped request id, not callback identity, gate duplicate sends
     sendMessageInternal,
   ]);
+  // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
     messages,

@@ -58,12 +58,18 @@ export function MultiSelect({
     React.useState<string[]>(defaultValue);
   const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
 
+  // Vendored shadcn shape. A render-time prev-guard would be the textbook fix,
+  // but it also changes when a local selection survives a parent re-render —
+  // a behavioural change to a published component that does not belong in a
+  // lint sweep.
+  // oxlint-disable react/set-state-in-effect
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   React.useEffect(() => {
     if (JSON.stringify(selectedValues) !== JSON.stringify(defaultValue)) {
       setSelectedValues(defaultValue);
     }
   }, [defaultValue, selectedValues]);
+  // oxlint-enable react/set-state-in-effect
 
   const handleInputKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Enter") {
