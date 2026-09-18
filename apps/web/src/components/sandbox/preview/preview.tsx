@@ -584,6 +584,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     ? activeGlobalSection.name
     : (activeLoader?.title ?? currentPage?.name);
   const currentPageKey = currentPage?.key ?? null;
+  /**
+   * The block the JSON view shows: the global section when one is open —
+   * either as its own destination or opened from inside a page — otherwise the
+   * page itself. It follows the form, not the route.
+   */
+  const jsonBlockKey =
+    workspace.state.target?.kind === "section"
+      ? workspace.state.target.key
+      : (workspace.state.focusedBlockKey ?? currentPageKey);
   const currentPagePath = currentPage?.path ?? null;
 
   // Path templates: pages like `/blog/:slug` expose inputs in the page popover. `currentPath` keeps the template (so the page stays matched); the
@@ -2099,7 +2108,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <CursorClick01 size={16} />
         </ToolbarIconButton>
       )}
-      {effectiveEditingMode === "blocks" && currentPageKey && (
+      {effectiveEditingMode === "blocks" && jsonBlockKey && (
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
@@ -2234,12 +2243,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               externalSelection={cmsSelectedSection}
               onViewJsonFile={toggleJsonPanel}
             />
-            {jsonPanelOpen && currentPageKey && (
+            {jsonPanelOpen && jsonBlockKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
-                  pageKey={currentPageKey}
+                  pageKey={jsonBlockKey}
                   onClose={closeJsonPanel}
                 />
               </div>
@@ -2279,12 +2288,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             >
               <ResizablePanelGroup
                 orientation="horizontal"
-                disabled={!(jsonPanelOpen && currentPageKey)}
+                disabled={!(jsonPanelOpen && jsonBlockKey)}
               >
                 {/* Classic opens the JSON editor to the left of the canvas;
                     compact opens it to the right, beside the blocks panel it
                     is toggled from. */}
-                {!compact && jsonPanelOpen && currentPageKey && (
+                {!compact && jsonPanelOpen && jsonBlockKey && (
                   <>
                     <ResizablePanel
                       id="preview-json-editor"
@@ -2295,7 +2304,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <PageJsonPanel
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
-                        pageKey={currentPageKey}
+                        pageKey={jsonBlockKey}
                         onClose={closeJsonPanel}
                       />
                     </ResizablePanel>
@@ -2503,7 +2512,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
                   </div>
                 </ResizablePanel>
-                {compact && jsonPanelOpen && currentPageKey && (
+                {compact && jsonPanelOpen && jsonBlockKey && (
                   <>
                     <ResizableHandle withHandle />
                     <ResizablePanel
@@ -2515,7 +2524,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <PageJsonPanel
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
-                        pageKey={currentPageKey}
+                        pageKey={jsonBlockKey}
                         onClose={closeJsonPanel}
                       />
                     </ResizablePanel>
