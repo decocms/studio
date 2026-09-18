@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { GripVertical } from "lucide-react";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -35,7 +36,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Copy01, DotsGrid, Edit01, Plus, Trash01 } from "@untitledui/icons";
+import { Copy01, Edit01, Plus, Trash01 } from "@untitledui/icons";
 import { getIconComponent } from "../agent-icon";
 import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
@@ -155,7 +156,7 @@ function PageVariantRowContent({
           >
             <VariantTabIcon rule={effectiveRule} matchers={matchers} />
           </span>
-          <DotsGrid
+          <GripVertical
             aria-hidden
             className={cn(
               "absolute inset-0 size-4 transition-opacity",
@@ -247,6 +248,7 @@ function SortablePageVariantRow({
       animateLayoutChanges: () => false,
     });
 
+  const compact = useCompactPageLayout();
   const style = {
     transform: CSS.Transform.toString(
       transform ? { ...transform, x: 0 } : null,
@@ -275,7 +277,10 @@ function SortablePageVariantRow({
         }
       }}
       className={cn(
-        editorRowClassName({ tone: "variant", selected: isActive }),
+        editorRowClassName({
+          tone: compact ? "default" : "variant",
+          selected: isActive,
+        }),
         isDragging
           ? "cursor-grabbing"
           : "cursor-pointer active:cursor-grabbing",
@@ -305,6 +310,7 @@ function PageVariantRowPreview({
   meta?: LiveMeta | null;
   matchers: Array<{ resolveType: string; iconName: string }>;
 }) {
+  const compact = useCompactPageLayout();
   const effectiveRule = resolveEffectiveMatcherRule(
     variant.rule,
     decofile,
@@ -315,7 +321,7 @@ function PageVariantRowPreview({
     <div
       className={cn(
         editorRowClassName({
-          tone: "variant",
+          tone: compact ? "default" : "variant",
           selected: true,
           className: "cursor-grabbing shadow-lg ring-1 ring-border/60",
         }),
@@ -476,7 +482,7 @@ export function PageVariantTabs({
           items={entryIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className={cn(compact ? "space-y-1" : "space-y-0.5")}>
+          <div className={cn(compact ? "space-y-0" : "space-y-0.5")}>
             {entries.map((entry) => (
               <SortablePageVariantRow
                 key={entry.id}

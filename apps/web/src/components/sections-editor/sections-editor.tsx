@@ -3234,23 +3234,9 @@ export function SectionsEditor({
               <VariantSelect
                 variants={pageVariants}
                 activeIndex={safeVariantIndex}
-                icon={
-                  <VariantTabIcon
-                    rule={resolveEffectiveMatcherRule(
-                      activeVariant.rule,
-                      decofile ?? {},
-                      meta ?? undefined,
-                    )}
-                    matchers={availableMatchers}
-                  />
-                }
                 onSelect={selectPageVariant}
                 onManage={openVariantManager}
                 onRemoveAll={handleRemoveAllPageVariants}
-                manageLabel={t("sectionsEditor.sectionsEditor.manageVariants")}
-                removeAllLabel={t(
-                  "sectionsEditor.sectionVariantList.removeAllVariants",
-                )}
               />
             )}
             {/* The same select one level down, for the open section's own
@@ -3260,23 +3246,9 @@ export function SectionsEditor({
               <VariantSelect
                 variants={sectionFlagVariants}
                 activeIndex={safeSectionVariantIndex}
-                icon={
-                  <VariantTabIcon
-                    rule={resolveEffectiveMatcherRule(
-                      activeSectionFlagVariant!.rule,
-                      decofile ?? {},
-                      meta ?? undefined,
-                    )}
-                    matchers={availableMatchers}
-                  />
-                }
                 onSelect={handleSelectSectionVariant}
                 onManage={openSectionVariantManager}
                 onRemoveAll={handleRemoveAllSectionVariants}
-                manageLabel={t("sectionsEditor.sectionsEditor.manageVariants")}
-                removeAllLabel={t(
-                  "sectionsEditor.sectionVariantList.removeAllVariants",
-                )}
               />
             )}
             {atPanelRoot && (

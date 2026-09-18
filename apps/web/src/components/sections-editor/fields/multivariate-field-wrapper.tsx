@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Flag01 } from "@untitledui/icons";
+import { LayersThree01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
@@ -86,7 +86,7 @@ export function MultivariateFieldWrapper({
                 setSelectedIndex(0);
               }}
             >
-              <Flag01 size={14} />
+              <LayersThree01 size={14} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>

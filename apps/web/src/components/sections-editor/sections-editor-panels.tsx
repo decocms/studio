@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Flag01,
+  LayersThree01,
   Plus,
   Settings01,
   Trash01,
@@ -24,6 +25,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
@@ -235,14 +237,14 @@ const VARIANT_PILL_CLASS =
 export const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
 
-/** The New Layout select: outlined rather than filled, so a variant chip reads
- *  as a control you can open rather than a status the header is reporting. Its
- *  empty state is the same pill with a dashed border. */
-const VARIANT_TAB_OUTLINE_CLASS =
-  "text-[oklch(0.45_0.15_160)] border border-[oklch(0.65_0.15_160/0.5)] hover:bg-[oklch(0.65_0.15_160/0.1)] dark:text-[oklch(0.78_0.15_160)]";
+/** The New Layout select: ghost, so a variant chip reads as a control you can
+ *  open rather than a status the header is reporting. Its empty state keeps a
+ *  dashed border, which is what an invitation needs and a selection does not. */
+const VARIANT_TAB_GHOST_CLASS =
+  "text-muted-foreground hover:bg-accent hover:text-accent-foreground";
 
 const VARIANT_TAB_EMPTY_CLASS =
-  "text-[oklch(0.45_0.15_160)] border border-dashed border-[oklch(0.65_0.15_160/0.5)] hover:bg-[oklch(0.65_0.15_160/0.1)] dark:text-[oklch(0.78_0.15_160)]";
+  "text-muted-foreground border border-dashed border-border hover:bg-accent hover:text-accent-foreground";
 
 export function parsePageVariantsForEditor(
   sections: unknown,
@@ -510,22 +512,17 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
 export function VariantSelect({
   variants,
   activeIndex,
-  icon,
   onSelect,
   onManage,
   onRemoveAll,
-  manageLabel,
-  removeAllLabel,
 }: {
   variants: Array<{ label: string }>;
   activeIndex: number;
-  icon: ReactNode;
   onSelect: (index: number) => void;
   onManage: () => void;
   onRemoveAll: () => void;
-  manageLabel: string;
-  removeAllLabel: string;
 }) {
+  const t = useT();
   const active = variants[activeIndex];
   if (!active) return null;
 
@@ -534,14 +531,17 @@ export function VariantSelect({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_OUTLINE_CLASS)}
+          className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_GHOST_CLASS)}
         >
-          {icon}
+          <LayersThree01 className="size-3.5 shrink-0" />
           <span className="max-w-[120px] truncate">{active.label}</span>
           <ChevronDown className="size-3 shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+          {t("sectionsEditor.pageVariantTabs.variantsLabel")}
+        </DropdownMenuLabel>
         {variants.map((variant, index) => (
           <DropdownMenuItem
             key={`${variant.label}-${index}`}
@@ -559,12 +559,12 @@ export function VariantSelect({
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onManage}>
           <Settings01 className="size-3.5" />
-          {manageLabel}
+          {t("sectionsEditor.sectionsEditor.manageVariants")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={onRemoveAll}>
           <Trash01 className="size-3.5" />
-          {removeAllLabel}
+          {t("sectionsEditor.sectionVariantList.removeAllVariants")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
