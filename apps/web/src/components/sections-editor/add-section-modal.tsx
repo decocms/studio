@@ -142,9 +142,13 @@ function LazySectionPreview({
               <PlaceholderIcon className="h-8 w-8 animate-pulse text-muted-foreground/40" />
             </div>
           )}
+          {/* Cross-origin sandbox preview URL, so `allow-same-origin` keeps the
+              PREVIEW's origin rather than inheriting ours — not the escape the
+              rule warns about (that is `srcDoc` or a same-origin src). */}
           <iframe
             src={previewUrl}
             title={`Preview ${title}`}
+            // oxlint-disable-next-line react/iframe-missing-sandbox
             sandbox="allow-scripts allow-same-origin"
             referrerPolicy="no-referrer"
             className="pointer-events-none h-[200%] w-[200%] origin-top-left scale-50 border-0 bg-white"

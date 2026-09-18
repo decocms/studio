@@ -106,7 +106,8 @@ export function PageJsonDialog({
         </DialogHeader>
         {missing ? (
           <div className="p-4 text-xs font-mono text-foreground/60">
-            // {t("sectionsEditor.pageJsonDialog.pageNotFound")}
+            {"// "}
+            {t("sectionsEditor.pageJsonDialog.pageNotFound")}
           </div>
         ) : (
           <div className="h-[70vh]">

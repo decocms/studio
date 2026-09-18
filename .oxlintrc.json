@@ -110,5 +110,16 @@
     "ban-git-provider-reachthrough/ban-git-provider-reachthrough": "error",
     "ensure-tailwind-design-system-tokens/ensure-tailwind-design-system-tokens": "error"
   },
-  "plugins": ["react"]
+  "plugins": ["react"],
+  "overrides": [
+    {
+      // A Playwright suite, not a React tree. Its `use` is the fixture
+      // callback, which `rules-of-hooks` reads as React's `use` hook.
+      "files": ["packages/e2e/**"],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off",
+        "react/hooks": "off"
+      }
+    }
+  ]
 }

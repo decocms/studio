@@ -373,6 +373,14 @@ export function SectionsEditor({
     selectedSectionIndex: null,
   });
 
+  // Declared above the early returns below: a hook after a conditional return
+  // is skipped on the loading render, so the next render calls one more hook
+  // than the last and React throws "Rendered more hooks than during the
+  // previous render". Its guard stays down with the values it compares.
+  const [prevPageVariantSeedKey, setPrevPageVariantSeedKey] = useState<
+    string | null
+  >(null);
+
   if (!previewReady || decofileLoading || metaLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center">
@@ -550,9 +558,6 @@ export function SectionsEditor({
     !metaLoading
       ? activePageKey
       : null;
-  const [prevPageVariantSeedKey, setPrevPageVariantSeedKey] = useState<
-    string | null
-  >(null);
   if (pageVariantSeedKey !== prevPageVariantSeedKey) {
     setPrevPageVariantSeedKey(pageVariantSeedKey);
     if (pageVariantSeedKey) {

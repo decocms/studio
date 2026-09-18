@@ -193,6 +193,7 @@ export function TagMultiSelect({
                           <span>{tag.name}</span>
                         </div>
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleRemoveTag(tag.id);

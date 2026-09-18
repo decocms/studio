@@ -2392,6 +2392,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         style={previewFrameStyle}
                         onMouseLeave={clearEditorHover}
                       >
+                        {/* TODO(security): this frame has no sandbox. It loads the
+                            user's own dev server cross-origin and the editor drives it
+                            (navigation, hover, postMessage), so picking the token set is
+                            a change that needs the real sandbox running to verify — a
+                            missing token silently breaks a customer's site preview.
+                            Deliberately not bolted on during a lint sweep. */}
+                        {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
                         <iframe
                           // Key on the iframe base: remount when the base URL changes
                           // (branch switch, or the production→sandbox swap once the dev

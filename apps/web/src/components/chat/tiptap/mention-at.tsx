@@ -139,6 +139,10 @@ export const AtMention = ({
 
   const fetchItems = async (props: { query: string }): Promise<AtItem[]> => {
     const { query } = props;
+    // `getMode` is an Effect Event read from tiptap's suggestion callback,
+    // which is effect scope wired outside a useEffect (banned here). Reading
+    // the latest mode without rebuilding the suggestion config is the point.
+    // oxlint-disable-next-line react-hooks/rules-of-hooks
     const currentMode = getMode();
 
     if (currentMode === "categories") {

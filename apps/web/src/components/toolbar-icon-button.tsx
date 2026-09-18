@@ -40,6 +40,7 @@ export function ToolbarIconButton({
     return (
       <button
         ref={ref}
+        // oxlint-disable-next-line react/button-has-type -- prop, defaulted to "button" above
         type={type}
         className={cn(
           "relative flex size-10 md:size-7 shrink-0 items-center justify-center rounded-md",

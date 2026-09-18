@@ -90,9 +90,16 @@ export function VideoBlock({
     <div className="space-y-2">
       {embed ? (
         <div className="relative aspect-video overflow-hidden rounded-md border bg-muted">
+          {/* Cross-origin YouTube/Vimeo embed: `allow-same-origin` keeps the
+              EMBED's origin, not ours, so pairing it with `allow-scripts` is
+              not the sandbox escape the rule warns about — that case is a
+              same-origin or `srcDoc` frame. Both tokens are required for
+              playback. */}
           <iframe
             src={embed}
             title={caption || t("sandbox.mediaBlocks.video")}
+            // oxlint-disable-next-line react/iframe-missing-sandbox
+            sandbox="allow-scripts allow-same-origin allow-presentation"
             className="absolute inset-0 h-full w-full border-0"
             allowFullScreen
           />
