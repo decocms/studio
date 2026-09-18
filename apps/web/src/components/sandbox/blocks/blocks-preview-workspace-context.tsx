@@ -12,6 +12,7 @@ interface BlocksPreviewWorkspaceContextValue {
   editSeo: (target: Extract<BlocksTarget, { kind: "page" }>) => void;
   consumeEditSeo: () => void;
   setVariantOverride: (params: string[] | null) => void;
+  setFocusedBlock: (key: string | null) => void;
 }
 
 const BlocksPreviewWorkspaceContext =
@@ -36,6 +37,7 @@ export function BlocksPreviewWorkspaceProvider({
         consumeEditSeo: () => dispatch({ type: "consume-edit-seo" }),
         setVariantOverride: (params) =>
           dispatch({ type: "variant-override", params }),
+        setFocusedBlock: (key) => dispatch({ type: "focus-block", key }),
       }}
     >
       {children}
