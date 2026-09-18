@@ -2620,6 +2620,12 @@ function describeActivity(
   switch (a.action) {
     case "created":
       return t("taskBoard.taskDialog.activityCreated");
+    case "duplicate_reported": {
+      const title = typeof d.title === "string" ? d.title : null;
+      return title
+        ? t("taskBoard.taskDialog.activityDuplicateReportedTitled", { title })
+        : t("taskBoard.taskDialog.activityDuplicateReported");
+    }
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
       // Stored as a stringified Error, wire prefix and all.

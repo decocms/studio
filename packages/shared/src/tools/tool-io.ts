@@ -366,6 +366,7 @@ export interface StudioToolIO {
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
       prUrl?: string | null | undefined;
+      onDuplicate?: "create" | "return_existing" | undefined;
     };
     output: {
       item: {
@@ -433,6 +434,8 @@ export interface StudioToolIO {
         updatedBy: string;
         updatedAt: string;
       };
+      deduplicated: boolean;
+      duplicateReason: string | null;
     };
   };
   TASK_BOARD_ITEM_LIST: {
@@ -729,7 +732,8 @@ export interface StudioToolIO {
           | "tags_changed"
           | "review_verdict_requested"
           | "merge_conflict_resolution"
-          | "type_changed";
+          | "type_changed"
+          | "duplicate_reported";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

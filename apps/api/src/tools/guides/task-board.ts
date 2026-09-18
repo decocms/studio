@@ -25,13 +25,16 @@ Steps:
 1. Derive a short, specific title (one line, imperative) and a description that
    preserves the useful detail from the message. If the message is a single
    short sentence, use it as the title and leave the description empty.
-2. Call TASK_BOARD_ITEM_LIST first and check whether an open item already
-   covers this. If one clearly matches, do not create a duplicate — report the
-   existing task and ask whether to update it or create another anyway.
-3. Otherwise call TASK_BOARD_ITEM_CREATE with the derived title and
-   description. Only set status, priority, assignee, or due date when the
-   message states them; leave them out otherwise.
-4. Confirm the created task with its title and status in one short sentence.
+2. Call TASK_BOARD_ITEM_CREATE with the derived title and description, and
+   onDuplicate "return_existing" so the tool itself checks whether an open
+   item already covers this. Only set status, priority, assignee, or due date
+   when the message states them; leave them out otherwise.
+3. If the output says \`deduplicated: true\`, no task was created: report the
+   existing task it returned and its \`duplicateReason\`, and ask whether to
+   update it or create another anyway (calling the tool again without
+   onDuplicate creates one).
+4. Otherwise confirm the created task with its title and status in one short
+   sentence.
 
 Checks:
 - Do not ask clarifying questions unless the message is too vague to title.

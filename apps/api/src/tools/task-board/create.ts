@@ -1,7 +1,12 @@
 import { LANES } from "@decocms/shared/task-board";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
-import { getUserId, requireAuth } from "@/core/studio-context";
+import {
+  getUserId,
+  requireAuth,
+  type StudioContext,
+} from "@/core/studio-context";
+import type { TaskBoardItem } from "@/storage/types";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   MAX_TASK_DESCRIPTION_LENGTH,
@@ -17,7 +22,11 @@ import { assertValidAssignee } from "./validate-assignee";
 import { reactToSuperAgentDelegation } from "./enqueue-super-agent";
 import { recordTaskActivity } from "./activity";
 import { emitTaskBoardUpdated } from "./run-reactions";
-import { findChangeRequestIn } from "./change-request-extract";
+import {
+  type ChangeRequestRef,
+  findChangeRequestIn,
+} from "./change-request-extract";
+import { findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
@@ -55,8 +64,26 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
           "open a PR so the card lands on the board with its PR already " +
           "attached for review.",
       ),
+    onDuplicate: z
+      .enum(["create", "return_existing"])
+      .optional()
+      .describe(
+        "What to do when an open card already tracks this work. " +
+          "`return_existing` asks a model to compare the draft against the " +
+          "board's open cards and, on a confident match, returns that card " +
+          "instead of creating one (`deduplicated: true` in the output; a " +
+          "`prUrl` is linked to it). Default `create` skips the check. Use " +
+          "`return_existing` when filing on someone's behalf — reports, " +
+          "chat requests — where the same ask arrives more than once.",
+      ),
   }),
-  outputSchema: z.object({ item: TaskBoardItemSchema }),
+  outputSchema: z.object({
+    item: TaskBoardItemSchema,
+    /** True when `item` is a pre-existing card returned in place of a new one. */
+    deduplicated: z.boolean(),
+    /** The model's one-line reason for the match; null unless deduplicated. */
+    duplicateReason: z.string().nullable(),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
@@ -112,6 +139,26 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
         if (!validTagIds.has(tagId)) {
           throw new Error(`Tag not found: ${tagId}`);
         }
+      }
+    }
+
+    if (input.onDuplicate === "return_existing") {
+      const duplicate = await findDuplicateTask(ctx, organizationId, {
+        title: input.title,
+        description: input.description,
+        repo: input.repo,
+      }).catch((err) => {
+        console.error("[task-board] duplicate check failed", err);
+        return null;
+      });
+      if (duplicate) {
+        return returnExistingCard(ctx, {
+          organizationId,
+          existing: duplicate.item,
+          reason: duplicate.reason,
+          draft: input,
+          pr,
+        });
       }
     }
 
@@ -175,6 +222,70 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     emitTaskBoardUpdated(organizationId, item);
     await reactToSuperAgentDelegation(ctx, item);
 
-    return { item };
+    return { item, deduplicated: false, duplicateReason: null };
   },
 });
+
+/**
+ * The `return_existing` outcome: the card that already tracks the drafted work
+ * stands in for the one that would have been created. The second filing is not
+ * lost — it lands on the existing card's timeline (`duplicate_reported`, with
+ * the drafted title so a reader sees what was asked the second time), the filer
+ * starts following the card, and a `prUrl` handed in is linked to it, since
+ * the PR is for that work regardless of which card names it.
+ *
+ * Nothing else on the existing card changes: no lane move, no reassignment, no
+ * description edit. Whoever owns it keeps owning it.
+ *
+ * The filer is subscribed directly: `duplicate_reported` earns no inbox row,
+ * so the activity fan-out does not enroll followers for it.
+ */
+async function returnExistingCard(
+  ctx: StudioContext,
+  params: {
+    organizationId: string;
+    existing: TaskBoardItem;
+    reason: string;
+    draft: { title: string; description?: string | null };
+    pr: ChangeRequestRef | null;
+  },
+): Promise<{
+  item: TaskBoardItem;
+  deduplicated: boolean;
+  duplicateReason: string | null;
+}> {
+  const { organizationId, existing, reason, draft, pr } = params;
+  const userId = getUserId(ctx)!;
+
+  if (pr) {
+    await ctx.storage.taskBoard.linkPr({
+      taskBoardItemId: existing.id,
+      organizationId,
+      url: pr.url,
+      prNumber: pr.number,
+      repo: pr.repo,
+      connectionId: null,
+    });
+    await invalidatePrCards(organizationId).catch((err) => {
+      console.error("[task-board] PR card cache invalidation failed", err);
+    });
+  }
+
+  await recordTaskActivity(ctx, {
+    taskBoardItemId: existing.id,
+    action: "duplicate_reported",
+    actorId: userId,
+    data: { title: draft.title, reason },
+  });
+  await ctx.storage.notifications
+    .setSubscribed(userId, existing.id, true)
+    .catch((err) => {
+      console.error("[task-board] duplicate filer subscription failed", err);
+    });
+
+  const item =
+    (await ctx.storage.taskBoard.getById(existing.id, organizationId)) ??
+    existing;
+  if (pr) emitTaskBoardUpdated(organizationId, item);
+  return { item, deduplicated: true, duplicateReason: reason };
+}

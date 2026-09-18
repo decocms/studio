@@ -79,6 +79,10 @@ export const taskBoard = {
   "taskBoard.taskDialog.runFailedLinkRepo": "Vincular repositório",
   "taskBoard.taskDialog.activityLabel": "Atividade",
   "taskBoard.taskDialog.activityCreated": "criou a tarefa",
+  "taskBoard.taskDialog.activityDuplicateReported":
+    "abriu esta tarefa de novo; ela já estava no board",
+  "taskBoard.taskDialog.activityDuplicateReportedTitled":
+    'abriu "{title}" de novo; este card já cobre isso',
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
   "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
   "taskBoard.taskDialog.activityRetryScheduled":
