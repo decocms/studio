@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Box, Plus } from "@untitledui/icons";
-import type { ComponentType, SVGProps } from "react";
+import { Box } from "@untitledui/icons";
+import type { ComponentType, ReactNode, SVGProps } from "react";
 import {
   Command,
   CommandEmpty,
@@ -14,7 +14,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@decocms/ui/components/popover.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { getIconComponent } from "@/components/agent-icon";
 import { useT } from "@/i18n/use-t.ts";
 import type { BlogBlockSource, BlogBlockType } from "./blog-data";
@@ -82,28 +81,33 @@ function BlockItem({
   );
 }
 
-/**
- * The WordPress-style "insert here" affordance: a thin divider with a
- * centered ⊕ that opens a searchable block-type picker and inserts at
- * this position. Always visible so authors never have to hover-hunt for it;
- * `alwaysShow` only enlarges the hit area for the empty-document case.
- *
- * Blocks are grouped by source: built-ins from the `deco-cms/blog` app
- * under "Blocks", and site-defined sections (`site/sections/Blog/Post/*`)
- * under "Custom blocks". If only one source is present the heading is
- * omitted to keep the picker compact.
- */
-export function InsertBlockDivider({
+/** Searchable block-type picker around a caller-supplied `children` trigger, grouped by source. */
+export function BlockPicker({
   blockTypes,
   onInsert,
-  alwaysShow = false,
+  children,
+  align = "start",
 }: {
   blockTypes: BlogBlockType[];
   onInsert: (resolveType: string) => void;
-  alwaysShow?: boolean;
+  children: ReactNode;
+  align?: "start" | "center" | "end";
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  // Portal into the open dialog (if any) so wheel-scroll survives its scroll lock.
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+
+  const handleOpenChange = (next: boolean) => {
+    if (next && typeof document !== "undefined") {
+      setContainer(
+        document.querySelector<HTMLElement>(
+          '[data-slot="dialog-content"][data-state="open"]',
+        ),
+      );
+    }
+    setOpen(next);
+  };
 
   const appBlocks: BlogBlockType[] = [];
   const siteBlocks: BlogBlockType[] = [];
@@ -116,67 +120,53 @@ export function InsertBlockDivider({
     setOpen(false);
   };
 
-  // Only label groups when both are present — a lone group with a heading
-  // looks heavy in a narrow popover.
   const showHeadings = appBlocks.length > 0 && siteBlocks.length > 0;
 
   return (
-    <div
-      className={cn(
-        "group/insert relative flex h-6 items-center justify-center",
-        alwaysShow ? "h-10" : "",
-      )}
-    >
-      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={t("sandbox.blockPicker.insertBlockButton")}
-            className="relative z-10 flex h-6 w-6 items-center justify-center classic:rounded-full compact:rounded-lg border bg-background text-muted-foreground transition-all hover:border-primary hover:text-primary cursor-pointer"
-          >
-            <Plus size={14} />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-80 p-0" align="center">
-          <Command>
-            <CommandInput
-              placeholder={t("sandbox.blockPicker.searchPlaceholder")}
-            />
-            <CommandList className="max-h-80">
-              <CommandEmpty>
-                {t("sandbox.blockPicker.noBlocksFound")}
-              </CommandEmpty>
-              {siteBlocks.length > 0 && (
-                <CommandGroup
-                  heading={showHeadings ? t(GROUP_LABEL_KEYS.site) : undefined}
-                >
-                  {siteBlocks.map((type) => (
-                    <BlockItem
-                      key={type.resolveType}
-                      type={type}
-                      onInsert={handleInsert}
-                    />
-                  ))}
-                </CommandGroup>
-              )}
-              {appBlocks.length > 0 && (
-                <CommandGroup
-                  heading={showHeadings ? t(GROUP_LABEL_KEYS.app) : undefined}
-                >
-                  {appBlocks.map((type) => (
-                    <BlockItem
-                      key={type.resolveType}
-                      type={type}
-                      onInsert={handleInsert}
-                    />
-                  ))}
-                </CommandGroup>
-              )}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    </div>
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent
+        container={container ?? undefined}
+        className="flex max-h-(--radix-popover-content-available-height) w-80 flex-col p-0"
+        align={align}
+      >
+        <Command className="min-h-0 flex-1">
+          <CommandInput
+            placeholder={t("sandbox.blockPicker.searchPlaceholder")}
+          />
+          <CommandList className="min-h-0 flex-1">
+            <CommandEmpty>
+              {t("sandbox.blockPicker.noBlocksFound")}
+            </CommandEmpty>
+            {siteBlocks.length > 0 && (
+              <CommandGroup
+                heading={showHeadings ? t(GROUP_LABEL_KEYS.site) : undefined}
+              >
+                {siteBlocks.map((type) => (
+                  <BlockItem
+                    key={type.resolveType}
+                    type={type}
+                    onInsert={handleInsert}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+            {appBlocks.length > 0 && (
+              <CommandGroup
+                heading={showHeadings ? t(GROUP_LABEL_KEYS.app) : undefined}
+              >
+                {appBlocks.map((type) => (
+                  <BlockItem
+                    key={type.resolveType}
+                    type={type}
+                    onInsert={handleInsert}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
