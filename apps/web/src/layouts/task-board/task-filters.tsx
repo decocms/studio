@@ -658,6 +658,11 @@ function SearchToggle({
             setFocused(false);
             if (value === "") setOpen(false);
           }}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            onChange("");
+            if (!block) setOpen(false);
+          }}
           placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
           aria-label={t("taskBoard.taskFilters.searchPlaceholder")}
           className="w-full min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
