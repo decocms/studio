@@ -17,6 +17,7 @@ export const sandbox = {
     "Salvar como seção global",
   "sandbox.autonomous.noAiProvider":
     "Esta organização não tem provedor de IA conectado — conecte um em Configurações → Provedores de IA para usar isto",
+  "sandbox.blockDocument.addBlock": "Adicionar bloco",
   "sandbox.blockPicker.blocksLabel": "Blocos",
   "sandbox.blockPicker.customBlocksLabel": "Blocos personalizados",
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
@@ -427,7 +428,6 @@ export const sandbox = {
   "sandbox.linkPicker.noPosts": "Nenhum post encontrado",
   "sandbox.linkPicker.searchProducts": "Buscar no seu catálogo…",
   "sandbox.linkPicker.searching": "Buscando…",
-  "sandbox.linkPicker.typeToSearch": "Digite para buscar produtos",
   "sandbox.linkPicker.noProducts": "Nenhum produto encontrado",
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
@@ -756,8 +756,6 @@ export const sandbox = {
   "sandbox.productPickerDialog.searchProductsPlaceholder":
     "Buscar produtos por nome ou ID…",
   "sandbox.productPickerDialog.selectedCount": "{count} selecionado(s)",
-  "sandbox.productPickerDialog.typeToSearchPrompt":
-    "Digite para buscar produtos.",
   "sandbox.recordEditor.fieldAvatar": "Avatar",
   "sandbox.recordEditor.fieldCompany": "Empresa",
   "sandbox.recordEditor.fieldEmail": "E-mail",

@@ -14,6 +14,7 @@ export const sandbox = {
     "Save as global section",
   "sandbox.autonomous.noAiProvider":
     "This organization has no AI provider connected — connect one in Settings → AI Providers to use this",
+  "sandbox.blockDocument.addBlock": "Add block",
   "sandbox.blockPicker.blocksLabel": "Blocks",
   "sandbox.blockPicker.customBlocksLabel": "Custom blocks",
   "sandbox.blockPicker.insertBlockButton": "Insert block",
@@ -420,7 +421,6 @@ export const sandbox = {
   "sandbox.linkPicker.noPosts": "No matching posts",
   "sandbox.linkPicker.searchProducts": "Search your catalog…",
   "sandbox.linkPicker.searching": "Searching…",
-  "sandbox.linkPicker.typeToSearch": "Type to search products",
   "sandbox.linkPicker.noProducts": "No matching products",
   "sandbox.mediaBlocks.divider": "Divider",
   "sandbox.mediaBlocks.fullWidth": "Full width",
@@ -734,7 +734,6 @@ export const sandbox = {
   "sandbox.productPickerDialog.searchProductsPlaceholder":
     "Search products by name or ID…",
   "sandbox.productPickerDialog.selectedCount": "{count} selected",
-  "sandbox.productPickerDialog.typeToSearchPrompt": "Type to search products.",
   "sandbox.recordEditor.fieldAvatar": "Avatar",
   "sandbox.recordEditor.fieldCompany": "Company",
   "sandbox.recordEditor.fieldEmail": "Email",
