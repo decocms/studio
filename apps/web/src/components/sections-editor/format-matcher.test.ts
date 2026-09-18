@@ -89,6 +89,38 @@ describe("formatMatcher", () => {
       expect(result).toContain("Until");
     });
 
+    /** These use local-time literals (no trailing Z) so the day-boundary check
+     *  reads the same instants a reader's timezone would, whatever CI runs in. */
+    test("a whole-day window drops the midnight boundaries", () => {
+      expect(
+        formatMatcher({
+          __resolveType: "website/matchers/date.ts",
+          start: "2026-07-24T00:00:00",
+          end: "2026-08-09T23:59:00",
+        }),
+      ).toBe("Jul 24 → Aug 9, 2026");
+    });
+
+    test("a whole-day window spanning years says both", () => {
+      expect(
+        formatMatcher({
+          __resolveType: "website/matchers/date.ts",
+          start: "2025-12-20T00:00:00",
+          end: "2026-01-05T23:59:00",
+        }),
+      ).toBe("Dec 20, 2025 → Jan 5, 2026");
+    });
+
+    test("a window with a real time of day keeps it", () => {
+      const result = formatMatcher({
+        __resolveType: "website/matchers/date.ts",
+        start: "2026-07-24T15:30:00",
+        end: "2026-07-24T18:00:00",
+      });
+      expect(result).toContain("3:30 PM");
+      expect(result).toContain("6:00 PM");
+    });
+
     test("falls back to label when no valid dates", () => {
       const result = formatMatcher({
         __resolveType: "website/matchers/date.ts",
