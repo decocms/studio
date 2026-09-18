@@ -45,6 +45,7 @@ export {
   SandboxRecordSchema,
   type SandboxRecord,
   ReleaseSchema,
+  RELEASES_MAX,
   type Release,
   type RuntimeMetadata,
   type RuntimeEnvEntry,

@@ -70,8 +70,9 @@ const TABS_MAX = 20;
 /** Cap on knowledge files attached to an agent. */
 const KNOWLEDGE_MAX = 100;
 
-/** Cap on releases (named branches) per agent. */
-const RELEASES_MAX = 50;
+/** Cap on releases (named branches) per agent. Exported so the UI can gate
+ * creation at the cap instead of letting the write 400 on the server. */
+export const RELEASES_MAX = 50;
 
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
