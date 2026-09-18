@@ -30,6 +30,7 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
+  Code01,
   CursorClick01,
   LinkExternal01,
   ChevronDown,
@@ -1500,7 +1501,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     .filter(Boolean)
                     .join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-0 items-stretch overflow-hidden whitespace-nowrap rounded-lg border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/page-picker flex h-7 w-fit min-w-0 items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {!activeGlobalSection && !activeLoader && pageOrigin && (
               <span
@@ -1718,12 +1719,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             aria-label={t(openPreviewLabelKey)}
           >
             <LinkExternal01 size={16} />
-          </ToolbarIconButton>
-          <ToolbarIconButton
-            onClick={handleRefresh}
-            aria-label={t("sandbox.preview.refresh")}
-          >
-            <RefreshCw01 size={16} />
           </ToolbarIconButton>
         </div>
       </div>
@@ -2092,17 +2087,37 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         transformOrigin: "top center",
       };
 
-  const previewTools =
-    canVisualEdit && (showPreviewToolbar || contentEditingEnabled) ? (
-      <ToolbarIconButton
-        onClick={toggleVisualEditing}
-        aria-pressed={effectiveEditingMode === "visual"}
-        aria-label={t("sandbox.preview.visualEditor")}
-        active={effectiveEditingMode === "visual"}
-      >
-        <CursorClick01 size={16} />
-      </ToolbarIconButton>
-    ) : null;
+  const previewTools = (
+    <>
+      {canVisualEdit && (showPreviewToolbar || contentEditingEnabled) && (
+        <ToolbarIconButton
+          onClick={toggleVisualEditing}
+          aria-pressed={effectiveEditingMode === "visual"}
+          aria-label={t("sandbox.preview.visualEditor")}
+          active={effectiveEditingMode === "visual"}
+        >
+          <CursorClick01 size={16} />
+        </ToolbarIconButton>
+      )}
+      {effectiveEditingMode === "blocks" && currentPageKey && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={toggleJsonPanel}
+              aria-pressed={jsonPanelOpen}
+              aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
+              active={jsonPanelOpen}
+            >
+              <Code01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t("sectionsEditor.sectionsEditor.viewJson")}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </>
+  );
 
   const floatingPreviewControls =
     !compact && previewSurfaceActive ? (
@@ -2266,7 +2281,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                 orientation="horizontal"
                 disabled={!(jsonPanelOpen && currentPageKey)}
               >
-                {jsonPanelOpen && currentPageKey && (
+                {/* Classic opens the JSON editor to the left of the canvas;
+                    compact opens it to the right, beside the blocks panel it
+                    is toggled from. */}
+                {!compact && jsonPanelOpen && currentPageKey && (
                   <>
                     <ResizablePanel
                       id="preview-json-editor"
@@ -2485,6 +2503,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
                   </div>
                 </ResizablePanel>
+                {compact && jsonPanelOpen && currentPageKey && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      id="preview-json-editor"
+                      defaultSize="43%"
+                      minSize="20%"
+                      className="min-w-0 overflow-hidden"
+                    >
+                      <PageJsonPanel
+                        ref={jsonPanelHandleRef}
+                        virtualMcpId={virtualMcpId}
+                        pageKey={currentPageKey}
+                        onClose={closeJsonPanel}
+                      />
+                    </ResizablePanel>
+                  </>
+                )}
               </ResizablePanelGroup>
             </ResizablePanel>
           </ResizablePanelGroup>
