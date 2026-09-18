@@ -223,6 +223,12 @@ export const VARIANT_PILL_CLASS =
 export const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
 
+/** The New Layout select: outlined rather than filled, so a variant chip reads
+ *  as a control you can open rather than a status the header is reporting. Its
+ *  empty state is the same pill with a dashed border. */
+export const VARIANT_TAB_OUTLINE_CLASS =
+  "text-[oklch(0.45_0.15_160)] border border-[oklch(0.65_0.15_160/0.5)] hover:bg-[oklch(0.65_0.15_160/0.1)] dark:text-[oklch(0.78_0.15_160)]";
+
 const VARIANT_TAB_EMPTY_CLASS =
   "text-[oklch(0.45_0.15_160)] border border-dashed border-[oklch(0.65_0.15_160/0.5)] hover:bg-[oklch(0.65_0.15_160/0.1)] dark:text-[oklch(0.78_0.15_160)]";
 
