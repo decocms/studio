@@ -20,7 +20,7 @@ import {
   MAX_TASK_TITLE_LENGTH,
 } from "@/tools/task-board/schema";
 
-export const SuggestTaskInputSchema = z.object({
+const SuggestTaskInputSchema = z.object({
   title: z
     .string()
     .min(1)
@@ -38,7 +38,7 @@ export const SuggestTaskInputSchema = z.object({
     ),
 });
 
-export const SuggestTaskOutputSchema = z.object({
+const SuggestTaskOutputSchema = z.object({
   accepted: z
     .boolean()
     .describe("True when the user agreed to turn this into a task."),
