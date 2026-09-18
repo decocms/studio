@@ -130,6 +130,9 @@ export function ImageUpload({
       ) : (
         /* ── Without image: dropzone ── */
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={t("registry.imageUpload.clickOrDragToUpload")}
           className={cn(
             "relative min-h-[180px] rounded-xl border-2 border-dashed transition-colors cursor-pointer flex flex-col",
             isDragging
@@ -140,6 +143,11 @@ export function ImageUpload({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            fileInputRef.current?.click();
+          }}
         >
           <div className="flex flex-col items-center justify-center gap-2 py-6 px-4 flex-1">
             <div
