@@ -133,6 +133,14 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.saving": "Salvando…",
   "sectionsEditor.pageJsonDialog.title": "Page JSON",
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
+  "sectionsEditor.pageSections.blockNameAlreadyExists":
+    "Já existe um bloco com este nome.",
+  "sectionsEditor.pageSections.blockNameInvalidChars":
+    "Use letras, números, espaços, hífens ou sublinhados. Deve começar com uma letra.",
+  "sectionsEditor.pageSections.blockNameNoSlashes":
+    "O nome do bloco não pode conter barras.",
+  "sectionsEditor.pageSections.blockNameRequired":
+    "O nome do bloco é obrigatório.",
   "sectionsEditor.pageTemplateSelect.blankPageDefaultLabel": "Página em branco",
   "sectionsEditor.pageTemplateSelect.blankPageLabel": "Página em branco",
   "sectionsEditor.pageTemplateSelect.noPagesFoundMessage":

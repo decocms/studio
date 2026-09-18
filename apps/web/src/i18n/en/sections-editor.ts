@@ -129,6 +129,13 @@ export const sectionsEditor = {
   "sectionsEditor.pageJsonDialog.saving": "Saving…",
   "sectionsEditor.pageJsonDialog.title": "Page JSON",
   "sectionsEditor.pageJsonDialog.titleShort": "JSON",
+  "sectionsEditor.pageSections.blockNameAlreadyExists":
+    "A block with this name already exists.",
+  "sectionsEditor.pageSections.blockNameInvalidChars":
+    "Use letters, numbers, spaces, hyphens, or underscores. Must start with a letter.",
+  "sectionsEditor.pageSections.blockNameNoSlashes":
+    "Block name cannot contain slashes.",
+  "sectionsEditor.pageSections.blockNameRequired": "Block name is required.",
   "sectionsEditor.pageTemplateSelect.blankPageDefaultLabel": "Blank page",
   "sectionsEditor.pageTemplateSelect.blankPageLabel": "Blank page",
   "sectionsEditor.pageTemplateSelect.noPagesFoundMessage": "No pages found.",
