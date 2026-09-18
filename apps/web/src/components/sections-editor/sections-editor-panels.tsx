@@ -1,5 +1,14 @@
 import { useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Flag01, Plus } from "@untitledui/icons";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Flag01,
+  Plus,
+  Settings01,
+  Trash01,
+} from "@untitledui/icons";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +20,13 @@ import {
   AlertDialogTitle,
 } from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
   Tooltip,
@@ -217,7 +233,7 @@ export function SchemaFormPanel({
 }
 
 /** The header's variant control, whether it selects one or offers the first. */
-export const VARIANT_PILL_CLASS =
+const VARIANT_PILL_CLASS =
   "shrink-0 inline-flex items-center gap-1 rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] h-7 px-2 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80";
 
 export const VARIANT_TAB_ACTIVE_CLASS =
@@ -226,7 +242,7 @@ export const VARIANT_TAB_ACTIVE_CLASS =
 /** The New Layout select: outlined rather than filled, so a variant chip reads
  *  as a control you can open rather than a status the header is reporting. Its
  *  empty state is the same pill with a dashed border. */
-export const VARIANT_TAB_OUTLINE_CLASS =
+const VARIANT_TAB_OUTLINE_CLASS =
   "text-[oklch(0.45_0.15_160)] border border-[oklch(0.65_0.15_160/0.5)] hover:bg-[oklch(0.65_0.15_160/0.1)] dark:text-[oklch(0.78_0.15_160)]";
 
 const VARIANT_TAB_EMPTY_CLASS =
@@ -486,5 +502,75 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
         {t("sectionsEditor.sectionsEditorPanels.createVariants")}
       </span>
     </button>
+  );
+}
+
+/**
+ * The header's variant select. Pages and sections carry variants with the same
+ * shape and the same actions, so they render through one control — the
+ * only difference is whose variants it is naming. Adding lives on the manage
+ * screen's pinned button, beside the list a new variant joins.
+ */
+export function VariantSelect({
+  variants,
+  activeIndex,
+  icon,
+  onSelect,
+  onManage,
+  onRemoveAll,
+  manageLabel,
+  removeAllLabel,
+}: {
+  variants: Array<{ label: string }>;
+  activeIndex: number;
+  icon: ReactNode;
+  onSelect: (index: number) => void;
+  onManage: () => void;
+  onRemoveAll: () => void;
+  manageLabel: string;
+  removeAllLabel: string;
+}) {
+  const active = variants[activeIndex];
+  if (!active) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_OUTLINE_CLASS)}
+        >
+          {icon}
+          <span className="max-w-[120px] truncate">{active.label}</span>
+          <ChevronDown className="size-3 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {variants.map((variant, index) => (
+          <DropdownMenuItem
+            key={`${variant.label}-${index}`}
+            onClick={() => onSelect(index)}
+          >
+            <Check
+              className={cn(
+                "size-3.5",
+                index === activeIndex ? "opacity-100" : "opacity-0",
+              )}
+            />
+            <span className="truncate">{variant.label}</span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onManage}>
+          <Settings01 className="size-3.5" />
+          {manageLabel}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={onRemoveAll}>
+          <Trash01 className="size-3.5" />
+          {removeAllLabel}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
