@@ -50,6 +50,13 @@ import {
   useHasObjectFieldExpansion,
 } from "./object-field-expansion";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
 
@@ -466,7 +473,7 @@ function SchemaFormBody({
   value,
   onChange,
   basePath,
-  breadcrumbPath = [],
+  breadcrumbPath = EMPTY_ARRAY,
   onBreadcrumbChange,
   meta,
   decofile,

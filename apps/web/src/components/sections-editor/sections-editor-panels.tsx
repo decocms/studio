@@ -28,6 +28,13 @@ import { validatePagePath } from "./page-path-utils";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
+/**
  * Editor for a variant's matcher rule (e.g. Include/Exclude Locations).
  * Owns its own breadcrumb state so users can drill into array items inside
  * the rule without affecting the section editor's breadcrumb. Caller is
@@ -126,7 +133,7 @@ export function SchemaFormPanel({
   formResetKey,
   onFormChange,
   onBreadcrumbChange,
-  breadcrumbPath = [],
+  breadcrumbPath = EMPTY_ARRAY,
   emptyMessage,
   beforeForm,
   seoResolveType,

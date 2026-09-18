@@ -84,7 +84,14 @@
     "react/hooks": "error",
     // A component defined during render is a new type every render, so React
     // unmounts and remounts it — losing its state and its DOM focus.
-    "react/no-unstable-nested-components": "error",
+    //
+    // `allowAsProps` because all 27 findings here were render props, not nested
+    // components: `fallback={({ error }) => ...}` on an error boundary, and a
+    // few stateless icon renderers. Those are the pattern's intended use. The
+    // tradeoff is that a STATEFUL component passed as a prop stops being
+    // flagged; verified the option still errors on the case that matters — a
+    // component declared inside render and rendered as `<Child />`.
+    "react/no-unstable-nested-components": ["error", { "allowAsProps": true }],
     // Security: we render untrusted sandbox/preview content in iframes.
     "react/iframe-missing-sandbox": "error",
     "react/no-danger": "error",
@@ -92,10 +99,17 @@
     "react/jsx-no-comment-textnodes": "error",
     // A <button> with no type submits the form it happens to sit in.
     "react/button-has-type": "error",
-    // Re-render bugs: a value constructed during render is a new identity every
-    // time, so every context consumer (or memoized child) re-renders.
-    "react/jsx-no-constructed-context-values": "error",
+    // A default prop built inline is a new identity every render, so anything
+    // derived from it re-renders even when nothing changed. Hoist it to a
+    // module constant instead.
     "react/no-object-type-as-default-prop": "error",
+    // `jsx-no-constructed-context-values` is deliberately NOT here. All 31 of
+    // its findings are `<Ctx value={{...}}>`, and its prescribed fix is
+    // `useMemo` — which `ban-memoization` forbids at "error" precisely because
+    // babel-plugin-react-compiler (enabled in apps/web/vite.config.ts) already
+    // memoizes those values. The rule is written for codebases without the
+    // compiler; here it is unsatisfiable without breaking our own lint.
+    "react/jsx-no-constructed-context-values": "off",
     "enforce-kebab-case-file-names/kebab-case": "warn",
     "ban-types": "warn",
     "enforce-query-key-constants/enforce-query-key-constants": "warn",
@@ -119,6 +133,15 @@
       "rules": {
         "react-hooks/rules-of-hooks": "off",
         "react/hooks": "off"
+      }
+    },
+    {
+      // Mount-once test harnesses and stories. A fresh default prop identity
+      // per render costs nothing where nothing re-renders, and the alternative
+      // is type gymnastics in a fixture.
+      "files": ["apps/web/ct/**", "**/*.stories.tsx"],
+      "rules": {
+        "react/no-object-type-as-default-prop": "off"
       }
     }
   ]

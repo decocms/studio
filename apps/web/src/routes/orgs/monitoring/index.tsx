@@ -77,6 +77,13 @@ import { AutomationsTabContent } from "./automations.tsx";
 import { getOrgMembers } from "./utils.ts";
 import { track } from "@/lib/posthog-client";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 // ============================================================================
 // Filters Popover Component
 // ============================================================================
@@ -130,7 +137,7 @@ function FiltersPopover({
   onUpdateFilters,
   onConnectionSearchChange,
   memberOptions,
-  llmUserIds = [],
+  llmUserIds = EMPTY_ARRAY,
   onLlmUserIdsChange,
   showMemberFilter,
 }: FiltersPopoverProps) {

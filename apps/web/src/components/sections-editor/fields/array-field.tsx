@@ -67,6 +67,13 @@ import {
   type SchemaProperty,
 } from "../resolve-schema";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 function itemEditorSchema(
   item: unknown,
   itemSchema: SchemaProperty | undefined,
@@ -120,7 +127,7 @@ export function ArrayField({
   onChange,
   path,
   label,
-  breadcrumbPath = [],
+  breadcrumbPath = EMPTY_ARRAY,
   onBreadcrumbChange,
   hasSiblingDrillDownFields,
   meta,

@@ -48,6 +48,13 @@ import {
   withStudioMcpMetadata,
 } from "@decocms/shared/registry/metadata";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 type SubmitPayload =
   | RegistryCreateInput
   | { id: string; data: RegistryUpdateInput };
@@ -470,8 +477,8 @@ export function RegistryItemDialog({
   onOpenChange,
   item,
   draft,
-  availableTags = [],
-  availableCategories = [],
+  availableTags = EMPTY_ARRAY,
+  availableCategories = EMPTY_ARRAY,
   isSubmitting = false,
   onSubmit,
 }: RegistryItemDialogProps) {

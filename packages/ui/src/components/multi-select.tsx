@@ -18,6 +18,13 @@ import {
 } from "./command.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 export interface Option {
   label: string;
   value: string;
@@ -43,7 +50,7 @@ interface MultiSelectProps {
 export function MultiSelect({
   options,
   onValueChange,
-  defaultValue = [],
+  defaultValue = EMPTY_ARRAY,
   placeholder = "Select items",
   variant = "default",
   animation = 0,
