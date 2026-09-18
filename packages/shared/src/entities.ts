@@ -165,6 +165,10 @@ export interface TaskBoardItem {
   assignedBy: string | null;
   /** `owner/name` of the repo (site) this task pertains to. */
   repo: string | null;
+  /** The first-class repository this task names, when its writer knew it —
+   *  preferred over `repo` for binding a run's checkout. Mirrors
+   *  `taskBoardItemSchema` in `apps/api/src/tools/task-board/schema.ts`. */
+  repositoryId: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;

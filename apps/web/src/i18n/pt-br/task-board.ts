@@ -204,6 +204,13 @@ export const taskBoard = {
     "Agente acionado para resolver os conflitos",
   "taskBoard.taskDialog.resolveConflictError":
     "Não foi possível acionar o agente",
+  "taskBoard.taskDialog.runReviewerButton": "Executar revisor",
+  "taskBoard.taskDialog.runReviewerTitle":
+    "A revisão automática está desligada nesta organização — execute o Revisor apenas nesta tarefa",
+  "taskBoard.taskDialog.runReviewerSuccess": "Revisor acionado",
+  "taskBoard.taskDialog.runReviewerAlreadyRunning":
+    "Um revisor já está trabalhando nesta tarefa",
+  "taskBoard.taskDialog.runReviewerError": "Não foi possível acionar o revisor",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
   "taskBoard.taskDialog.costTooltipSingular":
     "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",

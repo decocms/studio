@@ -204,15 +204,24 @@ export async function enqueueEnabledReviewers(
      *  below.
      *  Omitted means "not checked", which dispatches as it always did. */
     previewMatchesHead?: boolean;
+    /**
+     * Reviewers to dispatch regardless of the org's `reviewer_enabled` flag —
+     * the org setting is the only gate this replaces. `TASK_BOARD_RUN_REVIEWER`
+     * passes it so a human can ask for the one review their org turned off;
+     * every other gate below (a live author run, the attempt cap, a reviewer
+     * already on this cycle) still applies, which is what stops the button
+     * dispatching a second reviewer onto a card that has one.
+     */
+    kinds?: ReviewerKind[];
   },
-): Promise<void> {
+): Promise<ReviewerKind[]> {
   const settings = await ctx.storage.organizationSettings.get(
     task.organizationId,
   );
-  const enabled = enabledReviewerKinds(settings?.flags);
-  if (enabled.length === 0) return;
+  const enabled = opts?.kinds ?? enabledReviewerKinds(settings?.flags);
+  if (enabled.length === 0) return [];
   // Deferred, not dropped — both callers re-poll; above the hand-offs on purpose.
-  if (authorRunLive(task, Date.now())) return;
+  if (authorRunLive(task, Date.now())) return [];
   const modelClass: ClaudeCodeModelClass = orgFlagEnabled(
     settings?.flags,
     "cheap_reviewer_model",
@@ -236,6 +245,10 @@ export async function enqueueEnabledReviewers(
   // Which reviewers actually ruled this cycle. A reviewer thread that completed
   // without one is a spent attempt, not a review — see `isSpentAttempt`.
   const decided = reviewCycleVerdicts(activity, { cycleStartedAt });
+
+  // Reviewers this call really dispatched — every gate below is a silent skip,
+  // and the manual button needs to tell the human which of the two happened.
+  const dispatched: ReviewerKind[] = [];
 
   // One reviewer today, but the enqueue stays a fan-out over `enabled`: each
   // dispatch is independent (its own fence id), and this runs on
@@ -322,18 +335,21 @@ export async function enqueueEnabledReviewers(
         Date.now(),
         verdictRecorded,
       );
-      await enqueueReviewerForTask(
+      const queued = await enqueueReviewerForTask(
         ctx,
         task,
         kind,
         cycleAt,
         attempt,
         modelClass,
-      ).catch((err) =>
-        console.error(`[task-board] ${kind} reviewer enqueue failed`, err),
-      );
+      ).catch((err) => {
+        console.error(`[task-board] ${kind} reviewer enqueue failed`, err);
+        return false;
+      });
+      if (queued) dispatched.push(kind);
     }),
   );
+  return dispatched;
 }
 
 /**
@@ -704,7 +720,7 @@ async function enqueueReviewerForTask(
   cycleAt: Date,
   attempt: number,
   modelClass: ClaudeCodeModelClass,
-): Promise<void> {
+): Promise<boolean> {
   const organizationId = task.organizationId;
   // Proves to TASK_BOARD_REVIEW_DECISION that the caller is this reviewer.
   const reviewToken = mintReviewToken(task.id, kind, cycleAt);
@@ -850,7 +866,7 @@ async function enqueueReviewerForTask(
     throw err;
   });
   // A concurrent trigger got there first — it owns this reviewer's dispatch.
-  if (!isNew) return;
+  if (!isNew) return false;
 
   // Timeline: "Super Agent delegated to <reviewer>" (machine actor → null), and
   // broadcast the now-linked thread so the card shows the reviewer session live
@@ -864,4 +880,5 @@ async function enqueueReviewerForTask(
   });
   const linked = await ctx.storage.taskBoard.getById(task.id, organizationId);
   if (linked) emitTaskBoardUpdated(organizationId, linked);
+  return true;
 }

@@ -195,6 +195,13 @@ export const taskBoard = {
   "taskBoard.taskDialog.resolveConflictSuccess":
     "Agent dispatched to resolve the conflicts",
   "taskBoard.taskDialog.resolveConflictError": "Couldn't start the agent",
+  "taskBoard.taskDialog.runReviewerButton": "Run reviewer",
+  "taskBoard.taskDialog.runReviewerTitle":
+    "Automated review is off for this organization — run the Reviewer on this task only",
+  "taskBoard.taskDialog.runReviewerSuccess": "Reviewer dispatched",
+  "taskBoard.taskDialog.runReviewerAlreadyRunning":
+    "A reviewer is already working this task",
+  "taskBoard.taskDialog.runReviewerError": "Couldn't start the reviewer",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
   "taskBoard.taskDialog.costTooltipSingular":
     "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",

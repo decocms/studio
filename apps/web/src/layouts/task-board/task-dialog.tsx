@@ -82,6 +82,7 @@ import { ReviewerIcon } from "@/components/reviewer-icon";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import {
   CANONICAL_COLUMN_KEYS,
+  canRunReviewerManually,
   isReportsTask,
   isReviewerThreadTitle,
 } from "@decocms/shared/task-board";
@@ -139,6 +140,7 @@ import {
 } from "@/hooks/use-organization-settings";
 import { usePromoteToProduction } from "@/hooks/use-promote-to-production";
 import { useResolveConflict } from "@/hooks/use-resolve-conflict";
+import { useRunReviewer } from "@/hooks/use-run-reviewer";
 import {
   enabledReviewers,
   laneCanShip,
@@ -2294,6 +2296,56 @@ function LinksSection({
 }
 
 /**
+ * "Run reviewer" — the escape hatch for a card an org with automated review
+ * turned off left unreviewed. Sits in the Activity header because that is where
+ * the review shows up once it starts.
+ *
+ * Renders nothing unless {@link canRunReviewerManually}; the server enforces the
+ * same conditions, so a stale render costs a toast, not a stray agent run.
+ */
+function RunReviewerButton({ item }: { item: TaskBoardItem }) {
+  const t = useT();
+  const reviewerOn = useReviewerEnabled();
+  const { data: prs } = useTaskBoardItemPrs(item.id);
+  const runReviewer = useRunReviewer(item.id);
+
+  const offer = canRunReviewerManually({
+    reviewerEnabled: reviewerOn,
+    hasPullRequest: (prs ?? []).length > 0,
+    threadTitles: item.threads.map((thread) => thread.title),
+  });
+  if (!offer) return null;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={runReviewer.isPending}
+      title={t("taskBoard.taskDialog.runReviewerTitle")}
+      className="h-7 gap-1.5 px-2 text-sm font-normal text-muted-foreground"
+      onClick={() =>
+        runReviewer.mutate(undefined, {
+          onSuccess: (res) =>
+            res?.queued
+              ? toast.success(t("taskBoard.taskDialog.runReviewerSuccess"))
+              : toast.info(t("taskBoard.taskDialog.runReviewerAlreadyRunning")),
+          // The tool's refusals name what to do about them ("wait for the Super
+          // Agent", "no pull request yet"), so they beat a generic string.
+          onError: (err: Error) =>
+            toast.error(
+              err.message || t("taskBoard.taskDialog.runReviewerError"),
+            ),
+        })
+      }
+    >
+      <ReviewerIcon size={14} className="shrink-0" />
+      {t("taskBoard.taskDialog.runReviewerButton")}
+    </Button>
+  );
+}
+
+/**
  * Activity feed: the task's change timeline (created, moved, (re)assigned), its
  * linked agent sessions and its comment threads, interleaved most-recent-first.
  * Consecutive timeline events render as one run joined by a rail; a thread or a
@@ -2408,7 +2460,12 @@ function ActivitySection({
   return (
     <RecordSection
       label={t("taskBoard.taskDialog.activityLabel")}
-      action={<SubscribeToggle itemId={item.id} members={members} />}
+      action={
+        <div className="flex items-center gap-1">
+          <RunReviewerButton item={item} />
+          <SubscribeToggle itemId={item.id} members={members} />
+        </div>
+      }
     >
       <div className="flex flex-col gap-5">
         {/* At the top: the feed reads newest-first, so this is where a new

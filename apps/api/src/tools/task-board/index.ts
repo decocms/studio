@@ -16,6 +16,7 @@ export {
 export { TASK_BOARD_ITEM_PRS_GET } from "./prs-get";
 export { TASK_BOARD_PREVIEW_PROBE } from "./preview-probe";
 export { TASK_BOARD_ITEM_RERUN } from "./rerun";
+export { TASK_BOARD_RUN_REVIEWER } from "./run-reviewer";
 export { TASK_BOARD_RESOLVE_CONFLICT } from "./resolve-conflict";
 export { TASK_BOARD_REVIEW_DECISION } from "./review-decision";
 export { TASK_BOARD_PROMOTE_TO_PRODUCTION } from "./promote-to-production";

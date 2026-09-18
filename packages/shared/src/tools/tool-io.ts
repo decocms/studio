@@ -388,6 +388,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -458,6 +459,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -555,6 +557,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -665,6 +668,10 @@ export interface StudioToolIO {
   TASK_BOARD_ITEM_RERUN: {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };
+  };
+  TASK_BOARD_RUN_REVIEWER: {
+    input: { id: string };
+    output: { queued: boolean };
   };
   TASK_BOARD_RESOLVE_CONFLICT: {
     input: { id: string; prNumber: number };
@@ -8230,7 +8237,7 @@ export interface StudioToolIO {
         checkRuns: {
           id: string | null;
           name: string;
-          state: "completed" | "running" | "queued";
+          state: "completed" | "queued" | "running";
           conclusion:
             | "success"
             | "skipped"

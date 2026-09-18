@@ -302,6 +302,7 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_PREVIEW_PROBE",
   "TASK_BOARD_ITEM_RERUN",
+  "TASK_BOARD_RUN_REVIEWER",
   "TASK_BOARD_RESOLVE_CONFLICT",
   "TASK_BOARD_REVIEW_DECISION",
   "TASK_BOARD_PROMOTE_TO_PRODUCTION",
@@ -1463,6 +1464,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     dangerous: true,
   },
   {
+    name: "TASK_BOARD_RUN_REVIEWER",
+    description:
+      "Run the Reviewer on a task even when the organization has automated review turned off",
+    category: "Task Board",
+    dangerous: true,
+  },
+  {
     name: "TASK_BOARD_RESOLVE_CONFLICT",
     description:
       "Hand a task's conflicting pull request back to the Super Agent to resolve the merge conflict",
@@ -1718,6 +1726,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_PREVIEW_PROBE",
       "TASK_BOARD_ITEM_RERUN",
+      "TASK_BOARD_RUN_REVIEWER",
       "TASK_BOARD_REVIEW_DECISION",
       "TASK_BOARD_PROMOTE_TO_PRODUCTION",
       "TASK_BOARD_ACTIVITY_LIST",
