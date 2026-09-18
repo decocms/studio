@@ -129,6 +129,7 @@ import {
   SchemaFormPanel,
   VARIANT_PILL_CLASS,
   VARIANT_TAB_ACTIVE_CLASS,
+  VARIANT_TAB_OUTLINE_CLASS,
 } from "./sections-editor-panels";
 import { VariantRuleEditor } from "./variant-rule-editor";
 
@@ -3189,7 +3190,10 @@ export function SectionsEditor({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_ACTIVE_CLASS)}
+                    className={cn(
+                      VARIANT_PILL_CLASS,
+                      VARIANT_TAB_OUTLINE_CLASS,
+                    )}
                   >
                     <VariantTabIcon
                       rule={resolveEffectiveMatcherRule(
@@ -3242,7 +3246,10 @@ export function SectionsEditor({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_ACTIVE_CLASS)}
+                    className={cn(
+                      VARIANT_PILL_CLASS,
+                      VARIANT_TAB_OUTLINE_CLASS,
+                    )}
                   >
                     <VariantTabIcon
                       rule={resolveEffectiveMatcherRule(
