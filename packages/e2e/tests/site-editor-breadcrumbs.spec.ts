@@ -306,7 +306,7 @@ test.describe("Site Editor breadcrumbs", () => {
       await expect(
         header.getByRole("heading", { name: "SharedHero", exact: true }),
       ).toBeVisible();
-      await expect(blocks.getByText(/This is a global section/)).toBeVisible();
+      await expect(blocks.getByText("Shared across your site")).toBeVisible();
       await expect(trail.getByText("Catalog", { exact: true })).toHaveCount(0);
       await picker.click();
       await page.getByRole("option", { name: /Products/ }).click();
@@ -394,6 +394,9 @@ test.describe("Site Editor breadcrumbs", () => {
       // the autosave window, then unregister the editor's entire path.
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.getByRole("button", { name: "Home /", exact: true }).click();
+      // Name and path live on the SEO screen now that the panel header is a
+      // read-only title.
+      await page.getByRole("button", { name: "Edit SEO", exact: true }).click();
       await page
         .getByPlaceholder("Page name", { exact: true })
         .fill("Renamed Home");
