@@ -252,19 +252,44 @@ export function parseModelJson<T>(
   schema: z.ZodType<T>,
 ): T | null {
   const cleaned = text
-    .trim()
-    .replace(/^```(?:json)?\s*\n?/i, "")
-    .replace(/\n?```\s*$/, "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/```(?:json)?/gi, "")
     .trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  try {
-    const parsed = schema.safeParse(JSON.parse(cleaned.slice(start, end + 1)));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
+  for (const candidate of balancedObjects(cleaned)) {
+    try {
+      const parsed = schema.safeParse(JSON.parse(candidate));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // Not JSON at this brace; try the next object.
+    }
   }
+  return null;
+}
+
+/** Every top-level `{…}` span in `text`, last first: a reasoning model tends to
+ *  narrate, sometimes with braces, before writing the answer it was asked for. */
+function balancedObjects(text: string): string[] {
+  const spans: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start !== -1) spans.push(text.slice(start, i + 1));
+    }
+  }
+  return spans.reverse();
 }
 
 /**
@@ -288,20 +313,25 @@ async function askFastTier<T>(
     const tier = await resolveTier(ctx, "fast");
     const provider = await ctx.aiProviders.activate(tier.credentialId, orgId);
     const model = provider.aiSdk.languageModel(tier.modelId);
-    const { text } = await generateText({
+    const { text, finishReason } = await generateText({
       model,
       system,
       prompt,
       temperature: 0,
-      maxOutputTokens: 1200,
+      // Room for a reasoning model to think before the JSON it was asked for.
+      maxOutputTokens: 8000,
     });
     const answer = parseModelJson(text, schema);
     if (!answer) {
       console.warn("[task-board] duplicate check: unparseable answer", {
         modelId: tier.modelId,
-        head: text.slice(0, 200),
+        finishReason,
+        chars: text.length,
+        tail: text.slice(-200),
       });
-      return { skipped: `unparseable answer from ${tier.modelId}` };
+      return {
+        skipped: `unparseable answer from ${tier.modelId} (finish=${finishReason}, chars=${text.length})`,
+      };
     }
     return { answer };
   } catch (err) {
