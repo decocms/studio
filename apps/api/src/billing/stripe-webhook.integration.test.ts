@@ -423,4 +423,114 @@ describe("applyStripeEvent", () => {
     );
     expect(replay).toEqual(confirmed);
   });
+  it("a STALE checkout redelivery is skipped, not reversed as an orphan — the refund that would have taken back money the org owed", async () => {
+    const ORG_LAPSE = "org_stripe_lapse";
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: ORG_LAPSE,
+        name: "Stripe lapse",
+        slug: "org-stripe-lapse",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    await database.db
+      .insertInto("organization_billing")
+      .values({ organization_id: ORG_LAPSE })
+      .execute();
+
+    // The org subscribes as sub_old...
+    const first = await applyStripeEvent(
+      storage,
+      checkout(
+        {
+          id: "cs_old",
+          subscription: "sub_old",
+          metadata: { orgId: ORG_LAPSE },
+        },
+        T1,
+      ),
+    );
+    expect(first.handled).toBe(true);
+
+    // ...cancels (deleted unbinds, terminal)...
+    await applyStripeEvent(
+      storage,
+      event("customer.subscription.deleted", { id: "sub_old" }, T2),
+    );
+    // ...and re-subscribes as sub_new.
+    const second = await applyStripeEvent(
+      storage,
+      checkout(
+        {
+          id: "cs_new",
+          subscription: "sub_new",
+          metadata: { orgId: ORG_LAPSE },
+        },
+        T3,
+      ),
+    );
+    expect(second.handled).toBe(true);
+
+    // Stripe now redelivers the ORIGINAL sub_old checkout (it 500'd at the
+    // time — a gateway blip makes setGatewayOrgPlan throw by design). It is
+    // older than the watermark, so it must be dropped as stale. Reading it as
+    // a rebind instead would name sub_old as an orphan, and the route wrapper
+    // would CANCEL AND REFUND every invoice it collected — money the org owed
+    // for service it used.
+    const redelivery = await applyStripeEvent(
+      storage,
+      checkout(
+        {
+          id: "cs_old",
+          subscription: "sub_old",
+          metadata: { orgId: ORG_LAPSE },
+        },
+        T1,
+      ),
+    );
+    expect(redelivery).toEqual({ handled: false, reason: "stale event" });
+    expect("orphanSubscriptionId" in redelivery).toBe(false);
+    expect((await storage.getBilling(ORG_LAPSE))?.stripeSubscriptionId).toBe(
+      "sub_new",
+    );
+  });
+
+  it("a PAID checkout for an org with no billing row self-heals instead of dropping the payment", async () => {
+    const ORG_UNSEEDED = "org_stripe_unseeded";
+    // Organization exists; its creation-time billing seed never ran.
+    await database.db
+      .insertInto("organization")
+      .values({
+        id: ORG_UNSEEDED,
+        name: "Stripe unseeded",
+        slug: "org-stripe-unseeded",
+        createdAt: new Date().toISOString(),
+      })
+      .execute();
+    expect(await storage.getBilling(ORG_UNSEEDED)).toBeNull();
+
+    const result = await applyStripeEvent(
+      storage,
+      checkout(
+        {
+          id: "cs_unseeded",
+          customer: "cus_unseeded",
+          subscription: "sub_unseeded",
+          metadata: { orgId: ORG_UNSEEDED, planId: "pro" },
+        },
+        T1,
+      ),
+    );
+    // Previously: { handled: false, reason: "unknown org" } — a 200 to Stripe
+    // with the money taken, no plan granted and no refund.
+    expect(result).toEqual({
+      handled: true,
+      organizationId: ORG_UNSEEDED,
+      planChange: { planId: "pro", note: "stripe checkout cs_unseeded" },
+    });
+    const billing = await storage.getBilling(ORG_UNSEEDED);
+    expect(billing?.stripeSubscriptionId).toBe("sub_unseeded");
+    expect(billing?.status).toBe("active");
+  });
 });

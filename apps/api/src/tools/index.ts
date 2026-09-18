@@ -13,7 +13,7 @@ import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as ApiKeyTools from "./apiKeys";
-import * as CommerceDiscoveryTools from "./reports";
+import * as ReportsTools from "./reports";
 import * as ConnectionTools from "./connection";
 import * as DatabaseTools from "./database";
 import * as VirtualMCPTools from "./virtual";
@@ -22,6 +22,7 @@ import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
 import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
+import * as ExperimentTools from "./experiments";
 import * as ThreadTools from "./thread";
 import * as AutomationTools from "./automations";
 import * as UserTools from "./user";
@@ -63,6 +64,9 @@ export const CORE_TOOLS = [
   NotificationTools.NOTIFICATION_SUBSCRIPTION_SET,
   NotificationTools.NOTIFICATION_SUBSCRIPTION_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_CREATE,
+  // The cross-org `org` param is applied at each tool's own definition, NOT
+  // here — the Super Agent imports these tools directly (see
+  // `decopilot/built-in-tools/task-board-tools.ts`) and never reads this list.
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
@@ -86,6 +90,13 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
   TaskBoardTools.TASK_ADD_REPO,
+  TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
+  TaskBoardTools.TASK_BOARD_DELIVERY,
+  TaskBoardTools.TASK_BOARD_STUCK,
+  TaskBoardTools.TASK_BOARD_COST,
+  TaskBoardTools.TASK_BOARD_QUALITY,
+  TaskBoardTools.TASK_BOARD_ERRORS,
+  TaskBoardTools.TASK_BOARD_TENANTS,
   OrganizationTools.BRAND_CONTEXT_LIST,
   OrganizationTools.BRAND_CONTEXT_GET,
   OrganizationTools.BRAND_CONTEXT_CREATE,
@@ -97,6 +108,7 @@ export const CORE_TOOLS = [
   BlogTools.BLOG_THEME_SUGGEST,
   BlogTools.BLOG_FORMAT_SUGGEST,
   BlogTools.BLOG_POST_DRAFT,
+  BlogTools.BLOG_LINK_SUGGEST,
   OrganizationTools.BRAND_GET,
   OrganizationTools.BRAND_LIST,
   OrganizationTools.ORGANIZATION_DOMAIN_LIST,
@@ -112,6 +124,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_MEMBER_LIST,
   OrganizationTools.ORGANIZATION_MEMBER_UPDATE_ROLE,
   OrganizationTools.ORGANIZATION_BILLING_CHECKOUT_START,
+  OrganizationTools.ORGANIZATION_BILLING_PLAN_PRICES,
   OrganizationTools.ORGANIZATION_BILLING_PORTAL,
   OrganizationTools.ORGANIZATION_TASK_QUOTA_GET,
 
@@ -127,10 +140,11 @@ export const CORE_TOOLS = [
   ConnectionTools.COLLECTION_CONNECTIONS_UPDATE,
   ConnectionTools.COLLECTION_CONNECTIONS_DELETE,
   ConnectionTools.CONNECTION_TEST,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_SETUP,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_RUN,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_BIND,
-  CommerceDiscoveryTools.COMMERCE_DISCOVERY_CONNECTION_STATUS,
+  ReportsTools.REPORTS_SETUP,
+  ReportsTools.REPORTS_RUN,
+  ReportsTools.REPORTS_BIND,
+  ReportsTools.REPORTS_CONNECTION_STATUS,
+  ReportsTools.REPORTS_SET_REPOSITORY,
 
   // Virtual MCP collection tools
   VirtualMCPTools.COLLECTION_VIRTUAL_MCP_CREATE,
@@ -174,6 +188,12 @@ export const CORE_TOOLS = [
   TagTools.TAGS_DELETE,
   TagTools.MEMBER_TAGS_GET,
   TagTools.MEMBER_TAGS_SET,
+  ExperimentTools.EXPERIMENT_LIST,
+  ExperimentTools.EXPERIMENT_GET,
+  ExperimentTools.EXPERIMENT_CREATE,
+  ExperimentTools.EXPERIMENT_UPDATE,
+  ExperimentTools.EXPERIMENT_DELETE,
+  ExperimentTools.EXPERIMENT_RESULTS,
 
   // Automation tools
   AutomationTools.AUTOMATION_CREATE,
@@ -207,6 +227,9 @@ export const CORE_TOOLS = [
   AiProvidersTools.AI_PROVIDER_PROVISION_KEY,
   AiProvidersTools.AI_PROVIDER_TOPUP_URL,
   AiProvidersTools.AI_PROVIDER_CREDITS,
+  AiProvidersTools.AI_PLAN_ENTITLEMENTS,
+  AiProvidersTools.AI_PLAN_LIST,
+  AiProvidersTools.AI_PLAN_SET,
   // Claude subscription (per-user OAuth credential for the claude-code harness)
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_CONNECT,
   ClaudeSubscriptionTools.CLAUDE_SUBSCRIPTION_STATUS,
@@ -243,6 +266,7 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_AUTOMATION_UPSERT,
   JiraTools.JIRA_AUTOMATION_DELETE,
   JiraTools.JIRA_RUN_START,
+  JiraTools.JIRA_PR_MERGE,
   // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
   JiraTools.JIRA_ISSUE_GET,
   JiraTools.JIRA_COMMENT_ADD,
@@ -316,6 +340,36 @@ export const TOOL_BY_NAME: Map<string, RegistrableTool> = new Map(
 );
 
 /**
+ * Names a tool answered to before it was renamed.
+ *
+ * A tool name is a wire identifier: an external MCP client, a saved harness
+ * config or a stored allowlist can all name one, and a rename in this repo
+ * updates none of them. So the old name keeps RESOLVING while only the current
+ * one is ADVERTISED — hence a second map rather than extra entries in
+ * `TOOL_BY_NAME`, which every listing iterates and would otherwise show each
+ * renamed tool twice (and register it twice on the MCP server).
+ *
+ * Renaming a tool also moves its permission resource; the other half of that is
+ * the renamed tool's own `ctx.access.check(current, legacy)`.
+ *
+ * Entries are removed once the old name has been out of use for a release.
+ */
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  COMMERCE_DISCOVERY_SETUP: "REPORTS_SETUP",
+  COMMERCE_DISCOVERY_RUN: "REPORTS_RUN",
+  COMMERCE_DISCOVERY_BIND: "REPORTS_BIND",
+  COMMERCE_DISCOVERY_CONNECTION_STATUS: "REPORTS_CONNECTION_STATUS",
+};
+
+/** A tool by its current name, or by one it used to answer to. */
+export function resolveToolByName(name: string): RegistrableTool | undefined {
+  const current = TOOL_BY_NAME.get(name);
+  if (current) return current;
+  const renamed = LEGACY_TOOL_NAMES[name];
+  return renamed ? TOOL_BY_NAME.get(renamed) : undefined;
+}
+
+/**
  * An MCP server exposing just the named management tools — no prompts, no brand
  * prompts, no resources.
  *
@@ -337,7 +391,7 @@ export const toolSubsetMCP = (
     },
   );
   for (const toolName of toolNames) {
-    const tool = TOOL_BY_NAME.get(toolName);
+    const tool = resolveToolByName(toolName);
     if (!tool) {
       console.warn(`[${name}] unknown tool "${toolName}" — not registered`);
       continue;

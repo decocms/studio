@@ -75,8 +75,6 @@ interface RowMeta {
   kind: RowKind;
   /** The org or project the verb names. */
   label: string;
-  /** Set when leaving the current org — the strip says so. */
-  leaves?: string;
 }
 
 /** A group heading with the create affordance for that group on its right.
@@ -113,7 +111,7 @@ function GroupHeading({
           <button
             type="button"
             aria-label={createLabel}
-            className="-my-1 shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="-my-1 shrink-0 cursor-pointer classic:rounded-md compact:rounded-lg p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             onClick={onCreate}
           >
             <Plus size={14} />
@@ -159,12 +157,6 @@ function VerbStrip({
   return (
     <div className="border-t border-border px-3 py-2 text-xs text-warning">
       {t("sidebar.picker.verbTravel", { name: meta.label })}
-      {meta.leaves && (
-        <span className="text-muted-foreground">
-          {" "}
-          {t("sidebar.picker.verbLeaves", { name: meta.leaves })}
-        </span>
-      )}
     </div>
   );
 }
@@ -244,34 +236,28 @@ function PickerContent({
    *  inside settings, so this is where that has to be answered. */
   const scopeTo = (id: string | null) => {
     track("scope_set", { scoped: id !== null, fromSettings: inSettings });
-    if (inSettings) {
-      navigate({
-        to: "/$org",
-        params: { org: org.slug },
-        search: { virtualmcpid: id ?? undefined },
-      });
-    } else {
-      setScope(id);
-    }
+    setScope(id);
     onClose();
   };
 
   const travelTo = (slug: string, projectId?: string) => {
     track("org_project_travel", { scoped: !!projectId });
-    navigate({
-      to: "/$org",
-      params: { org: slug },
-      search: projectId ? { virtualmcpid: projectId } : {},
-    });
+    if (projectId) {
+      navigate({
+        to: "/$org/projects/$agentId",
+        params: { org: slug, agentId: projectId },
+      });
+    } else {
+      navigate({ to: "/$org/home", params: { org: slug } });
+    }
     onClose();
   };
 
   const createProject = () => {
     track("picker_new_project");
     navigate({
-      to: "/$org/agents/{-$panel}",
-      params: { org: org.slug, panel: undefined },
-      search: { virtualmcpid: undefined },
+      to: "/$org/home",
+      params: { org: org.slug },
     });
     onClose();
   };
@@ -330,7 +316,6 @@ function PickerContent({
                     key={`${hit.orgSlug}:${hit.id}`}
                     hit={hit}
                     currentOrgSlug={org.slug}
-                    currentOrgName={org.name}
                     scopeId={scopeId}
                     rows={rows}
                     onScope={scopeTo}
@@ -349,7 +334,6 @@ function PickerContent({
                     key={candidate.id}
                     candidate={candidate}
                     currentOrgSlug={org.slug}
-                    currentOrgName={org.name}
                     rows={rows}
                     onTravel={travelTo}
                     onClose={onClose}
@@ -433,7 +417,6 @@ function PickerContent({
                   key={candidate.id}
                   candidate={candidate}
                   currentOrgSlug={org.slug}
-                  currentOrgName={org.name}
                   rows={rows}
                   onTravel={travelTo}
                   onClose={onClose}
@@ -452,18 +435,16 @@ function PickerContent({
 /** One organization row, shared by both modes so an org reads the same whether
  *  you browsed to it or searched for it. Registers its verb in `rows` as a
  *  side effect of render, exactly like `SearchHitRow` — the current org SCOPEs
- *  (a no-op that just closes), every other org TRAVELs and says what it leaves. */
+ *  (a no-op that just closes), every other org TRAVELs. */
 function OrgRow({
   candidate,
   currentOrgSlug,
-  currentOrgName,
   rows,
   onTravel,
   onClose,
 }: {
   candidate: PickerOrg;
   currentOrgSlug: string;
-  currentOrgName: string;
   rows: Map<string, RowMeta>;
   onTravel: (slug: string) => void;
   onClose: () => void;
@@ -473,7 +454,6 @@ function OrgRow({
   rows.set(value, {
     kind: isCurrent ? "scope" : "travel",
     label: candidate.name,
-    ...(isCurrent ? {} : { leaves: currentOrgName }),
   });
   return (
     <CommandItem
@@ -494,7 +474,6 @@ function OrgRow({
 function SearchHitRow({
   hit,
   currentOrgSlug,
-  currentOrgName,
   scopeId,
   rows,
   onScope,
@@ -502,7 +481,6 @@ function SearchHitRow({
 }: {
   hit: ProjectSearchHit;
   currentOrgSlug: string;
-  currentOrgName: string;
   scopeId: string | null;
   rows: Map<string, RowMeta>;
   onScope: (id: string) => void;
@@ -516,7 +494,6 @@ function SearchHitRow({
   rows.set(value, {
     kind: isHere ? "scope" : "travel",
     label: hit.title,
-    leaves: isHere ? undefined : currentOrgName,
   });
 
   return (

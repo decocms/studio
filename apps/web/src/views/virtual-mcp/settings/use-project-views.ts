@@ -419,6 +419,7 @@ export function useProjectViews({
     analytics: t("common.mainPanelTabs.analytics"),
     cdn: t("common.mainPanelTabs.cdn"),
     automations: t("virtualMcp.layoutTabContent.automations"),
+    experiments: t("experiments.title"),
   };
 
   /**

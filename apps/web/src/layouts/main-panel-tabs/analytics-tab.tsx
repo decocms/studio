@@ -206,11 +206,23 @@ const TIME_KEY = /^(t|ts|bucket|minute|min|hour|day|date)$/i;
 
 // --- helpers ----------------------------------------------------------------
 
+/** Thrown by {@link fetchJson}/{@link mutateJson}; carries the real HTTP status
+ *  so callers don't have to guess it back out of the error message. */
+class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 /** The pre-token condition: the upstream (or its proxy) answers 401. Rendered as
- *  a calm "not connected" state, not a red error. */
+ *  a calm "not connected" state, not a red error. Keyed on the actual status,
+ *  not the error message — a BFF route can phrase its 401 body however it
+ *  likes without silently breaking this check. */
 function isUnauthorized(error: unknown): boolean {
-  const m = error instanceof Error ? error.message.toLowerCase() : "";
-  return m.includes("unauthorized") || m.includes("401");
+  return error instanceof ApiError && error.status === 401;
 }
 
 /** The upstream/proxy answers "not configured" (503) — a friendly "no data"
@@ -273,7 +285,7 @@ async function fetchJson(url: string): Promise<unknown> {
       body && typeof body === "object" && "error" in body
         ? String((body as { error: unknown }).error)
         : `request failed (${res.status})`;
-    throw new Error(err);
+    throw new ApiError(err, res.status);
   }
   return body;
 }
@@ -294,7 +306,7 @@ async function mutateJson(
       data && typeof data === "object" && "error" in data
         ? String((data as { error: unknown }).error)
         : `request failed (${res.status})`;
-    throw new Error(err);
+    throw new ApiError(err, res.status);
   }
   return data;
 }
@@ -329,11 +341,12 @@ function fmtMetric(key: string, value: unknown): string {
   if (value === null || value === undefined) return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return formatCell(value);
-  if (/(pct|rate|bounce|ratio)/i.test(key)) return `${Math.round(n)}%`;
+  // Durations first: "du-ratio-n" would match the percentage test below.
   if (/(_s$|duration|seconds)/i.test(key)) {
     const m = Math.floor(n / 60);
     return m ? `${m}m ${Math.round(n % 60)}s` : `${Math.round(n)}s`;
   }
+  if (/(pct|rate|bounce|ratio)/i.test(key)) return `${Math.round(n)}%`;
   return formatNumber(n);
 }
 
@@ -1338,7 +1351,7 @@ function RegistrationResult({
           {notes.map((n, i) => (
             <li
               key={i}
-              className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+              className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning"
             >
               {n}
             </li>
@@ -1689,7 +1702,7 @@ function EditAnalyticsDialog({
             {quotaError ? (
               <span className="text-xs text-destructive">{quotaError}</span>
             ) : quotaCleared ? (
-              <span className="text-xs text-amber-600 dark:text-amber-500">
+              <span className="text-xs text-warning">
                 Leaving this blank keeps the current cap — clearing a quota
                 isn't a patch. Unregister + re-register to make it uncapped.
               </span>
@@ -1996,7 +2009,7 @@ function RegisteredView({
                   type="button"
                   onClick={() => setRange(r)}
                   className={cn(
-                    "rounded-md px-2 py-1 text-xs font-medium tabular-nums transition-colors",
+                    "classic:rounded-md compact:rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-colors",
                     range === r
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:text-foreground",

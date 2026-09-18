@@ -3,7 +3,7 @@ setupComponentTest();
 import { describe, expect, it, mock } from "bun:test";
 import { fireEvent, render } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { ModelTierSection } from "./decopilot";
+import { ModelTierSection, pickBrowseModels } from "./decopilot";
 import type { AiProviderModel } from "../../../hooks/collections/use-ai-providers";
 
 function makeModel(overrides: Partial<AiProviderModel> = {}): AiProviderModel {
@@ -79,5 +79,33 @@ describe("ModelTierSection", () => {
     // details panel would otherwise stay blank until Enter is pressed.
     fireEvent.focus(getByRole("button", { name: /Claude Sonnet 5/ }));
     expect(onHover).toHaveBeenCalledWith(model);
+  });
+});
+
+describe("pickBrowseModels", () => {
+  const shortlisted = makeModel({ modelId: "anthropic/claude-sonnet-5" });
+  const other = makeModel({
+    modelId: "openai/gpt-5.3-codex",
+    title: "OpenAI: GPT-5.3 Codex",
+  });
+  const shortlistSet = new Set([shortlisted.modelId]);
+
+  it("shows only the shortlist when there is no search term", () => {
+    expect(pickBrowseModels([shortlisted, other], shortlistSet, "")).toEqual([
+      shortlisted,
+    ]);
+  });
+
+  it("searches the full catalog even when the match isn't shortlisted", () => {
+    expect(
+      pickBrowseModels([shortlisted, other], shortlistSet, "gpt-5.3"),
+    ).toEqual([shortlisted, other]);
+  });
+
+  it("falls back to the full catalog when the shortlist is empty", () => {
+    expect(pickBrowseModels([shortlisted, other], new Set(), "")).toEqual([
+      shortlisted,
+      other,
+    ]);
   });
 });

@@ -12,6 +12,17 @@
 export interface SkillMeta {
   name: string | null;
   description: string | null;
+  /**
+   * `disable-model-invocation: true` — the skill is for a person to reach
+   * for, not for the model to discover. It stays out of the `<available-skills>`
+   * catalog and out of the `skill` tool, and is offered only where a person
+   * picks one by hand (the `/` menu). The convention is Claude Code's.
+   *
+   * A skill whose whole job is to BE the text of a prompt someone writes is
+   * the case this exists for: advertising it to every run of every org is the
+   * implicit context it was written to replace.
+   */
+  disableModelInvocation: boolean;
   /** Markdown body with the frontmatter fence stripped. */
   body: string;
 }
@@ -44,6 +55,7 @@ export function parseSkillMd(text: string): SkillMeta {
     return {
       name: null,
       description: firstParagraph(text),
+      disableModelInvocation: false,
       body: text,
     };
   }
@@ -52,6 +64,9 @@ export function parseSkillMd(text: string): SkillMeta {
   return {
     name: fm.name || null,
     description: fm.description || firstParagraph(body),
+    // Anything but an explicit `true` leaves the skill discoverable: hiding a
+    // skill on a typo is the failure nobody would go looking for.
+    disableModelInvocation: fm["disable-model-invocation"] === "true",
     body,
   };
 }

@@ -215,7 +215,7 @@ function BrandCard({
                 {name}
                 {showDefaultBadge && isDefault && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    <Star01 className="size-3 text-amber-500" />
+                    <Star01 className="size-3 text-warning" />
                     {t("chat.brandContext.defaultBadge")}
                   </span>
                 )}
@@ -308,7 +308,7 @@ export function BrandContextPart({ part, latency }: BrandContextPartProps) {
   return (
     <>
       <ToolCallShell
-        icon={<Palette className="text-fuchsia-500" />}
+        icon={<Palette className="text-special" />}
         title={
           result?.name
             ? t("chat.brandContext.brandSet", { name: result.name })
@@ -377,7 +377,7 @@ export function BrandContextGetPart({
   return (
     <>
       <ToolCallShell
-        icon={<Palette className="text-fuchsia-500" />}
+        icon={<Palette className="text-special" />}
         title={
           result.name
             ? t("chat.brandContext.brandWithName", { name: result.name })
@@ -459,7 +459,7 @@ export function BrandContextListPart({
   return (
     <>
       <ToolCallShell
-        icon={<Palette className="text-fuchsia-500" />}
+        icon={<Palette className="text-special" />}
         title={
           items.length === 1
             ? t("chat.brandContext.oneBrand")
@@ -492,7 +492,7 @@ export function BrandContextListPart({
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground truncate">
                     {brand.name ?? t("chat.brandContext.untitled")}
                     {brand.isDefault && (
-                      <Star01 className="size-3 text-amber-500 shrink-0" />
+                      <Star01 className="size-3 text-warning shrink-0" />
                     )}
                   </span>
                   {brand.domain && (

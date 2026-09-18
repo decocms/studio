@@ -7,6 +7,7 @@
   "daemon e2e: git (cloned repo) > POST /write refuses an invalid decofile block",
   "daemon e2e: git (cloned repo) > SIGTERM skips an invalid block but still syncs the rest",
   "daemon e2e: git (cloned repo) > SIGTERM triggers a graceful publish to origin before exit",
+  "daemon e2e: git (commit signing) > signs the bot's commits with a signature the origin can verify",
   "daemon e2e: git (diverged origin) > interactive publish reconciles a diverged origin/<branch>",
   "daemon e2e: git (diverged origin) > re-bootstrap fast-forwards an idle branch to a moved base",
   "daemon e2e: git (protected branch) > POST /git/publish on main → 409 and creates no commit",

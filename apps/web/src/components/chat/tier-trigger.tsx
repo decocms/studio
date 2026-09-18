@@ -40,6 +40,11 @@ import {
   useAutoSimpleModeDefaults,
 } from "@/hooks/collections/use-ai-providers";
 import { TierModelOverridePicker } from "./tier-model-override-row";
+import {
+  useFeature,
+  useFeaturesSettled,
+  useModelDisclosure,
+} from "@/hooks/use-entitlements";
 
 const TIER_ORDER: ChatTier[] = ["fast", "smart", "thinking"];
 
@@ -152,7 +157,7 @@ export function TierTriggerPure({ tier, pillIcon, groups }: PureProps) {
               {group.rows.map((row) => (
                 <div
                   key={row.key}
-                  className="group/tier-row relative flex items-stretch rounded-md hover:bg-muted"
+                  className="group/tier-row relative flex items-stretch classic:rounded-md compact:rounded-lg hover:bg-muted"
                 >
                   <button
                     type="button"
@@ -235,7 +240,7 @@ function TierRowModelOverride({
         // width (which would otherwise force the title/subtitle to truncate
         // even at rest) — it only ever floats on top.
         "absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center",
-        "size-6 rounded-md bg-background border border-border/60 shadow-sm",
+        "size-6 classic:rounded-md compact:rounded-lg bg-background border border-border/60 shadow-sm",
         "text-muted-foreground hover:text-foreground",
         "opacity-100 [@media(hover:hover)]:opacity-0",
         "[@media(hover:hover)]:group-hover/tier-row:opacity-100",
@@ -329,6 +334,22 @@ export function TierTrigger() {
   const { data: userModelPrefs = { tiers: {} }, error: userModelPrefsError } =
     useUserModelPreferencesQuery();
   const updateUserModelPreferences = useUpdateUserModelPreferences();
+  // TWO gates, because this component is both a control and a disclosure.
+  //
+  // Whether the picker EXISTS is access: below Ultra there is no picker at all,
+  // and that gate fails OPEN — the tier is the org's own vocabulary, and one
+  // blipped entitlements read must not take the only fast/smart/thinking
+  // selector away from an org that pays for it (`retry: false`, so a single
+  // failure would have removed it for the whole session).
+  const modelChoice = useFeature("model_choice");
+  const settled = useFeaturesSettled();
+  // Whether the rows may NAME the model is disclosure, and that fails closed.
+  // With no answer the rows fall back to their blurbs and the override cog is
+  // withheld — the shape the pricing doc describes for a non-Ultra org.
+  const canSeeModels = useModelDisclosure();
+
+  // After every hook, never before (rules of hooks).
+  if (!settled || !modelChoice) return null;
 
   const tierLabels = getTierLabels(t);
 
@@ -342,35 +363,42 @@ export function TierTrigger() {
           key: `decopilot-${tierOption}`,
           icon: tierIconFor(tierOption),
           title: tierLabels[tierOption],
-          subtitle: modelName ?? t(TIER_DESCRIPTION_KEYS[tierOption]),
+          subtitle: canSeeModels
+            ? (modelName ?? t(TIER_DESCRIPTION_KEYS[tierOption]))
+            : t(TIER_DESCRIPTION_KEYS[tierOption]),
           active: tier === tierOption,
           onSelect: () => setTier(tierOption),
-          modelOverride: (closeOverride: () => void) => (
-            <>
-              {userModelPrefsError && (
-                <div className="text-xs text-destructive p-3 pb-0">
-                  {t("chat.modelPreferences.loadFailed")}
-                </div>
-              )}
-              <TierModelOverridePicker
-                key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
-                tier={tierOption}
-                orgSlot={org.tiers[tierOption]}
-                userSlot={userSlot}
-                autoSlot={autoDefaults.chat[tierOption]}
-                onClose={closeOverride}
-                onPick={(slot) =>
-                  updateUserModelPreferences.mutate({ tier: tierOption, slot })
-                }
-                onReset={() =>
-                  updateUserModelPreferences.mutate({
-                    tier: tierOption,
-                    slot: null,
-                  })
-                }
-              />
-            </>
-          ),
+          modelOverride: !canSeeModels
+            ? undefined
+            : (closeOverride: () => void) => (
+                <>
+                  {userModelPrefsError && (
+                    <div className="text-xs text-destructive p-3 pb-0">
+                      {t("chat.modelPreferences.loadFailed")}
+                    </div>
+                  )}
+                  <TierModelOverridePicker
+                    key={`${tierOption}:${userSlot?.keyId ?? "org"}:${userSlot?.modelId ?? ""}`}
+                    tier={tierOption}
+                    orgSlot={org.tiers[tierOption]}
+                    userSlot={userSlot}
+                    autoSlot={autoDefaults.chat[tierOption]}
+                    onClose={closeOverride}
+                    onPick={(slot) =>
+                      updateUserModelPreferences.mutate({
+                        tier: tierOption,
+                        slot,
+                      })
+                    }
+                    onReset={() =>
+                      updateUserModelPreferences.mutate({
+                        tier: tierOption,
+                        slot: null,
+                      })
+                    }
+                  />
+                </>
+              ),
         };
       }),
     },

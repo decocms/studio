@@ -162,7 +162,7 @@ export function ProviderGrid({
         <SettingsSection>
           <div className="relative rounded-xl border border-violet-400/30 bg-gradient-to-br from-violet-50/50 via-transparent to-lime-50/30 dark:from-violet-950/20 dark:to-lime-950/10 p-1.5">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-violet-400/5 to-lime-400/5 pointer-events-none" />
-            <p className="text-xs font-medium text-violet-700 dark:text-violet-400 mb-1.5 px-2 pt-2 relative">
+            <p className="text-xs font-medium text-special mb-1.5 px-2 pt-2 relative">
               {t("settings.aiProviders.recommended")}
             </p>
             <SettingsCard className="relative">

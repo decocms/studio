@@ -31,23 +31,22 @@ export const WellKnownOrgMCPId = {
   DEV_ASSETS: (org: string) => `${org}_dev-assets`,
   /** Site Diagnostics agent (note: prefix-first format, not org-first) */
   SITE_DIAGNOSTICS: (org: string) => `site-diagnostics_${org}`,
-  /** Commerce Discovery MCP */
-  COMMERCE_DISCOVERY: (org: string) => `${org}_commerce-discovery`,
+  /** Reports MCP */
+  REPORTS: (org: string) => `${org}_commerce-discovery`,
 };
 
-// Public origin for the Commerce Discovery (reports) service. Deliberately the
+// Public origin for the Reports (reports) service. Deliberately the
 // stable custom domain, NOT the Cloudflare `workers.dev` URL, so the service can
 // move off Workers later by just repointing DNS — no code change or data
 // migration. This is only the prod default: both the write/claim path
 // (auth-client.ts's .origin) and the read-path "Store Report" connection URL
-// (getWellKnownCommerceDiscoveryConnection below, via its connectionUrl param)
+// (getWellKnownReportsConnection below, via its connectionUrl param)
 // are overridable per-deploy through REPORTS_INTERNAL_API_URL (or the legacy
 // COMMERCE_DISCOVERY_INTERNAL_API_URL), so
 // staging derives both from reports-stg.decocms.com instead.
-export const COMMERCE_DISCOVERY_MCP_URL =
-  "https://reports.decocms.com/api/v2/mcp";
-export const COMMERCE_DISCOVERY_REPORT_TOOL_NAME = "get_my_diagnostic";
-export const COMMERCE_DISCOVERY_ICON = "https://github.com/decocms.png";
+export const REPORTS_MCP_URL = "https://reports.decocms.com/api/v2/mcp";
+export const REPORTS_TOOL_NAME = "get_my_diagnostic";
+export const REPORTS_ICON = "https://github.com/decocms.png";
 
 /**
  * Frontend connection ID for the self/management MCP endpoint.
@@ -340,25 +339,23 @@ const siteDiagnosticsPrefix = createWellKnownAgentPrefix("site-diagnostics_");
 export const isSiteDiagnostics = siteDiagnosticsPrefix.is;
 export const getSiteDiagnosticsId = siteDiagnosticsPrefix.get;
 
-// ---- Commerce Discovery ----
-const commerceDiscoveryPrefix = createWellKnownAgentPrefix(
-  "commerce-discovery_",
-);
-export const isCommerceDiscoveryAgentId = commerceDiscoveryPrefix.is;
-export const getCommerceDiscoveryAgentId = commerceDiscoveryPrefix.get;
+// ---- Reports ----
+const reportsPrefix = createWellKnownAgentPrefix("commerce-discovery_");
+export const isReportsAgentId = reportsPrefix.is;
+export const getReportsAgentId = reportsPrefix.get;
 
-export function getWellKnownCommerceDiscoveryConnection(
+export function getWellKnownReportsConnection(
   orgId: string,
   authorizationToken: string,
-  connectionUrl = COMMERCE_DISCOVERY_MCP_URL,
+  connectionUrl = REPORTS_MCP_URL,
 ): ConnectionCreateData {
   return {
-    id: WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+    id: WellKnownOrgMCPId.REPORTS(orgId),
     title: "Store Report",
     description: "Your store's report and diagnostics",
     connection_type: "HTTP",
     connection_url: connectionUrl,
-    icon: COMMERCE_DISCOVERY_ICON,
+    icon: REPORTS_ICON,
     app_name: "commerce-discovery",
     app_id: null,
     connection_token: authorizationToken,
@@ -375,12 +372,12 @@ export function getWellKnownCommerceDiscoveryConnection(
 
 export function getWellKnownReportVirtualMCP(
   orgId: string,
-  connectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(orgId),
+  connectionId = WellKnownOrgMCPId.REPORTS(orgId),
 ): VirtualMCPCreateData {
   return {
     title: "Report Agent",
     description: "Ask anything about your store's report",
-    icon: COMMERCE_DISCOVERY_ICON,
+    icon: REPORTS_ICON,
     status: "active",
     pinned: true,
     metadata: {
@@ -390,16 +387,16 @@ export function getWellKnownReportVirtualMCP(
         pinnedViews: [
           {
             connectionId,
-            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+            toolName: REPORTS_TOOL_NAME,
             label: "Report",
-            icon: COMMERCE_DISCOVERY_ICON,
+            icon: REPORTS_ICON,
           },
         ],
         layout: {
           defaultMainView: {
             type: "ext-apps",
             id: connectionId,
-            toolName: COMMERCE_DISCOVERY_REPORT_TOOL_NAME,
+            toolName: REPORTS_TOOL_NAME,
           },
           chatDefaultOpen: true,
         },

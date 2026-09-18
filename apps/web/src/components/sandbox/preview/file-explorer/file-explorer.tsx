@@ -1270,7 +1270,7 @@ export function FileExplorer({
                   )}
                   <button
                     type="button"
-                    className="ml-1 rounded p-0.5 hover:bg-accent-foreground/10"
+                    className="ml-1 classic:rounded p-0.5 hover:bg-accent-foreground/10 compact:rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       closeTab(tab);
@@ -1316,7 +1316,7 @@ export function FileExplorer({
               />
               <button
                 type="submit"
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity"
+                className="flex h-6 w-6 shrink-0 items-center justify-center classic:rounded-full compact:rounded-lg bg-foreground text-background transition-opacity"
                 title={t("sandbox.fileExplorer.send")}
               >
                 <svg

@@ -1,7 +1,7 @@
 /**
  * Git provider client contract.
  *
- * One implementation per `GitProviderKind` (github, gitlab). The account row's
+ * One implementation per `GitProviderKind` (github, gitlab, bitbucket). The account row's
  * `type` picks the implementation (`registry.ts`); its `auth_kind` picks how
  * tokens are produced (`credentials.ts`). Nothing outside `git-providers/`
  * builds a provider URL, header or token — callers speak `RepoRef` and get
@@ -159,4 +159,20 @@ export class GitProviderError extends Error {
 export interface TokenSource {
   readonly kind: GitTokenKind;
   get(opts?: TokenOptions): Promise<GitAccessToken | null>;
+}
+
+/**
+ * Every non-trivial string nested in `value`, depth-first. GitLab and
+ * Bitbucket both answer error bodies whose message lives at an inconsistent
+ * depth — a bare string, an array of strings, or an object of arrays — so
+ * each provider's `*ErrorMessage` flattens its own set of top-level fields
+ * through this one recursive walk.
+ */
+export function flattenErrorStrings(value: unknown): string[] {
+  if (typeof value === "string") return value.length > 0 ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(flattenErrorStrings);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).flatMap(flattenErrorStrings);
+  }
+  return [];
 }

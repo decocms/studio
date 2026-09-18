@@ -39,6 +39,7 @@ import {
 } from "@untitledui/icons";
 import { GitHubIcon } from "@daveyplate/better-auth-ui";
 import { SidebarMenuButton } from "@decocms/ui/components/sidebar.tsx";
+import { SidebarFooterIcon } from "@/components/sidebar/footer/icon-slot";
 import { authClient } from "@/lib/auth-client";
 import { useProjectContext } from "@/sdk";
 import { track } from "@/lib/posthog-client";
@@ -209,7 +210,7 @@ function ThemeSoundVersionBar({
             }
             className={cn(
               buttonSize,
-              "rounded-md flex items-center justify-center transition-colors",
+              "classic:rounded-md compact:rounded-lg flex items-center justify-center transition-colors",
               preferences.theme === value
                 ? "bg-sidebar-accent text-foreground"
                 : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
@@ -235,7 +236,7 @@ function ThemeSoundVersionBar({
           }
           className={cn(
             buttonSize,
-            "rounded-md flex items-center justify-center transition-colors",
+            "classic:rounded-md compact:rounded-lg flex items-center justify-center transition-colors",
             preferences.enableSounds
               ? "text-foreground hover:bg-sidebar-accent/50"
               : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
@@ -580,17 +581,18 @@ export function AccountPopover() {
                 user?.name ?? t("common.accountPopover.defaultAccountLabel")
               }
               className={cn(
-                "rounded-md",
                 isImpersonating && "border-2 border-dashed border-warning",
               )}
             >
-              <Avatar
-                url={userImage}
-                fallback={user?.name ?? "U"}
-                shape="circle"
-                size="xs"
-                className="shrink-0"
-              />
+              <SidebarFooterIcon>
+                <Avatar
+                  url={userImage}
+                  fallback={user?.name ?? "U"}
+                  shape="circle"
+                  size="2xs"
+                  className="size-[18px] shrink-0"
+                />
+              </SidebarFooterIcon>
               <span className="truncate">
                 {user?.name ?? t("common.accountPopover.defaultAccountLabel")}
               </span>

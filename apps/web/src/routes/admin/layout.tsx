@@ -1,3 +1,4 @@
+import { Panel } from "@/components/panel";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -68,17 +69,17 @@ function AdminGate() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+    <Panel variant="plain" className="h-dvh">
       <div className="shrink-0 px-4 pt-6 md:px-10">
         <h1 className="pb-4 text-xl font-medium">
           {t("admin.layout.adminDashboard")}
         </h1>
       </div>
       <AdminTabs />
-      <div className="flex-1 overflow-hidden">
+      <Panel.Content>
         <Outlet />
-      </div>
-    </div>
+      </Panel.Content>
+    </Panel>
   );
 }
 

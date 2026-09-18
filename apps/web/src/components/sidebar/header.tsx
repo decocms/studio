@@ -1,11 +1,3 @@
-/** The header strip both desktop sidebars carry: the org/project picker, then
- *  the collapse toggle. The picker took the org switcher's slot, so the one
- *  control naming both org and project sits where people already look for the
- *  org — and settings reads as the same product rather than a place you were
- *  teleported to. Collapsed, the shell stacks these two into the rail and the
- *  picker becomes its own mark: the rail is this header with the text dropped,
- *  never a second header rebuilt inside the body. */
-
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import {
@@ -14,6 +6,8 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { SidebarThreadButton } from "./thread-button";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
@@ -22,15 +16,15 @@ import { OrgProjectPicker } from "./org-project-picker";
 const ICON_SIZE = 16;
 
 export function SidebarPickerHeader() {
-  const collapsed = useSidebarCollapsed();
-  /** Settings is forced open (see `OrgLayout`), so a collapse toggle there is a
-   *  control with nothing to do — hidden rather than dead. */
+  const compact = useCompactPageLayout();
   const inSettings = useInSettings();
+  const collapsed = useSidebarCollapsed();
 
   return (
     <>
       <OrgProjectPicker collapsed={collapsed} />
-      {!inSettings && <CollapseToggle />}
+      {(compact || !inSettings) && <CollapseToggle />}
+      {compact && <SidebarThreadButton />}
     </>
   );
 }
@@ -50,6 +44,7 @@ export function SidebarPickerHeaderMobile({
 }: {
   onClose: () => void;
 }) {
+  const compact = useCompactPageLayout();
   const t = useT();
 
   return (
@@ -58,6 +53,7 @@ export function SidebarPickerHeaderMobile({
           behind it. */}
       <OrgProjectPicker onNavigate={onClose} />
       <div className="flex-1" />
+      {compact && <SidebarThreadButton />}
       <ToolbarIconButton
         onClick={onClose}
         aria-label={t("sidebar.header.closeSidebar")}
@@ -68,14 +64,18 @@ export function SidebarPickerHeaderMobile({
   );
 }
 
-/** Deliberately not `SidebarTriggerButton`: the rail needs a tooltip on this,
- *  and a tooltip needs a ref that the shared toolbar control does not
- *  forward. */
 function CollapseToggle() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const collapsed = useSidebarCollapsed();
   const { toggleSidebar } = useSidebar();
-  const label = t("sidebar.header.toggleSidebar");
+  const label = t(
+    compact
+      ? collapsed
+        ? "page.expandSidebar"
+        : "page.collapseSidebar"
+      : "sidebar.header.toggleSidebar",
+  );
 
   return (
     <Tooltip>
@@ -83,7 +83,7 @@ function CollapseToggle() {
         <ToolbarIconButton
           aria-label={label}
           onClick={toggleSidebar}
-          className="shrink-0 rounded-lg md:size-[34px] group-data-[state=collapsed]/sidebar:mx-auto"
+          className="shrink-0 classic:rounded-lg classic:md:size-[34px] group-data-[state=collapsed]/sidebar:mx-auto compact:size-7 compact:group-data-[state=collapsed]/sidebar:size-8"
         >
           <LayoutLeft size={ICON_SIZE} />
         </ToolbarIconButton>

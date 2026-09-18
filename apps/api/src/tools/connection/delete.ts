@@ -104,11 +104,6 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       }
     }
 
-    // A thread pinned to this connection as its repo would be stranded — same case VIRTUAL_MCP_DELETE guards.
-    if (await ctx.storage.connections.isReferencedByThread(input.id)) {
-      throw new Error(JSON.stringify({ code: "CONNECTION_IN_USE_BY_THREAD" }));
-    }
-
     // An automation's event trigger connection_id has no FK, so it would strand silently.
     const referencingAutomations =
       await ctx.storage.automations.listActiveByEventTriggerConnectionId(

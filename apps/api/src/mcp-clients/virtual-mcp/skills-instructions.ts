@@ -28,8 +28,7 @@ export async function renderSkillsCatalogBlock(
   const orgId = ctx.organization?.id;
   if (!orgId) return null;
   try {
-    const entries = await buildSkillCatalog(ctx, orgId);
-    if (entries.length === 0) return null;
+    const all = await buildSkillCatalog(ctx, orgId);
 
     // Skills the user attached to this agent, matched to catalog entries by
     // resolved sandbox path → their ids get the user-configured callout.
@@ -38,6 +37,17 @@ export async function renderSkillsCatalogBlock(
         .filter((k) => k.kind === "skill")
         .map((k) => orgFsSandboxPath(k.volume, k.path)),
     );
+
+    // `disable-model-invocation` skills are for a person to reach for, so they
+    // are not advertised: listing one puts its description in the cached
+    // prefix of every run in the org, which is the implicit context they exist
+    // to avoid. Attaching one to this agent IS a person reaching for it, so
+    // that brings it back. The `/` menu reads the catalog unfiltered.
+    const entries = all.filter(
+      (e) => !e.disableModelInvocation || attached.has(e.sandboxPath),
+    );
+    if (entries.length === 0) return null;
+
     const configuredIds = entries
       .filter((e) => attached.has(e.sandboxPath))
       .map((e) => e.id);

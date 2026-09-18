@@ -246,6 +246,13 @@ jobs:
           E2E_SKIP_WEB_BUILD: "1"
         run: bun run test:e2e:github-connect
 
+      - name: Run local GitHub CLI tests
+        if: matrix.shard == 1
+        working-directory: packages/e2e
+        env:
+          E2E_SKIP_WEB_BUILD: "1"
+        run: bun run test:e2e:github-cli
+
   # Aggregator carrying the required-check name: branch protection requires a
   # check called "e2e", and matrix jobs report as "e2e-shard (1)"/"(2)" — a
   # renamed required check would block merges forever. This job is the one

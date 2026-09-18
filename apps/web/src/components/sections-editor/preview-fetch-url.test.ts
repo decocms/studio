@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildDecofileFetchUrl,
   buildPreviewFetchPath,
+  buildCatalogInvokePath,
   buildPreviewInvokePath,
 } from "./preview-fetch-url";
 
@@ -69,6 +70,25 @@ describe("buildPreviewInvokePath", () => {
   test("encodes slashes in virtualMcpId and branch", () => {
     expect(buildPreviewInvokePath(sandbox)).toBe(
       "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/preview-invoke?thread=thrd_1",
+    );
+  });
+});
+
+describe("buildCatalogInvokePath", () => {
+  test("builds the org-scoped studio proxy path", () => {
+    expect(
+      buildCatalogInvokePath({
+        orgSlug: "acme",
+        virtualMcpId: "vm-1",
+        branch: "main",
+        threadId: null,
+      }),
+    ).toBe("/api/acme/sandbox/vm-1/main/catalog-invoke");
+  });
+
+  test("encodes slashes and carries the thread selector", () => {
+    expect(buildCatalogInvokePath(sandbox)).toBe(
+      "/api/acme/sandbox/vm%2Fone/feature%2Flocal-preview/catalog-invoke?thread=thrd_1",
     );
   });
 });

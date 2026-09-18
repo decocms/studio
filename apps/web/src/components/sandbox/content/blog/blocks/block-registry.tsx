@@ -39,11 +39,14 @@ export function BlockEditor({
   block,
   meta,
   onChange,
+  decofile,
   sandboxRef,
 }: {
   block: RawBlock;
   meta: LiveMeta;
   onChange: (next: RawBlock) => void;
+  /** The site's blocks — enables linking to another post from rich text. */
+  decofile?: Record<string, unknown>;
   /** Running sandbox coords — enables the VTEX product picker when present. */
   sandboxRef?: PreviewProxyRef | null;
 }) {
@@ -60,6 +63,8 @@ export function BlockEditor({
             html={str(block.html)}
             placeholder={t("sandbox.blockRegistry.writeSomethingPlaceholder")}
             onChange={(html) => onChange({ ...block, html })}
+            decofile={decofile}
+            sandboxRef={sandboxRef}
           />
         );
       case "Heading":

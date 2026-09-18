@@ -45,6 +45,8 @@ import {
 import { type BlogSupport, supportsScheduling } from "./blog-capabilities";
 import { useBlogSupport } from "./use-blog-support";
 import { buildBlogPostPreviewUrl } from "./blog-preview-url";
+import { SuggestLinksButton } from "./link-suggestions";
+import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { useDraftPointer } from "@/components/sections-editor/use-fast-preview-draft-url";
 import { useAutosave } from "./use-autosave";
@@ -110,6 +112,7 @@ export function PostEditor({
   const threadId = useOptionalChatTask()?.taskId ?? null;
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   const support = useBlogSupport({ orgSlug, virtualMcpId, branch, meta });
+  const hasAi = useHostedAiProviderKeys().length > 0;
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
@@ -146,6 +149,9 @@ export function PostEditor({
   const setField = (key: string, value: unknown) =>
     setPost({ ...post, [key]: value });
 
+  // Remount key: TipTap seeds content once, so an external body rewrite (Suggest links) only shows after a remount. Bumped on apply, never on typing.
+  const [contentRevision, setContentRevision] = useState(0);
+
   const previewUrl = buildBlogPostPreviewUrl({
     decofile,
     post,
@@ -166,45 +172,61 @@ export function PostEditor({
 
   return (
     <div className="relative flex h-full flex-col">
-      {(onToggleExpand || onClose) && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5">
-          {onToggleExpand && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="px-2 text-muted-foreground"
-              onClick={onToggleExpand}
-              title={
-                expanded
-                  ? t("sandbox.postBoard.collapse")
-                  : t("sandbox.postBoard.expand")
-              }
-            >
-              {expanded ? <Minimize01 size={16} /> : <Expand01 size={16} />}
-            </Button>
-          )}
-          {onClose && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="px-2 text-muted-foreground"
-              onClick={onClose}
-              title={t("sandbox.postBoard.close")}
-            >
-              <XClose size={16} />
-            </Button>
+      <div className="absolute inset-x-0 top-0 z-10 bg-background/80 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-8 py-3">
+          <div className="flex items-center gap-3">
+            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            {hasErrors && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                    <AlertCircle size={14} />
+                    {missing.length}{" "}
+                    {missing.length === 1
+                      ? t("sandbox.postEditor.issueSingular")
+                      : t("sandbox.postEditor.issuePlural")}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{missingLabel}</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          {(onToggleExpand || onClose) && (
+            <div className="-mr-2 flex items-center gap-0.5">
+              {onToggleExpand && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 text-muted-foreground"
+                  onClick={onToggleExpand}
+                  title={
+                    expanded
+                      ? t("sandbox.postBoard.collapse")
+                      : t("sandbox.postBoard.expand")
+                  }
+                >
+                  {expanded ? <Minimize01 size={16} /> : <Expand01 size={16} />}
+                </Button>
+              )}
+              {onClose && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 text-muted-foreground"
+                  onClick={onClose}
+                  title={t("sandbox.postBoard.close")}
+                >
+                  <XClose size={16} />
+                </Button>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </div>
       <div className="min-w-0 flex-1 overflow-y-auto">
-        <div
-          className={cn(
-            "mx-auto max-w-4xl px-8 pb-6",
-            onToggleExpand || onClose ? "pt-14" : "pt-6",
-          )}
-        >
+        <div className="mx-auto max-w-4xl px-8 pb-6 pt-14">
           {/* Title — wraps onto multiple lines instead of truncating */}
           <EditableText
             value={str(post.title)}
@@ -228,23 +250,16 @@ export function PostEditor({
                 </TabsTrigger>
               </TabsList>
               <div className="flex shrink-0 items-center gap-3">
-                {hasErrors && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-destructive">
-                        <AlertCircle size={14} />
-                        {missing.length}{" "}
-                        {missing.length === 1
-                          ? t("sandbox.postEditor.issueSingular")
-                          : t("sandbox.postEditor.issuePlural")}
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {missingLabel}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                <SaveStatus isPending={save.isPending} isError={save.isError} />
+                <SuggestLinksButton
+                  decofile={decofile}
+                  sections={asBlocks(post.sections)}
+                  currentKey={blockKey}
+                  hasAi={hasAi}
+                  onApply={(next) => {
+                    setField("sections", next);
+                    setContentRevision((r) => r + 1);
+                  }}
+                />
                 <Button
                   type="button"
                   variant="outline"
@@ -270,9 +285,11 @@ export function PostEditor({
             <TabsContent value="content">
               <div className="rounded-xl border bg-card p-8 shadow-sm">
                 <BlockDocument
+                  key={contentRevision}
                   value={asBlocks(post.sections)}
                   onChange={(next) => setField("sections", next)}
                   meta={meta}
+                  decofile={decofile}
                   sandboxRef={{ orgSlug, virtualMcpId, branch, threadId }}
                   emptyMessage={t("sandbox.postEditor.noContentYet")}
                 />

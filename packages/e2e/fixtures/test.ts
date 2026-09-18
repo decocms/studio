@@ -26,9 +26,28 @@ export interface AuthedPage {
 
 interface Fixtures {
   authedPage: AuthedPage;
+  compactPageLayout: boolean;
+  layoutPreferences: void;
 }
 
 export const test = base.extend<Fixtures>({
+  compactPageLayout: [false, { option: true }],
+  layoutPreferences: [
+    async ({ page, compactPageLayout }, use) => {
+      if (compactPageLayout) {
+        await page.addInitScript(() => {
+          const key = "studio:user:preferences";
+          const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");
+          localStorage.setItem(
+            key,
+            JSON.stringify({ ...preferences, compactPageLayout: true }),
+          );
+        });
+      }
+      await use();
+    },
+    { auto: true },
+  ],
   authedPage: async ({ page }, use) => {
     // page.context().request shares cookies with the page, so the session
     // cookie set by sign-up is automatically applied to subsequent

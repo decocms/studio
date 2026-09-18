@@ -3,7 +3,7 @@ import {
   matchesTaskKey,
   taskMatchesFilters,
   EMPTY_FILTERS,
-} from "./task-filters";
+} from "./task-filters-core";
 import { buildProjectIndex, NO_PROJECT_FILTER } from "@/lib/project-index";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import type { TaskBoardItem } from "./config";

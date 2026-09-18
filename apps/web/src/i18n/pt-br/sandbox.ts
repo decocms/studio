@@ -17,6 +17,7 @@ export const sandbox = {
     "Salvar como seção global",
   "sandbox.autonomous.noAiProvider":
     "Esta organização não tem provedor de IA conectado — conecte um em Configurações → Provedores de IA para usar isto",
+  "sandbox.blockDocument.addBlock": "Adicionar bloco",
   "sandbox.blockPicker.blocksLabel": "Blocos",
   "sandbox.blockPicker.customBlocksLabel": "Blocos personalizados",
   "sandbox.blockPicker.insertBlockButton": "Inserir bloco",
@@ -410,6 +411,24 @@ export const sandbox = {
   "sandbox.mediaBlocks.calloutText": "Texto do destaque…",
   "sandbox.mediaBlocks.calloutTitle": "Título do destaque",
   "sandbox.mediaBlocks.destinationUrlPlaceholder": "https://url-de-destino.com",
+  "sandbox.linkSuggest.button": "Sugerir links",
+  "sandbox.linkSuggest.hint":
+    "Encontrar trechos para linkar com seus outros posts (usa créditos de IA)",
+  "sandbox.linkSuggest.noCandidates": "Ainda não há outros posts para linkar",
+  "sandbox.linkSuggest.title": "Links internos sugeridos",
+  "sandbox.linkSuggest.description":
+    "Escolha quais trechos linkar com seus outros posts. Nada muda até você aplicar.",
+  "sandbox.linkSuggest.none": "Nenhum link interno para sugerir.",
+  "sandbox.linkSuggest.apply": "Aplicar {count}",
+  "sandbox.linkSuggest.applied": "{count} link(s) aplicado(s)",
+  "sandbox.linkSuggest.failed": "Não foi possível sugerir links",
+  "sandbox.linkPicker.tabPost": "Post",
+  "sandbox.linkPicker.tabProduct": "Produto",
+  "sandbox.linkPicker.searchPosts": "Buscar seus posts…",
+  "sandbox.linkPicker.noPosts": "Nenhum post encontrado",
+  "sandbox.linkPicker.searchProducts": "Buscar no seu catálogo…",
+  "sandbox.linkPicker.searching": "Buscando…",
+  "sandbox.linkPicker.noProducts": "Nenhum produto encontrado",
   "sandbox.mediaBlocks.divider": "Divisor",
   "sandbox.mediaBlocks.fullWidth": "Largura total",
   "sandbox.mediaBlocks.image": "Imagem",
@@ -538,6 +557,18 @@ export const sandbox = {
     "Escrever com IA, a partir do seu contexto",
   "sandbox.postBoard.newPostWrite": "Escrever",
   "sandbox.postBoard.newPostWriteHint": "Começar um rascunho vazio você mesmo",
+  "sandbox.postBoard.importContent": "Importar conteúdo",
+  "sandbox.postBoard.importContentHint":
+    "Traga o HTML ou Markdown que você já escreveu",
+  "sandbox.postBoard.importTitle": "Importar conteúdo",
+  "sandbox.postBoard.importDescription":
+    "Cole o HTML ou Markdown que você já escreveu. Vira um rascunho editável no seu design system — sem IA, sem créditos.",
+  "sandbox.postBoard.importPlaceholder": "Cole seu HTML ou Markdown aqui…",
+  "sandbox.postBoard.importUpload": "Enviar um arquivo",
+  "sandbox.postBoard.importRun": "Importar",
+  "sandbox.postBoard.importEmpty":
+    "Nada para importar — o conteúdo estava vazio.",
+  "sandbox.postBoard.imported": "Importado — revise e publique.",
   "sandbox.postBoard.noFormat": "Sem formato",
   "sandbox.postBoard.noPillar": "Sem pilar",
   "sandbox.postBoard.readyToSchedule": "Pronto para agendar",
@@ -638,6 +669,7 @@ export const sandbox = {
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.enterToGo": "Enter para ir",
   "sandbox.preview.failedToCreatePage": "Falha ao criar página",
+  "sandbox.preview.globalBadge": "Global",
   "sandbox.preview.globalComponents": "Componentes globais",
   "sandbox.preview.globalLoaders": "Loaders globais",
   "sandbox.preview.loaderBadge": "Loader",
@@ -724,8 +756,6 @@ export const sandbox = {
   "sandbox.productPickerDialog.searchProductsPlaceholder":
     "Buscar produtos por nome ou ID…",
   "sandbox.productPickerDialog.selectedCount": "{count} selecionado(s)",
-  "sandbox.productPickerDialog.typeToSearchPrompt":
-    "Digite para buscar produtos.",
   "sandbox.recordEditor.fieldAvatar": "Avatar",
   "sandbox.recordEditor.fieldCompany": "Empresa",
   "sandbox.recordEditor.fieldEmail": "E-mail",

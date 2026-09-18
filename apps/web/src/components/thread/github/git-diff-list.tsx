@@ -200,7 +200,7 @@ export function GitDiffList({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center classic:rounded text-muted-foreground hover:bg-accent hover:text-foreground compact:rounded-lg"
                     >
                       <DotsHorizontal className="h-3.5 w-3.5" />
                     </button>

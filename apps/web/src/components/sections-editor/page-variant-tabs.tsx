@@ -477,7 +477,7 @@ export function PageVariantTabs({
         </SortableContext>
 
         {/* Portal to body so the overlay's `position: fixed` resolves against
-            the viewport, not the workspace PanelCard's `transform:
+            the viewport, not the workspace Panel's `transform:
             translateZ(0)` containing block (which would drop the dragged tab
             below the cursor). */}
         {createPortal(

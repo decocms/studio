@@ -1459,6 +1459,50 @@ describe("resolveSchema – inline object unions (A | B) render as a choice", ()
     expect(card?.type).toBe("block-ref");
     expect(card?.discriminatorKey).toBe("type");
   });
+
+  // zeedog PromoBar `PromoBarTitle[] | PromoBarSVG | PromoBarCTA | …`: an array branch mixed with object branches must offer all branches, not collapse to the array.
+  test("array branch mixed with object branches resolves to an inline-union", () => {
+    const meta = metaWithSchema({
+      type: "object",
+      properties: {
+        firstComponent: {
+          title: "FirstComponent",
+          anyOf: [
+            {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { title: { type: "string", title: "Title" } },
+              },
+            },
+            {
+              type: "object",
+              title: "PromoBarSVG",
+              properties: { svg: { type: "string", title: "Svg" } },
+            },
+            {
+              type: "object",
+              title: "PromoBarCTA",
+              properties: { ctaText: { type: "string", title: "CtaText" } },
+            },
+          ],
+        },
+      },
+    });
+    const firstComponent = resolveSchema("site/sections/Test.tsx", meta)
+      ?.properties?.firstComponent;
+    expect(firstComponent?.type).toBe("inline-union");
+    const branches = firstComponent?.inlineUnionBranches ?? [];
+    expect(branches).toHaveLength(3);
+    // The array branch keeps its item schema so it renders an array editor.
+    expect(branches[0]?.schema?.type).toBe("array");
+    expect(branches[0]?.schema?.items?.properties?.title?.title).toBe("Title");
+    // Object branches keep their type-name labels.
+    expect(branches.slice(1).map((b) => b.title)).toEqual([
+      "PromoBarSVG",
+      "PromoBarCTA",
+    ]);
+  });
 });
 
 describe("resolveSchema – inline object unions behind $refs (real deco shape)", () => {
@@ -2203,5 +2247,149 @@ describe("resolveSchema – required propagation", () => {
     expect(resolved?.required).toContain("kind");
     expect(resolved?.required).not.toContain("a");
     expect(resolved?.required).not.toContain("b");
+  });
+});
+
+describe("resolveSchema – loader picker whose loader has a `type` input prop", () => {
+  test("keeps the module resolveType, not the `type` prop value", () => {
+    // Loader-return prop → anyOf: [Resolvable, <loader ref>]; the loader's own `type` input prop (default "product") must not become the picker resolveType.
+    const definitions = {
+      Resolvable: {
+        type: "object",
+        properties: { __resolveType: { type: "string" } },
+      },
+      listProductsLoader: {
+        title: "zee/loaders/catalog/listProducts.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["zee/loaders/catalog/listProducts.ts"],
+            default: "zee/loaders/catalog/listProducts.ts",
+          },
+          type: {
+            type: "string",
+            enum: ["product", "card"],
+            default: "product",
+          },
+          customSlug: { type: "string" },
+          perPage: { type: "number" },
+        },
+      },
+    };
+
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": {
+              type: "object",
+              properties: {
+                page: {
+                  title: "Page",
+                  nullable: true,
+                  anyOf: [
+                    { $ref: "#/definitions/Resolvable" },
+                    { $ref: "#/definitions/listProductsLoader" },
+                  ],
+                },
+              },
+            } as {
+              $ref?: string;
+              type?: string;
+              properties?: Record<string, unknown>;
+            },
+          },
+        },
+      },
+      schema: { definitions },
+    };
+
+    const page = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.page;
+
+    expect(page?.type).toBe("block-ref");
+    // The `Resolvable` placeholder is skipped; only the real loader remains.
+    expect(page?.anyOfRefs).toHaveLength(1);
+    const ref = page?.anyOfRefs?.[0];
+    expect(ref?.resolveType).toBe("zee/loaders/catalog/listProducts.ts");
+    // A real module block carries no `type` discriminator.
+    expect(ref?.discriminatorValue).toBeUndefined();
+    // The loader's `type` input prop stays editable in the config form.
+    expect(ref?.schema?.properties?.type).toBeDefined();
+    expect(ref?.schema?.properties?.perPage).toBeDefined();
+  });
+
+  test("two real loaders that both have a `type` input prop keep their own resolveType", () => {
+    // Both branches are real modules with a `type` field; must key by resolveType, not by `type`.
+    const definitions = {
+      listProductsLoader: {
+        title: "zee/loaders/catalog/listProducts.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["zee/loaders/catalog/listProducts.ts"],
+            default: "zee/loaders/catalog/listProducts.ts",
+          },
+          type: {
+            type: "string",
+            enum: ["product", "card"],
+            default: "product",
+          },
+        },
+      },
+      listBannersLoader: {
+        title: "zee/loaders/catalog/listBanners.ts",
+        type: "object",
+        properties: {
+          __resolveType: {
+            type: "string",
+            enum: ["zee/loaders/catalog/listBanners.ts"],
+            default: "zee/loaders/catalog/listBanners.ts",
+          },
+          type: { type: "string", enum: ["banner"], default: "banner" },
+        },
+      },
+    };
+
+    const meta: LiveMeta = {
+      manifest: {
+        blocks: {
+          sections: {
+            "site/sections/Test.tsx": {
+              type: "object",
+              properties: {
+                content: {
+                  title: "Content",
+                  nullable: true,
+                  anyOf: [
+                    { $ref: "#/definitions/listProductsLoader" },
+                    { $ref: "#/definitions/listBannersLoader" },
+                  ],
+                },
+              },
+            } as {
+              $ref?: string;
+              type?: string;
+              properties?: Record<string, unknown>;
+            },
+          },
+        },
+      },
+      schema: { definitions },
+    };
+
+    const content = resolveSchema("site/sections/Test.tsx", meta)?.properties
+      ?.content;
+
+    expect(content?.type).toBe("block-ref");
+    expect(content?.anyOfRefs).toHaveLength(2);
+    const resolveTypes = content?.anyOfRefs?.map((r) => r.resolveType);
+    expect(resolveTypes).toContain("zee/loaders/catalog/listProducts.ts");
+    expect(resolveTypes).toContain("zee/loaders/catalog/listBanners.ts");
+    for (const ref of content?.anyOfRefs ?? []) {
+      expect(ref.discriminatorValue).toBeUndefined();
+    }
   });
 });

@@ -1,30 +1,25 @@
 import type { ComponentProps, Ref } from "react";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { INSET_FOCUS_RING } from "@decocms/ui/lib/focus-ring.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 
 /**
- * The ONE definition of how an interactive button in a panel header looks —
- * its resting/hover/selected colours, the timing they cross-fade on, and its
- * focus ring. Shared by `ToolbarIconButton` and `HeaderTabButton` so the
- * buttons that sit shoulder to shoulder in the main panel header (the chat
- * toggle, then the Preview / Content view tabs) cannot drift apart. They had:
- * two hover durations, and a focus ring on one of them only — the tabs fell
- * back to the browser's own stark white outline.
+ * Shared colors, transitions, and focus treatment for panel icon controls.
  *
  * The ring itself is {@link INSET_FOCUS_RING}, shared with the header buttons
  * that are not this shape — the branch picker, the page selector, the overflow
  * menu and the publish split button — so the whole row agrees.
  *
- * Metrics (size, padding, radius) stay with each component: these buttons are
- * deliberately different shapes, only the same skin.
+ * Size can vary by placement; Button owns the shared radius and disabled state.
  */
 export function panelButtonChrome(active?: boolean): string {
   return cn(
-    "[transition:background-color_180ms_ease,color_180ms_ease]",
+    "[transition:background-color_180ms_ease,color_180ms_ease] hover:bg-sidebar-accent hover:text-sidebar-foreground dark:hover:bg-sidebar-accent",
     INSET_FOCUS_RING,
     active
       ? "bg-sidebar-accent text-sidebar-foreground"
-      : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+      : "text-sidebar-foreground/60",
   );
 }
 
@@ -40,13 +35,31 @@ export function ToolbarIconButton({
   type = "button",
   ...props
 }: ToolbarIconButtonProps) {
+  const compact = useCompactPageLayout();
+  if (!compact) {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        className={cn(
+          "relative flex size-10 md:size-7 shrink-0 items-center justify-center rounded-md",
+          "max-md:[&_svg]:size-5",
+          panelButtonChrome(active),
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
   return (
-    <button
+    <Button
       ref={ref}
       type={type}
+      variant="ghost"
+      size="icon-sm"
       className={cn(
-        "relative flex size-10 md:size-7 shrink-0 items-center justify-center rounded-md",
-        "max-md:[&_svg]:size-5",
+        "relative size-10 md:size-7",
+        "max-md:[&_svg:not([class*='size-'])]:size-5",
         panelButtonChrome(active),
         className,
       )}

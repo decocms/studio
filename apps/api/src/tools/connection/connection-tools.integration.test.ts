@@ -93,6 +93,7 @@ describe("Connection Tools", () => {
           database.db,
         ),
         subsidizedGatewayKeys: null as never,
+        experiments: null as never,
         organizationSettings: {
           get: async () => null,
           upsert: async (_orgId: string) => ({
@@ -123,6 +124,7 @@ describe("Connection Tools", () => {
         jiraIntegrations: null as never,
         taskBoard: null as never,
         taskBoardPrompts: null as never,
+        taskBoardAnalytics: null as never,
         columnAutomations: null as never,
         notifications: null as never,
         orgFsEntries: null as never,

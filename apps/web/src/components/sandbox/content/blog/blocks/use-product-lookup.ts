@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import {
-  buildPreviewInvokePath,
+  buildCatalogInvokePath,
   type PreviewProxyRef,
 } from "@/components/sections-editor/preview-fetch-url";
 import {
@@ -13,16 +13,12 @@ import {
 
 const FETCH_TIMEOUT_MS = 10_000;
 
-/**
- * Invoke a loader through the Studio preview-invoke proxy (same-origin,
- * authenticated) — the route useRunBlock and the product picker share. Hitting
- * the preview origin directly would fail CORS on `/deco/invoke`.
- */
+/** Invoke a catalog loader through the sandbox-optional catalog-invoke proxy. */
 export async function invokeLoader(
   ref: PreviewProxyRef,
   { resolveType, props }: PickerLoaderRequest,
 ): Promise<unknown> {
-  const res = await fetch(buildPreviewInvokePath(ref), {
+  const res = await fetch(buildCatalogInvokePath(ref), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ __resolveType: resolveType, ...props }),

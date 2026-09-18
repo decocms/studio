@@ -11,9 +11,9 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@decocms/ui/components/select.tsx";
-import { getCommerceDiscoveryAgentId, useProjectContext } from "@/sdk";
+import { getReportsAgentId, useProjectContext } from "@/sdk";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
-import { mobileSurfaceSearch } from "@/hooks/use-layout-state";
+import { mobileSurfaceSearch } from "@/hooks/use-chat-layout-state";
 import { useMainPanelTabs } from "./use-main-panel-tabs";
 import { usePanelNavigate } from "./use-panel-navigate";
 import { shouldDeepLinkSourceTab } from "./source-system-tabs";
@@ -143,7 +143,7 @@ export function MobileMainPanelTabSelect({
   });
   const { org } = useProjectContext();
   const reportsOnly = useReportsOnly();
-  const onReportAgent = virtualMcpId === getCommerceDiscoveryAgentId(org.id);
+  const onReportAgent = virtualMcpId === getReportsAgentId(org.id);
 
   const options = buildMobileViewOptions({
     tabs,
@@ -186,7 +186,7 @@ export function MobileMainPanelTabSelect({
      *  panel on the current agent (mirrors setActiveTab in useMainPanelTabs). */
     if (shouldDeepLinkSourceTab({ reportsOnly, onReportAgent, tabId: value })) {
       openPanel(value, {
-        virtualmcpid: getCommerceDiscoveryAgentId(org.id),
+        virtualmcpid: getReportsAgentId(org.id),
         /** Another agent's conversation does not follow the view over. */
         search: (prev) => ({ ...prev, thread: undefined, sidepanel: false }),
       });
@@ -217,7 +217,7 @@ export function MobileMainPanelTabSelect({
         })}
         /* Sized and padded like the trigger it replaces, so swapping the
            control does not move the strip it sits in. */
-        className="flex h-10 min-w-0 max-w-[7.5rem] items-center gap-1.5 rounded-md px-1.5 text-xs text-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="flex h-10 min-w-0 max-w-[7.5rem] items-center gap-1.5 classic:rounded-md compact:rounded-lg px-1.5 text-xs text-foreground transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <span className="flex size-5 shrink-0 items-center justify-center">
           <TabIconGlyph icon={other.icon} className="size-5" />
@@ -237,7 +237,7 @@ export function MobileMainPanelTabSelect({
       */}
       <SelectTrigger
         aria-label={t("mainPanelTabs.mobileMainPanelTabSelect.view")}
-        className="h-10! w-full min-w-0 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
+        className="h-10! w-full min-w-0 max-w-[7.5rem] classic:rounded-md compact:rounded-lg border-0 bg-transparent px-1.5 text-xs shadow-none [--card-shadow:none]"
       >
         <span className="flex min-w-0 items-center gap-1.5">
           {selected && (

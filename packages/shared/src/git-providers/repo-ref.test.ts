@@ -18,6 +18,8 @@ describe("providerForHost", () => {
     expect(providerForHost("github.com")).toBe("github");
     expect(providerForHost("GitHub.com")).toBe("github");
     expect(providerForHost("gitlab.com")).toBe("gitlab");
+    expect(providerForHost("bitbucket.org")).toBe("bitbucket");
+    expect(providerForHost("www.bitbucket.org")).toBe("bitbucket");
   });
   test("recognises self-hosted gitlab by convention", () => {
     expect(providerForHost("gitlab.acme.com")).toBe("gitlab");
@@ -26,7 +28,8 @@ describe("providerForHost", () => {
   });
   test("is unknown for an arbitrary host", () => {
     expect(providerForHost("git.acme.com")).toBeNull();
-    expect(providerForHost("bitbucket.org")).toBeNull();
+    // Self-hosted Bitbucket is Data Center, a different API — not recognised.
+    expect(providerForHost("bitbucket.acme.com")).toBeNull();
   });
   test("does not match gitlab as a mid-label substring", () => {
     expect(providerForHost("notgitlab.com")).toBeNull();
@@ -157,5 +160,51 @@ describe("identity + derived urls", () => {
     expect(cloneUrlFor(gl, "a/b")).toBe(
       "https://oauth2:a%2Fb@gitlab.acme.com/group/sub/project.git",
     );
+  });
+});
+
+describe("bitbucket", () => {
+  const expected: RepoRef = {
+    provider: "bitbucket",
+    host: "bitbucket.org",
+    path: "acme/site",
+  };
+  test("https, clone and browser urls collapse to workspace/slug", () => {
+    expect(parseRepoUrl("https://bitbucket.org/acme/site")).toEqual(expected);
+    expect(parseRepoUrl("https://bitbucket.org/acme/site.git")).toEqual(
+      expected,
+    );
+    // Bitbucket's own HTTPS clone URL carries the user in the userinfo.
+    expect(parseRepoUrl("https://viktor@bitbucket.org/acme/site.git")).toEqual(
+      expected,
+    );
+    expect(parseRepoUrl("git@bitbucket.org:acme/site.git")).toEqual(expected);
+    expect(
+      parseRepoUrl("https://bitbucket.org/acme/site/pull-requests/12/overview"),
+    ).toEqual(expected);
+    expect(
+      parseRepoUrl("https://bitbucket.org/acme/site/src/main/README.md"),
+    ).toEqual(expected);
+    expect(parseRepoUrl("https://bitbucket.org/acme/site/branch/feat")).toEqual(
+      expected,
+    );
+  });
+  test("a bare workspace/slug with the provider given", () => {
+    expect(parseRepoUrl("acme/site", { provider: "bitbucket" })).toEqual(
+      expected,
+    );
+  });
+  test("a workspace alone is not a repository", () => {
+    expect(parseRepoUrl("https://bitbucket.org/acme")).toBeNull();
+  });
+  test("clone url uses the x-token-auth user and the api base is api.bitbucket.org", () => {
+    expect(cloneUrlFor(expected, "tok")).toBe(
+      "https://x-token-auth:tok@bitbucket.org/acme/site.git",
+    );
+    expect(cloneUrlFor(expected)).toBe("https://bitbucket.org/acme/site.git");
+    expect(apiBaseUrlFor("bitbucket", "bitbucket.org")).toBe(
+      "https://api.bitbucket.org/2.0",
+    );
+    expect(repoWebUrl(expected)).toBe("https://bitbucket.org/acme/site");
   });
 });

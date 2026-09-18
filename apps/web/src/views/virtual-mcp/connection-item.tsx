@@ -109,7 +109,8 @@ function SiblingInstanceSelector({
     filters: [{ column: "app_name", value: appName }],
   });
 
-  if (siblings.length <= 1) return null;
+  // Keep it visible with 1 sibling so "+ New instance" stays discoverable.
+  if (siblings.length <= 1 && !onNewInstance) return null;
 
   return (
     <Select

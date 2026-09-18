@@ -1,5 +1,9 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { ModelCapability } from "@decocms/shared/sdk";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./fetch-transient-retry";
 import type {
   StudioProvider,
   ModelInfo,
@@ -9,6 +13,16 @@ import type {
 } from "../types";
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
+
+function fetchModelsWithRetry(
+  headers: Record<string, string>,
+): Promise<Response> {
+  return fetchWithTransientRetry(
+    "OpenRouter listModels",
+    "https://openrouter.ai/api/v1/models",
+    { headers, signal: AbortSignal.timeout(30_000) },
+  );
+}
 
 export const openrouterAdapter: ProviderAdapter = {
   info: {
@@ -45,7 +59,7 @@ export const openrouterAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
-      throw new Error(`OpenRouter OAuth exchange failed: ${res.status}`);
+      await throwResponseError("OpenRouter OAuth exchange", res);
     }
     const data = await res.json();
     return { apiKey: data.key, userId: data.user_id };
@@ -98,19 +112,15 @@ export const openrouterAdapter: ProviderAdapter = {
               maxOutputTokens,
             },
             costs: {
-              input: m.pricing.prompt ?? 0,
-              output: m.pricing.completion ?? 0,
+              input: Number(m.pricing.prompt) || 0,
+              output: Number(m.pricing.completion) || 0,
             },
           };
         };
 
         // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
-        const res = await fetch("https://openrouter.ai/api/v1/models", {
-          headers,
-          signal: AbortSignal.timeout(30_000),
-        });
-        if (!res.ok)
-          throw new Error(`OpenRouter listModels failed: ${res.status}`);
+        const res = await fetchModelsWithRetry(headers);
+        if (!res.ok) await throwResponseError("OpenRouter listModels", res);
         const { data }: { data: OpenRouterAPIModel[] } = await res.json();
         const models = data.map(mapV1Model);
 

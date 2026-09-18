@@ -33,4 +33,13 @@ describe("decodeHtmlEntities", () => {
       ),
     ).toBe('feat: change Hero title to "Hello VTEX DAY 2026"');
   });
+
+  test("leaves an out-of-range numeric entity untouched instead of throwing", () => {
+    expect(decodeHtmlEntities("bad &#99999999; entity")).toBe(
+      "bad &#99999999; entity",
+    );
+    expect(decodeHtmlEntities("bad &#xFFFFFFFF; entity")).toBe(
+      "bad &#xFFFFFFFF; entity",
+    );
+  });
 });

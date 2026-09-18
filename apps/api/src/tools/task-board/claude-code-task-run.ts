@@ -24,17 +24,14 @@ import {
   type RepoChoice,
 } from "@/git-providers/repo-choices";
 import {
+  checkoutCommandFor,
   type GitProviderKind,
   providerCli,
 } from "@decocms/shared/git-providers";
 import { SHALLOW_CHECKOUT_NOTE } from "@decocms/shared/task-board";
 import { agentSandboxEnabled } from "@/settings";
 import type { SuperAgentPromptOpts } from "./enqueue-super-agent";
-import {
-  JIRA_DEFAULT_LEAD,
-  jiraRunFinishInstructions,
-  jiraRunVerifyInstructions,
-} from "./jira-run-prompt";
+import { studioToolNamespaceFact } from "./jira-run-prompt";
 import {
   sandboxUploadHint,
   uploadsAsSandboxPaths,
@@ -61,6 +58,53 @@ export interface TaskRepo {
 }
 
 /**
+ * What the card already decided about where its work happens.
+ *
+ * Two rungs because cards were written at two different times: the id is what
+ * a sender records now, the name is all an older card (or a human typing into
+ * the field) has.
+ */
+export interface PreferredTaskRepo {
+  /** The card's first-class repository. */
+  repositoryId?: string | null;
+  /** The card's `owner/name`. */
+  repo?: string | null;
+}
+
+/**
+ * Narrow the org's clonable repos to what the card asked for, if anything.
+ *
+ * The id wins over the name, and falls THROUGH to it rather than failing: an
+ * id that matches nothing means the repository was unlinked since the card was
+ * written, and the name may still find its replacement. An ask that matches
+ * nothing at either rung narrows to nothing — which is the conservative
+ * answer, because it sends the run to the mid-run pick instead of binding it
+ * to a repository the card did not name.
+ *
+ * Pure, and exported for its test.
+ */
+export function narrowToPreferredRepo(
+  choices: RepoChoice[],
+  preferred?: PreferredTaskRepo,
+): RepoChoice[] {
+  const repositoryId = preferred?.repositoryId;
+  const repo = preferred?.repo;
+  if (repositoryId) {
+    const byId = choices.filter(
+      (choice) => choice.repository?.id === repositoryId,
+    );
+    if (byId.length > 0) return byId;
+  }
+  if (repo) {
+    return choices.filter(
+      (choice) =>
+        `${choice.owner}/${choice.name}`.toLowerCase() === repo.toLowerCase(),
+    );
+  }
+  return repositoryId ? [] : choices;
+}
+
+/**
  * The org's single clonable repo, or null when the answer is ambiguous.
  *
  * "Single" counts REPOSITORIES, not connections — see `mergeRepoChoices`, which
@@ -69,9 +113,16 @@ export interface TaskRepo {
  * both point at. Counting connections made a genuinely one-repo org look
  * ambiguous and silently dropped every task to Decopilot.
  *
+ * `preferred` is what the card already decided, so a multi-repo org still binds
+ * a checkout before dispatch — see {@link narrowToPreferredRepo}.
+ *
  * Pure, so the counting rule is unit-tested without a StudioContext.
  */
-export function pickSoleTaskRepo(choices: RepoChoice[]): TaskRepo | null {
+export function pickSoleTaskRepo(
+  choices: RepoChoice[],
+  preferred?: PreferredTaskRepo,
+): TaskRepo | null {
+  choices = narrowToPreferredRepo(choices, preferred);
   if (choices.length !== 1) return null;
   const chosen = choices[0]!;
   return {
@@ -124,6 +175,7 @@ export interface TaskRepoChoiceOption {
 export async function resolveTaskRepoChoice(
   ctx: StudioContext,
   organizationId: string,
+  preferred?: PreferredTaskRepo,
 ): Promise<TaskRepoChoice> {
   if (!agentSandboxEnabled()) {
     console.warn(
@@ -134,7 +186,7 @@ export async function resolveTaskRepoChoice(
   }
   try {
     const choices = await listOrgRepoChoices(ctx, organizationId);
-    const repo = pickSoleTaskRepo(choices);
+    const repo = pickSoleTaskRepo(choices, preferred);
     if (repo) return { repo };
     if (choices.length === 0) {
       console.warn(
@@ -179,9 +231,12 @@ export async function resolveTaskRepoChoice(
 const MIXED_PROVIDER_NOTE =
   "Each checkout is authenticated for ITS OWN host: use `gh` inside a GitHub " +
   "repository and `glab` inside a GitLab one (`glab mr create` is the " +
-  "counterpart of `gh pr create`). A run can hold both at once, so pick the " +
-  "one that matches the repository you are standing in — check its remote " +
-  "with `git remote get-url origin` if you are unsure.";
+  "counterpart of `gh pr create`). Bitbucket has no CLI: inside a Bitbucket " +
+  "repository open pull requests through the Studio tools or the REST API with " +
+  '`curl -H "Authorization: Bearer $BITBUCKET_TOKEN"` against api.bitbucket.org. ' +
+  "A run can hold several at once, so pick the one that matches the repository " +
+  "you are standing in — check its remote with `git remote get-url origin` if " +
+  "you are unsure.";
 
 export function buildClaudeCodeTaskPrompt(
   task: { id: string; title: string; description: string | null },
@@ -199,11 +254,15 @@ export function buildClaudeCodeTaskPrompt(
   // A column rule's own instruction, when the caller passed one. Dropping it
   // here (the Decopilot builder never did) silently ignored every Jira status
   // rule's prompt on any org with a repo to work in.
+  // A Jira run is told nothing beyond the issue, the pod's own facts, and the
+  // instruction its column rule carries. Everything a person could write —
+  // how to finish, how to report, how to review — is in that instruction,
+  // where they can read and change it (see `jira-run-prompt.ts`).
   const jiraRun = opts?.source?.kind === "jira";
   const lines: string[] = [
     opts?.instruction?.trim() ||
       (jiraRun
-        ? JIRA_DEFAULT_LEAD
+        ? ""
         : `You've been assigned this task. Complete it and finish with a ${cli.changeRequest} if it makes sense (like a coding task) or is explicitly requested.`),
     "",
     "You are running AUTONOMOUSLY — no human is watching, so drive this to " +
@@ -223,7 +282,7 @@ export function buildClaudeCodeTaskPrompt(
   lines.push(
     "",
     repo
-      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. It is hosted on ${repo.provider === "gitlab" ? "GitLab" : "GitHub"}, so \`git\` and \`${cli.cli}\` are authenticated there. ${SHALLOW_CHECKOUT_NOTE}`
+      ? `The repository ${repo.owner}/${repo.name} is already cloned at your working directory, on its own branch. It is hosted on ${cli.name}, so ${cli.cli ? `\`git\` and \`${cli.cli}\` are` : "`git` is"} authenticated there${cli.cli ? "" : " (Bitbucket has no CLI; `$BITBUCKET_TOKEN` is the bearer for its REST API)"}. ${SHALLOW_CHECKOUT_NOTE}`
       : [
           "Your working directory is EMPTY: this organization has several repositories, so " +
             "nothing has been cloned yet. FIRST call `mcp__studio__TASK_ADD_REPO` with the " +
@@ -254,7 +313,7 @@ export function buildClaudeCodeTaskPrompt(
   if (opts?.resolveConflict && opts.pr) {
     lines.push(
       `Pull request #${opts.pr.number} (${opts.pr.url}) is approved but has a MERGE CONFLICT with its base branch.`,
-      `Check that branch out (\`${cli.checkoutCommand} ${opts.pr.number}\`), merge or rebase the base branch into it, resolve the conflicts, and push to update the SAME ${cli.changeRequest} — do NOT open a new one. Resolve by preserving BOTH sides' intent; never blindly discard either side, and change only what the conflict requires.`,
+      `Check that branch out (\`${checkoutCommandFor(repo?.provider ?? "github", opts.pr.number)}\`), merge or rebase the base branch into it, resolve the conflicts, and push to update the SAME ${cli.changeRequest} — do NOT open a new one. Resolve by preserving BOTH sides' intent; never blindly discard either side, and change only what the conflict requires.`,
       "",
     );
   } else if (opts?.feedback) {
@@ -268,7 +327,7 @@ export function buildClaudeCodeTaskPrompt(
         : "A reviewer requested changes on your previous work:",
       opts.feedback,
       opts.pr
-        ? `Check that branch out (\`${cli.checkoutCommand} ${opts.pr.number}\`) before editing, address the feedback, then push to update the SAME ${cli.changeRequest} — do NOT open a new one.`
+        ? `Check that branch out (\`${checkoutCommandFor(repo?.provider ?? "github", opts.pr.number)}\`) before editing, address the feedback, then push to update the SAME ${cli.changeRequest} — do NOT open a new one.`
         : "Address this feedback.",
       "",
     );
@@ -283,6 +342,11 @@ export function buildClaudeCodeTaskPrompt(
     );
   }
 
+  if (jiraRun) {
+    lines.push(studioToolNamespaceFact("mcp__studio__"), "");
+    return lines.join("\n").trimStart();
+  }
+
   lines.push(
     "How to finish:",
     "- Make the change, commit it, push the branch, and open a pull request" +
@@ -295,14 +359,7 @@ export function buildClaudeCodeTaskPrompt(
     // Deliberately LOCAL-only. Verifying on the deploy preview means waiting
     // for a deploy that may not exist yet, and that is the reviewer's job
     // (`enqueue-reviewer.ts`) — this run implements and hands over.
-    // A Jira run is the only one that CAN check the preview: the reviewer of
-    // one writes its verdict to the hidden anchor card, so handing over
-    // "for a reviewer to check" reports to nobody.
-    ...(jiraRun
-      ? jiraRunVerifyInstructions()
-      : [
-          `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
-        ]),
+    `- Before handing over, VERIFY the task's outcome LOCALLY, in the sandbox: exercise the affected code path and confirm the behaviour actually happens. A green test suite is not the bar. Do NOT wait for, or verify against, the PR's deploy preview — a reviewer checks that after you hand over.`,
     // The sandbox's state — installed or not, dev server or not — is NOT
     // stated here. It is decided by the claim, minutes after this string is
     // built, and `sandboxStateInstruction` (sandbox-dispatch-client.ts) appends
@@ -314,11 +371,6 @@ export function buildClaudeCodeTaskPrompt(
     // it, which a run that died right after `gh pr create` could never do.
     `- Open the ${cli.changeRequest} from the branch you were given — the board finds it by that branch. Don't move the work to a differently-named one.`,
   );
-
-  if (jiraRun) {
-    lines.push(...jiraRunFinishInstructions("mcp__studio__"), "");
-    return lines.join("\n");
-  }
 
   lines.push(
     // A tool call, NOT a line in the PR body: the first version of this read

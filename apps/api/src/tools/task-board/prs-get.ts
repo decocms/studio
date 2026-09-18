@@ -34,6 +34,7 @@ import { enqueueEnabledReviewers } from "./enqueue-reviewer";
 import { reactToApprovedPrConflict } from "./conflict-reaction";
 import { readPrStateThrottled } from "./dbos-github-read";
 import { getPrCardCache, getPrReadCache, PR_CARDS_CACHE } from "./pr-cache";
+import { withOrgOverride } from "./with-org-override";
 
 export type { ChecksSummary as ChecksStatus };
 
@@ -772,10 +773,10 @@ export async function refreshItemPrCards(
   }
 }
 
-export const TASK_BOARD_ITEM_PRS_GET = defineTool({
+const TASK_BOARD_ITEM_PRS_GET_TOOL = defineTool({
   name: "TASK_BOARD_ITEM_PRS_GET",
   description:
-    "Get the change requests (GitHub pull requests, GitLab merge requests) " +
+    "Get the change requests (GitHub and Bitbucket pull requests, GitLab merge requests) " +
     "linked to a task board item, each enriched with live state (title, " +
     "open/closed, draft, merged) fetched from its provider.",
   annotations: {
@@ -954,3 +955,10 @@ export const TASK_BOARD_ITEM_PRS_GET = defineTool({
     return { prs };
   },
 });
+
+/** Exported already wrapped: every consumer — `CORE_TOOLS`, and the Super
+ *  Agent's built-ins, which import this module directly — has to come
+ *  through here, so the cross-org `org` param cannot be missed by one of them. */
+export const TASK_BOARD_ITEM_PRS_GET = withOrgOverride(
+  TASK_BOARD_ITEM_PRS_GET_TOOL,
+);

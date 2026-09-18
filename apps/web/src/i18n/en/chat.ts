@@ -1,4 +1,11 @@
 export const chat = {
+  "chat.input.taskMode": "Task",
+  "chat.input.startTask": "Start task",
+  "chat.input.taskPlaceholder":
+    "What needs fixing? Paste a report or attach a screenshot…",
+  "chat.input.taskHint":
+    "We’ll start an agent and email you when its PR is ready for review.",
+
   "chat.agentCreate.agentCreated": "Project created: {name}",
   "chat.agentCreate.cancelled": "Project creation cancelled",
   "chat.agentCreate.couldntCreate": "Couldn't create project",
@@ -119,35 +126,20 @@ export const chat = {
   "chat.contextPanel.toolsActive": "tools active",
   "chat.contextPanel.usageLabel": "Usage",
   "chat.contextPanel.userPercent": "User {pct}%",
-  "chat.creditsEmptyState.add": "Add",
-  "chat.creditsEmptyState.bestValueLabel": "Best value",
   "chat.creditsEmptyState.description":
     "Your free credits were used in another workspace. Add credits to use AI here.",
-  "chat.creditsEmptyState.enterCustomAmount": "Enter custom amount",
-  "chat.creditsEmptyState.opening": "Opening...",
-  "chat.creditsEmptyState.popularLabel": "Popular",
   "chat.creditsEmptyState.skipForNow": "Skip for now",
-  "chat.creditsEmptyState.starterLabel": "Starter",
   "chat.creditsEmptyState.title": "This workspace has no credits",
-  "chat.creditsEmptyState.topUpFailed": "Top-up failed: {message}",
   "chat.creditsEmptyState.useYourOwnProvider": "Use your own provider",
-  "chat.creditsExhaustedBanner.add": "Add",
   "chat.creditsExhaustedBanner.benefit1": "Access to 100+ AI models",
   "chat.creditsExhaustedBanner.benefit2":
     "Unified API, no separate keys needed",
   "chat.creditsExhaustedBanner.benefit3": "Pay only for what you use",
-  "chat.creditsExhaustedBanner.customPlaceholder": "50",
   "chat.creditsExhaustedBanner.description":
     "Your credits are used up. Add more to continue using AI across all your agents.",
   "chat.creditsExhaustedBanner.dismiss": "Dismiss",
-  "chat.creditsExhaustedBanner.enterCustom": "Enter custom amount",
   "chat.creditsExhaustedBanner.manageProviders": "Manage providers",
-  "chat.creditsExhaustedBanner.opening": "Opening...",
-  "chat.creditsExhaustedBanner.tierBestValue": "Best value",
-  "chat.creditsExhaustedBanner.tierPopular": "Popular",
-  "chat.creditsExhaustedBanner.tierStarter": "Starter",
   "chat.creditsExhaustedBanner.title": "Top up to keep building",
-  "chat.creditsExhaustedBanner.topupError": "Top-up failed: {error}",
   "chat.decopilot.back": "Back",
   "chat.decopilot.couldNotFetchModels":
     "Could not fetch models from this provider.",
@@ -262,6 +254,7 @@ export const chat = {
   "chat.input.readOnlyOthersChatNamed":
     "Read only - you're viewing {name}'s chat",
   "chat.input.readOnlyThread": "Read only - this chat takes no replies",
+  "chat.input.allowanceExhaustedTitle": "AI allowance used up",
   "chat.input.sendMessage": "Send message",
   "chat.input.sendMessageEnter": "Send message (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -512,6 +505,7 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} more",
   "chat.webSearch.title": "Web search",
   "chat.mention.editPrompt": "Edit {name} prompt arguments",
+  "chat.mention.openSkill": "Open skill {name}",
   "chat.mention.noItemsFound": "No items found",
   "chat.modelPreferences.customizeModel": "Customize {tier} model",
   "chat.modelPreferences.reset": "Reset",
@@ -530,4 +524,11 @@ export const chat = {
   "chat.subscriptionLimit.runsTitle":
     "This task reached its re-run limit. Create a new task to keep going.",
   "chat.subscriptionLimit.subscribeButton": "Subscribe",
+  "chat.planRefused.budgetLabel": "AI allowance used up",
+  "chat.planRefused.budgetTitle":
+    "This organization has used 100% of its AI allowance. Choose a plan to keep chatting.",
+  "chat.planRefused.featureLabel": "Not on this plan",
+  "chat.planRefused.featureTitle":
+    "This organization's plan does not include chat. Choose a plan to keep chatting.",
+  "chat.planRefused.seePlans": "See plans",
 } as const;

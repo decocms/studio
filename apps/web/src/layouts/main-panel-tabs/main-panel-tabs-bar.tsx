@@ -1,23 +1,65 @@
-/**
- * MainPanelTabsBar — the main panel's button row for controls local to the
- * current surface plus contextual and per-thread views. Durable project views
- * live in the sidebar.
- *
- * Click routing: the Automations pill uses resolveAutomationsPillClickTarget
- * (list/detail collapse); every other tab uses the hook's setActiveTab
- * (tab-as-toggle via resolveTabClickTarget).
- */
-
-import {
-  isAutomationsPillActive,
-  resolveAutomationsPillClickTarget,
-} from "./tab-id";
-import { usePanelNavigate } from "./use-panel-navigate";
-import { useMainPanelTabs, type Tab } from "./use-main-panel-tabs";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { HeaderTabButton } from "./header-tab-button";
-import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import type { TabIcon } from "./resolve-tab-icon";
+import type { Tab } from "./use-main-panel-tabs";
+import { resolveAutomationsPillClickTarget } from "./tab-id";
+import { Page } from "@/components/page";
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { track } from "@/lib/posthog-client";
+import { isAutomationsPillActive } from "./tab-id";
+import { usePanelNavigate } from "./use-panel-navigate";
+import { useMainPanelTabs } from "./use-main-panel-tabs";
+import { TabIconGlyph } from "./tab-icon-glyph";
+
+/** Route views share the page tab style. Selecting the current view keeps it open. */
+function CompactMainPanelTabsBar({
+  virtualMcpId,
+  taskId,
+}: {
+  virtualMcpId: string;
+  taskId: string | null;
+}) {
+  const { openPanel } = usePanelNavigate();
+  const { tabs, activeTab, mainOpen } = useMainPanelTabs({
+    virtualMcpId,
+    taskId,
+  });
+  if (tabs.length === 0) return null;
+  return (
+    <Page.Tabs data-tour={LAYOUT_TOUR_ANCHORS.surfaceTabs}>
+      {tabs.map((tab) => {
+        const active =
+          tab.id === "automations"
+            ? isAutomationsPillActive({ activeTab, mainOpen })
+            : mainOpen && tab.id === activeTab;
+        return (
+          <Page.Tab
+            key={tab.id}
+            active={active}
+            onClick={() => {
+              if (active) return;
+              track("main_panel_tab_clicked", {
+                virtual_mcp_id: virtualMcpId,
+                tab_id: tab.id,
+                tab_kind: tab.kind,
+                was_active: false,
+              });
+              openPanel(tab.id);
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className="flex size-4 shrink-0 items-center justify-center"
+            >
+              <TabIconGlyph icon={tab.icon} />
+            </span>
+            {tab.title}
+          </Page.Tab>
+        );
+      })}
+    </Page.Tabs>
+  );
+}
 
 type BarItem = {
   id: string;
@@ -32,7 +74,7 @@ type BarItem = {
   labelCollapse: "sooner" | "later";
 };
 
-export function MainPanelTabsBar({
+function ClassicMainPanelTabsBar({
   virtualMcpId,
   taskId,
   disableActiveMainToggle = false,
@@ -104,6 +146,7 @@ export function MainPanelTabsBar({
           key={item.id}
           title={item.title}
           icon={item.icon}
+          showIcon={item.id !== "site-editor" && item.id !== "content"}
           active={item.active}
           locked={item.locked}
           onClick={item.onSelect}
@@ -111,5 +154,17 @@ export function MainPanelTabsBar({
         />
       ))}
     </div>
+  );
+}
+
+export function MainPanelTabsBar(props: {
+  virtualMcpId: string;
+  taskId: string | null;
+}) {
+  const compact = useCompactPageLayout();
+  return compact ? (
+    <CompactMainPanelTabsBar {...props} />
+  ) : (
+    <ClassicMainPanelTabsBar {...props} />
   );
 }

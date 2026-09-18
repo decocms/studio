@@ -118,7 +118,7 @@ export default function AdminPromptsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground">
               {t("admin.prompts.description", {
@@ -135,7 +135,7 @@ export default function AdminPromptsPage() {
                   key={prompt.id}
                   onClick={() => setSelectedId(prompt.id)}
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                    "classic:rounded-md compact:rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                     prompt.id === selected.id
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:text-foreground",
@@ -190,7 +190,7 @@ export default function AdminPromptsPage() {
               </Button>
             </div>
           </div>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

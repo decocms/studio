@@ -405,7 +405,7 @@ export function ToolSetSelector({
           <button
             onClick={() => setFilterMode("all")}
             className={cn(
-              "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border cursor-pointer",
+              "flex-1 px-3 py-1.5 text-xs font-medium classic:rounded-md compact:rounded-lg transition-colors border cursor-pointer",
               filterMode === "all"
                 ? "bg-muted border-border"
                 : "border-border opacity-75 hover:opacity-100",
@@ -416,7 +416,7 @@ export function ToolSetSelector({
           <button
             onClick={() => setFilterMode("selected")}
             className={cn(
-              "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border cursor-pointer",
+              "flex-1 px-3 py-1.5 text-xs font-medium classic:rounded-md compact:rounded-lg transition-colors border cursor-pointer",
               filterMode === "selected"
                 ? "bg-muted border-border"
                 : "border-border opacity-75 hover:opacity-100",
@@ -427,7 +427,7 @@ export function ToolSetSelector({
           <button
             onClick={() => setFilterMode("unselected")}
             className={cn(
-              "flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors border cursor-pointer",
+              "flex-1 px-3 py-1.5 text-xs font-medium classic:rounded-md compact:rounded-lg transition-colors border cursor-pointer",
               filterMode === "unselected"
                 ? "bg-muted border-border"
                 : "border-border opacity-75 hover:opacity-100",

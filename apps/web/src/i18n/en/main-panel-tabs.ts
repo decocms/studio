@@ -30,14 +30,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.fileTab.fileNotAvailable": "This file is no longer available.",
   "mainPanelTabs.fileTab.openInNewTab": "Open in new tab",
   "mainPanelTabs.hostingTab.title": "Hosting",
-  "mainPanelTabs.hostingTab.subtitle": "Infrastructure for {site}",
   "mainPanelTabs.hostingTab.deployments": "Deployments",
   "mainPanelTabs.hostingTab.env": "Environment variables",
   "mainPanelTabs.hostingTab.redirects": "Redirects",
   "mainPanelTabs.hostingTab.noDeployments": "No deployments yet.",
   "mainPanelTabs.hostingTab.noEnv": "No environment variables set.",
-  "mainPanelTabs.hostingTab.codeVarsHint":
-    "From wrangler.jsonc (read-only) — edit in code. A variable above with the same name overrides these at deploy.",
   "mainPanelTabs.hostingTab.noRedirects": "No redirects configured.",
   "mainPanelTabs.hostingTab.noSiteTitle": "No site linked",
   "mainPanelTabs.hostingTab.noSiteDescription":
@@ -56,10 +53,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.live": "Live",
   "mainPanelTabs.hostingTab.permanent": "301 permanent",
   "mainPanelTabs.hostingTab.temporary": "307 temporary",
-  "mainPanelTabs.hostingTab.dnsSetup": "DNS setup",
   "mainPanelTabs.hostingTab.dnsSetupTitle": "Registrar DNS",
-  "mainPanelTabs.hostingTab.dnsSetupDescription":
-    "To activate this redirect, add these records at your DNS provider for {host}.",
   "mainPanelTabs.hostingTab.dnsRedirectIntent":
     "This makes {from} redirect to its target once {from}'s DNS points at Deco. Add the records below at your registrar.",
   "mainPanelTabs.hostingTab.dnsActiveHint":
@@ -73,6 +67,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.dnsAwaiting": "Awaiting DNS",
   "mainPanelTabs.hostingTab.dnsCopy": "Copy value",
   "mainPanelTabs.hostingTab.dnsCopied": "Copied",
+  "mainPanelTabs.hostingTab.dnsCopyError": "Couldn't copy to clipboard",
   "mainPanelTabs.hostingTab.notConnectedTitle": "Hosting isn't connected yet",
   "mainPanelTabs.hostingTab.notConnectedDescription":
     "This site's hosting data will appear here once the control-plane connection is configured.",
@@ -94,6 +89,8 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.envValuePlaceholder": "value",
   "mainPanelTabs.hostingTab.editValue": "Edit value",
   "mainPanelTabs.hostingTab.deleteVariable": "Delete variable",
+  "mainPanelTabs.hostingTab.showValue": "Show value",
+  "mainPanelTabs.hostingTab.hideValue": "Hide value",
   "mainPanelTabs.hostingTab.confirmDeleteVariableTitle": "Delete variable?",
   "mainPanelTabs.hostingTab.confirmDeleteVariableDescription":
     "Delete {name}? This updates the site's environment.",
@@ -148,7 +145,6 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.colAction": "Action",
   "mainPanelTabs.hostingTab.colDate": "Date",
   "mainPanelTabs.hostingTab.production": "Production",
-  "mainPanelTabs.hostingTab.showBuildMessage": "Show build message",
   "mainPanelTabs.hostingTab.deployHistory": "Deploy history",
   "mainPanelTabs.hostingTab.noDeployHistory": "No deploy history yet.",
   "mainPanelTabs.hostingTab.deployHistoryError":
@@ -195,6 +191,11 @@ export const mainPanelTabs = {
   "mainPanelTabs.hostingTab.toastDomainDeleted": "Domain detached",
   "mainPanelTabs.hostingTab.domainHostPlaceholder": "www.yourbrand.com",
   "mainPanelTabs.hostingTab.errorDomainHostRequired": "Enter a host",
+  "mainPanelTabs.hostingTab.showMoreHistory": "Show {count} more",
+  "mainPanelTabs.hostingTab.codeVarsToggle":
+    "{count} variables declared in code",
+  "mainPanelTabs.hostingTab.showDetails": "Show details",
+  "mainPanelTabs.hostingTab.hideDetails": "Hide details",
   "mainPanelTabs.e2eTab.title": "E2E",
   "mainPanelTabs.e2eTab.subtitle": "End-to-end checks for {site}",
   "mainPanelTabs.e2eTab.helpTitle": "How E2E tests work",
@@ -521,7 +522,7 @@ export const mainPanelTabs = {
   "mainPanelTabs.mobileMainPanelTabSelect.library": "Library",
   "mainPanelTabs.mobileMainPanelTabSelect.mainView": "Main view",
   "mainPanelTabs.mobileMainPanelTabSelect.switchTo": "Switch to {name}",
-  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Tasks",
+  "mainPanelTabs.mobileMainPanelTabSelect.tasks": "Board",
   "mainPanelTabs.mobileMainPanelTabSelect.view": "View",
   "mainPanelTabs.previewTab.connectGithub": "Connect GitHub",
   "mainPanelTabs.previewTab.connectGithubDescription":

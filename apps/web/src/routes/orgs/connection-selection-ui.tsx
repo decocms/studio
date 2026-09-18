@@ -419,7 +419,7 @@ export function AddToAgentDialog({
                 type="button"
                 onClick={() => setSelected(agent.id)}
                 className={cn(
-                  "flex items-center gap-3 w-full rounded-md px-3 py-2 text-left transition-colors",
+                  "flex items-center gap-3 w-full classic:rounded-md compact:rounded-lg px-3 py-2 text-left transition-colors",
                   selected === agent.id
                     ? "bg-primary/10 ring-1 ring-primary"
                     : "hover:bg-muted/50",

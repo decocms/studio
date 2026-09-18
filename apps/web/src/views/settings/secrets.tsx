@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Suspense, useState } from "react";
 import { AlertCircle, Lock01, Plus, User01, Users01 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -85,7 +86,7 @@ function SecretRow({ secret }: { secret: SecretInfo }) {
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState({ action }: { action?: React.ReactNode }) {
   const t = useT();
   return (
     <div className="rounded-2xl border border-dashed border-border/60 p-10 flex flex-col items-center justify-center text-center gap-3">
@@ -100,10 +101,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           {t("settings.secrets.emptyDescription")}
         </p>
       </div>
-      <Button onClick={onCreate} size="sm" className="mt-2">
-        <Plus size={14} />
-        {t("settings.secrets.newSecret")}
-      </Button>
+      {action}
     </div>
   );
 }
@@ -264,14 +262,24 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
 }
 
 function SecretsContent() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const secrets = useSecrets();
   const [createOpen, setCreateOpen] = useState(false);
 
+  const createAction = (
+    <Page.Actions>
+      <Button size="sm" onClick={() => setCreateOpen(true)}>
+        <Plus size={14} />
+        {t("settings.secrets.newSecret")}
+      </Button>
+    </Page.Actions>
+  );
   if (secrets.length === 0) {
     return (
       <>
-        <EmptyState onCreate={() => setCreateOpen(true)} />
+        {compact && createAction}
+        <EmptyState action={!compact && createAction} />
         <CreateSecretDialog open={createOpen} onOpenChange={setCreateOpen} />
       </>
     );
@@ -291,10 +299,7 @@ function SecretsContent() {
             { count: secrets.length },
           )}
         </p>
-        <Button onClick={() => setCreateOpen(true)} size="sm">
-          <Plus size={14} />
-          {t("settings.secrets.newSecret")}
-        </Button>
+        {createAction}
       </div>
 
       {orgSecrets.length > 0 ? (
@@ -333,7 +338,7 @@ export function OrgSecretsPage() {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <SettingsPage>
             <Page.Title>{t("settings.nav.secrets")}</Page.Title>
             <ErrorBoundary
@@ -348,7 +353,7 @@ export function OrgSecretsPage() {
               </Suspense>
             </ErrorBoundary>
           </SettingsPage>
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

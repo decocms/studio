@@ -19,14 +19,24 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { invalidateOrgFeaturesEverywhere } from "./plan-cache-broadcast";
 import { getDb } from "@/database";
 import { captureOrgEvent, deterministicUuid } from "@/posthog";
 import {
   OrganizationBillingStorage,
   type OrganizationBillingRow,
 } from "../storage/organization-billing";
-import { cancelSubscription, StripeApiError } from "./stripe-api";
-import { creditGatewayTopUp } from "./gateway-admin";
+import {
+  cancelSubscription,
+  refundSubscriptionPayments,
+  StripeApiError,
+} from "./stripe-api";
+import {
+  creditGatewayTopUp,
+  GatewayAdminPermanentError,
+  setGatewayOrgPlan,
+} from "./gateway-admin";
+import { getSettings } from "../settings";
 
 const SIGNATURE_TOLERANCE_SEC = 300;
 
@@ -142,6 +152,134 @@ function invoiceSubscriptionId(
   );
 }
 
+/**
+ * When the period an invoice PAID FOR actually ends.
+ *
+ * Not `invoice.period_end`, which is the window invoice items were gathered
+ * over. For a cycle invoice the two coincide, which is why reading the invoice
+ * was fine until tier changes existed. A mid-cycle proration invoice
+ * (`billing_reason: subscription_update`) gathers over `[last invoice, now]`,
+ * so its `period_end` is NOW. Verified on a real upgrade:
+ *
+ *   invoice.period_end   2026-09-15T18:01:22Z   <- now
+ *   line[].period.end    2026-10-15T18:01:20Z   <- the period actually bought
+ *
+ * Writing the former as `current_period_end` moves the org's renewal date into
+ * the past, and `task-quota.ts` keys its monthly bucket off that exact value
+ * (`sub:${currentPeriodEnd.toISOString()}`) — so a tier change would hand out a
+ * brand-new, empty month of task executions, repeatably. The lines carry the
+ * real period, so read them and fall back to the invoice only when they do not.
+ */
+export function invoicePeriodEnd(obj: Record<string, unknown>): Date | null {
+  const lines = rec(obj.lines)?.data;
+  if (Array.isArray(lines)) {
+    let latest: number | null = null;
+    for (const line of lines) {
+      const end = rec(rec(line)?.period)?.end;
+      if (typeof end === "number" && (latest === null || end > latest)) {
+        latest = end;
+      }
+    }
+    if (latest !== null) return new Date(latest * 1000);
+  }
+  return epochToDate(obj.period_end);
+}
+
+/**
+ * The gateway plan id every price in a subscription's items maps to, or
+ * undefined when none of them is a plan price. First match wins: a
+ * subscription carrying one plan price plus add-on prices still resolves.
+ *
+ * CREDIT LINES ARE SKIPPED, and that is not a refinement — it is the whole
+ * correctness of an upgrade. This also runs over an INVOICE's lines, and the
+ * proration invoice for a tier change carries two of them: a negative credit
+ * for the unused remainder of the price being LEFT, and a positive charge for
+ * the price being MOVED TO. Stripe orders the credit first. Verified on a real
+ * Pro → Ultra upgrade:
+ *
+ *   line[0]  -25000  price=<pro>    proration=true
+ *   line[1] +500000  price=<ultra>  proration=true
+ *
+ * Taking the first match there returns `pro` for an org that just paid R$4750
+ * to be on Ultra — and since that invoice is immediately `paid`, `invoice.paid`
+ * applies it. The org is charged for Ultra and entitled to Pro, and the two
+ * events race closely enough (same second) that the staleness watermark cannot
+ * order them reliably. A line the customer is being CREDITED for is the plan
+ * they are leaving, never the plan they are on.
+ *
+ * Subscription items carry no `amount`, so they are unaffected by the guard.
+ */
+export function planIdForPrices(
+  obj: Record<string, unknown>,
+  map: Record<string, string>,
+): string | undefined {
+  const items = rec(obj.items)?.data;
+  if (!Array.isArray(items)) return undefined;
+  for (const item of items) {
+    const amount = rec(item)?.amount;
+    if (typeof amount === "number" && amount <= 0) continue;
+    const priceId = idOf(rec(item)?.price);
+    if (priceId && map[priceId]) return map[priceId];
+  }
+  return undefined;
+}
+
+/**
+ * Which gateway plan a subscription event should leave the org on, or
+ * undefined to leave the plan alone.
+ *
+ * The rule that answers "a non-renewed payment moves the org back to Free":
+ *
+ *  - `active` / `trialing` → the plan its price maps to. This is the ONLY way
+ *    a paid tier is granted, which is what makes a tier something bought
+ *    rather than something asked for.
+ *  - `past_due` → unchanged. Stripe is still dunning and the card may yet
+ *    clear; `task-quota.ts` already treats past_due as grace, and the two must
+ *    not disagree about what a delinquent org can do.
+ *  - anything else (canceled, unpaid, incomplete_expired, paused) → `free`.
+ *
+ * A subscription whose price is not in the map grants nothing on the way in —
+ * but still drops the org to free on the way out, because an org holding a
+ * paid tier must never keep it just because its price was later unmapped.
+ */
+/**
+ * What a SUBSCRIPTION-STATE change alone may do to the org's plan — which is
+ * revoke it, or nothing. It can never grant a paid tier.
+ *
+ * A subscription reaching `active` on a new price is Stripe saying the swap
+ * happened, not that it was paid for. The portal's update flow applies the item
+ * change and invoices the proration separately, so granting here handed an org
+ * the tier before the money cleared: if that invoice then declined, the
+ * subscription went `past_due`, `past_due` is grace ("leave the plan alone"),
+ * and the org kept a tier it never paid for through Stripe's entire retry
+ * schedule. First-time checkout was never exposed to this —
+ * `checkout.session.completed` requires `payment_status: paid` — the tier
+ * change was.
+ *
+ * So grants come only from money actually clearing (`checkout.session.completed`
+ * and `invoice.paid`), and this function is left with the half that must NOT
+ * wait for a payment: taking the plan away. Every tier change produces an
+ * `invoice.paid` to grant on — verified in both directions, including a
+ * downgrade, whose credit invoice (total -474999) is still marked paid.
+ *
+ * `past_due` therefore preserves the last PAID tier by construction, with
+ * nothing stored: no other event ever granted one.
+ *
+ * Returning the tier here again would silently reopen the hole, so the return
+ * type is deliberately "free or nothing".
+ */
+export function planIdForStripe(
+  status: string,
+  _obj: Record<string, unknown>,
+  _map: Record<string, string>,
+): "free" | undefined {
+  if (status === "past_due") return undefined;
+  if (status !== "active") return "free";
+  // Active says the subscription exists, not that it is paid for. `invoice.paid`
+  // grants; see above.
+  return undefined;
+}
+
 /** subscription → current period end; Basil moved it onto items.data[]. */
 function subscriptionPeriodEnd(obj: Record<string, unknown>): Date | null {
   const direct = epochToDate(obj.current_period_end);
@@ -192,6 +330,12 @@ export type HandledStripeEvent =
        *  credits it; a failure THROWS so Stripe redelivers — Stripe is the
        *  retry queue, the gateway referenceId dedupe makes replays no-ops). */
       topUp?: { creditCents: number; referenceId: string };
+      /** The gateway plan this event grants or revokes. Applied by the route
+       *  wrapper, and THROWS on failure like the top-up does, for the same
+       *  reason: an entitlement that silently fails to land is a customer
+       *  paying for a tier they do not have — or keeping one they stopped
+       *  paying for. Absent = leave the plan alone. */
+      planChange?: { planId: string; note: string };
     };
 
 /**
@@ -266,14 +410,62 @@ export async function applyStripeEvent(
       if (s(obj.payment_status) !== "paid") {
         return { handled: false, reason: "payment not confirmed" };
       }
-      const billing = await storage.getBilling(organizationId);
-      if (!billing) return { handled: false, reason: "unknown org" };
+      // Self-heal the row rather than refuse. A paid subscription checkout for
+      // an org with no billing row used to answer "unknown org" — a 200 to
+      // Stripe, no plan granted, no orphan cancel and no refund, i.e. money
+      // taken and nothing delivered, silently. The row is seeded at org
+      // creation, but `claimTaskUnderLimit` already self-heals a missing one
+      // for exactly the orgs whose seed never ran, so this path must not be
+      // the one place that treats absence as fatal.
+      const billing = await storage.ensureBilling(organizationId);
+      if (!billing) {
+        // The organization itself is gone, so there is nothing to bind to and
+        // nothing a redelivery would fix. Loud, because a paid session pointed
+        // at a nonexistent org is money taken for an org that cannot receive
+        // it — someone has to reverse it by hand.
+        console.error(
+          "stripe webhook: PAID checkout for an org that does not exist",
+          { organizationId, eventId: event.id },
+        );
+        return { handled: false, reason: "unknown org" };
+      }
       // Never rebind over a DIFFERENT live subscription (deleted unbinds,
       // so a legitimate re-subscribe passes).
       const subscriptionId = idOf(obj.subscription);
+      // A paid subscription-mode session always names its subscription. Without
+      // one there is nothing to bind, and the old code still wrote `active` and
+      // the customer id — an org marked subscribed with no subscription on file,
+      // which then let the next checkout through as if it were the first.
+      if (!subscriptionId) {
+        console.error(
+          "stripe webhook: subscription checkout without a sub id",
+          {
+            organizationId,
+            eventId: event.id,
+          },
+        );
+        return {
+          handled: false,
+          reason: "subscription checkout without sub id",
+        };
+      }
+      // STALENESS FIRST, and the order is the whole point. The refusal below
+      // reverses a subscription — it cancels it AND refunds every invoice it
+      // collected — so it must never see an event that describes the past.
+      //
+      // The sequence it got wrong: a checkout for sub_A 500s (a gateway blip
+      // makes `setGatewayOrgPlan` throw, deliberately, so Stripe retries for up
+      // to three days); meanwhile the org cancels, `subscription.deleted`
+      // unbinds, and the org re-subscribes as sub_B. The redelivered sub_A
+      // event then finds sub_B in the slot, reads as a rebind, and REFUNDS
+      // sub_A's paid invoices — money the org owed for service it had already
+      // used. Nothing about that event was concurrent; it was simply old, and
+      // the watermark already knew.
+      if (isStale(event, billing)) {
+        return { handled: false, reason: "stale event" };
+      }
       if (
         billing.stripeSubscriptionId &&
-        subscriptionId &&
         billing.stripeSubscriptionId !== subscriptionId
       ) {
         console.error("stripe webhook: refused checkout rebind", {
@@ -286,16 +478,55 @@ export async function applyStripeEvent(
           orphanSubscriptionId: subscriptionId,
         };
       }
-      if (isStale(event, billing)) {
-        return { handled: false, reason: "stale event" };
-      }
-      await storage.updateStripeState(organizationId, {
-        stripeCustomerId: idOf(obj.customer),
+      // Compare-and-set, not a plain write. The read above cannot settle this:
+      // two checkout completions racing for the same org both read a null
+      // subscription, so both would pass the refusal and both would write,
+      // leaving whichever lost uncancelled and billing for ever. Postgres
+      // picks the winner; the loser falls through to the orphan path below and
+      // is reversed like any other refused bind.
+      const customerId = idOf(obj.customer);
+      const bound = await storage.bindSubscription(organizationId, {
         stripeSubscriptionId: subscriptionId,
+        ...(customerId ? { stripeCustomerId: customerId } : {}),
         status: "active",
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return { handled: true, organizationId };
+      if (!bound) {
+        console.error("stripe webhook: lost the bind race", {
+          organizationId,
+          subscriptionId,
+          eventId: event.id,
+        });
+        return {
+          handled: false,
+          reason: "org already bound to another subscription",
+          orphanSubscriptionId: subscriptionId,
+        };
+      }
+      // The plan the buyer paid for, from the metadata OUR checkout creator
+      // wrote — a Checkout Session carries no line items unless expanded, so
+      // the price map cannot be consulted here. Payment is already confirmed
+      // above, which is what makes granting here legitimate.
+      //
+      // A session with no planId is not a hole: the subscription's first
+      // invoice (`billing_reason: subscription_create`) is paid in the same
+      // breath and `invoice.paid` resolves the tier from its lines. That is
+      // now the ONLY backstop — `customer.subscription.updated` used to be one
+      // and deliberately is not any more, because it cannot tell a paid swap
+      // from an unpaid one.
+      const planId = s(rec(obj.metadata)?.planId);
+      return {
+        handled: true,
+        organizationId,
+        ...(planId
+          ? {
+              planChange: {
+                planId,
+                note: `stripe checkout ${s(obj.id) ?? ""}`.trim(),
+              },
+            }
+          : {}),
+      };
     }
 
     case "customer.subscription.updated":
@@ -317,7 +548,21 @@ export async function applyStripeEvent(
         ...(isDeleted && { stripeSubscriptionId: null }),
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return { handled: true, organizationId: billing.organizationId };
+      // This is where a lapsed payment becomes a lapsed entitlement. Without
+      // it the billing row said `canceled` and the org kept every paid feature
+      // and its full AI allowance, indefinitely.
+      const planId = planIdForStripe(
+        status,
+        obj,
+        getSettings().stripePlanPriceIds,
+      );
+      return {
+        handled: true,
+        organizationId: billing.organizationId,
+        ...(planId
+          ? { planChange: { planId, note: `stripe ${event.type} (${status})` } }
+          : {}),
+      };
     }
 
     case "invoice.paid": {
@@ -333,10 +578,24 @@ export async function applyStripeEvent(
       // unpaid→paid recovery (a deleted subscription can't reach this).
       await storage.updateStripeState(billing.organizationId, {
         status: "active",
-        currentPeriodEnd: epochToDate(obj.period_end),
+        currentPeriodEnd: invoicePeriodEnd(obj),
         lastStripeEventAt: nextWatermark(event, billing),
       });
-      return { handled: true, organizationId: billing.organizationId };
+      // The other half of the recovery: an org dropped to free by a failed
+      // payment has to get its tier BACK when the invoice settles, or the
+      // downgrade is one-way. An invoice's lines carry the price, so the map
+      // resolves here without fetching the subscription.
+      const planId = planIdForPrices(
+        { items: obj.lines },
+        getSettings().stripePlanPriceIds,
+      );
+      return {
+        handled: true,
+        organizationId: billing.organizationId,
+        ...(planId
+          ? { planChange: { planId, note: "stripe invoice.paid" } }
+          : {}),
+      };
     }
 
     default:
@@ -450,22 +709,76 @@ export async function processStripeEvent(
     // Only now did the top-up actually succeed.
     captureSubscriptionEvent(event, result);
   }
-  // Cancel a refused-but-paid subscription so it stops charging. NOT
-  // fail-soft: a transient failure must 500 the route so Stripe redelivers
-  // and the cancel retries. Already-gone (400/404) is success.
-  if (!result.handled && result.orphanSubscriptionId) {
+  // Grant or revoke the tier the payment state implies. After the billing
+  // write and before the orphan cleanup, and NOT fail-soft: a throw 500s the
+  // route so Stripe redelivers, and placing a plan is idempotent at the
+  // gateway. Failing soft here would leave an org paying for a tier it does
+  // not have, or holding one it stopped paying for — both silently.
+  if (result.handled && result.planChange) {
     try {
-      await cancelSubscription(result.orphanSubscriptionId);
-      console.error("stripe webhook: canceled orphan subscription", {
-        subscriptionId: result.orphanSubscriptionId,
-        eventId: event.id,
+      await setGatewayOrgPlan({
+        organizationId: result.organizationId,
+        planId: result.planChange.planId,
+        note: result.planChange.note,
       });
+    } catch (err) {
+      // A gateway DECISION (4xx: unknown plan id, malformed body, rejected
+      // token) will answer the same way for ever, so throwing here would have
+      // Stripe redeliver it on its full multi-day schedule and then DISABLE the
+      // endpoint — taking every other org's billing events down with it. Ack it
+      // and page instead; an operator has to place this plan by hand.
+      // Everything else (5xx, timeout, DNS) still throws, because that is the
+      // case redelivery exists for.
+      if (!(err instanceof GatewayAdminPermanentError)) throw err;
+      console.error(
+        "stripe webhook: gateway REFUSED the plan change — the org has been " +
+          "charged (or cancelled) and its entitlement did NOT move. Place it " +
+          "by hand through the gateway admin API.",
+        {
+          organizationId: result.organizationId,
+          planId: result.planChange.planId,
+          eventId: event.id,
+          status: err.status,
+          error: err.message,
+        },
+      );
+      return result;
+    }
+    // Same courtesy `AI_PLAN_SET` does after a downgrade, and fleet-wide: the
+    // gate's cache is a per-pod Map, so dropping only this one left the
+    // features a customer had just paid for working or not depending on which
+    // replica their next request reached, for the whole 60s TTL. The
+    // cancellation direction is the same minute in reverse.
+    invalidateOrgFeaturesEverywhere(result.organizationId);
+  }
+  // Undo a refused-but-paid subscription completely: stop the billing AND give
+  // back what it already took. Cancelling alone left the customer charged twice
+  // for the one subscription they kept, which is the double charge itself — two
+  // checkouts completing before either bound is a double-click or a second tab,
+  // not an exotic race.
+  //
+  // NOT fail-soft: a transient failure must 500 the route so Stripe redelivers
+  // and this retries. Both halves are safe to repeat — an already-gone
+  // subscription (400/404) counts as cancelled, and the refund carries a
+  // per-invoice idempotency key, so a redelivery replays rather than refunds
+  // twice. Cancel first: if the refund is what fails, the org is at least not
+  // still being billed while Stripe retries.
+  if (!result.handled && result.orphanSubscriptionId) {
+    const subscriptionId = result.orphanSubscriptionId;
+    try {
+      await cancelSubscription(subscriptionId);
     } catch (err) {
       const alreadyGone =
         err instanceof StripeApiError &&
         (err.status === 400 || err.status === 404);
       if (!alreadyGone) throw err;
     }
+    const { refundedCents } = await refundSubscriptionPayments(subscriptionId);
+    console.error("stripe webhook: reversed orphan subscription", {
+      subscriptionId,
+      refundedCents,
+      eventId: event.id,
+    });
   }
   return result;
 }

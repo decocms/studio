@@ -18,7 +18,10 @@
  */
 
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
-import type { WhereExpression } from "@decocms/bindings/collections";
+import {
+  likePatternToRegExp,
+  type WhereExpression,
+} from "@decocms/bindings/collections";
 import type { ConnectionEntity } from "./schema";
 
 function resolveFieldValue(
@@ -40,13 +43,6 @@ function resolveFieldValue(
     current = (current as Record<string, unknown>)[key];
   }
   return current;
-}
-
-/** Translate a SQL LIKE/ILIKE pattern (`%`, `_`) into a case-insensitive regex. */
-function likeToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const translated = escaped.replace(/%/g, ".*").replace(/_/g, ".");
-  return new RegExp(`^${translated}$`, "i");
 }
 
 function matchesComparison(
@@ -75,7 +71,7 @@ function matchesComparison(
     case "like":
       return (
         typeof fieldValue === "string" &&
-        likeToRegExp(String(value)).test(fieldValue)
+        likePatternToRegExp(String(value)).test(fieldValue)
       );
     case "contains":
       return String(fieldValue)

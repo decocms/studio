@@ -46,7 +46,7 @@ function ProposePlanPrompt({
       <Button
         type="button"
         size="sm"
-        className="h-7 px-2.5 text-xs bg-purple-600 hover:bg-purple-700 text-white active:scale-[0.97] transition-transform"
+        className="h-7 px-2.5 text-xs bg-special hover:bg-special/90 text-special-foreground active:scale-[0.97] transition-transform"
         onClick={handleApprove}
       >
         {t("chat.proposePlan.letsGo")}

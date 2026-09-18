@@ -46,3 +46,19 @@ func TestGitDiscardEscapingPathReturns400(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
 }
+
+// A malformed JSON body used to be silently ignored, falling through to a
+// full-repo diff instead of reporting the bad request.
+func TestGitDiffMalformedBodyReturns400(t *testing.T) {
+	repoDir := initTestGitRepo(t)
+	deps := GitDeps{AppRoot: filepath.Dir(repoDir), RepoDir: repoDir}
+
+	req := httptest.NewRequest(http.MethodPost, "/git/diff", bytes.NewReader([]byte("not json")))
+	rec := httptest.NewRecorder()
+
+	GitDiff(deps)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}

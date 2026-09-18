@@ -10,11 +10,7 @@ import {
   type UIMessageStreamWriter,
 } from "ai";
 import { llmSafeInputSchema, restoreOriginalKeys } from "@decocms/mcp-utils";
-import {
-  MAX_RESULT_TOKENS,
-  createOutputPreview,
-  estimateJsonTokens,
-} from "./built-in-tools/read-tool-output";
+import { truncateForModel } from "./built-in-tools/read-tool-output";
 
 const DEFAULT_MCP_TOOL_CALL_TIMEOUT_MS = 120_000;
 
@@ -291,25 +287,12 @@ export async function toolsFromMCP(
         },
         toModelOutput: async ({ output, toolCallId }) => {
           if (truncate) {
-            const tokens = estimateJsonTokens(
+            const capped = truncateForModel(
               output.structuredContent ?? output.content,
+              toolCallId,
+              toolOutputMap,
             );
-            if (tokens > MAX_RESULT_TOKENS) {
-              const value = output.structuredContent ?? output.content;
-              let raw: string;
-              try {
-                raw = JSON.stringify(value, null, 2);
-              } catch {
-                raw = String(value);
-              }
-              toolOutputMap.set(toolCallId, raw);
-              const preview = createOutputPreview(raw);
-
-              return {
-                type: "text",
-                value: `Tool call ${toolCallId} output is too long to display (${tokens} tokens), use the read_tool_output tool.\n\nPreview:\n${preview}`,
-              };
-            }
+            if (capped) return capped;
           }
           if (output.isError) {
             const textContent = output.content

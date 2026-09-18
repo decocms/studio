@@ -57,7 +57,7 @@ import { toast } from "sonner";
 import { DeleteConnectionDialogs } from "@/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/hooks/use-delete-connection";
 import { useT } from "@/i18n/use-t";
-import { ViewLayout } from "../layout";
+import { DetailPanel } from "../detail-panel";
 import { ConnectionActivity } from "./connection-activity.tsx";
 import { ConnectionAgentsPanel } from "./connection-agents-panel.tsx";
 import { ConnectionCapabilities } from "./connection-capabilities.tsx";
@@ -552,7 +552,7 @@ function ConnectionInspectorViewWithConnection({
       </Sheet>
 
       {/* Main page */}
-      <ViewLayout hideHeader>
+      <DetailPanel hideTopbar>
         <div className="flex flex-col h-full overflow-hidden">
           <ConnectionDetailHeader
             connection={connection}
@@ -659,7 +659,7 @@ function ConnectionInspectorViewWithConnection({
             </div>
           </div>
         </div>
-      </ViewLayout>
+      </DetailPanel>
     </>
   );
 }

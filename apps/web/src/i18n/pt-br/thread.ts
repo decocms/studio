@@ -12,14 +12,14 @@ export const thread = {
   "thread.branchPicker.advanced": "Avançado",
   "thread.branchPicker.advancedBack": "Voltar",
   "thread.branchPicker.cancel": "Cancelar",
-  "thread.branchPicker.defaultVersionName": "Rascunho",
+  "thread.branchPicker.defaultVersionName": "Draft",
   "thread.branchPicker.delete": "Descartar",
   "thread.branchPicker.deleteConfirm":
     'Descartar "{name}"? Isso não pode ser desfeito.',
-  "thread.branchPicker.deleteTitle": "Descartar rascunho?",
+  "thread.branchPicker.deleteTitle": "Descartar draft?",
   "thread.branchPicker.live": "Produção",
   "thread.branchPicker.moreActions": "Mais ações",
-  "thread.branchPicker.newVersion": "Novo Rascunho",
+  "thread.branchPicker.newVersion": "Novo Draft",
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
   "thread.branchPicker.saveError":

@@ -59,6 +59,7 @@ import {
 } from "../storage/registry";
 import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
+import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -537,6 +538,7 @@ import { GitProviderOAuthStateStorage } from "@/storage/git-provider-oauth-state
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
+import { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
 import { TaskBoardStorage } from "@/storage/task-board";
 import { NotificationStorage } from "@/storage/notifications";
 import { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -1462,6 +1464,7 @@ export async function createStudioContextFactory(
     virtualMcps: new VirtualMCPStorage(config.db),
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
+    experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
     virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
@@ -1486,6 +1489,7 @@ export async function createStudioContextFactory(
     taskBoard: new TaskBoardStorage(config.db),
     columnAutomations: new ColumnAutomationStorage(config.db),
     taskBoardPrompts: new TaskBoardPromptStorage(config.db),
+    taskBoardAnalytics: new TaskBoardAnalyticsStorage(config.db),
     notifications: new NotificationStorage(config.db),
     orgFsEntries: new OrgFsEntryStorage(config.db),
     oauthPkceStates: new OAuthPkceStateStorage(config.db),
@@ -1584,6 +1588,10 @@ export async function createStudioContextFactory(
     const studioAuth: StudioContext["auth"] = {
       user: authResult.user,
       tokenOrganizationId: authResult.tokenOrganizationId,
+      permissions: authResult.permissions,
+      permissionsOrganizationId: authResult.permissions
+        ? authResult.organization?.id
+        : undefined,
     };
 
     if (authResult.apiKey) {

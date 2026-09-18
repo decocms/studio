@@ -130,7 +130,7 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * "Submit for review", "Get latest" and "View on GitHub" in the dropdown.
  * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
  * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
- * `CmsHeaderActions` at the mount point (`VirtualMcpHeaderInfo`), but this
+ * `CmsHeaderActions` at the mount point (`SiteEditorActions`), but this
  * component keeps its Fast Preview fallbacks for branch metadata since the
  * `/git/*` routes answer from the GitHub API server-side either way.
  */

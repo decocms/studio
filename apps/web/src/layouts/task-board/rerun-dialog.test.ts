@@ -7,7 +7,7 @@
  * does not do, which is a wire-contract regression worth failing on.
  */
 import { describe, expect, test } from "bun:test";
-import { hasUnfinishedRun } from "./rerun-dialog";
+import { hasUnfinishedRun } from "./unfinished-run";
 
 type Item = Parameters<typeof hasUnfinishedRun>[0];
 

@@ -999,17 +999,18 @@ func main() {
 	d.branchStatus = gitx.NewBranchStatusMonitor(repoDir, d.broadcaster, d.emitFileChanged)
 
 	d.orchestrator = setup.NewOrchestrator(setup.OrchestratorDeps{
-		AppRoot:      appRoot,
-		RepoDir:      repoDir,
-		LogsDir:      tmpDir,
-		Store:        d.store,
-		TaskManager:  d.tasks,
-		SetStatus:    d.setStatus,
-		GetStatus:    d.getStatus,
-		Broadcaster:  d.broadcaster,
-		InstallState: d.installState,
-		Lifecycle:    d.lifecycle,
-		BranchStatus: d.branchStatus,
+		AppRoot:       appRoot,
+		RepoDir:       repoDir,
+		LogsDir:       tmpDir,
+		Store:         d.store,
+		TaskManager:   d.tasks,
+		SetStatus:     d.setStatus,
+		GetStatus:     d.getStatus,
+		Broadcaster:   d.broadcaster,
+		InstallState:  d.installState,
+		Lifecycle:     d.lifecycle,
+		BranchStatus:  d.branchStatus,
+		CommitSigning: gitx.CommitSigningFromEnv(),
 	})
 	d.store.Subscribe(func(e config.ApplyEvent) {
 		d.orchestrator.Handle(e.Transition)

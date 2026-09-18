@@ -2,9 +2,9 @@ import { z } from "zod";
 import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { bindCommerceDiscoveryResource } from "./auth-client";
+import { bindReportsResource } from "./auth-client";
 
-const CommerceDiscoveryBindInputSchema = z.object({
+const ReportsBindInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL of the store being bound."),
   provider: z
     .enum(["ga4", "gsc"])
@@ -19,7 +19,7 @@ const CommerceDiscoveryBindInputSchema = z.object({
     ),
 });
 
-const CommerceDiscoveryBindOutputSchema = z.discriminatedUnion("ok", [
+const ReportsBindOutputSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     resourceId: z.string(),
@@ -32,33 +32,39 @@ const CommerceDiscoveryBindOutputSchema = z.discriminatedUnion("ok", [
   }),
 ]);
 
-export const COMMERCE_DISCOVERY_BIND = defineTool({
-  name: "COMMERCE_DISCOVERY_BIND",
+export const REPORTS_BIND = defineTool({
+  name: "REPORTS_BIND",
   description:
-    "Bind a GA4 property or GSC site to the org's store via the shared service account (consent-free lane). The client grants deco-reader@… access to the resource and provides its id; Commerce Discovery verifies the resource belongs to this domain before persisting. Returns ok:false with an actionable pt-BR detail when verification fails or the resource is already bound elsewhere.",
+    "Bind a GA4 property or GSC site to the org's store via the shared service account (consent-free lane). The client grants deco-reader@… access to the resource and provides its id; Reports verifies the resource belongs to this domain before persisting. Returns ok:false with an actionable pt-BR detail when verification fails or the resource is already bound elsewhere.",
   annotations: {
-    title: "Bind Commerce Discovery Data Source",
+    title: "Bind Reports Data Source",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },
-  inputSchema: CommerceDiscoveryBindInputSchema,
-  outputSchema: CommerceDiscoveryBindOutputSchema,
+  inputSchema: ReportsBindInputSchema,
+  outputSchema: ReportsBindOutputSchema,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
-    // Same gate as COMMERCE_DISCOVERY_RUN: the internal API key authorizes the
+    // Same gate as REPORTS_RUN: the internal API key authorizes the
     // wire; ctx.access.check enforces which member of the org may bind.
-    await ctx.access.check();
+    /**
+     * Both names, because a tool name IS the permission resource: a stored
+     * grant (an API key's allowlist, a custom role) that named the tool
+     * before it was renamed would otherwise be silently revoked. `check`
+     * grants on the first resource that passes.
+     */
+    await ctx.access.check("REPORTS_BIND", "COMMERCE_DISCOVERY_BIND");
 
     const normalized = normalizeReportsSiteUrl(input.siteUrl);
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }
 
-    return bindCommerceDiscoveryResource({
+    return bindReportsResource({
       siteUrl: normalized.value,
       orgId: organization.id,
       provider: input.provider,

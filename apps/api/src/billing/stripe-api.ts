@@ -53,6 +53,10 @@ async function stripeRequest<T>(
   init?: {
     method?: "GET" | "POST" | "DELETE";
     params?: Record<string, unknown>;
+    /** Stripe replays the FIRST response for a repeated key instead of acting
+     *  twice. Required on anything that moves money from a handler Stripe may
+     *  redeliver — a refund without one is a second refund. */
+    idempotencyKey?: string;
   },
 ): Promise<T> {
   const key = getSettings().stripeSecretKey;
@@ -65,6 +69,9 @@ async function stripeRequest<T>(
     headers: {
       Authorization: `Bearer ${key}`,
       ...(body && { "Content-Type": "application/x-www-form-urlencoded" }),
+      ...(init?.idempotencyKey && {
+        "Idempotency-Key": init.idempotencyKey,
+      }),
     },
     body,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -135,18 +142,98 @@ export function taxAndAddressParams(
   };
 }
 
+/**
+ * The Stripe Price that sells `planId`, or undefined when the operator has not
+ * priced it.
+ *
+ * `STRIPE_PLAN_PRICE_IDS` is keyed price → plan (a price grants exactly one
+ * tier; a tier may be sold by more than one price), so buying reads it
+ * backwards. Undefined is the answer that matters: a plan with no price cannot
+ * be sold, and refusing here is what stops a tier being handed out for a
+ * payment that was never taken.
+ *
+ * `?? {}` because a partially-mocked settings object is a crash here
+ * otherwise, and "no prices configured" is the safe reading of a missing map.
+ */
+/** Is this price one the operator mapped to a plan — i.e. a plan line rather
+ *  than an add-on sitting beside it on the same subscription. */
+export function isPlanPrice(priceId: string): boolean {
+  return Boolean((getSettings().stripePlanPriceIds ?? {})[priceId]);
+}
+
+export function priceIdForPlan(planId: string): string | undefined {
+  const map = getSettings().stripePlanPriceIds ?? {};
+  return Object.entries(map).find(([, id]) => id === planId)?.[0];
+}
+
 /** First subscribe: Checkout collects + saves the card for the org's flat
  *  monthly subscription (quantity 1). */
+/**
+ * The key that makes two clicks one checkout.
+ *
+ * Stripe replays the first response for a repeated idempotency key, so every
+ * concurrent attempt for the same org and plan receives the SAME Checkout
+ * Session — and a Session can only be completed once. That is what stops a
+ * double-click, a second tab, or an impatient retry from becoming two paid
+ * subscriptions. Refunding one afterwards is not equivalent: Stripe keeps its
+ * processing fee on a refund, so a cured double charge still costs real money,
+ * and the customer still saw two charges.
+ *
+ * Salted with the billing row's last Stripe event so the key changes when the
+ * org's situation does. Without the salt an org that subscribed, cancelled, and
+ * came back inside Stripe's 24h key window would be handed its old, already
+ * completed session and could not subscribe again. Concurrent clicks read the
+ * same watermark, so they still collapse to one session.
+ */
+export function checkoutIdempotencyKey(input: {
+  organizationId: string;
+  planId?: string;
+  lastStripeEventAt?: Date | null;
+}): string {
+  return [
+    "checkout",
+    input.organizationId,
+    input.planId ?? "flat",
+    input.lastStripeEventAt?.getTime() ?? 0,
+  ].join(":");
+}
+
 export async function createOrgCheckoutSession(input: {
   organizationId: string;
   successUrl: string;
   cancelUrl: string;
+  /** Watermark from the org's billing row; salts the idempotency key. */
+  lastStripeEventAt?: Date | null;
+  /** The gateway plan being bought. Its price comes from the plan price map,
+   *  and it rides the session metadata so the webhook can grant the tier on
+   *  completion. Omitted → the flat STRIPE_ORG_PRICE_ID and no tier. */
+  planId?: string;
 }): Promise<{ url: string }> {
-  const priceId = getSettings().stripeOrgPriceId;
+  const settings = getSettings();
+  // The plan's own price, or the flat subscription price for a deployment
+  // with no tiers configured. A plan the operator has not priced cannot be
+  // sold — refusing here is what stops a tier being handed out for a payment
+  // that was never taken.
+  const priceId = input.planId
+    ? priceIdForPlan(input.planId)
+    : settings.stripeOrgPriceId;
   if (!priceId) {
-    throw new StripeApiError(503, "billing is not configured");
+    throw new StripeApiError(
+      503,
+      input.planId
+        ? `plan '${input.planId}' has no Stripe price configured`
+        : "billing is not configured",
+    );
   }
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    // Two clicks, one session — see checkoutIdempotencyKey.
+    idempotencyKey: checkoutIdempotencyKey({
+      organizationId: input.organizationId,
+      ...(input.planId ? { planId: input.planId } : {}),
+      ...(input.lastStripeEventAt !== undefined && {
+        lastStripeEventAt: input.lastStripeEventAt,
+      }),
+    }),
     params: {
       mode: "subscription",
       // No `customer` is passed here — Checkout creates one, so no write-back.
@@ -156,8 +243,43 @@ export async function createOrgCheckoutSession(input: {
       cancel_url: input.cancelUrl,
       // orgId on BOTH the session (checkout.session.completed) and the
       // subscription (defense in depth for subscription-keyed lookups).
-      metadata: { orgId: input.organizationId },
-      subscription_data: { metadata: { orgId: input.organizationId } },
+      metadata: {
+        orgId: input.organizationId,
+        ...(input.planId ? { planId: input.planId } : {}),
+      },
+      subscription_data: {
+        /**
+         * Bill on the 1st, UTC midnight — the day the gateway resets every
+         * org's allowance (`currentPeriod` in plans-shape.ts). Without this
+         * Stripe anchors to the signup day, so an org subscribing on the 20th
+         * pays a full month and gets eleven days of allowance before the reset.
+         * Stripe's default proration then charges the partial first month pro
+         * rata rather than giving it away or billing it whole.
+         *
+         * Declarative rather than an absolute `billing_cycle_anchor` timestamp,
+         * and that is a correctness difference, not a style one: a Checkout
+         * Session lives 24h, but Stripe validates an absolute anchor when the
+         * subscription is CREATED — when the buyer clicks pay. A session opened
+         * at 23:50 UTC on the 31st and paid at 00:02 carries an anchor that is
+         * now in the past, and Stripe refuses the subscription outright. For a
+         * BR customer base that window is 21:00 BRT on the last day of the
+         * month, i.e. peak evening, every month. A day-of-month config cannot
+         * go stale. Verified to produce exactly 2026-10-01T00:00:00Z.
+         *
+         * ponytail: monthly prices only — a yearly tier would need its own
+         * anchoring story.
+         */
+        billing_cycle_anchor_config: {
+          day_of_month: 1,
+          hour: 0,
+          minute: 0,
+          second: 0,
+        },
+        metadata: {
+          orgId: input.organizationId,
+          ...(input.planId ? { planId: input.planId } : {}),
+        },
+      },
     },
   });
   if (!session.url) throw new StripeApiError(500, "checkout session lacks url");
@@ -176,6 +298,53 @@ export function computeTopUpChargeCents(
   feePercent: number,
 ): number {
   return Math.round(amountCents * (1 + feePercent / 100));
+}
+
+/** How wide a window collapses into one top-up session. See below. */
+const TOPUP_IDEMPOTENCY_WINDOW_MS = 2 * 60_000;
+
+/**
+ * The key that makes two clicks one top-up.
+ *
+ * `createOrgCheckoutSession` has carried one of these from the start, with a
+ * docblock on why refunding a double charge is not equivalent (Stripe keeps its
+ * fee, and the customer still saw two charges). The top-up beside it carried
+ * nothing, so a double-click, a second tab or an impatient retry bought the
+ * credits twice — and the two sessions have different ids, so the webhook's
+ * `stripe-topup:<sessionId>` dedupe cannot collapse them either. It is not lost
+ * money, the org receives both credits; it is still two charges nobody asked
+ * for.
+ *
+ * Salted with a TIME BUCKET rather than the billing row's watermark, which is
+ * what the subscription key uses. A top-up deliberately writes no billing row
+ * and moves no watermark (see the webhook: "Orthogonal to the subscription"),
+ * so that salt is constant here — and a constant salt would collapse a
+ * legitimate SECOND purchase of the same amount into the first, already
+ * completed, session for the whole 24h Stripe honours the key. A repeat top-up
+ * is a normal thing to want; two of them one second apart is not.
+ *
+ * The bucket is therefore the smallest thing that separates the two: clicks
+ * seconds apart share it and collapse, a deliberate repeat two minutes later
+ * gets its own session. Two clicks straddling a boundary still produce two
+ * sessions — that is exactly today's behaviour, so the window is a strict
+ * improvement on it rather than a guarantee.
+ */
+export function topUpIdempotencyKey(input: {
+  organizationId: string;
+  amountCents: number;
+  currency: "usd" | "brl";
+  nowMs?: number;
+}): string {
+  const bucket = Math.floor(
+    (input.nowMs ?? Date.now()) / TOPUP_IDEMPOTENCY_WINDOW_MS,
+  );
+  return [
+    "topup",
+    input.organizationId,
+    input.currency,
+    input.amountCents,
+    bucket,
+  ].join(":");
 }
 
 export async function createTopUpCheckoutSession(input: {
@@ -208,6 +377,12 @@ export async function createTopUpCheckoutSession(input: {
       ? `Studio AI credits (R$ ${(input.amountCents / 100).toFixed(2)})`
       : `Studio AI credits ($${(input.amountCents / 100).toFixed(2)})`;
   const session = await stripeRequest<{ url?: string }>("/checkout/sessions", {
+    // Two clicks, one session — see topUpIdempotencyKey.
+    idempotencyKey: topUpIdempotencyKey({
+      organizationId: input.organizationId,
+      amountCents: input.amountCents,
+      currency: input.currency,
+    }),
     params: {
       mode: "payment",
       // Reuse the org's saved customer when it exists (same card as the
@@ -255,9 +430,95 @@ export async function createBillingPortalSession(input: {
 export interface StripeSubscription {
   id: string;
   customer: string;
+  /** Stripe's own vocabulary (`active`, `past_due`, `canceled`, …). Read by the
+   *  reconciliation sweep through `mapSubscriptionStatus`, which is the same
+   *  mapping the webhook applies to the event payload. */
+  status?: string;
   /** Unix seconds. Recent API versions moved this onto the items. */
   current_period_end?: number;
-  items?: { data?: { current_period_end?: number }[] };
+  /** `data[].id` is the subscription ITEM id, which is what a price swap
+   *  addresses — the subscription id alone cannot say which line to change. */
+  items?: {
+    data?: {
+      id?: string;
+      current_period_end?: number;
+      price?: { id?: string };
+    }[];
+  };
+}
+
+/**
+ * Move an EXISTING subscription to another tier, on Stripe's hosted
+ * confirmation screen.
+ *
+ * Checkout cannot do this: a second checkout for an org that already has a
+ * subscription is a second subscription, which is a double charge — so
+ * `ORGANIZATION_BILLING_CHECKOUT_START` refuses it and, before this, Pro → Ultra
+ * had no route at all. The portal's `subscription_update_confirm` flow drops
+ * the buyer straight onto the confirm step for one specific price, showing the
+ * proration before anything is charged. We never render that amount ourselves;
+ * quoting a proration we computed and charging one Stripe computed is how the
+ * two drift.
+ *
+ * On confirm Stripe swaps the item and fires `customer.subscription.updated`,
+ * which the webhook already resolves back to a tier through the price map — so
+ * the entitlement follows the money without a second code path.
+ *
+ * Runs on its OWN portal configuration (`STRIPE_PORTAL_CONFIGURATION_ID`), not
+ * the account default: the default also backs the full self-serve portal, and
+ * listing the tier products there would let anyone switch plans freely. That
+ * configuration must list every purchasable plan's product — Stripe 400s
+ * otherwise, and its message is what the org admin sees. Verified: with the
+ * default configuration, Stripe refuses with "the configuration does not
+ * include the price in its features[subscription_update][products]".
+ */
+export async function createSubscriptionUpdateSession(input: {
+  customerId: string;
+  subscriptionId: string;
+  subscriptionItemId: string;
+  priceId: string;
+  returnUrl: string;
+}): Promise<{ url: string }> {
+  const session = await stripeRequest<{ url?: string }>(
+    "/billing_portal/sessions",
+    {
+      params: {
+        customer: input.customerId,
+        return_url: input.returnUrl,
+        ...(getSettings().stripePortalConfigurationId && {
+          configuration: getSettings().stripePortalConfigurationId,
+        }),
+        flow_data: {
+          type: "subscription_update_confirm",
+          subscription_update_confirm: {
+            subscription: input.subscriptionId,
+            items: [{ id: input.subscriptionItemId, price: input.priceId }],
+          },
+          after_completion: {
+            type: "redirect",
+            redirect: { return_url: input.returnUrl },
+          },
+        },
+      },
+    },
+  );
+  if (!session.url) throw new StripeApiError(500, "portal session lacks url");
+  return { url: session.url };
+}
+
+export interface StripePrice {
+  id: string;
+  /** Minor units (centavos for BRL). Null for a price with no fixed amount. */
+  unit_amount: number | null;
+  /** ISO 4217, lowercase, as Stripe returns it. */
+  currency: string;
+  recurring?: { interval?: string } | null;
+}
+
+/** Read one Price. The amount the card is actually charged, which is the only
+ *  number worth quoting — see the plan-price tool. */
+export async function retrievePrice(priceId: string): Promise<StripePrice> {
+  return stripeRequest<StripePrice>(`/prices/${encodeURIComponent(priceId)}`);
 }
 
 /** Read a subscription by id — used to resolve its customer and period end. */
@@ -278,4 +539,92 @@ export async function cancelSubscription(
   await stripeRequest(`/subscriptions/${encodeURIComponent(subscriptionId)}`, {
     method: "DELETE",
   });
+}
+
+export interface StripeInvoiceRef {
+  id?: string;
+  amount_paid?: number;
+  /** This account's API version puts these on the invoice directly. */
+  payment_intent?: string | { id?: string } | null;
+}
+
+/**
+ * Give back everything an orphan subscription actually took.
+ *
+ * Cancelling an orphan stops FUTURE billing and returns nothing, so the
+ * customer who opened checkout in two tabs stayed charged twice for the one
+ * subscription they kept. That is the whole double-charge: two sessions both
+ * complete, the first binds, the second is refused — and refusing it is not
+ * enough, because Stripe already took the money.
+ *
+ * Idempotent per invoice, which matters more here than anywhere else in this
+ * file: this runs from a webhook Stripe redelivers on any non-2xx, and a
+ * refund replayed without a key is a second refund. The key is derived from
+ * the invoice, so a redelivery replays the original response instead.
+ *
+ * Invoices with nothing collected (a downgrade's credit note, a zero
+ * proration) are skipped — there is no payment to reverse.
+ */
+export async function refundSubscriptionPayments(
+  subscriptionId: string,
+): Promise<{ refundedCents: number }> {
+  const list = await stripeRequest<{ data?: StripeInvoiceRef[] }>(
+    `/invoices?subscription=${encodeURIComponent(subscriptionId)}&status=paid&limit=100`,
+  );
+  const refunds = plannedOrphanRefunds(subscriptionId, list.data ?? []);
+  for (const refund of refunds) {
+    await stripeRequest("/refunds", {
+      params: { payment_intent: refund.paymentIntent, reason: "duplicate" },
+      idempotencyKey: refund.idempotencyKey,
+    });
+  }
+  return {
+    refundedCents: refunds.reduce((sum, r) => sum + r.amountCents, 0),
+  };
+}
+
+export interface PlannedRefund {
+  paymentIntent: string;
+  amountCents: number;
+  idempotencyKey: string;
+}
+
+/**
+ * Which of an orphan's invoices actually took money, and the key that makes
+ * giving it back safe to repeat.
+ *
+ * Split out from the HTTP so the decision is testable on its own — it is the
+ * part that can be wrong in a way that costs someone money, either by missing a
+ * charge (customer stays double-charged) or by refunding something that was
+ * never collected.
+ *
+ * Skips anything with nothing collected: a downgrade's credit invoice and a
+ * zero-value proration are both `paid` with `amount_paid: 0`. Skips an invoice
+ * with no payment intent, which is how an invoice settled from customer balance
+ * presents — there is no card payment to reverse.
+ *
+ * The key is per INVOICE rather than per subscription: an orphan with two paid
+ * invoices must produce two distinct refunds, while a redelivery of the same
+ * webhook must produce none.
+ */
+export function plannedOrphanRefunds(
+  subscriptionId: string,
+  invoices: StripeInvoiceRef[],
+): PlannedRefund[] {
+  const planned: PlannedRefund[] = [];
+  for (const invoice of invoices) {
+    const amountCents = invoice.amount_paid ?? 0;
+    if (amountCents <= 0) continue;
+    const paymentIntent =
+      typeof invoice.payment_intent === "string"
+        ? invoice.payment_intent
+        : invoice.payment_intent?.id;
+    if (!paymentIntent) continue;
+    planned.push({
+      paymentIntent,
+      amountCents,
+      idempotencyKey: `orphan-refund:${subscriptionId}:${invoice.id ?? paymentIntent}`,
+    });
+  }
+  return planned;
 }

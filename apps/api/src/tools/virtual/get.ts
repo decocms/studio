@@ -4,8 +4,10 @@
  * Get a single virtual MCP by ID with collection binding compliance.
  */
 
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
+import { resolveCallerProjectScope } from "../../core/project-scope";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { VirtualMCPEntitySchema } from "./schema";
 
@@ -57,6 +59,12 @@ export const COLLECTION_VIRTUAL_MCP_GET = defineTool({
     }
 
     if (!virtualMcp) {
+      return { item: null };
+    }
+
+    // Hide projects outside a scoped role's allowlist (don't leak existence).
+    const projectScope = await resolveCallerProjectScope(ctx);
+    if (!isProjectAllowed(projectScope, virtualMcp.id)) {
       return { item: null };
     }
 

@@ -85,7 +85,7 @@ export function SandboxStateCard(props: SandboxStateCardProps) {
   return (
     <div className="flex h-full w-full items-center justify-center bg-background p-6">
       <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
-        <PauseCircle className="size-12 text-blue-500" />
+        <PauseCircle className="size-12 text-muted-foreground" />
         <h3 className="text-lg font-medium">
           {t("sandbox.stateCard.suspendedHeadline")}
         </h3>

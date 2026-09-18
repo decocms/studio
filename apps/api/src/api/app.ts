@@ -26,6 +26,11 @@ import {
   setTaskBoardArchiveSweepRuntime,
 } from "@/tools/task-board/dbos-archive-sweep";
 import {
+  registerSubscriptionSweepWorkflow,
+  setSubscriptionSweepRuntime,
+} from "@/billing/dbos-subscription-sweep";
+import { startPlanCacheBroadcast } from "@/billing/plan-cache-broadcast";
+import {
   registerNotificationDigestWorkflow,
   setNotificationDigestRuntime,
 } from "@/notifications/dbos-digest";
@@ -112,6 +117,10 @@ import openaiCompatRoutes from "./routes/openai-compat";
 import { createProxyRoutes } from "./routes/proxy";
 import { createTriggerCallbackRoutes } from "./routes/trigger-callback";
 import { createEditorResolveRoutes } from "./routes/editor-resolve";
+import {
+  ORGANIZATION_NOTICES_API_PREFIX,
+  createOrganizationNoticeSiteResolutionRoutes,
+} from "./routes/organization-notices-service";
 import publicConfigRoutes from "./routes/public-config";
 import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
@@ -123,6 +132,8 @@ import {
   registerJiraTriggerSweepWorkflow,
   setJiraTriggerSweepRuntime,
 } from "@/jira/dbos-jira-trigger-sweep";
+// Importing it is what runs its top-level `DBOS.registerWorkflow`.
+import { setJiraPrMergeRuntime } from "@/jira/dbos-pr-merge";
 import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
@@ -1258,6 +1269,14 @@ export async function createApp(options: CreateAppOptions = {}) {
   const flipConnection = () => natsProvider?.getConnection() ?? null;
   initFlipBroadcast(flipConnection);
   natsProvider?.onReady(() => initFlipBroadcast(flipConnection));
+
+  // Cross-pod plan-cache invalidation, same shape and same lane. Without it a
+  // plan change only reached the pod that handled it, so for the 60s TTL the
+  // features a customer had just bought worked or not depending on which
+  // replica answered. Local-only without NATS, which for one pod is already
+  // correct.
+  startPlanCacheBroadcast(flipConnection);
+  natsProvider?.onReady(() => startPlanCacheBroadcast(flipConnection));
   streamBuffer.init().catch((err) => {
     console.warn(
       "[Decopilot] StreamBuffer init failed, attach/late-join disabled:",
@@ -1676,11 +1695,17 @@ export async function createApp(options: CreateAppOptions = {}) {
   // Hourly auto-archive of settled Done cards, one org leg per candidate org.
   setTaskBoardArchiveSweepRuntime({ db: database.db });
 
+  // Hourly: the paid tiers whose `subscription.deleted` never arrived.
+  setSubscriptionSweepRuntime({ db: database.db });
+
   // Every 10 minutes: the Jira transitions the webhook may have missed.
   setJiraTriggerSweepRuntime({
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
   });
+
+  // The durable merge batch started by JIRA_PR_MERGE.
+  setJiraPrMergeRuntime({ db: database.db });
 
   // Every 5 minutes: email what's still unread, then prune the 30-day window.
   setNotificationDigestRuntime({ db: database.db });
@@ -1703,7 +1728,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   const automationContextFactory = createAutomationContextFactory({
     db: database.db,
   });
-
   // Stash deps for the DBOS workflow body. Safe to call before DBOS.launch():
   // it only writes a module-level pointer, no DBOS API calls.
   // The actual dispatch (and its dispatch-run deps) lives on the thread-gate
@@ -1718,6 +1742,10 @@ export async function createApp(options: CreateAppOptions = {}) {
   // needs a `dispatchRunFn` or a status-poll cap. Wiring happens before
   // `DBOS.launch()` for the same reasons as automations.
   setThreadGateRuntime({
+    systemDatabaseUrl: withSslmode(
+      getSettings().databaseUrl,
+      getSettings().databasePgSsl,
+    ),
     studioContextFactory: automationContextFactory,
     deps: {
       runRegistry,
@@ -1954,6 +1982,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
@@ -2219,10 +2248,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   app.route("/api", decopilotRoutes);
 
-  // Stable file redirect endpoint (resolves studio-storage: URIs to presigned URLs).
-  // Resolve the org from the URL before serving so the stable URL cannot drift
-  // to the session-active org when the path targets a different org.
-  app.use("/api/:org/files/*", resolveOrgFromPath);
+  // Stable file redirect endpoint; org resolution for this path is already registered above with decopilot/v1.
   app.route("/api", filesRoutes);
 
   // Thread outputs (model-shared files surfaced as download chips in the chat)
@@ -2340,6 +2366,13 @@ export async function createApp(options: CreateAppOptions = {}) {
   // admin surface. The `_` prefix just keeps well-behaved slugs from ever
   // wanting the name (a bare `admin` is a legal, live slug).
   app.route(ADMIN_API_PREFIX, createAdminRoutes());
+
+  // Cross-org site ownership lookup for the organization-notices service.
+  // Registered before the /api/:org catch-all under a static prefix.
+  app.route(
+    ORGANIZATION_NOTICES_API_PREFIX,
+    createOrganizationNoticeSiteResolutionRoutes(),
+  );
 
   // Storefront "." shortcut: resolve (site, domain) → editor. Instance-level (org from org_sites), so it must win over `:org` below.
   app.route("/api/_editor-resolve", createEditorResolveRoutes());

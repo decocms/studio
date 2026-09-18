@@ -1,6 +1,14 @@
 import type { library as libraryEn } from "../en/library.ts";
 
 export const library = {
+  "library.library.title": "Biblioteca",
+  "library.library.all": "Todos os arquivos",
+  "library.library.documents": "Documentos",
+  "library.library.media": "Mídia",
+  "library.library.name": "Nome",
+  "library.library.type": "Tipo",
+  "library.library.updated": "Atualizado",
+  "library.library.noFilesInView": "Nenhum arquivo correspondente nesta pasta.",
   "library.brandComponentsPreview.allChip": "Todos",
   "library.brandComponentsPreview.emailPlaceholder": "voce@exemplo.com",
   "library.brandComponentsPreview.errorBadge": "Erro",
