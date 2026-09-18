@@ -155,6 +155,8 @@ export async function triggerRunForTransition(
   );
   if (!claimed) return "duplicate";
 
+  // Guards against a run still working an earlier transition on this anchor.
+  await supersedeLiveRuns(ctx, item);
   // A dispatch failure past here leaves the claim standing: the transition is spent.
   await dispatchJiraRun(ctx, integration, item, issue, {
     instruction: rule.prompt,
