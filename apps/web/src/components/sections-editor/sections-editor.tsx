@@ -8,25 +8,14 @@ import { useT } from "@/i18n/use-t";
 import { KEYS } from "@/lib/query-keys";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import {
-  Check,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
   Code01,
   Globe01,
   CreditCardSearch,
-  Plus,
-  Settings01,
-  Trash01,
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@decocms/ui/components/dropdown-menu.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
   Tooltip,
@@ -69,7 +58,11 @@ import type { SectionCatalogEntry } from "./section-catalog";
 import { SectionVariantList } from "./section-variant-list";
 import type { Crumb } from "./schema-form-breadcrumb";
 import { headerBackTargetIndex } from "./schema-form-breadcrumb";
-import { ALWAYS_MATCHER_RESOLVE_TYPE, type RawSection } from "./section-types";
+import {
+  ALWAYS_MATCHER_RESOLVE_TYPE,
+  defaultVariantRule,
+  type RawSection,
+} from "./section-types";
 import {
   buildMatcherBlockData,
   buildMatcherBlockReference,
@@ -101,6 +94,8 @@ import {
   appendSectionVariant,
   canAddSectionVariant,
   deleteMultivariateSectionVariant,
+  isDefaultVariantRule,
+  pickVariantToKeepIndex,
   duplicateMultivariateSectionVariant,
   flattenMultivariateSection,
   getMultivariateSectionObject,
@@ -127,9 +122,8 @@ import {
   PageHeaderInputs,
   parsePageVariantsForEditor,
   SchemaFormPanel,
-  VARIANT_PILL_CLASS,
+  VariantSelect,
   VARIANT_TAB_ACTIVE_CLASS,
-  VARIANT_TAB_OUTLINE_CLASS,
 } from "./sections-editor-panels";
 import { VariantRuleEditor } from "./variant-rule-editor";
 
@@ -154,6 +148,7 @@ export function SectionsEditor({
   onExitSeo,
   onSelectRoot,
   onViewJsonFile,
+  onFocusedBlockChange,
   onVariantPreviewOverride,
 }: {
   orgSlug: string;
@@ -186,6 +181,8 @@ export function SectionsEditor({
    * Hosts without a file surface (Content tab) omit this and get the modal.
    */
   onViewJsonFile?: () => void;
+  /** Publishes the block whose form is open, for the JSON view to follow. */
+  onFocusedBlockChange?: (blockKey: string | null) => void;
   /**
    * Called when the selected section variant changes so the host can force the
    * preview iframe to render that variant via `x-deco-matchers-override`.
@@ -774,6 +771,7 @@ export function SectionsEditor({
   };
 
   const clearSectionEditing = () => {
+    onFocusedBlockChange?.(null);
     setSelectedSectionIndex(null);
     setManagingSectionVariants(false);
     setFormValue(null);
@@ -920,6 +918,10 @@ export function SectionsEditor({
     setFormResetKey((key) => key + 1);
     const rawSection = rawSections[index];
     const parsed = parsedSections[index];
+    // A saved block's resolveType is its decofile key.
+    onFocusedBlockChange?.(
+      parsed?.isSavedBlock ? (parsed.resolveType ?? null) : null,
+    );
     if (!rawSection || !parsed) return;
 
     if (parsed.isMultivariate) {
@@ -2114,7 +2116,7 @@ export function SectionsEditor({
       variants: Array<Record<string, unknown>>,
     ) => Array<Record<string, unknown>> | null,
     onSaved?: () => void,
-    orphanMatcherBlockKey?: string | null,
+    orphanMatcherBlockKeys?: string | string[] | null,
   ) => {
     if (!activePageKey) return;
     // Cancel a pending rule-autosave timer — it writes into
@@ -2155,12 +2157,15 @@ export function SectionsEditor({
       {
         onSuccess: () => {
           onSaved?.();
-          if (orphanMatcherBlockKey) {
-            void cleanupOrphanMatcherBlock(
-              orphanMatcherBlockKey,
-              projectedDecofile,
-            );
-          }
+          const orphans =
+            typeof orphanMatcherBlockKeys === "string"
+              ? [orphanMatcherBlockKeys]
+              : (orphanMatcherBlockKeys ?? []);
+          void (async () => {
+            for (const key of orphans) {
+              await cleanupOrphanMatcherBlock(key, projectedDecofile);
+            }
+          })();
         },
         onError: (err) =>
           toast.error(
@@ -2249,6 +2254,46 @@ export function SectionsEditor({
         setRuleResolveType(null);
       },
       orphanMatcherBlockKey,
+    );
+  };
+
+  /**
+   * Stop the page being multivariate: the kept variant becomes the page. Its
+   * rule goes with the wrapper — there is nothing left to match against — so
+   * re-ruling it Default is what lets the shared builder collapse `sections`
+   * back to the plain array it was before the first variant was added.
+   */
+  const handleRemoveAllPageVariants = () => {
+    const discarded = pageVariants
+      .map((variant, index) => ({ variant, index }))
+      .filter(({ variant }) => !isDefaultVariantRule(variant.rule))
+      .map(({ variant }) =>
+        getSavedMatcherBlockKey(
+          variant.rule,
+          decofile ?? {},
+          meta ?? undefined,
+        ),
+      )
+      .filter((key): key is string => !!key);
+
+    mutatePageVariants(
+      (variants) => {
+        const keepIndex = pickVariantToKeepIndex({ variants });
+        const kept = variants[keepIndex];
+        if (!kept) return null;
+        return [{ ...kept, rule: defaultVariantRule() }];
+      },
+      () => {
+        setActiveVariantIndex(0);
+        setSelectedSectionIndex(null);
+        setFormValue(null);
+        setActiveResolveType(null);
+        setFieldBreadcrumbs([]);
+        setRuleFormValue(null);
+        setRuleResolveType(null);
+        setManagingVariants(false);
+      },
+      discarded,
     );
   };
 
@@ -3186,121 +3231,53 @@ export function SectionsEditor({
               section never advertises the page variant it was reached through.
               The breadcrumb carries that. */}
             {atPanelRoot && hasMultipleVariants && activeVariant && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      VARIANT_PILL_CLASS,
-                      VARIANT_TAB_OUTLINE_CLASS,
+              <VariantSelect
+                variants={pageVariants}
+                activeIndex={safeVariantIndex}
+                icon={
+                  <VariantTabIcon
+                    rule={resolveEffectiveMatcherRule(
+                      activeVariant.rule,
+                      decofile ?? {},
+                      meta ?? undefined,
                     )}
-                  >
-                    <VariantTabIcon
-                      rule={resolveEffectiveMatcherRule(
-                        activeVariant.rule,
-                        decofile ?? {},
-                        meta ?? undefined,
-                      )}
-                      matchers={availableMatchers}
-                    />
-                    <span className="max-w-[120px] truncate">
-                      {activeVariant.label}
-                    </span>
-                    <ChevronDown className="size-3 shrink-0" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  {pageVariants.map((variant, index) => (
-                    <DropdownMenuItem
-                      key={`${variant.label}-${index}`}
-                      onClick={() => selectPageVariant(index)}
-                    >
-                      <Check
-                        className={cn(
-                          "size-3.5",
-                          index === safeVariantIndex
-                            ? "opacity-100"
-                            : "opacity-0",
-                        )}
-                      />
-                      <span className="truncate">{variant.label}</span>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={openVariantManager}>
-                    <Settings01 className="size-3.5" />
-                    {t("sectionsEditor.sectionsEditor.manageVariants")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleAddPageVariant}>
-                    <Plus className="size-3.5" />
-                    {t("sectionsEditor.pageVariantTabs.addVariantTooltip")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    matchers={availableMatchers}
+                  />
+                }
+                onSelect={selectPageVariant}
+                onManage={openVariantManager}
+                onRemoveAll={handleRemoveAllPageVariants}
+                manageLabel={t("sectionsEditor.sectionsEditor.manageVariants")}
+                removeAllLabel={t(
+                  "sectionsEditor.sectionVariantList.removeAllVariants",
+                )}
+              />
             )}
             {/* The same select one level down, for the open section's own
               variants. Hidden once a nested field is open, where the focused
               form owns the panel. */}
             {showSectionVariantSelect && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      VARIANT_PILL_CLASS,
-                      VARIANT_TAB_OUTLINE_CLASS,
+              <VariantSelect
+                variants={sectionFlagVariants}
+                activeIndex={safeSectionVariantIndex}
+                icon={
+                  <VariantTabIcon
+                    rule={resolveEffectiveMatcherRule(
+                      activeSectionFlagVariant!.rule,
+                      decofile ?? {},
+                      meta ?? undefined,
                     )}
-                  >
-                    <VariantTabIcon
-                      rule={resolveEffectiveMatcherRule(
-                        activeSectionFlagVariant!.rule,
-                        decofile ?? {},
-                        meta ?? undefined,
-                      )}
-                      matchers={availableMatchers}
-                    />
-                    <span className="max-w-[120px] truncate">
-                      {activeSectionFlagVariant!.label}
-                    </span>
-                    <ChevronDown className="size-3 shrink-0" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  {sectionFlagVariants.map((variant, index) => (
-                    <DropdownMenuItem
-                      key={`${variant.label}-${index}`}
-                      onClick={() => handleSelectSectionVariant(index)}
-                    >
-                      <Check
-                        className={cn(
-                          "size-3.5",
-                          index === safeSectionVariantIndex
-                            ? "opacity-100"
-                            : "opacity-0",
-                        )}
-                      />
-                      <span className="truncate">{variant.label}</span>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={openSectionVariantManager}>
-                    <Settings01 className="size-3.5" />
-                    {t("sectionsEditor.sectionsEditor.manageVariants")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddSectionVariant()}>
-                    <Plus className="size-3.5" />
-                    {t("sectionsEditor.pageVariantTabs.addVariantTooltip")}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={handleRemoveAllSectionVariants}
-                  >
-                    <Trash01 className="size-3.5" />
-                    {t("sectionsEditor.sectionVariantList.removeAllVariants")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    matchers={availableMatchers}
+                  />
+                }
+                onSelect={handleSelectSectionVariant}
+                onManage={openSectionVariantManager}
+                onRemoveAll={handleRemoveAllSectionVariants}
+                manageLabel={t("sectionsEditor.sectionsEditor.manageVariants")}
+                removeAllLabel={t(
+                  "sectionsEditor.sectionVariantList.removeAllVariants",
+                )}
+              />
             )}
             {atPanelRoot && (
               <>
