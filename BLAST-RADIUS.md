@@ -56,8 +56,9 @@ From `context/03_product/product-vision.md` + `product-overview.md`:
   signals are partial; objectives are not built.
 - The product doctrine already states the answer to this doc:
   **"new internal needs are solved as an MCP app on top, not as new core features."**
-  We are not following it. Reports, Jira, hosting, registry, task-board, library,
-  site-editor, monitoring all landed *inside* `apps/api`.
+  We follow it in exactly one place — **Reports** (see §2.0) — and nowhere else.
+  Jira, hosting, registry, task-board, library, site-editor and monitoring all
+  landed *inside* `apps/api`.
 - The agent primitive is decided: **one Super Agent, many skins**, plus **apps**
   that own a surface. `project-app-view.tsx` + the `mcp_app_opened` event
   (3.4k events / 137 users in 30d) prove the extension point already works.
@@ -68,6 +69,38 @@ applied to the deployment topology.
 ---
 
 ## 2. The proposal
+
+### 2.0 We already did this once — Reports
+
+Reports is **not** in Studio. The engine lives in `decocms/reports` (separate
+private repo, TypeScript, actively developed). What Studio carries is a binding:
+
+| Piece | Where | Size |
+|---|---|---|
+| Diagnostic engine, its data, its `/api/v2` | **`decocms/reports`** | separate deploy |
+| 5 MCP tools (`REPORTS_BIND/RUN/SETUP/SET_REPOSITORY/CONNECTION_STATUS`) that HTTP out to it | `apps/api/src/tools/reports/` | 2,460 LOC |
+| Server-side proxy `/api/_reports/*` + share routes + page render | `apps/api/src/api/routes/` | 4 files |
+| Deck slide templates + onboarding wizard | **`apps/web/src/routes/reports*`** | **73 files, 15,864 LOC** |
+| Core schema footprint | `organization_settings.reports_only` (migration 128) | **one boolean column** |
+
+Target is `REPORTS_INTERNAL_API_URL`, per-environment (prod vs stg), and it also
+exposes `/api/v2/mcp`. So the app **already registers tools into Studio and owns
+its own data.** This is the reference implementation, not a thing to design.
+
+**What it proves:** an external service + a thin Studio binding works, ships on
+its own cadence, and keeps its schema out of Core's 232 migrations.
+
+**What it does not prove — and these are the two hard parts:**
+
+1. **The view seam.** All 15,864 LOC of reports UI still lives in `apps/web` and
+   still redeploys with the monolith. The backend is split; the frontend is not.
+2. **The auth model.** Reports is reached with a **shared master key**, with
+   Studio acting as a trusted server-side proxy. The app therefore cannot tell
+   one user from another and cannot enforce RBAC itself — Studio does it on the
+   way in. That is fine for one first-party service and does not generalize to N
+   apps. §2.2 proposes scoped delegation instead.
+
+Everything below is "do the Reports pattern properly, then do it everywhere."
 
 ### 2.1 Three fault domains, not N microservices
 
@@ -193,16 +226,24 @@ Each phase is independently valuable. Do not start phase 2 before phase 1 is don
 - [ ] Dashboard: deploys/day, merge→prod lead time, change-failure rate, MTTR,
       % of orgs exposed per deploy. If we do not measure these, phase 1 is theater.
 
-### Phase 1 — 2–4 weeks: prove the app seam with one real app
-Pick **Reports/Monitors**. It is self-contained, it is being rewritten anyway
-(consolidating into Monitors), and its data is genuinely its own.
-- [ ] Extract it to its own repo + Worker + its own store.
-- [ ] Core exposes: OAuth, `org/project/user` resolution, RBAC check, event bus.
-- [ ] It registers its tools + view; Studio renders it unchanged for users.
-- [ ] Delete the reports tables from Core's schema.
-- [ ] **Gate:** its deploys do not touch `apps/api`, and it can be rolled back alone.
+### Phase 1 — 2–4 weeks: finish Reports instead of extracting something new
+Do **not** pick a fresh app. Reports is already half-extracted (§2.0); completing
+it is smaller work, and it is the half nobody has proven.
+- [ ] Move `apps/web/src/routes/reports*` (73 files, 15,864 LOC) out of the
+      monolith and serve it from `decocms/reports` as an app-owned remote view,
+      loaded the way `project-app-view.tsx` already loads MCP app views.
+- [ ] Replace the shared master key with scoped delegation: Core issues a
+      per-org, per-user token; Reports enforces its own RBAC instead of trusting
+      a proxy. Retire `/api/_reports/*` once nothing needs it.
+- [ ] Core exposes the contract this needs: OAuth, `org/project/user` resolution,
+      RBAC check, event bus (`org.deleted` → Reports cleans up).
+- [ ] Drop `organization_settings.reports_only` — it is UI-cosmetic and belongs
+      in `flags`, not its own column.
+- [ ] **Gate:** a reports UI change deploys without touching `apps/api` or
+      `apps/web`, and rolls back alone.
 
-If phase 1 is painful, stop and fix the Core contract before extracting anything else.
+That gate is the whole point. If it is painful, fix the Core contract before
+extracting anything else — because every app after this inherits it.
 
 ### Phase 2 — 1–2 months: extract the rest, in usage order
 Task-board → site-editor → jira → registry/store → hosting → library. Each one
@@ -227,7 +268,7 @@ Unique users per surface:
 | `tasks` | 135 | keep — the product |
 | `site-editor` | 119 | keep |
 | `settings/general` | 95 | keep |
-| `reports` | 72 | **rewrite as Monitors, do not maintain both** |
+| `reports` | 72 | keep the engine; the **15,864 LOC of deck UI in `apps/web` is the liability** — move it out (Phase 1), and consolidate with `monitor` rather than maintaining both |
 | `library` | 68 | keep |
 | `connections` | 67 | keep (Core) |
 | `ai-providers` | 62 | keep (Core) |
@@ -299,7 +340,7 @@ Unique users per surface:
 ## 6. Decisions needed before anyone writes code
 
 1. **Do we auto-sync production?** (Phase 0 blocks on a yes.)
-2. **Is Reports/Monitors the pilot app**, or something smaller?
+2. **Is "finish Reports" the pilot** (recommended), or do we extract something new?
 3. **Cloudflare Workers as the default app runtime** — agreed, with containers
    for compute? (Gimenes.)
 4. **Does an app get its own repo, or a folder in this monorepo with its own
