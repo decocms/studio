@@ -8,6 +8,7 @@ import * as migration213bitbucketgitprovider from "./213-bitbucket-git-provider"
 import * as migration217experiments from "./217-experiments";
 import * as migration218threadmessagepartserroridx from "./218-thread-message-parts-error-idx";
 import * as migration219taskboardduplicatereportedactivity from "./219-task-board-duplicate-reported-activity";
+import * as migration220jiraautomationcontinuepr from "./220-jira-automation-continue-pr";
 import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
 import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
@@ -475,6 +476,7 @@ const migrations: Record<string, Migration> = {
   "218-thread-message-parts-error-idx": migration218threadmessagepartserroridx,
   "219-task-board-duplicate-reported-activity":
     migration219taskboardduplicatereportedactivity,
+  "220-jira-automation-continue-pr": migration220jiraautomationcontinuepr,
 };
 
 export default migrations;

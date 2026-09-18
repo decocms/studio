@@ -5918,11 +5918,27 @@ export interface StudioToolIO {
   };
   JIRA_AUTOMATION_LIST: {
     input: { [x: string]: never };
-    output: { automations: { jiraStatus: string; prompt: string | null }[] };
+    output: {
+      automations: {
+        jiraStatus: string;
+        prompt: string | null;
+        continuePr: boolean;
+      }[];
+    };
   };
   JIRA_AUTOMATION_UPSERT: {
-    input: { jiraStatus: string; prompt?: string | null | undefined };
-    output: { automation: { jiraStatus: string; prompt: string | null } };
+    input: {
+      jiraStatus: string;
+      prompt?: string | null | undefined;
+      continuePr?: boolean | undefined;
+    };
+    output: {
+      automation: {
+        jiraStatus: string;
+        prompt: string | null;
+        continuePr: boolean;
+      };
+    };
   };
   JIRA_AUTOMATION_DELETE: {
     input: { jiraStatus: string };

@@ -344,8 +344,8 @@ function AutomationsRow({ boardId }: { boardId: string }) {
       </p>
     );
   } else {
-    const promptOf = new Map(
-      (automations.data ?? []).map((a) => [a.jiraStatus, a.prompt]),
+    const ruleOf = new Map(
+      (automations.data ?? []).map((a) => [a.jiraStatus, a]),
     );
     body = (
       <div className="flex w-full flex-col gap-3">
@@ -356,8 +356,9 @@ function AutomationsRow({ boardId }: { boardId: string }) {
               columnName={column.name}
               status={status}
               showStatus={status !== column.name || column.statuses.length > 1}
-              hasAutomation={promptOf.has(status)}
-              prompt={promptOf.get(status) ?? null}
+              hasAutomation={ruleOf.has(status)}
+              prompt={ruleOf.get(status)?.prompt ?? null}
+              continuePr={ruleOf.get(status)?.continuePr ?? false}
             />
           )),
         )}
@@ -515,12 +516,14 @@ function StatusAutomationCard({
   showStatus,
   hasAutomation,
   prompt,
+  continuePr,
 }: {
   columnName: string;
   status: string;
   showStatus: boolean;
   hasAutomation: boolean;
   prompt: string | null;
+  continuePr: boolean;
 }) {
   const t = useT();
   const setAutomation = useSetJiraAutomation();
@@ -537,9 +540,9 @@ function StatusAutomationCard({
   }
   const dirty = draft !== (prompt ?? "");
 
-  const save = (next: string | null) =>
+  const save = (next: string | null, nextContinuePr = continuePr) =>
     setAutomation.mutate(
-      { jiraStatus: status, prompt: next },
+      { jiraStatus: status, prompt: next, continuePr: nextContinuePr },
       {
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
@@ -583,6 +586,24 @@ function StatusAutomationCard({
           <p className="text-xs text-muted-foreground">
             {t("settings.jira.promptHelp")}
           </p>
+          {/* Saved on its own, not with the prompt: it is a rule of the
+              column, and the prompt below may be mid-edit. Per rule rather
+              than inferred from the move, so a review column never pins its
+              run to the pull request it is about to judge. */}
+          <label className="flex w-fit cursor-pointer items-start gap-2 text-xs">
+            <Checkbox
+              className="mt-0.5"
+              checked={continuePr}
+              disabled={setAutomation.isPending}
+              onCheckedChange={(v) => save(prompt ?? "", v === true)}
+            />
+            <span className="flex flex-col gap-0.5">
+              {t("settings.jira.continuePr")}
+              <span className="text-muted-foreground">
+                {t("settings.jira.continuePrRuleHelp")}
+              </span>
+            </span>
+          </label>
           {dirty && (
             <div className="flex items-center justify-end gap-2">
               <Button

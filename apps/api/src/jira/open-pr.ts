@@ -1,5 +1,5 @@
 /**
- * The open pull request a Jira issue is continuing, ready to hand to a run.
+ * The open pull request(s) a Jira issue is continuing, ready to hand to a run.
  *
  * A re-run after a review asked for changes must push to the pull request that
  * was reviewed, not open a second one — and naming a pull request the sandbox
@@ -8,8 +8,12 @@
  * provider: `resolveRerunBranch` reads the board's linked pull requests, and a
  * Jira anchor deliberately has none.
  *
- * Null whenever the answer isn't unambiguous — no pull request, it is closed,
- * or the issue spans several repositories. A run that gets null behaves
+ * An issue can carry one open pull request per repository — a reciprocal
+ * change spans both storefronts. The sandbox pins to ONE branch, so the first
+ * is the run's own and the rest are `others`: the prompt names them with their
+ * branches, and the run checks each out after cloning its repository.
+ *
+ * Null when there is nothing open to continue. A run that gets null behaves
  * exactly as it does today (a fresh branch and a new pull request), which is
  * never WRONG, only wasteful. A run that gets a wrong branch pushes commits
  * nobody asked for onto someone else's work.
@@ -20,10 +24,15 @@ import { changeRequestClientForOrigin } from "@/git-providers";
 import type { JiraClient } from "./client";
 import { pullRequestsFromLinks } from "./pr-link";
 
-export interface ContinuablePr {
+export interface ContinuedPr {
   number: number;
   url: string;
   head: string;
+}
+
+export interface ContinuablePr extends ContinuedPr {
+  /** Open pull requests in the issue's OTHER repositories. */
+  others: Array<ContinuedPr & { repo: string }>;
 }
 
 export async function openPrForIssue(
@@ -33,20 +42,32 @@ export async function openPrForIssue(
   issueKey: string,
 ): Promise<ContinuablePr | null> {
   try {
-    const prs = pullRequestsFromLinks(await jira.listRemoteLinks(issueKey));
-    // Several repositories is a real shape here — a reciprocal change spans
-    // both storefronts — but `pr` names ONE, and its lead tells the run it is
-    // already standing on that branch. It can only be standing on one, so the
-    // honest answer for the others is to say nothing.
-    if (prs.length !== 1) return null;
-    const ref = prs[0]!;
-    const client = await changeRequestClientForOrigin(ctx, organizationId, {
-      repo: ref.repo,
-    });
-    if (!client) return null;
-    const pr = await client.read(ref.number);
-    if (!pr || pr.state !== "open" || !pr.head) return null;
-    return { number: ref.number, url: ref.url, head: pr.head };
+    const open: Array<ContinuedPr & { repo: string }> = [];
+    for (const ref of pullRequestsFromLinks(
+      await jira.listRemoteLinks(issueKey),
+    )) {
+      const client = await changeRequestClientForOrigin(ctx, organizationId, {
+        repo: ref.repo,
+      });
+      if (!client) continue;
+      const pr = await client.read(ref.number);
+      // Closed or merged is not continued: a person ended that one on purpose.
+      if (!pr || pr.state !== "open" || !pr.head) continue;
+      open.push({
+        number: ref.number,
+        url: ref.url,
+        head: pr.head,
+        repo: ref.repo.path,
+      });
+    }
+    const [primary, ...others] = open;
+    if (!primary) return null;
+    return {
+      number: primary.number,
+      url: primary.url,
+      head: primary.head,
+      others,
+    };
   } catch {
     // Best-effort by design: a provider hiccup costs a duplicate pull request,
     // which a person can close. Failing the run costs the work.

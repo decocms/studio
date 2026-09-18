@@ -20,7 +20,11 @@
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgJiraIntegration, TaskBoardItem } from "@/storage/types";
-import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
+import {
+  type ContinuedPullRequest,
+  enqueueSuperAgentForTask,
+} from "@/tools/task-board/enqueue-super-agent";
+import { openPrForIssue } from "./open-pr";
 import { supersedeLiveRuns } from "@/tools/task-board/rerun";
 import { JiraClient, type JiraChangelogHistory } from "./client";
 import {
@@ -142,8 +146,9 @@ export async function triggerRunForTransition(
   );
   if (!rule) return "no_rule";
 
+  const client = jiraClientFor(integration);
   const issue = await loadIssueForPrompt(
-    jiraClientFor(integration),
+    client,
     integration.siteUrl,
     transition.issueId,
   );
@@ -153,6 +158,12 @@ export async function triggerRunForTransition(
     issue,
     integration.createdBy,
   );
+  // The rule says so, not the direction of the move: a card sent back from
+  // review carries the reviewed pull request, a card entering for the first
+  // time carries none and starts fresh either way.
+  const pr = rule.continuePr
+    ? await openPrForIssue(ctx, orgId, client, issue.key)
+    : null;
 
   const claimed = await ctx.storage.jiraIntegrations.claimTrigger(
     orgId,
@@ -168,6 +179,7 @@ export async function triggerRunForTransition(
     instruction: rule.prompt,
     actorId: integration.createdBy,
     ...oneIssue(issue),
+    ...(pr ? { pr } : {}),
   });
   return "started";
 }
@@ -192,7 +204,7 @@ export async function startJiraRunForIssue(
     actorId: string;
     /** Hand the run an EXISTING pull request to continue instead of opening
      *  one — a re-run after a review asked for changes. */
-    pr?: { number: number; url: string; head?: string };
+    pr?: ContinuedPullRequest;
   },
 ): Promise<{
   item: TaskBoardItem;
@@ -289,7 +301,7 @@ async function dispatchJiraRun(
     instruction: string | null;
     actorId: string;
     userInitiated?: boolean;
-    pr?: { number: number; url: string; head?: string };
+    pr?: ContinuedPullRequest;
     /** The issues the run may act on, and what its message opens with. */
     issueKeys: string[];
     title: string;

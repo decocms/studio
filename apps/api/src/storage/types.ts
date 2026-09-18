@@ -2200,6 +2200,9 @@ export interface OrgJiraColumnAutomationTable {
   organization_id: string;
   jira_status: string;
   prompt: string | null;
+  /** Continue the pull request the issue already carries instead of opening
+   *  a new one (migration 220). */
+  continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

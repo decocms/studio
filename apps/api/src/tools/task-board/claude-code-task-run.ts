@@ -238,6 +238,26 @@ const MIXED_PROVIDER_NOTE =
   "you are standing in — check its remote with `git remote get-url origin` if " +
   "you are unsure.";
 
+/**
+ * The issue's open pull requests in its OTHER repositories, as prompt lines.
+ * The sandbox is pinned to one branch; each of these needs its own clone and
+ * its own checkout before the run may push to it. Empty when there are none.
+ */
+export function otherPullRequestsLead(
+  pr: SuperAgentPromptOpts["pr"],
+): string[] {
+  const others = pr?.others ?? [];
+  if (others.length === 0) return [];
+  return [
+    `This issue spans ${others.length + 1} repositories, and it has an open pull request in each of the others too:`,
+    ...others.map(
+      (o) =>
+        `- ${o.repo}: pull request #${o.number} (${o.url}) on branch \`${o.head}\`. After cloning that repository, run \`git fetch origin ${o.head} && git checkout ${o.head}\` BEFORE editing, and push to update that SAME pull request — do NOT open a new one there.`,
+    ),
+    "A change that only lands on one side is worse than none: if you cannot update them all, update none and say why.",
+  ];
+}
+
 export function buildClaudeCodeTaskPrompt(
   task: { id: string; title: string; description: string | null },
   repo: TaskRepo | null,
@@ -329,6 +349,7 @@ export function buildClaudeCodeTaskPrompt(
       opts.pr
         ? `Check that branch out (\`${checkoutCommandFor(repo?.provider ?? "github", opts.pr.number)}\`) before editing, address the feedback, then push to update the SAME ${cli.changeRequest} — do NOT open a new one.`
         : "Address this feedback.",
+      ...otherPullRequestsLead(opts.pr),
       "",
     );
   } else if (opts?.pr) {
@@ -338,6 +359,7 @@ export function buildClaudeCodeTaskPrompt(
     lines.push(
       `This task already has an open pull request #${opts.pr.number} (${opts.pr.url}), and you are already on its branch.`,
       `Continue that work: commit and push to update the SAME pull request — do NOT open a new one. If it already does everything the task asks, say so and stop rather than changing it.`,
+      ...otherPullRequestsLead(opts.pr),
       "",
     );
   }

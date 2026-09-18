@@ -94,6 +94,8 @@ export const settings = {
     "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type “/” to insert the same skill the column rule would use.",
   "settings.jira.continuePr":
     "Continue the pull request the issue already carries (a re-run after a review asked for changes)",
+  "settings.jira.continuePrRuleHelp":
+    "Checked on every card that enters this status: one that already carries an open pull request continues it, one with none starts fresh. Leave it off on a review status.",
   "settings.jira.together":
     "One run for all of them — the agent sees every issue and works them as a batch, instead of one run per issue",
   "settings.jira.togetherStarted": "Started one run on",

@@ -101,6 +101,7 @@ export function useSetJiraAutomation() {
     mutationFn: async (input: {
       jiraStatus: string;
       prompt: string | null;
+      continuePr?: boolean;
     }) => {
       if (input.prompt === null) {
         await studio.call("JIRA_AUTOMATION_DELETE", {
@@ -111,6 +112,7 @@ export function useSetJiraAutomation() {
       await studio.call("JIRA_AUTOMATION_UPSERT", {
         jiraStatus: input.jiraStatus,
         prompt: input.prompt.trim() === "" ? undefined : input.prompt,
+        continuePr: input.continuePr ?? false,
       });
     },
     onSettled: () =>

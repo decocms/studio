@@ -21,6 +21,7 @@ import { fetchPrHeadRef } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
 import {
   buildClaudeCodeTaskPrompt,
+  otherPullRequestsLead,
   resolveTaskRepoChoice,
 } from "./claude-code-task-run";
 
@@ -57,6 +58,19 @@ export async function reactToSuperAgentDelegation(
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
+/**
+ * The pull request a re-run continues. `others` are the issue's open pull
+ * requests in its OTHER repositories — a change that spans two storefronts
+ * has one in each. The sandbox is pinned to `head` only, so the prompt names
+ * the others with their branches for the run to check out after cloning.
+ */
+export interface ContinuedPullRequest {
+  number: number;
+  url: string;
+  head?: string;
+  others?: Array<{ number: number; url: string; head: string; repo: string }>;
+}
+
 /** Options that steer the Super Agent prompt for a re-run on an existing PR. */
 export type SuperAgentPromptOpts = {
   /** What the board's rule for this column says to do. Replaces the default
@@ -73,7 +87,7 @@ export type SuperAgentPromptOpts = {
    *  requests and a Jira anchor deliberately has none. Without it the prompt
    *  would name a pull request the sandbox is not booted on, which is the
    *  combination that produced duplicates. */
-  pr?: { number: number; url: string; head?: string };
+  pr?: ContinuedPullRequest;
   /** This re-run exists to resolve a merge conflict on `pr` (not reviewer
    *  feedback): the lead instructs a checkout + base merge + push. Requires
    *  `pr` — without it the conflict lead is skipped (a conflict instruction
@@ -160,6 +174,7 @@ export function buildSuperAgentTaskPrompt(
           ? [
               `This task already has an open pull request #${opts.pr.number} (${opts.pr.url}), and you are already on its branch.`,
               `Continue that work: commit and push to update the SAME pull request — do NOT open a new one or start a new branch. If you find it already does everything the task asks, say so and stop rather than changing it.`,
+              ...otherPullRequestsLead(opts.pr),
               "",
             ].join("\n")
           : "",

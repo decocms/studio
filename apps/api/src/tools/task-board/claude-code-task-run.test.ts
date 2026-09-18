@@ -207,6 +207,27 @@ describe("buildClaudeCodeTaskPrompt", () => {
    * boots on that PR's branch, so the prompt must say continue-this-PR rather
    * than the default open-a-new-one.
    */
+  test("a PR in a second repository is named with its branch to check out", () => {
+    const prompt = buildClaudeCodeTaskPrompt(task, repo, {
+      pr: {
+        number: 7,
+        url: "https://github.com/acme/web/pull/7",
+        others: [
+          {
+            number: 21,
+            url: "https://github.com/acme/web-br/pull/21",
+            head: "fix-hreflang",
+            repo: "acme/web-br",
+          },
+        ],
+      },
+    });
+    expect(prompt).toContain("spans 2 repositories");
+    expect(prompt).toContain("acme/web-br: pull request #21");
+    expect(prompt).toContain("git checkout fix-hreflang");
+    expect(prompt).toContain("update none and say why");
+  });
+
   test("a PR with no feedback leads with continue-this-PR", () => {
     const prompt = buildClaudeCodeTaskPrompt(task, repo, {
       pr: { number: 7, url: "https://github.com/acme/web/pull/7" },
