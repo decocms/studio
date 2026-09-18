@@ -117,9 +117,8 @@ export function SuggestLinksButton({
     <>
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         size="sm"
-        className="px-2 text-muted-foreground"
         disabled={loading || !hasAi || candidates.length === 0}
         title={
           !hasAi

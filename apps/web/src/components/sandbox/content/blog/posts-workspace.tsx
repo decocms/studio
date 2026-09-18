@@ -109,6 +109,18 @@ const STATUS_VARIANT: Record<
 /** The ideas tray collapses like a lane, but has no status of its own. */
 const IDEAS_LANE = "ideas";
 
+/** Go-live instant of a post (ISO, so lexical order is chronological). */
+const postDateKey = (post: PostMeta) =>
+  post.scheduledDatetime || post.date || "";
+
+/** Newest first — for the scheduled and published lanes/groups. */
+const byDateDesc = (a: PostMeta, b: PostMeta) =>
+  postDateKey(b).localeCompare(postDateKey(a));
+
+/** These statuses read as a timeline; everything else keeps its natural order. */
+const isDatedStatus = (status: PostStatus) =>
+  status === "scheduled" || status === "published";
+
 /** Drag payload key — the dragged post's block key. */
 const DRAG_KEY = "application/x-post-key";
 
@@ -635,6 +647,7 @@ export function PostsWorkspace({
           />
           {POST_STATUSES.map((status) => {
             const lanePosts = posts.filter((p) => p.status === status);
+            if (isDatedStatus(status)) lanePosts.sort(byDateDesc);
             const laneLabel = t(POST_STATUS_LABEL[status]);
             const isCollapsed = collapsedLanes.includes(status);
             const unsupported = postStatusUnsupported(support, status);
@@ -899,10 +912,13 @@ function PostList({
   const index = new Map<string, number>();
   const ordered =
     groupBy === "status"
-      ? [...posts].sort(
-          (a, b) =>
-            POST_STATUSES.indexOf(a.status) - POST_STATUSES.indexOf(b.status),
-        )
+      ? [...posts].sort((a, b) => {
+          const byStatus =
+            POST_STATUSES.indexOf(a.status) - POST_STATUSES.indexOf(b.status);
+          if (byStatus !== 0) return byStatus;
+          // Within the scheduled/published groups, newest first.
+          return isDatedStatus(a.status) ? byDateDesc(a, b) : 0;
+        })
       : [...posts].sort((a, b) => a.title.localeCompare(b.title));
   for (const post of ordered) {
     const g = groupOf(post, payloadOf(post.key), groupBy, t);
