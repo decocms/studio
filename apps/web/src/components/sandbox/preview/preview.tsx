@@ -35,7 +35,7 @@ import {
   LinkExternal01,
   ChevronDown,
   Database01,
-  Globe02,
+  Globe01,
   Plus,
   Monitor04,
   Phone02,
@@ -143,6 +143,7 @@ import {
   defaultPreviewEditingMode,
   isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
+  toggleBlocksEditingMode,
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
@@ -1255,8 +1256,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (mode === "blocks") blocksPanelRef.current?.resize("30%");
       else blocksPanelRef.current?.collapse();
     }
-    // The JSON side panel only makes sense next to the Blocks editor.
-    if (mode !== "blocks") closeJsonPanel();
     setEditingMode(mode);
     setVisualElement(null);
     setCmsSelectedSection(null);
@@ -1271,6 +1270,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const toggleVisualEditing = () => {
     activateEditingMode(
       toggleVisualEditingMode(editingMode, blocksEditingEnabled),
+    );
+  };
+
+  const toggleBlocksEditing = () => {
+    activateEditingMode(
+      toggleBlocksEditingMode(editingMode, blocksEditingEnabled),
     );
   };
 
@@ -1523,7 +1528,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                  <Globe02 size={11} />
+                  <Globe01 size={11} />
                   {t("sandbox.preview.globalBadge")}
                 </span>
               )}
@@ -1767,7 +1772,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               >
                 {activeGlobalSection && (
                   <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                    <Globe02 size={11} />
+                    <Globe01 size={11} />
                     {t("sandbox.preview.globalBadge")}
                   </span>
                 )}
@@ -1975,7 +1980,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                               navigatePreviewToGlobalSection(section);
                             }}
                           >
-                            <Globe02
+                            <Globe01
                               size={16}
                               className="shrink-0 text-muted-foreground"
                             />
@@ -2108,7 +2113,22 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           <CursorClick01 size={16} />
         </ToolbarIconButton>
       )}
-      {effectiveEditingMode === "blocks" && jsonBlockKey && (
+      {blocksEditingEnabled && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={toggleBlocksEditing}
+              aria-pressed={effectiveEditingMode === "blocks"}
+              aria-label={t("sandbox.preview.blocksEditor")}
+              active={effectiveEditingMode === "blocks"}
+            >
+              <LayoutAlt01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>{t("sandbox.preview.blocksEditor")}</TooltipContent>
+        </Tooltip>
+      )}
+      {jsonBlockKey && (
         <Tooltip>
           <TooltipTrigger asChild>
             <ToolbarIconButton
