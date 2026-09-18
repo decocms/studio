@@ -243,26 +243,26 @@ ${cardList}`;
 }
 
 /**
- * Ask the org's "fast" tier which candidate, if any, already tracks the draft.
- * Returns null when there is no provider, the call fails, or nothing was
- * offered — the caller then creates the card.
+ * One structured call to the org's "fast" tier. Null when there is no
+ * provider, the call fails, or the answer does not parse — every caller reads
+ * null as "no duplicate" and creates.
  */
-async function judgeDuplicate(
+async function askFastTier<T>(
   ctx: StudioContext,
   orgId: string,
-  draft: TaskDraft,
-  candidates: readonly TaskBoardItem[],
-): Promise<DuplicateVerdict | null> {
-  if (candidates.length === 0) return null;
+  schema: z.ZodType<T>,
+  system: string,
+  prompt: string,
+): Promise<T | null> {
   try {
     const tier = await resolveTier(ctx, "fast");
     const provider = await ctx.aiProviders.activate(tier.credentialId, orgId);
     const model = provider.aiSdk.languageModel(tier.modelId);
     const { object } = await generateObject({
       model,
-      schema: DuplicateVerdictSchema,
-      system: SYSTEM,
-      prompt: buildDuplicatePrompt(draft, candidates),
+      schema,
+      system,
+      prompt,
       temperature: 0,
     });
     return object;
@@ -270,6 +270,187 @@ async function judgeDuplicate(
     console.warn("[task-board] duplicate check failed, creating anyway", err);
     return null;
   }
+}
+
+/** Ask which candidate, if any, already tracks the draft. */
+async function judgeDuplicate(
+  ctx: StudioContext,
+  orgId: string,
+  draft: TaskDraft,
+  candidates: readonly TaskBoardItem[],
+): Promise<DuplicateVerdict | null> {
+  if (candidates.length === 0) return null;
+  return askFastTier(
+    ctx,
+    orgId,
+    DuplicateVerdictSchema,
+    SYSTEM,
+    buildDuplicatePrompt(draft, candidates),
+  );
+}
+
+/**
+ * Batch form, for the reports import, which lands up to 100 findings at once.
+ * One model call for the whole batch, never one per item: the import holds a
+ * transaction open while it writes, and this check runs before it.
+ *
+ * A draft in a batch, addressed by its position so the verdict can name it.
+ */
+export interface IndexedDraft extends TaskDraft {
+  index: number;
+}
+
+/** Candidates offered per draft before the union is taken. Small on purpose:
+ *  a batch of 100 drafts × 10 each is already a long prompt. */
+const BATCH_CANDIDATES_PER_DRAFT = 10;
+/** Cap on the union of candidates a batch call may carry. */
+const MAX_BATCH_CANDIDATES = 100;
+
+/**
+ * The union of each draft's best lexical matches, order preserved by first
+ * appearance, capped. Every draft contributes its top few so a large batch
+ * cannot crowd out one draft's only plausible duplicate.
+ */
+export function selectBatchCandidates(
+  items: readonly TaskBoardItem[],
+  drafts: readonly IndexedDraft[],
+  perDraft: number = BATCH_CANDIDATES_PER_DRAFT,
+  max: number = MAX_BATCH_CANDIDATES,
+): TaskBoardItem[] {
+  const seen = new Set<string>();
+  const union: TaskBoardItem[] = [];
+  for (const draft of drafts) {
+    for (const item of selectDuplicateCandidates(items, draft, perDraft)) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      union.push(item);
+      if (union.length >= max) return union;
+    }
+  }
+  return union;
+}
+
+export interface BatchDuplicateVerdict {
+  matches: {
+    /** The draft's `index`. */
+    draft: number;
+    duplicateOf: string | null;
+    confidence: DuplicateConfidence;
+    reason: string;
+  }[];
+}
+
+const BatchDuplicateVerdictSchema = z.object({
+  matches: z
+    .array(
+      z.object({
+        draft: z.number().int().describe("The draft's index, as listed."),
+        duplicateOf: z
+          .string()
+          .nullable()
+          .describe(
+            "Id of the existing card that already tracks this draft, or null.",
+          ),
+        confidence: z
+          .enum(["high", "medium", "low"])
+          .describe(
+            "`high` only when the two clearly ask for the same change. Related or overlapping work is `medium` at most.",
+          ),
+        reason: z.string().describe("One sentence explaining the match."),
+      }),
+    )
+    .describe(
+      "One entry per draft that has a plausible duplicate. Drafts with no candidate may be omitted.",
+    ),
+});
+
+const BATCH_SYSTEM = `You maintain a team's task board. A batch of new tasks is about to be filed. For EACH draft, decide whether one of the existing open cards ALREADY tracks the same work.
+
+- Two tasks are the same work when completing one would make the other unnecessary. Match on intent, not wording: different phrasing, language, or level of detail can still be the same task.
+- Related is NOT the same: a task on a neighbouring feature, a sub-part of a larger card, or the same area with a different change is not a duplicate. When in doubt, it is not a duplicate.
+- Answer \`confidence: "high"\` only when you would be comfortable telling the filer "this already exists, here it is" without checking further.
+- Judge drafts against the EXISTING cards only, never against each other.
+
+Respond with ONLY a JSON object of this shape, and nothing else:
+{"matches": [{"draft": number, "duplicateOf": string | null, "confidence": "high" | "medium" | "low", "reason": string}]}`;
+
+/** The user turn: every draft by index, then every candidate card. */
+export function buildBatchDuplicatePrompt(
+  drafts: readonly IndexedDraft[],
+  candidates: readonly TaskBoardItem[],
+): string {
+  const draftList = drafts
+    .map((d) => {
+      const desc = excerpt(d.description ?? null);
+      const repo = d.repo ? ` (${d.repo})` : "";
+      return `- draft ${d.index}${repo}: ${d.title}${desc ? ` — ${desc}` : ""}`;
+    })
+    .join("\n");
+  const cardList = candidates
+    .map((c) => {
+      const meta = [c.status, c.repo].filter(Boolean).join(", ");
+      const desc = excerpt(c.description);
+      return `- [${c.id}] (${meta}) ${c.title}${desc ? ` — ${desc}` : ""}`;
+    })
+    .join("\n");
+  return `New tasks being filed:
+${draftList}
+
+Existing open cards:
+${cardList}`;
+}
+
+/**
+ * The batch verdict, gated per draft with the same rule as
+ * {@link acceptDuplicate}: high confidence, an offered card id, and a draft
+ * index that exists. Later entries for the same draft do not override an
+ * earlier accepted one.
+ */
+export function acceptBatchDuplicates(
+  verdict: BatchDuplicateVerdict | null,
+  drafts: readonly IndexedDraft[],
+  candidates: readonly TaskBoardItem[],
+): Map<number, { item: TaskBoardItem; reason: string }> {
+  const accepted = new Map<number, { item: TaskBoardItem; reason: string }>();
+  if (!verdict) return accepted;
+  const known = new Set(drafts.map((d) => d.index));
+  for (const m of verdict.matches) {
+    if (!known.has(m.draft) || accepted.has(m.draft)) continue;
+    const item = acceptDuplicate(
+      {
+        duplicateOf: m.duplicateOf,
+        confidence: m.confidence,
+        reason: m.reason,
+      },
+      candidates,
+    );
+    if (item) accepted.set(m.draft, { item, reason: m.reason });
+  }
+  return accepted;
+}
+
+/**
+ * The batch check: for each draft, the existing card that already tracks it.
+ * Drafts absent from the result should be created. One model call for the
+ * whole batch; an empty draft list or no candidates costs nothing.
+ */
+export async function findDuplicatesForBatch(
+  ctx: StudioContext,
+  orgId: string,
+  drafts: readonly IndexedDraft[],
+): Promise<Map<number, { item: TaskBoardItem; reason: string }>> {
+  if (drafts.length === 0) return new Map();
+  const items = await ctx.storage.taskBoard.list(orgId);
+  const candidates = selectBatchCandidates(items, drafts);
+  if (candidates.length === 0) return new Map();
+  const verdict = await askFastTier(
+    ctx,
+    orgId,
+    BatchDuplicateVerdictSchema,
+    BATCH_SYSTEM,
+    buildBatchDuplicatePrompt(drafts, candidates),
+  );
+  return acceptBatchDuplicates(verdict, drafts, candidates);
 }
 
 /**

@@ -3,9 +3,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
 import {
+  isReportsTask,
   nextTagColor,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
+import {
+  findDuplicatesForBatch,
+  type IndexedDraft,
+} from "@/tools/task-board/duplicate-check";
 import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
@@ -90,6 +95,45 @@ type Variables = {
  */
 export function normalizeTitleKey(title: string): string {
   return title.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * The third, semantic dedup pass — what the two exact keys cannot catch: a
+ * keyless finding whose wording drifted between runs, or one a human already
+ * filed in their own words.
+ *
+ * Only items WITHOUT an externalKey and without an exact title match against
+ * an open card are offered, in ONE model call for the whole batch, and it runs
+ * before the transaction so no model latency sits inside it. Only a
+ * high-confidence verdict naming an offered card counts (see
+ * `acceptBatchDuplicates`). Best-effort: no model tier, a provider error, or a
+ * malformed answer yields an empty map and the items are created as before.
+ *
+ * Returns item index → the open card that already tracks it.
+ */
+async function semanticMatchesFor(
+  ctx: StudioContext,
+  organizationId: string,
+  items: readonly {
+    title: string;
+    description?: string | null;
+    externalKey?: string;
+  }[],
+  openTitleKeys: ReadonlySet<string>,
+): Promise<Map<number, { item: TaskBoardItem; reason: string }>> {
+  const drafts: IndexedDraft[] = [];
+  items.forEach((item, index) => {
+    if (item.externalKey) return;
+    if (openTitleKeys.has(normalizeTitleKey(item.title))) return;
+    drafts.push({ index, title: item.title, description: item.description });
+  });
+  if (drafts.length === 0) return new Map();
+  try {
+    return await findDuplicatesForBatch(ctx, organizationId, drafts);
+  } catch (err) {
+    console.warn("[task-board-import] semantic dedup skipped", err);
+    return new Map();
+  }
 }
 
 export const importBodySchema = z.object({
@@ -212,6 +256,19 @@ export const createTaskBoardImportRoutes = () => {
       ownerId = owner?.userId ?? null;
     }
 
+    // Exact-title matches are the transaction's job; the model only sees the rest.
+    const openTitleKeys = new Set(
+      (await ctx.storage.taskBoard.list(organizationId))
+        .filter((row) => row.status !== "done")
+        .map((row) => normalizeTitleKey(row.title)),
+    );
+    const semantic = await semanticMatchesFor(
+      ctx,
+      organizationId,
+      items,
+      openTitleKeys,
+    );
+
     const runId = parsed.data.source?.run_id;
 
     // One transaction: claim the run_id, then reconcile the batch. Losing the
@@ -333,7 +390,8 @@ export const createTaskBoardImportRoutes = () => {
       let created = 0;
       let updated = 0;
       let skipped = 0;
-      for (const item of items) {
+      let semanticMatches = 0;
+      for (const [index, item] of items.entries()) {
         const titleKey = normalizeTitleKey(item.title);
         const isDismissed = item.externalKey
           ? dismissed.has(item.externalKey)
@@ -369,6 +427,35 @@ export const createTaskBoardImportRoutes = () => {
           updated++;
           continue;
         }
+        const match = item.externalKey ? undefined : semantic.get(index);
+        if (match) {
+          // Only a reports-owned card is refreshed; a human's keeps its content.
+          const row = isReportsTask(match.item)
+            ? await storage.update(
+                match.item.id,
+                organizationId,
+                {
+                  description: item.description ?? null,
+                  priority: item.priority,
+                  ...(item.repositoryId !== undefined
+                    ? { repositoryId: item.repositoryId }
+                    : {}),
+                },
+                "system",
+              )
+            : match.item;
+          await storage.recordActivity({
+            taskBoardItemId: match.item.id,
+            action: "duplicate_reported",
+            actorId: null,
+            data: { title: item.title, reason: match.reason },
+          });
+          openByTitle.set(titleKey, match.item.id);
+          touched.push(await withTags(row, item.tags));
+          updated++;
+          semanticMatches++;
+          continue;
+        }
         const toSuperAgent = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
         const row = await storage.create({
           organizationId,
@@ -397,7 +484,14 @@ export const createTaskBoardImportRoutes = () => {
         created++;
         if (toSuperAgent) delegations.push(row);
       }
-      return { touched, delegations, created, updated, skipped };
+      return {
+        touched,
+        delegations,
+        created,
+        updated,
+        skipped,
+        semanticMatches,
+      };
     });
 
     if (!outcome)
@@ -436,6 +530,7 @@ export const createTaskBoardImportRoutes = () => {
         created: outcome.created,
         updated: outcome.updated,
         skipped: outcome.skipped,
+        semantic_matches: outcome.semanticMatches,
         delegated,
         quota_blocked: quotaBlocked,
         ...(runId ? { run_id: runId } : {}),
@@ -451,6 +546,10 @@ export const createTaskBoardImportRoutes = () => {
       delegated,
       // Report the skips — a silent one reads as "imported everything".
       ...(outcome.skipped > 0 && { dismissed: outcome.skipped }),
+      // How many of `updated` were folded by the model rather than an exact key.
+      ...(outcome.semanticMatches > 0 && {
+        semantic_matches: outcome.semanticMatches,
+      }),
       ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
     });
   });

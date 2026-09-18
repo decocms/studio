@@ -2,10 +2,13 @@ import { describe, expect, it } from "bun:test";
 import type { TaskBoardItem } from "@/storage/types";
 import { TASK_BOARD_ITEM_CREATE } from "./create";
 import {
+  acceptBatchDuplicates,
   acceptDuplicate,
+  buildBatchDuplicatePrompt,
   buildDuplicatePrompt,
   isOpenForDuplicateCheck,
   MAX_DUPLICATE_CANDIDATES,
+  selectBatchCandidates,
   selectDuplicateCandidates,
   tokenize,
 } from "./duplicate-check";
@@ -249,5 +252,140 @@ describe("TASK_BOARD_ITEM_CREATE onDuplicate", () => {
     expect(Object.keys(shape).sort()).toEqual(
       ["deduplicated", "duplicateReason", "item"].sort(),
     );
+  });
+});
+
+describe("selectBatchCandidates", () => {
+  it("unions each draft's best matches, first appearance wins, no repeats", () => {
+    const login = card({ title: "Fix login on Safari" });
+    const dark = card({ title: "Dark mode toggle" });
+    const other = card({ title: "Rotate signing key" });
+    const picked = selectBatchCandidates(
+      [other, dark, login],
+      [
+        { index: 0, title: "Login broken on Safari" },
+        { index: 1, title: "Add dark mode toggle" },
+      ],
+      1,
+    );
+    expect(picked.map((c) => c.id)).toEqual([login.id, dark.id]);
+  });
+
+  it("caps the union so a large batch cannot flood the prompt", () => {
+    const cards = Array.from({ length: 30 }, (_, i) =>
+      card({ title: `topic${i} widget${i}` }),
+    );
+    const drafts = Array.from({ length: 30 }, (_, i) => ({
+      index: i,
+      title: `topic${i} widget${i}`,
+    }));
+    expect(selectBatchCandidates(cards, drafts, 10, 12)).toHaveLength(12);
+  });
+
+  it("is empty for an empty batch", () => {
+    expect(selectBatchCandidates([card()], [])).toEqual([]);
+  });
+});
+
+describe("acceptBatchDuplicates", () => {
+  const offered = [card(), card()];
+  const drafts = [
+    { index: 0, title: "a" },
+    { index: 1, title: "b" },
+  ];
+
+  it("maps each high-confidence match on an offered card to its draft", () => {
+    const out = acceptBatchDuplicates(
+      {
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: offered[1]!.id,
+            confidence: "high",
+            reason: "same",
+          },
+          {
+            draft: 1,
+            duplicateOf: offered[0]!.id,
+            confidence: "medium",
+            reason: "close",
+          },
+        ],
+      },
+      drafts,
+      offered,
+    );
+    expect([...out.keys()]).toEqual([0]);
+    expect(out.get(0)?.item).toBe(offered[1]!);
+    expect(out.get(0)?.reason).toBe("same");
+  });
+
+  it("ignores unknown draft indexes, unoffered ids, and a null verdict", () => {
+    expect(
+      acceptBatchDuplicates(
+        {
+          matches: [
+            {
+              draft: 7,
+              duplicateOf: offered[0]!.id,
+              confidence: "high",
+              reason: "",
+            },
+            {
+              draft: 0,
+              duplicateOf: "tbi_elsewhere",
+              confidence: "high",
+              reason: "",
+            },
+          ],
+        },
+        drafts,
+        offered,
+      ).size,
+    ).toBe(0);
+    expect(acceptBatchDuplicates(null, drafts, offered).size).toBe(0);
+  });
+
+  it("keeps the first accepted match for a draft", () => {
+    const out = acceptBatchDuplicates(
+      {
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: offered[0]!.id,
+            confidence: "high",
+            reason: "first",
+          },
+          {
+            draft: 0,
+            duplicateOf: offered[1]!.id,
+            confidence: "high",
+            reason: "second",
+          },
+        ],
+      },
+      drafts,
+      offered,
+    );
+    expect(out.get(0)?.item).toBe(offered[0]!);
+  });
+});
+
+describe("buildBatchDuplicatePrompt", () => {
+  it("lists drafts by index and cards by id", () => {
+    const c = card({ title: "Fix login", status: "todo" });
+    const prompt = buildBatchDuplicatePrompt(
+      [
+        {
+          index: 3,
+          title: "Login broken",
+          description: "on Safari",
+          repo: "acme/web",
+        },
+      ],
+      [c],
+    );
+    expect(prompt).toContain("- draft 3 (acme/web): Login broken — on Safari");
+    expect(prompt).toContain(`- [${c.id}] (todo) Fix login`);
   });
 });

@@ -667,4 +667,52 @@ describe("Task Board Import Route", () => {
       delegated: 0,
     });
   });
+
+  it("keyless items still import when the org has no model tier (semantic pass fails open)", async () => {
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Imagens sem alt text na home" },
+          { title: "Imagens da home sem texto alternativo" },
+        ],
+      }),
+    );
+    expect(res.status).toBe(200);
+    // No provider is configured for org_board, so nothing folds: two cards.
+    await expect(res.json()).resolves.toEqual({
+      created: 2,
+      updated: 0,
+      delegated: 0,
+    });
+  });
+
+  it("an exact title match is refreshed by the deterministic pass, never offered to the model", async () => {
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "LCP acima de 4s", description: "v1" }],
+      }),
+    );
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "  lcp ACIMA de 4s ", description: "v2" }],
+      }),
+    );
+    await expect(res.json()).resolves.toEqual({
+      created: 0,
+      updated: 1,
+      delegated: 0,
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["description"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toEqual([{ description: "v2" }]);
+    const activity = await database.db
+      .selectFrom("task_board_activity")
+      .select(["action"])
+      .where("action", "=", "duplicate_reported")
+      .execute();
+    expect(activity).toHaveLength(0);
+  });
 });
