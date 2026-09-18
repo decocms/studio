@@ -6,7 +6,6 @@ import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
-  AlertTriangle,
   Copy01,
   Cube01,
   LayersThree01,
@@ -64,7 +63,7 @@ import type { LiveMeta } from "./resolve-schema";
 import { GLOBAL_SECTION_ICON_COLOR, type RawSection } from "./section-types";
 import { parseSections, type ParsedSection } from "./parse-sections";
 import { sectionHasMissingRequiredField } from "./section-required-status";
-import { MissingRequiredDot } from "./missing-required-dot";
+import { MissingRequiredMarker } from "./missing-required-marker";
 
 export { parseSections, type ParsedSection, type RawSection };
 
@@ -217,19 +216,13 @@ function SectionRowContent({
               className="text-warning"
             />
           )}
-          {missingRequired && (
-            <RowStatusIcon
-              icon={AlertTriangle}
-              label={t("sectionsEditor.field.missingRequiredTooltip")}
-              className="text-destructive"
-            />
-          )}
+          {missingRequired && <MissingRequiredMarker />}
           {/* Takes the slack so status sits against the title, actions stay right. */}
           <span className="min-w-0 flex-1" />
         </>
       ) : (
         missingRequired && (
-          <MissingRequiredDot className="absolute -right-0.5 -top-0.5" />
+          <MissingRequiredMarker className="absolute -right-0.5 -top-0.5" />
         )
       )}
     </>

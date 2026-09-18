@@ -55,7 +55,7 @@ import {
 import type { FieldProps } from "./field-props";
 import { ArrayRowContent, SortableArrayRow } from "./array-row";
 import { hasMissingRequiredField } from "../section-required-status";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 import { SchemaForm, renderField } from "../schema-form";
 import {
   RequiredFieldProvider,
@@ -534,7 +534,7 @@ export function ArrayField({
           <span className="min-w-0 truncate text-sm font-medium">
             {label}
             {requiredProp && requiredInvalid && (
-              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+              <MissingRequiredMarker className="ml-1 inline-block align-middle" />
             )}
           </span>
         </FieldDescriptionTooltip>

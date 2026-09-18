@@ -22,7 +22,7 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 
 // Width/margin snap instantly (no visible slide) while opacity does the
 // actual animating. On reveal the snap has no delay, so the button is
@@ -85,7 +85,7 @@ export function ArrayRowContent({
           />
         )}
         <span className="min-w-0 truncate">{labelText}</span>
-        {missingRequired && <MissingRequiredDot className="self-start" />}
+        {missingRequired && <MissingRequiredMarker className="self-start" />}
       </div>
     </>
   );
@@ -165,7 +165,7 @@ export function SortableArrayRow({
         {labelText}
       </span>
       {missingRequired && (
-        <MissingRequiredDot className="absolute -right-0.5 -top-0.5" />
+        <MissingRequiredMarker className="absolute -right-0.5 -top-0.5" />
       )}
       {onToggleHidden && (
         <Tooltip>
