@@ -27,10 +27,33 @@ function childNeedsParens(child: unknown, parentOp: string): boolean {
   return (obj.op === "OR" ? "OR" : "AND") !== parentOp;
 }
 
-const DATE_FORMATTER = new Intl.DateTimeFormat("en", {
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const DATE_FORMATTER = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
+const DAY_FORMATTER = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+});
+
+/**
+ * Whether a boundary sits on the edge of a day in the reader's own timezone —
+ * the two instants a whole-day window is stored as. Printing "12:00 AM" or
+ * "11:59 PM" tells them nothing they didn't already know from the date, and it
+ * is most of the label's width.
+ */
+function isDayBoundary(d: Date): boolean {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return (h === 0 && m === 0) || (h === 23 && m === 59);
+}
+
+const parseDate = (iso: string): Date | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
 /**
  * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
@@ -41,21 +64,27 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en", {
  */
 function formatDateRange(rule: Record<string, unknown>): string | null {
   const { start, end } = rule as { start?: unknown; end?: unknown };
-  const startStr = typeof start === "string" ? start : "";
-  const endStr = typeof end === "string" ? end : "";
-  if (!startStr && !endStr) return null;
-  const tryFormat = (iso: string): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return DATE_FORMATTER.format(d);
-  };
-  const startFmt = tryFormat(startStr);
-  const endFmt = tryFormat(endStr);
-  if (startFmt && endFmt) return `${startFmt} → ${endFmt}`;
-  if (startFmt) return `From ${startFmt}`;
-  if (endFmt) return `Until ${endFmt}`;
-  return null;
+  const startDate = parseDate(typeof start === "string" ? start : "");
+  const endDate = parseDate(typeof end === "string" ? end : "");
+  if (!startDate && !endDate) return null;
+
+  const present = [startDate, endDate].filter((d): d is Date => d !== null);
+  const wholeDay = present.every(isDayBoundary);
+  const sameYear =
+    startDate !== null &&
+    endDate !== null &&
+    startDate.getFullYear() === endDate.getFullYear();
+
+  const fmt = (d: Date, dropYear: boolean) =>
+    wholeDay
+      ? (dropYear ? DAY_FORMATTER : DATE_FORMATTER).format(d)
+      : DATE_TIME_FORMATTER.format(d);
+
+  if (startDate && endDate) {
+    return `${fmt(startDate, wholeDay && sameYear)} → ${fmt(endDate, false)}`;
+  }
+  if (startDate) return `From ${fmt(startDate, false)}`;
+  return `Until ${fmt(endDate!, false)}`;
 }
 
 export function formatMatcher(
