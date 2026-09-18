@@ -14,6 +14,7 @@ import { useReleaseSeenState } from "@/hooks/use-release-seen-state";
 import { usePreferences } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { authClient } from "@/lib/auth-client";
+import { useClockTick } from "@/lib/use-clock-tick";
 import { RELEASES } from "@/lib/release-feed";
 
 const FRESHNESS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -70,7 +71,7 @@ export function FloatingReleaseCard() {
   const { isSeen, markSeen } = useReleaseSeenState();
   const [, setPreferences] = usePreferences();
   const [downloadOpen, setDownloadOpen] = useState(false);
-  const now = Date.now();
+  const now = useClockTick(60_000);
   const candidate = pickFloatingCandidate(now);
 
   if (!candidate) return null;

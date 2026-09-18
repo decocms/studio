@@ -1020,8 +1020,11 @@ export default function MonitoringDashboard() {
 
   const fromResult = expressionToDate(from);
   const toResult = expressionToDate(to);
+  // Frozen at mount: a default window that slid with every render would
+  // change the query key and refetch forever.
+  const [mountedAt] = useState(() => Date.now());
 
-  const startDate = fromResult.date || new Date(Date.now() - 30 * 60 * 1000);
+  const startDate = fromResult.date || new Date(mountedAt - 30 * 60 * 1000);
   const originalEndDate = toResult.date || new Date();
 
   const displayDateRange = { startDate, endDate: originalEndDate };

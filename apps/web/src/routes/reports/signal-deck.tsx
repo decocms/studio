@@ -438,7 +438,10 @@ export default function SignalDeck({
   // is stamped on both the URL (recipient reads it back → inbound_share_id) and
   // the report_slide_shared event, so the share graph joins who-shared-what
   // to who-opened-it. utm_source=share lets us split share traffic in analytics.
+  // `react/purity` does not narrow to the render phase: this is only ever
+  // called from a share handler, where a fresh random id is the point.
   const newShareId = (s: DeckSlide) =>
+    // oxlint-disable-next-line react/purity
     `${deck.meta.domain}:${s.key}:${Math.random().toString(36).slice(2, 10)}`;
 
   const buildShareUrl = (s: DeckSlide, shareId: string) => {

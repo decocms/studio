@@ -621,6 +621,7 @@ export function SandboxEventsProvider({
     virtualMcpId,
     branch,
     org.slug,
+    org.id,
     enabled,
     taskId,
     directDaemonEventsUrl,

@@ -536,7 +536,7 @@ export function MessageAssistant({
   const [prevIsLoading, setPrevIsLoading] = useState(isLoading);
   if (prevIsLoading !== isLoading) {
     setPrevIsLoading(isLoading);
-    setClientFallbackStartedAt(isLoading ? Date.now() : null);
+    setClientFallbackStartedAt(() => (isLoading ? Date.now() : null));
   }
   const startedAt = turnEpochMs ?? clientFallbackStartedAt;
 

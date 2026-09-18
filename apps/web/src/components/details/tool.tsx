@@ -262,6 +262,9 @@ function ToolDetailsAuthenticated({
   const hasEditedKey = (key: string) =>
     Object.prototype.hasOwnProperty.call(editedParams, key);
 
+  // `react/purity` does not narrow to the render phase: this runs only from
+  // onClick, where timing the call with a monotonic clock is the whole point.
+  // oxlint-disable react/purity
   const handleExecute = async () => {
     setIsExecuting(true);
     setExecutionError(null);
@@ -357,6 +360,7 @@ function ToolDetailsAuthenticated({
       setIsExecuting(false);
     }
   };
+  // oxlint-enable react/purity
 
   const handleInputChange = (key: string, value: unknown) => {
     setEditedParams((prev) => ({ ...prev, [key]: value }));

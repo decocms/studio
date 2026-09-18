@@ -143,6 +143,10 @@ function AutoLogin({
     return () => {
       cancelled = true;
     };
+    // `t` is intentionally omitted: it is read only for a fallback error
+    // string, and re-running on a language change would fire a second
+    // auto-login request and redirect.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [redirectTo]);
 
   if (error) {
