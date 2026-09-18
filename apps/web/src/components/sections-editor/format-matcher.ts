@@ -1,3 +1,6 @@
+import { readLanguage } from "@/hooks/use-preferences.ts";
+import type { Locale } from "@/i18n/locale.ts";
+import { translate } from "@/i18n/use-t.ts";
 import { labelFromResolveType } from "./section-types";
 
 const capitalize = (s: string) =>
@@ -27,15 +30,31 @@ function childNeedsParens(child: unknown, parentOp: string): boolean {
   return (obj.op === "OR" ? "OR" : "AND") !== parentOp;
 }
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-const DATE_FORMATTER = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
-const DAY_FORMATTER = new Intl.DateTimeFormat("en", {
-  month: "short",
-  day: "numeric",
-});
+/** Built per locale on first use: `Intl.DateTimeFormat` is costly enough to be
+ *  worth keeping, and a variant label is rendered for every row on the page. */
+const FORMATTER_CACHE = new Map<
+  Locale,
+  {
+    dateTime: Intl.DateTimeFormat;
+    date: Intl.DateTimeFormat;
+    day: Intl.DateTimeFormat;
+  }
+>();
+
+function dateFormatters(locale: Locale) {
+  const cached = FORMATTER_CACHE.get(locale);
+  if (cached) return cached;
+  const built = {
+    dateTime: new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+    date: new Intl.DateTimeFormat(locale, { dateStyle: "medium" }),
+    day: new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }),
+  };
+  FORMATTER_CACHE.set(locale, built);
+  return built;
+}
 
 /**
  * Whether a boundary sits on the edge of a day in the reader's own timezone —
@@ -75,16 +94,23 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
     endDate !== null &&
     startDate.getFullYear() === endDate.getFullYear();
 
+  const formatters = dateFormatters(readLanguage());
   const fmt = (d: Date, dropYear: boolean) =>
     wholeDay
-      ? (dropYear ? DAY_FORMATTER : DATE_FORMATTER).format(d)
-      : DATE_TIME_FORMATTER.format(d);
+      ? (dropYear ? formatters.day : formatters.date).format(d)
+      : formatters.dateTime.format(d);
 
   if (startDate && endDate) {
     return `${fmt(startDate, wholeDay && sameYear)} → ${fmt(endDate, false)}`;
   }
-  if (startDate) return `From ${fmt(startDate, false)}`;
-  return `Until ${fmt(endDate!, false)}`;
+  if (startDate) {
+    return translate("sectionsEditor.formatMatcher.fromDate", {
+      date: fmt(startDate, false),
+    });
+  }
+  return translate("sectionsEditor.formatMatcher.untilDate", {
+    date: fmt(endDate!, false),
+  });
 }
 
 export function formatMatcher(

@@ -1,4 +1,4 @@
-import { AlertCircle } from "@untitledui/icons";
+import { AlertCircle, LayersThree01 } from "@untitledui/icons";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import {
   Tooltip,
@@ -59,7 +59,7 @@ export function ItemRow({
       <span className="flex size-8 shrink-0 items-center justify-center">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Icon size={16} className="shrink-0 text-success" />
+            <LayersThree01 size={16} className="shrink-0 text-success" />
           </TooltipTrigger>
           <TooltipContent side="right">{variantCount} variants</TooltipContent>
         </Tooltip>

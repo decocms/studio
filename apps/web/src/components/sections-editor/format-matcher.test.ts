@@ -111,6 +111,21 @@ describe("formatMatcher", () => {
       ).toBe("Dec 20, 2025 → Jan 5, 2026");
     });
 
+    test("open-ended ranges read through the dictionary", () => {
+      expect(
+        formatMatcher({
+          __resolveType: "website/matchers/date.ts",
+          start: "2026-06-15T10:00:00",
+        }),
+      ).toBe("From Jun 15, 2026 at 10:00 AM");
+      expect(
+        formatMatcher({
+          __resolveType: "website/matchers/date.ts",
+          end: "2026-06-15T10:00:00",
+        }),
+      ).toBe("Until Jun 15, 2026 at 10:00 AM");
+    });
+
     test("a window with a real time of day keeps it", () => {
       const result = formatMatcher({
         __resolveType: "website/matchers/date.ts",

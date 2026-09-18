@@ -6,8 +6,9 @@ import { useSearch } from "@tanstack/react-router";
 import {
   AlertCircle,
   CornerUpRight,
+  Cube01,
   File02,
-  Globe02,
+  Globe01,
   Grid01,
   LayoutAlt01,
   Plus,
@@ -1883,7 +1884,7 @@ function ItemList({
               <>
                 {savedSectionGroups.length > 0 && (
                   <>
-                    <GroupHeader icon={Globe02} label="Saved sections" />
+                    <GroupHeader icon={Globe01} label="Saved sections" />
                     {savedSectionGroups.map((group) => (
                       <div key={group.label} className="flex flex-col gap-1">
                         <div className="px-2.5 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -1896,7 +1897,7 @@ function ItemList({
                           return (
                             <ItemRow
                               key={section.key}
-                              icon={Globe02}
+                              icon={Globe01}
                               accent="global"
                               title={section.name}
                               subtitle={group.label}
@@ -1926,7 +1927,7 @@ function ItemList({
                 {filteredAvailableSections.length > 0 && (
                   <>
                     <GroupHeader
-                      icon={LayoutAlt01}
+                      icon={Cube01}
                       label="Available sections"
                       className={cn(savedSectionGroups.length > 0 && "mt-3")}
                     />
@@ -1941,7 +1942,7 @@ function ItemList({
                       return (
                         <ItemRow
                           key={section.resolveType}
-                          icon={LayoutAlt01}
+                          icon={Cube01}
                           title={section.title}
                           subtitle={typeLabel ?? section.resolveType}
                           active={isActive}

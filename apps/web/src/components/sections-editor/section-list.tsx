@@ -1,5 +1,6 @@
 import { useRef, useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
+import { GripVertical } from "lucide-react";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
@@ -159,9 +160,10 @@ function SectionRowContent({
   const asyncRender =
     !multivariate && isLazyResolveType(raw?.__resolveType ?? "");
 
-  /** Compact only: a multivariate row stands for several versions of one
-   *  block, so it gets the stacked cube rather than the single one. */
-  const RowIcon = multivariate ? LayersThree01 : Cube01;
+  /** Compact only: one icon per concept, the same one the rest of the UI uses
+   *  — a globe for a section shared across the site, the stacked cube for a
+   *  block that has variants, the plain cube for everything else. */
+  const RowIcon = saved ? Globe01 : multivariate ? LayersThree01 : Cube01;
   const iconStyle = saved
     ? { color: GLOBAL_SECTION_ICON_COLOR }
     : multivariate
@@ -175,11 +177,8 @@ function SectionRowContent({
            grip on hover or keyboard focus. Only ever one is painted, so the
            swap never shifts the label. */
         <span className="relative size-4 shrink-0">
-          <RowIcon
-            className="absolute inset-0 size-4 transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0"
-            style={iconStyle}
-          />
-          <DotsGrid
+          <RowIcon className="absolute inset-0 size-4 text-muted-foreground transition-opacity group-hover:opacity-0 group-has-[:focus-visible]:opacity-0" />
+          <GripVertical
             aria-hidden
             className="absolute inset-0 size-4 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100"
           />
@@ -213,7 +212,7 @@ function SectionRowContent({
             <RowStatusIcon
               icon={Zap}
               label={t("sectionsEditor.sectionList.asyncBadge")}
-              className="text-warning"
+              className="text-muted-foreground"
             />
           )}
           {missingRequired && <MissingRequiredMarker />}
@@ -489,7 +488,7 @@ function SortableSectionItem({
           </DropdownMenuItem>
           {enableAddVariant && (
             <DropdownMenuItem
-              className={VARIANT_MENU_ITEM_CLASS}
+              className={cn(!compact && VARIANT_MENU_ITEM_CLASS)}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddVariant();
@@ -501,7 +500,7 @@ function SortableSectionItem({
           )}
           {enableMakeReusable && (
             <DropdownMenuItem
-              className={GLOBAL_SECTION_MENU_ITEM_CLASS}
+              className={cn(!compact && GLOBAL_SECTION_MENU_ITEM_CLASS)}
               onClick={(e) => {
                 e.stopPropagation();
                 onMakeReusable();
@@ -531,7 +530,7 @@ function SortableSectionItem({
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
+            variant="destructive"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -718,7 +717,7 @@ export function SectionList({
           items={entryIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-1">
+          <div className={cn(compact ? "space-y-0" : "space-y-1")}>
             {entries.map((entry) => {
               const section = sections[entry.index];
               if (!section) return null;

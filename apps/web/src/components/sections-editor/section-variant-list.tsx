@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { GripVertical } from "lucide-react";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -9,7 +10,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import {
   Copy01,
-  Cube01,
+  LayersThree01,
   DotsGrid,
   Edit03,
   LayoutAlt01,
@@ -132,16 +133,15 @@ function VariantRowContent({
         /* One slot for both: variant icon at rest, drag grip on hover or
            keyboard focus, and the grip alone on the dragging clone. */
         <span className="relative size-4 shrink-0">
-          <Cube01
+          <LayersThree01
             className={cn(
-              "absolute inset-0 size-4 transition-opacity",
+              "absolute inset-0 size-4 text-muted-foreground transition-opacity",
               dragging
                 ? "opacity-0"
                 : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
             )}
-            style={{ color: VARIANT_ICON_COLOR }}
           />
-          <DotsGrid
+          <GripVertical
             aria-hidden
             className={cn(
               "absolute inset-0 size-4 transition-opacity",
@@ -233,6 +233,7 @@ function SortableVariantRow({
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
+  const compact = useCompactPageLayout();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({ id: entry.id, animateLayoutChanges: () => false });
 
@@ -258,7 +259,7 @@ function SortableVariantRow({
         }
       }}
       className={cn(
-        editorRowClassName({ tone: "variant", selected }),
+        editorRowClassName({ tone: compact ? "default" : "variant", selected }),
         isDragging ? "cursor-grabbing" : "cursor-grab",
       )}
     >
@@ -435,7 +436,7 @@ export function SectionVariantList({
           items={entryIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-0.5">
+          <div className={cn(compact ? "space-y-0" : "space-y-0.5")}>
             {entries.map((entry) => (
               <SortableVariantRow
                 key={entry.id}
