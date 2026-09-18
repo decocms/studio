@@ -6,6 +6,7 @@ import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 import type { Database } from "../src/storage/types";
 import { DemoStorage } from "../src/storage/demo";
+import { parseDemoOrganizationId } from "../src/demo/config";
 import { DEMO_SCENARIO } from "@decocms/shared/demo";
 
 const { values, positionals } = parseArgs({
@@ -27,6 +28,13 @@ if (
 )
   throw new Error(
     "Usage: bun run demo:setup --org demo-local --scenario storefront-v1 [--owner EMAIL] [--home DEV_DATA_DIR] [--url FRONTEND_URL]",
+  );
+const configuredOrgId = parseDemoOrganizationId(
+  process.env.DEMO_ORGANIZATION_ID,
+);
+if (!configuredOrgId)
+  throw new Error(
+    "Set DEMO_ORGANIZATION_ID to the dedicated demo organization ID before setup or reset.",
   );
 const home =
   values.home ??
@@ -59,39 +67,15 @@ try {
       "Sign in to Studio first. If this deployment has multiple users, supply --owner EMAIL for the demonstration owner.",
     );
   const actor = users[0]!;
-  let org = await db
+  const org = await db
     .selectFrom("organization")
     .select(["id", "slug"])
     .where("slug", "=", values.org)
     .executeTakeFirst();
-  if (!org && positionals[0] === "reset")
-    throw new Error("Demonstration organization not found");
-  if (!org) {
-    org = await db.transaction().execute(async (trx) => {
-      const id = crypto.randomUUID();
-      const created = await trx
-        .insertInto("organization")
-        .values({
-          id,
-          name: "Demo Storefront",
-          slug: values.org,
-          createdAt: new Date(),
-        })
-        .returning(["id", "slug"])
-        .executeTakeFirstOrThrow();
-      await trx
-        .insertInto("member")
-        .values({
-          id: crypto.randomUUID(),
-          organizationId: id,
-          userId: actor.id,
-          role: "owner",
-          createdAt: new Date(),
-        })
-        .execute();
-      return created;
-    });
-  }
+  if (!org || org.id !== configuredOrgId)
+    throw new Error(
+      "The selected organization does not match DEMO_ORGANIZATION_ID. Create a dedicated empty organization first, then configure its ID on this deployment.",
+    );
   const membership = await db
     .selectFrom("member")
     .select("id")

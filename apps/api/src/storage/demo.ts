@@ -1,3 +1,5 @@
+import { getSettings } from "@/settings";
+import { isConfiguredDemoOrganization } from "@/demo/config";
 import { type Kysely, type Selectable, sql } from "kysely";
 import {
   DemoRecipeSchema,
@@ -30,6 +32,20 @@ type Registration = Selectable<DemoOrganizationTable>;
 export class DemoStorage {
   constructor(private db: Kysely<Database>) {}
 
+  isConfigured(organizationId: string) {
+    return isConfiguredDemoOrganization(
+      getSettings().demoOrganizationId,
+      organizationId,
+    );
+  }
+
+  assertConfigured(organizationId: string) {
+    if (!this.isConfigured(organizationId))
+      throw new ForbiddenError(
+        "Demonstration is not enabled for this organization by the deployment.",
+      );
+  }
+
   executeTool(
     orgId: string,
     actorId: string,
@@ -38,9 +54,11 @@ export class DemoStorage {
     origin: string,
     slug: string,
   ) {
+    this.assertConfigured(orgId);
     return executeDemoTool(this.db, orgId, actorId, name, input, origin, slug);
   }
 
+  // Registration remains a quarantine even if deployment configuration is removed or changed.
   get(organizationId: string) {
     return this.db
       .selectFrom("demo_organizations")
@@ -50,6 +68,7 @@ export class DemoStorage {
   }
 
   async bundle(organizationId: string): Promise<DemoBundle> {
+    this.assertConfigured(organizationId);
     const row = await this.db
       .selectFrom("demo_bundles")
       .select("payload")
@@ -137,6 +156,7 @@ export class DemoStorage {
   }
 
   async ensureReportsAgent(org: string, actor: string) {
+    this.assertConfigured(org);
     const virtual = new VirtualMCPStorage(this.db);
     if (!(await virtual.findById(getReportsAgentId(org), org)))
       await virtual.create(org, actor, getWellKnownReportVirtualMCP(org), {
@@ -145,6 +165,7 @@ export class DemoStorage {
   }
 
   asset(org: string, name: string) {
+    this.assertConfigured(org);
     return this.db
       .selectFrom("demo_assets")
       .select(["mime", "body"])
@@ -161,6 +182,7 @@ export class DemoStorage {
   }
 
   async status(organizationId: string): Promise<DemoStatus | null> {
+    if (!this.isConfigured(organizationId)) return null;
     const row = await this.get(organizationId);
     if (!row) return null;
     const [settings, tasks, active] = await Promise.all([
@@ -205,6 +227,7 @@ export class DemoStorage {
     fn: (db: Kysely<Database>, row: Registration) => Promise<T>,
     allowSuspended = false,
   ): Promise<T> {
+    this.assertConfigured(organizationId);
     return this.db.transaction().execute(async (trx) => {
       const row = await trx
         .selectFrom("demo_organizations")
@@ -242,6 +265,7 @@ export class DemoStorage {
     actorId: string,
     baseUrl: string,
   ) {
+    this.assertConfigured(organizationId);
     const self = getWellKnownSelfConnection(baseUrl, organizationId);
     await this.db
       .insertInto("connections")
@@ -276,6 +300,7 @@ export class DemoStorage {
   }
 
   async register(organizationId: string) {
+    this.assertConfigured(organizationId);
     await this.db.transaction().execute(async (trx) => {
       await sql`select pg_advisory_xact_lock(hashtext(${`demo-register:${organizationId}`})::bigint)`.execute(
         trx,
@@ -525,6 +550,7 @@ export class DemoStorage {
     actorId: string,
     request?: { threadId: string; id: string; text: string },
   ) {
+    this.assertConfigured(row.organization_id);
     const task = await db
       .selectFrom("demo_tasks")
       .selectAll()
@@ -618,9 +644,11 @@ export class DemoStorage {
   }
 
   pending() {
+    if (!getSettings().demoOrganizationId) return Promise.resolve([]);
     return this.db
       .selectFrom("demo_runs")
       .select(["id", "organization_id"])
+      .where("organization_id", "=", getSettings().demoOrganizationId!)
       .where("state", "=", "pending")
       .orderBy("created_at")
       .limit(100)
@@ -806,6 +834,7 @@ export class DemoStorage {
   }
 
   async publishedRecipes(org: string) {
+    this.assertConfigured(org);
     const rows = await this.db
       .selectFrom("demo_tasks")
       .select("recipe")
@@ -817,6 +846,7 @@ export class DemoStorage {
   }
 
   async artifact(org: string, taskId: string) {
+    this.assertConfigured(org);
     return this.db
       .selectFrom("demo_tasks as d")
       .innerJoin("task_board_items as t", "t.id", "d.task_id")

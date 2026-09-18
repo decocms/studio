@@ -61,6 +61,7 @@ interface DeploymentAdminOrg {
   notice: AdminOrgNotice | null;
   /** True when the org is soft-deleted (`metadata.archived`). */
   archived: boolean;
+  demoConfigured: boolean;
 }
 
 interface FlagsResponse {
@@ -1109,7 +1110,7 @@ export default function AdminOrgsPage() {
       header: "",
       render: (org) => (
         <div className="flex items-center justify-end gap-2">
-          <DemoDialog orgId={org.id} />
+          {org.demoConfigured && <DemoDialog orgId={org.id} />}
           <FlagsDialog org={org} />
           <SitesDialog org={org} />
           <NoticeDialog org={org} />

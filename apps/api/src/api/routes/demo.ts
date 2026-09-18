@@ -11,7 +11,11 @@ export function createDemoRoutes() {
     const ctx = c.get("studioContext");
     ctx.access.setToolName?.("DEMO_STATUS");
     await ctx.access.check();
-    if (!ctx.organization || !(await ctx.storage.demo.get(ctx.organization.id)))
+    if (
+      !ctx.organization ||
+      !ctx.storage.demo.isConfigured(ctx.organization.id) ||
+      !(await ctx.storage.demo.get(ctx.organization.id))
+    )
       return c.notFound();
     c.header("Cache-Control", "no-store");
     c.header(

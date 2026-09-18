@@ -36,6 +36,7 @@ export async function clientFromConnection(
     if (
       connection.id === WellKnownOrgMCPId.REPORTS(connection.organization_id)
     ) {
+      ctx.storage.demo.assertConfigured(connection.organization_id);
       const { createDemoReportsClient } = await import("@/demo/reports-client");
       return createDemoReportsClient(ctx, connection.organization_id);
     }

@@ -1,3 +1,4 @@
+import { parseDemoOrganizationId } from "../demo/config";
 /**
  * Resolve raw inputs (CLI flags + env vars) into a validated config.
  *
@@ -273,6 +274,7 @@ export function resolveConfig(
       .map((s) => s.trim())
       .filter(Boolean),
     deploymentAdminToken: envVars.DEPLOYMENT_ADMIN_TOKEN || undefined,
+    demoOrganizationId: parseDemoOrganizationId(envVars.DEMO_ORGANIZATION_ID),
 
     // Observability
     clickhouseUrl: envVars.CLICKHOUSE_URL,

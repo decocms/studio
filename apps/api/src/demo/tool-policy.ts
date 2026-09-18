@@ -65,6 +65,7 @@ export async function interceptDemoTool(
     return null;
   requireAuth(ctx);
   await ctx.access.check();
+  if (name !== "DEMO_STATUS") ctx.storage.demo.assertConfigured(org.id);
   if (localReads.has(name)) return null;
   if (!adapted.has(name))
     throw new ForbiddenError(

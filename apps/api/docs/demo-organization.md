@@ -28,26 +28,31 @@ A configuração consultada em produção aponta para `deco-sites/demo-storefron
 
 ## Escolher a org e importar o pacote
 
-A identidade da demo fica em `demo_organizations`, por **ID da organização**. `--org` seleciona o slug no CLI; não há env var com uma lista de orgs nem tratamento especial para um slug específico. O cadastro persistido impede fallback para execução real, inclusive quando a flag `demo_mode_enabled` está desabilitada.
+O deployment deve definir **`DEMO_ORGANIZATION_ID` com um único ID exato**. Sem essa variável, cadastro, reset, execução e artefatos de demo ficam desabilitados. Listas, curingas e valores inválidos são recusados na inicialização. O `_admin` mostra o botão somente na linha dessa org; chamadas diretas para outras orgs são rejeitadas.
+
+Crie primeiro uma organização vazia pelos mecanismos normais do produto e obtenha seu ID pela API administrativa `GET /api/_admin/orgs`. Configure esse ID no servidor, workers e CLI do mesmo deployment. `--org` apenas seleciona o slug de uma org existente e precisa resolver para o ID configurado; não cria orgs nem altera a configuração.
+
+O registro em `demo_organizations` e a flag `demo_mode_enabled` continuam necessários, mas não autorizam demo por si sós. Se a variável for removida ou trocada, uma antiga org registrada continua bloqueada para agentes/provedores reais. A configuração nunca converte automaticamente dados de clientes em demo.
 
 ```bash
 # Inicie Studio com Postgres/NATS e sua configuração normal.
 # Para a instância local de avaliação:
 DATABASE_URL='' NATS_URL='' S3_ENDPOINT='' SKIP_MINIO=true \
+  DEMO_ORGANIZATION_ID='ID_DA_ORG_DEDICADA' \
   DEPLOYMENT_ADMIN_EMAILS='seu-email-local' \
   bun --no-env-file run apps/api/src/cli.ts dev \
   --home /tmp/studio-demo-review --port 3107 --vite-port 4107 \
   --base-url http://localhost:4107 --no-tui
 
-# Em outro terminal, importe um pacote já preparado numa org nova:
-bun run demo:setup --home /tmp/studio-demo-review \
+# Em outro terminal, use a mesma configuração para importar na org vazia existente:
+DEMO_ORGANIZATION_ID='ID_DA_ORG_DEDICADA' bun run demo:setup --home /tmp/studio-demo-review \
   --org sales-demo --bundle /caminho/repository-bundle.json \
   --url http://localhost:4107
 ```
 
 Em um deployment normal, use `DATABASE_URL` e omita `--home`. Se houver vários usuários, acrescente `--owner EMAIL` de um membro existente. O administrador do painel deve constar em `DEPLOYMENT_ADMIN_EMAILS`, ter email verificado e estar autenticado. O token administrativo compartilhado não autoriza reset.
 
-O CLI recusa converter uma org com tarefas, chats, repositórios ou automações. `demo:setup` sem `--bundle` pode ser repetido sem reset; um pacote importado é imutável. Para avaliar outra versão da loja, prepare outro pacote e crie outra org. Configurações, membros e login sobrevivem ao reset.
+O CLI recusa IDs fora da configuração e orgs com tarefas, chats, repositórios ou automações. Não cria orgs automaticamente. `demo:setup` sem `--bundle` pode ser repetido sem reset; um pacote importado é imutável. Para avaliar outra versão da loja, prepare outro pacote, crie outra org vazia e altere explicitamente `DEMO_ORGANIZATION_ID` no deployment. Configurações, membros e login sobrevivem ao reset.
 
 ## Preparar o pacote a partir dos repositórios
 
@@ -72,7 +77,8 @@ O pacote contém HTML executável e deve ser tratado como artefato de deployment
 ## Reset e execução
 
 ```bash
-bun run demo:reset --home /tmp/studio-demo-review \
+DEMO_ORGANIZATION_ID='8115bef9-e7ac-4b2f-ba53-5a6ef965c2c4' \
+  bun run demo:reset --home /tmp/studio-demo-review \
   --org demo-storefront --url http://localhost:4107
 ```
 
@@ -90,6 +96,6 @@ O painel emite SSE para atualizar abas abertas. O CLI escreve no banco; recarreg
 
 ## Validação
 
-A suíte `packages/e2e/tests/demo-organization.spec.ts` usa autenticação, Postgres, API, DBOS e navegador reais. Cobre MCP e recurso de Reports, execução, persistência, preview, publicação, cancelamento, suspensão, reset concorrente/idempotente, isolamento entre orgs, referências antigas e autorização do painel administrativo. O servidor da suíte deve incluir `demo-admin@e2e.local` em `DEPLOYMENT_ADMIN_EMAILS`.
+A suíte `packages/e2e/tests/demo-organization.spec.ts` usa autenticação, Postgres, API, DBOS e navegador reais. Cobre MCP e recurso de Reports, execução, persistência, preview, publicação, cancelamento, suspensão, reset concorrente/idempotente, isolamento entre orgs, referências antigas e autorização do painel administrativo. O servidor da suíte deve incluir `demo-admin@e2e.local` em `DEPLOYMENT_ADMIN_EMAILS` e definir `DEMO_ORGANIZATION_ID=e2e-demo-organization`. A suíte é serial e controla somente esse ID reservado. Ela também injeta um registro/flag em outra org e verifica que reset e execução são recusados, sem alterar seus cards.
 
 A inspeção do ambiente com o pacote real verifica separadamente o widget original, o catálogo, as imagens locais e a busca. Veja as capturas e os resultados de qualidade no PR.

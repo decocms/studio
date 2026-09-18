@@ -73,10 +73,10 @@ A [consulta geral de diagnóstico](demo-organization-audit.sql) continua dispon�
 
 | Decisão | Motivo |
 | --- | --- |
-| Nova org dedicada, registrada por ID no banco | Permite reset completo sem converter ou apagar a org atual de produção. Renomear o slug não altera o isolamento. |
+| Um ID exato em `DEMO_ORGANIZATION_ID`, além do registro no banco | Limita todas as operações demo à org escolhida pelo deployment. Ausência de configuração desabilita demo; mudar slug, flag ou registro no banco não autoriza outra org. |
 | Bundle preparado do GitHub da loja | Preserva visual, catálogo, caminhos de arquivos e patches da loja usada pelos vendedores. Elimina a loja fictícia da primeira implementação. |
 | Widget original de Reports via MCP local | Mantém a experiência existente. Apenas o provedor de dados é substituído por um diagnóstico salvo; não há página de relatório paralela. |
-| Reset exclusivamente no `_admin` ou CLI | Atende à restrição de não acrescentar controles de demo à interface do produto. Ser owner da org não concede acesso ao reset administrativo. |
+| Reset exclusivamente no `_admin` ou CLI, limitado ao ID configurado | O botão aparece somente nessa org. Ser owner ou administrador não libera reset de uma org fora da configuração. O CLI exige uma org vazia já existente. |
 | Execução roteirizada antes de modelo/sandbox/GitHub | Retira as fontes de espera e erro identificadas na investigação. DBOS e mensagens continuam persistidos. |
 | Pacote imutável com commits e data de captura | Permite reproduzir a apresentação e revisar a origem dos artefatos. Outra versão recebe uma nova org de avaliação. |
 | Diagnóstico histórico apresentado como histórico | O achado A11Y-028 já está corrigido no commit atual. A tarefa verifica isso e não inventa uma correção inexistente. |

@@ -698,3 +698,20 @@ describe("resolveConfig plans gateway JWT secret", () => {
     });
   });
 });
+
+describe("resolveConfig demo organization", () => {
+  it("disables demo operations without a deployment ID", () => {
+    expect(
+      resolveConfig(flags, {}).settings.demoOrganizationId,
+    ).toBeUndefined();
+  });
+  it("keeps one exact deployment-owned ID", () => {
+    expect(
+      resolveConfig(flags, { DEMO_ORGANIZATION_ID: " org_demo-123 " }).settings
+        .demoOrganizationId,
+    ).toBe("org_demo-123");
+    expect(() =>
+      resolveConfig(flags, { DEMO_ORGANIZATION_ID: "org-a,org-b" }),
+    ).toThrow("one exact organization ID");
+  });
+});

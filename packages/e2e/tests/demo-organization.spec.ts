@@ -25,12 +25,25 @@ async function call<T>(
   expect(response.ok(), `${tool}: ${await response.text()}`).toBeTruthy();
   return response.json();
 }
-async function provision(db: Client, slug: string) {
+const DEMO_ORG_ID = "e2e-demo-organization";
+
+async function provision(db: Client, homeSlug: string) {
+  const slug = `${homeSlug}-demo`;
   const { rows } = await db.query(
-    "SELECT id FROM organization WHERE slug = $1",
-    [slug],
+    'SELECT m."userId" FROM organization o JOIN member m ON m."organizationId"=o.id WHERE o.slug = $1 LIMIT 1',
+    [homeSlug],
   );
-  const org = rows[0].id as string;
+  const owner = rows[0].userId as string;
+  const org = DEMO_ORG_ID;
+  await db.query("DELETE FROM organization WHERE id=$1", [org]);
+  await db.query(
+    'INSERT INTO organization (id,slug,name,"createdAt") VALUES ($1,$2,$3,now())',
+    [org, slug, "Configured demo"],
+  );
+  await db.query(
+    `INSERT INTO member (id,"organizationId","userId",role,"createdAt") VALUES ($1,$2,$3,'owner',now())`,
+    [crypto.randomUUID(), org, owner],
+  );
   // Registration is deployment-admin CLI state, intentionally unavailable through the product API.
   await db.query(
     "INSERT INTO demo_organizations (organization_id,scenario) VALUES ($1,'storefront-v1')",
@@ -54,12 +67,6 @@ async function provision(db: Client, slug: string) {
     "INSERT INTO demo_bundles (organization_id,payload) VALUES ($1,$2::jsonb)",
     [org, JSON.stringify(demoBundle)],
   );
-  const owner = (
-    await db.query(
-      'SELECT "userId" FROM member WHERE "organizationId"=$1 LIMIT 1',
-      [org],
-    )
-  ).rows[0].userId;
   await db.query(
     "INSERT INTO connections (id,organization_id,created_by,updated_by,title,connection_type,connection_url,status,metadata) VALUES ($1,$2,$3,$3,'Store Report','HTTP','https://reports.example.test/mcp','active',$4::jsonb)",
     [
@@ -73,7 +80,7 @@ async function provision(db: Client, slug: string) {
     idempotencyKey: "initial",
     expectedGeneration: 0,
   });
-  return org;
+  return { org, slug };
 }
 let admin: APIRequestContext;
 async function resetDemo(org: string, body: unknown) {
@@ -89,6 +96,8 @@ async function tasks(request: APIRequestContext, org: string) {
 }
 
 test.describe("persisted demonstration organization", () => {
+  // Only this suite owns the one configured deployment demo ID.
+  test.describe.configure({ mode: "serial" });
   test.setTimeout(90_000);
   let db: Client;
   test.beforeAll(async ({ playwright }) => {
@@ -110,6 +119,7 @@ test.describe("persisted demonstration organization", () => {
     ).toBeTruthy();
   });
   test.afterAll(async () => {
+    await db.query("DELETE FROM organization WHERE id=$1", [DEMO_ORG_ID]);
     await admin?.dispose();
     await db.end();
   });
@@ -117,9 +127,9 @@ test.describe("persisted demonstration organization", () => {
   test("runs without provider credentials, keeps state across reload, and serves a functional preview", async ({
     authedPage,
   }, testInfo) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug: homeSlug } = authedPage;
     const request = page.context().request;
-    const org = await provision(db, orgSlug);
+    const { org, slug: orgSlug } = await provision(db, homeSlug);
     await db.query("DELETE FROM ai_provider_keys WHERE organization_id = $1", [
       org,
     ]);
@@ -358,9 +368,9 @@ test.describe("persisted demonstration organization", () => {
     authedPage,
     playwright,
   }) => {
-    const { page, orgSlug } = authedPage;
+    const { page, orgSlug: homeSlug } = authedPage;
     const request = page.context().request;
-    const org = await provision(db, orgSlug);
+    const { org, slug: orgSlug } = await provision(db, homeSlug);
     const other = await newApiContext(playwright);
     try {
       const outsider = await signUpViaApi(other);
@@ -369,6 +379,78 @@ test.describe("persisted demonstration organization", () => {
         outsider.orgSlug,
         "TASK_BOARD_ITEM_CREATE",
         { title: "Other tenant stays intact" },
+      );
+      const foreignOrg = (
+        await db.query("SELECT id FROM organization WHERE slug=$1", [
+          outsider.orgSlug,
+        ])
+      ).rows[0].id;
+      // Even a forged registration/flag cannot authorize demo writes outside the env-selected ID.
+      await db.query(
+        "INSERT INTO demo_organizations (organization_id,scenario) VALUES ($1,'storefront-v1')",
+        [foreignOrg],
+      );
+      await db.query(
+        `INSERT INTO organization_settings ("organizationId",flags,"createdAt","updatedAt") VALUES ($1,'{"demo_mode_enabled":true}',now()::text,now()::text) ON CONFLICT ("organizationId") DO UPDATE SET flags=coalesce(organization_settings.flags,'{}'::jsonb)||excluded.flags`,
+        [foreignOrg],
+      );
+      const before = (
+        await db.query(
+          "SELECT id,title,status FROM task_board_items WHERE organization_id=$1 ORDER BY id",
+          [foreignOrg],
+        )
+      ).rows;
+      expect(
+        (
+          await admin.post(`/api/_admin/orgs/${foreignOrg}/demo/reset`, {
+            data: { idempotencyKey: "wrong-org", expectedGeneration: 0 },
+          })
+        ).status(),
+      ).toBe(404);
+      expect(
+        (await admin.get(`/api/_admin/orgs/${foreignOrg}/demo`)).status(),
+      ).toBe(404);
+      expect(
+        (
+          await other.post(
+            `/api/${outsider.orgSlug}/tools/TASK_BOARD_ITEM_UPDATE`,
+            { data: { id: otherTask.item.id, assigneeId: "super-agent" } },
+          )
+        ).status(),
+      ).toBe(403);
+      expect(
+        (await other.get(`/api/${outsider.orgSlug}/demo/storefront`)).status(),
+      ).toBe(404);
+      expect(
+        (await call<{ demo: unknown }>(other, outsider.orgSlug, "DEMO_STATUS"))
+          .demo,
+      ).toBeNull();
+      expect(
+        (
+          await db.query(
+            "SELECT id,title,status FROM task_board_items WHERE organization_id=$1 ORDER BY id",
+            [foreignOrg],
+          )
+        ).rows,
+      ).toEqual(before);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM demo_resets WHERE organization_id=$1",
+            [foreignOrg],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      const orgList = await (await admin.get("/api/_admin/orgs")).json();
+      expect(
+        orgList.organizations
+          .filter((o: { demoConfigured: boolean }) => o.demoConfigured)
+          .map((o: { id: string }) => o.id),
+      ).toEqual([org]);
+      // Removing the forged registration restores this ordinary test tenant's original behavior.
+      await db.query(
+        "DELETE FROM demo_organizations WHERE organization_id=$1",
+        [foreignOrg],
       );
       const old = await tasks(request, orgSlug);
       const task = old.find((t) => t.status === "todo")!;

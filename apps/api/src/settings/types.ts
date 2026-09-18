@@ -40,6 +40,8 @@ export interface Settings {
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];
+  /** The only org allowed to run or reset demos. Unset disables demo operations. */
+  demoOrganizationId: string | undefined;
   /** Org ids whose members may read and act across every org's task board
    *  (STUDIO_ADMIN_ORG_IDS, CSV). Access control, not product gating.
    *

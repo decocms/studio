@@ -413,6 +413,7 @@ export function createAdminRoutes(): Hono<Env> {
         memberCount: Number(row.memberCount || 0),
         notice: notices.get(row.id) ?? null,
         archived: isOrgArchived({ metadata }),
+        demoConfigured: row.id === getSettings().demoOrganizationId,
       })),
     });
   });
@@ -487,6 +488,11 @@ export function createAdminRoutes(): Hono<Env> {
   app.get("/orgs/:orgId/demo", async (c) => {
     const demo = new DemoStorage(getDb().db);
     const org = c.req.param("orgId");
+    if (!demo.isConfigured(org))
+      return c.json(
+        { error: "Demonstration not configured for this organization" },
+        404,
+      );
     const status = await demo.status(org);
     const bundle = status ? await demo.bundle(org) : null;
     return c.json({ demo: status, source: bundle?.source ?? null });
@@ -502,6 +508,11 @@ export function createAdminRoutes(): Hono<Env> {
     if (!parsed.success) return c.json({ error: "Invalid reset request" }, 400);
     const org = c.req.param("orgId");
     const demo = new DemoStorage(getDb().db);
+    if (!demo.isConfigured(org))
+      return c.json(
+        { error: "Demonstration not configured for this organization" },
+        404,
+      );
     if (!(await demo.get(org)))
       return c.json({ error: "Demonstration not found" }, 404);
     const { actorId, impersonatedBy } = await getAuditActor(c);
