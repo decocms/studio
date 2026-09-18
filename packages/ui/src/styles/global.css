@@ -349,6 +349,8 @@
   --animate-card-land: card-land 240ms var(--ease-out-quint) both;
   --animate-pulse-brightness: pulse-brightness 1.8s var(--ease-in-out-cubic)
     infinite;
+  --animate-accordion-down: accordion-down 220ms var(--ease-out-cubic);
+  --animate-accordion-up: accordion-up 180ms var(--ease-out-cubic);
 }
 
 /* Animations */
@@ -501,7 +503,49 @@
   }
 }
 
+/* Radix measures the panel and exposes its height; without these keyframes the
+   `animate-accordion-*` classes on AccordionContent resolve to nothing. */
+@keyframes accordion-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* Open and close at full height — fade only, no slide. */
+  @keyframes accordion-down {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
   /* Park it as a static near-full bar — still signals loading, no motion. */
   @keyframes preview-ramp {
     0%,
