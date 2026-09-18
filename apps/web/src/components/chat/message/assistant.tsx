@@ -27,6 +27,7 @@ import {
   SubtaskPart,
   SubtaskPartFallback,
   UserAskPart,
+  SuggestTaskPart,
   BrandContextPart,
   BrandContextGetPart,
   BrandContextListPart,
@@ -319,6 +320,8 @@ function MessagePart({
           latency={getMeta(part.toolCallId)?.latencySeconds}
         />
       );
+    case "tool-suggest_task":
+      return <SuggestTaskPart part={part} />;
     case "tool-propose_plan":
       return <ProposePlanPart part={part} />;
     case "tool-generate_image":

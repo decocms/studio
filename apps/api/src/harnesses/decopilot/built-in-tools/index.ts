@@ -29,6 +29,7 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   open_in_agent: { readOnly: false, destructive: false },
   subtask: { readOnly: false, destructive: false },
   user_ask: { readOnly: true, destructive: false },
+  suggest_task: { readOnly: true, destructive: false },
   propose_plan: { readOnly: true, destructive: false },
   enable_tool: { readOnly: true, destructive: false },
   todo_write: { readOnly: false, destructive: false },
@@ -74,6 +75,7 @@ import { buildPortableBuiltInTools } from "@/harnesses/lib/decopilot/built-in-to
 import { createThreadTools } from "./thread-tools";
 import { createJiraRunTools } from "./jira-run-tools";
 import { createTaskBoardTools } from "./task-board-tools";
+import { suggestTaskTool } from "./suggest-task";
 import { isDecopilot } from "@decocms/shared/sdk";
 import { createAgentTools } from "./agent-tools";
 import type { ModelsConfig } from "@/harnesses/lib/types";
@@ -149,6 +151,11 @@ export interface BuiltinToolParams {
   /** Current agent (virtual MCP) id — scopes the per-agent interests memory
    *  written by `update_interests`. */
   agentId: string;
+  /** True when the agent is a code project — it has a checked-out GitHub repo,
+   *  either on its own metadata or pinned to the thread by `load_repo`. Gates
+   *  `suggest_task`: on an agent with no repo, a task card has nothing to run
+   *  against. */
+  isCodeProject?: boolean;
   /** Usage roll-up sink (Task 17) — forwarded to the `subtask` tool so a
    *  delegated child run's tokens fold into the parent run's accumulator. */
   onChildUsage?: (usage: {
@@ -194,6 +201,7 @@ async function buildAllTools(
     htmlArtifactBuffer,
     taskId,
     agentId,
+    isCodeProject = false,
     onChildUsage,
     backgroundDispatcher,
   } = params;
@@ -249,6 +257,10 @@ async function buildAllTools(
   // power to rewrite its siblings. They stay on the Studio MCP endpoint too.
   if (isDecopilot(agentId)) {
     Object.assign(tools, createAgentTools(ctx));
+  }
+  // A task card is work for a repo; an agent without one has nowhere to send it.
+  if (isDecopilot(agentId) || isCodeProject) {
+    tools.suggest_task = suggestTaskTool;
   }
   // VM file tools — six LLM-visible tools (read/write/edit/grep/glob/bash)
   // always registered when a vmContext is provided. The handle is resolved
@@ -431,6 +443,7 @@ async function buildAllTools(
   }
   return tools as {
     user_ask: typeof userAskTool;
+    suggest_task: typeof suggestTaskTool;
     todo_write: typeof todoWriteTool;
     propose_plan: typeof proposePlanTool;
     update_interests: ReturnType<typeof createUpdateInterestsTool>;

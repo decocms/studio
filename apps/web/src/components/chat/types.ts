@@ -65,6 +65,7 @@ type ToolPart<T extends string> = Extract<
 >;
 
 export type UserAskToolPart = ToolPart<"user_ask">;
+export type SuggestTaskToolPart = ToolPart<"suggest_task">;
 export type SubtaskToolPart = ToolPart<"subtask">;
 
 // Compile-time guard: fails if SubtaskToolPart resolves to never

@@ -17,6 +17,7 @@ import {
   selectActivePlan,
 } from "./propose-plan";
 import { UserAskQuestionHighlight } from "./user-ask-question";
+import { SuggestTaskHighlight } from "./suggest-task";
 import { TodosHighlight } from "./todos";
 import { CollapsibleHighlight } from "./collapsible-highlight";
 import { CreditsExhaustedBanner } from "../credits-exhausted-banner";
@@ -26,7 +27,7 @@ import { useHighlightFlags } from "./use-highlight-count";
 import { useOpenBillingUrl } from "@/hooks/use-open-billing-url";
 import { useFeature } from "@/hooks/use-entitlements";
 import { parseErrorMessage } from "./parse-error-message";
-import type { UserAskToolPart } from "../types";
+import type { SuggestTaskToolPart, UserAskToolPart } from "../types";
 
 // ============================================================================
 // StatusHighlight (error | warning)
@@ -210,6 +211,10 @@ export function ChatHighlight() {
   const userAskParts = assistantParts.filter(
     (part) => part.type === "tool-user_ask",
   );
+  const suggestTaskParts = assistantParts.filter(
+    (part) =>
+      part.type === "tool-suggest_task" && part.state === "input-available",
+  ) as SuggestTaskToolPart[];
   const pendingPlans = extractPendingPlans(assistantParts);
   const pendingApprovals = extractPendingApprovals(
     assistantParts as Array<{
@@ -254,6 +259,20 @@ export function ChatHighlight() {
         kind: "toolOutput",
         toolCallId: part.toolCallId,
         output: { response },
+      },
+      buildRequestOptions(currentApprovalLevel),
+    );
+  };
+
+  const handleSuggestTaskRespond = (
+    part: SuggestTaskToolPart,
+    accepted: boolean,
+  ) => {
+    void submit(
+      {
+        kind: "toolOutput",
+        toolCallId: part.toolCallId,
+        output: { accepted },
       },
       buildRequestOptions(currentApprovalLevel),
     );
@@ -373,6 +392,14 @@ export function ChatHighlight() {
           isStreaming={isStreaming}
           onApprove={handlePlanApprove}
           onDismiss={handlePlanDismiss}
+        />
+      )}
+      {flags.hasTaskSuggestion && (
+        <SuggestTaskHighlight
+          key={suggestTaskParts.at(-1)?.toolCallId ?? ""}
+          parts={suggestTaskParts}
+          isStreaming={isStreaming}
+          onRespond={handleSuggestTaskRespond}
         />
       )}
       {flags.isWaitingForUserInput && (

@@ -23,6 +23,10 @@ export type StudioChatTools = {
     };
     output: { response: string };
   };
+  suggest_task: {
+    input: { title: string; summary: string };
+    output: { accepted: boolean };
+  };
   todo_write: {
     input: {
       todos: {

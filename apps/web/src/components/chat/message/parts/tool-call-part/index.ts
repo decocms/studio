@@ -2,6 +2,7 @@ export { GenericToolCallPart } from "./generic.tsx";
 export { GenerateImagePart } from "./generate-image.tsx";
 export { WebSearchPart } from "./web-search.tsx";
 export { UserAskPart } from "./user-ask.tsx";
+export { SuggestTaskPart } from "./suggest-task.tsx";
 export { SubtaskPart, SubtaskPartFallback } from "./subtask.tsx";
 export { ProposePlanPart } from "./propose-plan.tsx";
 export {

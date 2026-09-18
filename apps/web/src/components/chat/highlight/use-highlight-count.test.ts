@@ -15,6 +15,7 @@ const noFlags: HighlightFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
+  hasTaskSuggestion: false,
   todos: [],
 };
 

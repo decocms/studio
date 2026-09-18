@@ -360,6 +360,7 @@ export async function assembleDecopilotTools(
         htmlArtifactBuffer: extras.htmlArtifactBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
+        isCodeProject: Boolean(vmMetadata.githubRepo?.url || threadRepo),
         onChildUsage: extras.onChildUsage,
         backgroundDispatcher: extras.backgroundDispatcher,
       },
