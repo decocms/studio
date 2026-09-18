@@ -56,7 +56,7 @@ describe("buildClaudeCodeTaskPrompt", () => {
     const jira = {
       source: {
         kind: "jira" as const,
-        issueKey: "ABC-1",
+        issueKeys: ["ABC-1"],
         title: "Jira ABC-1: x",
         body: "# ABC-1",
       },

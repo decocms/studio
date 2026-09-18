@@ -1333,9 +1333,8 @@ export class TaskBoardStorage {
    * a `getById` per id, so the reaction path stays a single round trip.
    *
    * Deliberately NOT a filter inside `linkedTaskIds`: that one answers "which
-   * items is this thread linked to", and the Jira run tools ask it to find the
-   * issue their run is bound to (`resolveRunIssue`). Filtering there would take
-   * every Jira tool offline.
+   * items is this thread linked to", anchors included, and the run reactions
+   * that skip anchors do so by reading `source` off the item.
    */
   async boardManagedIds(
     ids: readonly string[],

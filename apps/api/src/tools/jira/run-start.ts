@@ -21,7 +21,7 @@ import {
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
 import { JiraClient } from "@/jira/client";
 import { openPrForIssue } from "@/jira/open-pr";
-import { startJiraRunForIssue } from "@/jira/trigger";
+import { startJiraRunForIssue, startJiraRunForIssues } from "@/jira/trigger";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "@/tools/task-board/schema";
 
 /** Generous — the input accepts a pasted column of issue URLs. */
@@ -37,12 +37,13 @@ export const MAX_ISSUES_PER_CALL = 25;
 export const JIRA_RUN_START = defineTool({
   name: "JIRA_RUN_START",
   description:
-    "Run the agent on ONE Jira issue right now — how a status rule is tried " +
+    "Run the agent on Jira issues right now — how a status rule is tried " +
     "out before it runs on every issue entering that status. Needs no rule " +
     "for the issue's status and works with the integration disabled. " +
     "`prompt` is the instruction to try; omit it for the agent's own. The " +
-    "issue itself is always in the run's message. This is a real run on the " +
-    "real issue, and it takes over any run still working that issue.",
+    "issue itself is always in the run's message. One run per issue, or one " +
+    "run for all of them with `together`. This is a real run on the real " +
+    "issue, and a per-issue run takes over any run still working that issue.",
   inputSchema: z.object({
     issueKey: z
       .string()
@@ -58,6 +59,16 @@ export const JIRA_RUN_START = defineTool({
       .nullable()
       .optional()
       .describe("What to do with the issue; null for the agent's default."),
+    together: z
+      .boolean()
+      .optional()
+      .describe(
+        "Start ONE run that works every issue named, instead of one run per " +
+          "issue — for work that spans them, like landing an epic's pull " +
+          "requests in order. Its Jira tools take `issueKey` to act on any " +
+          "of the issues and refuse every other. Cannot be combined with " +
+          "`continuePr`, which pins a run to one issue's pull request.",
+      ),
     continuePr: z
       .boolean()
       .optional()
@@ -80,7 +91,8 @@ export const JIRA_RUN_START = defineTool({
         issueKey: z.string(),
         issueUrl: z.string(),
         /** The hidden board item the run hangs off — its id in the monitoring
-         *  history, not a card anyone sees. */
+         *  history, not a card anyone sees. One per issue, or the same one on
+         *  every entry of a `together` call. */
         itemId: z.string(),
         supersededThreadIds: z
           .array(z.string())
@@ -121,6 +133,27 @@ export const JIRA_RUN_START = defineTool({
       );
     }
     const instruction = input.prompt?.trim() ? input.prompt.trim() : null;
+    if (input.together) {
+      if (input.continuePr) {
+        throw new Error(
+          "A run on several issues cannot continue a pull request — that pins the run to one issue's branch",
+        );
+      }
+      const batch = await startJiraRunForIssues(ctx, integration, keys, {
+        instruction,
+        actorId: userId,
+      });
+      return {
+        started: batch.issues.map((issue) => ({
+          issueKey: issue.key,
+          issueUrl: issue.url,
+          itemId: batch.item?.id ?? "",
+          supersededThreadIds: [],
+        })),
+        failed: batch.failed,
+        unreadable: invalid,
+      };
+    }
     const jira = input.continuePr
       ? new JiraClient(
           integration.siteUrl,

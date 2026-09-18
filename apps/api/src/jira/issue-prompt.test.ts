@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { type IssueForPrompt, renderIssueForPrompt } from "./issue-prompt";
+import {
+  type IssueForPrompt,
+  renderIssueForPrompt,
+  renderIssuesForPrompt,
+} from "./issue-prompt";
 
 const base: IssueForPrompt = {
   id: "10012",
@@ -94,5 +98,26 @@ describe("renderIssueForPrompt", () => {
     });
     expect(text).toContain("[… older comments omitted]");
     expect(text).not.toContain("**Bo**");
+  });
+});
+
+describe("renderIssuesForPrompt", () => {
+  it("digests each issue with its links and says how to read one in full", () => {
+    const out = renderIssuesForPrompt([
+      { ...base, key: "EX-1", summary: "First", status: "Done" },
+      {
+        ...base,
+        key: "EX-2",
+        summary: "Second",
+        links: [{ title: "PR", url: "https://example.com/pr/2" }],
+        description: "a body that must not be here",
+      },
+    ]);
+    expect(out).toContain("# 2 Jira issues");
+    expect(out).toContain("## EX-1: First\nStatus: Done");
+    expect(out).toContain("## EX-2: Second");
+    expect(out).toContain("- [PR](https://example.com/pr/2)");
+    expect(out).not.toContain("a body that must not be here");
+    expect(out).toContain("`JIRA_ISSUE_GET` with a key");
   });
 });

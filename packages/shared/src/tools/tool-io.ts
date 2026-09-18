@@ -4409,6 +4409,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4479,6 +4480,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4525,6 +4527,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4559,6 +4562,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -4601,6 +4605,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4645,6 +4650,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -5914,6 +5920,7 @@ export interface StudioToolIO {
     input: {
       issueKey: string;
       prompt?: string | null | undefined;
+      together?: boolean | undefined;
       continuePr?: boolean | undefined;
     };
     output: {
@@ -5932,19 +5939,19 @@ export interface StudioToolIO {
     output: { issueKeys: string[]; workflowId: string; unreadable: string[] };
   };
   JIRA_ISSUE_GET: {
-    input: { [x: string]: never };
+    input: { issueKey?: string | undefined };
     output: { key: string; url: string; status: string; markdown: string };
   };
   JIRA_COMMENT_ADD: {
-    input: { body: string };
+    input: { issueKey?: string | undefined; body: string };
     output: { commentId: string; embeddedImages: string[] };
   };
   JIRA_ISSUE_TRANSITION: {
-    input: { toStatus: string };
+    input: { issueKey?: string | undefined; toStatus: string };
     output: { status: string };
   };
   JIRA_ATTACHMENT_DOWNLOAD: {
-    input: { attachmentId: string };
+    input: { issueKey?: string | undefined; attachmentId: string };
     output: {
       url: string;
       filename: string;
@@ -5954,6 +5961,7 @@ export interface StudioToolIO {
   };
   JIRA_REMOTE_LINK_ADD: {
     input: {
+      issueKey?: string | undefined;
       url: string;
       title: string;
       summary?: string | undefined;

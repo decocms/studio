@@ -649,12 +649,17 @@ function TestRunRow() {
   const [issueKeys, setIssueKeys] = useState("");
   const [prompt, setPrompt] = useState("");
   const [continuePr, setContinuePr] = useState(false);
+  const [together, setTogether] = useState(false);
   const [result, setResult] = useState<{
     started: string[];
     failed: Array<{ issueKey: string; error: string }>;
+    together: boolean;
   } | null>(null);
   const parsed = parseIssueKeys(issueKeys);
   const canRun = parsed.keys.length > 0 && !start.isPending;
+  // One run across several issues cannot pin itself to one issue's branch,
+  // so the two are exclusive; the server refuses the pair too.
+  const batch = together && parsed.keys.length > 1;
 
   const run = () => {
     if (!canRun) return;
@@ -663,13 +668,14 @@ function TestRunRow() {
       {
         issueKey: issueKeys,
         prompt: prompt.trim() === "" ? null : prompt.trim(),
-        continuePr,
+        ...(batch ? { together: true } : { continuePr }),
       },
       {
         onSuccess: (r) =>
           setResult({
             started: r.started.map((s) => s.issueKey),
             failed: r.failed,
+            together: batch,
           }),
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.testRunFailed"))),
@@ -699,11 +705,21 @@ function TestRunRow() {
             reviewing. */}
         <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
           <Checkbox
-            checked={continuePr}
+            checked={continuePr && !batch}
+            disabled={batch}
             onCheckedChange={(v) => setContinuePr(v === true)}
           />
           {t("settings.jira.continuePr")}
         </label>
+        {parsed.keys.length > 1 && (
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
+            <Checkbox
+              checked={together}
+              onCheckedChange={(v) => setTogether(v === true)}
+            />
+            {t("settings.jira.together")}
+          </label>
+        )}
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {t("settings.jira.testRunHelp")}
@@ -725,7 +741,11 @@ function TestRunRow() {
         <BatchResult
           started={result?.started ?? []}
           failed={result?.failed ?? []}
-          startedLabel={t("settings.jira.testRunStarted")}
+          startedLabel={t(
+            result?.together
+              ? "settings.jira.togetherStarted"
+              : "settings.jira.testRunStarted",
+          )}
         />
         <Link
           to="/$org/settings/monitor"

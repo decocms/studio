@@ -99,6 +99,9 @@ export const settings = {
     "Este é um run de verdade: o agente lê a issue real, comenta nela e pode movê-la. Rodar de novo interrompe o run que ainda estiver trabalhando nessa issue. Digite “/” para inserir a mesma skill que a regra da coluna usaria.",
   "settings.jira.continuePr":
     "Continuar o pull request que a issue já carrega (re-run depois de um review pedir mudanças)",
+  "settings.jira.together":
+    "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
+  "settings.jira.togetherStarted": "Iniciado um run em",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
   "settings.jira.mergeLabel": "Mergear os pull requests",
   "settings.jira.mergeDescription":
