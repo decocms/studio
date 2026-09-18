@@ -73,6 +73,29 @@
     "react/purity": "error",
     "react/set-state-in-effect": "error",
     "react-hooks/exhaustive-deps": "error",
+    //
+    // oxlint only turns its `correctness` category on by default, so the rules
+    // below had never run here. These are the ones that catch real defects
+    // rather than express a style preference; the categories they live in stay
+    // off, so each is listed explicitly.
+    //
+    // Crashes: a hook behind a condition or a loop breaks the hook order.
+    "react-hooks/rules-of-hooks": "error",
+    "react/hooks": "error",
+    // A component defined during render is a new type every render, so React
+    // unmounts and remounts it — losing its state and its DOM focus.
+    "react/no-unstable-nested-components": "error",
+    // Security: we render untrusted sandbox/preview content in iframes.
+    "react/iframe-missing-sandbox": "error",
+    "react/no-danger": "error",
+    // A `//` comment in JSX position renders as visible page text.
+    "react/jsx-no-comment-textnodes": "error",
+    // A <button> with no type submits the form it happens to sit in.
+    "react/button-has-type": "error",
+    // Re-render bugs: a value constructed during render is a new identity every
+    // time, so every context consumer (or memoized child) re-renders.
+    "react/jsx-no-constructed-context-values": "error",
+    "react/no-object-type-as-default-prop": "error",
     "enforce-kebab-case-file-names/kebab-case": "warn",
     "ban-types": "warn",
     "enforce-query-key-constants/enforce-query-key-constants": "warn",
