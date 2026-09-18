@@ -97,6 +97,16 @@ function pendingQuery() {
       "o.slug as orgSlug",
       "u.email as email",
     ])
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("demo_organizations as demo")
+            .select("demo.organization_id")
+            .whereRef("demo.organization_id", "=", "n.organization_id"),
+        ),
+      ),
+    )
     .where("n.emailed_at", "is", null)
     .where("n.read_at", "is", null)
     .orderBy("n.created_at", "asc")

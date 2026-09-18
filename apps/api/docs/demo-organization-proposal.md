@@ -1,6 +1,6 @@
 # Proposta: organização de demonstração restaurável
 
-Status: proposta para revisão, sem alteração de runtime ou de produção. Pesquisa de código sobre o commit `e3f6bd963`, complementada por consultas ao banco de produção em 18/09/2026. Os nomes de serviços e contratos novos abaixo são propostas, não APIs disponíveis.
+Status: pesquisa e desenho original, seguidos pela implementação autorizada neste PR. A [documentação operacional](demo-organization.md) descreve o que está implementado, como testar e as diferenças de escopo. Produção não foi alterada. Pesquisa de código sobre o commit `e3f6bd963`, complementada por consultas ao banco de produção em 18/09/2026. Os contratos abaixo representam o desenho proposto; consulte o guia operacional para os nomes disponíveis.
 
 A recomendação é transformar a org de demonstração em um ambiente com **dados persistidos e execução roteirizada no servidor**. O vendedor usa o Studio normal, altera tarefas, acompanha o chat, revisa resultados e abre previews. Um botão "Preparar demonstração" restaura um cenário versionado. Recarregar a página mantém as mudanças da apresentação.
 
@@ -251,7 +251,7 @@ Uma versão ruim do manifesto pode voltar à anterior com o mesmo reset. Uma fal
 
 | Decisão | Motivo |
 | --- | --- |
-| Proposta em PR, sem mudar produção nesta pesquisa | O pedido é uma proposta revisável. Os dados foram consultados em modo somente leitura; nenhum reset ou mock foi implementado ou habilitado. |
+| Pesquisa de produção somente leitura | A implementação posterior foi autorizada e validada em orgs novas locais. A org `demo-storefront` não foi convertida nem restaurada. |
 | Estado real no servidor, executor roteirizado | Mantém o produto demonstrável e a persistência, removendo a variabilidade do trabalho externo. |
 | Mock antes da admissão dependente de modelo | Evita que quota, credenciais ou filas de execução real impeçam o começo do roteiro. |
 | Artefatos prontos para preview e relatório | Evita cold start, build, deploy e regeneração do conteúdo curado durante a apresentação. |

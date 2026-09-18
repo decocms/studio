@@ -1,3 +1,4 @@
+import { DemoStorage } from "@/storage/demo";
 /**
  * StudioContext - Core abstraction for all tools
  *
@@ -379,6 +380,7 @@ export interface StudioStorage {
   githubConnectFlows: GithubConnectFlowStorage;
   repositories: RepositoryStorage;
   jiraIntegrations: JiraIntegrationStorage;
+  demo: DemoStorage;
   taskBoard: TaskBoardStorage;
   columnAutomations: ColumnAutomationStorage;
   taskBoardPrompts: TaskBoardPromptStorage;

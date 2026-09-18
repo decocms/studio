@@ -1,3 +1,4 @@
+import { DEMO_UPDATED_EVENT } from "@decocms/shared/demo";
 /**
  * Unified `/api/:org/watch` SSE pool. Consumers share ONE cross-tab connection
  * per org that streams the union of their event types; each takes a
@@ -19,6 +20,7 @@ import {
 
 /** Every event type multiplexed over the single `/watch` connection. */
 const WATCH_TYPES = [
+  DEMO_UPDATED_EVENT,
   ...ALL_DECOPILOT_EVENT_TYPES,
   TASK_BOARD_ITEM_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
@@ -69,3 +71,5 @@ export const notificationWatchView: SSESubscription = filterEventTypes(
   watchSSE,
   [NOTIFICATION_CREATED_EVENT],
 );
+
+export const demoWatchView = filterEventTypes(watchSSE, [DEMO_UPDATED_EVENT]);

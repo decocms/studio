@@ -148,6 +148,7 @@ export async function enqueueAgentRunForTask(
   },
 ): Promise<{ threadId: string; isNew: boolean }> {
   const organizationId = task.organizationId;
+  await ctx.storage.demo.assertLive(organizationId);
   const userId = task.assignedBy ?? task.createdBy;
   const harnessId = opts.harnessId ?? "decopilot";
 

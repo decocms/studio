@@ -162,6 +162,7 @@ function quickFileOpSignal(c: Context<VmEnv>): AbortSignal {
  */
 const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   const ctx = c.var.studioContext;
+  if (ctx.organization) await ctx.storage.demo.assertLive(ctx.organization.id);
   try {
     requireAuth(ctx);
   } catch {

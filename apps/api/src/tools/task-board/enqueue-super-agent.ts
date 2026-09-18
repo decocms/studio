@@ -275,6 +275,7 @@ export async function enqueueSuperAgentForTask(
   task: TaskBoardItem,
   opts?: SuperAgentPromptOpts,
 ): Promise<void> {
+  await ctx.storage.demo.assertLive(task.organizationId);
   // Quota claim at dispatch — the funnel every FRESH execution shares
   // (update flip, import auto-delegation, review/conflict re-runs). A stall
   // nudge re-prompts an existing thread directly (stall-recovery.ts) and

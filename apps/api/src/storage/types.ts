@@ -11,7 +11,7 @@
  * - Access control via Better Auth permissions and organization roles
  */
 
-import type { ColumnType } from "kysely";
+import type { ColumnType, Generated } from "kysely";
 import type { OAuthConfig } from "../tools/connection/schema";
 import type { TaskBoardActivityAction } from "../tools/task-board/schema";
 import type { ChatMessage } from "../api/routes/decopilot/types";
@@ -2397,7 +2397,45 @@ export interface Experiment {
   updatedAt: string;
 }
 
+export interface DemoOrganizationTable {
+  organization_id: string;
+  scenario: string;
+  generation: Generated<number>;
+  reset_at: Generated<Date>;
+  session_owner: string | null;
+  session_expires_at: Date | null;
+}
+export interface DemoTaskTable {
+  task_id: string;
+  organization_id: string;
+  recipe: string;
+  delivered: Generated<boolean>;
+  published: Generated<boolean>;
+}
+export interface DemoRunTable {
+  id: string;
+  organization_id: string;
+  generation: number;
+  task_id: string;
+  thread_id: string;
+  recipe: string;
+  step: Generated<number>;
+  state: Generated<string>;
+  created_at: Generated<Date>;
+}
+export interface DemoResetTable {
+  id: string;
+  organization_id: string;
+  idempotency_key: string;
+  generation: number;
+  actor_id: string | null;
+  created_at: Generated<Date>;
+}
 export interface Database extends PrivateRegistryDatabase {
+  demo_organizations: DemoOrganizationTable;
+  demo_tasks: DemoTaskTable;
+  demo_runs: DemoRunTable;
+  demo_resets: DemoResetTable;
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)

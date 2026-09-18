@@ -485,8 +485,9 @@ function TaskBoardItemEditor({
     dueDate: parseIsoDate(item?.dueDate),
     tagIds: item?.tags.map((tag) => tag.id) ?? [],
   });
-  const { title, description, status, priority, assigneeId, repo, dueDate } =
-    form;
+  const { title, description, priority, repo, dueDate } = form;
+  const status = item?.status ?? form.status;
+  const assigneeId = item ? item.assigneeId : form.assigneeId;
   /**
    * The bucket this card's repository belongs to, so the control shows the
    * PROJECT — its avatar and its name — rather than the string underneath.
@@ -561,7 +562,7 @@ function TaskBoardItemEditor({
    * and the two never land out of order.
    */
   const patch = (next: Partial<TaskForm>, debounce = false) => {
-    const merged = { ...formRef.current, ...next };
+    const merged = { ...formRef.current, status, assigneeId, ...next };
     formRef.current = merged;
     submitRef.current = onSubmit;
     setForm(merged);

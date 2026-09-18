@@ -137,6 +137,7 @@ export const SANDBOX_START = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     const organization = requireOrganization(ctx);
+    await ctx.storage.demo.assertLive(organization.id);
     await ctx.access.check();
     const resolvedBranch =
       input.branch ?? generateBranchName(branchUserLabel(ctx.auth.user));

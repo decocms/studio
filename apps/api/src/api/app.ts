@@ -1,3 +1,4 @@
+import { registerDemoWorkflows } from "@/demo/workflow";
 /**
  * Studio API Server
  *
@@ -1982,6 +1983,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerPublicSetsSyncWorkflow();
   registerOrgRepoSyncWorkflow();
   registerTaskBoardArchiveSweepWorkflow();
+  registerDemoWorkflows(database.db);
   registerSubscriptionSweepWorkflow();
   registerJiraTriggerSweepWorkflow();
   registerNotificationDigestWorkflow();

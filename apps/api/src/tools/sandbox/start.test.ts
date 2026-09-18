@@ -246,6 +246,7 @@ function makeCtx(overrides: {
       setToolName: () => {},
     },
     storage: {
+      demo: { assertLive: async () => {} },
       virtualMcps: { findById, update: updateSpy },
       // Non-repo-scoped org connection: getRepoScope() returns null, so the
       // repo-scoped mint path in provisionSandbox is skipped and these tests

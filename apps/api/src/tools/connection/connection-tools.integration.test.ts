@@ -122,6 +122,7 @@ describe("Connection Tools", () => {
         gitProviderOAuthStates: null as never,
         repositories: null as never,
         jiraIntegrations: null as never,
+        demo: null as never,
         taskBoard: null as never,
         taskBoardPrompts: null as never,
         taskBoardAnalytics: null as never,

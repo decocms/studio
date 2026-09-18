@@ -848,6 +848,7 @@ async function prepareRun(
   deps: DispatchRunDeps,
   rootSpan: import("@opentelemetry/api").Span,
 ): Promise<PreparedRun> {
+  await ctx.storage.demo.assertLive(input.organizationId);
   const { runRegistry, streamBuffer } = deps;
   assertHostedDispatchHarness(input.harnessId);
   const harnessId = input.harnessId;

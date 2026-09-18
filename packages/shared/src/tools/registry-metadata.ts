@@ -288,6 +288,11 @@ const ALL_TOOL_NAMES = [
   // Search tools
   "GLOBAL_SEARCH",
 
+  // Demonstration controls
+  "DEMO_STATUS",
+  "DEMO_RESET",
+  "DEMO_SESSION",
+  "DEMO_CREATE_TASK",
   // Task board tools
   "TASK_BOARD_ITEM_CREATE",
   "TASK_BOARD_ITEM_LIST",
@@ -1389,6 +1394,26 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
       "Search across organization resources (currently threads). Returns a typed union of matches.",
     category: "Search",
   },
+  {
+    name: "DEMO_STATUS",
+    description: "Read demonstration status",
+    category: "Task Board",
+  },
+  {
+    name: "DEMO_RESET",
+    description: "Restore demonstration",
+    category: "Task Board",
+  },
+  {
+    name: "DEMO_SESSION",
+    description: "Reserve demonstration",
+    category: "Task Board",
+  },
+  {
+    name: "DEMO_CREATE_TASK",
+    description: "Create demonstration task",
+    category: "Task Board",
+  },
   // Task board tools
   {
     name: "TASK_BOARD_ITEM_CREATE",
@@ -1705,6 +1730,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_THREAD_MESSAGES_LIST",
       // Task board — org-scoped, usable by every member, same basic-usage
       // tier as chat threads.
+      "DEMO_STATUS",
+      "DEMO_RESET",
+      "DEMO_SESSION",
+      "DEMO_CREATE_TASK",
       "TASK_BOARD_ITEM_CREATE",
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_UPDATE",

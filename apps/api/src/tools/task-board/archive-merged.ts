@@ -143,6 +143,7 @@ export async function archiveMergedForOrg(
   itemIds: string[],
   prLanding: PrLandingReader = fetchPrLanding,
 ): Promise<{ archived: number }> {
+  if (await ctx.storage.demo.get(organizationId)) return { archived: 0 };
   let archived = 0;
   for (const itemId of itemIds) {
     try {

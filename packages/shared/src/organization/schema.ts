@@ -131,6 +131,12 @@ export type DefaultHomeAgentsConfig = z.infer<
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  demo_mode_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Enable a registered demo organization. Does not grant permission or register the org.",
+    ),
   home_task_intake_enabled: z
     .boolean()
     .optional()

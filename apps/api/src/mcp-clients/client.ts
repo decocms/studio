@@ -28,6 +28,8 @@ export async function clientFromConnection(
   ctx: StudioContext,
   superUser = false,
 ): Promise<Client> {
+  if (connection.organization_id)
+    await ctx.storage.demo.assertLive(connection.organization_id);
   if (connection.connection_type === "VIRTUAL") {
     return createVirtualClient(connection, ctx, superUser);
   }

@@ -143,6 +143,7 @@ describe("enqueueAgentRunForTask plan gate", () => {
     return {
       auth: { user: { id: "u1" } },
       storage: {
+        demo: { assertLive: async () => {} },
         taskBoardPrompts: { promptFor: async () => undefined },
         // Reached only if the gate allows. `isNew: false` makes the function
         // return right there, so nothing further needs stubbing.

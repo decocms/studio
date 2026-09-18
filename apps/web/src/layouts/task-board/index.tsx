@@ -1,3 +1,5 @@
+import { DemoControls } from "@/components/demo/demo-controls";
+import { useDemo } from "@/hooks/use-demo";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Columns03, List } from "@untitledui/icons";
 import { TaskFiltersBar, TaskFiltersDrawer } from "./task-filters";
@@ -837,6 +839,7 @@ export function TaskBoardPage() {
 }
 
 function TaskBoardBody() {
+  const demo = useDemo();
   const compact = useCompactPageLayout();
   const t = useT();
   const { items, isLoading } = useTaskBoardItems();
@@ -854,7 +857,7 @@ function TaskBoardBody() {
   const blockSuperAgentWithoutRepository = (
     assigneeId: string | null | undefined,
   ) => {
-    if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasRepo) {
+    if (assigneeId === SUPER_AGENT_ASSIGNEE_ID && !hasRepo && !demo?.enabled) {
       setRepoPickerOpen(true);
       return true;
     }
@@ -1200,6 +1203,7 @@ function TaskBoardBody() {
                   )
                 }
               >
+                <DemoControls />
                 <TaskBoardAdminControls />
                 <Button size="sm" onClick={openCreate}>
                   <Plus size={16} />
@@ -1256,6 +1260,12 @@ function TaskBoardBody() {
             </h1>
 
             <TaskBoardAdminBanner />
+
+            {demo && (
+              <div className="flex flex-wrap items-center gap-2">
+                <DemoControls />
+              </div>
+            )}
 
             {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}

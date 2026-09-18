@@ -1,3 +1,4 @@
+import { DemoStorage } from "@/storage/demo";
 /**
  * Context Factory
  *
@@ -1486,6 +1487,7 @@ export async function createStudioContextFactory(
     githubConnectFlows: new GithubConnectFlowStorage(config.db),
     repositories: new RepositoryStorage(config.db),
     jiraIntegrations: new JiraIntegrationStorage(config.db, vault),
+    demo: new DemoStorage(config.db),
     taskBoard: new TaskBoardStorage(config.db),
     columnAutomations: new ColumnAutomationStorage(config.db),
     taskBoardPrompts: new TaskBoardPromptStorage(config.db),

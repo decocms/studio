@@ -194,7 +194,7 @@ export async function recoverStalledTasks(
   items: TaskBoardItem[],
 ): Promise<void> {
   const organizationId = ctx.organization?.id;
-  if (!organizationId) return;
+  if (!organizationId || (await ctx.storage.demo.get(organizationId))) return;
 
   for (const item of items) {
     // First clear any never-started thread blocking this card's gate below.

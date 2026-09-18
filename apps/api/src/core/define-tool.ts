@@ -9,6 +9,7 @@
  * - Distributed tracing
  */
 
+import { interceptDemoTool } from "@/demo/tool-policy";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { z } from "zod";
 import type { StudioContext } from "./studio-context";
@@ -205,6 +206,16 @@ export function defineTool<
                   throw new OrgBlockedError(
                     `This organization is blocked: ${definition.name} is unavailable until the block is resolved`,
                   );
+                }
+
+                const demo = await interceptDemoTool(
+                  definition.name,
+                  input,
+                  ctx,
+                );
+                if (demo) {
+                  span.setStatus({ code: SpanStatusCode.OK });
+                  return definition.outputSchema.parse(demo.result);
                 }
 
                 // A gated tool with no resolvable org runs UNGATED below, and

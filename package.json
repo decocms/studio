@@ -45,7 +45,9 @@
     "knip": "knip",
     "services:up": "bun run --env-file apps/api/.env apps/api/src/cli.ts services up",
     "services:down": "bun run --env-file apps/api/.env apps/api/src/cli.ts services down",
-    "services:status": "bun run --env-file apps/api/.env apps/api/src/cli.ts services status"
+    "services:status": "bun run --env-file apps/api/.env apps/api/src/cli.ts services status",
+    "demo:setup": "bun run apps/api/scripts/demo.ts setup",
+    "demo:reset": "bun run apps/api/scripts/demo.ts reset"
   },
   "type": "module",
   "workspaces": [

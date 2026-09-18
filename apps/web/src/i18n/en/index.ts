@@ -1,3 +1,4 @@
+import { demo } from "./demo";
 import { page } from "./page";
 import { virtualMcp } from "./virtual-mcp.ts";
 import { user } from "./user.ts";
@@ -92,6 +93,7 @@ export const en = {
   ...settings,
   ...announcements,
   ...assets,
+  ...demo,
   ...page,
 } as const;
 

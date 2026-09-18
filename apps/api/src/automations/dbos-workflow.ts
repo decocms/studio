@@ -221,6 +221,8 @@ async function prepareFireStep(
     return { skip: "creator_invalid" };
   }
 
+  await studioCtx.storage.demo.assertLive(automation.organization_id);
+
   const parsedModels = JSON.parse(automation.models) as {
     tier?: SimpleModeTier;
     modelId?: string;

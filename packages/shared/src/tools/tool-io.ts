@@ -6,6 +6,33 @@
  * builtin tool schema changes.
  */
 export interface StudioToolIO {
+  DEMO_STATUS: {
+    input: { [x: string]: never };
+    output: {
+      demo: {
+        enabled: boolean;
+        scenario: string;
+        generation: number;
+        resetAt: string;
+        activeRuns: number;
+        sessionOwner: string | null;
+        sessionExpiresAt: string | null;
+        tasks: { id: string; recipe: "search" | "promotion" | "diagnostic" }[];
+      } | null;
+    };
+  };
+  DEMO_RESET: {
+    input: { idempotencyKey: string; expectedGeneration: number };
+    output: { generation: number; repeated: boolean };
+  };
+  DEMO_SESSION: { input: { active: boolean }; output: { success: boolean } };
+  DEMO_CREATE_TASK: {
+    input: {
+      recipe: "search" | "promotion" | "diagnostic";
+      expectedGeneration: number;
+    };
+    output: { id: string };
+  };
   ORGANIZATION_CREATE: {
     input: { slug: string; name: string; description?: string | undefined };
     output: {
@@ -120,6 +147,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            demo_mode_enabled?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -199,6 +227,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            demo_mode_enabled?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -278,6 +307,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            demo_mode_enabled?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -2326,6 +2356,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -2335,7 +2366,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -2385,6 +2415,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -2394,7 +2425,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;
@@ -2597,6 +2627,7 @@ export interface StudioToolIO {
                           sidebarViews?:
                             | (
                                 | "automations"
+                                | "experiments"
                                 | "overview"
                                 | "assets"
                                 | "reports"
@@ -2606,7 +2637,6 @@ export interface StudioToolIO {
                                 | "e2e"
                                 | "analytics"
                                 | "cdn"
-                                | "experiments"
                               )[]
                             | null
                             | undefined;
@@ -2656,6 +2686,7 @@ export interface StudioToolIO {
               sidebarViews?:
                 | (
                     | "automations"
+                    | "experiments"
                     | "overview"
                     | "assets"
                     | "reports"
@@ -2665,7 +2696,6 @@ export interface StudioToolIO {
                     | "e2e"
                     | "analytics"
                     | "cdn"
-                    | "experiments"
                   )[]
                 | null
                 | undefined;
@@ -2794,6 +2824,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -2803,7 +2834,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -2853,6 +2883,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -2862,7 +2893,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;
@@ -3027,6 +3057,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -3036,7 +3067,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3086,6 +3116,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -3095,7 +3126,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;
@@ -3251,6 +3281,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -3260,7 +3291,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3310,6 +3340,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -3319,7 +3350,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;
@@ -3474,6 +3504,7 @@ export interface StudioToolIO {
                           sidebarViews?:
                             | (
                                 | "automations"
+                                | "experiments"
                                 | "overview"
                                 | "assets"
                                 | "reports"
@@ -3483,7 +3514,6 @@ export interface StudioToolIO {
                                 | "e2e"
                                 | "analytics"
                                 | "cdn"
-                                | "experiments"
                               )[]
                             | null
                             | undefined;
@@ -3533,6 +3563,7 @@ export interface StudioToolIO {
               sidebarViews?:
                 | (
                     | "automations"
+                    | "experiments"
                     | "overview"
                     | "assets"
                     | "reports"
@@ -3542,7 +3573,6 @@ export interface StudioToolIO {
                     | "e2e"
                     | "analytics"
                     | "cdn"
-                    | "experiments"
                   )[]
                 | null
                 | undefined;
@@ -3679,6 +3709,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -3688,7 +3719,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3738,6 +3768,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -3747,7 +3778,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;
@@ -3901,6 +3931,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -3910,7 +3941,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -3960,6 +3990,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -3969,7 +4000,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;
@@ -5142,6 +5172,7 @@ export interface StudioToolIO {
                       sidebarViews?:
                         | (
                             | "automations"
+                            | "experiments"
                             | "overview"
                             | "assets"
                             | "reports"
@@ -5151,7 +5182,6 @@ export interface StudioToolIO {
                             | "e2e"
                             | "analytics"
                             | "cdn"
-                            | "experiments"
                           )[]
                         | null
                         | undefined;
@@ -5201,6 +5231,7 @@ export interface StudioToolIO {
           sidebarViews?:
             | (
                 | "automations"
+                | "experiments"
                 | "overview"
                 | "assets"
                 | "reports"
@@ -5210,7 +5241,6 @@ export interface StudioToolIO {
                 | "e2e"
                 | "analytics"
                 | "cdn"
-                | "experiments"
               )[]
             | null
             | undefined;

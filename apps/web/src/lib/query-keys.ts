@@ -8,6 +8,7 @@
 import { ProjectLocator } from "@/sdk";
 
 export const KEYS = {
+  demo: (locator: ProjectLocator) => [locator, "demo"] as const,
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 

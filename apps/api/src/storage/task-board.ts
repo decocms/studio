@@ -738,6 +738,20 @@ export class TaskBoardStorage {
       // bounce put back In Review with no cycle, and lane-only drops every card
       // currently under review, which is the whole point of migration 190.
       .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("demo_organizations as demo")
+              .select("demo.organization_id")
+              .whereRef(
+                "demo.organization_id",
+                "=",
+                "task_board_items.organization_id",
+              ),
+          ),
+        ),
+      )
+      .where((eb) =>
         eb.or([
           eb("review_cycle_started_at", "is not", null),
           eb("status", "=", LANES.review),
@@ -801,6 +815,16 @@ export class TaskBoardStorage {
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select(["i.id", "i.organization_id as organizationId"])
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("demo_organizations as demo")
+              .select("demo.organization_id")
+              .whereRef("demo.organization_id", "=", "i.organization_id"),
+          ),
+        ),
+      )
       .where("i.status", "=", "done")
       .where("i.dismissed_at", "is", null)
       .where("i.updated_at", "<", settledBefore)
@@ -846,6 +870,16 @@ export class TaskBoardStorage {
       // `merged`, and gating on Done alone would mean no card is ever tagged
       // until a human drags it the rest of the way — days after the tag was
       // worth seeing, which is the whole reason this sweep is not the archive's.
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("demo_organizations as demo")
+              .select("demo.organization_id")
+              .whereRef("demo.organization_id", "=", "i.organization_id"),
+          ),
+        ),
+      )
       .where("i.status", "in", TAGGABLE_MERGED_STATUSES)
       .where("i.dismissed_at", "is", null)
       .where((eb) =>
@@ -1043,6 +1077,16 @@ export class TaskBoardStorage {
         "l.task_board_item_id as itemId",
         "l.organization_id as organizationId",
       ])
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("demo_organizations as demo")
+              .select("demo.organization_id")
+              .whereRef("demo.organization_id", "=", "t.organization_id"),
+          ),
+        ),
+      )
       .where("t.status", "=", "in_progress")
       .where("t.run_started_at", "is", null)
       .where((eb) =>
@@ -1245,6 +1289,20 @@ export class TaskBoardStorage {
         "organization_id as organizationId",
         "retry_attempts as attempts",
       ])
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("demo_organizations as demo")
+              .select("demo.organization_id")
+              .whereRef(
+                "demo.organization_id",
+                "=",
+                "task_board_items.organization_id",
+              ),
+          ),
+        ),
+      )
       .where("retry_at", "is not", null)
       .where("retry_at", "<=", now)
       .where("status", "=", "in_progress")

@@ -1,3 +1,7 @@
+import { ForbiddenError } from "@/core/access-control";
+import { getUserId } from "@/core/studio-context";
+import { startDemoRun } from "@/demo/workflow";
+import { emitDemoUpdated } from "@/demo/events";
 /**
  * Decopilot Routes
  *
@@ -645,6 +649,34 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
       // the truth is "your allowance is used up, pick a plan". The org id is
       // the route's own scope, so it needs no body parse to read.
       const organizationId = ensureOrganization(c).id;
+      if (await ctx.storage.demo.get(organizationId)) {
+        const parsed = await validateRequest(c);
+        const { userId, taskId, thread } = await validateThreadOwnership(c);
+        const bodyId = parsed.thread_id ?? parsed.memory?.thread_id;
+        if (bodyId && bodyId !== taskId)
+          throw new HTTPException(400, { message: "Thread ID mismatch" });
+        if (thread.metadata?.read_only)
+          throw new HTTPException(409, { message: "This chat is read only" });
+        if (parsed.requestMessage.role !== "user")
+          throw new HTTPException(400, {
+            message: "Demo continuations must be user messages",
+          });
+        const text = parsed.requestMessage.parts
+          .filter((p) => p.type === "text")
+          .map((p) => p.text)
+          .join("\n");
+        const run = await ctx.storage.demo.followup(
+          organizationId,
+          userId,
+          taskId,
+          parsed.requestMessage.id,
+          text,
+        );
+        await startDemoRun(organizationId, run.id);
+        emitDemoUpdated(organizationId);
+        return c.json({ taskId }, 202);
+      }
+
       if (!(await orgHasFeature(ctx, organizationId, "chat"))) {
         throw new FeatureNotInPlanError(
           "This organization's plan does not include chat",
@@ -855,6 +887,8 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
         });
         return c.json({ error: err.message, code: err.code }, 403);
       }
+      if (err instanceof ForbiddenError)
+        return c.json({ error: err.message }, 403);
       console.error("[decopilot:messages] Error", err);
       if (err instanceof TierUnavailableError) {
         return c.json({ error: err.message }, 400);
@@ -1010,6 +1044,15 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/cancel/:threadId", async (c) => {
     const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
+    if (await ctx.storage.demo.get(organization.id)) {
+      await ctx.storage.demo.cancel(organization.id, getUserId(ctx)!, taskId);
+      emitDemoUpdated(organization.id, {
+        id: taskId,
+        step: 0,
+        completed: true,
+      });
+      return c.json({ cancelled: true, async: false }, 202);
+    }
     assertPersistedHostedRuntime(thread.harness_id);
     await cancelActiveThreadRun({ ctx, taskId, thread, organization });
     return c.json({ cancelled: true, async: true }, 202);
@@ -1020,7 +1063,9 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   // pod runs the turn (like cancel); that pod's running `subtask` call aborts
   // its inline run and re-runs it as a durable background job. Owner-only.
   app.post("/:org/decopilot/flip/:threadId", async (c) => {
-    const { taskId, thread } = await validateThreadOwnership(c);
+    const { ctx, taskId, thread, organization } =
+      await validateThreadOwnership(c);
+    await ctx.storage.demo.assertLive(organization.id);
     assertPersistedHostedRuntime(thread.harness_id);
     const body = (await c.req.json().catch(() => null)) as {
       toolCallId?: unknown;
@@ -1069,6 +1114,7 @@ export function createDecopilotRoutes(deps: DecopilotDeps) {
   app.post("/:org/decopilot/queue/:threadId/cancel/:workflowId", async (c) => {
     const { ctx, taskId, thread, organization } =
       await validateThreadOwnership(c);
+    await ctx.storage.demo.assertLive(organization.id);
     assertPersistedHostedRuntime(thread.harness_id);
     const workflowId = c.req.param("workflowId");
 

@@ -130,6 +130,7 @@ export async function mergeLinkedPr(
   taskBoardItemId: string,
   opts: { allowPendingChecks?: boolean } = {},
 ): Promise<MergeOutcome> {
+  await ctx.storage.demo.assertLive(orgId);
   const fail = async (
     reason: MergeFailureReason,
     detail?: string,

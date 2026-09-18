@@ -1,3 +1,4 @@
+import { createDemoRoutes } from "./demo";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
 import type { NatsConnection } from "@nats-io/nats-core";
@@ -94,6 +95,28 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.use("*", resolveOrgFromPath);
   // Blocked orgs (see core/org-notice-gate) lose their control-plane writes.
   app.use("*", enforceOrgBlock);
+  app.use("*", async (c, next) => {
+    const ctx = c.get("studioContext");
+    if (ctx.organization && (await ctx.storage.demo.get(ctx.organization.id))) {
+      const path = c.req.path.slice(`/api/${c.req.param("org")}`.length);
+      if (
+        !/^\/(?:tools(?:\/|$)|watch$|notice$|sso\/status$|demo(?:\/|$)|mcp\/self$)/.test(
+          path,
+        )
+      ) {
+        return c.json(
+          {
+            error:
+              "This integration is unavailable in the demonstration. Use its prepared tasks and previews.",
+          },
+          403,
+        );
+      }
+    }
+    return next();
+  });
+
+  app.route("/demo", createDemoRoutes());
 
   // --- Routes that don't need extra middleware ---
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
