@@ -466,6 +466,7 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
+  "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
   "sandbox.productBlocks.addProductsButton": "Add products",
