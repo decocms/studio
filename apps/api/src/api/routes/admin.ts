@@ -19,6 +19,10 @@
  * namespace). The prefix is exported so the mount and the SSO-enforcement
  * exemption in app.ts share one source — see the constant below.
  */
+import { z } from "zod";
+import { DemoStorage } from "@/storage/demo";
+import { emitDemoUpdated } from "@/demo/events";
+import { ForbiddenError } from "@/core/access-control";
 import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -478,6 +482,51 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  app.get("/orgs/:orgId/demo", async (c) => {
+    const demo = new DemoStorage(getDb().db);
+    const org = c.req.param("orgId");
+    const status = await demo.status(org);
+    const bundle = status ? await demo.bundle(org) : null;
+    return c.json({ demo: status, source: bundle?.source ?? null });
+  });
+
+  app.post("/orgs/:orgId/demo/reset", async (c) => {
+    const parsed = z
+      .object({
+        idempotencyKey: z.string().min(1).max(100),
+        expectedGeneration: z.number().int().nonnegative(),
+      })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "Invalid reset request" }, 400);
+    const org = c.req.param("orgId");
+    const demo = new DemoStorage(getDb().db);
+    if (!(await demo.get(org)))
+      return c.json({ error: "Demonstration not found" }, 404);
+    const { actorId, impersonatedBy } = await getAuditActor(c);
+    const actor = impersonatedBy ?? actorId;
+    if (!actor)
+      return c.json({ error: "Signed-in administrator required" }, 403);
+    try {
+      const result = await demo.reset(
+        org,
+        actor,
+        parsed.data.idempotencyKey,
+        parsed.data.expectedGeneration,
+      );
+      auditAdminAction("demo_reset", {
+        actor_user_id: actor,
+        organization_id: org,
+        ...result,
+      });
+      emitDemoUpdated(org);
+      return c.json(result);
+    } catch (error) {
+      if (error instanceof ForbiddenError)
+        return c.json({ error: error.message }, 409);
+      throw error;
+    }
   });
 
   // Feature-flag editor over `organization_settings.flags`; OrgFlagsSchema is the source of truth.

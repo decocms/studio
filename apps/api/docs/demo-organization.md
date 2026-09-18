@@ -1,91 +1,95 @@
-# Demonstração persistida: operação e roteiro de teste
+# Demonstração persistida: operação e roteiro
 
-Esta implementação entrega o primeiro cenário `storefront-v1`: dez tarefas, histórico de chats e comentários, três execuções preparadas e uma loja sintética com preview. A [pesquisa e proposta original](demo-organization-proposal.md) explica a escolha dos roteiros com dados consultados em produção.
+A org usa o board, os chats, os controles de revisão e a interface de Reports existentes. Não há barra, badge ou botão de demo no produto. A restauração fica em **`/_admin/orgs` → Demonstration**, protegida pelo administrador do deployment, ou no CLI.
 
-## Testar localmente
+O pacote preparado contém o HTML capturado do repositório da loja, imagens locais, patches de busca e promoção, o diagnóstico público salvo e o build original do widget de Reports. A execução dos agentes é roteirizada; navegação no Studio, permissões, persistência, SSE e DBOS são reais. Refresh conserva alterações.
 
-No ambiente preparado para este PR, abra **http://localhost:4107/demo-local/tasks**. É uma instalação local, com dados em `/tmp/studio-demo-review`, API em 3107 e frontend em 4107. O login local usa a conta do sistema. Esse endereço serve para testar nesta máquina ou compartilhar a tela; não é um endereço público para outras máquinas.
+## Ambiente deste PR
 
-Para reproduzir em outro checkout, após instalar as dependências:
+- Board: **http://localhost:4107/demo-storefront/tasks**.
+- Reports: abra **Report Agent → Report** na navegação existente.
+- Reset: **http://localhost:4107/_admin/orgs**, filtre `demo-storefront` e abra **Demonstration**.
+- Dados locais: `/tmp/studio-demo-review`. O login local usa a conta do sistema, habilitada como administradora apenas nessa instância.
+
+Esses endereços funcionam nesta máquina; não constituem um deployment público para participantes remotos. Produção não foi alterada.
+
+A configuração consultada em produção aponta para `deco-sites/demo-storefront` e `reports.decocms.com`. O ambiente preparado usa a loja no commit `928488ab20984ee8d586f5c0287585bf129c2154`, o Reports no commit `649e4965e133462c5bfd7c1b03c384438a0e62ef` e o diagnóstico público de `demo-storefront.decocms.com` capturado em 18/09/2026. O pacote completo fica fora do Git; os fixtures de teste são sintéticos.
+
+## Roteiro para vendedor e designer
+
+1. O administrador restaura o cenário em `/_admin`. O board recebe dez cards, históricos e nenhum trabalho em execução.
+2. Na interface normal, execute **Make product search visible in the header**. São três etapas persistidas, separadas por 1,8 segundo, sem modelo, build, GitHub ou sandbox.
+3. Abra o card, seu chat e **Open preview**. A loja é a do repositório; busque `sticker` para ver os nomes do catálogo capturado. O link de PR abre o patch preparado contra o commit registrado.
+4. Use **Ship to production**. A aprovação altera somente a versão publicada local, disponível em `/api/demo-storefront/demo/storefront`. Nenhum PR ou deploy real é criado.
+5. Repita com a barra promocional. Pelo **New task** já existente, um pedido sobre busca ou top-bar também pode usar esses roteiros.
+6. Abra **Report Agent → Report**. O widget original apresenta as 15 seções do diagnóstico salvo. Reexecutar o diagnóstico retorna esse mesmo resultado, sem scan externo.
+7. O card **Verify the report's cart accessibility finding** demonstra a revisão de um achado real, A11Y-028. O commit capturado já corrigiu o checkbox; o resultado explica que o relatório antecede a correção, sem inventar uma mudança adicional.
+8. Refresh preserva tarefas e resultados. O administrador restaura novamente quando quiser encerrar a apresentação.
+
+## Escolher a org e importar o pacote
+
+A identidade da demo fica em `demo_organizations`, por **ID da organização**. `--org` seleciona o slug no CLI; não há env var com uma lista de orgs nem tratamento especial para um slug específico. O cadastro persistido impede fallback para execução real, inclusive quando a flag `demo_mode_enabled` está desabilitada.
 
 ```bash
-# Terminal 1: banco e NATS locais, migrations, API e frontend.
+# Inicie Studio com Postgres/NATS e sua configuração normal.
+# Para a instância local de avaliação:
 DATABASE_URL='' NATS_URL='' S3_ENDPOINT='' SKIP_MINIO=true \
-  bun run dev --home /tmp/studio-demo-review --port 3107 \
-  --vite-port 4107 --base-url http://localhost:4107 --no-tui
+  DEPLOYMENT_ADMIN_EMAILS='seu-email-local' \
+  bun --no-env-file run apps/api/src/cli.ts dev \
+  --home /tmp/studio-demo-review --port 3107 --vite-port 4107 \
+  --base-url http://localhost:4107 --no-tui
 
-# Terminal 2, depois de o servidor iniciar:
+# Em outro terminal, importe um pacote já preparado numa org nova:
 bun run demo:setup --home /tmp/studio-demo-review \
-  --org demo-local --url http://localhost:4107
-```
-
-`demo:setup` pode ser repetido: não restaura uma demo que já foi inicializada. Se houver mais de um usuário, passe `--owner EMAIL` de um membro existente. Em um deployment com autenticação normal, faça login primeiro; para desenvolvimento com esse modo, acrescente `--no-local-mode` ao comando do servidor.
-
-Roteiro para vendedor e designer:
-
-1. Clique em **Prepare demonstration / Preparar demonstração** e confirme a restauração. O board fica com dez cards, sem trabalho em execução.
-2. Use **Start presentation / Iniciar apresentação** para reservar as mutações por 90 minutos. Outros membros continuam podendo visualizar.
-3. Passe o mouse sobre o card **Make product search visible in the header** e clique em **Run**. A execução tem três etapas, separadas por 1,8 segundo; não inicia modelo, VM, build ou GitHub.
-4. Abra o card e seu chat para ler a execução. Abra **Open preview**, busque `vase`, navegue por teclado e abra um produto. **Compare before** mostra a baseline.
-5. Clique em **Ship to production** no card. Aqui a ação publica apenas na **Published demo store / Loja publicada da demo**, sem deploy externo. Busca, promoção e metadados aprovados são acumulados nessa loja.
-6. Repita com a barra promocional e a correção do diagnóstico. **Add scenario task** cria outro card explicitamente associado ao roteiro escolhido.
-7. Faça refresh: alterações, comentários e resultados permanecem. Prepare a demonstração novamente para voltar ao início. Finalize a reserva ao terminar.
-
-## Qual org é demo neste deployment?
-
-O cadastro fica no banco, em `demo_organizations`, por **ID da organização**. O slug é usado pelo CLI para selecionar ou criar a org; renomeá-lo não altera a identidade da demo. Não há lista de slugs em env var nem código especial para `demo-storefront`.
-
-```bash
-# Usando o DATABASE_URL já configurado para o deployment:
-bun run demo:setup --org sales-demo --owner presenter@example.com \
-  --url https://studio.example.com
-```
-
-O CLI é uma operação de administrador com acesso ao banco. Ele recusa converter uma org com tarefas, chats, repositórios ou automações existentes. Para a avaliação, crie uma org nova; a conversão da atual `demo-storefront` fica separada.
-
-O cadastro também habilita `organization_settings.flags.demo_mode_enabled`, configura as lanes e desabilita revisores automáticos e auto-merge. A flag pode suspender mutações, mas **removê-la não converte a org para execução real**: o cadastro persistido continua bloqueando integrações, agentes e sandboxes. A API de produto não permite criar ou remover esse cadastro.
-
-## Restaurar e operar
-
-O botão usa `DEMO_RESET { idempotencyKey, expectedGeneration }`. Reset e mutações usam o mesmo lock transacional por org. A restauração substitui tarefas, chats e dependências, cria IDs novos e incrementa a geração; preserva login, membros e configurações da organização. Falha na transação conserva o estado anterior. Repetir a mesma chave não limpa a org novamente.
-
-O CLI usa a mesma operação de storage:
-
-```bash
-bun run demo:reset --home /tmp/studio-demo-review --org demo-local \
+  --org sales-demo --bundle /caminho/repository-bundle.json \
   --url http://localhost:4107
 ```
 
-É possível chamar esse comando pelo cron do deployment, com `--owner EMAIL` quando necessário. **Não foi instalado um reset nightly automático.** Uma reserva de outro apresentador impede o reset. Para cron, use uma conta operacional distinta dos apresentadores. O CLI escreve diretamente no banco: uma aba já aberta deve ser recarregada após esse reset administrativo. O botão emite SSE e atualiza as abas abertas.
+Em um deployment normal, use `DATABASE_URL` e omita `--home`. Se houver vários usuários, acrescente `--owner EMAIL` de um membro existente. O administrador do painel deve constar em `DEPLOYMENT_ADMIN_EMAILS`, ter email verificado e estar autenticado. O token administrativo compartilhado não autoriza reset.
 
-As execuções usam DBOS e partes de mensagens persistidas, sem fila de agentes. Cada etapa confere execução e geração dentro do lock. Callbacks de uma geração apagada não recriam dados. Um reconciliador por minuto recupera admissões persistidas antes de uma queda; um workflow que terminou com erro é marcado como interrompido e o card volta a permitir execução. API, Postgres e DBOS continuam sendo dependências reais: não há promessa de disponibilidade absoluta durante uma queda desses serviços.
+O CLI recusa converter uma org com tarefas, chats, repositórios ou automações. `demo:setup` sem `--bundle` pode ser repetido sem reset; um pacote importado é imutável. Para avaliar outra versão da loja, prepare outro pacote e crie outra org. Configurações, membros e login sobrevivem ao reset.
 
-## Escopo e decisões da implementação
+## Preparar o pacote a partir dos repositórios
 
-| Decisão | Motivo |
-| --- | --- |
-| Nova org dedicada, sem alterar produção | Permite avaliar e restaurar tudo da demo sem misturar trabalho real ou executar migração destrutiva. |
-| Cadastro por ID no banco + flag de suspensão | Configuração acompanha o deployment e não permite fallback acidental para execução real. |
-| Dez cards; busca, promoção e diagnóstico | A pesquisa real identificou esses pedidos. O número de cards é uma escolha de apresentação. |
-| Preview e diff servidos pela própria API | Remove dependência de sandbox, build e serviço de deploy. Os artefatos exigem acesso à org. |
-| Publicação simulada explícita | Mostra a aprovação e seu resultado mantendo o fluxo isolado de GitHub e hosting. |
-| Reset em uma transação | O cenário não possui agentes externos a drenar; não precisa de uma máquina de estados de reset distribuída. |
-| Reserva de 90 minutos | Evita dois vendedores alterarem a mesma apresentação; expira sem depender de um processo em memória. |
-| Ações fora do roteiro recusadas | Um card arbitrário não dispara agente real. Follow-up por chat aceita apenas `Run this scenario again` ou `Execute este roteiro novamente`. |
-| Diagnóstico em página curada própria | Mantém relatório e baseline coerentes, sem chamar o serviço de Reports. A tela completa de Reports não está simulada. |
-| Agenda de automações fica fora desta primeira versão | Há cards a executar, mas não automações comerciais nem schedules fictícios. Na amostra, a automação observada era manutenção. |
+A preparação precisa das dependências externas; a apresentação usa o resultado salvo. Use um checkout dedicado da loja, sem credenciais de produção ou alterações locais. Inicie seu servidor e faça o build web do Reports seguindo os comandos desses repositórios. Baixe o diagnóstico **público** da própria loja para um arquivo local.
 
-As proteções cobrem a admissão de ferramentas, mensagens, execução de agentes, sandbox, clientes MCP e os reconcilers de tarefas. E-mails de digest excluem orgs cadastradas. Eventos de analytics da interface ainda seguem a instrumentação normal; filtrar essas orgs nos relatórios de produto é necessário.
+```bash
+# O preparador usa Chromium; instale-o se ainda não estiver disponível.
+bunx playwright install chromium
+
+bun run demo:prepare \
+  --storefront /caminho/demo-storefront \
+  --url http://127.0.0.1:4110 \
+  --reports /caminho/reports \
+  --diagnostic /caminho/public-diagnostic.json \
+  --output /caminho/repository-bundle.json
+```
+
+O preparador registra os commits, captura DOM/CSS/imagens, aplica patches temporários ao header para capturar as variantes e restaura o arquivo original ao terminar. A estrutura dos patches corresponde à loja examinada; uma mudança incompatível no repositório deve exigir revisão do preparador. O widget vem de `reports/dist/client/index.html`, sem uma implementação paralela de Reports no Studio. As imagens do diagnóstico são incorporadas ao resultado para funcionar dentro do iframe sem chamadas externas.
+
+O pacote contém HTML executável e deve ser tratado como artefato de deployment confiável. Somente o CLI administrativo pode importá-lo; não há upload por membros da org. O preparador remove scripts de hidratação e handlers da loja antes de incluir as interações locais. Não exporte `.env`, credenciais, payloads privados ou histórico de clientes. O pacote desta avaliação não é commitado.
+
+## Reset e execução
+
+```bash
+bun run demo:reset --home /tmp/studio-demo-review \
+  --org demo-storefront --url http://localhost:4107
+```
+
+O painel chama `POST /api/_admin/orgs/:id/demo/reset` com `idempotencyKey` e `expectedGeneration`. Reset e mutações usam o mesmo lock transacional. A restauração substitui tarefas/chats, cria IDs novos e incrementa a geração. Repetir a chave não apaga trabalho novamente; uma geração desatualizada retorna conflito. Callbacks antigos não recriam dados.
+
+O painel emite SSE para atualizar abas abertas. O CLI escreve no banco; recarregue a aba após usá-lo. Pode ser chamado por cron, mas este PR não instala um reset automático. As etapas DBOS persistidas dispensam provisionamento de sandbox e admissão na fila de agentes. Um reconciliador recupera admissões interrompidas; uma falha terminal libera o card para nova execução.
+
+## Limites desta versão
+
+- Os previews são capturas da loja com interações preparadas de busca, navegação local e countdown. Não são uma cópia completa do checkout, conta do cliente ou PDP. Links permanecem no catálogo capturado.
+- Reports usa o widget real e um resultado público real, congelado. Conectar provedores, enviar compartilhamentos, chat livre sobre o relatório e novos scans não fazem parte do roteiro. O adaptador não chama serviços externos.
+- O board permite criar, comentar, editar, executar e aprovar os roteiros cobertos. Pedidos sem resultado preparado são recusados; não acionam um agente real.
+- Não há agenda comercial fictícia nem execução de automações externas. O reset conserva autenticação e configurações da org.
+- API, banco, DBOS e rede local continuam necessários. O modo elimina a variabilidade dos provedores durante a apresentação, sem prometer disponibilidade durante uma queda desses serviços.
 
 ## Validação
 
-`packages/e2e/tests/demo-organization.spec.ts` usa autenticação, Postgres, API, DBOS e navegador reais. Cobre execução sem credenciais de modelo, persistência, preview interativo, publicação dos três roteiros, cancelamento, reserva, reset concorrente e idempotente, isolamento entre orgs, referência antiga após reset e bloqueio quando a flag é removida.
+A suíte `packages/e2e/tests/demo-organization.spec.ts` usa autenticação, Postgres, API, DBOS e navegador reais. Cobre MCP e recurso de Reports, execução, persistência, preview, publicação, cancelamento, suspensão, reset concorrente/idempotente, isolamento entre orgs, referências antigas e autorização do painel administrativo. O servidor da suíte deve incluir `demo-admin@e2e.local` em `DEPLOYMENT_ADMIN_EMAILS`.
 
-```bash
-PORT=3108 VITE_PORT=4108 BASE_URL=http://localhost:4108 \
-  DATA_DIR=/tmp/studio-demo-e2e \
-  bun run --cwd packages/e2e test:e2e tests/demo-organization.spec.ts \
-  --workers=1 --reporter=list
-```
-
-Use um servidor separado com `--no-local-mode` para essa suíte. Os comandos e os resultados finais de qualidade estão no PR.
+A inspeção do ambiente com o pacote real verifica separadamente o widget original, o catálogo, as imagens locais e a busca. Veja as capturas e os resultados de qualidade no PR.

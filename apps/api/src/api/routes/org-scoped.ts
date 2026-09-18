@@ -1,3 +1,4 @@
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { createDemoRoutes } from "./demo";
 import { Hono } from "hono";
 import type { MiddlewareHandler } from "hono";
@@ -102,7 +103,10 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
       if (
         !/^\/(?:tools(?:\/|$)|watch$|notice$|sso\/status$|demo(?:\/|$)|mcp\/self$)/.test(
           path,
-        )
+        ) &&
+        path !== `/mcp/${WellKnownOrgMCPId.REPORTS(ctx.organization.id)}` &&
+        path !==
+          `/mcp/${WellKnownOrgMCPId.REPORTS(ctx.organization.id)}/ui-resource`
       ) {
         return c.json(
           {

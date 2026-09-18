@@ -1,3 +1,4 @@
+import { DemoDialog } from "./demo-dialog";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -1108,6 +1109,7 @@ export default function AdminOrgsPage() {
       header: "",
       render: (org) => (
         <div className="flex items-center justify-end gap-2">
+          <DemoDialog orgId={org.id} />
           <FlagsDialog org={org} />
           <SitesDialog org={org} />
           <NoticeDialog org={org} />

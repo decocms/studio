@@ -11,7 +11,9 @@
     "oxlint": "1.83.0",
     "react": "^19.2.6",
     "typescript": "^7.0.2",
-    "worktree-devservers": "0.3.1"
+    "worktree-devservers": "0.3.1",
+    "playwright": "1.59.1",
+    "@decocms/shared": "workspace:*"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -47,7 +49,8 @@
     "services:down": "bun run --env-file apps/api/.env apps/api/src/cli.ts services down",
     "services:status": "bun run --env-file apps/api/.env apps/api/src/cli.ts services status",
     "demo:setup": "bun run apps/api/scripts/demo.ts setup",
-    "demo:reset": "bun run apps/api/scripts/demo.ts reset"
+    "demo:reset": "bun run apps/api/scripts/demo.ts reset",
+    "demo:prepare": "bun run scripts/demo/prepare.ts"
   },
   "type": "module",
   "workspaces": [

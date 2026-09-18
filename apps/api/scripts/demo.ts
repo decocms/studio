@@ -14,6 +14,7 @@ const { values, positionals } = parseArgs({
   options: {
     org: { type: "string", default: "demo-local" },
     owner: { type: "string" },
+    bundle: { type: "string" },
     home: { type: "string" },
     url: { type: "string", default: "http://localhost:4000" },
     scenario: { type: "string", default: DEMO_SCENARIO },
@@ -72,7 +73,7 @@ try {
         .insertInto("organization")
         .values({
           id,
-          name: "Forma · Storefront demo",
+          name: "Demo Storefront",
           slug: values.org,
           createdAt: new Date(),
         })
@@ -104,8 +105,19 @@ try {
   const registered = await demo.get(org.id);
   if (!registered)
     throw new Error("This organization is not registered as a demonstration");
+  if (values.bundle) {
+    const file = Bun.file(values.bundle);
+    if (file.size > 100_000_000) throw new Error("Demo bundle exceeds 100 MB");
+    await demo.installBundle(org.id, actor.id, await file.json());
+  }
+  await demo.bundle(org.id);
+  await demo.ensureReportsAgent(org.id, actor.id);
   await demo.ensureSelfConnection(org.id, actor.id, values.url);
-  if (positionals[0] === "reset" || registered.generation === 0)
+  if (
+    positionals[0] === "reset" ||
+    registered.generation === 0 ||
+    values.bundle
+  )
     await demo.reset(
       org.id,
       actor.id,
@@ -116,7 +128,7 @@ try {
     `Demonstration ready: ${values.url.replace(/\/$/, "")}/${org.slug}/tasks`,
   );
   console.log(
-    "Use Prepare demonstration to restore the scenario. Refresh preserves your changes.",
+    "Restore through /_admin or bun run demo:reset. Refresh preserves your changes.",
   );
 } finally {
   await db.destroy();

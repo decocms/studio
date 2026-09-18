@@ -8,16 +8,23 @@ import {
 import {
   getDecopilotId,
   getWellKnownSelfConnection,
+  getWellKnownReportsConnection,
+  getWellKnownReportVirtualMCP,
+  getReportsAgentId,
 } from "@decocms/shared/sdk";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import { ForbiddenError } from "@/core/access-control";
 import { PartEmitter } from "@/api/routes/decopilot/part-emitter";
-import { recipes, seedTasks } from "@/demo/scenario";
+import { seedTasks } from "@/demo/scenario";
 import { executeDemoTool } from "./demo-tools";
 import type { Database, DemoOrganizationTable } from "./types";
 import { TaskBoardStorage } from "./task-board";
 import { SqlThreadStorage } from "./threads";
 import { OrganizationSettingsStorage } from "./organization-settings";
+
+import { DemoBundleSchema, type DemoBundle } from "@/demo/bundle";
+import { RepositoryStorage } from "./repositories";
+import { VirtualMCPStorage } from "./virtual";
 
 type Registration = Selectable<DemoOrganizationTable>;
 export class DemoStorage {
@@ -39,6 +46,110 @@ export class DemoStorage {
       .selectFrom("demo_organizations")
       .selectAll()
       .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+  }
+
+  async bundle(organizationId: string): Promise<DemoBundle> {
+    const row = await this.db
+      .selectFrom("demo_bundles")
+      .select("payload")
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    if (!row)
+      throw new ForbiddenError(
+        "Import a prepared repository and Reports bundle before using this demonstration.",
+      );
+    return row.payload;
+  }
+
+  /** CLI-only import. Bundles are immutable: use a new org to change the pinned source. */
+  async installBundle(org: string, actor: string, input: unknown) {
+    const bundle = DemoBundleSchema.parse(input);
+    await this.mutate(org, actor, async (db) => {
+      const existing = await db
+        .selectFrom("demo_bundles")
+        .select("organization_id")
+        .where("organization_id", "=", org)
+        .executeTakeFirst();
+      if (existing)
+        throw new Error(
+          "This organization already has a bundle. Create another demonstration to change its source.",
+        );
+      await db
+        .insertInto("demo_bundles")
+        .values({
+          organization_id: org,
+          payload: JSON.stringify({ ...bundle, assets: {} }),
+        })
+        .execute();
+      for (const [name, asset] of Object.entries(bundle.assets))
+        await db
+          .insertInto("demo_assets")
+          .values({ organization_id: org, name, ...asset })
+          .execute();
+      await new RepositoryStorage(db).upsert({
+        organizationId: org,
+        ref: {
+          provider: "github",
+          host: "github.com",
+          path: bundle.source.repository,
+        },
+        defaultBranch: "main",
+        visibility: "public",
+        createdBy: actor,
+      });
+      const base = getWellKnownReportsConnection(org, "");
+      await db
+        .insertInto("connections")
+        .values({
+          id: base.id!,
+          organization_id: org,
+          created_by: actor,
+          updated_by: actor,
+          title: base.title,
+          description: base.description ?? null,
+          icon: base.icon ?? null,
+          app_name: base.app_name ?? null,
+          app_id: null,
+          slug: "commerce-discovery",
+          connection_type: "HTTP",
+          connection_url: base.connection_url ?? null,
+          connection_token: null,
+          connection_headers: null,
+          oauth_config: null,
+          configuration_state: null,
+          configuration_scopes: null,
+          metadata: JSON.stringify({
+            ...base.metadata,
+            siteUrl: bundle.source.siteUrl,
+          }),
+          bindings: null,
+          repository_id: null,
+          status: "active",
+          pinned: false,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .execute();
+    });
+    // VirtualMCPStorage owns its transaction; this is retryable independently of the import.
+    await this.ensureReportsAgent(org, actor);
+  }
+
+  async ensureReportsAgent(org: string, actor: string) {
+    const virtual = new VirtualMCPStorage(this.db);
+    if (!(await virtual.findById(getReportsAgentId(org), org)))
+      await virtual.create(org, actor, getWellKnownReportVirtualMCP(org), {
+        id: getReportsAgentId(org),
+      });
+  }
+
+  asset(org: string, name: string) {
+    return this.db
+      .selectFrom("demo_assets")
+      .select(["mime", "body"])
+      .where("organization_id", "=", org)
+      .where("name", "=", name)
       .executeTakeFirst();
   }
 
@@ -244,15 +355,17 @@ export class DemoStorage {
         .deleteFrom("threads")
         .where("organization_id", "=", organizationId)
         .execute();
+      const bundle = await new DemoStorage(trx).bundle(organizationId);
       const board = new TaskBoardStorage(trx);
       for (const entry of seedTasks) {
-        const recipe = recipes[entry.recipe];
+        const recipe = bundle.recipes[entry.recipe];
         const historical = ["in_review", "approved", "done"].includes(
           entry.status,
         );
         const item = await board.create({
           organizationId,
-          title: entry.title ?? recipe.title,
+          title: `${({ in_review: "Review: ", approved: "Approve: ", done: "Completed: ", triage: "Explore: " } as Record<string, string>)[entry.status] ?? ""}${recipe.title}`,
+          repo: bundle.source.repository,
           description: recipe.description,
           status: entry.status,
           priority: entry.recipe === "search" ? "high" : "medium",
@@ -350,10 +463,12 @@ export class DemoStorage {
         throw new ForbiddenError(
           "The demonstration was restored. Reload and try again.",
         );
-      const template = recipes[recipe];
+      const bundle = await new DemoStorage(db).bundle(org);
+      const template = bundle.recipes[recipe];
       const task = await new TaskBoardStorage(db).create({
         organizationId: org,
         title: template.title,
+        repo: bundle.source.repository,
         description: template.description,
         status: "todo",
         type: recipe === "diagnostic" ? "bug" : "feature",
@@ -421,6 +536,8 @@ export class DemoStorage {
         "Choose one of the prepared demonstration tasks to run this scenario.",
       );
     const recipe = DemoRecipeSchema.parse(task.recipe);
+    const template = (await new DemoStorage(db).bundle(row.organization_id))
+      .recipes[recipe];
     const id = request
       ? `demo:${row.generation}:${request.threadId}:${request.id}`
       : `demo:${crypto.randomUUID()}`;
@@ -452,7 +569,7 @@ export class DemoStorage {
           row.organization_id,
           taskId,
           actorId,
-          recipes[recipe].title,
+          template.title,
         );
     if (!thread)
       throw new ForbiddenError("Chat not found in this demonstration.");
@@ -468,9 +585,7 @@ export class DemoStorage {
     await emitter.emitFinal({
       id: request?.id ?? `${id}:request`,
       role: "user",
-      parts: [
-        { type: "text", text: request?.text ?? recipes[recipe].description },
-      ],
+      parts: [{ type: "text", text: request?.text ?? template.description }],
     });
     await new TaskBoardStorage(db).update(
       taskId,
@@ -556,7 +671,8 @@ export class DemoStorage {
           );
           return { ...run, state: "cancelled" };
         }
-        const recipe = recipes[DemoRecipeSchema.parse(run.recipe)];
+        const recipe = (await new DemoStorage(db).bundle(organizationId))
+          .recipes[DemoRecipeSchema.parse(run.recipe)];
         const finished = step === recipe.steps.length - 1;
         const emitter = new PartEmitter({
           storage: new SqlThreadStorage(db).messageParts(),

@@ -52,9 +52,6 @@ import type { ToolName } from "@decocms/shared/tools/registry-metadata";
 // Core tools - always available
 export const CORE_TOOLS = [
   DemoTools.DEMO_STATUS,
-  DemoTools.DEMO_RESET,
-  DemoTools.DEMO_SESSION,
-  DemoTools.DEMO_CREATE_TASK,
   OrganizationTools.ORGANIZATION_CREATE,
   OrganizationTools.ORGANIZATION_LIST,
   OrganizationTools.ORGANIZATION_GET,

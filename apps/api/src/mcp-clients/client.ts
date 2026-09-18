@@ -5,6 +5,7 @@
  * Routes to appropriate factory based on connection type.
  */
 
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -28,8 +29,18 @@ export async function clientFromConnection(
   ctx: StudioContext,
   superUser = false,
 ): Promise<Client> {
-  if (connection.organization_id)
+  if (
+    connection.organization_id &&
+    (await ctx.storage.demo.get(connection.organization_id))
+  ) {
+    if (
+      connection.id === WellKnownOrgMCPId.REPORTS(connection.organization_id)
+    ) {
+      const { createDemoReportsClient } = await import("@/demo/reports-client");
+      return createDemoReportsClient(ctx, connection.organization_id);
+    }
     await ctx.storage.demo.assertLive(connection.organization_id);
+  }
   if (connection.connection_type === "VIRTUAL") {
     return createVirtualClient(connection, ctx, superUser);
   }

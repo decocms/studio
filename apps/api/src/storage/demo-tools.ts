@@ -6,13 +6,13 @@ import {
 } from "@decocms/shared/task-board";
 import { DemoRecipeSchema } from "@decocms/shared/demo";
 import { ForbiddenError } from "@/core/access-control";
-import { recipes } from "@/demo/scenario";
 import {
   TaskBoardItemStatusSchema,
   TaskBoardItemPrioritySchema,
   TaskBoardItemTypeSchema,
 } from "@/tools/task-board/schema";
 import type { Database } from "./types";
+import { RepositoryStorage } from "./repositories";
 import { TaskBoardStorage } from "./task-board";
 import { DemoStorage } from "./demo";
 
@@ -45,11 +45,25 @@ export async function executeDemoTool(
 ): Promise<{ result: unknown; runId?: string }> {
   const store = new DemoStorage(db);
   const board = new TaskBoardStorage(db);
+  const bundle = await store.bundle(orgId);
+  if (name === "REPOSITORY_LIST") {
+    const repositories = await new RepositoryStorage(db).listByOrg(orgId);
+    return {
+      result: {
+        repositories: repositories.map(
+          ({ legacyConnectionId: _bridge, ...repo }) => ({
+            ...repo,
+            usable: true,
+          }),
+        ),
+      },
+    };
+  }
   if (name === "TASK_BOARD_ITEM_LIST")
     return {
       result: {
         items: await board.list(orgId),
-        repos: [],
+        repos: [bundle.source.repository],
         columns: CANONICAL_COLUMNS,
       },
     };
@@ -64,7 +78,7 @@ export async function executeDemoTool(
     const item = await board.getById(taskBoardItemId, orgId);
     if (!item) throw new ForbiddenError("Task not found");
     if (!task?.delivered) return { result: { prs: [] } };
-    const recipe = recipes[DemoRecipeSchema.parse(task.recipe)];
+    const recipe = bundle.recipes[DemoRecipeSchema.parse(task.recipe)];
     const root = `${origin}/api/${encodeURIComponent(slug)}/demo`;
     return {
       result: {
@@ -72,8 +86,8 @@ export async function executeDemoTool(
           {
             url: `${root}/changes/${item.id}`,
             number: item.keySeq ?? 1,
-            repoOwner: "demo",
-            repoName: "storefront",
+            repoOwner: bundle.source.repository.split("/")[0]!,
+            repoName: bundle.source.repository.split("/")[1]!,
             createdAt: item.createdAt,
             updatedAt: item.updatedAt,
             title: recipe.title,
@@ -124,7 +138,12 @@ export async function executeDemoTool(
       name === "TASK_BOARD_ITEM_UPDATE"
     ) {
       const args = ChangeSchema.parse(input);
-      if (args.repo || args.prUrl || args.linkThreadId || args.tagIds?.length)
+      if (
+        (args.repo && args.repo !== bundle.source.repository) ||
+        args.prUrl ||
+        args.linkThreadId ||
+        args.tagIds?.length
+      )
         throw new ForbiddenError(
           "External repositories, PRs and chat links are unavailable in this scenario.",
         );
@@ -145,24 +164,31 @@ export async function executeDemoTool(
         throw new ForbiddenError(
           "Task no longer exists. The demonstration may have been restored.",
         );
-      if (!previous && args.assigneeId === SUPER_AGENT_ASSIGNEE_ID)
-        throw new ForbiddenError(
-          "Create a prepared scenario task with the demonstration controls before delegating it.",
-        );
       const delegate =
         args.assigneeId === SUPER_AGENT_ASSIGNEE_ID &&
         previous?.assigneeId !== SUPER_AGENT_ASSIGNEE_ID;
-      if (
-        delegate &&
-        !(await trx
-          .selectFrom("demo_tasks")
-          .select("task_id")
-          .where("organization_id", "=", orgId)
-          .where("task_id", "=", previous!.id)
-          .executeTakeFirst())
-      )
+      const text =
+        `${args.title ?? previous?.title ?? ""} ${args.description ?? previous?.description ?? ""}`.toLowerCase();
+      const matched =
+        (Object.keys(bundle.recipes) as (keyof typeof bundle.recipes)[]).find(
+          (key) => text.includes(bundle.recipes[key].title.toLowerCase()),
+        ) ??
+        (/search|busca/.test(text)
+          ? "search"
+          : /countdown|top.?bar|promoc|promo/.test(text)
+            ? "promotion"
+            : undefined);
+      const registered = previous
+        ? await trx
+            .selectFrom("demo_tasks")
+            .select("task_id")
+            .where("organization_id", "=", orgId)
+            .where("task_id", "=", previous.id)
+            .executeTakeFirst()
+        : null;
+      if (delegate && !registered && !matched)
         throw new ForbiddenError(
-          "This task is outside the prepared demonstration. Use a scenario task.",
+          "This request has no prepared result. Use the header search, promotional bar, or a prepared report task.",
         );
       const item = previous
         ? await board.update(previous.id, orgId, args, actorId)
@@ -170,8 +196,15 @@ export async function executeDemoTool(
             ...args,
             title: args.title ?? "Untitled task",
             organizationId: orgId,
+            repo: bundle.source.repository,
             by: actorId,
           });
+      if (!registered && matched)
+        await trx
+          .insertInto("demo_tasks")
+          .values({ task_id: item.id, organization_id: orgId, recipe: matched })
+          .onConflict((oc) => oc.column("task_id").doNothing())
+          .execute();
       const run = delegate
         ? await store.start(trx, row, item.id, actorId)
         : null;

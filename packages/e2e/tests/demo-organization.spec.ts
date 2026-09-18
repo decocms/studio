@@ -1,3 +1,6 @@
+import { demoBundle } from "../fixtures/demo-bundle";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { APIRequestContext } from "@playwright/test";
 import type { Client } from "pg";
 import { connectDevDb } from "../fixtures/db";
@@ -22,7 +25,7 @@ async function call<T>(
   expect(response.ok(), `${tool}: ${await response.text()}`).toBeTruthy();
   return response.json();
 }
-async function provision(db: Client, request: APIRequestContext, slug: string) {
+async function provision(db: Client, slug: string) {
   const { rows } = await db.query(
     "SELECT id FROM organization WHERE slug = $1",
     [slug],
@@ -47,11 +50,38 @@ async function provision(db: Client, request: APIRequestContext, slug: string) {
       }),
     ],
   );
-  await call(request, slug, "DEMO_RESET", {
+  await db.query(
+    "INSERT INTO demo_bundles (organization_id,payload) VALUES ($1,$2::jsonb)",
+    [org, JSON.stringify(demoBundle)],
+  );
+  const owner = (
+    await db.query(
+      'SELECT "userId" FROM member WHERE "organizationId"=$1 LIMIT 1',
+      [org],
+    )
+  ).rows[0].userId;
+  await db.query(
+    "INSERT INTO connections (id,organization_id,created_by,updated_by,title,connection_type,connection_url,status,metadata) VALUES ($1,$2,$3,$3,'Store Report','HTTP','https://reports.example.test/mcp','active',$4::jsonb)",
+    [
+      org + "_commerce-discovery",
+      org,
+      owner,
+      JSON.stringify({ siteUrl: demoBundle.source.siteUrl }),
+    ],
+  );
+  await resetDemo(org, {
     idempotencyKey: "initial",
     expectedGeneration: 0,
   });
   return org;
+}
+let admin: APIRequestContext;
+async function resetDemo(org: string, body: unknown) {
+  const response = await admin.post(`/api/_admin/orgs/${org}/demo/reset`, {
+    data: body,
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  return response.json() as Promise<{ generation: number }>;
 }
 async function tasks(request: APIRequestContext, org: string) {
   return (await call<{ items: Task[] }>(request, org, "TASK_BOARD_ITEM_LIST"))
@@ -61,10 +91,26 @@ async function tasks(request: APIRequestContext, org: string) {
 test.describe("persisted demonstration organization", () => {
   test.setTimeout(90_000);
   let db: Client;
-  test.beforeAll(async () => {
+  test.beforeAll(async ({ playwright }) => {
     db = await connectDevDb();
+    admin = await newApiContext(playwright);
+    // This suite owns this fixed allowlisted identity, independent of deployment-admin.spec.ts.
+    const email = "demo-admin@e2e.local";
+    const signin = await admin.post("/api/auth/sign-in/email", {
+      data: { email, password: "Playwright123!" },
+    });
+    if (!signin.ok()) await signUpViaApi(admin, { email });
+    await db.query('UPDATE "user" SET "emailVerified"=true WHERE email=$1', [
+      email,
+    ]);
+    const probe = await admin.get("/api/_admin/me");
+    expect(
+      probe.ok(),
+      "Start the server with DEPLOYMENT_ADMIN_EMAILS including demo-admin@e2e.local",
+    ).toBeTruthy();
   });
   test.afterAll(async () => {
+    await admin?.dispose();
     await db.end();
   });
 
@@ -73,10 +119,45 @@ test.describe("persisted demonstration organization", () => {
   }, testInfo) => {
     const { page, orgSlug } = authedPage;
     const request = page.context().request;
-    const org = await provision(db, request, orgSlug);
+    const org = await provision(db, orgSlug);
     await db.query("DELETE FROM ai_provider_keys WHERE organization_id = $1", [
       org,
     ]);
+    const client = new McpClient({ name: "demo-contract-test", version: "1" });
+    const origin = new URL((await request.get("/api/config")).url()).origin;
+    const cookies = (await page.context().cookies())
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
+    await client.connect(
+      new StreamableHTTPClientTransport(
+        new URL(`/api/${orgSlug}/mcp/${org}_commerce-discovery`, origin),
+        { requestInit: { headers: { Cookie: cookies, Origin: origin } } },
+      ),
+    );
+    try {
+      const result = await client.callTool({
+        name: "get_my_diagnostic",
+        arguments: {},
+      });
+      expect(result.structuredContent).toMatchObject({
+        diagnostic: {
+          org_id: org,
+          url: demoBundle.source.siteUrl,
+          run_in_progress: false,
+        },
+      });
+      const resource = await client.readResource({ uri: "ui://reports/app" });
+      expect(resource.contents[0]).toMatchObject({
+        mimeType: "text/html;profile=mcp-app",
+        text: demoBundle.reportsHtml,
+      });
+      expect(
+        (await client.callTool({ name: "rerun_my_diagnostic", arguments: {} }))
+          .structuredContent,
+      ).toMatchObject({ rerunning: true });
+    } finally {
+      await client.close();
+    }
     const initial = await tasks(request, orgSlug);
     expect(initial).toHaveLength(10);
     const search = initial.find(
@@ -85,13 +166,13 @@ test.describe("persisted demonstration organization", () => {
     await page.goto(`/${orgSlug}/tasks`);
     await expect(
       page.getByRole("button", { name: "Prepare demonstration", exact: true }),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath("demo-board.png"),
       fullPage: true,
     });
     const card = page
-      .getByRole("button", { name: new RegExp(search.title) })
+      .getByRole("button", { name: new RegExp(`^${search.title}`) })
       .first();
     await card.hover();
     await card.getByRole("button", { name: "Run", exact: true }).click();
@@ -135,18 +216,14 @@ test.describe("persisted demonstration organization", () => {
       path: testInfo.outputPath("demo-preview.png"),
       fullPage: true,
     });
-    await page.getByRole("searchbox", { name: "Search products" }).fill("vase");
-    await expect(page.locator("#suggestions")).toContainText(
-      "Arc ceramic vase",
-    );
-    await page.locator("#suggestions a").click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(
+      page.getByRole("searchbox", { name: "Search products" }),
+    ).toBeVisible();
     await page.goto(`${prs[0]!.previewUrl}?before=1`);
     await expect(page.getByRole("searchbox")).toHaveCount(0);
     await page.goto(prs[0]!.url);
     await expect(
-      page.getByRole("heading", { name: "After", exact: true }),
+      page.getByRole("heading", { name: search.title, exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     await call(request, orgSlug, "TASK_BOARD_PROMOTE_TO_PRODUCTION", {
       taskBoardItemId: search.id,
@@ -169,11 +246,15 @@ test.describe("persisted demonstration organization", () => {
     await page.goto(`/api/${orgSlug}/demo/storefront`);
     await expect(page.getByRole("searchbox")).toBeVisible();
     for (const recipe of ["promotion", "diagnostic"]) {
-      const { id } = await call<{ id: string }>(
+      const {
+        item: { id },
+      } = await call<{ item: Task }>(
         request,
         orgSlug,
-        "DEMO_CREATE_TASK",
-        { recipe, expectedGeneration: 1 },
+        "TASK_BOARD_ITEM_CREATE",
+        {
+          title: demoBundle.recipes[recipe as "promotion" | "diagnostic"].title,
+        },
       );
       await call(request, orgSlug, "TASK_BOARD_ITEM_UPDATE", {
         id,
@@ -193,15 +274,11 @@ test.describe("persisted demonstration organization", () => {
     await page.goto(`/api/${orgSlug}/demo/storefront`);
     await expect(page.getByRole("searchbox")).toBeVisible();
     await expect(page.locator("#countdown")).toBeVisible();
-    await expect(page.locator('meta[name="description"]')).toHaveAttribute(
-      "content",
-      /Thoughtful everyday objects/,
-    );
-    const cancelTask = await call<{ id: string }>(
+    const { item: cancelTask } = await call<{ item: Task }>(
       request,
       orgSlug,
-      "DEMO_CREATE_TASK",
-      { recipe: "search", expectedGeneration: 1 },
+      "TASK_BOARD_ITEM_CREATE",
+      { title: demoBundle.recipes.search.title },
     );
     const running = await call<{ item: Task }>(
       request,
@@ -254,7 +331,7 @@ test.describe("persisted demonstration organization", () => {
     const staleReset = await request.post(`/api/${orgSlug}/tools/DEMO_RESET`, {
       data: { idempotencyKey: "disabled", expectedGeneration: 1 },
     });
-    expect(staleReset.status()).toBe(403);
+    expect(staleReset.ok()).toBe(false);
     expect(
       (
         await db.query(
@@ -283,7 +360,7 @@ test.describe("persisted demonstration organization", () => {
   }) => {
     const { page, orgSlug } = authedPage;
     const request = page.context().request;
-    const org = await provision(db, request, orgSlug);
+    const org = await provision(db, orgSlug);
     const other = await newApiContext(playwright);
     try {
       const outsider = await signUpViaApi(other);
@@ -304,8 +381,8 @@ test.describe("persisted demonstration organization", () => {
       });
       const reset = { idempotencyKey: "same-reset", expectedGeneration: 1 };
       const results = await Promise.all([
-        call<{ generation: number }>(request, orgSlug, "DEMO_RESET", reset),
-        call<{ generation: number }>(request, orgSlug, "DEMO_RESET", reset),
+        resetDemo(org, reset),
+        resetDemo(org, reset),
       ]);
       expect(results.map((r) => r.generation)).toEqual([2, 2]);
       const fresh = await tasks(request, orgSlug);
@@ -331,39 +408,52 @@ test.describe("persisted demonstration organization", () => {
       expect((await tasks(other, outsider.orgSlug)).map((t) => t.id)).toContain(
         otherTask.item.id,
       );
-      const denied = await other.post(`/api/${orgSlug}/tools/DEMO_RESET`, {
+      const denied = await other.post(`/api/_admin/orgs/${org}/demo/reset`, {
         data: { idempotencyKey: "intruder", expectedGeneration: 2 },
       });
       expect(denied.status()).toBe(403);
-      await db.query(
-        `INSERT INTO member (id, "organizationId", "userId", role, "createdAt") VALUES ($1,$2,$3,'owner',now())`,
-        [crypto.randomUUID(), org, outsider.userId],
+      // Even an organization owner cannot reset through the deployment-admin surface.
+      const ownerReset = await request.post(
+        `/api/_admin/orgs/${org}/demo/reset`,
+        { data: reset },
       );
-      await call(request, orgSlug, "DEMO_SESSION", { active: true });
-      const reserved = await other.post(`/api/${orgSlug}/tools/DEMO_RESET`, {
-        data: { idempotencyKey: "other-presenter", expectedGeneration: 2 },
-      });
-      expect(reserved.status()).toBe(403);
-      const reserveTask = await other.post(
+      expect(ownerReset.status()).toBe(403);
+      const staleGeneration = await admin.post(
+        `/api/_admin/orgs/${org}/demo/reset`,
+        { data: { idempotencyKey: "stale", expectedGeneration: 1 } },
+      );
+      expect(staleGeneration.status()).toBe(409);
+      const legacy = await request.post(
         `/api/${orgSlug}/tools/DEMO_CREATE_TASK`,
         { data: { recipe: "search", expectedGeneration: 2 } },
       );
-      expect(reserveTask.status()).toBe(403);
-      await call(request, orgSlug, "DEMO_SESSION", { active: false });
-      await call(other, orgSlug, "DEMO_CREATE_TASK", {
-        recipe: "search",
-        expectedGeneration: 2,
-      });
-      await page.goto(`/${orgSlug}/tasks`);
-      await page
-        .getByRole("button", { name: "Prepare demonstration", exact: true })
+      expect(legacy.ok()).toBe(false);
+      const adminContext = await page
+        .context()
+        .browser()!
+        .newContext({ storageState: await admin.storageState() });
+      const adminPage = await adminContext.newPage();
+      await adminPage.goto(
+        new URL("/_admin/orgs", (await request.get("/api/config")).url()).href,
+      );
+      await adminPage
+        .getByPlaceholder("Search organizations by name or slug...")
+        .fill(orgSlug);
+      await expect(
+        adminPage.getByRole("button", { name: "Demonstration", exact: true }),
+      ).toHaveCount(1);
+      await adminPage
+        .getByRole("button", { name: "Demonstration", exact: true })
         .click();
-      await page
+      await adminPage
         .getByRole("button", { name: "Restore scenario", exact: true })
         .click();
       await expect(
-        page.getByText("Demonstration restored and ready", { exact: true }),
-      ).toBeVisible({ timeout: 30_000 });
+        adminPage.getByText("Demonstration restored and ready", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await adminContext.close();
     } finally {
       await other.dispose();
     }

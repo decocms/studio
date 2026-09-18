@@ -681,6 +681,8 @@ export const KEYS = {
   deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
   deploymentAdminPrompts: () => ["deployment-admin", "prompts"] as const,
   // An org's feature flags (stored + effective) in the deployment-admin editor.
+  deploymentAdminOrgDemo: (orgId: string) =>
+    ["deployment-admin", "orgs", orgId, "demo"] as const,
   deploymentAdminOrgFlags: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "flags"] as const,
   // An org's pinned billing notice in the deployment-admin editor.

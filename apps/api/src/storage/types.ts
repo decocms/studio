@@ -2432,6 +2432,16 @@ export interface DemoResetTable {
   created_at: Generated<Date>;
 }
 export interface Database extends PrivateRegistryDatabase {
+  demo_assets: {
+    organization_id: string;
+    name: string;
+    mime: string;
+    body: string;
+  };
+  demo_bundles: {
+    organization_id: string;
+    payload: JsonObject<import("@/demo/bundle").DemoBundle>;
+  };
   demo_organizations: DemoOrganizationTable;
   demo_tasks: DemoTaskTable;
   demo_runs: DemoRunTable;

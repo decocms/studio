@@ -4,6 +4,7 @@ import { ForbiddenError } from "@/core/access-control";
 import { getSettings } from "@/settings";
 
 const adapted = new Set([
+  "REPOSITORY_LIST",
   "TASK_BOARD_ITEM_LIST",
   "TASK_BOARD_ITEM_PRS_GET",
   "TASK_BOARD_PREVIEW_PROBE",
@@ -43,7 +44,6 @@ const localReads = new Set([
   "COLLECTION_VIRTUAL_MCP_GET",
   "VIRTUAL_MCP_LAST_USED_LIST",
   "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-  "REPOSITORY_LIST",
   "AUTOMATION_LIST",
   "AUTOMATION_GET",
   "AUTOMATION_RUN_STATS",
@@ -53,9 +53,6 @@ const localReads = new Set([
   "GIT_ACCOUNT_LIST",
   "TASK_BOARD_ADMIN_ORG_LIST",
   "DEMO_STATUS",
-  "DEMO_RESET",
-  "DEMO_SESSION",
-  "DEMO_CREATE_TASK",
 ]);
 
 export async function interceptDemoTool(
@@ -89,6 +86,7 @@ export async function interceptDemoTool(
   }
   if (
     ![
+      "REPOSITORY_LIST",
       "TASK_BOARD_ITEM_LIST",
       "TASK_BOARD_ITEM_PRS_GET",
       "TASK_BOARD_PREVIEW_PROBE",

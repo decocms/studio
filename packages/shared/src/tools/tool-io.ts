@@ -21,18 +21,6 @@ export interface StudioToolIO {
       } | null;
     };
   };
-  DEMO_RESET: {
-    input: { idempotencyKey: string; expectedGeneration: number };
-    output: { generation: number; repeated: boolean };
-  };
-  DEMO_SESSION: { input: { active: boolean }; output: { success: boolean } };
-  DEMO_CREATE_TASK: {
-    input: {
-      recipe: "search" | "promotion" | "diagnostic";
-      expectedGeneration: number;
-    };
-    output: { id: string };
-  };
   ORGANIZATION_CREATE: {
     input: { slug: string; name: string; description?: string | undefined };
     output: {

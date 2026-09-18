@@ -1,3 +1,4 @@
+import * as migration220demo from "./220-demo-bundles";
 import * as migration219demo from "./219-demo-organizations";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -474,6 +475,7 @@ const migrations: Record<string, Migration> = {
   "217-experiments": migration217experiments,
   "218-thread-message-parts-error-idx": migration218threadmessagepartserroridx,
   "219-demo-organizations": migration219demo,
+  "220-demo-bundles": migration220demo,
 };
 
 export default migrations;

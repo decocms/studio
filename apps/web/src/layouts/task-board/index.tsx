@@ -1,4 +1,3 @@
-import { DemoControls } from "@/components/demo/demo-controls";
 import { useDemo } from "@/hooks/use-demo";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Columns03, List } from "@untitledui/icons";
@@ -1203,7 +1202,6 @@ function TaskBoardBody() {
                   )
                 }
               >
-                <DemoControls />
                 <TaskBoardAdminControls />
                 <Button size="sm" onClick={openCreate}>
                   <Plus size={16} />
@@ -1260,12 +1258,6 @@ function TaskBoardBody() {
             </h1>
 
             <TaskBoardAdminBanner />
-
-            {demo && (
-              <div className="flex flex-wrap items-center gap-2">
-                <DemoControls />
-              </div>
-            )}
 
             {/* Commerce orgs: a persistent unlock CTA that self-hides once the
           diagnostic is paid. The board stays usable in the meantime. */}
