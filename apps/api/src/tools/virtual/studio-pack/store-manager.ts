@@ -1,4 +1,5 @@
 import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { STUDIO_PACK_AGENT_TITLES } from "./agent-names";
 import type { StudioPackChecklistItem, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -45,7 +46,7 @@ Registry, propose installable MCPs to the user, and guide their installation.
 
 export const storeManagerAgent = {
   id: "studio-store-manager",
-  title: "Store Manager",
+  title: STUDIO_PACK_AGENT_TITLES.storeManager,
   icon: "icon://Store01?color=emerald",
   description:
     "Browse the Deco Store and Community Registry, recommend MCPs, and guide installations.",

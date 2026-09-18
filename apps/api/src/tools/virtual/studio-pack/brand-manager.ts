@@ -1,5 +1,6 @@
 import { StudioPackAgentId } from "@decocms/shared/sdk";
 import type { BrandContext } from "@/storage/types";
+import { STUDIO_PACK_AGENT_TITLES } from "./agent-names";
 import { hasAnyObject } from "./helpers";
 import type {
   ResolveRuntime,
@@ -86,7 +87,7 @@ You are the Brand Manager. You manage the organization's brand contexts (company
 
 export const brandManagerAgent = {
   id: "studio-brand-manager",
-  title: "Brand Manager",
+  title: STUDIO_PACK_AGENT_TITLES.brandManager,
   icon: "icon://Brand?color=orange",
   description:
     "Create, configure, and manage brand contexts (company profiles) for the organization.",
