@@ -11,7 +11,6 @@ import {
   Copy01,
   Cube01,
   DotsGrid,
-  DotsHorizontal,
   Edit03,
   LayoutAlt01,
   Plus,
@@ -21,7 +20,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -45,14 +43,9 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
+import { EditorRowActionsTrigger, editorRowClassName } from "./editor-list-row";
 
 const VARIANT_ICON_COLOR = "oklch(0.65 0.15 160)";
-// Exported: page-variant-tabs.tsx and section-list.tsx share this exact
-// variant-row styling and import it here rather than re-declaring it.
-export const VARIANT_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] hover:bg-[oklch(0.65_0.15_160/0.12)] dark:text-[oklch(0.78_0.15_160)] dark:hover:bg-[oklch(0.65_0.15_160/0.15)]";
-export const VARIANT_SELECTED_ROW_CLASS =
-  "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.2)]";
 export const VARIANT_MENU_ITEM_CLASS =
   "text-[oklch(0.45_0.15_160)] focus:bg-[oklch(0.65_0.15_160/0.12)] focus:text-[oklch(0.45_0.15_160)] dark:text-[oklch(0.78_0.15_160)] dark:focus:bg-[oklch(0.65_0.15_160/0.15)] dark:focus:text-[oklch(0.78_0.15_160)]";
 
@@ -178,22 +171,12 @@ function VariantRowContent({
 
       {!dragging && (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t(
-                "sectionsEditor.sectionVariantList.openActionsFor",
-                { label },
-              )}
-              className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <DotsHorizontal size={14} />
-            </Button>
-          </DropdownMenuTrigger>
+          <EditorRowActionsTrigger
+            label={t("sectionsEditor.sectionVariantList.openActionsFor", {
+              label,
+            })}
+            classicClassName="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100"
+          />
           <DropdownMenuContent align="end">
             {onRename && (
               <DropdownMenuItem
@@ -275,9 +258,8 @@ function SortableVariantRow({
         }
       }}
       className={cn(
-        "group flex select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors touch-none",
+        editorRowClassName({ tone: "variant", selected }),
         isDragging ? "cursor-grabbing" : "cursor-grab",
-        selected ? VARIANT_SELECTED_ROW_CLASS : VARIANT_ROW_CLASS,
       )}
     >
       <VariantRowContent
@@ -315,6 +297,7 @@ export function SectionVariantList({
   onAdd: () => void;
 }) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const canDelete = variants.length > 1;
 
   const [entries, setEntries] = useState<SortableVariantEntry[]>(() =>
@@ -392,52 +375,55 @@ export function SectionVariantList({
   };
 
   return (
-    <div className="space-y-1 border-b p-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("sectionsEditor.sectionVariantList.title")}
-        </span>
-        <div className="flex items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={t(
-                  "sectionsEditor.sectionVariantList.addVariantAriaLabel",
-                )}
-                className="size-6"
-                onClick={onAdd}
-              >
-                <Plus size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {t("sectionsEditor.sectionVariantList.addVariant")}
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={t(
-                  "sectionsEditor.sectionVariantList.removeAllVariantsAriaLabel",
-                )}
-                className="size-6 text-muted-foreground hover:text-destructive"
-                onClick={onRemoveAll}
-              >
-                <Trash01 size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {t("sectionsEditor.sectionVariantList.removeAllVariants")}
-            </TooltipContent>
-          </Tooltip>
+    <div className={cn("space-y-1 p-2", !compact && "border-b")}>
+      {/* Compact's panel header carries the title and both actions. */}
+      {!compact && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t("sectionsEditor.sectionVariantList.title")}
+          </span>
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t(
+                    "sectionsEditor.sectionVariantList.addVariantAriaLabel",
+                  )}
+                  className="size-6"
+                  onClick={onAdd}
+                >
+                  <Plus size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("sectionsEditor.sectionVariantList.addVariant")}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t(
+                    "sectionsEditor.sectionVariantList.removeAllVariantsAriaLabel",
+                  )}
+                  className="size-6 text-muted-foreground hover:text-destructive"
+                  onClick={onRemoveAll}
+                >
+                  <Trash01 size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t("sectionsEditor.sectionVariantList.removeAllVariants")}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -474,8 +460,12 @@ export function SectionVariantList({
             {activeEntry ? (
               <div
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-2.5 shadow-lg ring-1 ring-border/60 cursor-grabbing",
-                  VARIANT_SELECTED_ROW_CLASS,
+                  editorRowClassName({
+                    tone: "variant",
+                    selected: true,
+                    className:
+                      "cursor-grabbing shadow-lg ring-1 ring-border/60",
+                  }),
                 )}
               >
                 <VariantRowContent
