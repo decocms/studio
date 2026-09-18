@@ -17,24 +17,14 @@
  * and `ban-e2e-app-imports.js` (which guards the e2e black-box wall).
  */
 
+import { resolveRelative } from "./resolve-relative.js";
+
 const API_SRC_MARKER = "/apps/api/src/";
 
 function inWebTree(filename) {
   return (
     filename.includes("/apps/web/src/") || filename.startsWith("apps/web/src/")
   );
-}
-
-// Resolve `../` / `./` segments of a relative spec against the importing file.
-function resolveRelative(fromFile, spec) {
-  const parts = fromFile.split("/");
-  parts.pop(); // drop the filename → containing directory
-  for (const seg of spec.split("/")) {
-    if (seg === "" || seg === ".") continue;
-    if (seg === "..") parts.pop();
-    else parts.push(seg);
-  }
-  return parts.join("/");
 }
 
 function reachesApiSource(spec, filename) {
