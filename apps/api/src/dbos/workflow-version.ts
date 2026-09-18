@@ -96,5 +96,12 @@
  * Version 12 adds `jiraPrMergeWorkflow`, whose steps are named per issue key.
  * A new workflow only needs the bump because the source guard keys on the
  * fileset; there are no v11 instances of it to strand.
+ *
+ * Version 13 removes `jiraPrMergeWorkflow` again: landing an issue's pull
+ * requests is now an ordinary agent run started on the batch (`JIRA_RUN_START
+ * { together }` with the `jira-merge` skill), so the workflow had no caller.
+ * In-flight v12 instances strand by design; each was a retry loop around one
+ * provider merge call, and every merge it did make is already recorded as a
+ * comment on its issue.
  */
-export const DBOS_WORKFLOW_VERSION = "12";
+export const DBOS_WORKFLOW_VERSION = "13";

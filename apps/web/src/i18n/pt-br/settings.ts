@@ -103,24 +103,6 @@ export const settings = {
     "Um run só pra todas — o agente vê todas as issues e trabalha nelas como um lote, em vez de um run por issue",
   "settings.jira.togetherStarted": "Iniciado um run em",
   "settings.jira.testRunWatch": "Ver os runs no Monitor",
-  "settings.jira.mergeLabel": "Mergear os pull requests",
-  "settings.jira.mergeDescription":
-    "Mergeia o pull request que cada issue carrega como web link. Um PR verde mergeia na hora e não custa run \u2014 só um conflito dispara uma, pra rebasear e empurrar o mesmo PR.",
-  "settings.jira.mergeIssueAriaLabel": "Chaves ou links das issues a mergear",
-  "settings.jira.merge": "Mergear {count}",
-  "settings.jira.mergeRunning": "Mergeando\u2026",
-  "settings.jira.mergeMerged": "Mergeado",
-  "settings.jira.mergeResolving":
-    "conflito \u2014 um agent está rebaseando; mergeie de novo quando terminar",
-  "settings.jira.mergeNoPr": "sem pull request nesta issue",
-  "settings.jira.mergeStarted": "Mergeando",
-  "settings.jira.mergeWhereResults":
-    "O que cada pull request fez sai como comentário na issue \u2014 o lote segue mesmo se você sair desta página.",
-  "settings.jira.mergeNotOpen":
-    "o PR mais novo dela está fechado \u2014 alguém fechou, então ressuscitar um anterior é decisão de pessoa",
-  "settings.jira.mergeFailed": "Não consegui mergear",
-  "settings.jira.mergeHelp":
-    "Mergeados na ordem dada, porque mergear um move a base do próximo.",
   "settings.syncedRepos.pageDescription":
     "Repositórios Git espelhados em pastas somente leitura da biblioteca, sincronizados a cada poucos minutos. Ótimo para um repo de skills compartilhado.",
   "settings.syncedRepos.addRepo": "Adicionar repo",

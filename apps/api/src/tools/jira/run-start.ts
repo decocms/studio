@@ -25,14 +25,14 @@ import { startJiraRunForIssue, startJiraRunForIssues } from "@/jira/trigger";
 import { MAX_AUTOMATION_PROMPT_LENGTH } from "@/tools/task-board/schema";
 
 /** Generous — the input accepts a pasted column of issue URLs. */
-export const MAX_ISSUE_INPUT_LENGTH = 8_000;
+const MAX_ISSUE_INPUT_LENGTH = 8_000;
 
 /**
  * How many issues one call may start. Each is a paid sandbox run, so a
  * fat-fingered paste of a whole board should be refused up front rather than
  * discovered as a bill. Well above any real batch.
  */
-export const MAX_ISSUES_PER_CALL = 25;
+const MAX_ISSUES_PER_CALL = 25;
 
 export const JIRA_RUN_START = defineTool({
   name: "JIRA_RUN_START",

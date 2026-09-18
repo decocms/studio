@@ -190,14 +190,9 @@ export async function startJiraRunForIssue(
   opts: {
     instruction: string | null;
     actorId: string;
-    /**
-     * Hand the run an EXISTING pull request to continue instead of opening
-     * one. `resolveConflict` further leads it with "this is approved but no
-     * longer merges — rebase and push the SAME one", which is what the merge
-     * action escalates to when the provider refuses on a conflict.
-     */
+    /** Hand the run an EXISTING pull request to continue instead of opening
+     *  one — a re-run after a review asked for changes. */
     pr?: { number: number; url: string; head?: string };
-    resolveConflict?: boolean;
   },
 ): Promise<{
   item: TaskBoardItem;
@@ -218,7 +213,6 @@ export async function startJiraRunForIssue(
     actorId: opts.actorId,
     ...oneIssue(issue),
     ...(opts.pr ? { pr: opts.pr } : {}),
-    ...(opts.resolveConflict ? { resolveConflict: true } : {}),
     // A person asked for this run, like a card's Re-run.
     userInitiated: true,
   });
@@ -296,7 +290,6 @@ async function dispatchJiraRun(
     actorId: string;
     userInitiated?: boolean;
     pr?: { number: number; url: string; head?: string };
-    resolveConflict?: boolean;
     /** The issues the run may act on, and what its message opens with. */
     issueKeys: string[];
     title: string;
@@ -315,7 +308,6 @@ async function dispatchJiraRun(
       instruction: opts.instruction ?? DEFAULT_JIRA_INSTRUCTION,
       ...(opts.userInitiated ? { userInitiated: true } : {}),
       ...(opts.pr ? { pr: opts.pr } : {}),
-      ...(opts.resolveConflict ? { resolveConflict: true } : {}),
       source: {
         kind: "jira",
         issueKeys: opts.issueKeys,

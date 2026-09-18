@@ -17,7 +17,6 @@ import {
   ArrowUpRight,
   Check,
   ChevronSelectorVertical,
-  GitMerge,
   Play,
   Plus,
   Trash01,
@@ -69,7 +68,6 @@ import {
   useJiraBoards,
   useJiraIntegration,
   useSetJiraAutomation,
-  useMergeJiraPrs,
   useStartJiraRun,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
@@ -761,95 +759,6 @@ function TestRunRow() {
   );
 }
 
-/**
- * Land the pull requests, by hand.
- *
- * Same field, same shape as the run card above — this is the second half of
- * one surface, not a different feature. Sequential on purpose: merging one
- * moves the base under the next, so a batch of pull requests that share a file
- * resolves in order rather than all conflicting at once.
- */
-function MergeRow() {
-  const t = useT();
-  const { org } = useProjectContext();
-  const merge = useMergeJiraPrs();
-  const [issueKeys, setIssueKeys] = useState("");
-  const [started, setStarted] = useState<string[]>([]);
-  const parsed = parseIssueKeys(issueKeys);
-  const canRun = parsed.keys.length > 0 && !merge.isPending;
-
-  const run = () => {
-    if (!canRun) return;
-    setStarted([]);
-    merge.mutate(
-      { issueKey: issueKeys },
-      {
-        onSuccess: (r) => setStarted(r.issueKeys),
-        onError: (err) =>
-          toast.error(errorMessage(err, t("settings.jira.mergeFailed"))),
-      },
-    );
-  };
-
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.mergeLabel")}
-      description={t("settings.jira.mergeDescription")}
-    >
-      <div className="mt-3 flex w-full flex-col gap-3">
-        <IssueKeysField
-          value={issueKeys}
-          onChange={setIssueKeys}
-          disabled={merge.isPending}
-          ariaLabel={t("settings.jira.mergeIssueAriaLabel")}
-        />
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            {t("settings.jira.mergeHelp")}
-          </p>
-          <Button
-            size="sm"
-            className="shrink-0"
-            disabled={!canRun}
-            onClick={run}
-          >
-            <GitMerge size={14} />
-            {merge.isPending
-              ? t("settings.jira.mergeRunning")
-              : t("settings.jira.merge", {
-                  count: String(parsed.keys.length || ""),
-                })}
-          </Button>
-        </div>
-        {/* The batch is durable and asynchronous, so this card cannot show
-            what each pull request did — the outcome is a comment on each
-            issue, which is where the rest of the integration reports. */}
-        {started.length > 0 && (
-          <div className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 text-xs">
-            <p>
-              <Check size={12} className="mr-1 inline text-success" />
-              {t("settings.jira.mergeStarted")}
-              <span className="ml-1 font-mono">{started.join(", ")}</span>
-            </p>
-            <p className="text-muted-foreground">
-              {t("settings.jira.mergeWhereResults")}
-            </p>
-          </div>
-        )}
-        <Link
-          to="/$org/settings/monitor"
-          params={{ org: org.slug }}
-          search={{ tab: "threads" }}
-          className="flex w-fit items-center gap-1 text-xs text-muted-foreground underline hover:text-foreground"
-        >
-          {t("settings.jira.testRunWatch")}
-          <ArrowUpRight size={12} />
-        </Link>
-      </div>
-    </SettingsCardItem>
-  );
-}
-
 function EnabledRow({ integration }: { integration: JiraIntegration }) {
   const t = useT();
   const upsert = useUpsertJiraIntegration();
@@ -953,7 +862,6 @@ function JiraContent() {
       <BoardRow integration={data} />
       {data.boardId && <AutomationsRow boardId={data.boardId} />}
       <TestRunRow />
-      <MergeRow />
       <EnabledRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>

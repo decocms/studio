@@ -5934,10 +5934,6 @@ export interface StudioToolIO {
       unreadable: string[];
     };
   };
-  JIRA_PR_MERGE: {
-    input: { issueKey: string };
-    output: { issueKeys: string[]; workflowId: string; unreadable: string[] };
-  };
   JIRA_ISSUE_GET: {
     input: { issueKey?: string | undefined };
     output: { key: string; url: string; status: string; markdown: string };

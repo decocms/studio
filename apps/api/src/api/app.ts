@@ -132,8 +132,6 @@ import {
   registerJiraTriggerSweepWorkflow,
   setJiraTriggerSweepRuntime,
 } from "@/jira/dbos-jira-trigger-sweep";
-// Importing it is what runs its top-level `DBOS.registerWorkflow`.
-import { setJiraPrMergeRuntime } from "@/jira/dbos-pr-merge";
 import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
@@ -1703,9 +1701,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
   });
-
-  // The durable merge batch started by JIRA_PR_MERGE.
-  setJiraPrMergeRuntime({ db: database.db });
 
   // Every 5 minutes: email what's still unread, then prune the 30-day window.
   setNotificationDigestRuntime({ db: database.db });

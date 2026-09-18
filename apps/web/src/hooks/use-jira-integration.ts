@@ -130,18 +130,3 @@ export function useStartJiraRun() {
       studio.call("JIRA_RUN_START", input),
   });
 }
-
-/**
- * Merge the pull request each issue carries.
- *
- * Green merges with no agent at all — the ordinary case costs three API calls.
- * Only a merge conflict starts a run, because it is the one refusal with an
- * automatic answer; everything else comes back as a reason for a person.
- */
-export function useMergeJiraPrs() {
-  const studio = useStudioTools();
-  return useMutation({
-    mutationFn: (input: StudioToolIO["JIRA_PR_MERGE"]["input"]) =>
-      studio.call("JIRA_PR_MERGE", input),
-  });
-}
