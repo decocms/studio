@@ -1,5 +1,7 @@
 -- Read-only research companion to demo-organization-proposal.md.
--- Not run against production during the proposal research.
+-- Validated on local PostgreSQL with real migrations; equivalent SELECTs were
+-- used through the read-only production MCP during the follow-up research.
+-- See demo-organization-production-evidence.sql for the fixed-window cohort.
 -- Use libpq environment configuration (PGHOST/PGDATABASE/etc.); do not paste
 -- credentials into the command or commit query results to this public repo.
 -- psql -X -v ON_ERROR_STOP=1 -v org_slug=demo-storefront -v days=7 \
@@ -95,6 +97,8 @@ LIMIT 300;
 
 -- persisted_at is wall-clock insertion time; created_at orders durable parts
 -- and MUST NOT be used to claim model latency or sandbox cold-start duration.
+-- Production samples persist assistant parts together at completion, so even
+-- first_persisted_assistant_part_at is NOT time-to-first-token or first SSE.
 -- Aggregate retained parts by persisted thread/run identity with recent data.
 -- Hosted run_id can equal threadId and span follow-up turns: these groups are
 -- NOT individual executions or attempts. Runs failing before any persisted

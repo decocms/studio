@@ -1,6 +1,6 @@
 # Proposta: organização de demonstração restaurável
 
-Status: proposta para revisão, sem alteração de runtime ou de produção. Pesquisa em 18/09/2026, sobre o commit `e3f6bd963`. Os nomes de serviços e contratos novos abaixo são propostas, não APIs disponíveis.
+Status: proposta para revisão, sem alteração de runtime ou de produção. Pesquisa de código sobre o commit `e3f6bd963`, complementada por consultas ao banco de produção em 18/09/2026. Os nomes de serviços e contratos novos abaixo são propostas, não APIs disponíveis.
 
 A recomendação é transformar a org de demonstração em um ambiente com **dados persistidos e execução roteirizada no servidor**. O vendedor usa o Studio normal, altera tarefas, acompanha o chat, revisa resultados e abre previews. Um botão "Preparar demonstração" restaura um cenário versionado. Recarregar a página mantém as mudanças da apresentação.
 
@@ -10,17 +10,57 @@ O caminho principal não chama modelos, não provisiona sandbox e não depende d
 
 ## O que a pesquisa conseguiu verificar
 
-### Evidência disponível e limite do diagnóstico
+### Fonte e recorte dos dados reais
 
-O pedido descreve estado acumulado indesejado, tarefas lentas ou com erro e espera por sandbox. Não consegui consultar o histórico recente da org diretamente no banco nesta sessão. Não havia `DATABASE_URL` no ambiente ou nos arquivos `.env` dos checkouts verificados. O acesso ao cluster disponível falhou por sessão AWS SSO expirada; contextos antigos falharam na resolução de DNS. Não alterei credenciais, infraestrutura ou dados de produção.
+Consultei o banco de produção pelo MCP `studio-pg-prd` da instalação global do Claude Code. A conexão confirmou `transaction_read_only = on`. As consultas foram limitadas à org de demo e ao schema necessário; não executei tools do produto nem alterei a automação existente.
 
-Portanto, esta proposta **não afirma taxa de falha, tempo de execução, frequência de uso ou causa raiz observada nessa org**. As conclusões técnicas vêm do código. Os roteiros sugeridos são uma escolha de produto, não uma inferência sobre cliques ou prompts dos vendedores.
+A janela histórica principal é **11/09/2026 17:38:52 UTC até 18/09/2026 17:38:52 UTC**, com início inclusivo e fim exclusivo. O retrato do board foi consultado às 17:39:35 UTC de 18/09. Consultas adicionais de configuração e mensagens foram feitas na mesma investigação, sem uma única transação compartilhada entre chamadas MCP. Não é um backup consistente nem uma medição de todas as apresentações.
 
-Também encontrei ferramentas locais anteriores de snapshot/reset e de edição do diagnóstico da demo. Elas mostram uma tentativa existente de curar o board e o relatório, mas sua existência não prova que estejam sendo usadas hoje. O snapshot guarda cards e links, IDs de conexões e uma lista de IDs de mensagens. O reset restaura cards e remove conteúdo posterior. Não restaura integralmente threads e partes modificadas, não coordena workers e deixa workspace, preview e branches fora do escopo. O material local também alerta que regenerar o diagnóstico substitui seu conteúdo curado. Nenhum snapshot, dado privado ou conteúdo desses arquivos foi copiado para o repositório público.
+As [consultas de evidência](demo-organization-production-evidence.sql) identificam as fontes E1–E7 usadas abaixo. Os agregados e as descrições foram sanitizados para este repositório público. Não foram publicados IDs de usuários, cards ou runs, prompts completos, nomes de clientes, repositórios externos ou credenciais. Os exemplos do futuro manifesto continuam sintéticos.
 
-A [consulta de diagnóstico](demo-organization-audit.sql) acompanha esta proposta para tornar reproduzível a investigação pendente. É somente leitura, parametrizada por slug, com timeout e janela padrão de sete dias. Ela consulta estado atual, atividade, threads vinculadas, partes por identidade persistida de thread/run e automações. Foi executada em Postgres 16.14 temporário com as migrations reais do repositório e duas orgs sintéticas, mas **não contra o banco de produção**. Passaram os casos de org alvo, org inexistente, parâmetro obrigatório ausente e janela inválida; os cards permaneceram inalterados e os dados da segunda org não apareceram na consulta da primeira. Uma versão de produção com schema diferente pode exigir adaptação.
+### O reset já existe, mas deixa o estado acumular
 
-O `run_id` pode ser o próprio `threadId`, reutilizado em follow-ups; esse agrupamento não separa turnos ou tentativas individuais. A consulta considera dados ainda retidos, limita as listagens detalhadas e não reconstrói cards excluídos. Atividades coalescidas também não equivalem a uma contagem de cliques. Não interpretar esse recorte como telemetria completa de uso.
+Existe uma automação ativa de reset desde agosto, agendada para `0 9 * * *`. Os disparos observados ocorrem às 09:00 UTC, 06:00 em São Paulo. Ela usa um agente para comparar o repositório com um commit de referência, decidir quais diferenças preservar, abrir e mesclar PRs de restauração e ajustar cards. Se não encontrar um PR aberto para a busca, o roteiro pede uma nova execução do agente. **O reset depende das mesmas partes variáveis que a apresentação.**
+
+O prompt contém 28 IDs de cards. Um já não existe e 42 cards não dispensados ficam fora dessa lista, conforme E2. O próprio prompt manda preservar cards extras e não limpar threads, comentários ou PRs adquiridos pelos cards de backlog. Logo, o acúmulo não é apenas uma hipótese de falha do scheduler: o contrato atual de reset permite esse estado.
+
+| Retrato persistido, E1 e E7 | Quantidade |
+| --- | --- |
+| Cards não dispensados | 69: 44 em triagem, 15 em revisão, 8 concluídos e 2 arquivados |
+| Cards dispensados ainda retidos | 137, separados dos 69 acima |
+| Chats no histórico da org | 719: 639 concluídos, 77 com status de falha, 2 em execução e 1 aguardando ação |
+| Chats ainda marcados em execução | Ambos com último `updated_at` em 05/08; isso é estado antigo, não prova de workers ainda ativos |
+| Automações configuradas | Uma, o reset diário; não apareceu uma automação comercial separada |
+
+Em 18/09, o reset chegou ao estado `completed`, mas uma chamada persistida de `TASK_BOARD_ITEM_UPDATE` terminou em `output-error` porque o card referenciado não existia. O agente depois escolheu outro card. Isso confirma que **concluir o job não prova que o cenário corresponde ao manifesto**. O relato final de 16/09 também descreve uma reversão indevida de mudança legítima seguida de correção; esse relato não foi validado contra o Git e não é tratado como prova independente de alteração do repositório.
+
+Também existem scripts locais anteriores de snapshot/reset e edição do diagnóstico. Eles não cobrem integralmente threads, partes modificadas, workers, workspace e preview. Sua presença não prova uso atual; a automação descrita acima foi verificada diretamente no banco.
+
+### O que está demorando na amostra
+
+Cruzei `threads` com `dbos.workflow_status` pelo ID da thread nos workflows `hostedHarnessWorkflow`, sem confundir gate, projector e executor como três execuções diferentes. E3 usa os timestamps do DBOS: espera = início menos criação; execução = conclusão menos início. A janela contém 16 desses workflows, todos `SUCCESS`.
+
+| Tipo de execução | Amostra | Menor duração | Maior duração | Maior espera na fila do executor |
+| --- | --- | --- | --- | --- |
+| Implementação de tarefa | 5 | 1m09s | 14m33s | 370 ms |
+| Revisão | 4 | 1m51s | 5m40s | 281 ms |
+| Reset diário | 7 | 3m49s | 31m31s | 755 ms |
+
+Esses tempos incluem o trabalho dentro do executor, não apenas o modelo. O DBOS registra uma step `runHostedHarness` para cada um desses 16 workflows, sem separar preparo de sandbox, modelo e ferramentas nessa tabela. **A fila desse executor não explica os minutos de espera observados; a contribuição exata do cold start ainda não foi medida.** Não usar essa amostra pequena para prometer ausência de congestionamento futuro.
+
+Os 16 chats correspondentes têm uma mensagem de usuário cada. Duas outras threads criadas na janela estão vazias e foram excluídas da contagem de execução. Nenhuma dessas 18 threads estava em `failed` no recorte consultado. Há, porém, 18 partes de ferramenta `output-error` persistidas na janela, distribuídas por sete dos 16 chats executados: seis erros em duas implementações, dez em três revisões e dois em dois resets, conforme E4. Incluem timeouts de testes de navegador, comandos que falharam, ferramenta indisponível e card inexistente. São falhas intermediárias, não 18 demos fracassadas; o status terminal esconde esse atrito.
+
+`threads.updated_at` não serve como duração: houve atualização horas depois do término real. Também não dá para medir primeiro token com `persisted_at`: nessa amostra, a primeira parte de assistente e a parte final de cada chat foram persistidas juntas. O `run_id` pode ser reutilizado em follow-ups; métricas futuras devem usar workflow/fence e instrumentar o primeiro evento recebido pelo cliente.
+
+### Como o uso real muda os roteiros
+
+E5 mostra nove cards criados na janela: dois manuais, seis de diagnóstico e um da automação. Os dois pedidos manuais tratam de **busca mais visível no cabeçalho** e **barra promocional colorida com contagem regressiva**. As outras implementações da amostra vieram de tarefas técnicas do diagnóstico, como metadados e headers. Há 34 eventos retidos de atividade em seis cards, segundo E6; esses eventos não identificam sessões de apresentação ou todos os cliques.
+
+Ler as respostas finais também revelou uma fonte de demo sem resultado visível: uma tarefa de diagnóstico terminou sem alteração nem PR porque, segundo o agente, o problema já estava corrigido. Outra reconheceu que o diagnóstico estava desatualizado e trabalhou em um caso de fallback. Não refiz essas verificações no site real. A evidência é o conteúdo persistido da execução e justifica um requisito do cenário: **diagnóstico, baseline, tarefa, diff e preview precisam pertencer à mesma versão**. Não basta congelar o relatório e continuar alterando o site.
+
+Com esses dados, priorizo busca, promoção visual e diagnóstico até correção. A única automação observada é manutenção, então demonstrar automações comerciais fica opcional. Ajustes por follow-up continuam possíveis em roteiro limitado, mas a amostra recente não os estabelece como uso principal.
+
+A [consulta geral de diagnóstico](demo-organization-audit.sql) continua disponível. Ela foi validada em Postgres 16.14 temporário com as migrations reais e duas orgs sintéticas; a pesquisa de produção usou SELECTs equivalentes e os agregados de evidência via MCP. Dados excluídos não podem ser reconstruídos, atividade pode estar coalescida e os agregados mudam conforme a org continua sendo usada.
 
 ### Por que restaurar só o board não resolve
 
@@ -45,13 +85,15 @@ O `run_id` pode ser o próprio `threadId`, reutilizado em follow-ups; esse agrup
 
 O estado inicial sugerido contém dez tarefas: duas em triagem, três a fazer, duas aguardando revisão humana, uma aprovada e duas concluídas. Os cards históricos têm chats completos, comentários, atividade e resultados relacionados. A contagem é uma escolha inicial ajustável no manifesto. Não haverá thread eternamente `in_progress` para decorar o board.
 
-Três roteiros iniciais, com conteúdo sintético:
+Três roteiros iniciais, com conteúdo sintético baseado nas categorias observadas:
 
 | Roteiro | Ação e resultado |
 | --- | --- |
-| Diagnóstico até melhoria | Abrir relatório curado, escolher tarefa de melhoria da página de produto, delegar, acompanhar execução e revisar preview antes/depois. |
-| Ajuste durante revisão | Pedir uma alteração suportada de título ou CTA no chat, receber nova versão do resultado e aprovar a entrega demonstrativa. |
-| Trabalho futuro | Mostrar automação configurada e próxima execução; "Executar agora" produz o resultado roteirizado e registra atividade. |
+| Busca visível no cabeçalho | Delegar uma tarefa manual, acompanhar execução e revisão, abrir diff e preview com busca funcional e sugestões sintéticas. Aprovar ativa a versão demonstrativa. |
+| Barra promocional | Criar a tarefa por um exemplo de pedido, executar e comparar a barra colorida com contagem regressiva. Uma continuação suportada ajusta a mensagem da promoção. |
+| Diagnóstico até correção | Abrir relatório curado, selecionar um problema de SEO ou acessibilidade que exista na baseline do cenário, executar e mostrar a correção correspondente. |
+
+A agenda e seus horários futuros fazem parte do estado restaurável. Uma demonstração específica de automação pode ser acrescentada depois; ela não é um dos três roteiros principais identificados nesta pesquisa.
 
 O cenário define exemplos de pedidos suportados e opções visíveis de continuação. O vínculo entre tarefa e roteiro usa uma chave explícita, sem um modelo para classificar intenções. Um pedido fora do roteiro recebe uma resposta clara sobre o que pode ser demonstrado. Não deve inventar uma entrega para texto arbitrário, nem cair automaticamente em execução real.
 
@@ -99,7 +141,7 @@ Desligar a flag de uma org cadastrada suspende as ações demo. **Não converte 
 
 Aplicar a política antes de quota e resolução de modelo na delegação e no chat, incluindo follow-ups, automações e reexecuções. Extrair do preparo atual as etapas comuns de autorização, identidade da thread, ordenação, cancelamento e stream. O executor demo não recebe vault, clientes de modelo, MCP ou provider de sandbox.
 
-Usar uma fila DBOS própria para demo, com capacidade reservada e limite por org, evitando esperar atrás de execuções reais longas. O gate por thread e o fence continuam sendo usados. A fila não isola CPU ou banco por si só; a meta de latência precisa ser medida com a carga normal presente.
+Manter o gate por thread, o fence e limites por org. A prioridade é retirar o trabalho externo do executor: a espera na fila dos 16 jobs medidos foi inferior a um segundo. Reservar capacidade ou separar a fila demo é uma proteção a validar sob carga, não a correção comprovada para a demora desta amostra. Uma fila separada tampouco isola CPU ou banco por si só.
 
 Os eventos roteirizados passam pelo [`ingestRun`](../src/api/routes/decopilot/ingest-run.ts) e pelo [projector existente](../src/api/routes/decopilot/projector-workflow.ts). Identidade da execução, sequência e avanço do roteiro ficam persistidos. Um replay retoma o progresso confirmado, sem duplicar mensagens, comentários ou resultado. Tempos de apresentação usam primitivas duráveis dentro de workflows e `@decocms/shared/std` fora deles. Alterações de sequência nos workflows existentes exigem tratar a [versão DBOS](../src/dbos/workflow-version.ts).
 
@@ -127,7 +169,7 @@ Versionar um manifesto sintético `storefront-v1`, validado com Zod, separado do
 - Automações demonstrativas, suas últimas execuções e próximos horários.
 - Relatório curado, referências de assets, roteiro de cada ação e pedidos suportados.
 
-O manifesto também declara requisitos de configuração. Por exemplo, o card aprovado exige `delivery_lanes_enabled` para aparecer na UI normal. O provisionamento configura esses requisitos e `DEMO_STATUS`/reset os validam; a restauração não sobrescreve flags arbitrárias da org. Uma configuração incompatível impede anunciar o cenário como pronto.
+O manifesto também declara requisitos de configuração. Por exemplo, o card aprovado exige `delivery_lanes_enabled` para aparecer na UI normal. O provisionamento configura esses requisitos e `DEMO_STATUS`/reset os validam; a restauração não sobrescreve flags arbitrárias da org. Uma configuração incompatível impede anunciar o cenário como pronto. A versão liga relatório, baseline, diff e preview; cada tarefa de correção deve ter uma mudança demonstrável nessa baseline, evitando o caso observado de diagnóstico já resolvido.
 
 Cada entidade tem uma chave lógica estável no manifesto. Cada reset gera IDs físicos novos para tarefas, threads, mensagens, execuções e entidades dependentes. As chaves visíveis do board podem ser reproduzidas transacionalmente dentro da org, sem reutilizar IDs de execução. Escritas de uma aba antiga incluem a geração esperada e são rejeitadas quando ela mudou.
 
@@ -165,7 +207,9 @@ O primeiro escopo tem uma apresentação por org. "Iniciar apresentação" reser
 
 Essa escolha evita que um vendedor apague a demo do outro sem exigir clones por usuário no primeiro lançamento. Se houver apresentações simultâneas frequentes, instanciar o mesmo manifesto em orgs distintas por vendedor é a expansão prevista. Não simular isolamento com estado local do navegador.
 
-Reset manual é o mecanismo principal. Nightly fica desabilitado inicialmente. Quando habilitado, roda às 04:00 no fuso `America/Sao_Paulo`, usando DBOS e o mesmo serviço de reset. Verificar janela local e deduplicar por org/data local, sem assumir que o cron do processo usa esse fuso. Pular e registrar o motivo quando houver reserva de apresentação, execução ativa ou outro reset. Não acumular resets perdidos nem executá-los assim que o vendedor abrir a org.
+Reset manual é o mecanismo principal. Na migração, desativar a automação de agente existente e remover seu schedule DBOS antes de habilitar a nova política. Não manter dois resets competindo. Isso é parte da futura implementação, não foi feito nesta pesquisa.
+
+O novo nightly fica desabilitado inicialmente. Quando habilitado, preserva o horário observado de 06:00 no fuso `America/Sao_Paulo`, usando DBOS e o mesmo serviço determinístico de reset. Verificar janela local e deduplicar por org/data local, sem assumir que o cron do processo usa esse fuso. Pular e registrar o motivo quando houver reserva de apresentação, execução ativa ou outro reset. Não acumular resets perdidos nem executá-los assim que o vendedor abrir a org.
 
 Um check diário pode abrir o roteiro em uma org técnica separada. Não consumir o próprio cenário dos vendedores para testar sua saúde.
 
@@ -173,8 +217,8 @@ Um check diário pode abrir o roteiro em uma org técnica separada. Não consumi
 
 Dividir a implementação em três entregas. Nenhuma habilita automaticamente a org existente.
 
-1. **Execução determinística vertical.** Cadastro/política default-off, uma tarefa completa com chat, follow-up, revisão e preview, proteção dos pontos de entrada e dos efeitos externos. Exercitar com credenciais de modelo ausentes e provider de sandbox indisponível. O resultado já precisa persistir entre refreshes.
-2. **Cenário completo e restauração.** Manifesto, relatório, históricos, agenda, reset transacional, proteção por geração, cancelamento e invalidação entre abas. Adicionar a reserva de apresentação e controles em pt-BR/en. Esta é a primeira entrega utilizável pelos vendedores.
+1. **Execução determinística vertical.** Cadastro/política default-off e o roteiro de busca, com chat, revisão e preview funcional, protegendo pontos de entrada e efeitos externos. Exercitar com credenciais de modelo ausentes e provider de sandbox indisponível. O resultado já precisa persistir entre refreshes.
+2. **Cenário completo e restauração.** Adicionar promoção e diagnóstico, manifesto, relatório, históricos, agenda, reset transacional, proteção por geração, cancelamento e invalidação entre abas. Incluir a migração da automação antiga, a reserva de apresentação e controles em pt-BR/en. Esta é a primeira entrega utilizável pelos vendedores.
 3. **Operação recorrente.** Nightly opcional, verificação em org técnica, métricas de prontidão e documentação curta dos roteiros. Expandir ações somente com novos cenários testados.
 
 Testes de aceitação propostos:
@@ -188,6 +232,8 @@ Testes de aceitação propostos:
 | Isolamento e permissão | Outra org não sofre alteração; membro sem permissão não restaura; forjar flag, geração ou modo no cliente não habilita demo ou execução real. |
 | Efeitos externos | Approve/publish/OAuth, sweeps, webhooks e imports não produzem chamada externa nem cobrança. Validar chamadas diretas à API, não só navegação. |
 | Cenário em repouso | Após 24 horas e execuções dos sweeps, o estado lógico continua curado; não surgem retries, erros, arquivamentos ou tarefas espontâneas. |
+| Casos observados em produção | Card referenciado inexistente impede prontidão; cards extras e chats antigos saem do conjunto demo; baseline e diagnóstico incompatíveis falham na validação; um job concluído com invariantes quebradas não recebe `ready`. |
+| Migração do reset existente | A automação antiga e seu schedule não podem disparar, recriar cards ou mesclar PRs depois do primeiro reset novo. |
 | Falhas do próprio Studio | Queda do worker retoma ou termina com erro recuperável; falta de DB/NATS não gera falso sucesso nem fallback live. |
 | Apresentação e nightly | Reserva ativa impede reset por outro vendedor e pelo scheduler. Horário local e repetição do tick não geram dois resets. |
 
@@ -205,15 +251,18 @@ Uma versão ruim do manifesto pode voltar à anterior com o mesmo reset. Uma fal
 
 | Decisão | Motivo |
 | --- | --- |
-| Proposta em PR, sem mudar produção nesta pesquisa | O pedido é uma proposta revisável. Não foi possível medir a org pelo banco nem validar um reset contra seus dados. |
+| Proposta em PR, sem mudar produção nesta pesquisa | O pedido é uma proposta revisável. Os dados foram consultados em modo somente leitura; nenhum reset ou mock foi implementado ou habilitado. |
 | Estado real no servidor, executor roteirizado | Mantém o produto demonstrável e a persistência, removendo a variabilidade do trabalho externo. |
 | Mock antes da admissão dependente de modelo | Evita que quota, credenciais ou filas de execução real impeçam o começo do roteiro. |
 | Artefatos prontos para preview e relatório | Evita cold start, build, deploy e regeneração do conteúdo curado durante a apresentação. |
 | Reset explícito e nightly opcional | O vendedor escolhe quando perder as alterações; uma apresentação em uso não é interrompida pelo relógio. |
-| Dez cards e três roteiros como ponto inicial | Um cenário pequeno permite revisar conteúdo e provar cada ação. Ajustar após a investigação do uso real. |
+| Substituir o reset por agente | A rotina atual preserva extras, referencia um card inexistente e levou até 31m31s na amostra. Um contrato validado substitui decisões por interpretação de prompt. |
+| Dez cards e três roteiros como ponto inicial | A contagem é uma escolha de curadoria, não uma estatística. Busca, promoção e diagnóstico refletem os pedidos e execuções observados. |
+| Versão única para diagnóstico e resultado | O histórico contém diagnóstico que já não reproduzia na baseline; um roteiro de correção precisa apresentar um problema e uma mudança coerentes. |
+| Não priorizar aumento de capacidade de fila | A maior espera dos executores medidos foi 755 ms. A demora observada está dentro da execução; cold start exige instrumentação separada. |
 | Sem execução fictícia permanente no board | Mantém o estado estável e evita simular atividade que reapers e reconcilers interpretariam como travada. |
 | Uma apresentação por org inicialmente | Resolve colisão entre vendedores sem antecipar um sistema de clones. |
 | IDs novos e geração em cada reset | Impede que callbacks antigos atinjam entidades novas com IDs reaproveitados. |
 | Sem fallback automático para live | Um roteiro ausente não pode voltar a depender da infraestrutura que a demo pretende evitar. |
 
-Antes de fechar o conteúdo final do cenário, falta confrontá-lo com a atividade real da org: tarefas mais demonstradas, transições repetidas, proporção de follow-ups, uso de preview e automações. A consulta anexa cobre o estado e o histórico persistido. Ela não reconstrói sozinha tempo de cold start, fila ou todas as execuções sem partes; isso exige os logs/telemetria correspondentes, com a mesma janela e os IDs de run. Essa lacuna afeta a seleção dos roteiros e o diagnóstico de lentidão, não muda a necessidade de controlar estado e execução separadamente.
+Ainda faltam medições de cold start isolado, primeiro evento no navegador e sessões de apresentação efetivas. As consultas não provam que cada tarefa executada estava sendo mostrada a um cliente, nem que uma reserva de 90 minutos corresponde à duração típica de uma demo. Essas escolhas permanecem explícitas e ajustáveis. O dado real já permite decidir os primeiros roteiros e mostra por que o reset precisa validar o cenário inteiro, em vez de concluir um prompt de manutenção.
