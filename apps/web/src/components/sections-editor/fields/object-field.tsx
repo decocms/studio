@@ -4,7 +4,7 @@ import {
   FieldDescriptionTooltip,
   useFieldDescriptionTooltips,
 } from "./field-label";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
 import { SchemaForm } from "../schema-form";
@@ -108,7 +108,7 @@ export function ObjectField({
           <span className="min-w-0 truncate text-sm font-medium">
             {label}
             {required && invalid && (
-              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+              <MissingRequiredMarker className="ml-1 inline-block align-middle" />
             )}
           </span>
         </FieldDescriptionTooltip>
