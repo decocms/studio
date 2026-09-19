@@ -46,7 +46,7 @@ import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
-import { editorRowClassName } from "../editor-list-row";
+import { EditorRowActionsTrigger, EditorRowLink } from "../editor-list-row";
 import {
   HeaderSelectOptions,
   HeaderSelectTrigger,
@@ -490,57 +490,43 @@ export function AnyOfField({
     // so the name is not said twice.
     if (compact && isModuleLoaderUnion && nestedProps) {
       return (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() =>
+        <>
+          <EditorRowLink
+            icon={
+              savedRef ? (
+                <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <Cube01 className="size-4 shrink-0 text-muted-foreground" />
+              )
+            }
+            label={label}
+            onOpen={() =>
               onBreadcrumbChange?.([...safeBreadcrumbPath, outerCrumb])
             }
-            className={cn(
-              editorRowClassName({
-                className: "min-w-0 flex-1 cursor-pointer text-left",
-              }),
-            )}
-          >
-            {savedRef ? (
-              <Globe01 className="size-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <Cube01 className="size-4 shrink-0 text-muted-foreground" />
-            )}
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">
-              {label}
-            </span>
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-          </button>
-          {(handleDetach || canMakeGlobal) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t("sectionsEditor.anyOfField.loaderActions")}
-                  className="size-7 shrink-0 text-muted-foreground"
-                >
-                  <DotsHorizontal size={16} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {savedRef && handleDetach && (
-                  <DropdownMenuItem onClick={handleDetach}>
-                    <Cube01 className="h-4 w-4" />
-                    {t("sectionsEditor.anyOfField.detach")}
-                  </DropdownMenuItem>
-                )}
-                {canMakeGlobal && (
-                  <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
-                    <Globe01 className="h-4 w-4" />
-                    {t("sectionsEditor.anyOfField.makeGlobal")}
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+            actions={
+              (handleDetach || canMakeGlobal) && (
+                <DropdownMenu>
+                  <EditorRowActionsTrigger
+                    label={t("sectionsEditor.anyOfField.loaderActions")}
+                  />
+                  <DropdownMenuContent align="end" className="w-48">
+                    {savedRef && handleDetach && (
+                      <DropdownMenuItem onClick={handleDetach}>
+                        <Cube01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.detach")}
+                      </DropdownMenuItem>
+                    )}
+                    {canMakeGlobal && (
+                      <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
+                        <Globe01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.makeGlobal")}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          />
           {canMakeGlobal && (
             <MakeReusableModal
               open={makeGlobalOpen}
@@ -549,7 +535,7 @@ export function AnyOfField({
               onSubmit={handleMakeGlobalSubmit}
             />
           )}
-        </div>
+        </>
       );
     }
 
@@ -581,63 +567,7 @@ export function AnyOfField({
           </Select>
         </div>
         {nestedProps &&
-          (isModuleLoaderUnion && compact ? (
-            /* A bound block is a place you go, not a drawer you open — the same
-               as a global section in the section list. The picker and the
-               actions stay out here; only the block's form moves behind it. */
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() =>
-                  onBreadcrumbChange?.([...safeBreadcrumbPath, outerCrumb])
-                }
-                className={cn(
-                  editorRowClassName({
-                    className: "min-w-0 flex-1 cursor-pointer text-left",
-                  }),
-                )}
-              >
-                {savedRef ? (
-                  <Globe01 className="size-4 shrink-0 text-muted-foreground" />
-                ) : (
-                  <Cube01 className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {savedRef?.blockKey ?? labelFromResolveType(activeRt)}
-                </span>
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-              </button>
-              {(handleDetach || canMakeGlobal) && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t("sectionsEditor.anyOfField.loaderActions")}
-                      className="size-7 shrink-0 text-muted-foreground"
-                    >
-                      <DotsHorizontal size={16} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {savedRef && handleDetach && (
-                      <DropdownMenuItem onClick={handleDetach}>
-                        <Cube01 className="h-4 w-4" />
-                        {t("sectionsEditor.anyOfField.detach")}
-                      </DropdownMenuItem>
-                    )}
-                    {canMakeGlobal && (
-                      <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
-                        <Globe01 className="h-4 w-4" />
-                        {t("sectionsEditor.anyOfField.makeGlobal")}
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          ) : isModuleLoaderUnion ? (
+          (isModuleLoaderUnion ? (
             <CollapsibleLoaderConfig
               path={path}
               open={loaderConfigOpen}
