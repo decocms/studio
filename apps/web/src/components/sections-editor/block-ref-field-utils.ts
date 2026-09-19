@@ -2,6 +2,7 @@ import { labelFromResolveType } from "./section-types";
 import { isLazyResolveType } from "./section-lazy";
 import {
   embeddedUnionBlockId,
+  isAutoPreviewBlockKey,
   isSavedBlockResolveType,
   parseSavedBlockSchemaTitle,
   unionRefMatchesValue,
@@ -62,12 +63,48 @@ export function blockRefOptionLabel(ref: BlockRefOption): string {
   );
 }
 
+/**
+ * Every saved block in the decofile this field could be bound to: one whose own
+ * module resolve type is a type the field accepts. Detaching only inlines a copy
+ * of the block's data — the decofile entry survives — so listing just the block
+ * currently bound would make a detach look like the block had been deleted.
+ *
+ * The multivariate branch is skipped when matching: the field accepts it as the
+ * way to give this property variants, but a saved multivariate block wraps some
+ * other section, so offering those would bind the field to an unrelated block.
+ */
+function compatibleSavedBlocks(
+  refs: BlockRefOption[],
+  decofile: Record<string, unknown>,
+): BlockRefOption[] {
+  const accepted = new Set(
+    refs
+      .map((r) => r.resolveType)
+      .filter((rt) => rt.includes("/") && !isMultivariateFlagResolveType(rt)),
+  );
+  if (accepted.size === 0) return [];
+
+  const out: BlockRefOption[] = [];
+  for (const [key, val] of Object.entries(decofile)) {
+    if (key.includes("/") || !isSavedBlockResolveType(key)) continue;
+    if (isAutoPreviewBlockKey(key)) continue;
+    if (!val || typeof val !== "object" || Array.isArray(val)) continue;
+    const moduleRt = moduleResolveTypeFromBlockData(
+      val as Record<string, unknown>,
+    );
+    if (!moduleRt || !accepted.has(moduleRt)) continue;
+    out.push({ resolveType: key, title: key });
+  }
+  return out;
+}
+
 /** Ensure saved blocks and concrete module types appear in the anyOf selector. */
 export function enrichBlockRefOptions(
   refs: BlockRefOption[],
   options: {
     savedBlockKey?: string;
     editorValue?: unknown;
+    decofile?: Record<string, unknown>;
   },
 ): BlockRefOption[] {
   const out = [...refs];
@@ -95,6 +132,13 @@ export function enrichBlockRefOptions(
     );
     if (moduleRt?.includes("/")) {
       add(moduleRt);
+    }
+  }
+
+  // Against `out`: the module type usually reaches it only from the value above.
+  if (options.decofile) {
+    for (const saved of compatibleSavedBlocks(out, options.decofile)) {
+      add(saved.resolveType, saved.title);
     }
   }
 
