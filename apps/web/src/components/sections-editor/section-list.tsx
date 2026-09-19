@@ -191,7 +191,7 @@ function SectionRowContent({
           src={imageSrc}
           alt=""
           referrerPolicy="no-referrer"
-          className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+          className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
         />
       )}
       {!compact && (

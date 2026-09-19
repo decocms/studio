@@ -1,3 +1,5 @@
+import { GripVertical } from "lucide-react";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import {
   Copy01,
   DotsGrid,
@@ -63,6 +65,13 @@ function actionButtonVisibilityClass(reserved: boolean, active: boolean) {
   );
 }
 
+/** The drag handle both row shapes wear. */
+function RowGrip() {
+  const compact = useCompactPageLayout();
+  const Icon = compact ? GripVertical : DotsGrid;
+  return <Icon className="size-3.5 shrink-0 text-muted-foreground/40" />;
+}
+
 export function ArrayRowContent({
   labelText,
   imageSrc,
@@ -74,14 +83,14 @@ export function ArrayRowContent({
 }) {
   return (
     <>
-      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      <RowGrip />
       <div className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
         {imageSrc && (
           <img
             src={imageSrc}
             alt=""
             referrerPolicy="no-referrer"
-            className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+            className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
           />
         )}
         <span className="min-w-0 truncate">{labelText}</span>
@@ -142,18 +151,18 @@ export function SortableArrayRow({
         }
       }}
       className={cn(
-        "group relative flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
+        "group relative flex min-w-0 items-center gap-2.5 rounded-[var(--studio-control-radius,var(--radius-lg))] px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
         isDragging ? "cursor-grabbing" : "cursor-pointer",
       )}
       title={labelText}
     >
-      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      <RowGrip />
       {imageSrc && (
         <img
           src={imageSrc}
           alt=""
           referrerPolicy="no-referrer"
-          className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+          className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
         />
       )}
       <span
@@ -231,7 +240,7 @@ export function SortableArrayRow({
             {t("sectionsEditor.arrayField.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
+            variant="destructive"
             onClick={(e) => {
               e.stopPropagation();
               onRemove();

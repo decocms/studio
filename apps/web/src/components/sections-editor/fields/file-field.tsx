@@ -23,7 +23,7 @@ import { resolveTargetConfigId } from "./resolve-target-config-id";
 function ExtBadge({ ext }: { ext: string }) {
   if (!ext) return null;
   return (
-    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+    <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
       {ext}
     </span>
   );
