@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { ChevronRight, LayersThree01 } from "@untitledui/icons";
+import { LayersThree01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Tooltip,
   TooltipContent,
@@ -65,7 +64,7 @@ import {
   wrapAsMultivariate,
   type MultivariateWrapper,
 } from "./media-variants";
-import { editorRowClassName } from "../editor-list-row";
+import { EditorRowLink } from "../editor-list-row";
 import type { FieldProps } from "./field-props";
 
 export interface MultivariateFieldWrapperProps extends FieldProps {
@@ -135,23 +134,17 @@ export function MultivariateFieldWrapper({
   // that is what the breadcrumb resolver matches to narrow back to this field.
   if (asDestination && !focused) {
     return (
-      <button
-        type="button"
-        onClick={() =>
+      <EditorRowLink
+        icon={
+          <LayersThree01 className="size-4 shrink-0 text-muted-foreground" />
+        }
+        label={t("sectionsEditor.multivariateFieldWrapper.variantsOf", {
+          label,
+        })}
+        onOpen={() =>
           props.onBreadcrumbChange?.([...(props.breadcrumbPath ?? []), label])
         }
-        className={cn(
-          editorRowClassName({
-            className: "w-full cursor-pointer text-left",
-          }),
-        )}
-      >
-        <LayersThree01 className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {t("sectionsEditor.multivariateFieldWrapper.variantsOf", { label })}
-        </span>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-      </button>
+      />
     );
   }
 

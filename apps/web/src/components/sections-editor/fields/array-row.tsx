@@ -1,25 +1,12 @@
 import { GripVertical } from "lucide-react";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
-import {
-  Copy01,
-  DotsGrid,
-  DotsHorizontal,
-  Eye,
-  EyeOff,
-  Trash01,
-} from "@untitledui/icons";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { EditorRowActionsTrigger, EditorRowToggle } from "../editor-list-row";
+import { Copy01, DotsGrid, Eye, EyeOff, Trash01 } from "@untitledui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -177,55 +164,32 @@ export function SortableArrayRow({
         <MissingRequiredMarker className="absolute -right-0.5 -top-0.5" />
       )}
       {onToggleHidden && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={
-                hidden
-                  ? t("sectionsEditor.arrayField.showItem")
-                  : t("sectionsEditor.arrayField.hideItem")
-              }
-              className={cn(
-                actionButtonVisibilityClass(hidden === true, hidden === true),
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleHidden();
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {hidden
+        <EditorRowToggle
+          label={
+            hidden
               ? t("sectionsEditor.arrayField.showItem")
-              : t("sectionsEditor.arrayField.hideItem")}
-          </TooltipContent>
-        </Tooltip>
+              : t("sectionsEditor.arrayField.hideItem")
+          }
+          active={hidden === true}
+          onToggle={onToggleHidden}
+          classicClassName={actionButtonVisibilityClass(
+            hidden === true,
+            hidden === true,
+          )}
+        >
+          {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+        </EditorRowToggle>
       )}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("sectionsEditor.arrayField.openActionsFor", {
-              label: labelText,
-            })}
-            className={cn(
-              actionButtonVisibilityClass(hidden === true, false),
-              "data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
-            )}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <DotsHorizontal size={14} />
-          </Button>
-        </DropdownMenuTrigger>
+        <EditorRowActionsTrigger
+          label={t("sectionsEditor.arrayField.openActionsFor", {
+            label: labelText,
+          })}
+          classicClassName={cn(
+            actionButtonVisibilityClass(hidden === true, false),
+            "data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
+          )}
+        />
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={(e) => {

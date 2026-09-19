@@ -1,7 +1,12 @@
 import type { ReactNode } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { DropdownMenuTrigger } from "@decocms/ui/components/dropdown-menu.tsx";
-import { DotsHorizontal } from "@untitledui/icons";
+import { ChevronRight, DotsHorizontal } from "@untitledui/icons";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
@@ -59,28 +64,37 @@ export function EditorRowToggle({
   active,
   onToggle,
   children,
+  classicClassName,
 }: {
   label: string;
   active: boolean;
   onToggle: () => void;
   children: ReactNode;
+  /** The list's own pre-redesign toggle classes, used as-is in classic. */
+  classicClassName?: string;
 }) {
+  const compact = useCompactPageLayout();
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon"
-      aria-label={label}
-      aria-pressed={active}
-      className={REVEAL}
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      onPointerDown={(e) => e.stopPropagation()}
-    >
-      {children}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant={compact ? "outline" : "ghost"}
+          size="icon"
+          aria-label={label}
+          aria-pressed={active}
+          className={cn(compact ? REVEAL : classicClassName)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -112,5 +126,45 @@ export function EditorRowActionsTrigger({
         <DotsHorizontal className="h-3.5 w-3.5" />
       </Button>
     </DropdownMenuTrigger>
+  );
+}
+
+/**
+ * A row you open: a block bound to a property, or a property's variants. The
+ * actions render inside it, as they do on a section row, so the row's height is
+ * the row's own and nothing beside it has to match. Not a `<button>`, because
+ * the actions are buttons and one cannot nest inside another.
+ */
+export function EditorRowLink({
+  icon,
+  label,
+  onOpen,
+  actions,
+}: {
+  icon: ReactNode;
+  label: string;
+  onOpen: () => void;
+  actions?: ReactNode;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn(editorRowClassName({ className: "w-full cursor-pointer" }))}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+        {label}
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      {actions}
+    </div>
   );
 }
