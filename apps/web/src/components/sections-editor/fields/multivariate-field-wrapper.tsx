@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { LayersThree01 } from "@untitledui/icons";
+import { ChevronRight, LayersThree01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Tooltip,
   TooltipContent,
@@ -60,10 +61,18 @@ import {
   wrapAsMultivariate,
   type MultivariateWrapper,
 } from "./media-variants";
+import { editorRowClassName } from "../editor-list-row";
 import type { FieldProps } from "./field-props";
 
 export interface MultivariateFieldWrapperProps extends FieldProps {
   multivariateResolveType: string;
+  /**
+   * Set where this wrapper is one property among many: the field then reads as
+   * a row you open, the way a multivariate section does, instead of stacking a
+   * variant list and a rule on top of its neighbours. The section-level call
+   * site leaves it off — there the wrapper already owns the panel.
+   */
+  asDestination?: boolean;
   /** Render the inner field (used for both plain and variant values). */
   renderInnerField: (props: FieldProps) => ReactNode;
   /**
@@ -77,11 +86,12 @@ export interface MultivariateFieldWrapperProps extends FieldProps {
 export function MultivariateFieldWrapper({
   multivariateResolveType,
   renderInnerField,
+  asDestination,
   onVariantMatcherOp,
   ...props
 }: MultivariateFieldWrapperProps) {
   const t = useT();
-  const { value, onChange, meta, path, decofile } = props;
+  const { value, onChange, meta, path, label, focused, decofile } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
   const [renamePending, setRenamePending] = useState(false);
@@ -113,6 +123,31 @@ export function MultivariateFieldWrapper({
           </TooltipContent>
         </Tooltip>
       </div>
+    );
+  }
+
+  // Closed: one row that opens the variants, so a property with variants reads
+  // the same as a section with variants. The crumb is the field's own label —
+  // that is what the breadcrumb resolver matches to narrow back to this field.
+  if (asDestination && !focused) {
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          props.onBreadcrumbChange?.([...(props.breadcrumbPath ?? []), label])
+        }
+        className={cn(
+          editorRowClassName({
+            className: "w-full cursor-pointer text-left",
+          }),
+        )}
+      >
+        <LayersThree01 className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {t("sectionsEditor.multivariateFieldWrapper.variantsOf", { label })}
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+      </button>
     );
   }
 

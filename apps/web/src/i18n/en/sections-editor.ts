@@ -117,6 +117,7 @@ export const sectionsEditor = {
   "sectionsEditor.mediaTransformControls.mutedLabel": "Muted",
   "sectionsEditor.mediaTransformControls.qualityLabel": "Quality",
   "sectionsEditor.multivariateFieldWrapper.addVariant": "Add variant",
+  "sectionsEditor.multivariateFieldWrapper.variantsOf": "Variants of {label}",
   "sectionsEditor.multivariateFieldWrapper.ruleLabel": "Rule",
   "sectionsEditor.multivariateFieldWrapper.variantN": "Variant {n}",
   "sectionsEditor.pageJsonDialog.close": "Close",
