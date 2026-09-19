@@ -46,6 +46,7 @@ import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { editorRowClassName } from "../editor-list-row";
 import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
@@ -194,8 +195,10 @@ export function AnyOfField({
   sandbox,
   previewBaseUrl,
   onRequestAddSection,
+  focused,
 }: FieldProps) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
@@ -377,7 +380,11 @@ export function AnyOfField({
     // item's form takes over the whole panel instead of staying scoped inside
     // the loader card. The breadcrumb "back" pops the crumb, `nestedBreadcrumbPath`
     // empties, and the normal select + card chrome returns.
-    if (isModuleLoaderUnion && nestedProps && nestedBreadcrumbPath.length > 0) {
+    if (
+      isModuleLoaderUnion &&
+      nestedProps &&
+      (nestedBreadcrumbPath.length > 0 || focused)
+    ) {
       return <div className="min-w-0">{nestedProps}</div>;
     }
 
@@ -458,7 +465,63 @@ export function AnyOfField({
           </Select>
         </div>
         {nestedProps &&
-          (isModuleLoaderUnion ? (
+          (isModuleLoaderUnion && compact ? (
+            /* A bound block is a place you go, not a drawer you open — the same
+               as a global section in the section list. The picker and the
+               actions stay out here; only the block's form moves behind it. */
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  onBreadcrumbChange?.([...safeBreadcrumbPath, outerCrumb])
+                }
+                className={cn(
+                  editorRowClassName({
+                    className: "min-w-0 flex-1 cursor-pointer text-left",
+                  }),
+                )}
+              >
+                {savedRef ? (
+                  <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <Cube01 className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {savedRef?.blockKey ?? labelFromResolveType(activeRt)}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+              {(handleDetach || canMakeGlobal) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("sectionsEditor.anyOfField.loaderActions")}
+                      className="size-7 shrink-0 text-muted-foreground"
+                    >
+                      <DotsHorizontal size={16} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {savedRef && handleDetach && (
+                      <DropdownMenuItem onClick={handleDetach}>
+                        <Cube01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.detach")}
+                      </DropdownMenuItem>
+                    )}
+                    {canMakeGlobal && (
+                      <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
+                        <Globe01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.makeGlobal")}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          ) : isModuleLoaderUnion ? (
             <CollapsibleLoaderConfig
               path={path}
               open={loaderConfigOpen}
