@@ -13,6 +13,7 @@ import {
   SectionVariantList,
   type SectionVariantEntry,
 } from "../section-variant-list";
+import { AddVariantListButton } from "../page-variant-tabs";
 import {
   MatcherPicker,
   extractMatchers,
@@ -22,7 +23,11 @@ import { formatMatcher } from "../format-matcher";
 import { crumbLabel } from "../schema-form-breadcrumb";
 import { seedMatcherRule } from "../matcher-rules";
 import type { LiveMeta } from "../resolve-schema";
-import { VariantRuleForm, VariantSelect } from "../sections-editor-panels";
+import {
+  VariantRuleForm,
+  VariantRuleSection,
+  VariantSelect,
+} from "../sections-editor-panels";
 import { HeaderSlotPortal } from "../header-slot";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
@@ -231,18 +236,20 @@ export function MultivariateFieldWrapper({
   if (asDestination && focused) {
     return (
       <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0">
-        <HeaderSlotPortal>
-          <VariantSelect
-            variants={variantEntries}
-            activeIndex={safeIndex}
-            onSelect={(index) => {
-              setSelectedIndex(index);
-              closeManage();
-            }}
-            onManage={openManage}
-            onRemoveAll={handleFlatten}
-          />
-        </HeaderSlotPortal>
+        {!managing && (
+          <HeaderSlotPortal>
+            <VariantSelect
+              variants={variantEntries}
+              activeIndex={safeIndex}
+              onSelect={(index) => {
+                setSelectedIndex(index);
+                closeManage();
+              }}
+              onManage={openManage}
+              onRemoveAll={handleFlatten}
+            />
+          </HeaderSlotPortal>
+        )}
         {managing ? (
           <>
             <SectionVariantList
@@ -259,10 +266,7 @@ export function MultivariateFieldWrapper({
               onReorder={handleReorder}
               onAdd={handleAdd}
             />
-            <div className="space-y-1.5 px-2 pt-3">
-              <Label className="text-xs text-muted-foreground">
-                {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
-              </Label>
+            <VariantRuleSection>
               <MatcherPicker
                 currentRt={currentRt}
                 currentLabel={formatMatcher(currentRule)}
@@ -283,6 +287,9 @@ export function MultivariateFieldWrapper({
                   />
                 </div>
               )}
+            </VariantRuleSection>
+            <div className="px-2 pt-3">
+              <AddVariantListButton onAdd={handleAdd} />
             </div>
           </>
         ) : (

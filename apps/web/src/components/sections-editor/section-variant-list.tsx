@@ -436,7 +436,7 @@ export function SectionVariantList({
           items={entryIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className={cn(compact ? "space-y-0" : "space-y-0.5")}>
+          <div className={cn(compact ? "space-y-1" : "space-y-0.5")}>
             {entries.map((entry) => (
               <SortableVariantRow
                 key={entry.id}
