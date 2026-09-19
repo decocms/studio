@@ -218,6 +218,7 @@ export function AnyOfField({
   const refs = enrichBlockRefOptions(baseRefs, {
     savedBlockKey: savedRef?.blockKey,
     editorValue,
+    decofile,
   });
   const inferredRt =
     refs.length > 0
