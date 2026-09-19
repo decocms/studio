@@ -19,9 +19,11 @@ import {
   type MatcherEntry,
 } from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
+import { crumbLabel } from "../schema-form-breadcrumb";
 import { seedMatcherRule } from "../matcher-rules";
 import type { LiveMeta } from "../resolve-schema";
-import { VariantRuleForm } from "../sections-editor-panels";
+import { VariantRuleForm, VariantSelect } from "../sections-editor-panels";
+import { HeaderSlotPortal } from "../header-slot";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
 
@@ -212,6 +214,87 @@ export function MultivariateFieldWrapper({
   };
 
   const listKey = `${path}-${wrapper.__resolveType}`;
+
+  /* The manage screen is a crumb, not local state, so back returns to the
+     variant rather than leaving the field — the same trail a section's own
+     "Variants" screen gets. The head is relative: the parent consumed the
+     field's own crumb before handing the path down. */
+  const variantsLabel = t("sectionsEditor.pageVariantTabs.variantsLabel");
+  const relativePath = props.breadcrumbPath ?? [];
+  const managing =
+    relativePath.length > 0 && crumbLabel(relativePath[0]!) === variantsLabel;
+  const openManage = () =>
+    props.onBreadcrumbChange?.([variantsLabel, ...relativePath.slice(1)]);
+  const closeManage = () => props.onBreadcrumbChange?.([]);
+
+  // Same shape as every other level: select in the header, list behind it.
+  if (asDestination && focused) {
+    return (
+      <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0">
+        <HeaderSlotPortal>
+          <VariantSelect
+            variants={variantEntries}
+            activeIndex={safeIndex}
+            onSelect={(index) => {
+              setSelectedIndex(index);
+              closeManage();
+            }}
+            onManage={openManage}
+            onRemoveAll={handleFlatten}
+          />
+        </HeaderSlotPortal>
+        {managing ? (
+          <>
+            <SectionVariantList
+              listKey={listKey}
+              variants={variantEntries}
+              selectedIndex={safeIndex}
+              onSelect={(index) => {
+                setSelectedIndex(index);
+                closeManage();
+              }}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              onRemoveAll={handleFlatten}
+              onReorder={handleReorder}
+              onAdd={handleAdd}
+            />
+            <div className="space-y-1.5 px-2 pt-3">
+              <Label className="text-xs text-muted-foreground">
+                {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
+              </Label>
+              <MatcherPicker
+                currentRt={currentRt}
+                currentLabel={formatMatcher(currentRule)}
+                matchers={matchers}
+                onSelect={handleRuleChange}
+              />
+              {ruleSchema && (
+                <div className="pt-1">
+                  <VariantRuleForm
+                    key={`${safeIndex}-${currentRt}`}
+                    schema={ruleSchema}
+                    value={ruleFormValue}
+                    onChange={handleRuleFormChange}
+                    meta={meta}
+                    decofile={props.decofile}
+                    onSaveReferencedBlock={props.onSaveReferencedBlock}
+                    sandbox={props.sandbox}
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          renderInnerField({
+            ...props,
+            value: currentValue,
+            onChange: handleValueChange,
+          })
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0">
