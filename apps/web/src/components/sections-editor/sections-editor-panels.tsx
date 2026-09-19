@@ -96,7 +96,7 @@ export function VariantRuleForm({
           <button
             type="button"
             onClick={() => setBreadcrumbPath([])}
-            className="flex shrink-0 items-center gap-0.5 classic:rounded-md compact:rounded-lg px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="flex shrink-0 items-center gap-0.5 rounded-[var(--studio-control-radius,var(--radius-md))] px-1 py-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             title={t("sectionsEditor.sectionsEditorPanels.backToRule")}
           >
             <ChevronLeft className="size-3.5" />
@@ -119,7 +119,7 @@ export function VariantRuleForm({
                   }
                   title={crumbText}
                   className={cn(
-                    "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                    "min-w-0 truncate rounded-[var(--studio-control-radius,var(--radius-md))] px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                     isLast
                       ? "font-medium text-foreground"
                       : "text-muted-foreground",
@@ -331,7 +331,7 @@ export function PageHeaderInputs({
   };
 
   const FIELD_CLASS =
-    "w-full truncate outline-none h-9 rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20";
+    "w-full truncate outline-none h-9 rounded-[var(--studio-control-radius,var(--radius-md))] border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/20";
 
   const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {

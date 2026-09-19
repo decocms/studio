@@ -73,7 +73,7 @@ export function RichTextColorControl({
       {open && (
         <div
           tabIndex={-1}
-          className="absolute left-0 top-full z-20 mt-1.5 flex w-56 flex-col gap-2 rounded-md border bg-popover p-2 shadow-md"
+          className="absolute left-0 top-full z-20 mt-1.5 flex w-56 flex-col gap-2 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-2 shadow-md"
           onBlur={(e) => {
             // Close when focus leaves the popover entirely (toolbar buttons
             // preventDefault on mousedown, so they never steal focus).
@@ -92,7 +92,7 @@ export function RichTextColorControl({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applyColor(color)}
                 className={cn(
-                  "h-6 w-6 classic:rounded border border-border/60 transition-transform cursor-pointer hover:scale-110 compact:rounded-lg",
+                  "h-6 w-6 rounded-[var(--studio-control-radius,var(--radius))] border border-border/60 transition-transform cursor-pointer hover:scale-110",
                   currentColor === color && "ring-2 ring-ring ring-offset-1",
                 )}
                 style={{ backgroundColor: color }}
@@ -100,14 +100,14 @@ export function RichTextColorControl({
             ))}
           </div>
           <div className="flex items-center gap-1">
-            <label className="flex flex-1 items-center gap-1.5 rounded bg-muted/40 px-2 py-1 text-xs text-muted-foreground cursor-pointer">
+            <label className="flex flex-1 items-center gap-1.5 rounded-[var(--studio-control-radius,var(--radius))] bg-muted/40 px-2 py-1 text-xs text-muted-foreground cursor-pointer">
               <input
                 type="color"
                 value={custom}
                 onMouseDown={(e) => e.stopPropagation()}
                 onChange={(e) => setCustom(e.target.value)}
                 onBlur={() => applyColor(custom)}
-                className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
+                className="h-5 w-5 cursor-pointer rounded-[var(--studio-control-radius,var(--radius))] border-0 bg-transparent p-0"
               />
               {t("sectionsEditor.richTextColorControl.customLabel")}
             </label>
@@ -115,7 +115,7 @@ export function RichTextColorControl({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={clearColor}
-              className="classic:rounded px-2 py-1 text-xs text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground compact:rounded-lg"
+              className="rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
             >
               {t("sectionsEditor.richTextColorControl.defaultLabel")}
             </button>

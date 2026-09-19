@@ -409,7 +409,14 @@
 }
 
 :root[data-compact-layout="true"] {
-  --studio-control-radius: calc(var(--radius) * 1.333);
+  /* Three radii, by role: a button is a pill, a control (input, select,
+     swatch) is generously rounded, and a surface (card, popover, drop zone)
+     rounds a step further still because it is larger. One height goes with
+     them, so an input, a select and the button beside them line up. Nothing in
+     the editor should hardcode either — these are the knobs. */
+  --studio-control-height: 2.25rem;
+  --studio-control-radius: calc(var(--radius) * 2.667);
+  --studio-surface-radius: calc(var(--radius) * 4);
   --studio-button-radius: 9999px;
   --studio-input-background: var(--card);
   --studio-outline-foreground: var(--card-foreground);

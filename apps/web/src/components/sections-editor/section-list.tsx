@@ -246,7 +246,7 @@ function sectionRowClassName(
   const multivariate = section.isMultivariate === true;
 
   return cn(
-    "group relative flex select-none items-center gap-2 rounded-md px-2 py-2.5",
+    "group relative flex select-none items-center gap-2 rounded-[var(--studio-control-radius,var(--radius-md))] px-2 py-2.5",
     selected
       ? "bg-accent text-accent-foreground"
       : saved

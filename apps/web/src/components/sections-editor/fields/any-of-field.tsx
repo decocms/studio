@@ -116,7 +116,7 @@ function CollapsibleLoaderConfig({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border/80 bg-muted/30",
+        "rounded-[var(--studio-surface-radius,var(--radius-lg))] border border-border/80 bg-muted/30",
         nestedBlockRef && "ml-1",
       )}
     >
@@ -509,7 +509,7 @@ export function AnyOfField({
         type="text"
         value={value != null ? String(value) : ""}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+        className="w-full rounded-[var(--studio-control-radius,var(--radius-md))] border bg-background px-3 py-1.5 text-sm"
         placeholder={schema.description ?? ""}
       />
     </div>
