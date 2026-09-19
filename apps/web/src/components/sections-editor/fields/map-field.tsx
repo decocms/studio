@@ -205,13 +205,13 @@ export function MapField({
         virtualMcpId={sandbox?.virtualMcpId}
       />
       {!apiKey ? (
-        <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <div className="rounded-[var(--studio-surface-radius,var(--radius-md))] border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           The map picker is unavailable — set{" "}
           <code className="font-mono">GOOGLE_MAPS_API_KEY</code> on the server
           to enable it.
         </div>
       ) : error ? (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-[var(--studio-surface-radius,var(--radius-md))] border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           {error}
         </div>
       ) : (
@@ -219,7 +219,7 @@ export function MapField({
           // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- reading the pinned stable ref callback; intentionally identity-stable so the map isn't torn down on re-render
           ref={setNodeRef.current}
           id={path}
-          className="h-72 w-full rounded-md border border-border/60"
+          className="h-72 w-full rounded-[var(--studio-surface-radius,var(--radius-md))] border border-border/60"
         />
       )}
     </div>

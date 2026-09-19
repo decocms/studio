@@ -564,7 +564,7 @@ export function ArrayField({
               items={entryIds}
               strategy={verticalListSortingStrategy}
             >
-              <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
+              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border compact:card-shadow border-border/50 p-1.5">
                 {(() => {
                   // Compute base labels once for the whole list rather than per
                   // row. Display only — the row opens its item by `entry.index`,
@@ -642,7 +642,7 @@ export function ArrayField({
       <button
         type="button"
         onClick={handleAddClick}
-        className="flex w-full items-center justify-center gap-1.5 classic:rounded-xl compact:rounded-lg border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
       >
         <Plus size={14} />
         {usesSectionPicker

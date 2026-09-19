@@ -2739,7 +2739,7 @@ export function SectionsEditor({
         title={t("sectionsEditor.sectionsEditor.back")}
         aria-label={t("sectionsEditor.sectionsEditor.back")}
         className={cn(
-          "shrink-0 inline-flex size-6 items-center justify-center classic:rounded-md compact:rounded-lg transition-colors",
+          "shrink-0 inline-flex size-6 items-center justify-center rounded-[var(--studio-control-radius,var(--radius-md))] transition-colors",
           showGlobalBanner
             ? "text-foreground/80 hover:bg-global-section/15"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -3112,7 +3112,7 @@ export function SectionsEditor({
           <button
             type="button"
             onClick={() => setIsVariantRuleOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 text-left cursor-pointer classic:rounded-sm compact:rounded-lg py-0.5 hover:bg-muted/40"
+            className="flex w-full items-center justify-between gap-2 text-left cursor-pointer rounded-[var(--studio-control-radius,var(--radius-sm))] py-0.5 hover:bg-muted/40"
             aria-expanded={isVariantRuleOpen}
           >
             <span className="text-xs font-medium text-muted-foreground">

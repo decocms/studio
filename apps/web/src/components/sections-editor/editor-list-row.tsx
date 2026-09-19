@@ -35,7 +35,7 @@ export function editorRowClassName({
   className?: string;
 } = {}) {
   return cn(
-    "group relative flex touch-none select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors",
+    "group relative flex touch-none select-none items-center gap-2 rounded-[var(--studio-control-radius,var(--radius-md))] px-2 py-2.5 transition-colors",
     selected ? TONE[tone].selected : TONE[tone].rest,
     className,
   );
