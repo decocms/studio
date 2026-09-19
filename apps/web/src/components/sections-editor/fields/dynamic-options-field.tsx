@@ -238,7 +238,9 @@ function OptionPreview({
       referrerPolicy="no-referrer"
       className={cn(
         "shrink-0",
-        option.image ? "rounded object-cover" : "object-contain",
+        option.image
+          ? "rounded-[var(--studio-control-radius,var(--radius))] object-cover"
+          : "object-contain",
         className,
       )}
     />

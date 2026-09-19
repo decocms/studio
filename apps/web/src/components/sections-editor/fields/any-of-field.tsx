@@ -82,7 +82,7 @@ function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
           <Globe01 size={11} />
           {t("sectionsEditor.anyOfField.global")}
         </span>
