@@ -35,7 +35,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
+import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { AddVariantListButton } from "./page-variant-tabs";
 import { SchemaForm } from "./schema-form";
 import type { VariantMatcherOps } from "./variant-matcher-rename";
 import { type Crumb, crumbLabel } from "./schema-form-breadcrumb";
@@ -241,14 +243,61 @@ const VARIANT_PILL_CLASS =
 export const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
 
-/** The New Layout select: ghost, so a variant chip reads as a control you can
- *  open rather than a status the header is reporting. Its empty state keeps a
- *  dashed border, which is what an invitation needs and a selection does not. */
-const VARIANT_TAB_GHOST_CLASS =
-  "text-muted-foreground hover:bg-accent hover:text-accent-foreground";
-
+/** The pill geometry shared by the header's controls. The select itself wears
+ *  the input treatment (see `HeaderSelectTrigger`); this is what is left for
+ *  the empty state, which keeps a dashed border because an invitation needs one
+ *  and a selection does not. */
 const VARIANT_TAB_EMPTY_CLASS =
   "text-muted-foreground border border-dashed border-border hover:bg-accent hover:text-accent-foreground";
+
+/**
+ * The rule that decides when the selected variant applies. Every level shows
+ * it under the list with the same label; only the editor inside differs,
+ * because a page's or a section's variant can point at a saved matcher block
+ * and a property's variant cannot.
+ */
+export function VariantRuleSection({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const t = useT();
+  return (
+    <div className={cn("space-y-2 border-t px-3 pt-4", className)}>
+      <span className="text-xs font-medium text-muted-foreground">
+        {t("sectionsEditor.sectionsEditor.variantRule")}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The variants manager as its own screen: the list and its rule scroll, the
+ * add button stays put. Used wherever the manager owns the panel — a property's
+ * manager renders inside a scroller it does not own, so it composes
+ * `VariantRuleSection` and its own add button instead.
+ */
+export function VariantsManagerScreen({
+  children,
+  onAdd,
+}: {
+  children: ReactNode;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
+        <div className="py-2">{children}</div>
+      </ScrollArea>
+      <div className="shrink-0 border-t p-2">
+        <AddVariantListButton onAdd={onAdd} />
+      </div>
+    </div>
+  );
+}
 
 export function parsePageVariantsForEditor(
   sections: unknown,
@@ -513,6 +562,70 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
  * only difference is whose variants it is naming. Adding lives on the manage
  * screen's pinned button, beside the list a new variant joins.
  */
+/**
+ * The header's select, whatever it is choosing between: which variant of a
+ * block is open, or which block a property is bound to. One pill and one
+ * heading, so the two read as the same control doing two jobs.
+ */
+export function HeaderSelectTrigger({
+  icon,
+  label,
+}: {
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <DropdownMenuTrigger asChild>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 px-2 text-xs font-medium transition-colors",
+          "rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] text-foreground card-shadow",
+          "hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground",
+        )}
+      >
+        {icon}
+        <span className="max-w-[120px] truncate">{label}</span>
+        <ChevronDown className="size-3 shrink-0" />
+      </button>
+    </DropdownMenuTrigger>
+  );
+}
+
+export function HeaderSelectOptions({
+  heading,
+  options,
+  activeIndex,
+  onSelect,
+}: {
+  heading: string;
+  options: Array<{ label: string }>;
+  activeIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <>
+      <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+        {heading}
+      </DropdownMenuLabel>
+      {options.map((option, index) => (
+        <DropdownMenuItem
+          key={`${option.label}-${index}`}
+          onClick={() => onSelect(index)}
+        >
+          <Check
+            className={cn(
+              "size-3.5",
+              index === activeIndex ? "opacity-100" : "opacity-0",
+            )}
+          />
+          <span className="truncate">{option.label}</span>
+        </DropdownMenuItem>
+      ))}
+    </>
+  );
+}
+
 export function VariantSelect({
   variants,
   activeIndex,
@@ -532,34 +645,17 @@ export function VariantSelect({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_GHOST_CLASS)}
-        >
-          <LayersThree01 className="size-3.5 shrink-0" />
-          <span className="max-w-[120px] truncate">{active.label}</span>
-          <ChevronDown className="size-3 shrink-0" />
-        </button>
-      </DropdownMenuTrigger>
+      <HeaderSelectTrigger
+        icon={<LayersThree01 className="size-3.5 shrink-0" />}
+        label={active.label}
+      />
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-          {t("sectionsEditor.pageVariantTabs.variantsLabel")}
-        </DropdownMenuLabel>
-        {variants.map((variant, index) => (
-          <DropdownMenuItem
-            key={`${variant.label}-${index}`}
-            onClick={() => onSelect(index)}
-          >
-            <Check
-              className={cn(
-                "size-3.5",
-                index === activeIndex ? "opacity-100" : "opacity-0",
-              )}
-            />
-            <span className="truncate">{variant.label}</span>
-          </DropdownMenuItem>
-        ))}
+        <HeaderSelectOptions
+          heading={t("sectionsEditor.pageVariantTabs.variantsLabel")}
+          options={variants}
+          activeIndex={activeIndex}
+          onSelect={onSelect}
+        />
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onManage}>
           <Settings01 className="size-3.5" />

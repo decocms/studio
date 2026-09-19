@@ -717,7 +717,7 @@ export function SectionList({
           items={entryIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className={cn(compact ? "space-y-0" : "space-y-1")}>
+          <div className="space-y-1">
             {entries.map((entry) => {
               const section = sections[entry.index];
               if (!section) return null;

@@ -46,11 +46,7 @@ import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
 import { isSeoEnabled, unwrapSeoConfig } from "./seo-lazy-render";
 import { PageSeoForm } from "./page-seo-form";
 import { extractMatcherGlobals, extractMatchers } from "./matcher-picker";
-import {
-  AddVariantListButton,
-  PageVariantTabs,
-  VariantTabIcon,
-} from "./page-variant-tabs";
+import { PageVariantTabs, VariantTabIcon } from "./page-variant-tabs";
 import { MakeReusableModal } from "./make-reusable-modal";
 import { AddSectionModal } from "./add-section-modal";
 import { useSectionPreviewBase } from "./use-section-preview-base";
@@ -126,7 +122,9 @@ import {
   PageHeaderInputs,
   parsePageVariantsForEditor,
   SchemaFormPanel,
+  VariantRuleSection,
   VariantSelect,
+  VariantsManagerScreen,
   VARIANT_TAB_ACTIVE_CLASS,
 } from "./sections-editor-panels";
 import { VariantRuleEditor } from "./variant-rule-editor";
@@ -3077,10 +3075,7 @@ export function SectionsEditor({
         />
       )}
       {hasMultipleVariants && ruleResolveType !== null && (
-        <div className="mt-3 space-y-3 border-t px-3 pt-4">
-          <span className="text-xs font-medium text-muted-foreground">
-            {t("sectionsEditor.sectionsEditor.variantRule")}
-          </span>
+        <VariantRuleSection className="mt-3">
           <div
             className={cn(
               "space-y-3",
@@ -3117,7 +3112,7 @@ export function SectionsEditor({
               sandbox={sandbox}
             />
           </div>
-        </div>
+        </VariantRuleSection>
       )}
     </>
   );
@@ -3142,10 +3137,7 @@ export function SectionsEditor({
         onReorder={handleReorderSectionVariant}
         onAdd={() => handleAddSectionVariant()}
       />
-      <div className="px-3 py-3 border-b space-y-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("sectionsEditor.sectionsEditor.variantRule")}
-        </span>
+      <VariantRuleSection>
         <VariantRuleEditor
           currentRt={sectionRuleResolveType ?? ""}
           currentLabel={resolveVariantRuleLabel(
@@ -3175,7 +3167,7 @@ export function SectionsEditor({
           onSaveReferencedBlock={saveReferencedBlock}
           sandbox={sandbox}
         />
-      </div>
+      </VariantRuleSection>
     </>
   );
 
@@ -3451,7 +3443,7 @@ export function SectionsEditor({
                     <TooltipTrigger asChild>
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
                         aria-label={t("sectionsEditor.sectionsEditor.editSeo")}
                         className="size-7 shrink-0"
@@ -3471,7 +3463,7 @@ export function SectionsEditor({
                       <TooltipTrigger asChild>
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                           size="icon"
                           aria-label={t(
                             "sectionsEditor.sectionsEditor.viewJson",
@@ -3506,17 +3498,12 @@ export function SectionsEditor({
 
         {/* Drill-down: section form or global-block form, else the panel accordion */}
         {managingSectionVariants ? (
-          <div
+          <VariantsManagerScreen
             key="editor-section-variants"
-            className="flex min-h-0 flex-1 flex-col"
+            onAdd={() => handleAddSectionVariant()}
           >
-            <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
-              <div className="py-2">{sectionVariantsPanel}</div>
-            </ScrollArea>
-            <div className="shrink-0 border-t p-2">
-              <AddVariantListButton onAdd={() => handleAddSectionVariant()} />
-            </div>
-          </div>
+            {sectionVariantsPanel}
+          </VariantsManagerScreen>
         ) : isEditing ? (
           <ScrollArea
             key="editor-section-form"
@@ -3584,14 +3571,12 @@ export function SectionsEditor({
             classicSeoBody
           )
         ) : managingVariants ? (
-          <div key="editor-variants" className="flex min-h-0 flex-1 flex-col">
-            <ScrollArea className="flex-1 min-h-0 [&_[data-slot=scroll-area-viewport]>div]:!block">
-              <div className="py-2">{variantsPanel}</div>
-            </ScrollArea>
-            <div className="shrink-0 border-t p-2">
-              <AddVariantListButton onAdd={handleAddPageVariant} />
-            </div>
-          </div>
+          <VariantsManagerScreen
+            key="editor-variants"
+            onAdd={handleAddPageVariant}
+          >
+            {variantsPanel}
+          </VariantsManagerScreen>
         ) : compact ? (
           <div
             key="editor-section-list"

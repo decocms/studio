@@ -47,6 +47,10 @@ import type { FieldProps } from "./field-props";
 import { toast } from "sonner";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { editorRowClassName } from "../editor-list-row";
+import {
+  HeaderSelectOptions,
+  HeaderSelectTrigger,
+} from "../sections-editor-panels";
 import { HeaderSlotPortal } from "../header-slot";
 import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
@@ -392,25 +396,39 @@ export function AnyOfField({
               is open, so it is asked in the same place. */}
           {compact && focused && (
             <HeaderSlotPortal>
-              <Select
-                value={activeRt || undefined}
-                onValueChange={handleRefChange}
-              >
-                <SelectTrigger size="sm" className="w-auto min-w-0 max-w-48">
-                  <SelectValue
-                    placeholder={t(
-                      "sectionsEditor.anyOfField.selectPlaceholder",
+              <DropdownMenu>
+                <HeaderSelectTrigger
+                  icon={
+                    savedRef ? (
+                      <Globe01 className="size-3.5 shrink-0" />
+                    ) : (
+                      <Cube01 className="size-3.5 shrink-0" />
+                    )
+                  }
+                  label={
+                    refs.find((r) => r.resolveType === activeRt)
+                      ? blockRefOptionLabel(
+                          refs.find((r) => r.resolveType === activeRt)!,
+                        )
+                      : t("sectionsEditor.anyOfField.selectPlaceholder")
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-52">
+                  <HeaderSelectOptions
+                    heading={label}
+                    options={refs.map((ref) => ({
+                      label: blockRefOptionLabel(ref),
+                    }))}
+                    activeIndex={refs.findIndex(
+                      (r) => r.resolveType === activeRt,
                     )}
+                    onSelect={(index) => {
+                      const ref = refs[index];
+                      if (ref) handleRefChange(ref.resolveType);
+                    }}
                   />
-                </SelectTrigger>
-                <SelectContent>
-                  {refs.map((ref) => (
-                    <SelectItem key={ref.resolveType} value={ref.resolveType}>
-                      {blockRefOptionLabel(ref)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </HeaderSlotPortal>
           )}
           {nestedProps}

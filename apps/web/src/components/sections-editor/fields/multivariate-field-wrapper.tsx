@@ -13,6 +13,7 @@ import {
   SectionVariantList,
   type SectionVariantEntry,
 } from "../section-variant-list";
+import { AddVariantListButton } from "../page-variant-tabs";
 import {
   extractMatcherGlobals,
   extractMatchers,
@@ -32,7 +33,7 @@ import {
 import type { LiveMeta } from "../resolve-schema";
 import { VariantRuleEditor } from "../variant-rule-editor";
 import { VariantRenameDialog } from "../variant-rename-dialog";
-import { VariantSelect } from "../sections-editor-panels";
+import { VariantRuleSection, VariantSelect } from "../sections-editor-panels";
 import { HeaderSlotPortal } from "../header-slot";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
@@ -291,18 +292,20 @@ export function MultivariateFieldWrapper({
   if (asDestination && focused) {
     return (
       <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0">
-        <HeaderSlotPortal>
-          <VariantSelect
-            variants={variantEntries}
-            activeIndex={safeIndex}
-            onSelect={(index) => {
-              setSelectedIndex(index);
-              closeManage();
-            }}
-            onManage={openManage}
-            onRemoveAll={handleFlatten}
-          />
-        </HeaderSlotPortal>
+        {!managing && (
+          <HeaderSlotPortal>
+            <VariantSelect
+              variants={variantEntries}
+              activeIndex={safeIndex}
+              onSelect={(index) => {
+                setSelectedIndex(index);
+                closeManage();
+              }}
+              onManage={openManage}
+              onRemoveAll={handleFlatten}
+            />
+          </HeaderSlotPortal>
+        )}
         {managing ? (
           <>
             <SectionVariantList
@@ -319,30 +322,33 @@ export function MultivariateFieldWrapper({
               onReorder={handleReorder}
               onAdd={handleAdd}
             />
-            <div className="space-y-1.5 px-2 pt-3">
-              <Label className="text-xs text-muted-foreground">
-                {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
-              </Label>
-              <MatcherPicker
+            <VariantRuleSection>
+              <VariantRuleEditor
                 currentRt={currentRt}
-                currentLabel={formatMatcher(currentRule)}
+                currentLabel={resolveVariantRuleLabel(
+                  currentRule,
+                  decofile ?? {},
+                  formatMatcher,
+                  meta,
+                )}
+                currentGlobalKey={currentGlobalKey}
                 matchers={matchers}
+                globals={globals}
                 onSelect={handleRuleChange}
+                onSelectGlobal={handleSelectGlobal}
+                schema={ruleSchema}
+                formValue={ruleFormValue}
+                onChange={handleRuleFormChange}
+                formKey={`${safeIndex}:${currentGlobalKey ?? currentRt}`}
+                formWrapperClassName="pt-1"
+                meta={meta}
+                decofile={decofile}
+                onSaveReferencedBlock={props.onSaveReferencedBlock}
+                sandbox={props.sandbox}
               />
-              {ruleSchema && (
-                <div className="pt-1">
-                  <VariantRuleForm
-                    key={`${safeIndex}-${currentRt}`}
-                    schema={ruleSchema}
-                    value={ruleFormValue}
-                    onChange={handleRuleFormChange}
-                    meta={meta}
-                    decofile={props.decofile}
-                    onSaveReferencedBlock={props.onSaveReferencedBlock}
-                    sandbox={props.sandbox}
-                  />
-                </div>
-              )}
+            </VariantRuleSection>
+            <div className="px-2 pt-3">
+              <AddVariantListButton onAdd={handleAdd} />
             </div>
           </>
         ) : (
