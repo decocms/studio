@@ -196,6 +196,71 @@ describe("enrichBlockRefOptions", () => {
       THEME_SECTION,
     ]);
   });
+
+  test("offers every compatible saved block, not only the bound one", () => {
+    const refs = enrichBlockRefOptions([{ resolveType: THEME_SECTION }], {
+      decofile: {
+        Relogingo: { __resolveType: THEME_SECTION, primary: "#000" },
+        "Dark Theme": { __resolveType: THEME_SECTION, primary: "#fff" },
+        Header: { __resolveType: "site/sections/Header.tsx" },
+        "Preview Relogingo": { __resolveType: THEME_SECTION },
+        [THEME_SECTION]: { __resolveType: THEME_SECTION },
+      },
+    });
+
+    expect(refs.map((ref) => ref.resolveType)).toEqual([
+      THEME_SECTION,
+      "Relogingo",
+      "Dark Theme",
+    ]);
+  });
+
+  test("offers the saved blocks back after a detach inlines the data", () => {
+    const refs = enrichBlockRefOptions([{ resolveType: SECTION_VARIANTS }], {
+      editorValue: { __resolveType: THEME_SECTION, primary: "#000" },
+      decofile: {
+        Reloginho: { __resolveType: THEME_SECTION },
+        "reloginho fabula black": { __resolveType: THEME_SECTION },
+      },
+    });
+
+    expect(refs.map((ref) => ref.resolveType)).toEqual([
+      SECTION_VARIANTS,
+      THEME_SECTION,
+      "Reloginho",
+      "reloginho fabula black",
+    ]);
+  });
+
+  test("skips saved blocks that are multivariate wrappers of other sections", () => {
+    const refs = enrichBlockRefOptions(
+      [{ resolveType: SECTION_VARIANTS }, { resolveType: THEME_SECTION }],
+      {
+        decofile: {
+          Reloginho: { __resolveType: THEME_SECTION },
+          Alerta: { __resolveType: SECTION_VARIANTS },
+        },
+      },
+    );
+
+    expect(refs.map((ref) => ref.resolveType)).toEqual([
+      SECTION_VARIANTS,
+      THEME_SECTION,
+      "Reloginho",
+    ]);
+  });
+
+  test("keeps the bound block listed once when the decofile also has it", () => {
+    const refs = enrichBlockRefOptions([{ resolveType: THEME_SECTION }], {
+      savedBlockKey: "Relogingo",
+      decofile: { Relogingo: { __resolveType: THEME_SECTION } },
+    });
+
+    expect(refs.map((ref) => ref.resolveType)).toEqual([
+      THEME_SECTION,
+      "Relogingo",
+    ]);
+  });
 });
 
 describe("resolveNestedBlockRefSchema", () => {

@@ -1,28 +1,17 @@
-import {
-  Copy01,
-  DotsGrid,
-  DotsHorizontal,
-  Eye,
-  EyeOff,
-  Trash01,
-} from "@untitledui/icons";
-import { Button } from "@decocms/ui/components/button.tsx";
+import { GripVertical } from "lucide-react";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { EditorRowActionsTrigger, EditorRowToggle } from "../editor-list-row";
+import { Copy01, DotsGrid, Eye, EyeOff, Trash01 } from "@untitledui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useT } from "@/i18n/use-t.ts";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 
 // Width/margin snap instantly (no visible slide) while opacity does the
 // actual animating. On reveal the snap has no delay, so the button is
@@ -63,6 +52,13 @@ function actionButtonVisibilityClass(reserved: boolean, active: boolean) {
   );
 }
 
+/** The drag handle both row shapes wear. */
+function RowGrip() {
+  const compact = useCompactPageLayout();
+  const Icon = compact ? GripVertical : DotsGrid;
+  return <Icon className="size-3.5 shrink-0 text-muted-foreground/40" />;
+}
+
 export function ArrayRowContent({
   labelText,
   imageSrc,
@@ -74,18 +70,18 @@ export function ArrayRowContent({
 }) {
   return (
     <>
-      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      <RowGrip />
       <div className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
         {imageSrc && (
           <img
             src={imageSrc}
             alt=""
             referrerPolicy="no-referrer"
-            className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+            className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
           />
         )}
         <span className="min-w-0 truncate">{labelText}</span>
-        {missingRequired && <MissingRequiredDot className="self-start" />}
+        {missingRequired && <MissingRequiredMarker className="self-start" />}
       </div>
     </>
   );
@@ -142,18 +138,18 @@ export function SortableArrayRow({
         }
       }}
       className={cn(
-        "group relative flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
+        "group relative flex min-w-0 items-center gap-2.5 rounded-[var(--studio-control-radius,var(--radius-lg))] px-2 py-2.5 hover:bg-accent hover:text-accent-foreground touch-none",
         isDragging ? "cursor-grabbing" : "cursor-pointer",
       )}
       title={labelText}
     >
-      <DotsGrid className="size-3.5 shrink-0 text-muted-foreground/40" />
+      <RowGrip />
       {imageSrc && (
         <img
           src={imageSrc}
           alt=""
           referrerPolicy="no-referrer"
-          className="h-12 max-w-[100px] shrink-0 rounded object-cover"
+          className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
         />
       )}
       <span
@@ -165,58 +161,35 @@ export function SortableArrayRow({
         {labelText}
       </span>
       {missingRequired && (
-        <MissingRequiredDot className="absolute -right-0.5 -top-0.5" />
+        <MissingRequiredMarker className="absolute -right-0.5 -top-0.5" />
       )}
       {onToggleHidden && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={
-                hidden
-                  ? t("sectionsEditor.arrayField.showItem")
-                  : t("sectionsEditor.arrayField.hideItem")
-              }
-              className={cn(
-                actionButtonVisibilityClass(hidden === true, hidden === true),
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleHidden();
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {hidden
+        <EditorRowToggle
+          label={
+            hidden
               ? t("sectionsEditor.arrayField.showItem")
-              : t("sectionsEditor.arrayField.hideItem")}
-          </TooltipContent>
-        </Tooltip>
+              : t("sectionsEditor.arrayField.hideItem")
+          }
+          active={hidden === true}
+          onToggle={onToggleHidden}
+          classicClassName={actionButtonVisibilityClass(
+            hidden === true,
+            hidden === true,
+          )}
+        >
+          {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+        </EditorRowToggle>
       )}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("sectionsEditor.arrayField.openActionsFor", {
-              label: labelText,
-            })}
-            className={cn(
-              actionButtonVisibilityClass(hidden === true, false),
-              "data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
-            )}
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <DotsHorizontal size={14} />
-          </Button>
-        </DropdownMenuTrigger>
+        <EditorRowActionsTrigger
+          label={t("sectionsEditor.arrayField.openActionsFor", {
+            label: labelText,
+          })}
+          classicClassName={cn(
+            actionButtonVisibilityClass(hidden === true, false),
+            "data-[state=open]:ml-0 data-[state=open]:w-6 data-[state=open]:opacity-100 data-[state=open]:[transition:opacity_150ms_ease-out,width_0ms,margin-left_0ms]",
+          )}
+        />
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onClick={(e) => {
@@ -231,7 +204,7 @@ export function SortableArrayRow({
             {t("sectionsEditor.arrayField.duplicate")}
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
+            variant="destructive"
             onClick={(e) => {
               e.stopPropagation();
               onRemove();

@@ -42,6 +42,8 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.useValue": 'Use "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Select...",
   "sectionsEditor.enumField.clearOption": "None",
+  "sectionsEditor.formatMatcher.fromDate": "From {date}",
+  "sectionsEditor.formatMatcher.untilDate": "Until {date}",
   "sectionsEditor.field.missingRequired": "Missing a required field",
   "sectionsEditor.field.missingRequiredTooltip":
     "Required field not filled in.",
@@ -115,6 +117,7 @@ export const sectionsEditor = {
   "sectionsEditor.mediaTransformControls.mutedLabel": "Muted",
   "sectionsEditor.mediaTransformControls.qualityLabel": "Quality",
   "sectionsEditor.multivariateFieldWrapper.addVariant": "Add variant",
+  "sectionsEditor.multivariateFieldWrapper.variantsOf": "Variants of {label}",
   "sectionsEditor.multivariateFieldWrapper.ruleLabel": "Rule",
   "sectionsEditor.multivariateFieldWrapper.variantN": "Variant {n}",
   "sectionsEditor.pageJsonDialog.close": "Close",
@@ -147,6 +150,7 @@ export const sectionsEditor = {
   "sectionsEditor.pageVariantTabs.duplicateAction": "Duplicate",
   "sectionsEditor.pageVariantTabs.renameAction": "Rename",
   "sectionsEditor.pageVariantTabs.variantsLabel": "Variants",
+  "sectionsEditor.panelSections.seo": "SEO & metadata",
   "sectionsEditor.richTextColorControl.colorButtonLabel": "Text color",
   "sectionsEditor.richTextColorControl.customLabel": "Custom",
   "sectionsEditor.richTextColorControl.defaultLabel": "Default",
@@ -182,11 +186,12 @@ export const sectionsEditor = {
   "sectionsEditor.sectionList.addVariantMenuItem": "Add variant",
   "sectionsEditor.sectionList.deleteMenuItem": "Delete",
   "sectionsEditor.sectionList.detachMenuItem": "Detach",
-  "sectionsEditor.sectionList.disableAsyncRender": "Disable async render",
+  "sectionsEditor.sectionList.disableAsyncRender": "Disable async rendering",
   "sectionsEditor.sectionList.duplicateMenuItem": "Duplicate",
-  "sectionsEditor.sectionList.enableAsyncRender": "Enable async render",
+  "sectionsEditor.sectionList.enableAsyncRender": "Enable async rendering",
   "sectionsEditor.sectionList.hideSection": "Hide section",
   "sectionsEditor.sectionList.makeReusableMenuItem": "Make reusable",
+  "sectionsEditor.sectionList.asyncBadge": "Async rendering",
   "sectionsEditor.sectionList.noSections": "No sections in this page.",
   "sectionsEditor.sectionList.sectionActionsMenu": "Section actions",
   "sectionsEditor.sectionList.showSection": "Show section",
@@ -223,6 +228,9 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.failedToSaveGlobalBlock":
     "Failed to save global block",
   "sectionsEditor.sectionsEditor.globalBlockNotFound": "Global block not found",
+  "sectionsEditor.sectionsEditor.manageVariants": "Manage variants…",
+  "sectionsEditor.sectionsEditor.globalSectionSubtitle":
+    "Shared across your site",
   "sectionsEditor.sectionsEditor.globalSectionBanner":
     "This is a global section. Changes apply everywhere this section is used across your site.",
   "sectionsEditor.sectionsEditor.globalSectionTooltip":
@@ -251,6 +259,7 @@ export const sectionsEditor = {
   "sectionsEditor.sectionsEditor.variantRule": "Variant rule",
   "sectionsEditor.sectionsEditor.viewJson": "View JSON",
   "sectionsEditor.sectionsEditorPanels.addVariant": "Add variant",
+  "sectionsEditor.sectionsEditorPanels.createVariants": "Create variants",
   "sectionsEditor.sectionsEditorPanels.backToRule": "Back to rule",
   "sectionsEditor.sectionsEditorPanels.changePathTitle":
     "Change this page's path?",
@@ -258,7 +267,9 @@ export const sectionsEditor = {
     'The page URL changes from "{from}" to "{to}". The old URL stops working and inbound links or SEO may break.',
   "sectionsEditor.sectionsEditorPanels.changePathCancel": "Cancel",
   "sectionsEditor.sectionsEditorPanels.changePathConfirm": "Change path",
+  "sectionsEditor.sectionsEditorPanels.pageNameLabel": "Page name",
   "sectionsEditor.sectionsEditorPanels.pageNamePlaceholder": "Page name",
+  "sectionsEditor.sectionsEditorPanels.pathLabel": "URL path",
   "sectionsEditor.sectionsEditorPanels.pathPlaceholder": "/path",
   "sectionsEditor.sectionsEditorPanels.variantRuleBreadcrumb":
     "Variant rule breadcrumb",

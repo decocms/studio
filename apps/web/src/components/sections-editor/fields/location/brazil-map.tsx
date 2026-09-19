@@ -45,7 +45,7 @@ export function BrazilMap({ selected, onSelect }: BrazilMapProps) {
       viewBox={viewBox}
       role="group"
       aria-label={t("sectionsEditor.brazilMap.ariaLabel")}
-      className="h-72 w-full rounded-md border border-border/60 bg-muted/20"
+      className="h-72 w-full rounded-[var(--studio-surface-radius,var(--radius-md))] border border-border/60 bg-muted/20"
     >
       <g transform={BRAZIL_MAP_ROOT_TRANSFORM}>
         {BRAZIL_STATES.map((state) => {

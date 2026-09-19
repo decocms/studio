@@ -170,6 +170,7 @@ export function BlocksPanel({
         }
         onExitSeo={workspace.consumeEditSeo}
         onVariantPreviewOverride={workspace.setVariantOverride}
+        onFocusedBlockChange={workspace.setFocusedBlock}
         onViewJsonFile={onViewJsonFile}
       />
     </Suspense>,

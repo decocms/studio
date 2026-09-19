@@ -46,6 +46,12 @@ import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { EditorRowActionsTrigger, EditorRowLink } from "../editor-list-row";
+import {
+  HeaderSelectOptions,
+  HeaderSelectTrigger,
+} from "../sections-editor-panels";
+import { HeaderSlotPortal } from "../header-slot";
 import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
@@ -76,7 +82,7 @@ function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
           <Globe01 size={11} />
           {t("sectionsEditor.anyOfField.global")}
         </span>
@@ -116,7 +122,7 @@ function CollapsibleLoaderConfig({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border/80 bg-muted/30",
+        "rounded-[var(--studio-surface-radius,var(--radius-lg))] border border-border/80 bg-muted/30",
         nestedBlockRef && "ml-1",
       )}
     >
@@ -194,8 +200,10 @@ export function AnyOfField({
   sandbox,
   previewBaseUrl,
   onRequestAddSection,
+  focused,
 }: FieldProps) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
@@ -210,6 +218,7 @@ export function AnyOfField({
   const refs = enrichBlockRefOptions(baseRefs, {
     savedBlockKey: savedRef?.blockKey,
     editorValue,
+    decofile,
   });
   const inferredRt =
     refs.length > 0
@@ -377,8 +386,55 @@ export function AnyOfField({
     // item's form takes over the whole panel instead of staying scoped inside
     // the loader card. The breadcrumb "back" pops the crumb, `nestedBreadcrumbPath`
     // empties, and the normal select + card chrome returns.
-    if (isModuleLoaderUnion && nestedProps && nestedBreadcrumbPath.length > 0) {
-      return <div className="min-w-0">{nestedProps}</div>;
+    if (
+      isModuleLoaderUnion &&
+      nestedProps &&
+      (nestedBreadcrumbPath.length > 0 || focused)
+    ) {
+      return (
+        <div className="min-w-0">
+          {/* Which block is bound is the same kind of question as which variant
+              is open, so it is asked in the same place. */}
+          {compact && focused && (
+            <HeaderSlotPortal>
+              <DropdownMenu>
+                <HeaderSelectTrigger
+                  icon={
+                    savedRef ? (
+                      <Globe01 className="size-3.5 shrink-0" />
+                    ) : (
+                      <Cube01 className="size-3.5 shrink-0" />
+                    )
+                  }
+                  label={
+                    refs.find((r) => r.resolveType === activeRt)
+                      ? blockRefOptionLabel(
+                          refs.find((r) => r.resolveType === activeRt)!,
+                        )
+                      : t("sectionsEditor.anyOfField.selectPlaceholder")
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-52">
+                  <HeaderSelectOptions
+                    heading={label}
+                    options={refs.map((ref) => ({
+                      label: blockRefOptionLabel(ref),
+                    }))}
+                    activeIndex={refs.findIndex(
+                      (r) => r.resolveType === activeRt,
+                    )}
+                    onSelect={(index) => {
+                      const ref = refs[index];
+                      if (ref) handleRefChange(ref.resolveType);
+                    }}
+                  />
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </HeaderSlotPortal>
+          )}
+          {nestedProps}
+        </div>
+      );
     }
 
     const isNestedBlockRef = path.includes(".");
@@ -429,6 +485,60 @@ export function AnyOfField({
         t("sectionsEditor.anyOfField.globalBlockSaved", { name: trimmed }),
       );
     };
+
+    // Closed, the field is one row: its own name, a globe or a cube for where
+    // the block lives, and the actions. Which block is bound is asked inside,
+    // so the name is not said twice.
+    if (compact && isModuleLoaderUnion && nestedProps) {
+      return (
+        <>
+          <EditorRowLink
+            icon={
+              savedRef ? (
+                <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <Cube01 className="size-4 shrink-0 text-muted-foreground" />
+              )
+            }
+            label={label}
+            onOpen={() =>
+              onBreadcrumbChange?.([...safeBreadcrumbPath, outerCrumb])
+            }
+            actions={
+              (handleDetach || canMakeGlobal) && (
+                <DropdownMenu>
+                  <EditorRowActionsTrigger
+                    label={t("sectionsEditor.anyOfField.loaderActions")}
+                  />
+                  <DropdownMenuContent align="end" className="w-48">
+                    {savedRef && handleDetach && (
+                      <DropdownMenuItem onClick={handleDetach}>
+                        <Cube01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.detach")}
+                      </DropdownMenuItem>
+                    )}
+                    {canMakeGlobal && (
+                      <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
+                        <Globe01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.makeGlobal")}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          />
+          {canMakeGlobal && (
+            <MakeReusableModal
+              open={makeGlobalOpen}
+              onOpenChange={setMakeGlobalOpen}
+              defaultBlockId={suggestBlockId(labelFromResolveType(activeRt))}
+              onSubmit={handleMakeGlobalSubmit}
+            />
+          )}
+        </>
+      );
+    }
 
     return (
       <div className="space-y-3">
@@ -509,7 +619,7 @@ export function AnyOfField({
         type="text"
         value={value != null ? String(value) : ""}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+        className="w-full rounded-[var(--studio-control-radius,var(--radius-md))] border bg-background px-3 py-1.5 text-sm"
         placeholder={schema.description ?? ""}
       />
     </div>

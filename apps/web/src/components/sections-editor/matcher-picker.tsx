@@ -182,7 +182,7 @@ export function MatcherPicker({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-10 w-full items-center gap-2 classic:rounded-md compact:rounded-lg border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40 cursor-pointer"
+        className="flex h-10 w-full items-center gap-2 rounded-[var(--studio-control-radius,var(--radius-md))] border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40 cursor-pointer"
       >
         {CurrentIcon && (
           <CurrentIcon className="h-4 w-4 shrink-0 text-muted-foreground" />

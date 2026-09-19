@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useVirtualMCP } from "@/sdk/hooks/use-virtual-mcp";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 import { useRequiredField } from "./required-field-context";
 
 const DESCRIPTION_AFFORDANCE_CLASS =
@@ -78,7 +78,7 @@ export function FieldLabel({
     <Label htmlFor={htmlFor} className={labelClassName}>
       {label}
       {required && invalid && (
-        <MissingRequiredDot className="mt-0.5 self-start" />
+        <MissingRequiredMarker className="mt-0.5 self-start" />
       )}
     </Label>
   );
