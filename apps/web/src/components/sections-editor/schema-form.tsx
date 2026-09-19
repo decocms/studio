@@ -272,6 +272,7 @@ export function renderField(props: FieldProps) {
         <MultivariateFieldWrapper
           key={props.path}
           {...props}
+          asDestination
           multivariateResolveType={ref.resolveType}
           renderInnerField={innerRenderer}
         />
