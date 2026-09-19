@@ -47,6 +47,7 @@ import type { FieldProps } from "./field-props";
 import { toast } from "sonner";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { editorRowClassName } from "../editor-list-row";
+import { HeaderSlotPortal } from "../header-slot";
 import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
@@ -385,7 +386,36 @@ export function AnyOfField({
       nestedProps &&
       (nestedBreadcrumbPath.length > 0 || focused)
     ) {
-      return <div className="min-w-0">{nestedProps}</div>;
+      return (
+        <div className="min-w-0">
+          {/* Which block is bound is the same kind of question as which variant
+              is open, so it is asked in the same place. */}
+          {compact && focused && (
+            <HeaderSlotPortal>
+              <Select
+                value={activeRt || undefined}
+                onValueChange={handleRefChange}
+              >
+                <SelectTrigger size="sm" className="w-auto min-w-0 max-w-48">
+                  <SelectValue
+                    placeholder={t(
+                      "sectionsEditor.anyOfField.selectPlaceholder",
+                    )}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {refs.map((ref) => (
+                    <SelectItem key={ref.resolveType} value={ref.resolveType}>
+                      {blockRefOptionLabel(ref)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HeaderSlotPortal>
+          )}
+          {nestedProps}
+        </div>
+      );
     }
 
     const isNestedBlockRef = path.includes(".");
@@ -436,6 +466,74 @@ export function AnyOfField({
         t("sectionsEditor.anyOfField.globalBlockSaved", { name: trimmed }),
       );
     };
+
+    // Closed, the field is one row: its own name, a globe or a cube for where
+    // the block lives, and the actions. Which block is bound is asked inside,
+    // so the name is not said twice.
+    if (compact && isModuleLoaderUnion && nestedProps) {
+      return (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() =>
+              onBreadcrumbChange?.([...safeBreadcrumbPath, outerCrumb])
+            }
+            className={cn(
+              editorRowClassName({
+                className: "min-w-0 flex-1 cursor-pointer text-left",
+              }),
+            )}
+          >
+            {savedRef ? (
+              <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <Cube01 className="size-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+              {label}
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+          </button>
+          {(handleDetach || canMakeGlobal) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("sectionsEditor.anyOfField.loaderActions")}
+                  className="size-7 shrink-0 text-muted-foreground"
+                >
+                  <DotsHorizontal size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {savedRef && handleDetach && (
+                  <DropdownMenuItem onClick={handleDetach}>
+                    <Cube01 className="h-4 w-4" />
+                    {t("sectionsEditor.anyOfField.detach")}
+                  </DropdownMenuItem>
+                )}
+                {canMakeGlobal && (
+                  <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
+                    <Globe01 className="h-4 w-4" />
+                    {t("sectionsEditor.anyOfField.makeGlobal")}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {canMakeGlobal && (
+            <MakeReusableModal
+              open={makeGlobalOpen}
+              onOpenChange={setMakeGlobalOpen}
+              defaultBlockId={suggestBlockId(labelFromResolveType(activeRt))}
+              onSubmit={handleMakeGlobalSubmit}
+            />
+          )}
+        </div>
+      );
+    }
 
     return (
       <div className="space-y-3">
