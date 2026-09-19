@@ -5395,7 +5395,8 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "openai-compatible";
+        | "openai-compatible"
+        | "orcarouter";
       label: string;
       apiKey: string;
       presetId?: string | undefined;
@@ -5439,6 +5440,7 @@ export interface StudioToolIO {
         | "openrouter"
         | "llmapi"
         | "openai-compatible"
+        | "orcarouter"
         | "claude-code"
         | "codex"
         | undefined;
@@ -5462,7 +5464,8 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "openai-compatible";
+        | "openai-compatible"
+        | "orcarouter";
       callbackUrl: string;
     };
     output: { url: string; stateToken: string };
@@ -5475,7 +5478,8 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "openai-compatible";
+        | "openai-compatible"
+        | "orcarouter";
       code: string;
       stateToken: string;
       label: string;
@@ -5496,7 +5500,8 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "openai-compatible";
+        | "openai-compatible"
+        | "orcarouter";
     };
     output: {
       id: string;
@@ -5514,7 +5519,8 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "openai-compatible";
+        | "openai-compatible"
+        | "orcarouter";
       amountCents: number;
       currency?: "usd" | "brl" | undefined;
     };
@@ -5528,7 +5534,8 @@ export interface StudioToolIO {
         | "anthropic"
         | "openrouter"
         | "llmapi"
-        | "openai-compatible";
+        | "openai-compatible"
+        | "orcarouter";
     };
     output: { balanceCents: number };
   };

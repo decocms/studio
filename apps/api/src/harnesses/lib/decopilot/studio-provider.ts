@@ -114,6 +114,7 @@ const THOUGHT_SIGNATURE_ID_PROVIDERS = new Set<string>([
   "openrouter",
   "deco",
   "llmapi",
+  "orcarouter",
 ]);
 
 /**
