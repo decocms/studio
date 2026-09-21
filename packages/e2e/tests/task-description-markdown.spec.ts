@@ -13,6 +13,8 @@ import type { Page } from "@playwright/test";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
+test.use({ compactPageLayout: true });
+
 /** Cold-Vite first paint on a fresh sandbox is slow (SPA compile + auth). */
 const FIRST_PAINT_MS = 60_000;
 

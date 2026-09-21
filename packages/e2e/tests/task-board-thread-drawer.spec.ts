@@ -14,6 +14,7 @@
 import { connectDevDb } from "../fixtures/db";
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
+
 import type { Page } from "@playwright/test";
 
 const detail = (page: Page) => page.getByTestId("task-detail");
@@ -101,176 +102,172 @@ async function openTask(page: Page, orgSlug: string, title: string) {
   await expect(detail(page)).toBeVisible();
 }
 
-test.describe("task run drawer", () => {
-  test("a run opens in a sheet over the task, not by navigating to it", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const request = page.context().request;
-    const title = `Drawer task ${Date.now()}`;
-    const { item } = await callSelfMcpTool<{ item: { id: string } }>(
-      request,
-      orgSlug,
-      "TASK_BOARD_ITEM_CREATE",
-      { title },
-    );
+for (const compactPageLayout of [false, true]) {
+  test.describe(`task run drawer (${compactPageLayout ? "new" : "classic"} layout)`, () => {
+    test.use({ compactPageLayout });
+    const openRun = (page: Page, body: string) => {
+      const message = compactPageLayout
+        ? detail(page)
+            .getByTestId("task-message")
+            .filter({ hasText: body })
+            .getByRole("button", { name: "Open chat", exact: true })
+        : detail(page).getByRole("button").filter({ hasText: body });
+      return message.click();
+    };
+    test("a run opens in a sheet over the task, not by navigating to it", async ({
+      authedPage,
+    }) => {
+      const { page, orgSlug, user } = authedPage;
+      const request = page.context().request;
+      const title = `Drawer task ${Date.now()}`;
+      const { item } = await callSelfMcpTool<{ item: { id: string } }>(
+        request,
+        orgSlug,
+        "TASK_BOARD_ITEM_CREATE",
+        { title },
+      );
 
-    const db = await connectDevDb();
-    try {
-      const orgId = await orgIdOf(db, item.id);
-      await seedRun(db, {
-        itemId: item.id,
-        orgId,
-        userId: user.userId,
-        suffix: "solo",
-        title: "Super Agent · drawer run",
-        createdAt: new Date(),
-        assistantText: "Rounded once at the end instead of per line item.",
-      });
-    } finally {
-      await db.end();
-    }
+      const db = await connectDevDb();
+      try {
+        const orgId = await orgIdOf(db, item.id);
+        await seedRun(db, {
+          itemId: item.id,
+          orgId,
+          userId: user.userId,
+          suffix: "solo",
+          title: "Super Agent · drawer run",
+          createdAt: new Date(),
+          assistantText: "Rounded once at the end instead of per line item.",
+        });
+      } finally {
+        await db.end();
+      }
 
-    await openTask(page, orgSlug, title);
-    const url = page.url();
+      await openTask(page, orgSlug, title);
+      const url = page.url();
 
-    await detail(page)
-      .getByTestId("task-message")
-      .filter({ hasText: "Rounded once at the end instead of per line item." })
-      .getByRole("button", { name: "Open chat", exact: true })
-      .click();
+      await openRun(page, "Rounded once at the end instead of per line item.");
 
-    await expect(sheet(page)).toBeVisible();
-    await expect(sheet(page)).toContainText(
-      "Rounded once at the end instead of per line item.",
-    );
-    // The whole point: the task is still the page, still mounted underneath.
-    expect(page.url()).toBe(url);
-    await expect(page).toHaveURL(cardUrl(orgSlug));
-    await expect(detail(page)).toBeVisible();
+      await expect(sheet(page)).toBeVisible();
+      await expect(sheet(page)).toContainText(
+        "Rounded once at the end instead of per line item.",
+      );
+      // The whole point: the task is still the page, still mounted underneath.
+      expect(page.url()).toBe(url);
+      await expect(page).toHaveURL(cardUrl(orgSlug));
+      await expect(detail(page)).toBeVisible();
 
-    // Closing keeps the task open and the app clickable (see detail-menu spec).
-    await sheet(page).getByRole("button", { name: "Close" }).click();
-    await expect(sheet(page)).toHaveCount(0);
-    await expect(page).toHaveURL(cardUrl(orgSlug));
-    await expect(detail(page)).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(() => getComputedStyle(document.body).pointerEvents),
-      )
-      .toBe("auto");
-  });
+      // Closing keeps the task open and the app clickable (see detail-menu spec).
+      await sheet(page).getByRole("button", { name: "Close" }).click();
+      await expect(sheet(page)).toHaveCount(0);
+      await expect(page).toHaveURL(cardUrl(orgSlug));
+      await expect(detail(page)).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(() => getComputedStyle(document.body).pointerEvents),
+        )
+        .toBe("auto");
+    });
 
-  test("each run opens its own transcript, with no list navigation", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const request = page.context().request;
-    const title = `Drawer nav task ${Date.now()}`;
-    const { item } = await callSelfMcpTool<{ item: { id: string } }>(
-      request,
-      orgSlug,
-      "TASK_BOARD_ITEM_CREATE",
-      { title },
-    );
+    test("each run opens its own transcript, with no list navigation", async ({
+      authedPage,
+    }) => {
+      const { page, orgSlug, user } = authedPage;
+      const request = page.context().request;
+      const title = `Drawer nav task ${Date.now()}`;
+      const { item } = await callSelfMcpTool<{ item: { id: string } }>(
+        request,
+        orgSlug,
+        "TASK_BOARD_ITEM_CREATE",
+        { title },
+      );
 
-    const now = Date.now();
-    const db = await connectDevDb();
-    try {
-      const orgId = await orgIdOf(db, item.id);
-      await seedRun(db, {
-        itemId: item.id,
-        orgId,
-        userId: user.userId,
-        suffix: "older",
-        title: "Super Agent · first pass",
-        createdAt: new Date(now - 3_600_000),
-        assistantText: "First pass finished, opened a PR.",
-      });
-      await seedRun(db, {
-        itemId: item.id,
-        orgId,
-        userId: user.userId,
-        suffix: "newer",
-        title: "QA Agent · second pass",
-        createdAt: new Date(now),
-        assistantText: "Second pass verified the first one.",
-      });
-    } finally {
-      await db.end();
-    }
+      const now = Date.now();
+      const db = await connectDevDb();
+      try {
+        const orgId = await orgIdOf(db, item.id);
+        await seedRun(db, {
+          itemId: item.id,
+          orgId,
+          userId: user.userId,
+          suffix: "older",
+          title: "Super Agent · first pass",
+          createdAt: new Date(now - 3_600_000),
+          assistantText: "First pass finished, opened a PR.",
+        });
+        await seedRun(db, {
+          itemId: item.id,
+          orgId,
+          userId: user.userId,
+          suffix: "newer",
+          title: "QA Agent · second pass",
+          createdAt: new Date(now),
+          assistantText: "Second pass verified the first one.",
+        });
+      } finally {
+        await db.end();
+      }
 
-    await openTask(page, orgSlug, title);
-    await detail(page)
-      .getByTestId("task-message")
-      .filter({ hasText: "Second pass verified the first one." })
-      .getByRole("button", { name: "Open chat", exact: true })
-      .click();
-    await expect(sheet(page)).toContainText(
-      "Second pass verified the first one.",
-    );
+      await openTask(page, orgSlug, title);
+      await openRun(page, "Second pass verified the first one.");
+      await expect(sheet(page)).toContainText(
+        "Second pass verified the first one.",
+      );
 
-    /* Walking the task's other runs is the activity feed's job, so the sheet
+      /* Walking the task's other runs is the activity feed's job, so the sheet
        carries neither chevron — only its close control. */
-    await expect(
-      sheet(page).getByRole("button", { name: /next chat|previous chat/i }),
-    ).toHaveCount(0);
+      await expect(
+        sheet(page).getByRole("button", { name: /next chat|previous chat/i }),
+      ).toHaveCount(0);
 
-    // The feed is how the other run is reached.
-    await sheet(page).getByRole("button", { name: "Close" }).click();
-    await expect(sheet(page)).toHaveCount(0);
-    await detail(page)
-      .getByTestId("task-message")
-      .filter({ hasText: "First pass finished, opened a PR." })
-      .getByRole("button", { name: "Open chat", exact: true })
-      .click();
-    await expect(sheet(page)).toContainText(
-      "First pass finished, opened a PR.",
-    );
-  });
+      // The feed is how the other run is reached.
+      await sheet(page).getByRole("button", { name: "Close" }).click();
+      await expect(sheet(page)).toHaveCount(0);
+      await openRun(page, "First pass finished, opened a PR.");
+      await expect(sheet(page)).toContainText(
+        "First pass finished, opened a PR.",
+      );
+    });
 
-  test("the sheet reads the run it was opened for, not the chat behind it", async ({
-    authedPage,
-  }) => {
-    const { page, orgSlug, user } = authedPage;
-    const request = page.context().request;
-    const title = `Drawer isolation task ${Date.now()}`;
-    const { item } = await callSelfMcpTool<{ item: { id: string } }>(
-      request,
-      orgSlug,
-      "TASK_BOARD_ITEM_CREATE",
-      { title },
-    );
+    test("the sheet reads the run it was opened for, not the chat behind it", async ({
+      authedPage,
+    }) => {
+      const { page, orgSlug, user } = authedPage;
+      const request = page.context().request;
+      const title = `Drawer isolation task ${Date.now()}`;
+      const { item } = await callSelfMcpTool<{ item: { id: string } }>(
+        request,
+        orgSlug,
+        "TASK_BOARD_ITEM_CREATE",
+        { title },
+      );
 
-    const db = await connectDevDb();
-    try {
-      const orgId = await orgIdOf(db, item.id);
-      await seedRun(db, {
-        itemId: item.id,
-        orgId,
-        userId: user.userId,
-        suffix: "isolated",
-        title: "Super Agent · isolated run",
-        createdAt: new Date(),
-        assistantText: "SENTINEL_LINKED_RUN_MESSAGE",
-      });
-    } finally {
-      await db.end();
-    }
+      const db = await connectDevDb();
+      try {
+        const orgId = await orgIdOf(db, item.id);
+        await seedRun(db, {
+          itemId: item.id,
+          orgId,
+          userId: user.userId,
+          suffix: "isolated",
+          title: "Super Agent · isolated run",
+          createdAt: new Date(),
+          assistantText: "SENTINEL_LINKED_RUN_MESSAGE",
+        });
+      } finally {
+        await db.end();
+      }
 
-    await openTask(page, orgSlug, title);
-    await detail(page)
-      .getByTestId("task-message")
-      .filter({ hasText: "SENTINEL_LINKED_RUN_MESSAGE" })
-      .getByRole("button", { name: "Open chat", exact: true })
-      .click();
+      await openTask(page, orgSlug, title);
+      await openRun(page, "SENTINEL_LINKED_RUN_MESSAGE");
 
-    await expect(sheet(page)).toContainText("SENTINEL_LINKED_RUN_MESSAGE");
-    /* The board renders inside the ambient chat's providers. Undetached, the
+      await expect(sheet(page)).toContainText("SENTINEL_LINKED_RUN_MESSAGE");
+      /* The board renders inside the ambient chat's providers. Undetached, the
        message renderers would decorate this transcript with that thread's
        produced files and a send control that posts into it. */
-    await expect(
-      sheet(page).getByRole("button", { name: /send|reply/i }),
-    ).toHaveCount(0);
+      await expect(
+        sheet(page).getByRole("button", { name: /send|reply/i }),
+      ).toHaveCount(0);
+    });
   });
-});
+}

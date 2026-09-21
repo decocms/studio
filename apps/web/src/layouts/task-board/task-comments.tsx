@@ -1,6 +1,6 @@
 /**
  * Comments on a task — threads inside the activity feed, with one level of
- * replies preserved for existing conversations. New comments use one composer.
+ * replies. The new layout uses one composer; classic keeps inline replies.
  *
  * Presentation only: the data and the mutations come from
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
@@ -34,6 +34,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
+import { MemoizedMarkdown } from "@/components/chat/markdown";
+import { formatTimeAgo } from "@/lib/format-time";
 import { TaskMessage } from "./task-message";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
@@ -73,11 +75,15 @@ export type TaskComment = {
 export function CommentThreadCard({
   thread,
   me,
+  conversation = true,
+  onReply,
   onDelete,
   onToggleResolved,
 }: {
   thread: TaskComment;
   me: CommentAuthor;
+  conversation?: boolean;
+  onReply?: (body: string) => void;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
   onToggleResolved: () => void;
@@ -90,7 +96,12 @@ export function CommentThreadCard({
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="flex w-full items-center gap-2.5 rounded-lg bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+        className={cn(
+          "flex w-full items-center gap-2.5 text-left transition-colors hover:bg-muted/60",
+          conversation
+            ? "rounded-lg bg-muted/40 px-3 py-2"
+            : "rounded-xl bg-card px-4 py-3 card-shadow",
+        )}
       >
         <MessageCheckCircle
           size={16}
@@ -108,7 +119,14 @@ export function CommentThreadCard({
   }
 
   return (
-    <div className="flex flex-col border-b border-border/50 pb-4">
+    <div
+      className={cn(
+        "flex flex-col",
+        conversation
+          ? "border-b border-border/50 pb-4"
+          : "rounded-xl bg-card card-shadow",
+      )}
+    >
       {thread.resolved && (
         <>
           <button
@@ -123,6 +141,7 @@ export function CommentThreadCard({
         </>
       )}
       <CommentEntry
+        conversation={conversation}
         comment={thread}
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
         resolved={thread.resolved}
@@ -134,6 +153,7 @@ export function CommentThreadCard({
               replies reads as one exchange under the root comment. */}
           <Divider inset={i > 0} />
           <CommentEntry
+            conversation={conversation}
             comment={reply}
             onDelete={
               canDelete(reply, me) ? () => onDelete(reply.id) : undefined
@@ -142,6 +162,12 @@ export function CommentThreadCard({
           />
         </Fragment>
       ))}
+      {!conversation && onReply && (
+        <>
+          <Divider />
+          <CommentComposer replyAuthor={me} onSubmit={onReply} />
+        </>
+      )}
     </div>
   );
 }
@@ -187,6 +213,7 @@ function Divider({ inset }: { inset?: boolean }) {
  * reads as a conversation under the root comment, not as three equal posts.
  */
 function CommentEntry({
+  conversation,
   comment,
   isReply,
   resolved,
@@ -194,6 +221,7 @@ function CommentEntry({
   onToggleResolved,
 }: {
   comment: TaskComment;
+  conversation: boolean;
   isReply?: boolean;
   resolved?: boolean;
   /** Omitted for a comment that isn't the current user's — the server
@@ -202,6 +230,38 @@ function CommentEntry({
   /** Thread roots only — resolving settles the whole conversation. */
   onToggleResolved?: () => void;
 }) {
+  if (!conversation) {
+    return (
+      <div className="group flex flex-col gap-1.5 p-4">
+        <div className="flex items-center gap-2">
+          <AuthorGlyph author={comment.author} />
+          <span className="text-sm font-medium text-foreground">
+            {comment.author.name}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {formatTimeAgo(new Date(comment.createdAt))}
+          </span>
+          {(onDelete || onToggleResolved) && (
+            <CommentActionsMenu
+              resolved={resolved}
+              onDelete={onDelete}
+              onToggleResolved={onToggleResolved}
+            />
+          )}
+        </div>
+        <div
+          className={cn(
+            // One size per comment; the shared markdown pins its own 14px.
+            "text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
+            // Avatar (24px) + gap (8px), so a reply's text starts at the name.
+            isReply && "pl-8",
+          )}
+        >
+          <MemoizedMarkdown id={comment.id} text={comment.body} />
+        </div>
+      </div>
+    );
+  }
   return (
     <TaskMessage
       id={comment.id}
@@ -291,10 +351,18 @@ function AuthorGlyph({ author }: { author: CommentAuthor }) {
 /**
  * Task conversation composer. Enter sends, Shift+Enter breaks the line.
  */
-export function NewCommentComposer({
+type SubmitComment = (body: string) => void | boolean | Promise<void | boolean>;
+
+export function NewCommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
+  return <CommentComposer onSubmit={onSubmit} />;
+}
+
+function CommentComposer({
   onSubmit,
+  replyAuthor,
 }: {
-  onSubmit: (body: string) => void | boolean | Promise<void | boolean>;
+  onSubmit: SubmitComment;
+  replyAuthor?: CommentAuthor;
 }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
@@ -305,10 +373,17 @@ export function NewCommentComposer({
   const textarea = (
     <MentionInput
       ref={ref}
-      placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
+      placeholder={t(
+        replyAuthor
+          ? "taskBoard.taskDialog.commentReplyPlaceholder"
+          : "taskBoard.taskDialog.commentPlaceholder",
+      )}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
-      className="min-h-10 w-full [&_.tiptap]:outline-none"
+      className={cn(
+        "w-full [&_.tiptap]:outline-none",
+        !replyAuthor && "min-h-10",
+      )}
     />
   );
 
@@ -334,6 +409,20 @@ export function NewCommentComposer({
   // composer.
   const focusInput = () => ref.current?.focus();
 
+  if (replyAuthor)
+    return (
+      <div
+        data-testid="reply-composer"
+        onClick={focusInput}
+        className="relative flex cursor-text items-start gap-2 p-3"
+      >
+        <span className="mt-0.5 shrink-0">
+          <AuthorGlyph author={replyAuthor} />
+        </span>
+        <div className="min-w-0 flex-1 pt-0.5">{textarea}</div>
+        {actions}
+      </div>
+    );
   return (
     <div
       data-testid="new-comment-composer"

@@ -1,4 +1,5 @@
 export const taskBoard = {
+  "taskBoard.taskDialog.commentReplyPlaceholder": "Leave a reply...",
   "taskBoard.conversation.openChat": "Open chat",
   "taskBoard.conversation.reviewer": "Reviewer",
   "taskBoard.conversation.details": "Details",

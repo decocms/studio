@@ -1,6 +1,7 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",
   "taskBoard.conversation.details": "Detalhes",

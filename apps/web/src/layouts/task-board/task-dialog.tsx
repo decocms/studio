@@ -163,6 +163,7 @@ import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
 import {
   CommentThreadCard,
+  NewCommentComposer,
   type CommentAuthor,
   type TaskComment,
 } from "./task-comments";
@@ -687,7 +688,7 @@ function TaskBoardItemEditor({
    *  its trail; a dialog has no header to give them to. */
   const actions = (
     <div className="flex items-center gap-2">
-      {item && (
+      {compact && item && (
         <Button
           variant="ghost"
           size="sm"
@@ -913,7 +914,14 @@ function TaskBoardItemEditor({
       {/* Above the scroll area, so it never moves. The page centers it on the
           same column as the content below. */}
       {chrome === "page" ? (
-        <div className="mx-auto w-full max-w-[1280px]">{header}</div>
+        <div
+          className={cn(
+            "mx-auto w-full",
+            compact ? "max-w-[1280px]" : "max-w-[1040px]",
+          )}
+        >
+          {header}
+        </div>
       ) : (
         header
       )}
@@ -922,19 +930,26 @@ function TaskBoardItemEditor({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          item ? "overflow-hidden" : "overflow-y-auto",
+          compact && item ? "overflow-hidden" : "overflow-y-auto",
         )}
       >
         <div
           className={cn(
-            "flex min-h-0 flex-1 flex-col lg:flex-row",
-            chrome === "page" && "mx-auto w-full max-w-[1280px]",
+            "flex flex-col",
+            compact ? "min-h-0 flex-1 lg:flex-row" : "sm:flex-row",
+            chrome === "page" && "mx-auto w-full",
+            chrome === "page" &&
+              (compact ? "max-w-[1280px]" : "max-w-[1040px]"),
           )}
         >
           {/* The original post and conversation share one reading column. */}
-          <TaskConversationFrame item={item} hidden={!!item && detailsOpen}>
+          <TaskConversationFrame
+            enabled={compact}
+            item={item}
+            hidden={!!item && detailsOpen}
+          >
             <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8">
-              {item && (
+              {compact && item && (
                 <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar
                     url={creator?.user?.image ?? undefined}
@@ -971,7 +986,7 @@ function TaskBoardItemEditor({
                 </div>
               )}
               <div>
-                {item && !editingPost ? (
+                {compact && item && !editingPost ? (
                   <h1 className="text-2xl font-semibold leading-snug text-foreground">
                     {title}
                   </h1>
@@ -1003,7 +1018,7 @@ function TaskBoardItemEditor({
                     )}
                   />
                 )}
-                {item && tagIds.length > 0 && (
+                {compact && item && tagIds.length > 0 && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {tagIds.map((id) => {
                       const tag = orgTags.find(
@@ -1063,7 +1078,7 @@ function TaskBoardItemEditor({
                         prompt context for the agent, and plain-text
                         descriptions written before this editor existed still
                         parse as-is. */}
-                      {item && !editingPost ? (
+                      {compact && item && !editingPost ? (
                         <MemoizedMarkdown
                           id={`task-post-${item.id}`}
                           text={description}
@@ -1122,6 +1137,13 @@ function TaskBoardItemEditor({
 
                 {item && (
                   <div className="flex flex-col gap-8">
+                    {!compact && (
+                      <LinksSection
+                        item={item}
+                        description={description}
+                        onOpenPreview={onOpenPreview}
+                      />
+                    )}
                     <ActivitySection
                       item={item}
                       members={members}
@@ -1139,8 +1161,11 @@ function TaskBoardItemEditor({
           <div
             data-testid="task-inspector"
             className={cn(
-              "min-h-0 w-full flex-1 flex-col gap-6 overflow-y-auto border-t border-border p-6 lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0",
-              item ? (detailsOpen ? "flex" : "hidden") : "flex",
+              "w-full flex-col gap-6 border-t border-border p-6",
+              compact
+                ? "min-h-0 flex-1 overflow-y-auto lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0"
+                : "flex sm:w-[280px] sm:shrink-0 sm:border-l sm:border-t-0",
+              compact && (item ? (detailsOpen ? "flex" : "hidden") : "flex"),
             )}
           >
             {item && <ReviewsGroup item={item} />}
@@ -1583,7 +1608,7 @@ function TaskBoardItemEditor({
                 </DropdownMenuContent>
               </DropdownMenu>
             </PropertyGroup>
-            {item && (
+            {compact && item && (
               <LinksSection
                 item={item}
                 description={description}
@@ -1750,6 +1775,91 @@ function threadStatusStyle(
 /**
  * A linked run uses the same message surface as its reports and human comments.
  */
+function ClassicThreadActivityItem({
+  thread,
+  startedBy,
+  onOpen,
+}: {
+  thread: TaskBoardItemThread;
+  startedBy?: Member;
+  onOpen?: (thread: TaskBoardItemThread) => void;
+}) {
+  const t = useT();
+  const state = thread.status
+    ? threadStatusStyle({ ...thread, status: thread.status }, t)
+    : null;
+  const message = thread.lastMessage;
+  // The Super Agent and both reviewers run on the org agent, distinguished only
+  // by their thread title prefix — reflect that in the card's glyph/name.
+  const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
+
+  return (
+    <button
+      type="button"
+      disabled={!onOpen}
+      onClick={() => onOpen?.(thread)}
+      className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
+    >
+      <div className="flex items-center gap-2">
+        {isReviewerThread ? (
+          <ReviewerIcon size={16} className="shrink-0" />
+        ) : (
+          <SuperAgentIcon size={16} className="shrink-0" />
+        )}
+        <span className="truncate text-sm font-medium text-foreground">
+          {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
+        </span>
+        {startedBy && (
+          <>
+            <span className="shrink-0 text-sm text-muted-foreground/50">
+              {t("taskBoard.taskDialog.startedByLabel")}
+            </span>
+            <Avatar
+              url={startedBy.user?.image ?? undefined}
+              fallback={getInitials(startedBy.user?.name)}
+              shape="circle"
+              size="2xs"
+            />
+            <span className="truncate text-sm text-foreground">
+              {startedBy.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
+            </span>
+          </>
+        )}
+        {onOpen && (
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60 group-hover:text-foreground">
+            {t("taskBoard.taskDialog.openThreadHint")}
+            <ChevronRight size={14} />
+          </span>
+        )}
+      </div>
+      {state && (
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1.5",
+              state.className,
+            )}
+          >
+            {/* A spinning status glyph is a loading indicator, so it is the
+                shared Spinner; the settled states keep their own icon. */}
+            {state.spin ? (
+              <Spinner className="size-[15px]" label={state.label} />
+            ) : (
+              <state.icon size={15} />
+            )}
+            <span className="text-sm">{state.label}</span>
+          </span>
+          {message && (
+            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+              {message}
+            </span>
+          )}
+        </div>
+      )}
+    </button>
+  );
+}
+
 function ThreadActivityItem({
   thread,
   onOpen,
@@ -2270,10 +2380,11 @@ function LinksSection({
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const comments = useTaskBoardComments(item.id);
+  const conversation = useCompactPageLayout();
   const links = extractDescriptionLinks(
     [
       description,
-      ...comments.threads.flatMap((thread) => [
+      ...(conversation ? comments.threads : []).flatMap((thread) => [
         thread.body,
         ...thread.replies.map((reply) => reply.body),
       ]),
@@ -2434,6 +2545,7 @@ function ActivitySection({
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
+  const conversation = useCompactPageLayout();
   const { data: activity } = useTaskBoardActivity(item.id);
   const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -2453,7 +2565,9 @@ function ActivitySection({
     item.threads.find((thread) => thread.threadId === threadId);
   const openSourceRun = (threadId: string | null | undefined) => {
     const run = sourceRun(threadId);
-    return run && onOpenThread ? () => onOpenThread(run) : undefined;
+    return conversation && run && onOpenThread
+      ? () => onOpenThread(run)
+      : undefined;
   };
   const authorOf = (
     userId: string,
@@ -2461,7 +2575,8 @@ function ActivitySection({
   ): CommentAuthor => {
     if (userId === SUPER_AGENT_ASSIGNEE_ID) {
       const run = sourceRun(threadId);
-      const isReviewer = !!run && isReviewerThreadTitle(run.title, "reviewer");
+      const isReviewer =
+        conversation && !!run && isReviewerThreadTitle(run.title, "reviewer");
       return {
         id: userId,
         name: t(
@@ -2524,7 +2639,7 @@ function ActivitySection({
         comment,
       }),
     ),
-  ].sort((a, b) => a.at - b.at);
+  ].sort((a, b) => (conversation ? a.at - b.at : b.at - a.at));
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
@@ -2552,7 +2667,8 @@ function ActivitySection({
     const last = blocks[blocks.length - 1];
     if (
       last?.type === "timeline" &&
-      blockDate(last).toDateString() === new Date(ev.at).toDateString()
+      (!conversation ||
+        blockDate(last).toDateString() === new Date(ev.at).toDateString())
     )
       last.items.push(ev.activity);
     else blocks.push({ type: "timeline", items: [ev.activity] });
@@ -2562,7 +2678,11 @@ function ActivitySection({
     <section className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">
-          {t("taskBoard.conversation.replies")}
+          {t(
+            conversation
+              ? "taskBoard.conversation.replies"
+              : "taskBoard.taskDialog.activityLabel",
+          )}
         </h2>
         <div className="flex items-center gap-1">
           <RunReviewerButton item={item} />
@@ -2570,6 +2690,23 @@ function ActivitySection({
         </div>
       </div>
       <div className="flex flex-col gap-5">
+        {!conversation && (
+          <NewCommentComposer
+            onSubmit={async (body) => {
+              try {
+                await comments.post.mutateAsync({ body });
+                return true;
+              } catch (error) {
+                toast.error(
+                  error instanceof Error
+                    ? error.message
+                    : t("taskBoard.conversation.sendFailed"),
+                );
+                return false;
+              }
+            }}
+          />
+        )}
         {blocks.map((block, i) => {
           const date = blockDate(block);
           const previous = blocks[i - 1];
@@ -2588,6 +2725,10 @@ function ActivitySection({
             if (block.type === "comment") {
               return (
                 <CommentThreadCard
+                  conversation={conversation}
+                  onReply={(body) =>
+                    comments.post.mutate({ body, parentId: block.comment.id })
+                  }
                   key={`comment-${block.comment.id}`}
                   thread={block.comment}
                   me={me}
@@ -2601,6 +2742,16 @@ function ActivitySection({
                 />
               );
             }
+            if (!conversation)
+              return (
+                <ClassicThreadActivityItem
+                  thread={block.thread}
+                  startedBy={members.find(
+                    (member) => member.userId === item.assignedBy,
+                  )}
+                  onOpen={onOpenThread}
+                />
+              );
             return (
               <ThreadActivityItem
                 key={`thread-${block.thread.threadId}`}
@@ -2617,7 +2768,7 @@ function ActivitySection({
                 : block.comment.id;
           return (
             <Fragment key={`${block.type}-${blockKey}`}>
-              {showDate && (
+              {conversation && showDate && (
                 <div className="flex items-center gap-3 py-2 text-xs font-medium text-muted-foreground">
                   <span className="h-px flex-1 bg-border" />
                   <time dateTime={date.toISOString()}>

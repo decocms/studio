@@ -2,6 +2,8 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { connectDevDb } from "../fixtures/db";
 import { expect, test } from "../fixtures/test";
 
+test.use({ compactPageLayout: true });
+
 test("task conversation keeps replies chronological and details accessible", async ({
   authedPage,
 }) => {
