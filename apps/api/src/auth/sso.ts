@@ -135,12 +135,13 @@ async function mergeDuplicateSSOUser(data: {
 
   const { db } = getDb();
 
-  // Check if there's an existing user with one of the alternate emails
+  // Only merge into an already-verified account — an unverified row can be self-registered by anyone, which would let a squatted UPN alias hijack the real owner's next SSO login.
   const originalUser = await db
     .selectFrom("user")
     .selectAll()
     .where("email", "in", alternateEmails)
     .where("id", "!=", user.id)
+    .where(sql`"emailVerified"`, "=", true)
     .executeTakeFirst();
 
   if (!originalUser) return;
