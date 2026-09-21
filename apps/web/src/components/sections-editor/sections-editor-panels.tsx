@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Flag01,
   LayersThree01,
-  Plus,
   Settings01,
   Trash01,
 } from "@untitledui/icons";
@@ -237,18 +236,8 @@ export function SchemaFormPanel({
 }
 
 /** The header's variant control, whether it selects one or offers the first. */
-const VARIANT_PILL_CLASS =
-  "shrink-0 inline-flex items-center gap-1 rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] h-7 px-2 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80";
-
 export const VARIANT_TAB_ACTIVE_CLASS =
   "text-[oklch(0.45_0.15_160)] bg-[oklch(0.65_0.15_160/0.18)] dark:text-[oklch(0.78_0.15_160)] dark:bg-[oklch(0.65_0.15_160/0.22)]";
-
-/** The pill geometry shared by the header's controls. The select itself wears
- *  the input treatment (see `HeaderSelectTrigger`); this is what is left for
- *  the empty state, which keeps a dashed border because an invitation needs one
- *  and a selection does not. */
-const VARIANT_TAB_EMPTY_CLASS =
-  "text-muted-foreground border border-dashed border-border hover:bg-accent hover:text-accent-foreground";
 
 /**
  * The rule that decides when the selected variant applies. Every level shows
@@ -543,16 +532,17 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
   }
 
   return (
-    <button
+    <Button
       type="button"
-      className={cn(VARIANT_PILL_CLASS, VARIANT_TAB_EMPTY_CLASS)}
+      variant="outline"
+      className="h-7 shrink-0 gap-1 px-2 text-xs font-medium"
       onClick={onClick}
     >
-      <Plus className="size-3 shrink-0" />
+      <LayersThree01 className="size-3.5 shrink-0" />
       <span className="truncate">
         {t("sectionsEditor.sectionsEditorPanels.createVariants")}
       </span>
-    </button>
+    </Button>
   );
 }
 
