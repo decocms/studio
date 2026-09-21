@@ -6,7 +6,6 @@ import {
   Globe01,
   Cube01,
   LayoutAlt01,
-  SearchLg,
 } from "@untitledui/icons";
 import {
   Select,
@@ -20,7 +19,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
@@ -30,6 +28,9 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { isSectionBlockRefField } from "../section-array-field";
+import { extractSectionCatalog } from "../section-catalog";
+import { substringFilter } from "../matcher-picker";
+import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import {
   blockRefLoaderConfigHasData,
   blockRefOptionLabel,
@@ -51,6 +52,7 @@ import { toast } from "sonner";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { EditorRowActionsTrigger, EditorRowLink } from "../editor-list-row";
 import {
+  HEADER_SELECT_TRIGGER_CLASS,
   HeaderSelectOptions,
   HeaderSelectTrigger,
 } from "../sections-editor-panels";
@@ -234,8 +236,28 @@ export function AnyOfField({
         r.resolveType.includes("/") &&
         !isEmbeddedUnionResolveType(r.resolveType),
     );
-  /** A Section slot picks from the catalog, the same one "Add section" opens. */
-  const sectionSlot = isSectionBlockRefField(schema) && !!onRequestAddSection;
+  /**
+   * A Section slot accepts any section, but its schema names only a handful,
+   * so the catalog is the honest list — the same one "Add section" draws from.
+   * It is long, hence searchable rather than a plain dropdown.
+   */
+  const sectionSlot = isSectionBlockRefField(schema) && !!meta;
+  const sectionOptions = sectionSlot
+    ? (() => {
+        const seen = new Set<string>();
+        const options: { value: string; label: string }[] = [];
+        const push = (value: string, label: string) => {
+          if (!value || seen.has(value)) return;
+          seen.add(value);
+          options.push({ value, label });
+        };
+        for (const ref of refs) push(ref.resolveType, blockRefOptionLabel(ref));
+        for (const entry of extractSectionCatalog(meta, decofile ?? {})) {
+          push(entry.resolveType, entry.title);
+        }
+        return options;
+      })()
+    : [];
 
   // In module-loader mode the breadcrumb path passes through this component.
   // We strip our own crumb from the front before passing to the nested
@@ -401,56 +423,72 @@ export function AnyOfField({
               is open, so it is asked in the same place. */}
           {compact && focused && (
             <HeaderSlotPortal>
-              <DropdownMenu>
-                <HeaderSelectTrigger
-                  icon={
-                    savedRef ? (
-                      <Globe01 className="size-3.5 shrink-0" />
-                    ) : (
-                      <Cube01 className="size-3.5 shrink-0" />
-                    )
-                  }
-                  label={
-                    refs.find((r) => r.resolveType === activeRt)
-                      ? blockRefOptionLabel(
-                          refs.find((r) => r.resolveType === activeRt)!,
-                        )
-                      : t("sectionsEditor.anyOfField.selectPlaceholder")
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-52">
-                  {/* A Section slot takes any section, but the schema names
-                      only a few, so the catalog is the honest list. */}
-                  {sectionSlot && (
-                    <>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          onRequestAddSection?.({
-                            append: (item) => onChange(item),
-                          })
-                        }
-                      >
-                        <SearchLg className="h-4 w-4" />
-                        {t("sectionsEditor.anyOfField.chooseSection")}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
+              {sectionSlot ? (
+                <Combobox
+                  options={sectionOptions}
+                  value={activeRt}
+                  // Combobox clears on re-selecting the current option; a slot
+                  // has nothing to clear to, so keep what is bound.
+                  onChange={(rt) => rt && handleRefChange(rt)}
+                  contentClassName="w-[320px]!"
+                  filter={substringFilter}
+                  searchPlaceholder={t(
+                    "sectionsEditor.anyOfField.searchSections",
                   )}
-                  <HeaderSelectOptions
-                    heading={label}
-                    options={refs.map((ref) => ({
-                      label: blockRefOptionLabel(ref),
-                    }))}
-                    activeIndex={refs.findIndex(
-                      (r) => r.resolveType === activeRt,
-                    )}
-                    onSelect={(index) => {
-                      const ref = refs[index];
-                      if (ref) handleRefChange(ref.resolveType);
-                    }}
+                  emptyMessage={t("sectionsEditor.anyOfField.noSectionsFound")}
+                  renderTrigger={(selected) => (
+                    <button
+                      type="button"
+                      className={HEADER_SELECT_TRIGGER_CLASS}
+                    >
+                      {savedRef ? (
+                        <Globe01 className="size-3.5 shrink-0" />
+                      ) : (
+                        <Cube01 className="size-3.5 shrink-0" />
+                      )}
+                      <span className="max-w-[120px] truncate">
+                        {selected?.label ??
+                          t("sectionsEditor.anyOfField.selectPlaceholder")}
+                      </span>
+                      <ChevronDown className="size-3 shrink-0" />
+                    </button>
+                  )}
+                />
+              ) : (
+                <DropdownMenu>
+                  <HeaderSelectTrigger
+                    icon={
+                      savedRef ? (
+                        <Globe01 className="size-3.5 shrink-0" />
+                      ) : (
+                        <Cube01 className="size-3.5 shrink-0" />
+                      )
+                    }
+                    label={
+                      refs.find((r) => r.resolveType === activeRt)
+                        ? blockRefOptionLabel(
+                            refs.find((r) => r.resolveType === activeRt)!,
+                          )
+                        : t("sectionsEditor.anyOfField.selectPlaceholder")
+                    }
                   />
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <HeaderSelectOptions
+                      heading={label}
+                      options={refs.map((ref) => ({
+                        label: blockRefOptionLabel(ref),
+                      }))}
+                      activeIndex={refs.findIndex(
+                        (r) => r.resolveType === activeRt,
+                      )}
+                      onSelect={(index) => {
+                        const ref = refs[index];
+                        if (ref) handleRefChange(ref.resolveType);
+                      }}
+                    />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </HeaderSlotPortal>
           )}
           {nestedProps}

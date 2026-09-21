@@ -557,6 +557,12 @@ export function AddVariantButton({ onClick }: { onClick: () => void }) {
  * block is open, or which block a property is bound to. One pill and one
  * heading, so the two read as the same control doing two jobs.
  */
+export const HEADER_SELECT_TRIGGER_CLASS = cn(
+  "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 px-2 text-xs font-medium transition-colors",
+  "rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] text-foreground card-shadow",
+  "hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground",
+);
+
 export function HeaderSelectTrigger({
   icon,
   label,
@@ -566,14 +572,7 @@ export function HeaderSelectTrigger({
 }) {
   return (
     <DropdownMenuTrigger asChild>
-      <button
-        type="button"
-        className={cn(
-          "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 px-2 text-xs font-medium transition-colors",
-          "rounded-[var(--studio-control-radius,var(--radius-lg))] bg-[var(--studio-input-background)] text-foreground card-shadow",
-          "hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground",
-        )}
-      >
+      <button type="button" className={HEADER_SELECT_TRIGGER_CLASS}>
         {icon}
         <span className="max-w-[120px] truncate">{label}</span>
         <ChevronDown className="size-3 shrink-0" />
