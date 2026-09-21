@@ -9,7 +9,11 @@
 
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { ProviderV4 } from "@ai-sdk/provider";
-import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
+import {
+  wrapLanguageModel,
+  type LanguageModelMiddleware,
+  type Experimental_EvaluationModel,
+} from "ai";
 import type { ModelCapability, ProviderId } from "@decocms/shared/sdk";
 import { isCreditError } from "../stream-error";
 import { withThoughtSignatureCodec } from "./thought-signature";
@@ -76,6 +80,10 @@ export interface StudioProvider {
   readonly aiSdk: ProviderV4;
   /** Set by providers that expose async/long-running research jobs. */
   readonly asyncResearch?: AsyncResearchProvider;
+  /** Typed decisions use evaluation models, independently of chat tiers. */
+  readonly decisions?: {
+    model(modelId: string): Experimental_EvaluationModel;
+  };
   listModels(): Promise<ModelInfo[]>;
 }
 

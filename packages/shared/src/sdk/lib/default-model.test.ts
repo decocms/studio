@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import type { AiProviderKey, AiProviderModel } from "../types/ai-providers";
 import {
   getFastModel,
+  isChatModel,
   pickSimpleModeDefaults,
   selectDefaultModel,
 } from "./default-model";
@@ -118,5 +119,29 @@ describe("image slot", () => {
     });
 
     expect(defaults.image?.modelId).toBe("google/gemini-3-pro-image");
+  });
+});
+
+describe("decision models", () => {
+  const decision = {
+    ...model("claude-sonnet-decisions", "Decisions"),
+    capabilities: ["text", "decisions"] as const,
+  };
+  const decisionModel: AiProviderModel = {
+    ...decision,
+    capabilities: [...decision.capabilities],
+  };
+  it("cannot become the chat fallback even when they accept text", () => {
+    expect(isChatModel(decisionModel)).toBe(false);
+    expect(selectDefaultModel([decisionModel], "anthropic")).toBeNull();
+    const chat = model("another-chat", "Chat");
+    expect(
+      selectDefaultModel([decisionModel, chat], "anthropic")?.modelId,
+    ).toBe("another-chat");
+  });
+  it("does not fill chat tiers by a matching model name", () => {
+    expect(
+      pickSimpleModeDefaults([key], { [key.id]: [decisionModel] }).chat,
+    ).toEqual({ fast: null, smart: null, thinking: null });
   });
 });

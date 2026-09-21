@@ -16,11 +16,14 @@ const OPENROUTER_ICON_URL =
 
 function fetchModelsWithRetry(
   headers: Record<string, string>,
+  decisions = false,
 ): Promise<Response> {
   return fetchWithTransientRetry(
     "OpenRouter listModels",
-    "https://openrouter.ai/api/v1/models",
-    { headers, signal: AbortSignal.timeout(30_000) },
+    decisions
+      ? "https://openrouter.ai/api/v1/models?output_modalities=decisions"
+      : "https://openrouter.ai/api/v1/models",
+    { headers, signal: AbortSignal.timeout(decisions ? 5_000 : 30_000) },
   );
 }
 
@@ -75,6 +78,7 @@ export const openrouterAdapter: ProviderAdapter = {
     return {
       info: this.info,
       aiSdk,
+      decisions: { model: (modelId) => aiSdk.evaluationModel(modelId) },
 
       async listModels(): Promise<ModelInfo[]> {
         const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => {
@@ -115,6 +119,32 @@ export const openrouterAdapter: ProviderAdapter = {
         if (!res.ok) await throwResponseError("OpenRouter listModels", res);
         const { data }: { data: OpenRouterAPIModel[] } = await res.json();
         const models = data.map(mapV1Model);
+        // Decisions have a separate catalog; its outage must not hide chat models.
+        try {
+          const decisionsRes = await fetchModelsWithRetry(headers, true);
+          if (!decisionsRes.ok)
+            await throwResponseError(
+              "OpenRouter decision models",
+              decisionsRes,
+            );
+          const decisions: { data: OpenRouterAPIModel[] } =
+            await decisionsRes.json();
+          const seen = new Set(models.map((model) => model.modelId));
+          for (const model of decisions.data) {
+            if (
+              !seen.has(model.id) &&
+              model.architecture.output_modalities.includes("decisions")
+            ) {
+              models.push(mapV1Model(model));
+              seen.add(model.id);
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "[OpenRouter] Decision catalog unavailable",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        }
 
         return models;
       },

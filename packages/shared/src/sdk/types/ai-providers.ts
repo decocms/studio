@@ -52,6 +52,7 @@ export const MODEL_CAPABILITIES = [
   "file",
   "reasoning",
   "tools",
+  "decisions",
 ] as const;
 
 export type ModelCapability = (typeof MODEL_CAPABILITIES)[number];

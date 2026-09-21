@@ -1,3 +1,4 @@
+import { isChatModel } from "@decocms/shared/sdk";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -490,14 +491,11 @@ function ConnectionModelList({
 }) {
   const t = useT();
   const { models: rawModels } = useAiProviderModels(keyId);
-  // When no explicit filter is given, hide async-research-only models
-  // (e.g. Gemini Deep Research). They aren't usable as a Thinking/Coding/
-  // Fast model — the agent loop's `streamText` rejects them. Callers that
-  // want to expose them (the deep-research slot) pass their own filter that
-  // opts them back in.
+  // Chat cannot use decision or async-research models. Specialized pickers
+  // such as the deep-research slot supply their own capability filter.
   const allModels = filterModelsProp
     ? rawModels.filter(filterModelsProp)
-    : rawModels.filter((m) => m.asyncResearch !== true);
+    : rawModels.filter(isChatModel);
   const [shortlistSet, setShortlistSet] = useState<Set<string>>(
     () => (keyId ? readShortlist(keyId) : null) ?? DEFAULT_SHORTLIST,
   );

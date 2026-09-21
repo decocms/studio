@@ -4,6 +4,20 @@ import type {
   ProviderId,
 } from "../types/ai-providers";
 
+/** Decision models accept text but cannot generate a chat response. */
+export function isDecisionModel(model: {
+  capabilities?: readonly string[];
+}): boolean {
+  return model.capabilities?.includes("decisions") === true;
+}
+
+export function isChatModel(model: {
+  capabilities?: readonly string[];
+  asyncResearch?: boolean;
+}): boolean {
+  return !isDecisionModel(model) && model.asyncResearch !== true;
+}
+
 /**
  * Preferred default models for each well-known provider.
  *
@@ -277,7 +291,9 @@ export function pickSimpleModeDefaults(
   };
 
   for (const key of keys) {
-    const models = modelsByKeyId[key.id] ?? [];
+    const models = (modelsByKeyId[key.id] ?? []).filter(
+      (m) => !isDecisionModel(m),
+    );
     const providerId = key.providerId as ProviderId;
 
     if (!result.chat.fast) {
@@ -357,6 +373,7 @@ export function selectDefaultModel(
   providerId: ProviderId,
   keyId?: string,
 ): AiProviderModel | null {
+  models = models.filter(isChatModel);
   if (models.length === 0) return null;
 
   const candidates = DEFAULT_MODEL_PREFERENCES[providerId] ?? [];

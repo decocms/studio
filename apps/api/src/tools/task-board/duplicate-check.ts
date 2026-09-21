@@ -11,8 +11,8 @@
  *
  * Shape, mirroring `pr-open-board-reaction.ts`:
  * - a pure, lexical pre-filter picks the candidate cards (bounded prompt cost);
- * - one JSON-answer call on the org's "fast" tier says whether one of them
- *   already tracks the drafted work;
+ * - Jev checks for a duplicate through an org OpenRouter key; the org's
+ *   "fast" tier handles unavailable, oversized, or inconclusive checks;
  * - a pure gate accepts the verdict only at high confidence and only for an id
  *   that was actually offered.
  *
@@ -29,6 +29,11 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import type { StudioContext } from "@/core/studio-context";
+import { evaluateDecisions } from "@/core/evaluate-decisions";
+import {
+  buildDuplicateDecisions,
+  acceptDecisionDuplicates,
+} from "./duplicate-decisions";
 import { resolveTier } from "@/core/resolve-tier";
 import type { TaskBoardItem } from "@/storage/types";
 import { LANES } from "@decocms/shared/task-board";
@@ -349,7 +354,7 @@ export type DuplicateOutcome =
 
 /**
  * Batch form, for the reports import, which lands up to 100 findings at once.
- * One model call for the whole batch, never one per item: the import holds a
+ * One request per model for the whole batch, never one per item: the import holds a
  * transaction open while it writes, and this check runs before it.
  *
  * A draft in a batch, addressed by its position so the verdict can name it.
@@ -487,10 +492,43 @@ export function acceptBatchDuplicates(
   return accepted;
 }
 
+async function askDecisionModel(
+  ctx: StudioContext,
+  orgId: string,
+  drafts: readonly IndexedDraft[],
+  candidates: readonly TaskBoardItem[],
+): Promise<Map<number, { item: TaskBoardItem; reason: string }> | null> {
+  try {
+    const keys = await ctx.storage.aiProviderKeys.list({
+      organizationId: orgId,
+    });
+    const key = keys.find((entry) => entry.providerId === "openrouter");
+    if (!key) return null;
+    const input = buildDuplicateDecisions(drafts, candidates);
+    const { answers } = await evaluateDecisions(
+      ctx,
+      { keyId: key.id, modelId: "typesafe/jev-1.13" },
+      input,
+    );
+    return acceptDecisionDuplicates(
+      answers,
+      input.questions,
+      drafts,
+      candidates,
+    );
+  } catch (error) {
+    console.warn(
+      "[task-board] Decision check unavailable; using fast model",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return null;
+  }
+}
+
 /**
  * The batch check: for each draft, the existing card that already tracks it.
- * Drafts absent from the result should be created. One model call for the
- * whole batch; an empty draft list or no candidates costs nothing.
+ * Drafts absent from the result should be created. Jev may fall back to
+ * one fast-model call; no per-item requests.
  */
 export async function findDuplicatesForBatch(
   ctx: StudioContext,
@@ -501,6 +539,8 @@ export async function findDuplicatesForBatch(
   const items = await ctx.storage.taskBoard.list(orgId);
   const candidates = selectBatchCandidates(items, drafts);
   if (candidates.length === 0) return new Map();
+  const decided = await askDecisionModel(ctx, orgId, drafts, candidates);
+  if (decided !== null) return decided;
   const asked = await askFastTier(
     ctx,
     orgId,
@@ -525,6 +565,16 @@ export async function findDuplicateTask(
   const items = await ctx.storage.taskBoard.list(orgId);
   const candidates = selectDuplicateCandidates(items, draft);
   if (candidates.length === 0) return { status: "no_match" };
+  const decided = await askDecisionModel(
+    ctx,
+    orgId,
+    [{ ...draft, index: 0 }],
+    candidates,
+  );
+  if (decided !== null) {
+    const match = decided.get(0);
+    return match ? { status: "matched", ...match } : { status: "no_match" };
+  }
   const asked = await askFastTier(
     ctx,
     orgId,

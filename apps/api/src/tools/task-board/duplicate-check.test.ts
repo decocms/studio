@@ -1,3 +1,8 @@
+import {
+  buildDuplicateDecisions,
+  acceptDecisionDuplicates,
+} from "./duplicate-decisions";
+import { decisionInputFits } from "@/core/evaluate-decisions";
 import { describe, expect, it } from "bun:test";
 import { z } from "zod";
 import type { TaskBoardItem } from "@/storage/types";
@@ -437,5 +442,97 @@ describe("parseModelJson", () => {
     expect(parseModelJson("no duplicate found", schema)).toBeNull();
     expect(parseModelJson('{"duplicateOf": "tbi_1", ', schema)).toBeNull();
     expect(parseModelJson('{"duplicateOf": 5, "n": "x"}', schema)).toBeNull();
+  });
+});
+
+describe("decision model duplicate checks", () => {
+  const drafts = [
+    { index: 0, title: "Fix duplicate charges", repo: "acme/billing" },
+  ];
+  const cards = [
+    card({ id: "billing", repo: "acme/billing" }),
+    card({ id: "other", repo: "acme/other" }),
+  ];
+  const input = buildDuplicateDecisions(drafts, cards);
+  const accept = (choice: string, probability?: number) =>
+    acceptDecisionDuplicates(
+      {
+        draft_0: {
+          type: "choice",
+          choice,
+          ...(probability === undefined
+            ? {}
+            : { probabilities: { [choice]: probability } }),
+        },
+      },
+      input.questions,
+      drafts,
+      cards,
+    );
+
+  it("offers only same-repository or unscoped cards and an explicit no-match option", () => {
+    expect(Object.keys(input.questions.draft_0!.criteria)).toEqual([
+      "none",
+      "card_0",
+    ]);
+  });
+  it("accepts a high-probability offered card", () => {
+    expect(accept("card_0", 0.99)?.get(0)?.item.id).toBe("billing");
+  });
+  it("accepts a confident no-match without suppressing a task", () => {
+    expect(accept("none", 0.99)?.size).toBe(0);
+  });
+  it("falls back on uncertainty, absent distributions, and invalid probabilities", () => {
+    for (const probability of [undefined, 0.94, NaN, Infinity, 1.01, -1]) {
+      expect(accept("card_0", probability)).toBeNull();
+    }
+  });
+  it("rejects fabricated and cross-repository ids even at high confidence", () => {
+    expect(accept("invented", 1)).toBeNull();
+    expect(accept("card_1", 1)).toBeNull();
+  });
+  it("falls back for the entire batch if any draft lacks an answer", () => {
+    const batch = [...drafts, { index: 2, title: "Another finding" }];
+    const questions = buildDuplicateDecisions(batch, cards).questions;
+    expect(
+      acceptDecisionDuplicates(
+        {
+          draft_0: {
+            type: "choice",
+            choice: "card_0",
+            probabilities: { card_0: 1 },
+          },
+        },
+        questions,
+        batch,
+        cards,
+      ),
+    ).toBeNull();
+  });
+  it("fits a representative 50-card check but rejects an oversized batch without dropping candidates", () => {
+    const candidates = Array.from({ length: 50 }, (_, i) =>
+      card({
+        id: `task_${String(i).padStart(30, "0")}`,
+        title: "Fix repeated invoice charges",
+        description: "billing detail ".repeat(30),
+      }),
+    );
+    const single = buildDuplicateDecisions(drafts, candidates);
+    expect(decisionInputFits(single, 32_000)).toBe(true);
+    const batch = buildDuplicateDecisions(
+      Array.from({ length: 100 }, (_, index) => ({ ...drafts[0]!, index })),
+      candidates,
+    );
+    expect(decisionInputFits(batch, 32_000)).toBe(false);
+    expect(batch.state.cards).toHaveLength(50);
+  });
+  it("counts UTF-8 bytes and rejects missing or smaller context windows", () => {
+    expect(decisionInputFits({ state: "a".repeat(8_000) }, 32_000)).toBe(true);
+    expect(decisionInputFits({ state: "界".repeat(8_000) }, 32_000)).toBe(
+      false,
+    );
+    expect(decisionInputFits(input, 0)).toBe(false);
+    expect(decisionInputFits(input, NaN)).toBe(false);
+    expect(decisionInputFits(input, 100)).toBe(false);
   });
 });

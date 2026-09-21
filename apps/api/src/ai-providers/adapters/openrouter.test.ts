@@ -53,7 +53,8 @@ describe("openrouterAdapter.listModels", () => {
     const provider = openrouterAdapter.create("secret-key");
     const models = await provider.listModels();
 
-    expect(calls).toBe(3);
+    // Three chat-catalog attempts, then the separate Decisions catalog.
+    expect(calls).toBe(4);
     expect(models).toHaveLength(1);
     expect(models[0]?.modelId).toBe("openai/gpt-4");
   });
