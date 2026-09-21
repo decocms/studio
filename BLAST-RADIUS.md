@@ -259,70 +259,146 @@ leaves `apps/api` smaller. Core's migration count stops growing.
 
 ## 4. What we should kill
 
-From PostHog, `studio` project, last 30 days. Total active app users: **215**.
-Unique users per surface:
+> **Revised 2026-09-21** with a harder metric. The first pass counted *all*
+> users over 30 days. That overstated everything, because
+> `useControlPlaneViews()` unlocks hosting / analytics / e2e / monitor /
+> experiments for `isDecoStaffEmail(...)` unconditionally — so a surface can
+> look "used" when the only people in it are us. The table below counts
+> **external (non-`@deco.cx`) users over 90 days**.
 
-| Surface | Users/30d | Call |
-|---|---|---|
-| `home` | 183 | keep |
-| `tasks` | 135 | keep — the product |
-| `site-editor` | 119 | keep |
-| `settings/general` | 95 | keep |
-| `reports` | 72 | keep the engine; the **15,864 LOC of deck UI in `apps/web` is the liability** — move it out (Phase 1), and consolidate with `monitor` rather than maintaining both |
-| `library` | 68 | keep |
-| `connections` | 67 | keep (Core) |
-| `ai-providers` | 62 | keep (Core) |
-| `members` | 41 | keep (Core) |
-| `automations` | 36 | **merge into tasks or kill** |
-| `monitor` | 30 | merge into Monitors |
-| `task-board` (settings) | 28 | keep |
-| `skills` | 24 | keep |
-| `store` (registry) | 24 | **demote** — out of nav, keep the route |
-| `repositories` | 24 | keep (Core) |
-| `infra-billing` | 21 | keep — it is money |
-| `buckets` | 20 | **demote** |
-| `sso` | 19 | keep — enterprise gate, low usage is expected |
-| `secrets` | 18 | keep (Core) |
-| `roles` | 14 | keep (Core) |
-| `assets` | 13 | **kill** — superseded by Library |
-| `deck` | 11 | **kill from the product** — it is a sales artifact, it belongs on the site |
-| `hosting` | 11 | keep behind its flag; it is a real bet, just early |
-| `cdn` | 9 | fold into hosting |
-| `synced-repos` | 8 | **kill or fold into repositories** |
-| `billing` | 6 | **dead route** — `infra-billing` is the live one |
-| `e2e` | 5 | **kill** |
-| `analytics` | 5 | **kill** — overlaps monitoring + PostHog |
-| `git` | 4 | **kill** — overlaps repositories |
-| `api-keys` | 3 | keep (Core, security surface) |
-| `experiments` | 3 | **kill from the product** — we have PostHog experiments |
+### 4.1 The evidence
 
-### Kill for structural reasons, not usage
-- **The entire legacy `/:org/agents/*` route tree.** The projects migration is
-  "live" but we still serve both URL schemes: 31 tracked files under
-  `apps/web/src/routes/workspace/agent-*`, plus `agents-list.tsx` and
-  `legacy-agents-deep.tsx`. Two navigations for one concept, double the surface
-  to test and break. Redirect `/agents/*` → `/projects/*` and delete the tree.
-- **`vm_preview_loaded`: 49,067 events from 96 users in 30 days.** ~510 events
-  per user per month on one event. That smells like a polling loop, which our own
-  CLAUDE.md bans ("Push events, don't poll"). Investigate before it becomes a
-  cost or a rate-limit incident.
-- **"Mesh" naming.** The product is Studio. The repo is `mesh`, and we still carry
-  `packages/mesh-sdk`, `mesh-plugin-*`, `apps/mesh`. Rename once, fully. (The
-  `apps/mesh`, `apps/studio` and `packages/mesh-plugin-*` directories on disk are
-  untracked build leftovers — `git clean` them.)
-- **176 `defineTool` tools with no server-side usage telemetry.** We cannot make
-  an honest kill list for tools because we do not measure them. Add a counter to
-  `defineTool` (it already wraps every call with tracing and metrics — this is a
-  one-line addition), let it run 30 days, then delete anything with zero calls.
-  Expect to delete a lot.
+| Surface | External users | External orgs | External views | Frontend LOC | Call |
+|---|---:|---:|---:|---:|---|
+| `analytics` | **0** | 0 | **0** | 2,262 | **delete** |
+| `e2e` | **0** | 0 | **0** | 1,955 | **delete** |
+| `experiments` | 1 | 1 | 5 | 511 | **delete** |
+| `cdn` | 2 | 1 | 3 | 1,820 | **delete** |
+| `git` | 3 | 3 | 4 | 21 + GitTab | fold into `repositories` |
+| `hosting` | 3 | 2 | 58 | ~2,500 | **keep** — one real account (granado), it is a live bet |
+| `api-keys` | 5 | 4 | 6 | small | keep — security surface, low usage is correct |
+| `assets` | 6 | 5 | 22 | 500 | fold into `library` (58 users) |
+| `deck` | 6 | 6 | 45 | **72** | **keep** — 72 LOC, used weekly on farmrio/grupodass/montecarlo |
+| `synced-repos` | 7 | 9 | 11 | — | fold into `repositories` |
+| `infra-billing` | 8 | 8 | 17 | — | keep — it is money |
+| `repositories` | 12 | 14 | 29 | — | keep (Core, set-and-forget) |
+| `task-board` (settings) | 16 | 18 | 20 | — | keep |
+| `skills` | 17 | 17 | 23 | — | keep |
+| `sso` | 45 | 43 | 109 | — | keep (enterprise gate) |
+| `roles` | 54 | 47 | 156 | — | keep (Core) |
+| `library` | 58 | 42 | 108 | — | keep |
+| `secrets` | 60 | 56 | 172 | — | keep (Core) |
+| `buckets` | 60 | 56 | 164 | — | keep |
+| `reports` | 63 | 37 | 145 | 8,351 | moving to `decocms/reports` |
+| `store` | 64 | 58 | 207 | — | keep |
+| `automations` | 64 | 58 | 204 | — | keep |
+| `monitor` | 75 | 68 | 189 | — | keep — consolidation target |
+| `members` | 85 | 71 | 301 | — | keep (Core) |
+| `site-editor` | 103 | 36 | 1,967 | — | keep |
+| `tasks` | 128 | 54 | 1,347 | — | keep — the product |
+| `ai-providers` | 130 | 114 | 645 | — | keep (Core) |
+| `connections` | 155 | 123 | 2,006 | — | keep (Core) |
 
-### Kill for cost-of-ownership
-- 4 Helm charts, a ClickHouse operator, a NATS subchart, an OTel collector, a
-  DBOS conductor, an Istio gateway, a sandbox operator with warm pools, a
-  Toxiproxy resilience suite and a multi-pod test suite — for 215 users. Every
-  one of these is defensible alone. Together they are why nobody wants to deploy.
-  As apps move off k8s, aggressively retire the parts of this that only existed
-  to serve them.
+Judge a **config** surface (sso, roles, secrets, api-keys, repositories) by
+breadth — you set it once. Judge a **working** surface (analytics, e2e, cdn,
+deck, tasks) by repeat use. Applying the wrong axis is how `secrets` looks dead
+and `analytics` looks alive.
+
+### 4.2 The big one: the deco.cx admin port is one cluster, not four features
+
+`analytics`, `e2e` and `cdn` are not independent surfaces. They are all the
+**deco.cx legacy admin control plane** being ported into Studio:
+
+- `analytics-tab` → `/api/:org/hosting/:site/…`
+- `e2e-tab` + `e2e-run-detail` → `/api/:org/hosting/:site/e2e/*`
+- `cdn-tab` → `/api/:org/monitor/:site/{cdn,audience}/`
+
+backed by `apps/api/src/api/routes/hosting.ts` (725 LOC) and `monitor.ts`
+(1,164 LOC), both BFF proxies to the old control plane.
+
+**Three of the four have essentially no external users.** Only `hosting` has a
+real one. That makes this one decision, not four:
+
+- **Keep** `hosting` (granado uses it; it is the M3 bet) and the parts of
+  `hosting.ts`/`monitor.ts` it needs.
+- **Delete** `analytics-tab.tsx` (2,262), `cdn-tab.tsx` (1,820),
+  `e2e-tab.tsx` + `e2e-run-detail.tsx` (1,955), their routes, their `/e2e/*`
+  and `/cdn|audience/*` proxy handlers, their org flags
+  (`deco_analytics_enabled`, `e2e_enabled`), and their i18n.
+- **~6,000 LOC of frontend + the proxy handlers behind it, for zero external
+  users.**
+
+If the deco.cx migration needs analytics or e2e later, it needs them *rebuilt
+against Monitors*, not un-deleted — that is the consolidation §4.3 already calls for.
+
+### 4.3 Experiments — delete the feature, keep the hook
+
+Two unrelated things share the word. Do not confuse them:
+
+- **DELETE** the A/B *product feature*: `EXPERIMENT_*` tools (6),
+  `apps/api/src/storage/experiments.ts`, `apps/api/src/deco-legacy/experiment-analytics.ts`,
+  `experiments-tab.tsx` (511), migration `217-experiments.ts` + its table,
+  `use-experiments.ts`, the `experiments_enabled` flag, i18n ×2,
+  `packages/e2e/tests/experiments-tenancy.spec.ts`. **~1,700 LOC, 1 external
+  user in 90 days.**
+- **KEEP** `apps/web/src/hooks/use-experiment.ts` — that is the PostHog
+  experiment reader described in `CLAUDE.md`. Unrelated.
+
+We already pay PostHog for experiments and our own `CLAUDE.md` mandates using
+it. Shipping a second, unused one is the definition of this document's problem.
+
+### 4.4 Fold rather than delete
+
+- `git` (3 users) and `synced-repos` (7) → one `repositories` page. Three
+  surfaces for one concept.
+- `assets` (6 users, 500 LOC) → `library` (58 users). Library already superseded it.
+
+### 4.5 Corrections to the first pass
+
+- **`deck` is not a kill.** 72 LOC, 6 external users, used weekly on the
+  revenue accounts. The first pass called it a sales artifact; it is not.
+- **`/settings/billing` is not a dead route.** It is already a redirect to the
+  merged AI Providers page, and it is doing its job. Leave it.
+- **The legacy `/:org/agents/*` tree is 926 LOC, not a big deletion.** The 31
+  route files are 16–27 LOC wrappers; the weight is in the shared `*Tab`
+  components. Still delete it — the value is one URL scheme instead of two, not
+  lines removed.
+
+### 4.6 Still unmeasured — fix this before guessing
+
+- **176 `defineTool` tools have no server-side usage telemetry.** We cannot make
+  an honest kill list for tools because we do not count them. `defineTool`
+  already wraps every call with tracing and metrics; add a counter, let it run
+  30 days, delete the zeroes. Expect to delete a lot.
+- **`vm_preview_loaded`: 49,067 events from 96 users in 30 days** — ~510 per
+  user per month on one event. That smells like a polling loop, which our own
+  `CLAUDE.md` bans. Investigate before it becomes a cost or rate-limit incident.
+- **"Mesh" naming.** The product is Studio. The repo is `mesh`, and
+  `packages/mesh-sdk` + `mesh-plugin-*` remain. Rename once, fully. (The
+  `apps/mesh`, `apps/studio` and `packages/mesh-plugin-*` directories on disk
+  are untracked build leftovers — `git clean` them.)
+
+### 4.7 Cost of ownership
+
+4 Helm charts, a ClickHouse operator, a NATS subchart, an OTel collector, a DBOS
+conductor, an Istio gateway, a sandbox operator with warm pools, a Toxiproxy
+resilience suite and a multi-pod test suite — for 215 active users. Each is
+defensible alone. Together they are why nobody wants to deploy. As apps move off
+k8s, retire the parts that only existed to serve them.
+
+### 4.8 Total
+
+| Bucket | LOC |
+|---|---:|
+| deco.cx admin port (analytics + cdn + e2e, frontend) | ~6,037 |
+| Experiments feature | ~1,700 |
+| Assets (folded into Library) | 500 |
+| Legacy `/agents/*` route tree | 926 |
+| Reports UI (moving to `decocms/reports`) | 15,864 |
+| **Total** | **~25,000** |
+
+Plus: 1 Postgres table, 1 migration, 6 MCP tools, 3 org flags, 2 i18n
+dictionaries, and the `/e2e/*` + `/cdn|audience/*` BFF handlers.
 
 ---
 
@@ -348,9 +424,10 @@ Unique users per surface:
    shared types. Recommendation: monorepo folder + independent pipeline first,
    own repo only when a team owns it.
 5. **Who owns the Core contract** and its versioning?
-6. **Sign-off on the kill list in §4** — specifically `assets`, `deck`, `e2e`,
-   `analytics`, `git`, `experiments`, `billing`, `synced-repos`, and the legacy
-   `/agents/*` tree.
+6. **Sign-off on the kill list in §4** — specifically the deco.cx admin port
+   (`analytics`, `cdn`, `e2e`), the `experiments` feature, folding
+   `git`/`synced-repos` into `repositories` and `assets` into `library`, and the
+   legacy `/agents/*` tree. `deck` and `/settings/billing` came off the list.
 
 ---
 
