@@ -6724,6 +6724,13 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        accessIssue:
+          | "revoked"
+          | "provider_unavailable"
+          | "installation_missing"
+          | "authorization_required"
+          | "no_repositories"
+          | null;
         connectedBy: { name: string } | null;
       }[];
     };
@@ -6750,6 +6757,13 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        accessIssue:
+          | "revoked"
+          | "provider_unavailable"
+          | "installation_missing"
+          | "authorization_required"
+          | "no_repositories"
+          | null;
         connectedBy: { name: string } | null;
       };
     };

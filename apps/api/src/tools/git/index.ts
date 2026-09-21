@@ -26,7 +26,7 @@ import {
   type StudioContext,
 } from "@/core/studio-context";
 import {
-  accountIsServable,
+  accountAccessIssue,
   clientForAccount,
   principalForToken,
   providerCapabilities,
@@ -47,6 +47,15 @@ const RepoSummarySchema = z.object({
 const AccountOutputSchema = GitProviderAccountSchema.extend({
   /** False for a backfilled GitHub account this deployment cannot mint for yet. */
   servable: z.boolean(),
+  accessIssue: z
+    .enum([
+      "revoked",
+      "provider_unavailable",
+      "installation_missing",
+      "authorization_required",
+      "no_repositories",
+    ])
+    .nullable(),
   connectedBy: z.object({ name: z.string() }).nullable(),
 });
 
@@ -59,7 +68,8 @@ function toAccountOutput(
     installationRepositoryIds: _repositoryScope,
     ...entity
   } = account;
-  return { ...entity, servable: accountIsServable(account) };
+  const accessIssue = accountAccessIssue(account);
+  return { ...entity, servable: accessIssue === null, accessIssue };
 }
 
 function toRepositoryOutput(

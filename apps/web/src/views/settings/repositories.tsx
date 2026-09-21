@@ -19,7 +19,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { KEYS } from "@/lib/query-keys";
 import { useState } from "react";
 import { useSearch, useNavigate } from "@tanstack/react-router";
-import { GitBranch01, LinkExternal01, Plus } from "@untitledui/icons";
+import {
+  AlertTriangle,
+  GitBranch01,
+  LinkExternal01,
+  Plus,
+} from "@untitledui/icons";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -104,6 +109,29 @@ function visibilityLabel(
   return null;
 }
 
+const ACCESS_ISSUE_COPY = {
+  revoked: {
+    label: "settings.repositories.accessRevoked",
+    hint: "settings.repositories.accessRevokedHint",
+  },
+  provider_unavailable: {
+    label: "settings.repositories.providerUnavailable",
+    hint: "settings.repositories.providerUnavailableHint",
+  },
+  installation_missing: {
+    label: "settings.repositories.installationMissing",
+    hint: "settings.repositories.installationMissingHint",
+  },
+  authorization_required: {
+    label: "settings.repositories.authorizationRequired",
+    hint: "settings.repositories.authorizationRequiredHint",
+  },
+  no_repositories: {
+    label: "settings.repositories.noAuthorizedRepositories",
+    hint: "settings.repositories.noAuthorizedRepositoriesHint",
+  },
+} as const;
+
 function AccountRow({
   account,
   onDisconnect,
@@ -115,7 +143,25 @@ function AccountRow({
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const capabilities = useGitProviderCapabilities();
-  const needsReconnect = account.status === "revoked" || !account.servable;
+  const needsAttention = account.status === "revoked" || !account.servable;
+  const isGithubApp =
+    account.type === "github" && account.authKind === "github_app";
+  const githubConnectPath = capabilities.data?.github.connectPath;
+  const accessCopy = account.accessIssue
+    ? ACCESS_ISSUE_COPY[account.accessIssue]
+    : null;
+  const accessHint =
+    isGithubApp && capabilities.isSuccess && !githubConnectPath
+      ? t("settings.repositories.githubReconnectUnavailable")
+      : t(accessCopy?.hint ?? "settings.repositories.accessUnavailableHint", {
+          login: account.login,
+        });
+  const githubAction =
+    account.accessIssue === "authorization_required"
+      ? t("settings.repositories.authorizeWorkspaceAccess")
+      : account.accessIssue === "no_repositories"
+        ? t("settings.repositories.selectRepositories")
+        : t("settings.repositories.githubReconnect");
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 py-3 border-b border-border/60 last:border-b-0">
       <div className="flex items-start gap-3 min-w-0">
@@ -128,14 +174,18 @@ function AccountRow({
           muted
         />
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-sm truncate">
               {account.login}
             </span>
-            {needsReconnect && (
-              <Badge variant="outline" className="shrink-0">
-                {t("settings.repositories.needsReconnect")}
-              </Badge>
+            {needsAttention && (
+              <span className="inline-flex items-center gap-1 text-xs text-warning">
+                <AlertTriangle size={14} aria-hidden="true" />
+                {t(
+                  accessCopy?.label ??
+                    "settings.repositories.accessUnavailable",
+                )}
+              </span>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
@@ -148,28 +198,30 @@ function AccountRow({
                 })
               : t("settings.repositories.connectedByUnknown")}
           </p>
-          {needsReconnect && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t("settings.repositories.needsReconnectHint")}
-            </p>
+          {needsAttention && (
+            <p className="text-xs text-muted-foreground mt-0.5">{accessHint}</p>
           )}
         </div>
       </div>
       <div className="flex flex-wrap justify-end gap-2 max-w-full">
+        {isGithubApp && githubConnectPath && (
+          <Button
+            variant={needsAttention ? "default" : "outline"}
+            size="sm"
+            asChild
+          >
+            <a
+              href={`${githubConnectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories`)}`}
+            >
+              {needsAttention
+                ? githubAction
+                : t("settings.repositories.githubEditWorkspaceAccess")}
+            </a>
+          </Button>
+        )}
         {account.type === "github" &&
           account.installationId &&
-          capabilities.data?.github.connectPath && (
-            <Button variant="outline" size="sm" asChild>
-              <a
-                href={`${capabilities.data.github.connectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories`)}`}
-              >
-                {t("settings.repositories.githubEditWorkspaceAccess")}
-              </a>
-            </Button>
-          )}
-        {account.type === "github" &&
-          account.installationId &&
-          account.servable && (
+          !needsAttention && (
             <Button variant="outline" size="sm" asChild>
               <a
                 href={`/api/${encodeURIComponent(org.slug)}/git-providers/github/accounts/${encodeURIComponent(account.id)}/manage`}

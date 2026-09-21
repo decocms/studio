@@ -199,9 +199,33 @@ export const settings = {
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Token pessoal",
-  "settings.repositories.needsReconnect": "Precisa reconectar",
-  "settings.repositories.needsReconnectHint":
-    "Esta instalação não consegue mais se autenticar como esta conta. Reconecte-a para restaurar o acesso aos repositórios privados.",
+  "settings.repositories.accessUnavailable": "Acesso indisponível",
+  "settings.repositories.accessUnavailableHint":
+    "O Studio não consegue acessar esta conta. Autorize-a novamente para continuar usando seus repositórios.",
+  "settings.repositories.githubReconnect": "Reconectar GitHub",
+  "settings.repositories.authorizeWorkspaceAccess":
+    "Autorizar acesso do workspace",
+  "settings.repositories.selectRepositories": "Selecionar repositórios",
+  "settings.repositories.authorizationRequired":
+    "Falta autorizar este workspace",
+  "settings.repositories.authorizationRequiredHint":
+    "O Studio tem uma instalação do GitHub App registrada para {login}, mas este workspace ainda não tem autorização para usá-la. Entre no GitHub e escolha os repositórios que quer compartilhar com este workspace.",
+  "settings.repositories.accessRevoked": "Acesso revogado",
+  "settings.repositories.accessRevokedHint":
+    "O acesso a esta conta foi revogado. Autorize-a novamente para restaurar o acesso aos repositórios.",
+  "settings.repositories.noAuthorizedRepositories":
+    "Nenhum repositório autorizado",
+  "settings.repositories.noAuthorizedRepositoriesHint":
+    "Este workspace não tem repositórios autorizados por {login}. Selecione quais repositórios ele pode usar.",
+  "settings.repositories.providerUnavailable": "Provedor indisponível",
+  "settings.repositories.providerUnavailableHint":
+    "Esta instalação não está configurada para acessar esta conta. Peça a um administrador para habilitar o provedor.",
+  "settings.repositories.installationMissing":
+    "Conexão com o GitHub incompleta",
+  "settings.repositories.installationMissingHint":
+    "O Studio não tem uma instalação do GitHub App vinculada a esta conta. Conecte o GitHub e selecione a instalação de {login}.",
+  "settings.repositories.githubReconnectUnavailable":
+    "A reconexão com o GitHub não está disponível nesta instalação. Peça a um administrador para configurar o GitHub App e depois autorize o acesso do workspace.",
   "settings.repositories.disconnect": "Desconectar",
   "settings.repositories.disconnectTitle": 'Desconectar "{login}"?',
   "settings.repositories.disconnectDescription":

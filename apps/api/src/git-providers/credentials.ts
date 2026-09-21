@@ -95,23 +95,34 @@ function grantKind(
  * every repository is an account nobody may use.
  */
 export function accountIsServable(account: GitProviderAccountRecord): boolean {
-  if (account.status !== "active") return false;
+  return accountAccessIssue(account) === null;
+}
+
+export function accountAccessIssue(
+  account: GitProviderAccountRecord,
+):
+  | "revoked"
+  | "provider_unavailable"
+  | "installation_missing"
+  | "authorization_required"
+  | "no_repositories"
+  | null {
+  if (account.status !== "active") return "revoked";
   if (account.authKind === "github_cli") {
-    return (
-      account.type === "github" &&
+    return account.type === "github" &&
       account.host === "github.com" &&
       githubCliEnabled()
-    );
+      ? null
+      : "provider_unavailable";
   }
   if (account.type === "github" && account.authKind === "github_app") {
-    return (
-      getGithubAppAuth() !== null &&
-      account.installationId !== null &&
-      !!account.installationAuthorizedBy &&
-      account.installationRepositoryIds?.length !== 0
-    );
+    if (getGithubAppAuth() === null) return "provider_unavailable";
+    if (account.installationId === null) return "installation_missing";
+    if (!account.installationAuthorizedBy) return "authorization_required";
+    if (account.installationRepositoryIds?.length === 0)
+      return "no_repositories";
   }
-  return true;
+  return null;
 }
 
 export function clientForAccount(

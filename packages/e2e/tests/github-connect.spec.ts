@@ -449,6 +449,114 @@ test("closing the chooser deletes the grant and a standalone return remains usab
   expect((await page.request.get(flow.path)).status()).toBe(410);
 });
 
+for (const { status, accessIssue, label, action } of [
+  {
+    status: "active",
+    accessIssue: "authorization_required",
+    label: "Workspace authorization required",
+    action: "Authorize workspace access",
+  },
+  {
+    status: "revoked",
+    accessIssue: "revoked",
+    label: "Access revoked",
+    action: "Reconnect GitHub",
+  },
+  {
+    status: "active",
+    accessIssue: "no_repositories",
+    label: "No repositories authorized",
+    action: "Select repositories",
+  },
+]) {
+  test(`account access issue ${accessIssue} explains the cause and offers authorization`, async ({
+    authedPage,
+  }, testInfo) => {
+    const { page, orgSlug, user } = authedPage;
+    const owned = installation("reconnect-example");
+    const flow = await seedFlow(authedPage, [owned]);
+    const db = await connectDevDb();
+    try {
+      await db.query(
+        `INSERT INTO git_provider_accounts (organization_id,type,host,auth_kind,external_account_id,login,installation_id,created_by,status,installation_authorized_by,installation_repository_ids) VALUES ($1,'github','github.com','github_app',$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          flow.orgId,
+          String(owned.id),
+          owned.account.login,
+          owned.id,
+          user.userId,
+          status,
+          accessIssue === "no_repositories" ? "1001" : null,
+          accessIssue === "no_repositories" ? "[]" : null,
+        ],
+      );
+    } finally {
+      await db.end();
+    }
+    await page.goto(`/${orgSlug}/settings/repositories`);
+    const accounts = page.getByTestId("git-accounts-list");
+    const reconnect = accounts.getByRole("link", {
+      name: action,
+      exact: true,
+    });
+    await expect(reconnect).toBeVisible();
+    await expect(accounts.getByText(label, { exact: true })).toBeVisible();
+    const listed = await callSelfMcpTool<{
+      accounts: Array<{ accessIssue: string; servable: boolean }>;
+    }>(page.request, orgSlug, "GIT_ACCOUNT_LIST", {});
+    expect(listed.accounts).toMatchObject([{ accessIssue, servable: false }]);
+    await expect(
+      accounts.getByRole("link", { name: "Change workspace access" }),
+    ).toHaveCount(0);
+    await expect(
+      accounts.getByRole("link", { name: "Manage repository access" }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("github-needs-reconnect.png"),
+      animations: "disabled",
+    });
+    const [authorization] = await Promise.all([
+      page.waitForRequest((request) =>
+        request.url().startsWith("https://github.com/login/oauth/authorize?"),
+      ),
+      reconnect.click({ noWaitAfter: true }),
+    ]);
+    const destination = new URL(authorization.url());
+    expect(destination.searchParams.get("prompt")).toBe("select_account");
+    const state = destination.searchParams.get("state");
+    expect(state).toBeTruthy();
+    const code = randomUUID();
+    const exchange = await page.request.post(
+      `${fixtureOrigin}/__admin/github-codes`,
+      {
+        data: { code, token: flow.token },
+      },
+    );
+    expect(exchange.ok()).toBe(true);
+    await page.goto(`/api/_git/github/callback?state=${state}&code=${code}`);
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByRole("button", { name: owned.account.login, exact: true })
+      .click();
+    await dialog.getByRole("checkbox").first().check();
+    await dialog
+      .getByRole("button", { name: "Authorize 1 repository", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(
+      new RegExp(`/${orgSlug}/settings/repositories$`),
+    );
+    await expect(reconnect).toHaveCount(0);
+    await expect(accounts.getByText(label, { exact: true })).toHaveCount(0);
+    await expect(
+      accounts.getByRole("link", { name: "Change workspace access" }),
+    ).toBeVisible();
+    await expect(
+      accounts.getByRole("link", { name: "Manage repository access" }),
+    ).toBeVisible();
+  });
+}
+
 test("reconnect asks which GitHub user to authorize and cancellation is visible", async ({
   authedPage: { page, orgSlug },
 }) => {

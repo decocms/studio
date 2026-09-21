@@ -192,9 +192,32 @@ export const settings = {
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Personal token",
-  "settings.repositories.needsReconnect": "Needs reconnect",
-  "settings.repositories.needsReconnectHint":
-    "This deployment can no longer authenticate as this account. Reconnect it to restore access to its private repositories.",
+  "settings.repositories.accessUnavailable": "Access unavailable",
+  "settings.repositories.accessUnavailableHint":
+    "Studio cannot access this account. Authorize it again to continue using its repositories.",
+  "settings.repositories.githubReconnect": "Reconnect GitHub",
+  "settings.repositories.authorizeWorkspaceAccess":
+    "Authorize workspace access",
+  "settings.repositories.selectRepositories": "Select repositories",
+  "settings.repositories.authorizationRequired":
+    "Workspace authorization required",
+  "settings.repositories.authorizationRequiredHint":
+    "Studio has a GitHub App installation recorded for {login}, but this workspace has no authorization to use it. Sign in to GitHub and choose the repositories to share with this workspace.",
+  "settings.repositories.accessRevoked": "Access revoked",
+  "settings.repositories.accessRevokedHint":
+    "Access to this account was revoked. Authorize it again to restore repository access.",
+  "settings.repositories.noAuthorizedRepositories":
+    "No repositories authorized",
+  "settings.repositories.noAuthorizedRepositoriesHint":
+    "This workspace has no repositories authorized through {login}. Select which repositories it can use.",
+  "settings.repositories.providerUnavailable": "Provider unavailable",
+  "settings.repositories.providerUnavailableHint":
+    "This deployment is not configured to access this account. Ask an administrator to enable the provider.",
+  "settings.repositories.installationMissing": "GitHub connection incomplete",
+  "settings.repositories.installationMissingHint":
+    "Studio has no GitHub App installation linked to this account. Connect GitHub and select the installation for {login}.",
+  "settings.repositories.githubReconnectUnavailable":
+    "GitHub reconnection is unavailable on this deployment. Ask an administrator to configure the GitHub App, then authorize workspace access.",
   "settings.repositories.disconnect": "Disconnect",
   "settings.repositories.disconnectTitle": 'Disconnect "{login}"?',
   "settings.repositories.disconnectDescription":
