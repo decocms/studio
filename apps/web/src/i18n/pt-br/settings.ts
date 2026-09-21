@@ -973,7 +973,9 @@ export const settings = {
     "Tamanho recomendado \u00e9 256x256px",
   "settings.organizationForm.logoTitle": "Logo",
   "settings.organizationForm.namePlaceholder": "Nome da organiza\u00e7\u00e3o",
+  "settings.organizationForm.nameRequired": "O nome \u00e9 obrigat\u00f3rio",
   "settings.organizationForm.nameTitle": "Nome",
+  "settings.organizationForm.nameTooLong": "O nome \u00e9 muito longo",
   "settings.organizationForm.updateSuccess":
     "Organiza\u00e7\u00e3o atualizada com sucesso",
   "settings.organizationForm.uploadLogoLabel":

@@ -18,14 +18,17 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { track } from "@/lib/posthog-client";
 
-// TODO(i18n): validation messages at module scope, move schema into component if needed
-const organizationSettingsSchema = z.object({
-  name: z.string().min(1, "Name is required").max(255, "Name is too long"),
-  logo: z.string().optional(),
-});
+const organizationSettingsSchema = (t: ReturnType<typeof useT>) =>
+  z.object({
+    name: z
+      .string()
+      .min(1, t("settings.organizationForm.nameRequired"))
+      .max(255, t("settings.organizationForm.nameTooLong")),
+    logo: z.string().optional(),
+  });
 
 type OrganizationSettingsFormValues = z.infer<
-  typeof organizationSettingsSchema
+  ReturnType<typeof organizationSettingsSchema>
 >;
 
 function CompactLogoUpload({
@@ -94,7 +97,7 @@ export function OrganizationForm() {
   const queryClient = useQueryClient();
 
   const form = useForm<OrganizationSettingsFormValues>({
-    resolver: zodResolver(organizationSettingsSchema),
+    resolver: zodResolver(organizationSettingsSchema(t)),
     values: {
       name: org.name ?? "",
       logo: org.logo ?? "",
