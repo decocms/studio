@@ -621,7 +621,6 @@ export function ArrayField({
                   })()}
                 {compact && (
                   <AddListRow
-                    className="gap-2.5"
                     label={
                       usesSectionPicker
                         ? t("sectionsEditor.arrayField.addSection")

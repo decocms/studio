@@ -132,8 +132,8 @@ export function EditorRowActionsTrigger({
 /**
  * The last row of a list: add one more. A row rather than a block below the
  * list, so one collection is one surface and the control sits where the new
- * item lands. The icon slot is the grip's width and the action slot's height,
- * so the labels line up and the row is as tall as the rows above it.
+ * item lands. Its label is centered, and its icon slot carries the action
+ * slot's height so the row is as tall as the rows above it.
  */
 export function AddListRow({
   label,
@@ -151,18 +151,16 @@ export function AddListRow({
       className={cn(
         editorRowClassName({
           className: cn(
-            "w-full cursor-pointer text-muted-foreground",
+            "w-full cursor-pointer justify-center text-muted-foreground",
             className,
           ),
         }),
       )}
     >
-      <span className="flex h-7 w-3.5 shrink-0 items-center justify-center">
+      <span className="flex h-7 shrink-0 items-center justify-center">
         <Plus className="size-3.5" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
-        {label}
-      </span>
+      <span className="min-w-0 truncate text-sm font-medium">{label}</span>
     </button>
   );
 }
