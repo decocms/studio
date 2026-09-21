@@ -30,6 +30,7 @@ import {
   repoRefOf,
 } from "@/storage/repositories";
 import type { Database } from "@/storage/types";
+import { manifestSiblingRepos } from "./manifest-repos";
 import { getGithubAppAuth } from "./github/app-auth";
 import { GithubProviderClient } from "./github/client";
 import { githubCliEnabled, githubCliTokenSource } from "./github/cli-auth";
@@ -298,7 +299,15 @@ export async function cloneInfoForRepository(
     });
   }
   const client = clientForAccount(deps, account);
-  const token = await client.tokenForRepo(ref, opts);
+  const mintsPerRepository = tokenKindOf(account) === "installation";
+  // An account-wide token already reaches the siblings, so it skips the read.
+  const alsoRepositories = mintsPerRepository
+    ? await manifestSiblingRepos(
+        (repoPath, path) => client.readFile({ ...ref, path: repoPath }, path),
+        ref,
+      )
+    : [];
+  const token = await client.tokenForRepo(ref, { ...opts, alsoRepositories });
   const identity =
     token.kind === "installation"
       ? null

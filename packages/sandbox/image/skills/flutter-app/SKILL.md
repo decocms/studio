@@ -42,12 +42,26 @@ gh auth setup-git          # wires git's credential helper to $GH_TOKEN
 flutter pub get
 ```
 
-This writes no token to disk — the helper asks `gh` each time. It only reaches
-repos covered by the same GitHub App installation as the repo you are working
-in. If `pub get` still 404s on a dependency after this, the dependency's org
-has not installed the app: **report that as the blocker**. Do not go looking
-for a token, and never paste one into `pubspec.yaml`, a git URL, or a config
-file.
+This writes no token to disk — the helper asks `gh` each time.
+
+What the token reaches is decided before the run starts: Studio walks the
+`git:` dependencies in `pubspec.yaml`, and the dependencies of those, and mints
+the token for this repository plus **every same-owner repository in that graph**
+(capped at 20). So a normal private dependency tree resolves, and three cases
+do not:
+
+- **A dependency under a different owner.** The token belongs to one GitHub App
+  installation, which is one account; nothing minted for this run can reach
+  another owner's repository. **Report it as the blocker.**
+- **A private dependency added on your working branch.** The walk read each
+  repository's default branch, so a `git:` dependency your PR introduces is not
+  in the token. Say so in your report rather than working around it.
+- **A repository the organization did not authorize for Studio.** The walk stops
+  at the grant, by design.
+
+So a 404 after `gh auth setup-git` is one of those three — **report it**. Do not
+go looking for another token, and never paste one into `pubspec.yaml`, a git
+URL, or a config file.
 
 `flutter pub get` on a cold sandbox takes a few minutes. Run it once.
 
@@ -133,6 +147,13 @@ await p.mouse.click(box.x, box.y);
 
 Then re-read the semantics tree to assert what changed — it is the only
 readable representation of app state a canvas app has.
+
+One wrinkle when you re-read it in the same page: interacting with a widget can
+add a SECOND node carrying the same label — a tapped `FloatingActionButton`
+materializes its tooltip, so `"Increment"` appears twice from the first click
+on. Match on the tappable node or the one whose box you clicked, not on "the
+only node with this label". A fresh `qa-screenshot` run reloads the page, so
+`--label` is unaffected.
 
 ### When the web build fails
 

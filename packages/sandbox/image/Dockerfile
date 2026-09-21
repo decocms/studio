@@ -164,6 +164,11 @@ RUN git clone --depth 1 -b "${FLUTTER_VERSION}" \
   && git config --system --add safe.directory /opt/flutter \
   && flutter precache --universal --web --no-android --no-ios \
   && chown -R sandbox:sandbox /opt/flutter \
+  # Same reason deno and gh are symlinked here: Debian's /etc/profile resets
+  # PATH, so anything reached only through this image's ENV PATH disappears in
+  # a login shell. `bash -lc flutter` is "command not found" without these.
+  && ln -s /opt/flutter/bin/flutter /usr/local/bin/flutter \
+  && ln -s /opt/flutter/bin/dart /usr/local/bin/dart \
   && flutter --version
 
 # Install the typegen build produced from this exact source revision. Installing

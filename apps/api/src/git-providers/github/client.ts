@@ -170,6 +170,9 @@ export class GithubProviderClient implements GitProviderClient {
     const options = this.options;
     if ("appAuth" in options) {
       const granted = options.repositoryIds ?? null;
+      // GitHub honours the restriction below exactly: a repository left out
+      // of the mint 404s for the whole run.
+      const siblings = opts.alsoRepositories ?? [];
       const minted = await options.appAuth.installationToken(
         options.installationId,
         {
@@ -179,8 +182,13 @@ export class GithubProviderClient implements GitProviderClient {
           // them just as readily. So the repository is resolved through the
           // grant first and the token asks for that id and no other.
           ...(granted
-            ? { repositoryIds: [await this.grantedRepositoryId(repo, granted)] }
-            : { repositories: [repoName(repo)] }),
+            ? {
+                repositoryIds: [
+                  await this.grantedRepositoryId(repo, granted),
+                  ...(await this.grantedSiblingIds(repo, siblings, granted)),
+                ],
+              }
+            : { repositories: [repoName(repo), ...siblings] }),
           permissions: GITHUB_SCOPED_PERMISSIONS,
           bufferMs: opts.bufferMs,
           forceRefresh: opts.forceRefresh,
@@ -243,6 +251,36 @@ export class GithubProviderClient implements GitProviderClient {
     }
     this.grantedIds.set(key, id);
     return id;
+  }
+
+  /**
+   * Ids for `siblings` that the grant covers, dropping the rest.
+   *
+   * Unlike the repository being worked on, a sibling outside the grant is not
+   * an error: the manifest says what the checkout wants, the grant says what
+   * Studio may hand over, and a dependency nobody authorized simply is not in
+   * the token. The fetch of that one repository then 404s, with the grant as
+   * the honest reason.
+   *
+   * Sequential, not a `Promise.all`: this is bounded by the manifest's sibling
+   * cap and GitHub's secondary rate limit punishes a burst of repo lookups.
+   */
+  private async grantedSiblingIds(
+    repo: RepoRef,
+    siblings: string[],
+    granted: number[],
+  ): Promise<number[]> {
+    const { owner } = splitOwnerName(repo);
+    const ids: number[] = [];
+    for (const name of siblings) {
+      const summary = await this.getRepo({
+        ...repo,
+        path: `${owner}/${name}`,
+      }).catch(() => null);
+      const id = Number(summary?.externalId);
+      if (Number.isSafeInteger(id) && granted.includes(id)) ids.push(id);
+    }
+    return ids;
   }
 
   private async sourceToken(
