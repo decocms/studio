@@ -2005,11 +2005,14 @@ export function SectionsEditor({
   /** Same predicate the section row's menu uses, so the header and the list
    *  can't disagree about which sections can take a variant. A global block is
    *  excluded there: its definition is shared by every page that uses it, so it
-   *  has no page to vary against. */
+   *  has no page to vary against. Hidden once a nested field is open — the same
+   *  condition `showSectionVariantSelect` carries — because the header then
+   *  names that field, and the button would vary the section behind it. */
   const showAddSectionVariant =
     isEditingSection &&
     !isEditingMultivariateSection &&
     !isGlobalBlockMode &&
+    fieldBreadcrumbs.length === 0 &&
     !!selectedParsed &&
     canAddSectionVariant(selectedParsed) &&
     !!activePageKey;
