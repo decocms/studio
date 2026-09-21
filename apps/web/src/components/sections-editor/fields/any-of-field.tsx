@@ -6,6 +6,7 @@ import {
   Globe01,
   Cube01,
   LayoutAlt01,
+  SearchLg,
 } from "@untitledui/icons";
 import {
   Select,
@@ -19,6 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
@@ -27,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { isSectionBlockRefField } from "../section-array-field";
 import {
   blockRefLoaderConfigHasData,
   blockRefOptionLabel,
@@ -218,7 +221,6 @@ export function AnyOfField({
   const refs = enrichBlockRefOptions(baseRefs, {
     savedBlockKey: savedRef?.blockKey,
     editorValue,
-    decofile,
   });
   const inferredRt =
     refs.length > 0
@@ -232,6 +234,8 @@ export function AnyOfField({
         r.resolveType.includes("/") &&
         !isEmbeddedUnionResolveType(r.resolveType),
     );
+  /** A Section slot picks from the catalog, the same one "Add section" opens. */
+  const sectionSlot = isSectionBlockRefField(schema) && !!onRequestAddSection;
 
   // In module-loader mode the breadcrumb path passes through this component.
   // We strip our own crumb from the front before passing to the nested
@@ -415,6 +419,23 @@ export function AnyOfField({
                   }
                 />
                 <DropdownMenuContent align="end" className="w-52">
+                  {/* A Section slot takes any section, but the schema names
+                      only a few, so the catalog is the honest list. */}
+                  {sectionSlot && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          onRequestAddSection?.({
+                            append: (item) => onChange(item),
+                          })
+                        }
+                      >
+                        <SearchLg className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.chooseSection")}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   <HeaderSelectOptions
                     heading={label}
                     options={refs.map((ref) => ({

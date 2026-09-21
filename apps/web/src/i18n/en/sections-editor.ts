@@ -3,6 +3,7 @@ export const sectionsEditor = {
   "sectionsEditor.addSectionModal.searchPlaceholder": "Search sections...",
   "sectionsEditor.addSectionModal.title": "Add section",
   "sectionsEditor.anyOfField.configuration": "Configuration",
+  "sectionsEditor.anyOfField.chooseSection": "Choose a section…",
   "sectionsEditor.anyOfField.detach": "Detach",
   "sectionsEditor.anyOfField.global": "Global",
   "sectionsEditor.anyOfField.globalBlockSaved": 'Saved global block "{name}"',
