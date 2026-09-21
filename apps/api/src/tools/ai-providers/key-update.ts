@@ -2,6 +2,7 @@ import z from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { providerKeyOutputSchema } from "./key-create";
+import { parseCredential } from "../../ai-providers/adapters/openai-compatible";
 
 export const AI_PROVIDER_KEY_UPDATE = defineTool({
   name: "AI_PROVIDER_KEY_UPDATE",
@@ -17,6 +18,16 @@ export const AI_PROVIDER_KEY_UPDATE = defineTool({
     requireAuth(ctx);
     const org = requireOrganization(ctx);
     await ctx.access.check();
+
+    if (input.apiKey !== undefined) {
+      const existing = await ctx.storage.aiProviderKeys.findById(
+        input.keyId,
+        org.id,
+      );
+      if (existing.providerId === "openai-compatible") {
+        parseCredential(input.apiKey);
+      }
+    }
 
     const key = await ctx.storage.aiProviderKeys.updateKey(
       input.keyId,

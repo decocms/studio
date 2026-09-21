@@ -4,6 +4,7 @@ import {
   fetchWithTransientRetry,
   throwResponseError,
 } from "./fetch-transient-retry";
+import { isPrivateUrl } from "../../mcp-clients/url-security";
 
 function fetchModelsWithRetry(
   baseUrl: string,
@@ -16,7 +17,16 @@ function fetchModelsWithRetry(
   );
 }
 
-function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
+/**
+ * Parses and validates the stored credential blob. baseUrl is admin-supplied
+ * and the server fetches it directly (listModels, chat completions), so it's
+ * a trust boundary the same as an MCP connection URL — reuse the same
+ * private-network guard rather than trusting it outright.
+ */
+export function parseCredential(raw: string): {
+  baseUrl: string;
+  apiKey: string;
+} {
   const parsed = JSON.parse(raw);
   if (!parsed.baseUrl || typeof parsed.baseUrl !== "string") {
     throw new Error(
@@ -28,6 +38,26 @@ function parseCredential(raw: string): { baseUrl: string; apiKey: string } {
   // so it must end with /v1 for standard OpenAI-compatible servers.
   let url = parsed.baseUrl.replace(/\/+$/, "");
   if (!url.endsWith("/v1")) url += "/v1";
+
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch {
+    throw new Error(
+      "Invalid OpenAI-compatible credential: baseUrl is not a valid URL",
+    );
+  }
+  if (protocol !== "http:" && protocol !== "https:") {
+    throw new Error(
+      "Invalid OpenAI-compatible credential: baseUrl must be http(s)",
+    );
+  }
+  if (isPrivateUrl(url)) {
+    throw new Error(
+      "Invalid OpenAI-compatible credential: baseUrl must not target a private network",
+    );
+  }
+
   return { baseUrl: url, apiKey: parsed.apiKey ?? "" };
 }
 

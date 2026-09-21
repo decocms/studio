@@ -3,6 +3,7 @@ import { posthog } from "../../posthog";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { HOSTED_PROVIDER_IDS } from "../../ai-providers/provider-ids";
+import { parseCredential } from "../../ai-providers/adapters/openai-compatible";
 
 export const providerKeyOutputSchema = z.object({
   id: z.string(),
@@ -29,6 +30,11 @@ export const AI_PROVIDER_KEY_CREATE = defineTool({
     requireAuth(ctx);
     const org = requireOrganization(ctx);
     await ctx.access.check();
+
+    // Reject a private/internal baseUrl before it's persisted.
+    if (input.providerId === "openai-compatible") {
+      parseCredential(input.apiKey);
+    }
 
     const key = await ctx.storage.aiProviderKeys.create({
       providerId: input.providerId,

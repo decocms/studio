@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { openaiCompatibleAdapter } from "./openai-compatible";
+import { openaiCompatibleAdapter, parseCredential } from "./openai-compatible";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -50,5 +50,39 @@ describe("openaiCompatibleAdapter.listModels", () => {
       "OpenAI-compatible listModels failed: 401",
     );
     expect(calls).toBe(1);
+  });
+});
+
+describe("parseCredential", () => {
+  test("rejects a baseUrl targeting a private network", () => {
+    expect(() =>
+      parseCredential(
+        JSON.stringify({ baseUrl: "http://169.254.169.254", apiKey: "k" }),
+      ),
+    ).toThrow("private network");
+    expect(() =>
+      parseCredential(
+        JSON.stringify({ baseUrl: "http://localhost:8080", apiKey: "k" }),
+      ),
+    ).toThrow("private network");
+  });
+
+  test("rejects a non-http(s) baseUrl", () => {
+    expect(() =>
+      parseCredential(
+        JSON.stringify({ baseUrl: "file:///etc/passwd", apiKey: "k" }),
+      ),
+    ).toThrow("must be http(s)");
+  });
+
+  test("accepts a public https baseUrl", () => {
+    expect(
+      parseCredential(
+        JSON.stringify({
+          baseUrl: "https://my-endpoint.example.com",
+          apiKey: "k",
+        }),
+      ),
+    ).toEqual({ baseUrl: "https://my-endpoint.example.com/v1", apiKey: "k" });
   });
 });
