@@ -158,7 +158,7 @@ export const taskBoard = {
     "Nenhuma tag ainda. Digite um nome para criar uma.",
   "taskBoard.taskDialog.assignButton": "Atribuir",
   "taskBoard.taskDialog.createdByLabel": "Criado por",
-  "taskBoard.taskDialog.createdBySystemLabel": "Report",
+  "taskBoard.taskDialog.createdBySystemLabel": "Relatório",
   "taskBoard.taskDialog.unknownCreatorLabel": "Desconhecido",
   "taskBoard.taskDialog.projectButton": "Selecionar projeto",
   "taskBoard.taskDialog.noProject": "Sem projeto",
