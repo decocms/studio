@@ -11,7 +11,7 @@
  *
  * Shape, mirroring `pr-open-board-reaction.ts`:
  * - a pure, lexical pre-filter picks the candidate cards (bounded prompt cost);
- * - Jev checks for a duplicate through an org OpenRouter key; the org's
+ * - Jev checks for a duplicate through an org OpenRouter or Deco key; the org's
  *   "fast" tier handles unavailable, oversized, or inconclusive checks;
  * - a pure gate accepts the verdict only at high confidence and only for an id
  *   that was actually offered.
@@ -502,7 +502,9 @@ async function askDecisionModel(
     const keys = await ctx.storage.aiProviderKeys.list({
       organizationId: orgId,
     });
-    const key = keys.find((entry) => entry.providerId === "openrouter");
+    const key =
+      keys.find((entry) => entry.providerId === "openrouter") ??
+      keys.find((entry) => entry.providerId === "deco");
     if (!key) return null;
     const input = buildDuplicateDecisions(drafts, candidates);
     const { answers } = await evaluateDecisions(

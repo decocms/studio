@@ -11,6 +11,17 @@ const secret = (providerId: string): DecopilotSecretModelSource =>
   }) as DecopilotSecretModelSource;
 
 describe("createProviderFromSecret", () => {
+  for (const providerId of ["openrouter", "deco"] as const) {
+    it(`${providerId}: exposes a native decision model independently of chat`, () => {
+      const provider = createProviderFromSecret(secret(providerId));
+      const model = provider.decisions?.model("typesafe/jev-1.13");
+      expect(model).toMatchObject({
+        modelId: "typesafe/jev-1.13",
+        doEvaluate: expect.any(Function),
+      });
+    });
+  }
+
   // Regression guard: the openrouter/deco branch once wrapped languageModel as
   // `(...args) => aiSdk.languageModel(...args)` AFTER `Object.assign` had already
   // replaced `aiSdk.languageModel` with that very wrapper — a self-referential

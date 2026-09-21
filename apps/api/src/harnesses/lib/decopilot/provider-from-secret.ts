@@ -111,11 +111,7 @@ export function createProviderFromSecret(
           languageModel: (...args: Parameters<typeof aiSdk.languageModel>) =>
             baseLanguageModel(...args),
         }) as ProviderV4,
-        providerId === "openrouter"
-          ? {
-              decisions: { model: (modelId) => aiSdk.evaluationModel(modelId) },
-            }
-          : {},
+        { decisions: { model: (modelId) => aiSdk.evaluationModel(modelId) } },
       );
     }
 
