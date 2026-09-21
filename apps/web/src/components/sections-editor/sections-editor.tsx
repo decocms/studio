@@ -83,6 +83,10 @@ import {
   validateBlockId,
 } from "./page-sections";
 import {
+  planVariantMatcherRename,
+  type VariantMatcherOps,
+} from "./variant-matcher-rename";
+import {
   appendSectionVariant,
   deleteMultivariateSectionVariant,
   duplicateMultivariateSectionVariant,
@@ -2468,6 +2472,179 @@ export function SectionsEditor({
     }
   };
 
+  /**
+   * Rename a variant's matcher inside a directly-opened section-multivariate
+   * flag (global-block mode), where the wrapper value IS the whole block. The
+   * awaited whole-block save is authoritative (not the wrapper's debounced
+   * onChange), so there is never a persisted dangling matcher reference.
+   */
+  const handleRenameFieldVariantMatcher = async (
+    wrapperValue: Record<string, unknown>,
+    variantIndex: number,
+    nextName: string,
+  ) => {
+    cancelPendingRuleSaves();
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
+    const { activePageKey: blockKey, decofile: latestDecofile } =
+      latestRef.current;
+    if (!blockKey) return;
+
+    const variants = Array.isArray(wrapperValue.variants)
+      ? [...(wrapperValue.variants as Array<Record<string, unknown>>)]
+      : [];
+    const target = variants[variantIndex];
+    const targetRule =
+      target?.rule && typeof target.rule === "object"
+        ? (target.rule as Record<string, unknown>)
+        : undefined;
+
+    const persistWrapper = async (
+      nextVariants: Array<Record<string, unknown>>,
+    ): Promise<Record<string, unknown>> => {
+      const data = { ...wrapperValue, variants: nextVariants };
+      await saveBlock.mutateAsync({ blockKey, data });
+      return { ...latestDecofile, [blockKey]: data };
+    };
+
+    const action = planVariantMatcherRename(
+      targetRule,
+      nextName,
+      latestDecofile,
+      meta,
+    );
+
+    if (action.kind === "noop") return;
+    if (action.kind === "error") {
+      toast.error(
+        action.reason === "no-matcher-rule"
+          ? t("sectionsEditor.sectionsEditor.variantHasNoMatcherRule")
+          : action.reason === "unreadable-rule"
+            ? t("sectionsEditor.sectionsEditor.couldNotReadVariantMatcherRule")
+            : (action.message ??
+              t("sectionsEditor.sectionsEditor.failedToRenameVariant")),
+      );
+      return;
+    }
+
+    setRenameVariantPending(true);
+    try {
+      if (action.kind === "inline") {
+        const nextVariants = [...variants];
+        nextVariants[variantIndex] = { ...target, rule: action.inlinedRule };
+        const projected = await persistWrapper(nextVariants);
+        await cleanupOrphanMatcherBlock(action.blockKey, projected);
+        onSaved?.();
+        return;
+      }
+
+      if (action.kind === "updateBlock") {
+        await saveBlock.mutateAsync({
+          blockKey: action.blockKey,
+          data: action.blockData,
+        });
+        onSaved?.();
+        return;
+      }
+
+      // Persist the block before its reference; roll back if the second fails.
+      let createdBlockId: string | null = null;
+      try {
+        await saveBlock.mutateAsync({
+          blockKey: action.blockId,
+          data: action.blockData,
+        });
+        createdBlockId = action.blockId;
+        const nextVariants = [...variants];
+        nextVariants[variantIndex] = { ...target, rule: action.reference };
+        await persistWrapper(nextVariants);
+        createdBlockId = null;
+      } catch (err) {
+        if (createdBlockId) {
+          await deleteBlock
+            .mutateAsync({ blockKey: createdBlockId })
+            .catch(() => {});
+        }
+        throw err;
+      }
+      toast.success(
+        t("sectionsEditor.sectionsEditor.savedMatcherAsGlobalBlock", {
+          trimmed: nextName.trim(),
+        }),
+      );
+      onSaved?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.failedToRenameVariant"),
+      );
+    } finally {
+      setRenameVariantPending(false);
+    }
+  };
+
+  /**
+   * Point a directly-opened section-multivariate variant at an existing saved
+   * global matcher block, cleaning up the previously-referenced block if it
+   * becomes orphaned. Whole-block analogue of handleSectionVariantSelectGlobal.
+   */
+  const handleFieldVariantSelectGlobal = async (
+    wrapperValue: Record<string, unknown>,
+    variantIndex: number,
+    blockKey: string,
+  ) => {
+    cancelPendingRuleSaves();
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
+    const { activePageKey: targetBlockKey, decofile: latestDecofile } =
+      latestRef.current;
+    if (!targetBlockKey) return;
+
+    const variants = Array.isArray(wrapperValue.variants)
+      ? [...(wrapperValue.variants as Array<Record<string, unknown>>)]
+      : [];
+    const target = variants[variantIndex];
+    if (!target) return;
+
+    const prevBlockKey = getSavedMatcherBlockKey(
+      target.rule as Record<string, unknown> | undefined,
+      latestDecofile,
+      meta,
+    );
+    variants[variantIndex] = {
+      ...target,
+      rule: buildMatcherBlockReference(blockKey),
+    };
+    const data = { ...wrapperValue, variants };
+    const projected = { ...latestDecofile, [targetBlockKey]: data };
+
+    try {
+      await saveBlock.mutateAsync({ blockKey: targetBlockKey, data });
+      if (prevBlockKey && prevBlockKey !== blockKey) {
+        await cleanupOrphanMatcherBlock(prevBlockKey, projected);
+      }
+      onSaved?.();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : t("sectionsEditor.sectionsEditor.couldNotApplySavedRule"),
+      );
+    }
+  };
+
+  const fieldVariantMatcherOps: VariantMatcherOps = {
+    rename: handleRenameFieldVariantMatcher,
+    selectGlobal: handleFieldVariantSelectGlobal,
+  };
+
   const exitSectionEditing = () => {
     clearSectionEditing();
   };
@@ -2839,6 +3016,7 @@ export function SectionsEditor({
             sandbox={sandbox}
             previewBaseUrl={sectionPreviewBase}
             onRequestAddSection={handleRequestAddSection}
+            onVariantMatcherOp={fieldVariantMatcherOps}
           />
         </ScrollArea>
       ) : (

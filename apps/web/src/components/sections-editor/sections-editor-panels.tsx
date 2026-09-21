@@ -18,6 +18,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SchemaForm } from "./schema-form";
+import type { VariantMatcherOps } from "./variant-matcher-rename";
 import { type Crumb, crumbLabel } from "./schema-form-breadcrumb";
 import { type LiveMeta, type SchemaProperty } from "./resolve-schema";
 import type { FieldProps, SandboxConfig } from "./fields/field-props";
@@ -144,6 +145,7 @@ export function SchemaFormPanel({
   sandbox,
   previewBaseUrl,
   onRequestAddSection,
+  onVariantMatcherOp,
 }: {
   activeSchema: SchemaProperty | null | undefined;
   formValue: unknown;
@@ -164,6 +166,7 @@ export function SchemaFormPanel({
   sandbox?: SandboxConfig | null;
   previewBaseUrl?: string | null;
   onRequestAddSection?: FieldProps["onRequestAddSection"];
+  onVariantMatcherOp?: VariantMatcherOps;
 }) {
   const formBody =
     activeSchema && formValue ? (
@@ -192,6 +195,7 @@ export function SchemaFormPanel({
           sandbox={sandbox}
           previewBaseUrl={previewBaseUrl}
           onRequestAddSection={onRequestAddSection}
+          onVariantMatcherOp={onVariantMatcherOp}
         />
       )
     ) : null;

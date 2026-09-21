@@ -13,16 +13,26 @@ import {
   type SectionVariantEntry,
 } from "../section-variant-list";
 import {
-  MatcherPicker,
+  extractMatcherGlobals,
   extractMatchers,
   type MatcherEntry,
 } from "../matcher-picker";
 import { formatMatcher } from "../format-matcher";
-import { seedMatcherRule } from "../matcher-rules";
+import {
+  buildMatcherBlockData,
+  getSavedMatcherBlockKey,
+  isSavedMatcherBlockReference,
+  readMatcherRuleFormState,
+  resolveEffectiveMatcherRule,
+  resolveVariantRuleLabel,
+  seedMatcherRule,
+} from "../matcher-rules";
 import type { LiveMeta } from "../resolve-schema";
-import { VariantRuleForm } from "../sections-editor-panels";
+import { VariantRuleEditor } from "../variant-rule-editor";
+import { VariantRenameDialog } from "../variant-rename-dialog";
 import { ALWAYS_MATCHER_RESOLVE_TYPE } from "../section-types";
 import { cachedResolveSchema } from "./resolved-schema-cache";
+import type { VariantMatcherOps } from "../variant-matcher-rename";
 
 // `meta` changes only on page load; `resolveType` changes only on rule picker
 // selection — cache the matcher list per meta instance (WeakMap, so a stale
@@ -56,16 +66,25 @@ export interface MultivariateFieldWrapperProps extends FieldProps {
   multivariateResolveType: string;
   /** Render the inner field (used for both plain and variant values). */
   renderInnerField: (props: FieldProps) => ReactNode;
+  /**
+   * Block-store operations for naming a variant's matcher as a global block.
+   * Only supplied on the top-level (global-block) surface, where the wrapper
+   * value is the whole block; absent for nested fields, which hide Rename.
+   */
+  onVariantMatcherOp?: VariantMatcherOps;
 }
 
 export function MultivariateFieldWrapper({
   multivariateResolveType,
   renderInnerField,
+  onVariantMatcherOp,
   ...props
 }: MultivariateFieldWrapperProps) {
   const t = useT();
-  const { value, onChange, meta, path } = props;
+  const { value, onChange, meta, path, decofile } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [renameIndex, setRenameIndex] = useState<number | null>(null);
+  const [renamePending, setRenamePending] = useState(false);
 
   if (!isMultivariateWrapper(value)) {
     return (
@@ -104,7 +123,12 @@ export function MultivariateFieldWrapper({
   const variantEntries: SectionVariantEntry[] = variants.map((v, i) => ({
     index: i,
     label:
-      formatMatcher(v.rule as Record<string, unknown> | undefined) ||
+      resolveVariantRuleLabel(
+        v.rule as Record<string, unknown> | undefined,
+        decofile ?? {},
+        formatMatcher,
+        meta,
+      ) ||
       t("sectionsEditor.multivariateFieldWrapper.variantN", {
         n: String(i + 1),
       }),
@@ -112,14 +136,18 @@ export function MultivariateFieldWrapper({
 
   const currentVariant = variants[safeIndex];
   const currentRule = (currentVariant?.rule ?? {}) as Record<string, unknown>;
-  const currentRt = (currentRule.__resolveType as string) ?? "";
+  // Set when the rule references a saved global block; edits then route to it.
+  const currentGlobalKey =
+    getSavedMatcherBlockKey(currentRule, decofile ?? {}, meta) ?? undefined;
+  const { resolveType: currentRt, formValue: ruleFormValue } =
+    readMatcherRuleFormState(currentRule, decofile ?? {}, meta);
   const currentValue = currentVariant?.value;
 
   const matchers = meta ? cachedExtractMatchers(meta) : [];
+  const globals = meta && decofile ? extractMatcherGlobals(meta, decofile) : [];
 
   const ruleSchema =
     currentRt && meta ? cachedResolveSchema(currentRt, meta) : null;
-  const { __resolveType: _, ...ruleFormValue } = currentRule;
 
   const handleFlatten = () => {
     onChange(flattenMultivariate(wrapper));
@@ -166,10 +194,41 @@ export function MultivariateFieldWrapper({
 
   const handleRuleFormChange = (val: unknown) => {
     const next = val as Record<string, unknown>;
+    if (currentGlobalKey) {
+      const block = (decofile?.[currentGlobalKey] ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const displayName =
+        typeof block.name === "string" ? block.name : currentGlobalKey;
+      props.onSaveReferencedBlock?.(
+        currentGlobalKey,
+        buildMatcherBlockData(currentRt, next, displayName),
+      );
+      return;
+    }
     const newRule: Record<string, unknown> = currentRt
       ? { ...next, __resolveType: currentRt }
       : { ...next };
     onChange(updateVariantRule(wrapper, safeIndex, newRule));
+  };
+
+  // Raw `props.value` (unlike the narrowed `value`) casts to a plain record.
+  const wrapperRecord = props.value as Record<string, unknown>;
+
+  const handleSelectGlobal = (blockKey: string) => {
+    void onVariantMatcherOp?.selectGlobal(wrapperRecord, safeIndex, blockKey);
+  };
+
+  const handleRename = async (index: number, nextName: string) => {
+    if (!onVariantMatcherOp) return;
+    setRenamePending(true);
+    try {
+      await onVariantMatcherOp.rename(wrapperRecord, index, nextName);
+    } finally {
+      setRenamePending(false);
+      setRenameIndex(null);
+    }
   };
 
   const handleValueChange = (nextValue: unknown) => {
@@ -185,6 +244,7 @@ export function MultivariateFieldWrapper({
         variants={variantEntries}
         selectedIndex={safeIndex}
         onSelect={setSelectedIndex}
+        onRename={onVariantMatcherOp ? setRenameIndex : undefined}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}
         onRemoveAll={handleFlatten}
@@ -197,26 +257,29 @@ export function MultivariateFieldWrapper({
           <Label className="text-xs text-muted-foreground">
             {t("sectionsEditor.multivariateFieldWrapper.ruleLabel")}
           </Label>
-          <MatcherPicker
+          <VariantRuleEditor
             currentRt={currentRt}
-            currentLabel={formatMatcher(currentRule)}
+            currentLabel={resolveVariantRuleLabel(
+              currentRule,
+              decofile ?? {},
+              formatMatcher,
+              meta,
+            )}
+            currentGlobalKey={currentGlobalKey}
             matchers={matchers}
+            globals={globals}
             onSelect={handleRuleChange}
+            onSelectGlobal={handleSelectGlobal}
+            schema={ruleSchema}
+            formValue={ruleFormValue}
+            onChange={handleRuleFormChange}
+            formKey={`${safeIndex}:${currentGlobalKey ?? currentRt}`}
+            formWrapperClassName="pt-1"
+            meta={meta}
+            decofile={decofile}
+            onSaveReferencedBlock={props.onSaveReferencedBlock}
+            sandbox={props.sandbox}
           />
-          {ruleSchema && (
-            <div className="pt-1">
-              <VariantRuleForm
-                key={`${safeIndex}-${currentRt}`}
-                schema={ruleSchema}
-                value={ruleFormValue}
-                onChange={handleRuleFormChange}
-                meta={meta}
-                decofile={props.decofile}
-                onSaveReferencedBlock={props.onSaveReferencedBlock}
-                sandbox={props.sandbox}
-              />
-            </div>
-          )}
         </div>
 
         {renderInnerField({
@@ -225,6 +288,44 @@ export function MultivariateFieldWrapper({
           onChange: handleValueChange,
         })}
       </div>
+
+      {renameIndex !== null && (
+        <VariantRenameDialog
+          open
+          initialName={
+            isSavedMatcherBlockReference(
+              variants[renameIndex]?.rule as
+                | Record<string, unknown>
+                | undefined,
+              decofile ?? {},
+              meta,
+            )
+              ? resolveVariantRuleLabel(
+                  variants[renameIndex]?.rule as
+                    | Record<string, unknown>
+                    | undefined,
+                  decofile ?? {},
+                  formatMatcher,
+                  meta,
+                )
+              : ""
+          }
+          autoLabel={formatMatcher(
+            resolveEffectiveMatcherRule(
+              variants[renameIndex]?.rule as
+                | Record<string, unknown>
+                | undefined,
+              decofile ?? {},
+              meta,
+            ),
+          )}
+          isPending={renamePending}
+          onSubmit={(name) => handleRename(renameIndex, name)}
+          onOpenChange={(open) => {
+            if (!open && !renamePending) setRenameIndex(null);
+          }}
+        />
+      )}
     </div>
   );
 }
