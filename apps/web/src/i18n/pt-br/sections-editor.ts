@@ -7,6 +7,7 @@ export const sectionsEditor = {
   "sectionsEditor.anyOfField.configuration": "Configuração",
   "sectionsEditor.anyOfField.noSectionsFound": "Nenhuma seção encontrada.",
   "sectionsEditor.anyOfField.searchSections": "Procurar seções…",
+  "sectionsEditor.anyOfField.browseSections": "Ver todas as seções",
   "sectionsEditor.anyOfField.detach": "Desanexar",
   "sectionsEditor.anyOfField.global": "Global",
   "sectionsEditor.anyOfField.globalBlockSaved": 'Bloco global "{name}" salvo',

@@ -5,6 +5,7 @@ import {
   DotsHorizontal,
   Globe01,
   Cube01,
+  Expand01,
   LayoutAlt01,
 } from "@untitledui/icons";
 import {
@@ -436,6 +437,36 @@ export function AnyOfField({
                     "sectionsEditor.anyOfField.searchSections",
                   )}
                   emptyMessage={t("sectionsEditor.anyOfField.noSectionsFound")}
+                  renderSearchAction={
+                    onRequestAddSection
+                      ? (close) => (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 shrink-0 text-muted-foreground"
+                                aria-label={t(
+                                  "sectionsEditor.anyOfField.browseSections",
+                                )}
+                                onClick={() => {
+                                  close();
+                                  onRequestAddSection({
+                                    append: (item) => onChange(item),
+                                  });
+                                }}
+                              >
+                                <Expand01 className="size-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              {t("sectionsEditor.anyOfField.browseSections")}
+                            </TooltipContent>
+                          </Tooltip>
+                        )
+                      : undefined
+                  }
                   renderTrigger={(selected) => (
                     <button
                       type="button"

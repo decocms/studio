@@ -37,6 +37,9 @@ export interface ComboboxProps {
    *  scores subsequences — fine for short lists, noisy once there are dozens of
    *  similarly-worded options. */
   filter?: ComponentProps<typeof Command>["filter"];
+  /** Trailing control on the search row. Receives a close, since whatever it
+   *  opens replaces this popover rather than sitting under it. */
+  renderSearchAction?: (close: () => void) => ReactNode;
 }
 
 export function Combobox({
@@ -52,6 +55,7 @@ export function Combobox({
   emptyMessage = "No results found.",
   searchPlaceholder = "Search...",
   filter,
+  renderSearchAction,
 }: ComboboxProps) {
   const selectedOption = options.find((option) => option.value === value);
   const [open, setOpen] = useState(false);
@@ -79,7 +83,11 @@ export function Combobox({
         style={{ width: "var(--radix-popover-trigger-width)" }}
       >
         <Command filter={filter}>
-          <CommandInput placeholder={searchPlaceholder} className="h-9" />
+          <CommandInput
+            placeholder={searchPlaceholder}
+            className="h-9"
+            action={renderSearchAction?.(() => setOpen(false))}
+          />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
