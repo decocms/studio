@@ -35,8 +35,8 @@ const THREAD: TaskComment = {
 };
 
 /**
- * CT surface for task comments: one thread card (root + agent reply + inline
- * reply composer) and the new-comment composer. Mirrors the reply/delete/resolve
+ * CT surface for task comments: one thread card (root + existing agent reply)
+ * and the task composer. Mirrors the delete/resolve
  * semantics of `useTaskBoardComments` on a single thread. Posted bodies are
  * dumped into a testid'd <pre> so specs can assert what the composer submitted.
  */
@@ -50,27 +50,6 @@ export function TaskCommentsHarness() {
         <CommentThreadCard
           thread={thread}
           me={ME}
-          onReply={(body) =>
-            setThread((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    replies: [
-                      ...prev.replies,
-                      {
-                        id: `r-${prev.replies.length}`,
-                        author: ME,
-                        body,
-                        createdAt: new Date(
-                          "2026-07-30T12:02:00Z",
-                        ).toISOString(),
-                        replies: [],
-                      },
-                    ],
-                  }
-                : prev,
-            )
-          }
           onDelete={(commentId) =>
             setThread((prev) => {
               if (!prev) return prev;
@@ -89,10 +68,11 @@ export function TaskCommentsHarness() {
         />
       )}
       <NewCommentComposer
-        me={ME}
         onSubmit={(body) => setPosted((prev) => [...prev, body])}
       />
-      <pre data-testid="posted">{JSON.stringify(posted)}</pre>
+      <pre tabIndex={0} data-testid="posted">
+        {JSON.stringify(posted)}
+      </pre>
     </div>
   );
 }
@@ -115,7 +95,6 @@ export function TaskCommentsDialogHarness() {
         <DialogTitle className="sr-only">Task</DialogTitle>
         <div className="flex flex-1 flex-col justify-end overflow-y-auto p-6">
           <NewCommentComposer
-            me={ME}
             onSubmit={(body) => setPosted((prev) => [...prev, body])}
           />
         </div>

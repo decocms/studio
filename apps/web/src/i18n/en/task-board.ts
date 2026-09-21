@@ -1,4 +1,14 @@
 export const taskBoard = {
+  "taskBoard.conversation.openChat": "Open chat",
+  "taskBoard.conversation.reviewer": "Reviewer",
+  "taskBoard.conversation.details": "Details",
+  "taskBoard.conversation.edit": "Edit",
+  "taskBoard.conversation.doneEditing": "Done editing",
+  "taskBoard.conversation.jumpToLatest": "Jump to latest",
+  "taskBoard.conversation.newReplies": "New replies ({count}) · Jump to latest",
+  "taskBoard.conversation.replies": "Conversation",
+  "taskBoard.conversation.sendFailed":
+    "Couldn't send your reply. Please try again.",
   "taskBoard.config.priorityHigh": "High",
   "taskBoard.config.priorityLow": "Low",
   "taskBoard.config.priorityMedium": "Medium",
@@ -150,7 +160,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Collapse",
   "taskBoard.taskDialog.commentDelete": "Delete",
   "taskBoard.taskDialog.commentPlaceholder": "Leave a comment...",
-  "taskBoard.taskDialog.commentReplyPlaceholder": "Leave a reply...",
   "taskBoard.taskDialog.commentResolveThread": "Resolve thread",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} resolved comments from {names}",

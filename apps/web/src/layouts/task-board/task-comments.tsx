@@ -1,6 +1,6 @@
 /**
  * Comments on a task — threads inside the activity feed, with one level of
- * replies and an inline reply composer per thread.
+ * replies preserved for existing conversations. New comments use one composer.
  *
  * Presentation only: the data and the mutations come from
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
@@ -31,10 +31,10 @@ import {
   X,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
-import { formatTimeAgo } from "@/lib/format-time";
+import { TaskMessage } from "./task-message";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import {
   MentionInput,
@@ -47,6 +47,7 @@ export type CommentAuthor = {
   image?: string | null;
   /** The Super Agent signs with its glyph instead of an avatar. */
   isAgent?: boolean;
+  isReviewer?: boolean;
 };
 
 /** A comment as the feed renders it. `replies` is only ever one level deep,
@@ -56,13 +57,14 @@ export type TaskComment = {
   author: CommentAuthor;
   body: string;
   createdAt: string;
+  onOpenThread?: () => void;
   replies: TaskComment[];
   /** Thread roots only — a thread is settled or open as a whole. */
   resolved?: boolean;
 };
 
 /**
- * A comment thread: the root comment, its replies, and a reply composer.
+ * A comment thread: the root comment and its existing replies.
  *
  * A resolved thread collapses to a one-line summary — the conversation is
  * settled, so it should stop taking up the feed, while staying one click from
@@ -71,13 +73,11 @@ export type TaskComment = {
 export function CommentThreadCard({
   thread,
   me,
-  onReply,
   onDelete,
   onToggleResolved,
 }: {
   thread: TaskComment;
   me: CommentAuthor;
-  onReply: (body: string) => void;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
   onToggleResolved: () => void;
@@ -90,7 +90,7 @@ export function CommentThreadCard({
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="flex w-full items-center gap-2.5 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-muted/60"
+        className="flex w-full items-center gap-2.5 rounded-lg bg-muted/40 px-3 py-2 text-left transition-colors hover:bg-muted/60"
       >
         <MessageCheckCircle
           size={16}
@@ -108,7 +108,7 @@ export function CommentThreadCard({
   }
 
   return (
-    <div className="flex flex-col rounded-xl bg-card card-shadow">
+    <div className="flex flex-col border-b border-border/50 pb-4">
       {thread.resolved && (
         <>
           <button
@@ -142,13 +142,6 @@ export function CommentThreadCard({
           />
         </Fragment>
       ))}
-      <Divider />
-      <CommentComposer
-        variant="reply"
-        placeholder={t("taskBoard.taskDialog.commentReplyPlaceholder")}
-        author={me}
-        onSubmit={onReply}
-      />
     </div>
   );
 }
@@ -177,26 +170,6 @@ function resolvedSummary(thread: TaskComment, t: TFunction): string {
         count: comments.length,
         names,
       });
-}
-
-/** The bottom composer that starts a new thread on the task. */
-export function NewCommentComposer({
-  me,
-  onSubmit,
-}: {
-  me: CommentAuthor;
-  onSubmit: (body: string) => void;
-}) {
-  const t = useT();
-
-  return (
-    <CommentComposer
-      variant="root"
-      placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
-      author={me}
-      onSubmit={onSubmit}
-    />
-  );
 }
 
 /**
@@ -230,34 +203,25 @@ function CommentEntry({
   onToggleResolved?: () => void;
 }) {
   return (
-    <div className="group flex flex-col gap-1.5 p-4">
-      <div className="flex items-center gap-2">
-        <AuthorGlyph author={comment.author} />
-        <span className="text-sm font-medium text-foreground">
-          {comment.author.name}
-        </span>
-        <span className="text-sm text-muted-foreground">
-          {formatTimeAgo(new Date(comment.createdAt))}
-        </span>
-        {(onDelete || onToggleResolved) && (
+    <TaskMessage
+      id={comment.id}
+      commentId={comment.id}
+      author={comment.author.name}
+      avatar={<AuthorGlyph author={comment.author} />}
+      createdAt={comment.createdAt}
+      body={comment.body}
+      isReply={isReply}
+      onOpenThread={comment.onOpenThread}
+      actions={
+        (onDelete || onToggleResolved) && (
           <CommentActionsMenu
             resolved={resolved}
             onDelete={onDelete}
             onToggleResolved={onToggleResolved}
           />
-        )}
-      </div>
-      <div
-        className={cn(
-          // One size per comment; the shared markdown pins its own 14px.
-          "text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
-          // Avatar (24px) + gap (8px), so a reply's text starts at the name.
-          isReply && "pl-8",
-        )}
-      >
-        <MemoizedMarkdown id={comment.id} text={comment.body} />
-      </div>
-    </div>
+        )
+      }
+    />
   );
 }
 
@@ -312,6 +276,7 @@ function CommentActionsMenu({
 }
 
 function AuthorGlyph({ author }: { author: CommentAuthor }) {
+  if (author.isReviewer) return <ReviewerIcon size={24} />;
   if (author.isAgent) return <SuperAgentIcon size={24} />;
   return (
     <Avatar
@@ -324,18 +289,12 @@ function AuthorGlyph({ author }: { author: CommentAuthor }) {
 }
 
 /**
- * Composer for a comment or a reply. Enter sends, Shift+Enter breaks the line.
+ * Task conversation composer. Enter sends, Shift+Enter breaks the line.
  */
-function CommentComposer({
-  variant,
-  placeholder,
-  author,
+export function NewCommentComposer({
   onSubmit,
 }: {
-  variant: "root" | "reply";
-  placeholder: string;
-  author: CommentAuthor;
-  onSubmit: (body: string) => void;
+  onSubmit: (body: string) => void | boolean | Promise<void | boolean>;
 }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
@@ -346,13 +305,10 @@ function CommentComposer({
   const textarea = (
     <MentionInput
       ref={ref}
-      placeholder={placeholder}
+      placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
-      className={cn(
-        "w-full [&_.tiptap]:outline-none",
-        variant === "root" && "min-h-10",
-      )}
+      className="min-h-10 w-full [&_.tiptap]:outline-none"
     />
   );
 
@@ -371,37 +327,21 @@ function CommentComposer({
   );
 
   // The whole composer is the click target, not just the one-line input inside
-  // it: the empty space below "Leave a comment..." and the gap either side of
-  // "Leave a reply..." read as part of the field, so clicking them should put
+  // it: the empty space below "Leave a comment..." reads as part of the field,
+  // so clicking it should put
   // the caret there. A click that lands on the send button hits the button
   // first and bubbles here after, which only re-focuses the (now empty)
   // composer.
   const focusInput = () => ref.current?.focus();
 
-  if (variant === "root") {
-    return (
-      <div
-        data-testid="new-comment-composer"
-        onClick={focusInput}
-        className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
-      >
-        {textarea}
-        <div className="flex items-center justify-end">{actions}</div>
-      </div>
-    );
-  }
-
   return (
     <div
-      data-testid="reply-composer"
+      data-testid="new-comment-composer"
       onClick={focusInput}
-      className="relative flex cursor-text items-start gap-2 p-3"
+      className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
     >
-      <span className="mt-0.5 shrink-0">
-        <AuthorGlyph author={author} />
-      </span>
-      <div className="min-w-0 flex-1 pt-0.5">{textarea}</div>
-      {actions}
+      {textarea}
+      <div className="flex items-center justify-end">{actions}</div>
     </div>
   );
 }

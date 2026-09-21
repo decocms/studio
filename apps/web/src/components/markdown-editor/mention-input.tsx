@@ -7,7 +7,7 @@
  * is markdown, like `MarkdownEditor`'s, because that's what a comment body is.
  */
 
-import { useImperativeHandle, useState, type Ref } from "react";
+import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -43,8 +43,8 @@ export function MentionInput({
   className,
 }: {
   placeholder: string;
-  /** Called with the markdown body. Returning clears the field. */
-  onSubmit: (markdown: string) => void;
+  /** Clear only after a successful send; false keeps the draft for retry. */
+  onSubmit: (markdown: string) => void | boolean | Promise<void | boolean>;
   /** Drives the send button's disabled state. */
   onEmptyChange: (empty: boolean) => void;
   /** Submit and focus, for the send button and the click-anywhere-to-type
@@ -53,6 +53,7 @@ export function MentionInput({
   className?: string;
 }) {
   const [mentionStore] = useState(() => new MentionMenuStore());
+  const sending = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -103,13 +104,21 @@ export function MentionInput({
     onUpdate: ({ editor }) => onEmptyChange(editor.isEmpty),
   });
 
-  function submit() {
-    if (!editor) return;
+  async function submit() {
+    if (!editor || sending.current) return;
     const markdown = editor.getMarkdown().trim();
     if (!markdown) return;
-    onSubmit(markdown);
-    editor.commands.clearContent();
-    onEmptyChange(true);
+    sending.current = true;
+    editor.setEditable(false);
+    try {
+      if ((await onSubmit(markdown)) !== false) {
+        editor.commands.clearContent();
+        onEmptyChange(true);
+      }
+    } finally {
+      sending.current = false;
+      if (!editor.isDestroyed) editor.setEditable(true);
+    }
   }
 
   useImperativeHandle(ref, () => ({

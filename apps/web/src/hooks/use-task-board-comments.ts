@@ -69,5 +69,11 @@ export function useTaskBoardComments(itemId: string | undefined) {
     onSuccess: invalidate,
   });
 
-  return { threads: query.data ?? [], post, setResolved, remove };
+  return {
+    threads: query.data ?? [],
+    isLoading: query.isPending,
+    post,
+    setResolved,
+    remove,
+  };
 }

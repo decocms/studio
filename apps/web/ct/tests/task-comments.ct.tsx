@@ -11,7 +11,7 @@ test("renders a thread as one card with its replies", async ({ mount }) => {
   await expect(component.getByText("Super Agent").first()).toBeVisible();
   await expect(
     component.getByRole("textbox", { name: "Leave a reply..." }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     component.getByRole("textbox", { name: "Leave a comment..." }),
   ).toBeVisible();
@@ -50,15 +50,12 @@ test("an empty composer cannot be submitted", async ({ mount }) => {
   await expect(component.getByLabel("Send").last()).toBeEnabled();
 });
 
-test("the reply composer appends to the thread it belongs to", async ({
+test("existing agent replies share the single task composer", async ({
   mount,
 }) => {
   const component = await mount(<TaskCommentsHarness />);
-  const reply = component.getByRole("textbox", { name: "Leave a reply..." });
-
-  await reply.fill("thanks, reviewing now");
-  await reply.press("Enter");
-  await expect(component.getByText("thanks, reviewing now")).toBeVisible();
+  await expect(component.getByRole("textbox")).toHaveCount(1);
+  await expect(component.getByText(/^On it\./)).toBeVisible();
 });
 
 test("the composer offers no attach control until attachments exist", async ({
@@ -96,19 +93,6 @@ test("clicking anywhere in the comment card focuses the input", async ({
   const box = (await card.boundingBox())!;
   await card.click({ position: { x: 12, y: box.height - 6 } });
   await expect(composer).toBeFocused();
-});
-
-test("clicking the empty part of a reply row focuses its input", async ({
-  mount,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-  const reply = component.getByRole("textbox", { name: "Leave a reply..." });
-  const row = component.getByTestId("reply-composer");
-
-  // Right of the placeholder, left of the send button: dead space in between.
-  const box = (await row.boundingBox())!;
-  await row.click({ position: { x: box.width - 80, y: box.height / 2 } });
-  await expect(reply).toBeFocused();
 });
 
 test("deleting a reply leaves the rest of the thread", async ({
@@ -186,7 +170,7 @@ test("a resolved thread collapses to a summary and reopens on click", async ({
   await expect(component.getByText(/^On it\./)).toBeVisible();
   await expect(
     component.getByRole("textbox", { name: "Leave a reply..." }),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   // Expanded again, the menu offers the way back out.
   await component.getByLabel("Comment actions").first().click();
@@ -322,12 +306,10 @@ test("clicking away dismisses the picker without stealing the caret back", async
   await composer.pressSequentially("@");
   await expect(page.getByTestId("mention-menu")).toBeVisible();
 
-  await component.getByRole("textbox", { name: "Leave a reply..." }).click();
+  await component.getByTestId("posted").click();
   await expect(page.getByTestId("mention-menu")).toHaveCount(0);
   // The click chose where focus goes; the dismissal must not undo that.
-  await expect(
-    component.getByRole("textbox", { name: "Leave a reply..." }),
-  ).toBeFocused();
+  await expect(component.getByTestId("posted")).toBeFocused();
 });
 
 test("inside a modal dialog the picker is still clickable, typable and scrollable", async ({

@@ -1,6 +1,17 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.conversation.openChat": "Abrir chat",
+  "taskBoard.conversation.reviewer": "Revisor",
+  "taskBoard.conversation.details": "Detalhes",
+  "taskBoard.conversation.edit": "Editar",
+  "taskBoard.conversation.doneEditing": "Concluir edição",
+  "taskBoard.conversation.jumpToLatest": "Ir para o mais recente",
+  "taskBoard.conversation.newReplies":
+    "Novas respostas ({count}) · Ir para o mais recente",
+  "taskBoard.conversation.replies": "Conversa",
+  "taskBoard.conversation.sendFailed":
+    "Não foi possível enviar sua resposta. Tente novamente.",
   "taskBoard.config.priorityHigh": "Alta",
   "taskBoard.config.priorityLow": "Baixa",
   "taskBoard.config.priorityMedium": "Média",
@@ -156,7 +167,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
   "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
-  "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} comentários resolvidos de {names}",

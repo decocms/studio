@@ -72,6 +72,10 @@ async function openTask(page: Page, orgSlug: string, title: string) {
   const card = page.getByText(title, { exact: true });
   await card.waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
   await card.click();
+  await page
+    .getByTestId("task-detail")
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
   await editorOf(page).waitFor({ state: "visible", timeout: FIRST_PAINT_MS });
 }
 

@@ -163,12 +163,13 @@ import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
 import {
   CommentThreadCard,
-  NewCommentComposer,
   type CommentAuthor,
   type TaskComment,
 } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
+import { TaskConversationFrame } from "./task-conversation-frame";
+import { TaskMessage } from "./task-message";
 
 // ponytail: pinned to end-of-day so "due today" doesn't flip to overdue
 // mid-morning. Local zone in, UTC out.
@@ -503,6 +504,8 @@ function TaskBoardItemEditor({
   const taskType = form.type;
   const tagIds = form.tagIds;
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [editingPost, setEditingPost] = useState(!item);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const collapseDescription = descriptionOverflows && !descriptionExpanded;
   /** Measured against the collapsed cap, not the rendered box, so expanding
@@ -684,6 +687,17 @@ function TaskBoardItemEditor({
    *  its trail; a dialog has no header to give them to. */
   const actions = (
     <div className="flex items-center gap-2">
+      {item && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="lg:hidden"
+          onClick={() => setDetailsOpen((value) => !value)}
+          aria-expanded={detailsOpen}
+        >
+          {t("taskBoard.conversation.details")}
+        </Button>
+      )}
       {/* Autosave has no button, so this is the only sign of a write. */}
       {item && isSaving && (
         <span className="mr-1 text-sm text-muted-foreground">
@@ -899,165 +913,236 @@ function TaskBoardItemEditor({
       {/* Above the scroll area, so it never moves. The page centers it on the
           same column as the content below. */}
       {chrome === "page" ? (
-        <div className="mx-auto w-full max-w-[1040px]">{header}</div>
+        <div className="mx-auto w-full max-w-[1280px]">{header}</div>
       ) : (
         header
       )}
 
-      {/* The one scroll container, and it spans the full width so the
-          scrollbar rides the window's edge rather than the centered column's.
-          Task and properties scroll together, so the wheel works with the
-          pointer anywhere. */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* The conversation and inspector each own their scroll position. */}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          item ? "overflow-hidden" : "overflow-y-auto",
+        )}
+      >
         <div
           className={cn(
-            "flex flex-col sm:flex-row",
-            chrome === "page" && "mx-auto w-full max-w-[1040px]",
+            "flex min-h-0 flex-1 flex-col lg:flex-row",
+            chrome === "page" && "mx-auto w-full max-w-[1280px]",
           )}
         >
-          {/* Editor pane — content-height on mobile so it doesn't leave a big
-              gap above the properties; fills the column on desktop. */}
-          <div className="flex min-w-0 flex-col gap-2 p-6 sm:flex-1 sm:p-8 sm:pt-6">
-            <div>
-              <textarea
-                ref={(el) => {
-                  if (!el) return;
-                  el.style.height = "auto";
-                  el.style.height = `${el.scrollHeight}px`;
-                }}
-                value={title}
-                onChange={(e) => {
-                  if (contentLocked) return;
-                  patch({ title: e.target.value }, true);
-                  e.target.style.height = "auto";
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.preventDefault();
-                }}
-                onBlur={flush}
-                placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
-                autoFocus
-                rows={1}
-                readOnly={contentLocked}
-                className={cn(
-                  "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
-                  contentLocked && "cursor-default",
-                )}
-              />
-              {contentLocked && (
-                <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Lock01 size={12} />
-                  {t("taskBoard.taskDialog.reportsContentLocked")}
-                </p>
-              )}
-            </div>
-
-            {item && (
-              <RunFailureBanner
-                item={item}
-                orgSlug={org.slug}
-                onRerun={onRerun}
-              />
-            )}
-
-            <div className="flex flex-col">
-              <div className="flex flex-col py-6">
-                <div
-                  // Clip only while folded: the image node's remove button is
-                  // absolute and reaches outside a 1px image's box, so a
-                  // permanent clip puts it out of reach.
-                  className={cn(
-                    "relative",
-                    collapseDescription && "overflow-hidden",
-                  )}
-                  style={
-                    collapseDescription
-                      ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
-                      : undefined
-                  }
-                  // Expand before editing: no caret under the fold.
-                  onFocusCapture={() => setDescriptionExpanded(true)}
-                  onBlurCapture={flush}
-                >
-                  <div ref={measureDescription} data-testid="task-description">
-                    {/* Markdown in, markdown out — the value also becomes
-                        prompt context for the agent, and plain-text
-                        descriptions written before this editor existed still
-                        parse as-is. */}
-                    <MarkdownEditor
-                      defaultValue={description}
-                      onChange={(next) => patch({ description: next }, true)}
-                      placeholder={t(
-                        "taskBoard.taskDialog.descriptionPlaceholder",
+          {/* The original post and conversation share one reading column. */}
+          <TaskConversationFrame item={item} hidden={!!item && detailsOpen}>
+            <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8">
+              {item && (
+                <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Avatar
+                    url={creator?.user?.image ?? undefined}
+                    fallback={getInitials(creator?.user?.name)}
+                    shape="circle"
+                    size="xs"
+                  />
+                  <span className="font-medium text-foreground">
+                    {isReportsTask(item)
+                      ? t("taskBoard.taskDialog.createdBySystemLabel")
+                      : (creator?.user?.name ??
+                        t("taskBoard.taskDialog.unknownCreatorLabel"))}
+                  </span>
+                  <time dateTime={item.createdAt}>
+                    {formatTimeAgo(new Date(item.createdAt))}
+                  </time>
+                  {!contentLocked && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto"
+                      onClick={() => {
+                        flush();
+                        setEditingPost((value) => !value);
+                      }}
+                    >
+                      {t(
+                        editingPost
+                          ? "taskBoard.conversation.doneEditing"
+                          : "taskBoard.conversation.edit",
                       )}
-                      editable={!contentLocked}
-                    />
-                  </div>
-                  {collapseDescription && (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
-                    />
+                    </Button>
                   )}
                 </div>
-                {descriptionOverflows && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 w-fit text-muted-foreground hover:text-foreground"
-                    onClick={() => setDescriptionExpanded((open) => !open)}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={cn(
-                        "transition-transform",
-                        descriptionExpanded && "rotate-180",
-                      )}
-                    />
-                    {t(
-                      descriptionExpanded
-                        ? "taskBoard.taskDialog.showLess"
-                        : "taskBoard.taskDialog.showMore",
+              )}
+              <div>
+                {item && !editingPost ? (
+                  <h1 className="text-2xl font-semibold leading-snug text-foreground">
+                    {title}
+                  </h1>
+                ) : (
+                  <textarea
+                    ref={(el) => {
+                      if (!el) return;
+                      el.style.height = "auto";
+                      el.style.height = `${el.scrollHeight}px`;
+                    }}
+                    value={title}
+                    onChange={(e) => {
+                      if (contentLocked) return;
+                      patch({ title: e.target.value }, true);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${e.target.scrollHeight}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                    onBlur={flush}
+                    placeholder={t("taskBoard.taskDialog.taskTitlePlaceholder")}
+                    autoFocus={!item}
+                    rows={1}
+                    readOnly={contentLocked}
+                    className={cn(
+                      "w-full resize-none overflow-hidden border-0 bg-transparent text-2xl font-semibold leading-snug text-foreground outline-none placeholder:text-foreground/30",
+                      contentLocked && "cursor-default",
                     )}
-                  </Button>
+                  />
+                )}
+                {item && tagIds.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {tagIds.map((id) => {
+                      const tag = orgTags.find(
+                        (candidate) => candidate.id === id,
+                      );
+                      return tag ? (
+                        <span
+                          key={id}
+                          className="rounded-md border border-border px-2 py-1"
+                        >
+                          {tag.name}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                )}
+                {contentLocked && (
+                  <p className="mb-3 mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Lock01 size={12} />
+                    {t("taskBoard.taskDialog.reportsContentLocked")}
+                  </p>
                 )}
               </div>
 
-              {/* Separates the task itself from the record of it (links,
+              {item && (
+                <RunFailureBanner
+                  item={item}
+                  orgSlug={org.slug}
+                  onRerun={onRerun}
+                />
+              )}
+
+              <div className="flex flex-col">
+                <div className="flex flex-col py-6">
+                  <div
+                    // Clip only while folded: the image node's remove button is
+                    // absolute and reaches outside a 1px image's box, so a
+                    // permanent clip puts it out of reach.
+                    className={cn(
+                      "relative",
+                      collapseDescription && "overflow-hidden",
+                    )}
+                    style={
+                      collapseDescription
+                        ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
+                        : undefined
+                    }
+                    // Expand before editing: no caret under the fold.
+                    onFocusCapture={() => setDescriptionExpanded(true)}
+                    onBlurCapture={flush}
+                  >
+                    <div
+                      ref={measureDescription}
+                      data-testid="task-description"
+                    >
+                      {/* Markdown in, markdown out — the value also becomes
+                        prompt context for the agent, and plain-text
+                        descriptions written before this editor existed still
+                        parse as-is. */}
+                      {item && !editingPost ? (
+                        <MemoizedMarkdown
+                          id={`task-post-${item.id}`}
+                          text={description}
+                        />
+                      ) : (
+                        <MarkdownEditor
+                          defaultValue={description}
+                          onChange={(next) =>
+                            patch({ description: next }, true)
+                          }
+                          placeholder={t(
+                            "taskBoard.taskDialog.descriptionPlaceholder",
+                          )}
+                          editable={!contentLocked}
+                        />
+                      )}
+                    </div>
+                    {collapseDescription && (
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
+                      />
+                    )}
+                  </div>
+                  {descriptionOverflows && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 w-fit text-muted-foreground hover:text-foreground"
+                      onClick={() => setDescriptionExpanded((open) => !open)}
+                    >
+                      <ChevronDown
+                        size={14}
+                        className={cn(
+                          "transition-transform",
+                          descriptionExpanded && "rotate-180",
+                        )}
+                      />
+                      {t(
+                        descriptionExpanded
+                          ? "taskBoard.taskDialog.showLess"
+                          : "taskBoard.taskDialog.showMore",
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Separates the task itself from the record of it (links,
                   activity). Edit mode only — a new task has neither. */}
-              {item && (
-                <div className="py-4">
-                  <hr className="border-border" />
-                </div>
-              )}
+                {item && (
+                  <div className="py-4">
+                    <hr className="border-border" />
+                  </div>
+                )}
 
-              {item && (
-                <div className="flex flex-col gap-8">
-                  <LinksSection
-                    item={item}
-                    description={description}
-                    onOpenPreview={onOpenPreview}
-                  />
-                  <ActivitySection
-                    item={item}
-                    members={members}
-                    startedBy={assignedBy ?? assignee}
-                    onOpenThread={(thread) => setOpenThreadId(thread.threadId)}
-                  />
-                </div>
-              )}
+                {item && (
+                  <div className="flex flex-col gap-8">
+                    <ActivitySection
+                      item={item}
+                      members={members}
+                      onOpenThread={(thread) =>
+                        setOpenThreadId(thread.threadId)
+                      }
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </TaskConversationFrame>
 
-          {/* Properties pane — wrapping chips under the editor on mobile, a
-              stacked sidebar on desktop. Pinned on desktop so it stays put
-              while the task scrolls past it; `self-start` keeps it its own
-              height (a stretched item has no room to stick), and the viewport
-              cap lets a pane taller than the screen scroll itself rather than
-              lose its bottom. */}
-          <div className="flex w-full shrink-0 flex-col gap-8 border-t border-border p-6 sm:sticky sm:top-0 sm:max-h-dvh sm:w-[300px] sm:self-start sm:overflow-y-auto sm:border-t-0">
+          {/* On mobile, Details switches panes without unmounting the draft. */}
+          <div
+            data-testid="task-inspector"
+            className={cn(
+              "min-h-0 w-full flex-1 flex-col gap-6 overflow-y-auto border-t border-border p-6 lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0",
+              item ? (detailsOpen ? "flex" : "hidden") : "flex",
+            )}
+          >
             {item && <ReviewsGroup item={item} />}
 
             <PropertyGroup label={t("taskBoard.taskDialog.propertiesLabel")}>
@@ -1498,6 +1583,13 @@ function TaskBoardItemEditor({
                 </DropdownMenuContent>
               </DropdownMenu>
             </PropertyGroup>
+            {item && (
+              <LinksSection
+                item={item}
+                description={description}
+                onOpenPreview={onOpenPreview}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1656,17 +1748,13 @@ function threadStatusStyle(
 }
 
 /**
- * A linked agent session (thread) — the WHOLE card is clickable (opens the
- * run's chat), with a hover state + "Open" affordance so it's obvious it's
- * interactive, plus the live run status and last message.
+ * A linked run uses the same message surface as its reports and human comments.
  */
 function ThreadActivityItem({
   thread,
-  startedBy,
   onOpen,
 }: {
   thread: TaskBoardItemThread;
-  startedBy?: Member;
   onOpen?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
@@ -1679,69 +1767,45 @@ function ThreadActivityItem({
   const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
 
   return (
-    <button
-      type="button"
-      disabled={!onOpen}
-      onClick={() => onOpen?.(thread)}
-      className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
-    >
-      <div className="flex items-center gap-2">
-        {isReviewerThread ? (
-          <ReviewerIcon size={16} className="shrink-0" />
-        ) : (
-          <SuperAgentIcon size={16} className="shrink-0" />
+    <div className="border-b border-border/50 pb-4">
+      <TaskMessage
+        id={`run-${thread.threadId}`}
+        author={t(
+          isReviewerThread
+            ? "taskBoard.conversation.reviewer"
+            : "taskBoard.taskDialog.superAgentLabel",
         )}
-        <span className="truncate text-sm font-medium text-foreground">
-          {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
-        </span>
-        {startedBy && (
-          <>
-            <span className="shrink-0 text-sm text-muted-foreground/50">
-              {t("taskBoard.taskDialog.startedByLabel")}
-            </span>
-            <Avatar
-              url={startedBy.user?.image ?? undefined}
-              fallback={getInitials(startedBy.user?.name)}
-              shape="circle"
-              size="2xs"
-            />
-            <span className="truncate text-sm text-foreground">
-              {startedBy.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
-            </span>
-          </>
-        )}
-        {onOpen && (
-          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60 group-hover:text-foreground">
-            {t("taskBoard.taskDialog.openThreadHint")}
-            <ChevronRight size={14} />
-          </span>
-        )}
-      </div>
-      {state && (
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex shrink-0 items-center gap-1.5",
-              state.className,
-            )}
-          >
-            {/* A spinning status glyph is a loading indicator, so it is the
+        avatar={
+          isReviewerThread ? (
+            <ReviewerIcon size={24} />
+          ) : (
+            <SuperAgentIcon size={24} />
+          )
+        }
+        createdAt={thread.createdAt}
+        body={message || thread.title || ""}
+        onOpenThread={onOpen ? () => onOpen(thread) : undefined}
+        metadata={
+          state && (
+            <span
+              className={cn(
+                "flex shrink-0 items-center gap-1.5",
+                state.className,
+              )}
+            >
+              {/* A spinning status glyph is a loading indicator, so it is the
                 shared Spinner; the settled states keep their own icon. */}
-            {state.spin ? (
-              <Spinner className="size-[15px]" label={state.label} />
-            ) : (
-              <state.icon size={15} />
-            )}
-            <span className="text-sm">{state.label}</span>
-          </span>
-          {message && (
-            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-              {message}
+              {state.spin ? (
+                <Spinner className="size-[15px]" label={state.label} />
+              ) : (
+                <state.icon size={15} />
+              )}
+              <span className="text-xs">{state.label}</span>
             </span>
-          )}
-        </div>
-      )}
-    </button>
+          )
+        }
+      />
+    </div>
   );
 }
 
@@ -2183,7 +2247,7 @@ function PrCardSkeleton() {
 
 /**
  * Links panel: the task's related pull requests (live GitHub state) plus any
- * links found in the description, aggregated in one place. Hidden when there's
+ * links found in the original post and replies. Hidden when there's
  * nothing to show.
  */
 function LinksSection({
@@ -2205,7 +2269,16 @@ function LinksSection({
   const reviewerOn = useReviewerEnabled();
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
-  const links = extractDescriptionLinks(description);
+  const comments = useTaskBoardComments(item.id);
+  const links = extractDescriptionLinks(
+    [
+      description,
+      ...comments.threads.flatMap((thread) => [
+        thread.body,
+        ...thread.replies.map((reply) => reply.body),
+      ]),
+    ].join("\n\n"),
+  );
   // Keep the section up (with a skeleton) while the PR enrichment loads; a
   // PR-less task resolves instantly, so the skeleton barely flashes for it.
   const loadingPrs = prsLoading && !prs;
@@ -2347,19 +2420,17 @@ function RunReviewerButton({ item }: { item: TaskBoardItem }) {
 
 /**
  * Activity feed: the task's change timeline (created, moved, (re)assigned), its
- * linked agent sessions and its comment threads, interleaved most-recent-first.
+ * linked agent sessions and its comment threads, interleaved oldest-first.
  * Consecutive timeline events render as one run joined by a rail; a thread or a
- * comment renders as a card. A composer at the bottom starts a new thread.
+ * comment renders as a post. The conversation frame owns the composer.
  */
 function ActivitySection({
   item,
   members,
-  startedBy,
   onOpenThread,
 }: {
   item: TaskBoardItem;
   members: Member[];
-  startedBy?: Member;
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
@@ -2378,12 +2449,28 @@ function ActivitySection({
    *  so a comment from a since-removed member still renders. The Super Agent
    *  writes its own comments during a task run and is not a member, so it is
    *  resolved first — `isAgent` is what renders its glyph. */
-  const authorOf = (userId: string): CommentAuthor => {
+  const sourceRun = (threadId: string | null | undefined) =>
+    item.threads.find((thread) => thread.threadId === threadId);
+  const openSourceRun = (threadId: string | null | undefined) => {
+    const run = sourceRun(threadId);
+    return run && onOpenThread ? () => onOpenThread(run) : undefined;
+  };
+  const authorOf = (
+    userId: string,
+    threadId?: string | null,
+  ): CommentAuthor => {
     if (userId === SUPER_AGENT_ASSIGNEE_ID) {
+      const run = sourceRun(threadId);
+      const isReviewer = !!run && isReviewerThreadTitle(run.title, "reviewer");
       return {
         id: userId,
-        name: t("taskBoard.taskDialog.superAgentLabel"),
+        name: t(
+          isReviewer
+            ? "taskBoard.conversation.reviewer"
+            : "taskBoard.taskDialog.superAgentLabel",
+        ),
         isAgent: true,
+        isReviewer,
       };
     }
     if (userId === me.id) return me;
@@ -2396,13 +2483,15 @@ function ActivitySection({
   };
   const threads: TaskComment[] = comments.threads.map((thread) => ({
     id: thread.id,
-    author: authorOf(thread.authorId),
+    author: authorOf(thread.authorId, thread.threadId),
+    onOpenThread: openSourceRun(thread.threadId),
     body: thread.body,
     createdAt: thread.createdAt,
     resolved: thread.resolved,
     replies: thread.replies.map((reply) => ({
       id: reply.id,
-      author: authorOf(reply.authorId),
+      author: authorOf(reply.authorId, reply.threadId),
+      onOpenThread: openSourceRun(reply.threadId),
       body: reply.body,
       createdAt: reply.createdAt,
       replies: [],
@@ -2435,7 +2524,7 @@ function ActivitySection({
         comment,
       }),
     ),
-  ].sort((a, b) => b.at - a.at);
+  ].sort((a, b) => a.at - b.at);
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
@@ -2443,6 +2532,14 @@ function ActivitySection({
     | { type: "thread"; thread: TaskBoardItemThread }
     | { type: "comment"; comment: TaskComment }
   )[] = [];
+  const blockDate = (block: (typeof blocks)[number]) =>
+    new Date(
+      block.type === "timeline"
+        ? block.items[0]!.occurredAt
+        : block.type === "thread"
+          ? block.thread.createdAt
+          : block.comment.createdAt,
+    );
   for (const ev of events) {
     if (ev.kind === "thread") {
       blocks.push({ type: "thread", thread: ev.thread });
@@ -2453,68 +2550,92 @@ function ActivitySection({
       continue;
     }
     const last = blocks[blocks.length - 1];
-    if (last?.type === "timeline") last.items.push(ev.activity);
+    if (
+      last?.type === "timeline" &&
+      blockDate(last).toDateString() === new Date(ev.at).toDateString()
+    )
+      last.items.push(ev.activity);
     else blocks.push({ type: "timeline", items: [ev.activity] });
   }
 
   return (
-    <RecordSection
-      label={t("taskBoard.taskDialog.activityLabel")}
-      action={
+    <section className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          {t("taskBoard.conversation.replies")}
+        </h2>
         <div className="flex items-center gap-1">
           <RunReviewerButton item={item} />
           <SubscribeToggle itemId={item.id} members={members} />
         </div>
-      }
-    >
+      </div>
       <div className="flex flex-col gap-5">
-        {/* At the top: the feed reads newest-first, so this is where a new
-            comment lands. */}
-        <NewCommentComposer
-          me={me}
-          onSubmit={(body) => comments.post.mutate({ body })}
-        />
         {blocks.map((block, i) => {
-          if (block.type === "timeline") {
+          const date = blockDate(block);
+          const previous = blocks[i - 1];
+          const showDate =
+            !previous ||
+            blockDate(previous).toDateString() !== date.toDateString();
+          const entry = () => {
+            if (block.type === "timeline") {
+              return (
+                <TimelineBlock
+                  items={block.items}
+                  memberByUserId={memberByUserId}
+                />
+              );
+            }
+            if (block.type === "comment") {
+              return (
+                <CommentThreadCard
+                  key={`comment-${block.comment.id}`}
+                  thread={block.comment}
+                  me={me}
+                  onDelete={(commentId) => comments.remove.mutate(commentId)}
+                  onToggleResolved={() =>
+                    comments.setResolved.mutate({
+                      id: block.comment.id,
+                      resolved: !block.comment.resolved,
+                    })
+                  }
+                />
+              );
+            }
             return (
-              <TimelineBlock
-                // A positional run of one feed: the index IS its identity.
-                key={`timeline-${i}`}
-                items={block.items}
-                memberByUserId={memberByUserId}
+              <ThreadActivityItem
+                key={`thread-${block.thread.threadId}`}
+                thread={block.thread}
+                onOpen={onOpenThread}
               />
             );
-          }
-          if (block.type === "comment") {
-            return (
-              <CommentThreadCard
-                key={`comment-${block.comment.id}`}
-                thread={block.comment}
-                me={me}
-                onReply={(body) =>
-                  comments.post.mutate({ body, parentId: block.comment.id })
-                }
-                onDelete={(commentId) => comments.remove.mutate(commentId)}
-                onToggleResolved={() =>
-                  comments.setResolved.mutate({
-                    id: block.comment.id,
-                    resolved: !block.comment.resolved,
-                  })
-                }
-              />
-            );
-          }
+          };
+          const blockKey =
+            block.type === "timeline"
+              ? block.items[0]!.id
+              : block.type === "thread"
+                ? block.thread.threadId
+                : block.comment.id;
           return (
-            <ThreadActivityItem
-              key={`thread-${block.thread.threadId}`}
-              thread={block.thread}
-              startedBy={startedBy}
-              onOpen={onOpenThread}
-            />
+            <Fragment key={`${block.type}-${blockKey}`}>
+              {showDate && (
+                <div className="flex items-center gap-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  <time dateTime={date.toISOString()}>
+                    {date.toLocaleDateString(undefined, {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </time>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+              )}
+              {entry()}
+            </Fragment>
           );
         })}
       </div>
-    </RecordSection>
+    </section>
   );
 }
 
