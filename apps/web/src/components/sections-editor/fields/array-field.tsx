@@ -19,7 +19,9 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
+import { AddListRow } from "../editor-list-row";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -140,6 +142,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const { required: requiredProp, invalid: requiredInvalid } =
     useRequiredField();
@@ -551,7 +554,7 @@ export function ArrayField({
         </p>
       )}
 
-      {items.length > 0 && (
+      {(items.length > 0 || compact) && (
         <div className={cn(activeEntryId && "cursor-grabbing")}>
           <DndContext
             sensors={sensors}
@@ -565,56 +568,68 @@ export function ArrayField({
               strategy={verticalListSortingStrategy}
             >
               <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border compact:card-shadow border-border/50 p-1.5">
-                {(() => {
-                  // Compute base labels once for the whole list rather than per
-                  // row. Display only — the row opens its item by `entry.index`,
-                  // not by label — so colliding rows share a clean label (no
-                  // positional " N" suffix); the breadcrumb addresses items by
-                  // the index its crumb carries.
-                  const itemLabels = getArrayItemDisplayLabels(
-                    items,
-                    itemSchema,
-                  );
-                  return entries.map((entry) => {
-                    const item = items[entry.index];
-                    if (item === undefined) return null;
-                    const labelText =
-                      itemLabels[entry.index] ?? itemLabel(item, entry.index);
-                    const displayValue = arrayItemDisplayValue(item);
-                    const imageSrc = getArrayItemImageSrc(
-                      displayValue,
+                {items.length > 0 &&
+                  (() => {
+                    // Compute base labels once for the whole list rather than per
+                    // row. Display only — the row opens its item by `entry.index`,
+                    // not by label — so colliding rows share a clean label (no
+                    // positional " N" suffix); the breadcrumb addresses items by
+                    // the index its crumb carries.
+                    const itemLabels = getArrayItemDisplayLabels(
+                      items,
                       itemSchema,
                     );
-                    const missingRequired = hasMissingRequiredField(
-                      itemEditorSchema(
+                    return entries.map((entry) => {
+                      const item = items[entry.index];
+                      if (item === undefined) return null;
+                      const labelText =
+                        itemLabels[entry.index] ?? itemLabel(item, entry.index);
+                      const displayValue = arrayItemDisplayValue(item);
+                      const imageSrc = getArrayItemImageSrc(
                         displayValue,
                         itemSchema,
-                        meta,
-                        containerResolveType,
-                        arrayFieldKey,
-                      ),
-                      displayValue,
-                    );
-                    return (
-                      <SortableArrayRow
-                        key={entry.id}
-                        sortableId={entry.id}
-                        labelText={labelText}
-                        imageSrc={imageSrc}
-                        missingRequired={missingRequired}
-                        hidden={isArrayItemHidden(item)}
-                        onToggleHidden={
-                          canHideItems
-                            ? () => toggleItemHidden(entry.index)
-                            : undefined
-                        }
-                        onOpen={() => openItem(entry.index)}
-                        onDuplicate={() => duplicateItem(entry.index)}
-                        onRemove={() => removeItem(entry.index)}
-                      />
-                    );
-                  });
-                })()}
+                      );
+                      const missingRequired = hasMissingRequiredField(
+                        itemEditorSchema(
+                          displayValue,
+                          itemSchema,
+                          meta,
+                          containerResolveType,
+                          arrayFieldKey,
+                        ),
+                        displayValue,
+                      );
+                      return (
+                        <SortableArrayRow
+                          key={entry.id}
+                          sortableId={entry.id}
+                          labelText={labelText}
+                          imageSrc={imageSrc}
+                          missingRequired={missingRequired}
+                          hidden={isArrayItemHidden(item)}
+                          onToggleHidden={
+                            canHideItems
+                              ? () => toggleItemHidden(entry.index)
+                              : undefined
+                          }
+                          onOpen={() => openItem(entry.index)}
+                          onDuplicate={() => duplicateItem(entry.index)}
+                          onRemove={() => removeItem(entry.index)}
+                        />
+                      );
+                    });
+                  })()}
+                {compact && (
+                  <AddListRow
+                    className="gap-2.5"
+                    label={
+                      usesSectionPicker
+                        ? t("sectionsEditor.arrayField.addSection")
+                        : t("sectionsEditor.arrayField.addItem")
+                    }
+                    onAdd={handleAddClick}
+                  />
+                )}
               </div>
             </SortableContext>
 
@@ -639,16 +654,18 @@ export function ArrayField({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleAddClick}
-        className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
-      >
-        <Plus size={14} />
-        {usesSectionPicker
-          ? t("sectionsEditor.arrayField.addSection")
-          : t("sectionsEditor.arrayField.addItem")}
-      </button>
+      {!compact && (
+        <button
+          type="button"
+          onClick={handleAddClick}
+          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <Plus size={14} />
+          {usesSectionPicker
+            ? t("sectionsEditor.arrayField.addSection")
+            : t("sectionsEditor.arrayField.addItem")}
+        </button>
+      )}
     </div>
   );
 }
