@@ -83,6 +83,8 @@ export interface StudioProvider {
   /** Typed decisions use evaluation models, independently of chat tiers. */
   readonly decisions?: {
     model(modelId: string): Experimental_EvaluationModel;
+    /** Catalog discovery is optional for providers constructed from runtime secrets. */
+    listModels?(): Promise<ModelInfo[]>;
   };
   listModels(): Promise<ModelInfo[]>;
 }

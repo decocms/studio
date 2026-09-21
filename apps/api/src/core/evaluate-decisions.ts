@@ -45,7 +45,10 @@ export async function evaluateDecisions<
   if (!checkModelPermission(allowed, selection.keyId, selection.modelId)) {
     throw new Error("Decision model is not permitted for this role");
   }
-  const models = await ctx.aiProviders.listModels(selection.keyId, org.id);
+  const models = await ctx.aiProviders.listDecisionModels(
+    selection.keyId,
+    org.id,
+  );
   const model = models.find((entry) => entry.modelId === selection.modelId);
   if (!model?.capabilities.includes("decisions")) {
     throw new Error("Selected model does not support decisions");

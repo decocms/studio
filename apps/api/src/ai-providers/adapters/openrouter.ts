@@ -27,6 +27,36 @@ function fetchModelsWithRetry(
   );
 }
 
+function mapV1Model(m: OpenRouterAPIModel): ModelInfo {
+  const contextWindow = m.context_length ?? 0;
+  const reportedMaxOut = m.top_provider.max_completion_tokens || null;
+  const maxOutputTokens =
+    reportedMaxOut && (contextWindow === 0 || reportedMaxOut < contextWindow)
+      ? reportedMaxOut
+      : null;
+  return {
+    providerId: "openrouter",
+    modelId: m.id,
+    title: m.name,
+    description: m.description ?? null,
+    logo: null,
+    capabilities: deriveModalityCapabilities(
+      m.architecture.input_modalities,
+      m.architecture.output_modalities,
+      m.supported_parameters,
+      m.supported_parameters?.includes("reasoning") ? ["reasoning"] : [],
+    ),
+    limits: {
+      contextWindow,
+      maxOutputTokens,
+    },
+    costs: {
+      input: Number(m.pricing.prompt) || 0,
+      output: Number(m.pricing.completion) || 0,
+    },
+  };
+}
+
 export const openrouterAdapter: ProviderAdapter = {
   info: {
     id: "openrouter",
@@ -78,75 +108,27 @@ export const openrouterAdapter: ProviderAdapter = {
     return {
       info: this.info,
       aiSdk,
-      decisions: { model: (modelId) => aiSdk.evaluationModel(modelId) },
+      decisions: {
+        model: (modelId) => aiSdk.evaluationModel(modelId),
+        async listModels() {
+          const res = await fetchModelsWithRetry(headers, true);
+          if (!res.ok)
+            await throwResponseError("OpenRouter decision models", res);
+          const { data }: { data: OpenRouterAPIModel[] } = await res.json();
+          return data
+            .filter((model) =>
+              model.architecture.output_modalities.includes("decisions"),
+            )
+            .map(mapV1Model);
+        },
+      },
 
       async listModels(): Promise<ModelInfo[]> {
-        const mapV1Model = (m: OpenRouterAPIModel): ModelInfo => {
-          const contextWindow = m.context_length ?? 0;
-          const reportedMaxOut = m.top_provider.max_completion_tokens || null;
-          const maxOutputTokens =
-            reportedMaxOut &&
-            (contextWindow === 0 || reportedMaxOut < contextWindow)
-              ? reportedMaxOut
-              : null;
-          return {
-            providerId: "openrouter",
-            modelId: m.id,
-            title: m.name,
-            description: m.description ?? null,
-            logo: null,
-            capabilities: deriveModalityCapabilities(
-              m.architecture.input_modalities,
-              m.architecture.output_modalities,
-              m.supported_parameters,
-              m.supported_parameters?.includes("reasoning")
-                ? ["reasoning"]
-                : [],
-            ),
-            limits: {
-              contextWindow,
-              maxOutputTokens,
-            },
-            costs: {
-              input: Number(m.pricing.prompt) || 0,
-              output: Number(m.pricing.completion) || 0,
-            },
-          };
-        };
-
         // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
         const res = await fetchModelsWithRetry(headers);
         if (!res.ok) await throwResponseError("OpenRouter listModels", res);
         const { data }: { data: OpenRouterAPIModel[] } = await res.json();
-        const models = data.map(mapV1Model);
-        // Decisions have a separate catalog; its outage must not hide chat models.
-        try {
-          const decisionsRes = await fetchModelsWithRetry(headers, true);
-          if (!decisionsRes.ok)
-            await throwResponseError(
-              "OpenRouter decision models",
-              decisionsRes,
-            );
-          const decisions: { data: OpenRouterAPIModel[] } =
-            await decisionsRes.json();
-          const seen = new Set(models.map((model) => model.modelId));
-          for (const model of decisions.data) {
-            if (
-              !seen.has(model.id) &&
-              model.architecture.output_modalities.includes("decisions")
-            ) {
-              models.push(mapV1Model(model));
-              seen.add(model.id);
-            }
-          }
-        } catch (error) {
-          console.warn(
-            "[OpenRouter] Decision catalog unavailable",
-            error instanceof Error ? error.message : "unknown error",
-          );
-        }
-
-        return models;
+        return data.map(mapV1Model);
       },
     };
   },

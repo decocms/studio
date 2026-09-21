@@ -164,6 +164,34 @@ export class AIProviderFactory {
     return adapter.create(apiKey);
   }
 
+  /** Discover Decisions only when requested; never block the chat catalog on it. */
+  async listDecisionModels(
+    keyId: string,
+    organizationId: string,
+  ): Promise<ModelInfo[]> {
+    const provider = await this.activate(keyId, organizationId);
+    if (!provider.decisions?.listModels)
+      throw new Error("Provider does not support decision model discovery");
+    const cacheId = `${provider.info.id}:decisions`;
+    const cached = await this.cache?.get(organizationId, cacheId);
+    if (cached) return cached;
+    const seen = new Set<string>();
+    const models = (await provider.decisions.listModels())
+      .filter((model) => {
+        if (
+          model.deprecated ||
+          !model.capabilities.includes("decisions") ||
+          seen.has(model.modelId)
+        )
+          return false;
+        seen.add(model.modelId);
+        return true;
+      })
+      .map((model) => ({ ...model, providerId: provider.info.id }));
+    await this.cache?.set(organizationId, cacheId, models);
+    return models;
+  }
+
   async listModels(
     keyId: string,
     organizationId: string,
@@ -198,11 +226,11 @@ export class AIProviderFactory {
       return true;
     });
 
-    if (providerId !== "openrouter") {
+    if (providerId !== "openrouter" && providerId !== "deco") {
       const index = await getOpenRouterIndex(this.cache);
       models = enrich(models, index);
     } else {
-      // OpenRouter path skips enrich() — still apply provider-specific fixes.
+      // Both catalogs already come from OpenRouter; only apply local fixes.
       models = models.map((m) => ({
         ...m,
         capabilities: applyAnthropicPdfCapability(m.capabilities, m),
