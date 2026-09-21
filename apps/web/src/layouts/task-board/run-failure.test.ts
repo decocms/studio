@@ -39,6 +39,15 @@ describe("lastRunFailure", () => {
     });
   });
 
+  test("a benign machine move carrying a reason is not a failure", () => {
+    expect(
+      lastRunFailure([moved({ to: "done", reason: "pr_merged" })]),
+    ).toBeNull();
+    expect(
+      lastRunFailure([moved({ to: "in_progress", reason: "rerun" })]),
+    ).toBeNull();
+  });
+
   test("a pending retry is not a standing failure", () => {
     expect(
       lastRunFailure([moved({ to: "in_progress", retry: 1, reason: "boom" })]),

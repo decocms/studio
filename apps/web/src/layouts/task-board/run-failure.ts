@@ -14,6 +14,7 @@
  */
 import { decodeSandboxStartError } from "@decocms/shared/sandbox-start-errors";
 import type { SandboxStartErrorCode } from "@decocms/shared/sandbox-start-errors";
+import { LANES } from "@decocms/shared/task-board";
 
 export function lastRunFailure(
   activity: { action: string; data: Record<string, unknown> | null }[],
@@ -26,6 +27,9 @@ export function lastRunFailure(
     const reason = entry.data?.reason;
     // The newest move decides: no reason means the card got somewhere.
     if (typeof reason !== "string") return null;
+    // Benign moves stamp a reason too ("pr_merged", "rerun"); only a dead run
+    // lands back in the queue lane.
+    if (entry.data?.to !== LANES.queue) return null;
     // The reason is a stringified Error, so the code sits behind "Error: ".
     return decodeSandboxStartError(reason.replace(/^Error:\s*/, ""));
   }

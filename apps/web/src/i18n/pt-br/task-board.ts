@@ -202,6 +202,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.prStateDraft": "Rascunho",
   "taskBoard.taskDialog.prStateMerged": "Mesclado",
   "taskBoard.taskDialog.prStateOpen": "Aberto",
+  "taskBoard.taskDialog.prStateUnknown": "Desconhecido",
   "taskBoard.taskDialog.previewLabel": "Abrir preview",
   "taskBoard.taskDialog.previewRoutesLabel": "Páginas alteradas neste PR",
   "taskBoard.taskDialog.previewUnavailable": "Preview indisponível",

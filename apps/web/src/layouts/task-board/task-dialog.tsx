@@ -1946,7 +1946,13 @@ function prStateStyle(
       className: "text-muted-foreground",
       icon: GitPullRequest,
     };
-  // "open" or unknown live state — still a link the user can follow.
+  // Both null means GitHub never answered — an unknown must not read as Open.
+  if (pr.state === null && pr.merged === null)
+    return {
+      label: t("taskBoard.taskDialog.prStateUnknown"),
+      className: "text-muted-foreground",
+      icon: GitPullRequest,
+    };
   return {
     label: t("taskBoard.taskDialog.prStateOpen"),
     className: "text-success",
