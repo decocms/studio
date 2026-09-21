@@ -74,3 +74,21 @@ describe("openrouterAdapter.listModels", () => {
     expect(calls).toBe(1);
   });
 });
+
+describe("openrouterAdapter.exchangeOAuthCode", () => {
+  test("rejects a 2xx response with a missing key instead of storing garbage", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ user_id: "u_1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as unknown as typeof fetch;
+
+    await expect(
+      openrouterAdapter.exchangeOAuthCode?.({
+        code: "code",
+        codeVerifier: "verifier",
+        codeChallengeMethod: "S256",
+      }),
+    ).rejects.toThrow("malformed response");
+  });
+});

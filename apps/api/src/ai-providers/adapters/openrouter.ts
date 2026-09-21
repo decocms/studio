@@ -95,6 +95,11 @@ export const openrouterAdapter: ProviderAdapter = {
       await throwResponseError("OpenRouter OAuth exchange", res);
     }
     const data = await res.json();
+    if (typeof data.key !== "string" || !data.key) {
+      throw new Error(
+        "OpenRouter OAuth exchange returned a malformed response (missing key)",
+      );
+    }
     return { apiKey: data.key, userId: data.user_id };
   },
 
