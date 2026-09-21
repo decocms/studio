@@ -18,18 +18,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  ArrowUp,
-  Check,
-  ChevronSelectorVertical,
-  DotsHorizontal,
-  MessageCheckCircle,
-  Trash03,
-  X,
-} from "@untitledui/icons";
+import { ArrowUp, DotsHorizontal, Trash03 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
@@ -37,7 +28,7 @@ import { getInitials } from "@/lib/get-initials";
 import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { formatTimeAgo } from "@/lib/format-time";
 import { TaskMessage } from "./task-message";
-import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { useT } from "@/i18n/use-t.ts";
 import {
   MentionInput,
   type MentionInputHandle,
@@ -61,16 +52,12 @@ export type TaskComment = {
   createdAt: string;
   onOpenThread?: () => void;
   replies: TaskComment[];
-  /** Thread roots only — a thread is settled or open as a whole. */
+  /** Stored state is retained for compatibility, but does not hide comments. */
   resolved?: boolean;
 };
 
 /**
  * A comment thread: the root comment and its existing replies.
- *
- * A resolved thread collapses to a one-line summary — the conversation is
- * settled, so it should stop taking up the feed, while staying one click from
- * being read again.
  */
 export function CommentThreadCard({
   thread,
@@ -78,7 +65,6 @@ export function CommentThreadCard({
   conversation = true,
   onReply,
   onDelete,
-  onToggleResolved,
 }: {
   thread: TaskComment;
   me: CommentAuthor;
@@ -86,38 +72,7 @@ export function CommentThreadCard({
   onReply?: (body: string) => void;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
-  onToggleResolved: () => void;
 }) {
-  const t = useT();
-  const [expanded, setExpanded] = useState(false);
-
-  if (thread.resolved && !expanded) {
-    return (
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className={cn(
-          "flex w-full items-center gap-2.5 text-left transition-colors hover:bg-muted/60",
-          conversation
-            ? "rounded-lg bg-muted/40 px-3 py-2"
-            : "rounded-xl bg-card px-4 py-3 card-shadow",
-        )}
-      >
-        <MessageCheckCircle
-          size={16}
-          className="shrink-0 text-muted-foreground"
-        />
-        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-          {resolvedSummary(thread, t)}
-        </span>
-        <ChevronSelectorVertical
-          size={16}
-          className="shrink-0 text-muted-foreground"
-        />
-      </button>
-    );
-  }
-
   return (
     <div
       className={cn(
@@ -127,25 +82,10 @@ export function CommentThreadCard({
           : "rounded-xl bg-card card-shadow",
       )}
     >
-      {thread.resolved && (
-        <>
-          <button
-            type="button"
-            onClick={() => setExpanded(false)}
-            className="flex items-center justify-between gap-2 rounded-t-xl bg-muted/40 px-4 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {t("taskBoard.taskDialog.commentCollapseThread")}
-            <X size={14} aria-hidden />
-          </button>
-          <Divider />
-        </>
-      )}
       <CommentEntry
         conversation={conversation}
         comment={thread}
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
-        resolved={thread.resolved}
-        onToggleResolved={onToggleResolved}
       />
       {thread.replies.map((reply, i) => (
         <Fragment key={reply.id}>
@@ -178,26 +118,6 @@ function canDelete(comment: TaskComment, me: CommentAuthor): boolean {
   return comment.author.id === me.id || comment.author.isAgent === true;
 }
 
-/** Authors of a thread, in the order they first spoke. */
-const AUTHOR_LIST_FMT = new Intl.ListFormat(undefined, {
-  style: "long",
-  type: "conjunction",
-});
-
-/** "3 resolved comments from valls and Super Agent". */
-function resolvedSummary(thread: TaskComment, t: TFunction): string {
-  const comments = [thread, ...thread.replies];
-  const names = AUTHOR_LIST_FMT.format([
-    ...new Set(comments.map((c) => c.author.name)),
-  ]);
-  return comments.length === 1
-    ? t("taskBoard.taskDialog.commentResolvedSummaryOne", { names })
-    : t("taskBoard.taskDialog.commentResolvedSummaryMany", {
-        count: comments.length,
-        names,
-      });
-}
-
 /**
  * Hairline between entries of a card. Lighter than `border` so it separates
  * comments without competing with the card's own edge. `inset` starts it at a
@@ -216,19 +136,14 @@ function CommentEntry({
   conversation,
   comment,
   isReply,
-  resolved,
   onDelete,
-  onToggleResolved,
 }: {
   comment: TaskComment;
   conversation: boolean;
   isReply?: boolean;
-  resolved?: boolean;
   /** Omitted for a comment that isn't the current user's — the server
    *  rejects deleting someone else's comment, so don't offer it. */
   onDelete?: () => void;
-  /** Thread roots only — resolving settles the whole conversation. */
-  onToggleResolved?: () => void;
 }) {
   if (!conversation) {
     return (
@@ -241,13 +156,7 @@ function CommentEntry({
           <span className="text-sm text-muted-foreground">
             {formatTimeAgo(new Date(comment.createdAt))}
           </span>
-          {(onDelete || onToggleResolved) && (
-            <CommentActionsMenu
-              resolved={resolved}
-              onDelete={onDelete}
-              onToggleResolved={onToggleResolved}
-            />
-          )}
+          {onDelete && <CommentActionsMenu onDelete={onDelete} />}
         </div>
         <div
           className={cn(
@@ -272,15 +181,7 @@ function CommentEntry({
       body={comment.body}
       isReply={isReply}
       onOpenThread={comment.onOpenThread}
-      actions={
-        (onDelete || onToggleResolved) && (
-          <CommentActionsMenu
-            resolved={resolved}
-            onDelete={onDelete}
-            onToggleResolved={onToggleResolved}
-          />
-        )
-      }
+      actions={onDelete && <CommentActionsMenu onDelete={onDelete} />}
     />
   );
 }
@@ -290,15 +191,7 @@ function CommentEntry({
  * is focused, so a quiet thread stays quiet — but pinned open while the menu
  * is, or it would vanish from under the pointer.
  */
-function CommentActionsMenu({
-  resolved,
-  onDelete,
-  onToggleResolved,
-}: {
-  resolved?: boolean;
-  onDelete?: () => void;
-  onToggleResolved?: () => void;
-}) {
+function CommentActionsMenu({ onDelete }: { onDelete?: () => void }) {
   const t = useT();
 
   return (
@@ -313,17 +206,6 @@ function CommentActionsMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {onToggleResolved && (
-          <>
-            <DropdownMenuItem onSelect={onToggleResolved}>
-              <Check size={16} />
-              {resolved
-                ? t("taskBoard.taskDialog.commentUnresolveThread")
-                : t("taskBoard.taskDialog.commentResolveThread")}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
         {onDelete && (
           <DropdownMenuItem variant="destructive" onSelect={onDelete}>
             <Trash03 size={16} />

@@ -36,18 +36,28 @@ const THREAD: TaskComment = {
 
 /**
  * CT surface for task comments: one thread card (root + existing agent reply)
- * and the task composer. Mirrors the delete/resolve
+ * and the task composer. Mirrors the delete
  * semantics of `useTaskBoardComments` on a single thread. Posted bodies are
  * dumped into a testid'd <pre> so specs can assert what the composer submitted.
  */
-export function TaskCommentsHarness() {
-  const [thread, setThread] = useState<TaskComment | null>(THREAD);
+export function TaskCommentsHarness({
+  resolved = false,
+  conversation = true,
+}: {
+  resolved?: boolean;
+  conversation?: boolean;
+}) {
+  const [thread, setThread] = useState<TaskComment | null>({
+    ...THREAD,
+    resolved,
+  });
   const [posted, setPosted] = useState<string[]>([]);
 
   return (
     <div className="flex w-[640px] flex-col gap-5 bg-background p-6">
       {thread && (
         <CommentThreadCard
+          conversation={conversation}
           thread={thread}
           me={ME}
           onDelete={(commentId) =>
@@ -59,11 +69,6 @@ export function TaskCommentsHarness() {
                 replies: prev.replies.filter((r) => r.id !== commentId),
               };
             })
-          }
-          onToggleResolved={() =>
-            setThread((prev) =>
-              prev ? { ...prev, resolved: !prev.resolved } : prev,
-            )
           }
         />
       )}

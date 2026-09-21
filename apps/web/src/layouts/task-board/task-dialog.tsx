@@ -2733,12 +2733,6 @@ function ActivitySection({
                   thread={block.comment}
                   me={me}
                   onDelete={(commentId) => comments.remove.mutate(commentId)}
-                  onToggleResolved={() =>
-                    comments.setResolved.mutate({
-                      id: block.comment.id,
-                      resolved: !block.comment.resolved,
-                    })
-                  }
                 />
               );
             }

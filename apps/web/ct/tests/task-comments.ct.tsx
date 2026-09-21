@@ -130,71 +130,36 @@ test("deleting the root comment takes the whole thread with it", async ({
   ).toBeVisible();
 });
 
-test("only the root comment can resolve the thread", async ({
-  mount,
-  page,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-
-  await component.getByLabel("Comment actions").last().click();
-  await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Resolve thread" }),
-  ).toHaveCount(0);
-  await page.keyboard.press("Escape");
-
-  await component.getByLabel("Comment actions").first().click();
-  await expect(
-    page.getByRole("menuitem", { name: "Resolve thread" }),
-  ).toBeVisible();
-});
-
-test("a resolved thread collapses to a summary and reopens on click", async ({
-  mount,
-  page,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-
-  await component.getByLabel("Comment actions").first().click();
-  await page.getByRole("menuitem", { name: "Resolve thread" }).click();
-
-  const summary = component.getByText(
-    "2 resolved comments from valls and Super Agent",
-  );
-  await expect(summary).toBeVisible();
-  await expect(
-    component.getByRole("textbox", { name: "Leave a reply..." }),
-  ).toHaveCount(0);
-
-  await summary.click();
-  await expect(component.getByText(/^On it\./)).toBeVisible();
-  await expect(
-    component.getByRole("textbox", { name: "Leave a reply..." }),
-  ).toHaveCount(0);
-
-  // Expanded again, the menu offers the way back out.
-  await component.getByLabel("Comment actions").first().click();
-  await expect(
-    page.getByRole("menuitem", { name: "Unresolve thread" }),
-  ).toBeVisible();
-});
-
-test("an expanded resolved thread collapses from its header", async ({
-  mount,
-  page,
-}) => {
-  const component = await mount(<TaskCommentsHarness />);
-
-  await component.getByLabel("Comment actions").first().click();
-  await page.getByRole("menuitem", { name: "Resolve thread" }).click();
-  await component.getByText("2 resolved comments from valls").click();
-
-  await component.getByRole("button", { name: "Collapse" }).click();
-  await expect(component.getByText(/^On it\./)).toHaveCount(0);
-  await expect(
-    component.getByText("2 resolved comments from valls and Super Agent"),
-  ).toBeVisible();
-});
+for (const conversation of [false, true]) {
+  for (const resolved of [false, true]) {
+    test(`comments stay visible without resolve controls (conversation=${conversation}, resolved=${resolved})`, async ({
+      mount,
+      page,
+    }) => {
+      const component = await mount(
+        <TaskCommentsHarness conversation={conversation} resolved={resolved} />,
+      );
+      await expect(
+        component.getByText("Can you take this one and open a PR?"),
+      ).toBeVisible();
+      await expect(component.getByText(/^On it/)).toBeVisible();
+      await expect(
+        component.getByRole("button", { name: "Collapse", exact: true }),
+      ).toHaveCount(0);
+      for (const entry of [0, 1]) {
+        await component.getByLabel("Comment actions").nth(entry).click();
+        await expect(
+          page.getByRole("menuitem", { name: "Delete", exact: true }),
+        ).toBeVisible();
+        await expect(page.getByRole("menuitem")).toHaveCount(1);
+        await expect(
+          page.getByRole("menuitem", { name: /resolve/i }),
+        ).toHaveCount(0);
+        await page.keyboard.press("Escape");
+      }
+    });
+  }
+}
 
 test("typing @ opens the member picker, and picking one inserts a chip", async ({
   mount,
