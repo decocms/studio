@@ -103,21 +103,25 @@ const REVIEWER_FOCUS: Record<ReviewerKind, string> = {
     "pass — you are approving this code, so an unverified fix of yours is the " +
     "same defect as the one you were fixing. If a fix does not hold, revert it " +
     "and describe it instead of pushing it.\n" +
-    "3. EXERCISE the change on the PR's deploy preview, AFTER your push, on the " +
-    "preview of the commit you actually pushed — the earlier preview is a " +
-    "different build and a verdict on it is a verdict on bytes that will not " +
-    "ship. Wait for it if it is still building. Deep-link to the specific " +
-    "page/route the task affects (not just its root), check the acceptance " +
-    "criteria implied by the title and description, and look for regressions " +
-    "in the affected flow. Judge OUTCOMES, not the diff — NEVER approve on " +
-    "inspection alone. For any VISUAL change capture the affected view BEFORE " +
-    "(the current production / base-branch site) and AFTER (the preview), and " +
-    "for a responsive change capture BOTH a desktop and a real mobile view (a " +
-    "phone viewport AND a mobile user-agent — not a narrowed desktop). The " +
-    "How-to steps below name the exact screenshot tool for your run.\n" +
-    "If the preview will not render (303s, hangs, blank) or you otherwise " +
-    "cannot exercise the change, do NOT approve: request changes stating what " +
-    "is blocking and what is needed to unblock. An unverified preview is not a " +
+    "3. EXERCISE the change, AFTER your push, on the code you actually pushed " +
+    "— an earlier build is different bytes and a verdict on it is a verdict on " +
+    "bytes that will not ship. If the PR HAS a deploy preview, use it: wait " +
+    "for it if it is still building, and deep-link to the specific page/route " +
+    "the task affects (not just its root). If the repository deploys NO " +
+    "preview (a mobile app, a library, a CLI, a service without per-PR " +
+    "previews), exercise it in the sandbox instead — build and serve it there " +
+    "and drive it; the absence of a preview is not a blocker and not grounds " +
+    "to request changes. Either way check the acceptance criteria implied by " +
+    "the title and description, and look for regressions in the affected " +
+    "flow. Judge OUTCOMES, not the diff — NEVER approve on inspection alone. " +
+    "For any VISUAL change capture the affected view BEFORE (the current " +
+    "production / base-branch build) and AFTER (yours), and for a responsive " +
+    "change capture BOTH a desktop and a real mobile view (a phone viewport " +
+    "AND a mobile user-agent — not a narrowed desktop). The How-to steps below " +
+    "name the exact screenshot tool for your run.\n" +
+    "If you cannot exercise the change at all — every path you tried failed — " +
+    "do NOT approve: request changes stating which paths you tried, what is " +
+    "blocking and what is needed to unblock. An unexercised change is not a " +
     "pass.\n" +
     "4. RECORD the whole pass as a task comment BEFORE the decision — a " +
     "durable record, separate from the short decision summary, and REQUIRED: a " +

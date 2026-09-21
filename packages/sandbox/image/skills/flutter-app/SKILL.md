@@ -65,6 +65,7 @@ Run these before you hand over. They are fast and they are what CI will say.
 ```bash
 flutter build web --release        # ~30s for a small app, minutes for a real one
 (cd build/web && python3 -m http.server 8099 &)
+until curl -sfo /dev/null http://localhost:8099; do sleep 0.3; done   # it binds after you ask
 qa-screenshot http://localhost:8099 org/output/qa/after.png --mobile --flutter --console
 ```
 
@@ -76,7 +77,7 @@ blind pixels. The flag turns on Flutter's accessibility tree, which
 materializes one `<flt-semantics>` element per widget, and prints them:
 
 ```
-flutter widgets (4) — frame one with --label=<text>, click one by aiming mouse.click at its box centre:
+flutter widgets (showing 4 of 4) — frame one with --label=<text>, click one by aiming mouse.click at its box centre:
         "Flutter Demo Home Page" @ 0,0 390x56
         "You have pushed the button this many times:" @ 50,422 289x20
         "0" @ 187,442 16x36
@@ -84,7 +85,10 @@ flutter widgets (4) — frame one with --label=<text>, click one by aiming mouse
 ```
 
 That listing is your map of the screen. It is also an assertion target: if the
-widget you just added is not in it, it did not render.
+widget you just added is not in it, it did not render — but read the count
+first. A busy screen prints only the first 60 and says so; `--label` still
+matches against all of them, so ask for yours by name before concluding it is
+missing.
 
 Frame one widget for a focused before/after — the equivalent of `--selector`
 on a web page:
@@ -111,10 +115,12 @@ const b = await chromium.launch({
 });
 const p = await b.newPage({ viewport: { width: 390, height: 844 } });
 await p.goto("http://localhost:8099", { waitUntil: "load" });
-await p.waitForTimeout(3000);
+// Wait for the placeholder, don't sleep at it — a release build compiles wasm
+// and loads fonts after `load`, and on a cold sandbox that outlasts any guess.
+await p.waitForSelector("flt-semantics-placeholder", { state: "attached", timeout: 20000 });
 // Building the semantics tree is opt-in; this click is the supported trigger.
 await p.evaluate(() => document.querySelector("flt-semantics-placeholder")?.click());
-await p.waitForTimeout(1500);
+await p.waitForFunction(() => document.querySelectorAll("flt-semantics").length > 0);
 const box = await p.evaluate(() => {
   const el = Array.from(document.querySelectorAll("flt-semantics"))
     .filter((n) => !n.querySelector("flt-semantics"))
