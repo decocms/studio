@@ -135,7 +135,9 @@ test.describe("task run drawer", () => {
     const url = page.url();
 
     await detail(page)
-      .getByRole("button", { name: /Super Agent · drawer run/ })
+      .getByTestId("task-message")
+      .filter({ hasText: "Rounded once at the end instead of per line item." })
+      .getByRole("button", { name: "Open chat", exact: true })
       .click();
 
     await expect(sheet(page)).toBeVisible();
@@ -200,7 +202,9 @@ test.describe("task run drawer", () => {
 
     await openTask(page, orgSlug, title);
     await detail(page)
-      .getByRole("button", { name: /QA Agent · second pass/ })
+      .getByTestId("task-message")
+      .filter({ hasText: "Second pass verified the first one." })
+      .getByRole("button", { name: "Open chat", exact: true })
       .click();
     await expect(sheet(page)).toContainText(
       "Second pass verified the first one.",
@@ -216,7 +220,9 @@ test.describe("task run drawer", () => {
     await sheet(page).getByRole("button", { name: "Close" }).click();
     await expect(sheet(page)).toHaveCount(0);
     await detail(page)
-      .getByRole("button", { name: /Super Agent · first pass/ })
+      .getByTestId("task-message")
+      .filter({ hasText: "First pass finished, opened a PR." })
+      .getByRole("button", { name: "Open chat", exact: true })
       .click();
     await expect(sheet(page)).toContainText(
       "First pass finished, opened a PR.",
@@ -254,7 +260,9 @@ test.describe("task run drawer", () => {
 
     await openTask(page, orgSlug, title);
     await detail(page)
-      .getByRole("button", { name: /Super Agent · isolated run/ })
+      .getByTestId("task-message")
+      .filter({ hasText: "SENTINEL_LINKED_RUN_MESSAGE" })
+      .getByRole("button", { name: "Open chat", exact: true })
       .click();
 
     await expect(sheet(page)).toContainText("SENTINEL_LINKED_RUN_MESSAGE");
