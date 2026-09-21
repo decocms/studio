@@ -513,7 +513,8 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
     return c.json({ error: `Unknown OAuth endpoint: ${endpoint}` }, 404);
   }
 
-  const endpointGuardError = assertOriginEndpointIsSafe(originEndpointUrl);
+  const endpointGuardError =
+    await assertOriginEndpointIsSafe(originEndpointUrl);
   if (endpointGuardError) return endpointGuardError;
 
   // Build URL with query string

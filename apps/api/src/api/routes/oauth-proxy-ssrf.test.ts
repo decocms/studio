@@ -74,21 +74,23 @@ describe("fetchProtectedResourceMetadata redirect SSRF guard", () => {
 });
 
 describe("assertOriginEndpointIsSafe SSRF guard", () => {
-  test("refuses a private/internal endpoint URL", () => {
-    const response = assertOriginEndpointIsSafe(
+  test("refuses a private/internal endpoint URL", async () => {
+    const response = await assertOriginEndpointIsSafe(
       "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
     );
     expect(response?.status).toBe(502);
   });
 
-  test("refuses localhost", () => {
-    const response = assertOriginEndpointIsSafe("http://localhost:9999/token");
+  test("refuses localhost", async () => {
+    const response = await assertOriginEndpointIsSafe(
+      "http://localhost:9999/token",
+    );
     expect(response?.status).toBe(502);
   });
 
-  test("allows a public endpoint URL", () => {
-    const response = assertOriginEndpointIsSafe(
-      "https://auth.example.com/token",
+  test("allows a public endpoint URL", async () => {
+    const response = await assertOriginEndpointIsSafe(
+      "https://example.com/token",
     );
     expect(response).toBeNull();
   });

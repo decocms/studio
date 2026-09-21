@@ -20,7 +20,7 @@ import { auth } from "../../auth";
 import { retry, RetryError } from "@decocms/shared/std";
 import {
   createNoRedirectFetch,
-  isPrivateUrl,
+  guardAgainstPrivateUrl,
 } from "@/mcp-clients/url-security";
 import {
   authorizationServerMetadataUrls,
@@ -728,29 +728,30 @@ async function fetchMetadataWithRetry(
  * Validates an OAuth endpoint URL taken from origin-controlled auth-server
  * metadata (authorization/token/registration_endpoint) before the proxy
  * fetches or redirects to it server-side — same guard as `authServerUrl`
- * above, applied one hop further downstream.
+ * above, applied one hop further downstream. Resolves DNS, not just the
+ * literal hostname, via `guardAgainstPrivateUrl`.
  */
-export function assertOriginEndpointIsSafe(url: string): Response | null {
-  if (!isPrivateUrl(url)) return null;
-  return new Response(
-    JSON.stringify({
-      error: "URLs targeting private networks are not allowed",
-    }),
-    { status: 502, headers: { "Content-Type": "application/json" } },
-  );
+export async function assertOriginEndpointIsSafe(
+  url: string,
+): Promise<Response | null> {
+  const blockedMessage = await guardAgainstPrivateUrl(url);
+  if (!blockedMessage) return null;
+  return new Response(JSON.stringify({ error: blockedMessage }), {
+    status: 502,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export async function fetchAuthorizationServerMetadata(
   authServerUrl: string,
 ): Promise<Response> {
-  // Origin-controlled (via authorization_servers[0]) — reject an obvious private/internal target before fetching it.
-  if (isPrivateUrl(authServerUrl)) {
-    return new Response(
-      JSON.stringify({
-        error: "URLs targeting private networks are not allowed",
-      }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
+  // Origin-controlled (via authorization_servers[0]) — reject a private/internal target before fetching it.
+  const blockedMessage = await guardAgainstPrivateUrl(authServerUrl);
+  if (blockedMessage) {
+    return new Response(JSON.stringify({ error: blockedMessage }), {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // URL formats (OAuth 2.0 / OIDC, with/without path component) per RFC 8414
