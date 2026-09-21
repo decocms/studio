@@ -123,7 +123,7 @@ import {
   prCardActions,
 } from "./pr-card-actions";
 import { previewRouteUrl } from "./preview-routes";
-import { lastRunFailure } from "./run-failure";
+import { decodeRunFailureReason, lastRunFailure } from "./run-failure";
 import { githubReauthUrl } from "./github-reauth-url";
 import { useRepositories } from "@/hooks/use-git-providers";
 import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors";
@@ -2958,8 +2958,7 @@ function describeActivity(
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
       // Stored as a stringified Error, wire prefix and all.
-      const reason =
-        lastRunFailure([{ action: "status_changed", data: d }])?.message ?? "";
+      const reason = decodeRunFailureReason(d.reason);
       if (typeof d.retry === "number") {
         return t("taskBoard.taskDialog.activityRetryScheduled", {
           attempt: String(d.retry),

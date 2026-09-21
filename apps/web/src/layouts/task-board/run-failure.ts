@@ -16,6 +16,18 @@ import { decodeSandboxStartError } from "@decocms/shared/sandbox-start-errors";
 import type { SandboxStartErrorCode } from "@decocms/shared/sandbox-start-errors";
 import { LANES } from "@decocms/shared/task-board";
 
+/**
+ * The human-readable text for a single activity entry's raw `reason` string,
+ * independent of whether that entry is a standing failure. Callers that
+ * already know which entry they mean (e.g. rendering one timeline row) want
+ * this instead of {@link lastRunFailure}, which also gates on `retry`/`to`
+ * to decide banner visibility across a whole activity list.
+ */
+export function decodeRunFailureReason(reason: unknown): string {
+  if (typeof reason !== "string") return "";
+  return decodeSandboxStartError(reason.replace(/^Error:\s*/, "")).message;
+}
+
 export function lastRunFailure(
   activity: { action: string; data: Record<string, unknown> | null }[],
 ): { code: SandboxStartErrorCode | null; message: string } | null {
