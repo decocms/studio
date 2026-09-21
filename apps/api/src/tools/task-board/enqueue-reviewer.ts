@@ -813,7 +813,13 @@ async function enqueueReviewerForTask(
         ]
       : []),
     `- Fix the issues you find on the PR's branch, run the repository's own checks, and push to that same PR. You are the last automated run on this task — nothing picks up findings you only describe.`,
-    `- THEN exercise the change on the PR's deploy \`previewUrl\` (from \`${prsGetTool}\`) — re-read it after your push so you get the preview of YOUR commit, and wait for it if it is still building. Deep-link to the page/route the task affects (not root). If you cannot render or exercise it, do NOT approve — \`request_changes\` with what's blocking.`,
+    // Conditional on a preview EXISTING. It used to assert one, which a repo
+    // that deploys no preview cannot satisfy — a mobile app is the clear case,
+    // but so is a library, a CLI, or any service without per-PR previews, and
+    // the old wording ordered the reviewer to `request_changes` on all of them
+    // forever. "Exercise it somehow" is the actual requirement; the preview is
+    // just the easiest way when there is one.
+    `- THEN exercise the change. If the PR has a deploy \`previewUrl\` (from \`${prsGetTool}\`), use it — re-read it after your push so you get the preview of YOUR commit, wait for it if it is still building, and deep-link to the page/route the task affects (not root). If there is NO preview, exercise it in the sandbox instead: run the repository's own checks, and for a UI change build and serve it locally and capture it (a Flutter app compiles to web for exactly this — see the \`flutter-app\` skill). Either way, if you cannot exercise it at all, do NOT approve — \`request_changes\` saying which path you tried and what blocked it.`,
     // One path now: the browser lives in the sandbox image, and BOTH harnesses
     // have a sandbox to run it in — the hosted one gets its own once the repo
     // is loaded, which this prompt already tells it to do. Unlike a hosted

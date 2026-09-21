@@ -132,6 +132,40 @@ RUN apt-get update \
   && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
   && chromium --version
 
+# Flutter SDK, for repos that are apps rather than websites. Three things use
+# it: `flutter analyze` / `flutter test` as the repo's own checks, and
+# `flutter build web` as the ONLY way an agent here can look at the UI — a
+# mobile app has no deploy preview and no emulator (EKS nodes have no
+# /dev/kvm), so compiling to web and pointing the chromium above at it is the
+# whole QA story. See skills/flutter-app.
+#
+# Measured on arm64: 10s clone + 6s precache, and 1.1GB once the web SDK lands.
+# `--web` in the precache is what keeps that download off the first run.
+# No Android SDK: `flutter build apk` belongs in the repo's CI, and it would
+# cost multiples of this layer.
+#
+# ⚠️ The version is a pin that DRIFTS: `flutter analyze` disagrees with itself
+# across releases, so a repo whose CI pins another version gets findings its
+# own gate would not produce. The skill makes the agent check the repo's pin
+# against this and say so; bump here when that stops matching reality.
+ARG FLUTTER_VERSION=3.41.2
+#
+# FLUTTER_SUPPRESS_ANALYTICS rather than `flutter --disable-analytics`: that
+# command writes a per-user config file, and this layer runs as root while
+# every run is the `sandbox` user — so it would suppress nothing where it
+# matters and leave a first-run notice in the agent's output.
+ENV FLUTTER_ROOT=/opt/flutter \
+    FLUTTER_SUPPRESS_ANALYTICS=true \
+    PATH=/opt/flutter/bin:$PATH
+RUN git clone --depth 1 -b "${FLUTTER_VERSION}" \
+      https://github.com/flutter/flutter.git /opt/flutter \
+  # git refuses to operate in a tree owned by another uid, and the sandbox user
+  # is not the root that cloned it.
+  && git config --system --add safe.directory /opt/flutter \
+  && flutter precache --universal --web --no-android --no-ios \
+  && chown -R sandbox:sandbox /opt/flutter \
+  && flutter --version
+
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.
