@@ -54,40 +54,30 @@ export function ItemRow({
 }) {
   const t = useT();
   const isGlobal = accent === "global";
-  const rowIcon =
-    variantCount && variantCount > 1 ? (
-      <span className="flex size-8 shrink-0 items-center justify-center">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <LayersThree01 size={16} className="shrink-0 text-success" />
-          </TooltipTrigger>
-          <TooltipContent side="right">{variantCount} variants</TooltipContent>
-        </Tooltip>
-      </span>
-    ) : logoUrl ? (
-      <img
-        src={logoUrl}
-        alt=""
-        className="size-8 shrink-0 rounded-lg object-cover bg-muted"
-      />
-    ) : (
-      <span
+  const rowIcon = logoUrl ? (
+    <img
+      src={logoUrl}
+      alt=""
+      className="size-8 shrink-0 rounded-lg object-cover bg-muted"
+    />
+  ) : (
+    <span
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-lg",
+        isGlobal ? "bg-global-section/15" : "bg-muted",
+      )}
+    >
+      <Icon
+        size={16}
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-lg",
-          isGlobal ? "bg-global-section/15" : "bg-muted",
+          "shrink-0",
+          !isGlobal &&
+            (active ? "text-accent-foreground" : "text-muted-foreground"),
         )}
-      >
-        <Icon
-          size={16}
-          className={cn(
-            "shrink-0",
-            !isGlobal &&
-              (active ? "text-accent-foreground" : "text-muted-foreground"),
-          )}
-          style={isGlobal ? { color: GLOBAL_SECTION_ICON_COLOR } : undefined}
-        />
-      </span>
-    );
+        style={isGlobal ? { color: GLOBAL_SECTION_ICON_COLOR } : undefined}
+      />
+    </span>
+  );
 
   return (
     <div
@@ -143,6 +133,26 @@ export function ItemRow({
             {subtitle}
           </span>
         </span>
+        {variantCount !== undefined && variantCount > 1 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center gap-1 text-xs font-medium",
+                  active
+                    ? "text-accent-foreground/70"
+                    : "text-muted-foreground",
+                )}
+              >
+                <LayersThree01 size={14} />
+                {variantCount}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("sandbox.itemRow.variantCount", { count: variantCount })}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {invalid && (
           <Tooltip>
             <TooltipTrigger asChild>
