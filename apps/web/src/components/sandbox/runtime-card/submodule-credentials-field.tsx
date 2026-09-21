@@ -58,8 +58,13 @@ export interface SubmoduleCredentialsFieldProps<T extends FieldValues> {
  * Form-bound editor for `metadata.runtime.submoduleCredentials` on a virtual
  * MCP. Each entry maps a host (e.g. "github.com") to a vault secret holding a
  * PAT. Studio resolves the secret on every SANDBOX_START and hands the token to
- * the daemon on a git-only channel so `git submodule update` can fetch private
- * submodules the main clone token can't reach.
+ * the daemon on a git-only channel, which installs it in the sandbox's git
+ * config — so private submodules AND the private `git:` dependencies a package
+ * manager resolves (`flutter pub get`, `go mod download`, npm, cargo) both
+ * authenticate against hosts the main clone token can't reach.
+ *
+ * The field keeps its `submoduleCredentials` wire name; only the copy says
+ * "git credentials", which is what it now covers.
  *
  * The secret list is read via Suspense; the wrapper renders a skeleton while it
  * loads so the rest of the Sandbox card stays interactive.
@@ -136,6 +141,12 @@ function SubmoduleCredentialsEditor<T extends FieldValues>({
           </li>
         ))}
       </ul>
+
+      {fields.length > 0 ? (
+        <p className="text-xs text-warning">
+          {t("sandbox.submoduleCredentialsField.tokenExposureWarning")}
+        </p>
+      ) : null}
 
       <Button
         type="button"

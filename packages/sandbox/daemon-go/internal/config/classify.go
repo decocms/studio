@@ -104,7 +104,36 @@ func Classify(before, after *TenantConfig) Transition {
 		return Transition{Kind: KindGitCredentialRefresh, CloneUrl: afterUrl}
 	}
 
+	// A credential added, dropped or rotated in the UI reaches a pod that is
+	// already serving with everything else equal — which is a no-op, and a no-op
+	// is not delivered at all. Without this the new PAT would sit in the store
+	// until something else restarted the pod, and a REMOVED one would keep
+	// working, which is the half that matters.
+	if submoduleCredentialFingerprint(before) != submoduleCredentialFingerprint(after) {
+		return Transition{Kind: KindGitCredentialRefresh, CloneUrl: afterUrl}
+	}
+
 	return Transition{Kind: KindNoOp}
+}
+
+// submoduleCredentialFingerprint is the credential set as one comparable
+// string. Tokens are part of it — a rotated PAT under an unchanged host still
+// has to be rewritten — so it is compared and discarded here, never stored on
+// the Transition and never logged.
+//
+// ⚠️ SECURITY: the result embeds credentials. Do not return it, log it, or put
+// it on a struct that is broadcast.
+func submoduleCredentialFingerprint(c *TenantConfig) string {
+	creds := c.SubmoduleCredentials()
+	if len(creds) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(creds))
+	for _, cred := range creds {
+		parts = append(parts, cred.Host+"\x00"+cred.Token)
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "\x00")
 }
 
 // secondaryRepoKeys is the set of secondary checkouts a config asks for, as one

@@ -2,14 +2,17 @@ package config
 
 import "encoding/json"
 
-// SubmoduleCredential is a PAT for fetching git submodules whose remotes the
-// main clone token can't reach (a different repo/org). The daemon writes the
-// token to a git-only credentials file and rewrites `git@<host>:` SSH submodule
-// URLs to HTTPS so it authenticates.
+// SubmoduleCredential is a PAT for git remotes the main clone token can't reach
+// (a different repo/org): private submodules, and the private `git:` package
+// dependencies a package manager resolves. The daemon writes the token to a
+// git-only credentials file and rewrites `git@<host>:` SSH URLs to HTTPS so it
+// authenticates.
 //
 // ⚠️ SECURITY: Token is a credential. It never enters the process env bag the
 // dev server sees, never appears in argv, and is redacted from every
-// `/_sandbox/config` response (see routes.stripSubmoduleTokens).
+// `/_sandbox/config` response (see routes.stripSubmoduleTokens). It IS written
+// to a HOME-scoped git config that lives for the pod's lifetime, so in-pod code
+// can read it — see setup.InstallGitCredentials for why that is the trade.
 type SubmoduleCredential struct {
 	Host  string `json:"host"`
 	Token string `json:"token"`

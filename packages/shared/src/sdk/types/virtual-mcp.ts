@@ -420,14 +420,19 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
 export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
- * One git submodule credential on a virtual MCP. Submodules live in other
- * repositories/orgs that the main clone's per-repo GitHub App token cannot
- * reach, so the user supplies a PAT (stored as a vault secret) keyed by the
- * submodule's host. Studio resolves `secretId` against the credential vault on
- * every SANDBOX_START and posts the token to the daemon on a git-only channel
- * (never the env bag) so `git submodule update` can authenticate. `host` is the
- * bare hostname (e.g. "github.com"); the daemon rewrites `git@<host>:` SSH
- * submodule URLs to HTTPS so the token applies.
+ * One git credential on a virtual MCP, for repositories the main clone's
+ * per-repo GitHub App token cannot reach — a submodule or a private `git:`
+ * package dependency in another repository or org. The user supplies a PAT
+ * (stored as a vault secret) keyed by the remote's host. Studio resolves
+ * `secretId` against the credential vault on every SANDBOX_START and posts the
+ * token to the daemon on a git-only channel (never the env bag); the daemon
+ * installs it in the sandbox's git config, so `git submodule update` AND the
+ * git a package manager spawns (`flutter pub get`, `go mod download`, npm,
+ * cargo) both authenticate. `host` is the bare hostname (e.g. "github.com");
+ * `git@<host>:` SSH URLs are rewritten to HTTPS so the token applies.
+ *
+ * Kept named `submoduleCredentials` on the wire — renaming it would break every
+ * stored virtual MCP for a copy change.
  */
 /**
  * A bare submodule hostname with an optional port (e.g. "github.com",
@@ -490,7 +495,7 @@ const RuntimeMetadataSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Git submodule credentials injected on every SANDBOX_START. Each entry maps a host to a vault secret (PAT) that Studio resolves before posting /_sandbox/config; the daemon uses it to authenticate `git submodule update` for submodules on that host.",
+      "Git credentials injected on every SANDBOX_START. Each entry maps a host to a vault secret (PAT) that Studio resolves before posting /_sandbox/config; the daemon installs it in the sandbox's git config, authenticating submodules and private package dependencies on that host.",
     ),
 });
 

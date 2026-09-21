@@ -155,7 +155,14 @@ func (o *Orchestrator) clearCrashError() {
 
 func (o *Orchestrator) Handle(t config.Transition) {
 	if t.Kind == config.KindGitCredentialRefresh {
-		o.syncGitRemoteCredentials(t.CloneUrl)
+		if t.CloneUrl != "" {
+			o.syncGitRemoteCredentials(t.CloneUrl)
+		}
+		// The same transition covers a credential edited in the UI, which reaches
+		// a pod that is already serving. Rewriting the files is the whole fix —
+		// nothing needs a step, and a dropped credential has to stop working here
+		// rather than at the next boot.
+		o.installGitCredentials(o.deps.Store.Read())
 		return
 	}
 	// A fresh claim/reclaim or branch switch is an explicit "start over" — clear
@@ -888,6 +895,7 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 	if err := gitx.InstallSandboxHooks(o.deps.RepoDir); err != nil {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not install sandbox git hooks: %s\r\n", err.Error()))
 	}
+	o.installGitCredentials(cfg)
 	branch := cfg.Branch()
 	if branch != "" && !config.IsSyntheticBranch(branch) {
 		o.chunk(fmt.Sprintf("[orchestrator] checking out branch: %s\r\n", branch))
@@ -896,6 +904,35 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 		}
 	}
 	o.refreshBranchHead()
+}
+
+// installGitCredentials puts the configured per-host tokens where every git in
+// the pod reads them, BEFORE install runs — which is the whole point: a private
+// `git:` dependency is fetched by `flutter pub get` / `go mod download` / npm,
+// each spawning its own git with nothing but the ambient config.
+//
+// Called from two places on purpose: here, so the files are in place before
+// install runs, and from Handle, so a credential edited on a pod that is already
+// serving applies without a boot. Idempotent (clear-then-write), so the overlap
+// costs two file writes.
+//
+// Best-effort: a failure costs private dependencies, not the sandbox.
+func (o *Orchestrator) installGitCredentials(cfg *config.Enriched) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	hosts, invalidHosts, err := InstallGitCredentials(home, cfg.SubmoduleCredentials())
+	for _, host := range invalidHosts {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: skipping git credential with invalid host %q\r\n", host))
+	}
+	if err != nil {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: git credentials setup failed: %s\r\n", err.Error()))
+		return
+	}
+	if len(hosts) > 0 {
+		o.chunk(fmt.Sprintf("[orchestrator] git credentials configured for: %s\r\n", strings.Join(hosts, ", ")))
+	}
 }
 
 func (o *Orchestrator) checkoutBranch(branch string) error {

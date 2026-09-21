@@ -52,7 +52,11 @@ do not:
 
 - **A dependency under a different owner.** The token belongs to one GitHub App
   installation, which is one account; nothing minted for this run can reach
-  another owner's repository. **Report it as the blocker.**
+  another owner's repository. The fix is not yours to apply: someone adds a
+  **git credential** for that host in the agent's Sandbox settings (a PAT stored
+  as an org secret), and the next boot installs it for every git in the pod —
+  `pub get` included, with no `gh auth setup-git`. **Report that as the blocker
+  and name the host**; do not go looking for a token yourself.
 - **A private dependency added on your working branch.** The walk read each
   repository's default branch, so a `git:` dependency your PR introduces is not
   in the token. Say so in your report rather than working around it.
