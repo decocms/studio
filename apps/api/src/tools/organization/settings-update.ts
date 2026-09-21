@@ -3,7 +3,6 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
   SidebarItemSchema,
-  RegistryConfigSchema,
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
@@ -11,17 +10,14 @@ import {
 
 // Bounds on client-controlled collection sizes not enforced by the shared schema.
 const MAX_SIDEBAR_ITEMS = 50;
-const MAX_BLOCKED_MCPS = 500;
 const MAX_DEFAULT_HOME_AGENTS = 100;
-const MAX_ENABLED_PLUGINS = 200;
 const MAX_EXCLUDED_MCPS = 500;
-const MAX_REGISTRIES = 200;
 const MAX_STRING_LENGTH = 500;
 
 export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   name: "ORGANIZATION_SETTINGS_UPDATE",
   description:
-    "Update organization-level settings such as sidebar configuration, store registry settings, simple model mode, and default home agents.",
+    "Update organization-level settings such as sidebar configuration, simple model mode, and default home agents.",
   annotations: {
     title: "Update Organization Settings",
     readOnlyHint: false,
@@ -32,10 +28,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   inputSchema: z.object({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
-    enabled_plugins: z
-      .array(z.string().max(MAX_STRING_LENGTH))
-      .max(MAX_ENABLED_PLUGINS)
-      .optional(),
     coding_agent_mcp_excluded: z
       .array(z.string().max(MAX_STRING_LENGTH))
       .max(MAX_EXCLUDED_MCPS)
@@ -43,19 +35,6 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Connection ids a coding-agent run must not mount, even with `coding_agent_org_mcps` on. Replaces the stored list; pass [] to clear it.",
       ),
-    registry_config: RegistryConfigSchema.extend({
-      registries: z
-        .record(
-          z.string().max(MAX_STRING_LENGTH),
-          z.object({ enabled: z.boolean() }),
-        )
-        .refine((r) => Object.keys(r).length <= MAX_REGISTRIES, {
-          message: `registries must have at most ${MAX_REGISTRIES} entries`,
-        }),
-      blockedMcps: z
-        .array(z.string().max(MAX_STRING_LENGTH))
-        .max(MAX_BLOCKED_MCPS),
-    }).optional(),
     simple_mode: SimpleModeConfigSchema.optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.extend({
       ids: z
@@ -75,9 +54,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
   outputSchema: z.object({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).nullable().optional(),
-    enabled_plugins: z.array(z.string()).nullable().optional(),
     coding_agent_mcp_excluded: z.array(z.string()).nullable().optional(),
-    registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
@@ -102,9 +79,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       input.organizationId,
       {
         sidebar_items: input.sidebar_items,
-        enabled_plugins: input.enabled_plugins,
         coding_agent_mcp_excluded: input.coding_agent_mcp_excluded,
-        registry_config: input.registry_config,
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         flags: input.flags,

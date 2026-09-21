@@ -4,7 +4,6 @@
  */
 
 import { toast } from "sonner";
-import type { RegistryItem } from "@/components/store/types";
 import { authClient } from "@/lib/auth-client";
 import {
   useConnectionActions,
@@ -12,13 +11,7 @@ import {
   type ConnectionEntity,
 } from "@/sdk";
 import { extractConnectionData } from "@/utils/extract-connection-data";
-import {
-  inferRegistryListToolName,
-  extractItemsFromResponse,
-  callRegistryTool,
-} from "@/utils/registry-utils";
-import { useRegistryConnections } from "./use-registry-connections";
-import { useIsRegistryEnabled } from "./use-organization-settings";
+import { useStudioTools } from "@/lib/studio-tools";
 
 interface InstallResult {
   id: string;
@@ -38,16 +31,6 @@ interface UseInstallFromRegistryResult {
 }
 
 /**
- * Normalize MCP Server name format, ensuring @ prefix is present
- * @example
- * - "@deco/database" -> "@deco/database" (unchanged)
- * - "deco/database" -> "@deco/database" (adds @)
- */
-function parseServerName(serverName: string): string {
-  return serverName.startsWith("@") ? serverName : `@${serverName}`;
-}
-
-/**
  * Hook that provides inline MCP Server installation from registry.
  * Use this when you want to install a specific MCP Server without navigating away.
  */
@@ -56,14 +39,9 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
   const { data: session } = authClient.useSession();
   const actions = useConnectionActions();
 
-  // Get registry connections from registry_config, filtered to enabled only
-  const registryConnections = useRegistryConnections();
-  const isRegistryEnabled = useIsRegistryEnabled();
-  const enabledRegistries = registryConnections.filter((c) =>
-    isRegistryEnabled(c.id),
-  );
+  const studio = useStudioTools();
 
-  // Installation function - queries registries directly with MCP Server name filter
+  // Resolve the requested MCP in the Deco catalog.
   const installByBinding = async (
     bindingType: string,
   ): Promise<InstallResult | undefined> => {
@@ -72,38 +50,9 @@ export function useInstallFromRegistry(): UseInstallFromRegistryResult {
       return undefined;
     }
 
-    const parsedServerName = parseServerName(bindingType);
-
-    // Query all registries in parallel to find the MCP Server
-    const results = await Promise.all(
-      enabledRegistries.map(async (registryConnection) => {
-        const listToolName = inferRegistryListToolName(
-          registryConnection.id,
-          org.id,
-        );
-
-        try {
-          const result = await callRegistryTool(
-            registryConnection.id,
-            org.id,
-            org.slug,
-            listToolName,
-            {
-              where: { appName: parsedServerName },
-            },
-          );
-          const items = extractItemsFromResponse<RegistryItem>(result ?? []);
-          return items[0] ?? null;
-        } catch {
-          // Silently fail for individual registries - we'll try others
-          return null;
-        }
-      }),
-    );
-
-    // Find the first successful result
-    const registryItem = results.find(
-      (item): item is RegistryItem => item !== null,
+    const { item: registryItem } = await studio.call(
+      "COLLECTION_REGISTRY_APP_GET",
+      { name: bindingType },
     );
 
     if (!registryItem) {

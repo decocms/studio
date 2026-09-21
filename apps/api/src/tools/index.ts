@@ -201,9 +201,6 @@ export const CORE_TOOLS = [
   AutomationTools.AUTOMATION_RUN,
   AutomationTools.AUTOMATION_RUN_STATS,
 
-  // Virtual MCP plugin config tools
-  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
-  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_LAST_USED_LIST,
 

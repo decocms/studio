@@ -25,8 +25,6 @@ import { COLLECTION_VIRTUAL_MCP_GET } from "@/tools/virtual/get";
 import { COLLECTION_VIRTUAL_MCP_LIST } from "@/tools/virtual/list";
 import { COLLECTION_VIRTUAL_MCP_UPDATE } from "@/tools/virtual/update";
 import { VIRTUAL_MCP_PINNED_VIEWS_UPDATE } from "@/tools/virtual/pinned-views-update";
-import { VIRTUAL_MCP_PLUGIN_CONFIG_GET } from "@/tools/virtual/plugin-config-get";
-import { VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE } from "@/tools/virtual/plugin-config-update";
 
 /** The Agent Manager's former toolset, verbatim. */
 export function createAgentTools(ctx: StudioContext): ToolSet {
@@ -55,16 +53,6 @@ export function createAgentTools(ctx: StudioContext): ToolSet {
       description: COLLECTION_VIRTUAL_MCP_DELETE.description,
       inputSchema: zodSchema(COLLECTION_VIRTUAL_MCP_DELETE.inputSchema),
       execute: (input) => COLLECTION_VIRTUAL_MCP_DELETE.execute(input, ctx),
-    }),
-    VIRTUAL_MCP_PLUGIN_CONFIG_GET: tool({
-      description: VIRTUAL_MCP_PLUGIN_CONFIG_GET.description,
-      inputSchema: zodSchema(VIRTUAL_MCP_PLUGIN_CONFIG_GET.inputSchema),
-      execute: (input) => VIRTUAL_MCP_PLUGIN_CONFIG_GET.execute(input, ctx),
-    }),
-    VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE: tool({
-      description: VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE.description,
-      inputSchema: zodSchema(VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE.inputSchema),
-      execute: (input) => VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE.execute(input, ctx),
     }),
     VIRTUAL_MCP_PINNED_VIEWS_UPDATE: tool({
       description: VIRTUAL_MCP_PINNED_VIEWS_UPDATE.description,

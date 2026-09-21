@@ -21,8 +21,6 @@ describe("createAgentTools", () => {
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_UPDATE",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
-      "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-      "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
     ]);
   });
 

@@ -1,8 +1,4 @@
-import {
-  getWellKnownCommunityRegistryConnection,
-  getWellKnownRegistryConnection,
-  getWellKnownSelfConnection,
-} from "@decocms/shared/sdk";
+import { getWellKnownSelfConnection } from "@decocms/shared/sdk";
 import { decoAiGatewayAdapter } from "@/ai-providers/adapters/deco-ai-gateway";
 import { getBaseUrl } from "@/core/server-constants";
 import { getDb } from "@/database";
@@ -70,14 +66,6 @@ function getDefaultOrgMcps(organizationId: string): MCPCreationSpec[] {
         );
       },
       data: getWellKnownSelfConnection(getBaseUrl(), organizationId),
-    },
-    // MCP Registry (Community Registry) - public registry, no permissions required
-    {
-      data: getWellKnownCommunityRegistryConnection(),
-    },
-    // Deco Store Registry - official deco MCP registry with curated integrations (installed last)
-    {
-      data: getWellKnownRegistryConnection(organizationId),
     },
   ];
 }

@@ -14,7 +14,7 @@ import { getSettings } from "../../settings";
 import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
-} from "../registry/discover-tools";
+} from "../../mcp-clients/url-security";
 import { sanitizeCustomHeaders } from "@/mcp-clients/outbound/headers";
 import type { ConnectionParameters, ToolDefinition } from "./schema";
 import { isStdioParameters } from "./schema";

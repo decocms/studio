@@ -300,7 +300,6 @@ export const settings = {
   "settings.nav.agents": "Projetos",
   "settings.nav.automations": "Automações",
   "settings.nav.skills": "Skills",
-  "settings.nav.store": "Loja",
   "settings.nav.monitor": "Monitoramento",
   "settings.nav.members": "Membros",
   "settings.nav.security": "Segurança",
@@ -930,41 +929,6 @@ export const settings = {
   "settings.orgSso.toggleEnforcementError":
     "Falha ao alternar aplica\u00e7\u00e3o de SSO",
   "settings.orgSso.updateButton": "Atualizar",
-  "settings.orgStore.addRegistry": "Adicionar Registro",
-  "settings.orgStore.adding": "Adicionando...",
-  "settings.orgStore.authTokenLabel": "Token de Autentica\u00e7\u00e3o",
-  "settings.orgStore.authTokenPlaceholder": "Token Bearer...",
-  "settings.orgStore.cancel": "Cancelar",
-  "settings.orgStore.communityRegistryDescription":
-    "Registro MCP da comunidade com milhares de MCPs \u00fateis",
-  "settings.orgStore.communityRegistryNotAdded":
-    "Registro MCP da comunidade \u2014 ainda n\u00e3o adicionado",
-  "settings.orgStore.communitySection": "Comunidade",
-  "settings.orgStore.connectionNotFound":
-    "Conex\u00e3o n\u00e3o encontrada \u2014 ser\u00e1 criada automaticamente.",
-  "settings.orgStore.decoStoreDescription":
-    "Registro MCP deco oficial com integra\u00e7\u00f5es selecionadas",
-  "settings.orgStore.decoStoreName": "Loja Deco",
-  "settings.orgStore.decoStoreSection": "Loja Deco",
-  "settings.orgStore.failedAddRegistry": "Falha ao adicionar registro: {error}",
-  "settings.orgStore.failedLoadStoreSettings":
-    "Falha ao carregar configura\u00e7\u00f5es da loja:",
-  "settings.orgStore.mcpRegistry": "Registro MCP",
-  "settings.orgStore.nameLabel": "Nome",
-  "settings.orgStore.namePlaceholder": "p.ex. Registro Acme Corp",
-  "settings.orgStore.optional": "Opcional",
-  "settings.orgStore.pageTitle": "Loja",
-  "settings.orgStore.privateMcpRegistry": "Registro MCP privado",
-  "settings.orgStore.privateRegistriesSection": "Registros Privados",
-  "settings.orgStore.privateRegistry": "Registro Privado",
-  "settings.orgStore.privateRegistryAdded": "Registro privado adicionado",
-  "settings.orgStore.privateRegistryDescription":
-    "Registro MCP privado da sua organiza\u00e7\u00e3o",
-  "settings.orgStore.registryUrlLabel": "URL do Registro",
-  "settings.orgStore.registryUrlPlaceholder":
-    "https://registry.exemplo.com/mcp",
-  "settings.orgStore.remove": "Remover",
-  "settings.orgStore.removeRegistry": "Remover este registro?",
   "settings.organizationForm.failedToReadImage": "Falha ao ler imagem",
   "settings.organizationForm.failedToUpdateOrg":
     "Falha ao atualizar organiza\u00e7\u00e3o",

@@ -1,29 +1,13 @@
-import { useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Container } from "@untitledui/icons";
 import { getGitHubAvatarUrl } from "@/utils/github.ts";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@decocms/ui/components/alert-dialog.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ConnectionCard } from "@/components/connections/connection-card.tsx";
 import type { ConnectionEntity } from "@/sdk";
-import { track } from "@/lib/posthog-client";
 import type { RegistryItem } from "@/components/store/types";
 import { getRegistryItemAppName } from "@/utils/extract-connection-data";
 import { useT } from "@/i18n/use-t.ts";
 import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
-
-function isCommunityItem(item: RegistryItem): boolean {
-  return item._registryId?.includes("community-registry") === true;
-}
 
 export function CatalogItemCard({
   item,
@@ -43,8 +27,6 @@ export function CatalogItemCard({
   onConnect: (item: RegistryItem) => void;
 }) {
   const t = useT();
-  const [communityWarningOpen, setCommunityWarningOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"connect" | null>(null);
 
   const appName = getRegistryItemAppName(item) ?? "";
   const isConnected = connectedAppNames.has(appName);
@@ -67,7 +49,6 @@ export function CatalogItemCard({
     (c) => c.connection_type !== "VIRTUAL" && c.app_name === appName,
   );
 
-  const isCommunity = isCommunityItem(item);
   // Members without connections:manage can browse but not connect.
   const isClickable = isConnected || canManage;
 
@@ -82,92 +63,42 @@ export function CatalogItemCard({
     handleConnect();
   };
 
-  const handleConnect = () => {
-    if (isCommunity) {
-      setPendingAction("connect");
-      setCommunityWarningOpen(true);
-    } else {
-      onConnect(item);
-    }
-  };
-
-  const handleCommunityConfirm = () => {
-    track("connections_community_warning_confirmed", {
-      registry_item_id: item.id,
-    });
-    setCommunityWarningOpen(false);
-    if (pendingAction === "connect") {
-      onConnect(item);
-    }
-    setPendingAction(null);
-  };
+  const handleConnect = () => onConnect(item);
 
   return (
-    <>
-      <ConnectionCard
-        connection={{ title, description, icon }}
-        fallbackIcon={<Container />}
-        onClick={isClickable ? handleClick : undefined}
-        headerActionsAlwaysVisible
-        headerActions={
-          <div className="flex items-center gap-2">
-            {isCommunity && item._sourceIcon && (
-              <img
-                src={item._sourceIcon}
-                alt="Community"
-                className="size-4 rounded-sm object-contain"
-              />
-            )}
-            {isConnected ? (
-              <span className="text-xs text-muted-foreground font-normal">
-                {t("orgs.catalogItemCard.connected")}
-              </span>
-            ) : (
-              canManage && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-3 classic:rounded-lg text-sm font-medium"
-                  disabled={connectingItemId !== null}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleConnect();
-                  }}
-                >
-                  {connectingItemId === item.id ? (
-                    <Spinner className="size-3.5" />
-                  ) : (
-                    t("orgs.catalogItemCard.connect")
-                  )}
-                </Button>
-              )
-            )}
-          </div>
-        }
-      />
-      <AlertDialog
-        open={communityWarningOpen}
-        onOpenChange={setCommunityWarningOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("orgs.catalogItemCard.communityMcpServerTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("orgs.catalogItemCard.communityMcpServerDescription")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("orgs.catalogItemCard.cancel")}
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleCommunityConfirm}>
-              {t("orgs.catalogItemCard.continue")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+    <ConnectionCard
+      connection={{ title, description, icon }}
+      fallbackIcon={<Container />}
+      onClick={isClickable ? handleClick : undefined}
+      headerActionsAlwaysVisible
+      headerActions={
+        <div className="flex items-center gap-2">
+          {isConnected ? (
+            <span className="text-xs text-muted-foreground font-normal">
+              {t("orgs.catalogItemCard.connected")}
+            </span>
+          ) : (
+            canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-3 classic:rounded-lg text-sm font-medium"
+                disabled={connectingItemId !== null}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleConnect();
+                }}
+              >
+                {connectingItemId === item.id ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  t("orgs.catalogItemCard.connect")
+                )}
+              </Button>
+            )
+          )}
+        </div>
+      }
+    />
   );
 }

@@ -21,28 +21,6 @@ export const SidebarItemSchema = z.object({
 
 export type SidebarItem = z.infer<typeof SidebarItemSchema>;
 
-/**
- * Registry config schema - matches RegistryConfig interface from storage/types.ts
- *
- * Controls which registries are visible in the store and which individual MCPs are blocked.
- * When null/absent, defaults to Deco Store enabled with nothing blocked.
- */
-export const RegistryConfigSchema = z.object({
-  registries: z
-    .record(
-      z.string().max(MAX_SETTINGS_STRING_LENGTH),
-      z.object({ enabled: z.boolean() }),
-    )
-    .describe(
-      "Per-registry enabled/disabled state. Key is connection ID. Absent registries are treated as enabled.",
-    ),
-  blockedMcps: z
-    .array(z.string().max(MAX_SETTINGS_STRING_LENGTH))
-    .describe("List of MCP app_name or app_id values to hide from the store."),
-});
-
-export type RegistryConfig = z.infer<typeof RegistryConfigSchema>;
-
 export const ModelSlotSchema = z
   .object({
     keyId: z.string().max(MAX_SETTINGS_STRING_LENGTH),

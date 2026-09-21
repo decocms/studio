@@ -52,7 +52,4 @@ export type ResolvedChecklistItem = {
   alwaysSuggest?: boolean;
 };
 
-export type StudioPackConnectionKey =
-  | "self"
-  | "registry"
-  | "community-registry";
+export type StudioPackConnectionKey = "self";

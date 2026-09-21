@@ -47,7 +47,6 @@ import {
   usePanelNavigate,
 } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { readThreadLayout, saveThreadLayout } from "@/lib/thread-layout-memory";
-import { useOrganizationSettingsNonBlocking } from "../hooks/use-organization-settings";
 import { homeNextActionsQueryOptions } from "../hooks/use-home-next-actions";
 import { useOrgSsoStatus } from "../hooks/use-org-sso";
 import { SsoRequiredScreen } from "../components/sso-required-screen";
@@ -70,7 +69,7 @@ type ActiveOrgData = Awaited<
 
 /**
  * Single ProjectContextProvider for the entire shell.
- * Fetches org settings (enabledPlugins) and provides a complete project context.
+ * Provides the organization project context.
  * Agent routes override this via VirtualMCPProvider.
  */
 function ShellProjectProvider({
@@ -80,14 +79,11 @@ function ShellProjectProvider({
   org: NonNullable<Parameters<typeof ProjectContextProvider>[0]["org"]>;
   children: React.ReactNode;
 }) {
-  const orgSettings = useOrganizationSettingsNonBlocking(org.id, org.slug);
-
   const project = {
     id: org.id,
     organizationId: org.id,
     slug: "_org",
     name: org.name,
-    enabledPlugins: orgSettings?.enabled_plugins ?? null,
     ui: null,
   };
 

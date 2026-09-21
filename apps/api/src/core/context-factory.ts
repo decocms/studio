@@ -39,7 +39,6 @@ import type {
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { UserModelPreferencesStorage } from "../storage/user-model-preferences";
-import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { BrandContextStorage } from "../storage/brand-context";
@@ -49,15 +48,6 @@ import { KyselyKVStorage } from "../storage/kv";
 import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
-import {
-  RegistryItemStorage,
-  PublishRequestStorage,
-  PublishApiKeyStorage,
-  MonitorRunStorage,
-  MonitorResultStorage,
-  MonitorConnectionStorage,
-} from "../storage/registry";
-import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
 import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
@@ -1470,7 +1460,6 @@ export async function createStudioContextFactory(
     tags: new TagStorage(config.db),
     experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
-    virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
       config.db,
       vault,
@@ -1502,26 +1491,6 @@ export async function createStudioContextFactory(
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
-    registry: {
-      items: new RegistryItemStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      publishRequests: new PublishRequestStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      publishApiKeys: new PublishApiKeyStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorRuns: new MonitorRunStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorResults: new MonitorResultStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorConnections: new MonitorConnectionStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-    },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
     organizationJoinRequests: new OrganizationJoinRequestStorage(config.db),

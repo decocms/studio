@@ -1,41 +1,13 @@
 ---
-title: Store
-description: Choose which registries feed your connections catalog
+title: MCP catalog
+description: Find MCPs in the Deco registry
 icon: Store
 ---
 
-import Callout from "../../../../components/ui/Callout.astro";
+The [Connections](/en/studio/connections) page lists MCPs from the Deco registry. Search the catalog, choose an MCP, and connect it to your organization.
 
-## What is the Store?
+The catalog comes from [registry.json in decocms/mcps](https://github.com/decocms/mcps/blob/main/registry.json). Changes to descriptions, URLs, icons, and available MCPs are made in that file through a pull request.
 
-The **Store** is where you pick which **registries** populate your [Connections](/en/studio/connections) catalog. A registry is a source of MCP servers; the catalog you see on the Connections page is the union of every registry you have enabled.
+Studio caches the file for five minutes. If a refresh fails, it can serve the last valid version for up to an hour. Catalog entries are not stored in Studio's database.
 
-You'll find it under **Settings → Store**.
-
-<Callout type="info">
-  The Store is not where you install a connection — that happens on the **Connections** page. The Store just controls which MCPs show up there.
-</Callout>
-
-## Registry types
-
-### Deco Store
-
-The official, curated registry. Always available. Verified integrations tested for compatibility with deco Studio. This is the source for most common integrations.
-
-### Community
-
-A broader, community-sourced catalog (the MCP Registry). Useful when the Deco Store doesn't have what you need. Quality and maintenance vary.
-
-### Private registries
-
-Your organization can connect its own private MCP registry — useful for proprietary tools or internal services that shouldn't be shared externally. Click **Add registry** to connect one.
-
-## Toggling registries
-
-Each registry has a switch. Turn one off and its MCPs stop appearing in your Connections catalog. Existing connections you've already installed from that registry keep working — only the catalog is affected.
-
----
-
-## Next
-
-Once you've enabled the registries you want, head to [**Settings → Connections**](/en/studio/connections) to browse and install MCPs from them.
+Installed connections keep their configuration and credentials in Studio. You can also add a custom connection on the Connections page.

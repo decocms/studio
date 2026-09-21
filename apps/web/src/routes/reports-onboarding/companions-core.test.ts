@@ -174,6 +174,7 @@ describe("resolveCandidate", () => {
       },
     ];
     expect(resolveCandidate(github, "github", "deco/mcp-github")).toBe("c_org");
+    expect(resolveCandidate(github, "github", "deco/github-mcp")).toBe("c_org");
   });
   it("returns null when the only github match is repo-scoped", () => {
     const github = [

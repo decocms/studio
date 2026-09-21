@@ -1418,33 +1418,6 @@ const settingsProfileRoute = createRoute({
   ),
 });
 
-const settingsStoreRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.store" },
-  getParentRoute: () => settingsRoute,
-  path: "/store",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/store.tsx"),
-  ),
-});
-
-const settingsRegistryRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.store" },
-  getParentRoute: () => settingsRoute,
-  path: "/registry",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/registry.tsx"),
-  ),
-});
-
-const settingsStoreRegistryRoute = createRoute({
-  staticData: { pageTitle: "settings.nav.store" },
-  getParentRoute: () => settingsRoute,
-  path: "/store/registry",
-  component: lazyRouteComponent(
-    () => import("./routes/orgs/settings/store-registry.tsx"),
-  ),
-});
-
 // ============================================
 // UNIFIED CHAT SUB-ROUTES
 // ============================================
@@ -1504,9 +1477,6 @@ const settingsWithChildren = settingsRoute.addChildren([
   settingsRolesRoute,
   settingsSsoRoute,
   settingsProfileRoute,
-  settingsStoreRoute,
-  settingsStoreRegistryRoute,
-  settingsRegistryRoute,
 ]);
 
 const agentSiteEditorWithChildren = agentSiteEditorRoute.addChildren([

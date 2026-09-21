@@ -28,7 +28,7 @@ import { isStdioParameters } from "../tools/connection/schema";
 import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
-} from "../tools/registry/discover-tools";
+} from "../mcp-clients/url-security";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,

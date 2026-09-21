@@ -73,7 +73,7 @@ export const prompts: GuidePrompt[] = [
     text: ({ problem }) => {
       const goal = problem?.trim();
       return goal
-        ? `I want to ${goal}. What tools in the Deco Store and Community Registry can help?`
+        ? `I want to ${goal}. What tools in the Deco registry can help?`
         : "Show me what's in the Deco Store. Recommend a few tools that fit common business needs.";
     },
   },

@@ -20,9 +20,7 @@ function toJsonColumn(value: unknown): string | null {
 function mapRecord(record: {
   organizationId: string;
   sidebar_items: unknown;
-  enabled_plugins: unknown;
   coding_agent_mcp_excluded: unknown;
-  registry_config: unknown;
   simple_mode: unknown;
   default_home_agents: unknown;
   flags: unknown;
@@ -34,15 +32,9 @@ function mapRecord(record: {
     sidebar_items: parseJsonColumn<OrganizationSettings["sidebar_items"]>(
       record.sidebar_items,
     ),
-    enabled_plugins: parseJsonColumn<OrganizationSettings["enabled_plugins"]>(
-      record.enabled_plugins,
-    ),
     coding_agent_mcp_excluded: parseJsonColumn<
       OrganizationSettings["coding_agent_mcp_excluded"]
     >(record.coding_agent_mcp_excluded),
-    registry_config: parseJsonColumn<OrganizationSettings["registry_config"]>(
-      record.registry_config,
-    ),
     simple_mode: parseJsonColumn<OrganizationSettings["simple_mode"]>(
       record.simple_mode,
     ),
@@ -76,9 +68,7 @@ export class OrganizationSettingsStorage
       Pick<
         OrganizationSettings,
         | "sidebar_items"
-        | "enabled_plugins"
         | "coding_agent_mcp_excluded"
-        | "registry_config"
         | "simple_mode"
         | "default_home_agents"
         | "flags"
@@ -88,9 +78,7 @@ export class OrganizationSettingsStorage
     const now = new Date().toISOString();
     const json = {
       sidebar_items: toJsonColumn(data?.sidebar_items),
-      enabled_plugins: toJsonColumn(data?.enabled_plugins),
       coding_agent_mcp_excluded: toJsonColumn(data?.coding_agent_mcp_excluded),
-      registry_config: toJsonColumn(data?.registry_config),
       simple_mode: toJsonColumn(data?.simple_mode),
       default_home_agents: toJsonColumn(data?.default_home_agents),
       flags: toJsonColumn(data?.flags),
@@ -107,10 +95,8 @@ export class OrganizationSettingsStorage
       .onConflict((oc) =>
         oc.column("organizationId").doUpdateSet({
           sidebar_items: json.sidebar_items ?? undefined,
-          enabled_plugins: json.enabled_plugins ?? undefined,
           coding_agent_mcp_excluded:
             json.coding_agent_mcp_excluded ?? undefined,
-          registry_config: json.registry_config ?? undefined,
           simple_mode: json.simple_mode ?? undefined,
           default_home_agents: json.default_home_agents ?? undefined,
           // Flags shallow-merge atomically: keys in the update win, omitted

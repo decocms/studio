@@ -101,7 +101,7 @@ describe("installStudioPack", () => {
     expect(stores.length).toBe(1);
   });
 
-  test("Store Manager aggregates registry and community-registry", async () => {
+  test("Store Manager uses the built-in Deco registry tools", async () => {
     await installStudioPack(orgId, userId, virtualMcpStorage);
     const storeId = StudioPackAgentId.STORE_MANAGER(orgId);
     const store = await virtualMcpStorage.findById(storeId, orgId);
@@ -109,11 +109,9 @@ describe("installStudioPack", () => {
     const connIds = (store?.connections ?? [])
       .map((c) => c.connection_id)
       .sort();
-    expect(connIds).toEqual(
-      [
-        WellKnownOrgMCPId.REGISTRY(orgId),
-        WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
-      ].sort(),
+    expect(connIds).toEqual([WellKnownOrgMCPId.SELF(orgId)]);
+    expect(store?.connections[0]?.selected_tools).toContain(
+      "REGISTRY_ITEM_SEARCH",
     );
   });
 

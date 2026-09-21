@@ -152,8 +152,6 @@ const ALL_TOOL_NAMES = [
   "AUTOMATION_RUN",
   "AUTOMATION_RUN_STATS",
   // Virtual MCP plugin config and pinned views tools
-  "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-  "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
   "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
   "VIRTUAL_MCP_LAST_USED_LIST",
 
@@ -235,28 +233,7 @@ const ALL_TOOL_NAMES = [
   "REGISTRY_ITEM_SEARCH",
   "REGISTRY_ITEM_GET",
   "REGISTRY_ITEM_VERSIONS",
-  "REGISTRY_ITEM_CREATE",
-  "REGISTRY_ITEM_BULK_CREATE",
-  "REGISTRY_ITEM_UPDATE",
-  "REGISTRY_ITEM_DELETE",
   "REGISTRY_ITEM_FILTERS",
-  "REGISTRY_DISCOVER_TOOLS",
-  "REGISTRY_AI_GENERATE",
-  "REGISTRY_PUBLISH_REQUEST_LIST",
-  "REGISTRY_PUBLISH_REQUEST_REVIEW",
-  "REGISTRY_PUBLISH_REQUEST_COUNT",
-  "REGISTRY_PUBLISH_REQUEST_DELETE",
-  "REGISTRY_PUBLISH_API_KEY_GENERATE",
-  "REGISTRY_PUBLISH_API_KEY_LIST",
-  "REGISTRY_PUBLISH_API_KEY_REVOKE",
-  "REGISTRY_MONITOR_RUN_START",
-  "REGISTRY_MONITOR_RUN_LIST",
-  "REGISTRY_MONITOR_RUN_GET",
-  "REGISTRY_MONITOR_RUN_CANCEL",
-  "REGISTRY_MONITOR_RESULT_LIST",
-  "REGISTRY_MONITOR_CONNECTION_LIST",
-  "REGISTRY_MONITOR_CONNECTION_SYNC",
-  "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
 
   // VM tools (app-only)
   "SANDBOX_START",
@@ -831,16 +808,6 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   // Virtual MCP plugin config and pinned views tools
   {
-    name: "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
-    description: "View virtual MCP plugin configuration",
-    category: "Virtual MCPs",
-  },
-  {
-    name: "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
-    description: "Update virtual MCP plugin configuration",
-    category: "Virtual MCPs",
-  },
-  {
     name: "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
     description: "Update virtual MCP pinned sidebar views",
     category: "Virtual MCPs",
@@ -1150,7 +1117,7 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "REGISTRY_ITEM_LIST",
-    description: "List private registry items",
+    description: "List Deco registry items",
     category: "Registry",
   },
   {
@@ -1169,116 +1136,8 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Registry",
   },
   {
-    name: "REGISTRY_ITEM_CREATE",
-    description: "Create registry item",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_ITEM_BULK_CREATE",
-    description: "Bulk create registry items",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_ITEM_UPDATE",
-    description: "Update registry item",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_ITEM_DELETE",
-    description: "Delete registry item",
-    category: "Registry",
-    dangerous: true,
-  },
-  {
     name: "REGISTRY_ITEM_FILTERS",
     description: "Get registry item filters",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_DISCOVER_TOOLS",
-    description: "Discover tools from MCP server",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_AI_GENERATE",
-    description: "AI-generate registry content",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_LIST",
-    description: "List publish requests",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_REVIEW",
-    description: "Review publish request",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_COUNT",
-    description: "Count pending publish requests",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_REQUEST_DELETE",
-    description: "Delete publish request",
-    category: "Registry",
-    dangerous: true,
-  },
-  {
-    name: "REGISTRY_PUBLISH_API_KEY_GENERATE",
-    description: "Generate publish API key",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_API_KEY_LIST",
-    description: "List publish API keys",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_PUBLISH_API_KEY_REVOKE",
-    description: "Revoke publish API key",
-    category: "Registry",
-    dangerous: true,
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_START",
-    description: "Start monitor run",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_LIST",
-    description: "List monitor runs",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_GET",
-    description: "Get monitor run details",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RUN_CANCEL",
-    description: "Cancel monitor run",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_RESULT_LIST",
-    description: "List monitor results",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_CONNECTION_LIST",
-    description: "List monitor connections",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_CONNECTION_SYNC",
-    description: "Sync monitor connections",
-    category: "Registry",
-  },
-  {
-    name: "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
-    description: "Update monitor connection auth",
     category: "Registry",
   },
   {
@@ -1629,7 +1488,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // View agents
       "COLLECTION_VIRTUAL_MCP_LIST",
       "COLLECTION_VIRTUAL_MCP_GET",
-      "VIRTUAL_MCP_PLUGIN_CONFIG_GET",
       "VIRTUAL_MCP_LAST_USED_LIST",
       // View automations
       "AUTOMATION_GET",
@@ -1835,7 +1693,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "COLLECTION_VIRTUAL_MCP_CREATE",
       "COLLECTION_VIRTUAL_MCP_UPDATE",
       "COLLECTION_VIRTUAL_MCP_DELETE",
-      "VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE",
       "VIRTUAL_MCP_PINNED_VIEWS_UPDATE",
     ],
     dangerous: true,
@@ -1942,8 +1799,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
   // Store & Registry
   {
     id: "registry:manage",
-    label: "Manage registry",
-    description: "Browse, publish, and manage items in the registry",
+    label: "Browse registry",
+    description: "Browse the Deco MCP catalog",
     section: "Store & Registry",
     tools: [
       "COLLECTION_REGISTRY_APP_LIST",
@@ -1955,36 +1812,6 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "REGISTRY_ITEM_GET",
       "REGISTRY_ITEM_VERSIONS",
       "REGISTRY_ITEM_FILTERS",
-      "REGISTRY_DISCOVER_TOOLS",
-      "REGISTRY_ITEM_CREATE",
-      "REGISTRY_ITEM_BULK_CREATE",
-      "REGISTRY_ITEM_UPDATE",
-      "REGISTRY_ITEM_DELETE",
-      "REGISTRY_AI_GENERATE",
-      "REGISTRY_PUBLISH_REQUEST_LIST",
-      "REGISTRY_PUBLISH_REQUEST_REVIEW",
-      "REGISTRY_PUBLISH_REQUEST_COUNT",
-      "REGISTRY_PUBLISH_REQUEST_DELETE",
-      "REGISTRY_PUBLISH_API_KEY_GENERATE",
-      "REGISTRY_PUBLISH_API_KEY_LIST",
-      "REGISTRY_PUBLISH_API_KEY_REVOKE",
-    ],
-    dangerous: true,
-  },
-  {
-    id: "registry:monitor",
-    label: "Monitor registry health",
-    description: "Run health checks on registry connections and view results",
-    section: "Store & Registry",
-    tools: [
-      "REGISTRY_MONITOR_RUN_START",
-      "REGISTRY_MONITOR_RUN_LIST",
-      "REGISTRY_MONITOR_RUN_GET",
-      "REGISTRY_MONITOR_RUN_CANCEL",
-      "REGISTRY_MONITOR_RESULT_LIST",
-      "REGISTRY_MONITOR_CONNECTION_LIST",
-      "REGISTRY_MONITOR_CONNECTION_SYNC",
-      "REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH",
     ],
   },
   // Developer

@@ -16,10 +16,12 @@ import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
  * Must stay in sync with the app_name field set in extractConnectionData.
  */
 export function getRegistryItemAppName(
-  item: Pick<RegistryItem, "_meta" | "server">,
+  item: Pick<RegistryItem, "id" | "_meta" | "server">,
 ): string | null {
   const studioMeta = getStudioMcpMetadata(item._meta);
-  return studioMeta?.appName || item.server?.name || null;
+  // Keep installed GitHub connections discoverable by the existing repo tooling.
+  const name = item.id === "deco/github-mcp" ? "mcp-github" : item.server?.name;
+  return studioMeta?.appName || name || null;
 }
 
 /**

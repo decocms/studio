@@ -133,8 +133,6 @@ export async function installStudioPack(
 ): Promise<void> {
   const connectionForKey: Record<StudioPackConnectionKey, string> = {
     self: WellKnownOrgMCPId.SELF(orgId),
-    registry: WellKnownOrgMCPId.REGISTRY(orgId),
-    "community-registry": WellKnownOrgMCPId.COMMUNITY_REGISTRY(orgId),
   };
 
   await Promise.all(

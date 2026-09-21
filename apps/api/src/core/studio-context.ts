@@ -294,10 +294,7 @@ import type { OrgScopedThreadStorage } from "@/storage/threads";
 import type { OrgScopedAsyncResearchJobStorage } from "@/storage/async-research-jobs";
 import type { ConnectionStorage } from "../storage/connection";
 import type { ConnectionCredentialVaultStorage } from "../storage/connection-credential-vault";
-import type {
-  MonitoringStorage,
-  VirtualMcpPluginConfigStoragePort,
-} from "../storage/ports";
+import type { MonitoringStorage } from "../storage/ports";
 import type { OrganizationSettingsStorage } from "../storage/organization-settings";
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
@@ -311,7 +308,6 @@ import type { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import type { BrandContextStorage } from "../storage/brand-context";
 import type { OrganizationDomainStorage } from "../storage/organization-domains";
 import type { OrganizationJoinRequestStorage } from "../storage/organization-join-requests";
-import type { RegistryStorage } from "../storage/registry";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { AIProviderKeyStorage } from "@/storage/ai-provider-keys";
@@ -389,10 +385,8 @@ export interface StudioStorage {
   claudeSubscriptions: ClaudeSubscriptionStorage;
   automations: AutomationsStorage;
   triggerCallbackTokens: TriggerCallbackTokenStorage;
-  virtualMcpPluginConfigs: VirtualMcpPluginConfigStoragePort;
   orgSsoConfig: OrgSsoConfigStorage;
   orgSsoSessions: OrgSsoSessionStorage;
-  registry: RegistryStorage;
   brandContext: BrandContextStorage;
   organizationDomains: OrganizationDomainStorage;
   organizationJoinRequests: OrganizationJoinRequestStorage;

@@ -24,7 +24,6 @@ import type {
 import type { OrgNoticeSeverity } from "@decocms/shared/organization/notice";
 import type { ThreadMetadata } from "@decocms/shared/entities";
 import type { ReviewerKind } from "@decocms/shared/task-board";
-import type { PrivateRegistryDatabase } from "./registry/types";
 
 export type {
   OrgSsoConfigPublic,
@@ -142,11 +141,6 @@ export interface SidebarItem {
   icon: string;
 }
 
-export interface RegistryConfig {
-  registries: Record<string, { enabled: boolean }>;
-  blockedMcps: string[];
-}
-
 export interface SimpleModeModelSlot {
   keyId: string;
   modelId: string;
@@ -180,11 +174,9 @@ export interface DefaultHomeAgentsConfig {
 export interface OrganizationSettingsTable {
   organizationId: string;
   sidebar_items: JsonArray<SidebarItem[]> | null;
-  enabled_plugins: JsonArray<string[]> | null;
   // Connection ids a coding-agent run must not mount, even with
   // `coding_agent_org_mcps` on. See migration 212.
   coding_agent_mcp_excluded: JsonArray<string[]> | null;
-  registry_config: JsonObject<RegistryConfig> | null;
   simple_mode: JsonObject<SimpleModeConfig> | null;
   default_home_agents: JsonObject<DefaultHomeAgentsConfig> | null;
   // Boolean toggles bag — the flag set lives in OrgFlagsSchema
@@ -198,9 +190,7 @@ export interface OrganizationSettingsTable {
 export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: SidebarItem[] | null;
-  enabled_plugins: string[] | null;
   coding_agent_mcp_excluded: string[] | null;
-  registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
@@ -1348,24 +1338,6 @@ export interface MemberTag {
 }
 
 // ============================================================================
-// Virtual MCP Plugin Config Table Definition
-// ============================================================================
-
-/**
- * Virtual MCP plugin config table definition
- * Per-virtual-MCP plugin configuration with optional MCP connection binding
- */
-export interface VirtualMcpPluginConfigTable {
-  id: string;
-  virtual_mcp_id: string;
-  plugin_id: string;
-  connection_id: string | null;
-  settings: JsonObject<Record<string, unknown>> | null;
-  created_at: ColumnType<Date, Date | string, never>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
-// ============================================================================
 // Automations Table Definitions
 // ============================================================================
 
@@ -2400,7 +2372,7 @@ export interface Experiment {
   updatedAt: string;
 }
 
-export interface Database extends PrivateRegistryDatabase {
+export interface Database {
   // Core tables (all within organization scope)
   users: UserTable; // System users
   user: BetterAuthUserTable; // Better Auth core table (singular)
@@ -2446,7 +2418,6 @@ export interface Database extends PrivateRegistryDatabase {
   subsidized_gateway_keys: SubsidizedGatewayKeyTable;
 
   // Virtual MCP plugin configs
-  virtual_mcp_plugin_configs: VirtualMcpPluginConfigTable;
 
   // AI Provider keys tables
   ai_provider_keys: AIProviderKeyTable;

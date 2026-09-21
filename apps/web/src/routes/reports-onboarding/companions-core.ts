@@ -334,7 +334,9 @@ export function resolveCandidate(
   const matches = connections.filter(
     (c) =>
       (c.app_name === bindingType ||
-        (!!registryAppId && c.app_id === registryAppId)) &&
+        (!!registryAppId && c.app_id === registryAppId) ||
+        (registryAppId === "deco/github-mcp" &&
+          c.app_id === "deco/mcp-github")) &&
       // Repo-scoped github children (per-agent import / "Add repo") share the
       // deco/mcp-github identity but can't list installations — linking one
       // breaks the repo picker. Only org-level connections are valid candidates.

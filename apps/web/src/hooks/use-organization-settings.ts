@@ -1,4 +1,4 @@
-import { useProjectContext, WellKnownOrgMCPId } from "@/sdk";
+import { useProjectContext } from "@/sdk";
 import { authClient } from "@/lib/auth-client";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import {
@@ -35,11 +35,6 @@ export interface SimpleModeConfig {
   tiers: Record<SimpleModeTier, ModelSlot | null>;
 }
 
-export interface RegistryConfig {
-  registries: Record<string, { enabled: boolean }>;
-  blockedMcps: string[];
-}
-
 export interface DefaultHomeAgentsConfig {
   ids: string[];
 }
@@ -47,9 +42,7 @@ export interface DefaultHomeAgentsConfig {
 export interface OrganizationSettings {
   organizationId: string;
   sidebar_items: unknown[] | null;
-  enabled_plugins: string[] | null;
   coding_agent_mcp_excluded: string[] | null;
-  registry_config: RegistryConfig | null;
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
@@ -60,9 +53,7 @@ export interface OrganizationSettings {
 const EMPTY_SETTINGS: OrganizationSettings = {
   organizationId: "",
   sidebar_items: null,
-  enabled_plugins: null,
   coding_agent_mcp_excluded: null,
-  registry_config: null,
   simple_mode: null,
   default_home_agents: null,
   flags: null,
@@ -120,33 +111,11 @@ function useOrganizationSettings<T = OrganizationSettings>(
   });
 }
 
-/**
- * Non-blocking shell read. Used by shell-layout, which mounts
- * ProjectContextProvider and therefore can't call useProjectContext() yet — so
- * it passes `orgId`/`orgSlug` explicitly. Same query key as the other variants.
- *
- * Deliberately non-suspense: the shell must NOT block its whole subtree
- * (sidebar, home, tiles) on the org-settings round-trip. `enabled_plugins` is
- * the only field consumed downstream and every consumer is null-safe, so we
- * render immediately with `null` and let the value fill in when the query
- * resolves.
- */
-export function useOrganizationSettingsNonBlocking(
-  orgId: string,
-  orgSlug: string,
-): OrganizationSettings | null {
-  const { data } = useQuery(organizationSettingsQueryOptions(orgSlug, orgId));
-
-  return data ?? null;
-}
-
 type OrgSettingsUpdateInput = Partial<
   Pick<
     OrganizationSettings,
     | "sidebar_items"
-    | "enabled_plugins"
     | "coding_agent_mcp_excluded"
-    | "registry_config"
     | "simple_mode"
     | "default_home_agents"
     | "flags"
@@ -383,34 +352,5 @@ export function useSetCodingAgentExcludedMcps() {
     ...mutation,
     mutate: (ids: string[], options?: OrgSettingsMutateOptions) =>
       mutation.mutate({ coding_agent_mcp_excluded: ids }, options),
-  };
-}
-
-export function useRegistryConfig(): RegistryConfig | null {
-  const { data } = useOrganizationSettings((s) => s.registry_config);
-  return data ?? null;
-}
-
-export function useUpdateRegistryConfig() {
-  const mutation = useUpdateOrganizationSettings();
-  return {
-    ...mutation,
-    mutate: (config: RegistryConfig, options?: OrgSettingsMutateOptions) =>
-      mutation.mutate({ registry_config: config }, options),
-    mutateAsync: (config: RegistryConfig, options?: OrgSettingsMutateOptions) =>
-      mutation.mutateAsync({ registry_config: config }, options),
-  };
-}
-
-export function useIsRegistryEnabled(): (connectionId: string) => boolean {
-  const { org } = useProjectContext();
-  const registryConfig = useRegistryConfig();
-  const decoStoreId = WellKnownOrgMCPId.REGISTRY(org.id);
-
-  return (connectionId: string): boolean => {
-    if (!registryConfig) return connectionId === decoStoreId;
-    const entry = registryConfig.registries[connectionId];
-    if (!entry) return connectionId === decoStoreId;
-    return entry.enabled;
   };
 }

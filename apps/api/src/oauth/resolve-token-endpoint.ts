@@ -11,7 +11,7 @@ import {
   fetchProtectedResourceMetadata,
   fetchAuthorizationServerMetadata,
 } from "../api/routes/oauth-proxy";
-import { isPrivateUrl } from "../tools/registry/discover-tools";
+import { isPrivateUrl } from "../mcp-clients/url-security";
 
 /**
  * Resolve the origin's actual OAuth token endpoint from a connection URL.

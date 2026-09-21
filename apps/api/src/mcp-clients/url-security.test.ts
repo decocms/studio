@@ -2,10 +2,9 @@ import { describe, expect, it } from "bun:test";
 import {
   createNoRedirectFetch,
   isPrivateUrl,
-  parseToolsListResponse,
   resolvesToPrivateAddress,
   withTimeout,
-} from "./discover-tools";
+} from "./url-security";
 
 describe("isPrivateUrl", () => {
   it("blocks plain private/loopback/link-local IPv4", () => {
@@ -155,43 +154,5 @@ describe("createNoRedirectFetch", () => {
     const res = await wrapped("http://example.com/mcp", { method: "POST" });
     expect(res.status).toBe(200);
     expect(seenInit?.redirect).toBe("manual");
-  });
-});
-
-describe("parseToolsListResponse", () => {
-  it("parses a plain JSON-RPC tools/list response", () => {
-    const body = JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      result: { tools: [{ name: "search", description: "Search the web" }] },
-    });
-    expect(parseToolsListResponse(body)).toEqual([
-      { name: "search", description: "Search the web" },
-    ]);
-  });
-
-  it("parses an SSE-framed tools/list response", () => {
-    const body = `event: message\ndata: ${JSON.stringify({
-      result: { tools: [{ name: "search" }] },
-    })}\n\n`;
-    expect(parseToolsListResponse(body)).toEqual([
-      { name: "search", description: null },
-    ]);
-  });
-
-  it("rejects a malformed tool shape instead of passing it through", () => {
-    // A remote MCP server isn't a trusted source — unlike the SDK client
-    // path (which validates via zod), this raw fallback path is the only
-    // thing standing between a malformed response and the UI, which renders
-    // `tool.name` as a React child and uses it as a list key.
-    const body = JSON.stringify({
-      result: { tools: [{ name: { evil: true } }] },
-    });
-    expect(parseToolsListResponse(body)).toBeNull();
-  });
-
-  it("returns null for non-array tools or unparsable JSON", () => {
-    expect(parseToolsListResponse(JSON.stringify({ result: {} }))).toBeNull();
-    expect(parseToolsListResponse("not json")).toBeNull();
   });
 });

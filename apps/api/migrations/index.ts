@@ -1,3 +1,4 @@
+import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
 import * as migration216githubcliauth from "./216-github-cli-auth";
@@ -477,6 +478,7 @@ const migrations: Record<string, Migration> = {
   "219-task-board-duplicate-reported-activity":
     migration219taskboardduplicatereportedactivity,
   "220-jira-automation-continue-pr": migration220jiraautomationcontinuepr,
+  "221-remove-private-registry": migration221removeprivateregistry,
 };
 
 export default migrations;

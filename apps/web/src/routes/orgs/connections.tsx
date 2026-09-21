@@ -16,11 +16,10 @@ import { useCapability } from "@/hooks/use-capability";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
-import { useEnabledRegistries } from "@/hooks/use-enabled-registries";
 import { useListState } from "@/hooks/use-list-state";
 import { authClient } from "@/lib/auth-client";
 import { useAuthConfig } from "@/providers/auth-config-provider";
-import { useMergedStoreDiscovery } from "@/hooks/use-merged-store-discovery";
+import { useRegistryCatalog } from "@/hooks/use-registry-catalog";
 import { getConnectionSlug } from "@decocms/shared/utils/connection-slug";
 import { BulkDeleteDialog } from "./bulk-delete-dialog.tsx";
 import { CatalogItemCard } from "./catalog-item-card.tsx";
@@ -140,8 +139,6 @@ interface ConnectionResultsProps {
   activeTab: "connected" | "all";
   typeFilter: ConnectionTypeFilter;
   statusFilter: ConnectionStatusFilter;
-  registryFilter: string;
-  enabledRegistries: Array<{ id: string; title: string; icon: string | null }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,8 +150,6 @@ function ConnectionResults({
   activeTab,
   typeFilter,
   statusFilter,
-  registryFilter,
-  enabledRegistries,
 }: ConnectionResultsProps) {
   const t = useT();
   const { org } = useProjectContext();
@@ -203,17 +198,14 @@ function ConnectionResults({
     setSelectedIds(new Set());
   };
 
-  // Registry / catalog - merge all enabled registries (server-side search)
-  const mergedDiscovery = useMergedStoreDiscovery(
-    enabledRegistries,
-    listState.searchTerm,
-  );
-  const registryItems = mergedDiscovery.items;
+  // Deco catalog search
+  const catalog = useRegistryCatalog(listState.searchTerm);
+  const registryItems = catalog.items;
 
   const catalogSentinelRef = useInfiniteScroll(
-    mergedDiscovery.loadMore,
-    mergedDiscovery.hasMore,
-    mergedDiscovery.isLoadingMore,
+    catalog.loadMore,
+    catalog.hasMore,
+    catalog.isLoadingMore,
   );
 
   // "All" tab: catalog items from registry (includes already-connected ones)
@@ -221,25 +213,12 @@ function ConnectionResults({
     connections.filter((c) => c.app_name).map((c) => c.app_name as string),
   );
 
-  // Reset registry filter if the selected registry is no longer enabled
-  const effectiveRegistryFilter =
-    registryFilter === "ALL" ||
-    enabledRegistries.some((r) => r.id === registryFilter)
-      ? registryFilter
-      : "ALL";
-
   const isSearching = listState.search.length > 0;
 
   // Catalog items: show on "All" tab always, or on "Connected" tab when searching
   const catalogItems =
     activeTab === "all" || isSearching
       ? registryItems.filter((item) => {
-          if (
-            effectiveRegistryFilter !== "ALL" &&
-            item._registryId !== effectiveRegistryFilter
-          ) {
-            return false;
-          }
           // Exclude already-connected items to avoid duplicates with groupedForDisplay
           if (isSearching) {
             const appName = getRegistryItemAppName(item);
@@ -530,7 +509,7 @@ function ConnectionResults({
       />
 
       {/* Cards */}
-      {mergedDiscovery.isInitialLoading && activeTab === "all" ? (
+      {catalog.isInitialLoading && activeTab === "all" ? (
         <div className="flex h-full items-center justify-center">
           <Spinner className="size-8 text-muted-foreground" />
         </div>
@@ -642,7 +621,7 @@ function ConnectionResults({
               {/* Catalog items (uninstalled) — only on "All" tab */}
               {catalogItems.map((item) => (
                 <CatalogItemCard
-                  key={`catalog-${item._registryId}:${item.id}`}
+                  key={item.id}
                   item={item}
                   canManage={canManage}
                   allConnections={connections}
@@ -660,12 +639,11 @@ function ConnectionResults({
                   onConnect={handleInlineConnect}
                 />
               ))}
+              {(activeTab === "all" || isSearching) && (
+                <div ref={catalogSentinelRef} className="col-span-full h-4" />
+              )}
               {(activeTab === "all" || isSearching) &&
-                enabledRegistries.length > 0 && (
-                  <div ref={catalogSentinelRef} className="col-span-full h-4" />
-                )}
-              {(activeTab === "all" || isSearching) &&
-                mergedDiscovery.isLoadingMore && (
+                catalog.isLoadingMore && (
                   <div className="col-span-full flex justify-center py-6">
                     <Spinner className="size-6 text-muted-foreground" />
                   </div>
@@ -732,15 +710,10 @@ function OrgMcpsContent() {
   const [typeFilter, setTypeFilter] = useState<ConnectionTypeFilter>("ALL");
   const [statusFilter, setStatusFilter] =
     useState<ConnectionStatusFilter>("ALL");
-  const [registryFilter, setRegistryFilter] = useState<string>("ALL");
 
-  // Registry / catalog - merge all enabled registries (needed for create dialog provider hints)
-  const enabledRegistries = useEnabledRegistries();
-  const mergedDiscovery = useMergedStoreDiscovery(
-    enabledRegistries,
-    listState.searchTerm,
-  );
-  const registryItems = mergedDiscovery.items;
+  // Deco catalog used for create dialog provider hints
+  const catalog = useRegistryCatalog(listState.searchTerm);
+  const registryItems = catalog.items;
 
   const isStale = listState.search !== listState.searchTerm;
 
@@ -1475,30 +1448,6 @@ function OrgMcpsContent() {
                           },
                         ],
                       },
-                      ...(enabledRegistries.length > 1
-                        ? [
-                            {
-                              label: t("orgs.connections.filterRegistry"),
-                              value: registryFilter,
-                              onChange: (v: string) =>
-                                setRegistryFilter(v || "ALL"),
-                              options: [
-                                {
-                                  id: "ALL",
-                                  label: t(
-                                    "orgs.connections.filterAllRegistries",
-                                  ),
-                                },
-                                ...enabledRegistries.map((r) => ({
-                                  id: r.id,
-                                  label: r.id.includes("community-registry")
-                                    ? t("orgs.connections.communityMcpRegistry")
-                                    : r.title,
-                                })),
-                              ],
-                            },
-                          ]
-                        : []),
                     ]}
                   />
                 </div>
@@ -1543,8 +1492,6 @@ function OrgMcpsContent() {
                     activeTab={activeTab}
                     typeFilter={typeFilter}
                     statusFilter={statusFilter}
-                    registryFilter={registryFilter}
-                    enabledRegistries={enabledRegistries}
                   />
                 </div>
               </Suspense>

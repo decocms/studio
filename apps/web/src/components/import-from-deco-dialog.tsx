@@ -265,7 +265,6 @@ export function ImportFromDecoDialog({
               icon: projectIcon ?? null,
               metadata: {
                 instructions: null,
-                enabled_plugins: [],
                 // Link the agent to its asset site so the CMS resolves uploads to managed storage.
                 siteSlug,
                 previewServerUrl,

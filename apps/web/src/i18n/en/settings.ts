@@ -292,7 +292,6 @@ export const settings = {
   "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
-  "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
@@ -889,40 +888,6 @@ export const settings = {
   "settings.orgSso.testSsoButton": "Test SSO",
   "settings.orgSso.toggleEnforcementError": "Failed to toggle SSO enforcement",
   "settings.orgSso.updateButton": "Update",
-  "settings.orgStore.addRegistry": "Add Registry",
-  "settings.orgStore.adding": "Adding...",
-  "settings.orgStore.authTokenLabel": "Auth Token",
-  "settings.orgStore.authTokenPlaceholder": "Bearer token...",
-  "settings.orgStore.cancel": "Cancel",
-  "settings.orgStore.communityRegistryDescription":
-    "Community MCP registry with thousands of handy MCPs",
-  "settings.orgStore.communityRegistryNotAdded":
-    "Community MCP registry — not yet added",
-  "settings.orgStore.communitySection": "Community",
-  "settings.orgStore.connectionNotFound":
-    "Connection not found — will be created automatically.",
-  "settings.orgStore.decoStoreDescription":
-    "Official deco MCP registry with curated integrations",
-  "settings.orgStore.decoStoreName": "Deco Store",
-  "settings.orgStore.decoStoreSection": "Deco Store",
-  "settings.orgStore.failedAddRegistry": "Failed to add registry: {error}",
-  "settings.orgStore.failedLoadStoreSettings": "Failed to load store settings:",
-  "settings.orgStore.mcpRegistry": "MCP Registry",
-  "settings.orgStore.nameLabel": "Name",
-  "settings.orgStore.namePlaceholder": "e.g. Acme Corp Registry",
-  "settings.orgStore.optional": "Optional",
-  "settings.orgStore.pageTitle": "Store",
-  "settings.orgStore.privateMcpRegistry": "Private MCP registry",
-  "settings.orgStore.privateRegistriesSection": "Private Registries",
-  "settings.orgStore.privateRegistry": "Private Registry",
-  "settings.orgStore.privateRegistryAdded": "Private registry added",
-  "settings.orgStore.privateRegistryDescription":
-    "Your organization's private MCP registry",
-  "settings.orgStore.registryUrlLabel": "Registry URL",
-  "settings.orgStore.registryUrlPlaceholder":
-    "https://registry.example.com/mcp",
-  "settings.orgStore.remove": "Remove",
-  "settings.orgStore.removeRegistry": "Remove this registry?",
   "settings.organizationForm.failedToReadImage": "Failed to read image",
   "settings.organizationForm.failedToUpdateOrg":
     "Failed to update organization",

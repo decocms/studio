@@ -21,7 +21,7 @@ import { retry, RetryError } from "@decocms/shared/std";
 import {
   createNoRedirectFetch,
   isPrivateUrl,
-} from "@/tools/registry/discover-tools";
+} from "@/mcp-clients/url-security";
 import {
   authorizationServerMetadataUrls,
   buildPathPrefix,

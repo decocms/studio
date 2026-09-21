@@ -138,20 +138,6 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
       organization.id,
     );
 
-    // Cleanup registry_config references to the deleted connection
-    const orgSettings = await ctx.storage.organizationSettings.get(
-      organization.id,
-    );
-    if (orgSettings?.registry_config) {
-      const { registries, blockedMcps } = orgSettings.registry_config;
-      if (input.id in registries) {
-        const { [input.id]: _, ...rest } = registries;
-        await ctx.storage.organizationSettings.upsert(organization.id, {
-          registry_config: { registries: rest, blockedMcps },
-        });
-      }
-    }
-
     // Invalidate NATS KV cache
     getMcpListCache()
       ?.invalidate(input.id)
