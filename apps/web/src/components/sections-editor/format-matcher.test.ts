@@ -112,18 +112,22 @@ describe("formatMatcher", () => {
     });
 
     test("open-ended ranges read through the dictionary", () => {
-      expect(
-        formatMatcher({
-          __resolveType: "website/matchers/date.ts",
-          start: "2026-06-15T10:00:00",
-        }),
-      ).toBe("From Jun 15, 2026 at 10:00 AM");
-      expect(
-        formatMatcher({
-          __resolveType: "website/matchers/date.ts",
-          end: "2026-06-15T10:00:00",
-        }),
-      ).toBe("Until Jun 15, 2026 at 10:00 AM");
+      // ICU owns the date/time separator ("at" in some data, ", " in other).
+      const from = formatMatcher({
+        __resolveType: "website/matchers/date.ts",
+        start: "2026-06-15T10:00:00",
+      });
+      expect(from.startsWith("From ")).toBe(true);
+      expect(from).toContain("Jun 15, 2026");
+      expect(from).toContain("10:00 AM");
+
+      const until = formatMatcher({
+        __resolveType: "website/matchers/date.ts",
+        end: "2026-06-15T10:00:00",
+      });
+      expect(until.startsWith("Until ")).toBe(true);
+      expect(until).toContain("Jun 15, 2026");
+      expect(until).toContain("10:00 AM");
     });
 
     test("a window with a real time of day keeps it", () => {
