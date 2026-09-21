@@ -73,8 +73,8 @@ export function PageJsonDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl p-0 gap-0">
-        <DialogHeader className="px-4 py-3 border-b flex-row items-center justify-between space-y-0">
+      <DialogContent className="flex h-[85vh] w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+        <DialogHeader className="shrink-0 px-4 py-3 border-b flex-row items-center justify-between space-y-0">
           <DialogTitle className="text-sm font-semibold">
             {t("sectionsEditor.pageJsonDialog.title")}
           </DialogTitle>
@@ -110,7 +110,7 @@ export function PageJsonDialog({
             {t("sectionsEditor.pageJsonDialog.pageNotFound")}
           </div>
         ) : (
-          <div className="h-[70vh]">
+          <div className="min-h-0 flex-1 py-2">
             <MonacoCodeEditor
               code={initialJson}
               language="json"
