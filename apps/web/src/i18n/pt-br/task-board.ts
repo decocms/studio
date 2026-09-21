@@ -158,7 +158,7 @@ export const taskBoard = {
     "Nenhuma tag ainda. Digite um nome para criar uma.",
   "taskBoard.taskDialog.assignButton": "Atribuir",
   "taskBoard.taskDialog.createdByLabel": "Criado por",
-  "taskBoard.taskDialog.createdBySystemLabel": "Report",
+  "taskBoard.taskDialog.createdBySystemLabel": "Relatório",
   "taskBoard.taskDialog.unknownCreatorLabel": "Desconhecido",
   "taskBoard.taskDialog.projectButton": "Selecionar projeto",
   "taskBoard.taskDialog.noProject": "Sem projeto",
@@ -328,9 +328,9 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.monthlyTitle": "Cota de auto tasks esgotada",
   "taskBoard.subscriptionPaywall.monthlyDescription":
     "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais execuções ficam disponíveis no início do próximo ciclo.",
-  "taskBoard.subscriptionPaywall.runsTitle": "Esta task atingiu o limite",
+  "taskBoard.subscriptionPaywall.runsTitle": "Esta tarefa atingiu o limite",
   "taskBoard.subscriptionPaywall.runsDescription":
-    "Esta task já foi re-executada o máximo de vezes permitido. Crie uma nova task para continuar.",
+    "Esta tarefa já foi re-executada o máximo de vezes permitido. Crie uma nova tarefa para continuar.",
   "taskBoard.subscriptionPaywall.subscribeButton": "Assinar",
   "taskBoard.subscriptionPaywall.notNowButton": "Agora não",
   "taskBoard.subscriptionPaywall.dismissButton": "Fechar",
