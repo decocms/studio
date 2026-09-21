@@ -270,12 +270,12 @@ leaves `apps/api` smaller. Core's migration count stops growing.
 
 | Surface | External users | External orgs | External views | Frontend LOC | Call |
 |---|---:|---:|---:|---:|---|
-| `analytics` | **0** | 0 | **0** | 2,262 | **delete** |
-| `e2e` | **0** | 0 | **0** | 1,955 | **delete** |
+| `analytics` | **0** | 0 | **0** | 2,262 | mid-migration — see §4.2 |
+| `e2e` | **0** | 0 | **0** | 1,955 | mid-migration — see §4.2 |
 | `experiments` | 1 | 1 | 5 | 511 | **delete** |
-| `cdn` | 2 | 1 | 3 | 1,820 | **delete** |
+| `cdn` | 2 | 1 | 3 | 1,820 | mid-migration — see §4.2 |
 | `git` | 3 | 3 | 4 | 21 + GitTab | fold into `repositories` |
-| `hosting` | 3 | 2 | 58 | ~2,500 | **keep** — one real account (granado), it is a live bet |
+| `hosting` | 3 | 2 | 58 | ~2,500 | mid-migration — the furthest along (granado) |
 | `api-keys` | 5 | 4 | 6 | small | keep — security surface, low usage is correct |
 | `assets` | 6 | 5 | 22 | 500 | fold into `library` (58 users) |
 | `deck` | 6 | 6 | 45 | **72** | **keep** — 72 LOC, used weekly on farmrio/grupodass/montecarlo |
@@ -304,32 +304,36 @@ breadth — you set it once. Judge a **working** surface (analytics, e2e, cdn,
 deck, tasks) by repeat use. Applying the wrong axis is how `secrets` looks dead
 and `analytics` looks alive.
 
-### 4.2 The big one: the deco.cx admin port is one cluster, not four features
+### 4.2 The deco.cx port is a migration, not a kill candidate
 
-`analytics`, `e2e` and `cdn` are not independent surfaces. They are all the
-**deco.cx legacy admin control plane** being ported into Studio:
+**Corrected 2026-09-21.** An earlier revision of this section read the zero
+external users on `analytics` / `e2e` / `cdn` as "dead". That was backwards.
+
+`analytics`, `e2e`, `cdn` and `hosting` are the **admin.deco.cx control plane
+being ported into Studio so the old admin can be switched off** (M3). They are
+BFF proxies to the old control plane:
 
 - `analytics-tab` → `/api/:org/hosting/:site/…`
 - `e2e-tab` + `e2e-run-detail` → `/api/:org/hosting/:site/e2e/*`
 - `cdn-tab` → `/api/:org/monitor/:site/{cdn,audience}/`
 
-backed by `apps/api/src/api/routes/hosting.ts` (725 LOC) and `monitor.ts`
-(1,164 LOC), both BFF proxies to the old control plane.
+backed by `api/routes/hosting.ts` (725 LOC) and `monitor.ts` (1,164 LOC).
+**Zero external users means not-yet-migrated, not unwanted.** A surface cannot
+be judged by usage before the migration that gives it users has happened.
 
-**Three of the four have essentially no external users.** Only `hosting` has a
-real one. That makes this one decision, not four:
+So the question for this cluster is not "delete?" — it is:
 
-- **Keep** `hosting` (granado uses it; it is the M3 bet) and the parts of
-  `hosting.ts`/`monitor.ts` it needs.
-- **Delete** `analytics-tab.tsx` (2,262), `cdn-tab.tsx` (1,820),
-  `e2e-tab.tsx` + `e2e-run-detail.tsx` (1,955), their routes, their `/e2e/*`
-  and `/cdn|audience/*` proxy handlers, their org flags
-  (`deco_analytics_enabled`, `e2e_enabled`), and their i18n.
-- **~6,000 LOC of frontend + the proxy handlers behind it, for zero external
-  users.**
+1. **What is the date admin.deco.cx goes dark?** Until then this is ~8,500 LOC
+   of frontend carried at full cost with 3 external users, and after it, it is
+   the product. The date is the whole decision.
+2. **Do `analytics` and `cdn` survive Monitors?** Monitors is the named
+   consolidation target and already has 75 external users. Porting the old
+   admin's analytics *and* building Monitors is building the same thing twice.
+   If Monitors wins, the port should skip those two rather than finish them.
+3. **Does `e2e` survive the QA agent?** Same shape of question.
 
-If the deco.cx migration needs analytics or e2e later, it needs them *rebuilt
-against Monitors*, not un-deleted — that is the consolidation §4.3 already calls for.
+None of that is a kill. It is a sequencing question that belongs to whoever
+owns the deco.cx switch-off date.
 
 ### 4.3 Experiments — delete the feature, keep the hook
 
@@ -366,10 +370,16 @@ it. Shipping a second, unused one is the definition of this document's problem.
 
 ### 4.6 Still unmeasured — fix this before guessing
 
-- **176 `defineTool` tools have no server-side usage telemetry.** We cannot make
-  an honest kill list for tools because we do not count them. `defineTool`
-  already wraps every call with tracing and metrics; add a counter, let it run
-  30 days, delete the zeroes. Expect to delete a lot.
+- **The 176 `defineTool` tools are traced but not counted.** `define-tool.ts:180`
+  opens an OTel span per call (`tool.<NAME>`), and non-error traces pass a **10%
+  ratio sampler** (`observability/index.ts:179,276`). The counter that would
+  answer "which tools are dead" — `tool.execution.count` in
+  `monitoring/record-tool-execution-metrics.ts` — is wired **only** into
+  outbound MCP calls (`mcp-clients/outbound/transports/monitoring.ts:212`), and
+  early-returns without a `connectionId`, which management tools do not have.
+  At 10% sampling a tool called twice a month reads as zero. Call
+  `recordToolExecutionMetrics` from `define-tool.ts` too, let it run 30 days,
+  then delete the zeroes.
 - **`vm_preview_loaded`: 49,067 events from 96 users in 30 days** — ~510 per
   user per month on one event. That smells like a polling loop, which our own
   `CLAUDE.md` bans. Investigate before it becomes a cost or rate-limit incident.
@@ -390,12 +400,14 @@ k8s, retire the parts that only existed to serve them.
 
 | Bucket | LOC |
 |---|---:|
-| deco.cx admin port (analytics + cdn + e2e, frontend) | ~6,037 |
 | Experiments feature | ~1,700 |
 | Assets (folded into Library) | 500 |
 | Legacy `/agents/*` route tree | 926 |
 | Reports UI (moving to `decocms/reports`) | 15,864 |
-| **Total** | **~25,000** |
+| **Total** | **~19,000** |
+
+The deco.cx port (~8,500 LOC) is deliberately **not** in this table — it is a
+migration on a schedule, not a deletion. See §4.2.
 
 Plus: 1 Postgres table, 1 migration, 6 MCP tools, 3 org flags, 2 i18n
 dictionaries, and the `/e2e/*` + `/cdn|audience/*` BFF handlers.
@@ -424,10 +436,11 @@ dictionaries, and the `/e2e/*` + `/cdn|audience/*` BFF handlers.
    shared types. Recommendation: monorepo folder + independent pipeline first,
    own repo only when a team owns it.
 5. **Who owns the Core contract** and its versioning?
-6. **Sign-off on the kill list in §4** — specifically the deco.cx admin port
-   (`analytics`, `cdn`, `e2e`), the `experiments` feature, folding
+6. **Sign-off on the kill list in §4** — the `experiments` feature, folding
    `git`/`synced-repos` into `repositories` and `assets` into `library`, and the
    legacy `/agents/*` tree. `deck` and `/settings/billing` came off the list.
+7. **A date for admin.deco.cx going dark** (§4.2), and whether `analytics` and
+   `cdn` should be finished or superseded by Monitors. Owner needed.
 
 ---
 
