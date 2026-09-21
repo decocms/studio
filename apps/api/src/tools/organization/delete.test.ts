@@ -1,5 +1,31 @@
 import { describe, expect, it, mock } from "bun:test";
+import { Kysely, PostgresAdapter, PostgresQueryCompiler } from "kysely";
 import { ORGANIZATION_DELETE } from "./delete";
+
+// Compiles `sql` raw queries without a live connection.
+function fakeDb(executeQuery: (query: unknown) => Promise<{ rows: never[] }>) {
+  return new Kysely({
+    dialect: {
+      createAdapter: () => new PostgresAdapter(),
+      createQueryCompiler: () => new PostgresQueryCompiler(),
+      createIntrospector: () => ({}) as never,
+      createDriver: () => ({
+        init: async () => {},
+        acquireConnection: async () => ({
+          executeQuery,
+          streamQuery: () => {
+            throw new Error("not implemented");
+          },
+        }),
+        beginTransaction: async () => {},
+        commitTransaction: async () => {},
+        rollbackTransaction: async () => {},
+        releaseConnection: async () => {},
+        destroy: async () => {},
+      }),
+    },
+  });
+}
 
 function makeCtx(existingMetadata: unknown) {
   const get = mock(async () => ({
@@ -14,16 +40,22 @@ function makeCtx(existingMetadata: unknown) {
       id: data.organizationId,
     }),
   );
+  const executeQuery = mock(async (_query: unknown) => ({
+    rows: [] as never[],
+  }));
   return {
     auth: { user: { id: "user-1" } },
     access: { check: mock(async () => {}) },
     organization: { id: "org-1", slug: "acme", name: "Acme" },
     boundAuth: { organization: { get, update } },
+    db: fakeDb(executeQuery),
     get,
     update,
+    executeQuery,
   } as unknown as Parameters<typeof ORGANIZATION_DELETE.handler>[1] & {
     get: typeof get;
     update: typeof update;
+    executeQuery: typeof executeQuery;
   };
 }
 
@@ -39,6 +71,9 @@ describe("ORGANIZATION_DELETE", () => {
     expect(call.data.metadata.description).toBe("an acme org");
     expect(call.data.metadata.archived).toBe(true);
     expect(typeof call.data.metadata.archivedAt).toBe("string");
+
+    const query = ctx.executeQuery.mock.calls[0]?.[0] as { sql: string };
+    expect(query.sql).toContain('update session set "activeOrganizationId"');
   });
 
   it("archives fine when there's no prior metadata", async () => {
@@ -69,5 +104,6 @@ describe("ORGANIZATION_DELETE", () => {
     await ORGANIZATION_DELETE.handler({ id: "org-1" }, ctx);
 
     expect(ctx.update.mock.calls.length).toBe(0);
+    expect(ctx.executeQuery.mock.calls.length).toBe(0);
   });
 });
