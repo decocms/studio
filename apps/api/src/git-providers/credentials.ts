@@ -163,12 +163,20 @@ export function clientForAccount(
       }
       if (account.authKind === "github_app") {
         const appAuth = getGithubAppAuth();
-        if (!appAuth || account.installationId === null) {
+        if (!appAuth) {
           throw new GitProviderError({
             provider: "github",
             status: 503,
             message:
               "GitHub App credentials are not configured on this deployment",
+          });
+        }
+        if (account.installationId === null) {
+          throw new GitProviderError({
+            provider: "github",
+            status: 403,
+            message:
+              "This GitHub account has no installation linked. Reconnect it to select repositories.",
           });
         }
         return new GithubProviderClient({
