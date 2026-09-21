@@ -162,19 +162,19 @@ export async function fetchGitDiff(
   options?: { base?: string; headSha?: string },
   call?: SandboxGitCallOptions,
 ): Promise<GitDiffResult> {
-  const payload =
-    options?.base || options?.headSha
-      ? {
-          ...(options.base ? { base: options.base } : {}),
-          ...(options.headSha ? { headSha: options.headSha } : {}),
-        }
-      : undefined;
+  // Always send a body, even when every field is absent (the working-tree
+  // diff). A bodyless POST is what broke the publish dialog: the Go daemon fed
+  // "" to json.Unmarshal and 400'd with "unexpected end of JSON input", which
+  // the dialog rendered raw. Every other call in this file already sends JSON.
   const res = await sandboxFetch(
     buildSandboxGitUrl(ref, "diff"),
     {
       method: "POST",
-      headers: payload ? { "content-type": "application/json" } : undefined,
-      body: payload ? JSON.stringify(payload) : undefined,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...(options?.base ? { base: options.base } : {}),
+        ...(options?.headSha ? { headSha: options.headSha } : {}),
+      }),
     },
     call,
   );
