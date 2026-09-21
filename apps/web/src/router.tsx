@@ -1338,6 +1338,13 @@ const settingsRepositoriesRoute = createRoute({
   validateSearch: z.object({
     git_error: z.string().optional().catch(undefined),
     git_flow: z.string().uuid().optional().catch(undefined),
+    git_installation: z
+      .number()
+      .int()
+      .positive()
+      .safe()
+      .optional()
+      .catch(undefined),
     git_return: z.boolean().optional().catch(undefined),
   }),
   pendingComponent: settingsGroupPendingComponent("repositories"),

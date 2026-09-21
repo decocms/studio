@@ -152,6 +152,8 @@ export const settings = {
     "Membros com permissão de repositórios em {organization} poderão usar os repositórios que você autorizar aqui.",
   "settings.repositories.githubSelectHint":
     "Escolha até 500 repositórios para este workspace.",
+  "settings.repositories.githubPreselectedHint":
+    "Os repositórios já autorizados ou vinculados estão selecionados quando você tem permissão para autorizá-los. Revise a seleção antes de salvar.",
   "settings.repositories.githubReplaceHint":
     "Salvar substitui o acesso atual desta conta no workspace pela sua seleção. Repositórios removidos deixam de receber novas credenciais. Credenciais já emitidas podem funcionar até expirarem.",
   "settings.repositories.githubFilterRepos": "Buscar repositórios",

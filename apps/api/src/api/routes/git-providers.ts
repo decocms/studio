@@ -41,6 +41,7 @@ import {
 import {
   coversSelection,
   pageChoices,
+  preselectedRepositoryIds,
 } from "@/git-providers/github/connect-access";
 import { readGithubAppConfig } from "@/git-providers/github/env";
 import {
@@ -324,8 +325,19 @@ export const createGitProviderRoutes = () => {
         host: "github.com",
         externalAccountId: String(installation.installationId),
       });
+      const linked =
+        account && account.installationRepositoryIds === null
+          ? await ctx.storage.repositories.listByOrg(owner.organizationId, {
+              accountId: account.id,
+            })
+          : [];
       return c.json({
         ...pageChoices(choices, input.data.page, input.data.query),
+        selectedRepositoryIds: preselectedRepositoryIds(
+          choices,
+          account?.installationRepositoryIds ?? null,
+          linked,
+        ),
         accountVersion: githubAccountVersion(account),
       });
     } catch {

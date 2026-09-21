@@ -211,7 +211,7 @@ function AccountRow({
             asChild
           >
             <a
-              href={`${githubConnectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories`)}`}
+              href={`${githubConnectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories${account.installationId ? `?git_installation=${account.installationId}` : ""}`)}`}
             >
               {needsAttention
                 ? githubAction
@@ -552,7 +552,9 @@ function RepositoriesContent() {
       {!search.git_flow && <ConnectError />}
       {search.git_flow && (
         <GithubConnectDialog
+          key={search.git_flow}
           flowId={search.git_flow}
+          initialInstallationId={search.git_installation}
           returning={search.git_return === true}
           onClose={() =>
             void navigate({
@@ -560,6 +562,7 @@ function RepositoriesContent() {
               search: (prev) => ({
                 ...prev,
                 git_flow: undefined,
+                git_installation: undefined,
                 git_return: undefined,
                 git_error: undefined,
               }),
