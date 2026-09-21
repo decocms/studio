@@ -52,6 +52,9 @@ function actionButtonVisibilityClass(reserved: boolean, active: boolean) {
   );
 }
 
+/** A row with a thumbnail is as tall as the thumbnail. */
+export const ARRAY_ROW_THUMBNAIL_HEIGHT = "h-12";
+
 /** The drag handle both row shapes wear. */
 function RowGrip() {
   const compact = useCompactPageLayout();
@@ -77,7 +80,10 @@ export function ArrayRowContent({
             src={imageSrc}
             alt=""
             referrerPolicy="no-referrer"
-            className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
+            className={cn(
+              ARRAY_ROW_THUMBNAIL_HEIGHT,
+              "max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover",
+            )}
           />
         )}
         <span className="min-w-0 truncate">{labelText}</span>
@@ -149,7 +155,10 @@ export function SortableArrayRow({
           src={imageSrc}
           alt=""
           referrerPolicy="no-referrer"
-          className="h-12 max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover"
+          className={cn(
+            ARRAY_ROW_THUMBNAIL_HEIGHT,
+            "max-w-[100px] shrink-0 rounded-[var(--studio-control-radius,var(--radius))] object-cover",
+          )}
         />
       )}
       <span

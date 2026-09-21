@@ -139,10 +139,13 @@ export function AddListRow({
   label,
   onAdd,
   className,
+  iconHeightClassName = "h-7",
 }: {
   label: string;
   onAdd: () => void;
   className?: string;
+  /** Height of the slot that sets the row's height; match the list's rows. */
+  iconHeightClassName?: string;
 }) {
   return (
     <button
@@ -157,7 +160,12 @@ export function AddListRow({
         }),
       )}
     >
-      <span className="flex h-7 shrink-0 items-center justify-center">
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center",
+          iconHeightClassName,
+        )}
+      >
         <Plus className="size-3.5" />
       </span>
       <span className="min-w-0 truncate text-sm font-medium">{label}</span>

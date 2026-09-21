@@ -55,7 +55,11 @@ import {
   useFieldDescriptionTooltips,
 } from "./field-label";
 import type { FieldProps } from "./field-props";
-import { ArrayRowContent, SortableArrayRow } from "./array-row";
+import {
+  ARRAY_ROW_THUMBNAIL_HEIGHT,
+  ArrayRowContent,
+  SortableArrayRow,
+} from "./array-row";
 import { hasMissingRequiredField } from "../section-required-status";
 import { MissingRequiredMarker } from "../missing-required-marker";
 import { SchemaForm, renderField } from "../schema-form";
@@ -160,6 +164,9 @@ export function ArrayField({
     ),
   };
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
+  const hasThumbnails = items.some((item) =>
+    Boolean(getArrayItemImageSrc(arrayItemDisplayValue(item), itemSchema)),
+  );
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
@@ -621,6 +628,9 @@ export function ArrayField({
                   })()}
                 {compact && (
                   <AddListRow
+                    iconHeightClassName={
+                      hasThumbnails ? ARRAY_ROW_THUMBNAIL_HEIGHT : undefined
+                    }
                     label={
                       usesSectionPicker
                         ? t("sectionsEditor.arrayField.addSection")
