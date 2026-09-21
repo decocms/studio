@@ -17,7 +17,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { Span } from "@opentelemetry/api";
 import type {
   ModelMessage,
-  StreamTextOnStepFinishCallback,
+  GenerateTextOnStepEndCallback,
   StreamTextResult,
   SystemModelMessage,
   ToolSet,
@@ -78,7 +78,7 @@ export interface HarnessAssembledTools {
   sideChunks?: AsyncIterable<UIMessageChunk>;
   closeSideChunks?: () => void;
   /** Step-finish hook (e.g. html-page flush). */
-  onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
+  onStepFinish?: GenerateTextOnStepEndCallback<ToolSet>;
   /** Cleanup — closes the passthrough client + side channel. */
   close(): Promise<void>;
 }
@@ -114,7 +114,7 @@ export interface RunEngineArgs {
   writer: UIMessageStreamWriter;
   /** Image-injection + plan-mode-filter prepareStep built by the loop. */
   prepareStep: unknown;
-  onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
+  onStepFinish?: GenerateTextOnStepEndCallback<ToolSet>;
   passthroughClient: Client;
   connectionsData: {
     tools: ConnectionsBlockTool[];
@@ -145,7 +145,7 @@ export interface RunEngineArgs {
  * promise, and the loop's OTel span. Matches the cluster `RunAgentLoopHandle`.
  */
 export interface AssembledEngineHandle {
-  result: StreamTextResult<ToolSet, never>;
+  result: StreamTextResult<ToolSet, {}, never>;
   error: Promise<string | undefined>;
   span: Span;
   /** The system messages the engine actually assembled and sent to the model.

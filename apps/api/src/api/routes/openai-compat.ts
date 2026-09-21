@@ -371,7 +371,7 @@ function generateCompletionId(): string {
  * Build common options for generateText/streamText
  */
 function buildGenerateOptions(
-  model: ReturnType<import("@ai-sdk/provider").ProviderV3["languageModel"]>,
+  model: ReturnType<import("@ai-sdk/provider").ProviderV4["languageModel"]>,
   messages: ModelMessage[],
   tools: ToolSet | undefined,
   request: ChatCompletionRequest,
@@ -380,10 +380,11 @@ function buildGenerateOptions(
 ) {
   const baseOptions = {
     model,
-    messages,
+    instructions: messages.filter((message) => message.role === "system"),
+    messages: messages.filter((message) => message.role !== "system"),
     tools,
     temperature: request.temperature,
-    maxTokens: request.max_tokens,
+    maxOutputTokens: request.max_tokens,
     topP: request.top_p,
     frequencyPenalty: request.frequency_penalty,
     presencePenalty: request.presence_penalty,
@@ -586,7 +587,7 @@ app.post("/:org/v1/chat/completions", async (c) => {
             });
           };
 
-          for await (const part of result.fullStream) {
+          for await (const part of result.stream) {
             // Send initial role delta
             if (
               !sentRole &&

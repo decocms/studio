@@ -3,7 +3,7 @@ import { requireOrganization, type StudioContext } from "@/core/studio-context";
 import {
   generateText,
   jsonSchema,
-  stepCountIs,
+  isStepCount,
   tool,
   type JSONSchema7,
   type JSONValue,
@@ -503,7 +503,7 @@ function mcpToolsToAISDK(args: {
           } as JSONSchema7);
     return [
       mcpTool.name,
-      tool<Record<string, unknown>, unknown>({
+      tool<Record<string, unknown>, unknown, {}>({
         description: mcpTool.description,
         inputSchema: jsonSchema(schema),
         execute: async (input) => {
@@ -676,11 +676,11 @@ async function runAgentTest(args: {
       const result = await withTimeout(
         generateText({
           model,
-          system: MONITOR_AGENT_SYSTEM_PROMPT,
+          instructions: MONITOR_AGENT_SYSTEM_PROMPT,
           messages: [{ role: "user", content: retryPrompt }],
           tools: aiTools,
           toolChoice: "auto",
-          stopWhen: stepCountIs(args.monitorConfig.maxAgentSteps ?? 15),
+          stopWhen: isStepCount(args.monitorConfig.maxAgentSteps ?? 15),
           temperature: 0,
           abortSignal: args.signal,
         }),

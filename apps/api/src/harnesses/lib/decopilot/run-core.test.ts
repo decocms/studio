@@ -50,8 +50,12 @@ function fakeResult(
     finishReason: Promise.resolve("stop"),
     totalUsage: Promise.resolve(totalUsage),
     usage: Promise.resolve(totalUsage),
-    request: Promise.resolve({}),
-    response: Promise.resolve({ id: "r", messages: [] }),
+    finalStep: Promise.resolve({
+      usage: totalUsage,
+      request: {},
+      response: { id: "r", messages: [] },
+    }),
+    responseMessages: Promise.resolve([]),
     steps: Promise.resolve([]),
     toUIMessageStream: (opts?: {
       messageMetadata?: (a: { part: UIMessageChunk }) => unknown;
@@ -387,8 +391,12 @@ describe("usage roll-up (parent final metadata includes child tokens)", () => {
             outputTokens: 5,
             totalTokens: 15,
           }),
-          request: Promise.resolve({}),
-          response: Promise.resolve({ id: "r", messages: [] }),
+          finalStep: Promise.resolve({
+            usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+            request: {},
+            response: { id: "r", messages: [] },
+          }),
+          responseMessages: Promise.resolve([]),
           steps: Promise.resolve([]),
           toUIMessageStream: (opts?: {
             messageMetadata?: (a: { part: UIMessageChunk }) => unknown;

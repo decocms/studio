@@ -23,7 +23,7 @@
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "^1.7.1",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "ai": "^6.0.208",
+    "ai": "^7.0.107",
     "nanoid": "^5.1.6",
     "zod": "4.3.6"
   },

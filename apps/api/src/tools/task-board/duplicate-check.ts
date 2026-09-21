@@ -315,7 +315,7 @@ async function askFastTier<T>(
     const model = provider.aiSdk.languageModel(tier.modelId);
     const { text, finishReason } = await generateText({
       model,
-      system,
+      instructions: system,
       prompt,
       temperature: 0,
       // Room for a reasoning model to think before the JSON it was asked for.

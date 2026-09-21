@@ -26,12 +26,12 @@
     "./trigger-storage": "./src/trigger-storage.ts"
   },
   "peerDependencies": {
-    "ai": ">=6.0.0"
+    "ai": "^7.0.107"
   },
   "devDependencies": {
     "@types/bun": "^1.3.5",
     "@types/mime-db": "^1.43.6",
-    "ai": "^6.0.208",
+    "ai": "^7.0.107",
     "ts-json-schema-generator": "^2.4.0"
   },
   "engines": {

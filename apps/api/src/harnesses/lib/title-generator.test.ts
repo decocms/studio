@@ -12,14 +12,14 @@
  * output), we drive it via a model that throws a non-abort error.
  */
 import { describe, expect, test } from "bun:test";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { genTitle } from "./title-generator";
 
-/** Build a fake LanguageModelV3 whose doGenerate rejects with the given
+/** Build a fake LanguageModelV4 whose doGenerate rejects with the given
  *  error. genTitle catches this and returns the new fallback. */
-function makeFailingModel(err: Error): LanguageModelV3 {
+function makeFailingModel(err: Error): LanguageModelV4 {
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     provider: "test",
     modelId: "test",
     doGenerate: async () => {
@@ -28,15 +28,15 @@ function makeFailingModel(err: Error): LanguageModelV3 {
     doStream: async () => {
       throw err;
     },
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV4;
 }
 
 /** A model whose doGenerate hangs until the call's abortSignal fires, then
  *  rejects with AbortError — simulates a slow/hung title model (e.g. codex's
  *  separate title app-server) that only resolves when the self-timeout aborts. */
-function makeHangingModel(): LanguageModelV3 {
+function makeHangingModel(): LanguageModelV4 {
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     provider: "test",
     modelId: "test",
     doGenerate: async (opts: { abortSignal?: AbortSignal }) => {
@@ -53,7 +53,7 @@ function makeHangingModel(): LanguageModelV3 {
     doStream: async () => {
       throw new Error("no stream");
     },
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV4;
 }
 
 /** A model whose doGenerate never settles and IGNORES the abort signal —
@@ -61,34 +61,34 @@ function makeHangingModel(): LanguageModelV3 {
  *  settlement latch, `retry` (which only observes the signal between attempts)
  *  awaits this forever and genTitle's promise never resolves, hanging the parent
  *  run's drain loop. The latch must cap settlement at the timeout regardless. */
-function makeUnabortableModel(): LanguageModelV3 {
+function makeUnabortableModel(): LanguageModelV4 {
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     provider: "test",
     modelId: "test",
     doGenerate: () => new Promise(() => {}), // never resolves, ignores abort
     doStream: async () => {
       throw new Error("no stream");
     },
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV4;
 }
 
 /** A model that returns a fixed title object via doGenerate. */
-function makeSucceedingModel(title: string): LanguageModelV3 {
+function makeSucceedingModel(title: string): LanguageModelV4 {
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     provider: "test",
     modelId: "ok",
     doGenerate: async () => ({
       content: [{ type: "text", text: JSON.stringify({ title }) }],
-      finishReason: "stop",
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
       warnings: [],
     }),
     doStream: async () => {
       throw new Error("no stream");
     },
-  } as unknown as LanguageModelV3;
+  } as unknown as LanguageModelV4;
 }
 
 describe("genTitle model fallback chain", () => {
