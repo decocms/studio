@@ -918,11 +918,12 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 //
 // Best-effort: a failure costs private dependencies, not the sandbox.
 func (o *Orchestrator) installGitCredentials(cfg *config.Enriched) {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return
-	}
-	hosts, invalidHosts, err := InstallGitCredentials(home, cfg.SubmoduleCredentials())
+	// LogsDir IS the daemon's scratch dir (appRoot/tmp) — the same one the
+	// submodule fetch parks its file in, and nowhere near the working tree or
+	// the partly-synced $HOME. Home is passed only so the generated config can
+	// INCLUDE the user's own `~/.gitconfig` rather than replace it.
+	home, _ := os.UserHomeDir()
+	hosts, invalidHosts, err := InstallGitCredentials(o.deps.LogsDir, home, cfg.SubmoduleCredentials())
 	for _, host := range invalidHosts {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: skipping git credential with invalid host %q\r\n", host))
 	}

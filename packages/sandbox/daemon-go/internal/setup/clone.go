@@ -208,6 +208,12 @@ func SweepSubmoduleCredentials(tmpDir string) {
 	if err := os.Remove(SubmoduleCredentialsPath(tmpDir)); err != nil && !os.IsNotExist(err) {
 		slog.Warn("could not remove leftover submodule credentials file", "error", err.Error())
 	}
+	// The persistent pair (InstallGitCredentials) is stranded by the same kills.
+	// Cleared here rather than trusted: the next boot rewrites it from the config
+	// if the credential is still asked for.
+	if err := SweepGitCredentials(tmpDir); err != nil {
+		slog.Warn("could not remove leftover git credentials", "error", err.Error())
+	}
 	// Secondary checkouts each get their own tmp dir under here, so their
 	// credentials files are stranded by the same kills and need the same sweep.
 	if err := os.RemoveAll(SecondaryCloneTmpRoot(tmpDir)); err != nil {
