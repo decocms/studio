@@ -28,7 +28,7 @@
 
 import {
   type ModelMessage,
-  type StreamTextOnStepFinishCallback,
+  type GenerateTextOnStepEndCallback,
   type SystemModelMessage,
   type ToolSet,
   type UIMessageChunk,
@@ -48,7 +48,7 @@ import { shouldGenerateTitle } from "../title-merge";
 import { createLanguageModel } from "./studio-provider";
 import { genTitle } from "../title-generator";
 import { extractUserText } from "../extract-user-text";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { ChatMessage, HarnessStreamInput, ModelSelection } from "../types";
 import type {
   AssembledEngineHandle,
@@ -178,7 +178,7 @@ export interface RunDecopilotStreamExtras {
   /** Tool side-channel chunks merged into the main UI message stream. */
   sideChunks?: AsyncIterable<UIMessageChunk>;
   closeSideChunks?: () => void;
-  onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
+  onStepFinish?: GenerateTextOnStepEndCallback<ToolSet>;
 
   /** Hosted LLM-call telemetry hooks. */
   telemetry?: DecopilotTelemetry;
@@ -320,10 +320,10 @@ export async function* runDecopilotStream(
   // genTitle actually tries them, and only when a title is needed — so a slot
   // whose provider can't build a model just fails that attempt (rotating to
   // the next / clean fallback) instead of crashing the whole run stream.
-  const titleModelChain = ((): Array<() => LanguageModelV3> => {
+  const titleModelChain = ((): Array<() => LanguageModelV4> => {
     if (!needsTitle) return [];
     const seen = new Set<string>();
-    const chain: Array<() => LanguageModelV3> = [];
+    const chain: Array<() => LanguageModelV4> = [];
     const push = (
       prov: StudioProvider,
       sel: ModelSelection | null | undefined,
@@ -515,12 +515,13 @@ export async function* runDecopilotStream(
   // ── The loop's own metrics/monitoring around the result.
   const finishMetricsPromise = Promise.resolve(result.finishReason)
     .then(async (finishReason) => {
-      const [totalUsage, usage, request, response] = await Promise.all([
-        result.totalUsage,
+      const [totalUsage, finalStep, responseMessages] = await Promise.all([
         result.usage,
-        result.request,
-        result.response,
+        result.finalStep,
+        result.responseMessages,
       ]);
+      const { usage, request } = finalStep;
+      const response = { ...finalStep.response, messages: responseMessages };
       // If there was an error, the onError path below handles metrics. Guard
       // with the error handle to avoid double-logging.
       const capturedErr = await handle.error;

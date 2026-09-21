@@ -205,7 +205,7 @@ export async function toolsFromMCP(
 
     return [
       safeName,
-      tool<Record<string, unknown>, CallToolResult>({
+      tool<Record<string, unknown>, CallToolResult, {}>({
         title: title ?? name,
         description,
         inputSchema: jsonSchema(safeInputSchema as JSONSchema7),

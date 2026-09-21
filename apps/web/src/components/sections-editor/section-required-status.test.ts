@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { hasMissingRequiredField } from "./section-required-status";
+import { hideArrayItem } from "./array-item-hidden";
 import type { SchemaProperty } from "./resolve-schema";
 
 const obj = (
@@ -73,6 +74,39 @@ describe("hasMissingRequiredField", () => {
         items: [{ label: "ok" }, { label: "" }],
       }),
     ).toBe(true);
+  });
+
+  test("a hidden array item is validated by its unwrapped inner value", () => {
+    const schema = obj({
+      tabs: {
+        type: "array",
+        items: obj({ source: { type: "string" } }, ["source"]),
+      },
+    });
+    // Complete inner value: the wrapper's {__resolveType, variants} shape must not read as an empty required `source`.
+    expect(
+      hasMissingRequiredField(schema, {
+        tabs: [hideArrayItem({ source: "x" })],
+      }),
+    ).toBe(false);
+    // Genuinely-incomplete inner value is still flagged, like the per-row marker on hidden rows.
+    expect(hasMissingRequiredField(schema, { tabs: [hideArrayItem({})] })).toBe(
+      true,
+    );
+  });
+
+  test("skips array items that are still block wrappers after unwrap", () => {
+    const schema = obj({
+      tabs: {
+        type: "array",
+        items: obj({ source: { type: "string" } }, ["source"]),
+      },
+    });
+    expect(
+      hasMissingRequiredField(schema, {
+        tabs: [{ __resolveType: "site/loaders/Tab.ts" }],
+      }),
+    ).toBe(false);
   });
 
   test("skips block-ref/section arrays whose items have no plain properties", () => {

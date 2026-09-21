@@ -1,4 +1,4 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import type { ModelCapability } from "@decocms/shared/sdk";
 import {
   isInteractionsOnlyModel,
@@ -72,7 +72,7 @@ export const googleAdapter: ProviderAdapter = {
   supportedMethods: ["api-key"],
 
   create(apiKey): StudioProvider {
-    const aiSdk = createGoogleGenerativeAI({ apiKey });
+    const aiSdk = createGoogle({ apiKey });
 
     return {
       info: this.info,

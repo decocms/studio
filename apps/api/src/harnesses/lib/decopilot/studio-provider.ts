@@ -7,8 +7,8 @@
  * portable and testable without StudioContext.
  */
 
-import type { LanguageModelV3 } from "@ai-sdk/provider";
-import type { ProviderV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { ProviderV4 } from "@ai-sdk/provider";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import type { ModelCapability, ProviderId } from "@decocms/shared/sdk";
 import { isCreditError } from "../stream-error";
@@ -73,7 +73,7 @@ export interface AsyncResearchProvider {
 
 export interface StudioProvider {
   readonly info: ProviderInfo;
-  readonly aiSdk: ProviderV3;
+  readonly aiSdk: ProviderV4;
   /** Set by providers that expose async/long-running research jobs. */
   readonly asyncResearch?: AsyncResearchProvider;
   listModels(): Promise<ModelInfo[]>;
@@ -87,7 +87,7 @@ interface LanguageModelProvider {
   /** Provider id (e.g. "openrouter", "deco") — drives the OpenRouter-family
    *  model fallback below. Optional so minimal callers/tests still satisfy it. */
   info?: { id: string };
-  aiSdk: Pick<ProviderV3, "languageModel">;
+  aiSdk: Pick<ProviderV4, "languageModel">;
 }
 
 /**
@@ -126,11 +126,11 @@ const THOUGHT_SIGNATURE_ID_PROVIDERS = new Set<string>([
  * errors aren't credit errors.
  */
 function withCreditFallback(
-  primary: LanguageModelV3,
-  free: LanguageModelV3,
-): LanguageModelV3 {
+  primary: LanguageModelV4,
+  free: LanguageModelV4,
+): LanguageModelV4 {
   const middleware: LanguageModelMiddleware = {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     wrapStream: async ({ doStream, params }) => {
       try {
         return await doStream();
@@ -179,14 +179,14 @@ export function createLanguageModel(
   }
 
   // Provider-specific settings (reasoning / models fallback) are not part of
-  // the generic ProviderV3 interface, so we cast to pass them through.
-  const make = (id: string, s?: Record<string, unknown>): LanguageModelV3 =>
+  // the generic ProviderV4 interface, so we cast to pass them through.
+  const make = (id: string, s?: Record<string, unknown>): LanguageModelV4 =>
     s && Object.keys(s).length > 0
       ? (
           provider.aiSdk.languageModel as (
             id: string,
             settings: Record<string, unknown>,
-          ) => LanguageModelV3
+          ) => LanguageModelV4
         )(id, s)
       : provider.aiSdk.languageModel(id);
 

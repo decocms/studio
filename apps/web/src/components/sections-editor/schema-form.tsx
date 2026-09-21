@@ -49,6 +49,7 @@ import {
   ObjectFieldExpansionProvider,
   useHasObjectFieldExpansion,
 } from "./object-field-expansion";
+import type { VariantMatcherOps } from "./variant-matcher-rename";
 
 /**
  * A default of `[]` is a NEW array on every render, so anything derived from
@@ -450,6 +451,12 @@ interface SchemaFormProps {
   onAddSectionItem?: FieldProps["onAddSectionItem"];
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
+  /**
+   * Naming a variant's matcher as a global block. Supplied only on the
+   * top-level (global-block) surface, where a section-multivariate flag is
+   * opened directly and the form value is the whole block.
+   */
+  onVariantMatcherOp?: VariantMatcherOps;
 }
 
 /**
@@ -482,6 +489,7 @@ function SchemaFormBody({
   onAddSectionItem,
   onRequestAddSection,
   sandbox,
+  onVariantMatcherOp,
 }: SchemaFormProps) {
   const t = useT();
   const properties = schema.properties;
@@ -535,6 +543,7 @@ function SchemaFormBody({
         onAddSectionItem={onAddSectionItem}
         onRequestAddSection={onRequestAddSection}
         sandbox={sandbox}
+        onVariantMatcherOp={onVariantMatcherOp}
         multivariateResolveType={value.__resolveType}
         renderInnerField={(fieldProps) =>
           renderMultivariateInnerField(fieldProps, variantValueSchema)

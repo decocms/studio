@@ -109,7 +109,7 @@ ${cardList}`;
     const { object } = await generateObject({
       model,
       schema: BoardDecisionSchema,
-      system: SYSTEM,
+      instructions: SYSTEM,
       prompt,
       temperature: 0,
     });

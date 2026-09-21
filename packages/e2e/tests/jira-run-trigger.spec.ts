@@ -127,7 +127,11 @@ test.describe("Jira run trigger", () => {
     await connectIntegration(api, orgSlug);
     const list = () =>
       callSelfMcpTool<{
-        automations: Array<{ jiraStatus: string; prompt: string | null }>;
+        automations: Array<{
+          jiraStatus: string;
+          prompt: string | null;
+          continuePr: boolean;
+        }>;
       }>(api, orgSlug, "JIRA_AUTOMATION_LIST", {});
 
     expect((await list()).automations).toEqual([]);
@@ -135,16 +139,29 @@ test.describe("Jira run trigger", () => {
       jiraStatus: AUTOMATED_STATUS,
     });
     expect((await list()).automations).toEqual([
-      { jiraStatus: AUTOMATED_STATUS, prompt: null },
+      { jiraStatus: AUTOMATED_STATUS, prompt: null, continuePr: false },
     ]);
 
     await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
       jiraStatus: AUTOMATED_STATUS,
       prompt: "Implement it and open a pull request.",
+      continuePr: true,
     });
-    expect((await list()).automations[0].prompt).toBe(
-      "Implement it and open a pull request.",
-    );
+    expect((await list()).automations).toEqual([
+      {
+        jiraStatus: AUTOMATED_STATUS,
+        prompt: "Implement it and open a pull request.",
+        continuePr: true,
+      },
+    ]);
+
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      continuePr: false,
+    });
+    expect((await list()).automations).toEqual([
+      { jiraStatus: AUTOMATED_STATUS, prompt: null, continuePr: false },
+    ]);
 
     const { removed } = await callSelfMcpTool<{ removed: boolean }>(
       api,
