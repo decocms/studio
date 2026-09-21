@@ -3437,6 +3437,18 @@ export function SectionsEditor({
                   onRemoveAll={handleRemoveAllSectionVariants}
                 />
               )}
+              {/* Without variants there is no select to add from, so the page
+              still needs its own entry point — in the same slot the select
+              would occupy, never after the tools. */}
+              {atPanelRoot && !hasMultipleVariants && (
+                <AddVariantButton onClick={handleAddPageVariant} />
+              )}
+              {showAddSectionVariant && (
+                <AddVariantButton onClick={() => handleAddSectionVariant()} />
+              )}
+              {/* A field that has taken over the panel puts its own control
+                here — see `header-slot.tsx`. */}
+              <HeaderSlotTarget />
               {atPanelRoot && (
                 <>
                   <Tooltip>
@@ -3479,19 +3491,8 @@ export function SectionsEditor({
                       </TooltipContent>
                     </Tooltip>
                   )}
-                  {/* Without variants there is no select to add from, so the page
-                  still needs its own entry point. */}
-                  {!hasMultipleVariants && (
-                    <AddVariantButton onClick={handleAddPageVariant} />
-                  )}
                 </>
               )}
-              {showAddSectionVariant && (
-                <AddVariantButton onClick={() => handleAddSectionVariant()} />
-              )}
-              {/* A field that has taken over the panel puts its own control
-                here — see `header-slot.tsx`. */}
-              <HeaderSlotTarget />
             </div>
           )}
         </div>
