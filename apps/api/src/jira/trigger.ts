@@ -158,19 +158,17 @@ export async function triggerRunForTransition(
     issue,
     integration.createdBy,
   );
-  // The rule says so, not the direction of the move: a card sent back from
-  // review carries the reviewed pull request, a card entering for the first
-  // time carries none and starts fresh either way.
-  const pr = rule.continuePr
-    ? await openPrForIssue(ctx, orgId, client, issue.key)
-    : null;
-
   const claimed = await ctx.storage.jiraIntegrations.claimTrigger(
     orgId,
     transition.issueId,
     transition.changelogId,
   );
   if (!claimed) return "duplicate";
+
+  // Resolved after the claim: a redelivered webhook must bail here, not after this network round trip.
+  const pr = rule.continuePr
+    ? await openPrForIssue(ctx, orgId, client, issue.key)
+    : null;
 
   // Guards against a run still working an earlier transition on this anchor.
   await supersedeLiveRuns(ctx, item);
