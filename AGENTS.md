@@ -1,6 +1,6 @@
 # Studio
 
-Studio is an open-source control plane for Model Context Protocol (MCP) traffic. It provides a unified layer for authentication, routing, and observability between MCP clients (Cursor, Claude, VS Code) and MCP servers. The system is built as a monorepo using Bun workspaces with TypeScript, Hono (API), and React 19 (UI).
+Studio is an open-source AI platform that connects models and agents to an organization’s data, tools, and workflows. It provides the common infrastructure for building specialized business applications, including storefront solutions. Authentication, MCP connectivity, monitoring, and cost controls belong to the platform so each application can focus on the work its users need to do.
 
 ## Before changing code
 
