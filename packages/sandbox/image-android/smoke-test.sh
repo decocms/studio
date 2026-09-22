@@ -62,6 +62,12 @@ class _SmokeAppState extends State<SmokeApp> {
 }
 EOF
 
+# A git repo with Flutter's standard .gitignore, to prove a run leaves nothing
+# for the daemon to checkpoint onto the branch.
+git init -q
+git -c user.email=smoke@example.com -c user.name=smoke add -A
+git -c user.email=smoke@example.com -c user.name=smoke commit -qm init
+
 start=$(date +%s)
 qa-android start
 echo "smoke: emulator boot + build + launch took $(( $(date +%s) - start ))s"
@@ -84,6 +90,9 @@ grep -q "count: 1" "$out/ui-after.txt" \
   || { echo "smoke: the tap did not reach the app"; exit 1; }
 cmp -s "$out/before.png" "$out/after.png" \
   && { echo "smoke: screenshot unchanged after the tap"; exit 1; }
+
+dirty=$(git status --porcelain --untracked-files=all)
+[ -z "$dirty" ] || { echo "smoke: the build left files for the daemon to commit:"; echo "$dirty"; exit 1; }
 
 qa-android stop >/dev/null
 echo "smoke: drove a Flutter + Firebase app on the emulator"
