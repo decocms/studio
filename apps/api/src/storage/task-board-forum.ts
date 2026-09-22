@@ -49,8 +49,7 @@ export async function listForum(
           FROM task_board_comments r WHERE r.task_board_item_id = i.id
           ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS "lastReply",
         greatest(c.my_last, a.my_last) AS participated,
-        greatest(i.created_at, c.last_at, a.last_at) AS active,
-        n.last_mention
+        greatest(i.created_at, c.last_at, a.last_at) AS active
       FROM task_board_items i
       LEFT JOIN task_board_read_markers m ON m.task_board_item_id = i.id AND m.user_id = ${userId}
       CROSS JOIN LATERAL (
@@ -68,7 +67,7 @@ export async function listForum(
         FROM task_board_activity WHERE task_board_item_id = i.id
       ) a
       CROSS JOIN LATERAL (
-        SELECT count(*) AS mention_count, max(created_at) AS last_mention FROM notifications
+        SELECT count(*) AS mention_count FROM notifications
         WHERE task_board_item_id = i.id AND organization_id = ${orgId}
           AND user_id = ${userId} AND read_at IS NULL AND type = 'mentioned'
       ) n
@@ -76,9 +75,8 @@ export async function listForum(
         ${input.itemIds ? sql`AND i.id = ANY(${input.itemIds}::text[])` : sql``}
     ), ranked AS (
       SELECT *, CASE WHEN ${input.sort} = 'latest' THEN 0
-        WHEN "mentionCount" > 0 THEN 0 WHEN participated IS NOT NULL THEN 1 ELSE 2 END AS rank,
-        CASE WHEN ${input.sort} = 'latest' THEN active
-          WHEN "mentionCount" > 0 THEN last_mention ELSE coalesce(participated, active) END AS sort_time
+        WHEN "unreadCount" > 0 THEN 0 WHEN "mentionCount" > 0 THEN 1 ELSE 2 END AS rank,
+        active AS sort_time
       FROM summaries
       WHERE (${input.filter} = 'all' OR (${input.filter} = 'mentions' AND "mentionCount" > 0)
         OR (${input.filter} = 'unread' AND "unreadCount" > 0)

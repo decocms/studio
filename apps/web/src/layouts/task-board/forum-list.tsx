@@ -82,7 +82,6 @@ export function ForumList({
       ]),
     ).values(),
   ];
-  const groups = sort === "personal" && filter === "all" ? [0, 1, 2] : [-1];
   const memberById = new Map(members.map((member) => [member.userId, member]));
   const personName = (id: string) =>
     id === SUPER_AGENT_ASSIGNEE_ID
@@ -149,172 +148,126 @@ export function ForumList({
             {t("taskBoard.forum.empty")}
           </p>
         )}
-        {groups.map((group) => {
-          const rows = summaries.filter(
-            (row) => (group === -1 || row.rank === group) && byId.has(row.id),
-          );
-          if (!rows.length) return null;
-          return (
-            <section key={group}>
-              <div className="flex items-center gap-2 pb-3 pt-7 text-xs font-medium text-muted-foreground">
-                {group === 0 && <AtSign size={14} />}
-                {t(
-                  group === 0
-                    ? "taskBoard.forum.attention"
-                    : group === 1
-                      ? "taskBoard.forum.pickUp"
-                      : group === 2
-                        ? "taskBoard.forum.workspace"
-                        : "taskBoard.forum.conversations",
+        {summaries
+          .filter((row) => byId.has(row.id))
+          .map((row) => {
+            const item = byId.get(row.id)!;
+            const visual = laneVisual(item.status);
+            const key = taskKey(org.slug, item.keySeq);
+            return (
+              <button
+                key={row.id}
+                type="button"
+                onClick={() => onOpen(item)}
+                data-testid="task-forum-row"
+                className={cn(
+                  "flex w-full items-center gap-3 border-t border-border px-3 py-5 text-left transition-colors hover:bg-muted/40 sm:gap-5 sm:px-4",
+                  row.mentionCount > 0 && "bg-accent/30",
                 )}
-                <span className="ml-auto hidden font-normal sm:inline">
-                  {t(
-                    group === 0
-                      ? "taskBoard.forum.mentionHint"
-                      : group === 1
-                        ? "taskBoard.forum.participationHint"
-                        : "taskBoard.forum.activityHint",
+              >
+                <span
+                  aria-label={
+                    row.unreadCount ? t("taskBoard.forum.unread") : undefined
+                  }
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    row.unreadCount ? "bg-success" : "bg-transparent",
+                  )}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+                    {item.title}
+                    {(isTaskBlocked(item) || isTaskHandedToHuman(item)) && (
+                      <span className="rounded border border-warning/40 px-1.5 py-0.5 text-[10px] text-warning">
+                        {t(
+                          isTaskBlocked(item)
+                            ? "taskBoard.taskBoard.needsInput"
+                            : "taskBoard.taskBoard.needsYou",
+                        )}
+                      </span>
+                    )}
+                    {row.mentionCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-normal text-accent-foreground">
+                        <AtSign size={11} />
+                        {t("taskBoard.forum.mentionedYou")}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                    {row.lastReply ? (
+                      <>
+                        <span className="shrink-0">
+                          {personAvatar(row.lastReply.authorId)}
+                        </span>
+                        <span className="truncate">
+                          {personName(row.lastReply.authorId)}: {preview(row)}
+                        </span>
+                      </>
+                    ) : (
+                      <span>{t("taskBoard.forum.noReplies")}</span>
+                    )}
+                  </span>
+                  <span className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                    {key && <span>{key}</span>}
+                    {item.repo && (
+                      <>
+                        <span>·</span>
+                        <span>{item.repo}</span>
+                      </>
+                    )}
+                    <span>·</span>
+                    <span className="inline-flex items-center gap-1">
+                      <visual.icon size={12} />
+                      {laneHeader(item.status, t).label}
+                    </span>
+                  </span>
+                </span>
+                <span
+                  className="hidden items-center -space-x-1.5 md:flex"
+                  aria-label={t("taskBoard.forum.participants")}
+                >
+                  {row.participantIds.slice(0, 3).map((id) => (
+                    <span
+                      key={id}
+                      className="rounded-full ring-2 ring-background"
+                      title={personName(id)}
+                    >
+                      {personAvatar(id)}
+                    </span>
+                  ))}
+                  {row.participantIds.length > 3 && (
+                    <span className="pl-3 text-xs text-muted-foreground">
+                      +{row.participantIds.length - 3}
+                    </span>
                   )}
                 </span>
-              </div>
-              {rows.map((row) => {
-                const item = byId.get(row.id)!;
-                const visual = laneVisual(item.status);
-                const key = taskKey(org.slug, item.keySeq);
-                return (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => onOpen(item)}
-                    data-testid="task-forum-row"
-                    className={cn(
-                      "flex w-full items-center gap-3 border-t border-border px-3 py-5 text-left transition-colors hover:bg-muted/40 sm:gap-5 sm:px-4",
-                      row.mentionCount > 0 && "bg-accent/30",
-                    )}
+                <span className="flex shrink-0 flex-col items-end gap-2 text-xs text-muted-foreground">
+                  <time dateTime={new Date(row.lastActivityAt).toISOString()}>
+                    {formatTimeAgo(new Date(row.lastActivityAt))}
+                  </time>
+                  <span
+                    className="inline-flex items-center gap-1.5"
+                    aria-label={t("taskBoard.forum.replyCount", {
+                      count: row.replyCount,
+                    })}
                   >
-                    <span
-                      aria-label={
-                        row.unreadCount
-                          ? t("taskBoard.forum.unread")
-                          : undefined
-                      }
-                      className={cn(
-                        "size-1.5 shrink-0 rounded-full",
-                        row.unreadCount ? "bg-success" : "bg-transparent",
-                      )}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
-                        {item.title}
-                        {(isTaskBlocked(item) || isTaskHandedToHuman(item)) && (
-                          <span className="rounded border border-warning/40 px-1.5 py-0.5 text-[10px] text-warning">
-                            {t(
-                              isTaskBlocked(item)
-                                ? "taskBoard.taskBoard.needsInput"
-                                : "taskBoard.taskBoard.needsYou",
-                            )}
-                          </span>
-                        )}
-                        {row.mentionCount > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-normal text-accent-foreground">
-                            <AtSign size={11} />
-                            {t("taskBoard.forum.mentionedYou")}
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                        {row.lastReply ? (
-                          <>
-                            <span className="shrink-0">
-                              {personAvatar(row.lastReply.authorId)}
-                            </span>
-                            <span className="truncate">
-                              {personName(row.lastReply.authorId)}:{" "}
-                              {preview(row)}
-                            </span>
-                          </>
-                        ) : (
-                          <span>{t("taskBoard.forum.noReplies")}</span>
-                        )}
-                      </span>
-                      <span className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-                        {key && <span>{key}</span>}
-                        {item.repo && (
-                          <>
-                            <span>·</span>
-                            <span>{item.repo}</span>
-                          </>
-                        )}
-                        <span>·</span>
-                        <span className="inline-flex items-center gap-1">
-                          <visual.icon size={12} />
-                          {laneHeader(item.status, t).label}
-                        </span>
-                        {group === 1 && row.lastParticipatedAt && (
-                          <>
-                            <span>·</span>
-                            <span>
-                              {t("taskBoard.forum.participated", {
-                                time: formatTimeAgo(
-                                  new Date(row.lastParticipatedAt),
-                                ),
-                              })}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                    </span>
-                    <span
-                      className="hidden items-center -space-x-1.5 md:flex"
-                      aria-label={t("taskBoard.forum.participants")}
-                    >
-                      {row.participantIds.slice(0, 3).map((id) => (
-                        <span
-                          key={id}
-                          className="rounded-full ring-2 ring-background"
-                          title={personName(id)}
-                        >
-                          {personAvatar(id)}
-                        </span>
-                      ))}
-                      {row.participantIds.length > 3 && (
-                        <span className="pl-3 text-xs text-muted-foreground">
-                          +{row.participantIds.length - 3}
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-2 text-xs text-muted-foreground">
-                      <time
-                        dateTime={new Date(row.lastActivityAt).toISOString()}
-                      >
-                        {formatTimeAgo(new Date(row.lastActivityAt))}
-                      </time>
+                    <MessageSquare01 size={13} />
+                    {row.replyCount}
+                    {row.unreadCount > 0 && (
                       <span
-                        className="inline-flex items-center gap-1.5"
-                        aria-label={t("taskBoard.forum.replyCount", {
-                          count: row.replyCount,
+                        className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-accent-foreground"
+                        aria-label={t("taskBoard.forum.unreadCount", {
+                          count: row.unreadCount,
                         })}
                       >
-                        <MessageSquare01 size={13} />
-                        {row.replyCount}
-                        {row.unreadCount > 0 && (
-                          <span
-                            className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-accent-foreground"
-                            aria-label={t("taskBoard.forum.unreadCount", {
-                              count: row.unreadCount,
-                            })}
-                          >
-                            +{row.unreadCount}
-                          </span>
-                        )}
+                        +{row.unreadCount}
                       </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </section>
-          );
-        })}
+                    )}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         {query.hasNextPage && (
           <div className="flex justify-center py-8">
             <Button

@@ -57,7 +57,7 @@ async function join(
 
 test.use({ compactPageLayout: true });
 
-test("forum ranks mentions and participation, pages, and scopes persistent read markers", async ({
+test("forum ranks unread, mentions, and workspace by recency, pages, and scopes read markers", async ({
   authedPage,
   playwright,
 }) => {
@@ -99,15 +99,17 @@ test("forum ranks mentions and participation, pages, and scopes persistent read 
         ...options,
       });
     const initial = await list();
-    expect(initial.items.map((row) => row.id)).toEqual(itemIds);
-    expect(initial.items.map((row) => row.rank)).toEqual([0, 1, 2]);
-    expect(initial.items[0]).toMatchObject({
+    const expectedOrder = [latest.id, mentioned.id, participated.id];
+    expect(initial.items.map((row) => row.id)).toEqual(expectedOrder);
+    expect((await list()).items.map((row) => row.id)).toEqual(expectedOrder);
+    expect(initial.items.map((row) => row.rank)).toEqual([0, 0, 2]);
+    expect(initial.items[1]).toMatchObject({
       replyCount: 1,
       unreadCount: 1,
       mentionCount: 1,
       lastReply: { id: first.id },
     });
-    expect(initial.items[1]).toMatchObject({
+    expect(initial.items[2]).toMatchObject({
       unreadCount: 0,
       participantIds: [second.userId],
     });
@@ -116,8 +118,16 @@ test("forum ranks mentions and participation, pages, and scopes persistent read 
     ).toEqual([mentioned.id]);
     expect(
       (await list({ filter: "unread" })).items.map((row) => row.id),
-    ).toEqual([mentioned.id, latest.id]);
+    ).toEqual([latest.id, mentioned.id]);
     expect((await list({ sort: "latest" })).items[0]?.id).toBe(latest.id);
+    // Reading comments without acknowledging the mention leaves a mention-only task.
+    await call(member, orgSlug, "TASK_BOARD_CONVERSATION_MARK_READ", {
+      taskBoardItemId: mentioned.id,
+      throughCommentId: first.id,
+    });
+    const ranked = await list();
+    expect(ranked.items.map((row) => row.id)).toEqual(expectedOrder);
+    expect(ranked.items.map((row) => row.rank)).toEqual([0, 1, 2]);
     const firstPage = await list({ limit: 1 });
     expect(firstPage.nextCursor).not.toBeNull();
     const secondPage = await list({ limit: 1, cursor: firstPage.nextCursor });
@@ -126,7 +136,7 @@ test("forum ranks mentions and participation, pages, and scopes persistent read 
       [...firstPage.items, ...secondPage.items, ...thirdPage.items].map(
         (row) => row.id,
       ),
-    ).toEqual(itemIds);
+    ).toEqual(expectedOrder);
     expect(thirdPage.nextCursor).toBeNull();
     expect((await list({ itemIds: [] })).items).toEqual([]);
 
@@ -253,6 +263,12 @@ test("forum opens a wide detail, receives live replies, and reads them across re
       .filter({ hasText: "Discuss the checkout flow" });
     await expect(row).toContainText("Mentioned you");
     await expect(row).toContainText("Please review");
+    await expect(
+      page.getByText("Pick up where you left off", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Around the workspace", { exact: true }),
+    ).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "List view", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
