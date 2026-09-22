@@ -23,8 +23,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Globe01 } from "@untitledui/icons";
 import {
   ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@decocms/ui/components/chart.tsx";
@@ -173,8 +171,7 @@ function RangePicker({
   );
 }
 
-// Series colors, matching the old admin: requests blue, pageviews green,
-// bandwidth orange. Uses the theme's chart tokens so it reads in light + dark.
+// Series colors (theme chart tokens): requests purple, pageviews green, bandwidth yellow.
 const COLOR_REQUESTS = "var(--chart-1)";
 const COLOR_PAGEVIEWS = "var(--chart-2)";
 const COLOR_BANDWIDTH = "var(--chart-4)";
@@ -383,6 +380,21 @@ function Card({
       </header>
       <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+/** A single color-swatch + label entry for the usage chart legend. The chart's
+ *  three series share only left/right axis grouping in the subtitle, so an
+ *  explicit legend is the only thing that maps each line color to its series. */
+function ChartLegendItem({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="h-2 w-2 shrink-0 rounded-[2px]"
+        style={{ backgroundColor: color }}
+      />
+      <span className="text-xs text-muted-foreground">{label}</span>
+    </div>
   );
 }
 
@@ -956,81 +968,96 @@ function PerformanceSection({
             {t("mainPanelTabs.cdnTab.emptyRange")}
           </p>
         ) : (
-          <ChartContainer
-            config={{
-              requests: {
-                label: t("mainPanelTabs.cdnTab.requests"),
-                color: COLOR_REQUESTS,
-              },
-              pageviews: {
-                label: t("mainPanelTabs.cdnTab.pageviews"),
-                color: COLOR_PAGEVIEWS,
-              },
-              bandwidth_bytes: {
-                label: t("mainPanelTabs.cdnTab.bandwidth"),
-                color: COLOR_BANDWIDTH,
-              },
-            }}
-            className="h-72 w-full"
-          >
-            <AreaChart
-              data={timeline.data ?? []}
-              margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <ChartLegendItem
+                color={COLOR_REQUESTS}
+                label={t("mainPanelTabs.cdnTab.requests")}
+              />
+              <ChartLegendItem
+                color={COLOR_PAGEVIEWS}
+                label={t("mainPanelTabs.cdnTab.pageviews")}
+              />
+              <ChartLegendItem
+                color={COLOR_BANDWIDTH}
+                label={t("mainPanelTabs.cdnTab.bandwidth")}
+              />
+            </div>
+            <ChartContainer
+              config={{
+                requests: {
+                  label: t("mainPanelTabs.cdnTab.requests"),
+                  color: COLOR_REQUESTS,
+                },
+                pageviews: {
+                  label: t("mainPanelTabs.cdnTab.pageviews"),
+                  color: COLOR_PAGEVIEWS,
+                },
+                bandwidth_bytes: {
+                  label: t("mainPanelTabs.cdnTab.bandwidth"),
+                  color: COLOR_BANDWIDTH,
+                },
+              }}
+              className="h-72 w-full"
             >
-              <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="bucket"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
-                tickFormatter={(v: string) => String(v).slice(5, 16)}
-              />
-              <YAxis
-                yAxisId="left"
-                tickLine={false}
-                axisLine={false}
-                width={48}
-                tickFormatter={(v: number) => formatCompact(v)}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tickLine={false}
-                axisLine={false}
-                width={56}
-                tickFormatter={(v: number) => formatBytes(v)}
-              />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <ChartLegend content={<ChartLegendContent />} />
-              <Area
-                yAxisId="left"
-                dataKey="requests"
-                type="monotone"
-                fill={COLOR_REQUESTS}
-                fillOpacity={0.15}
-                stroke={COLOR_REQUESTS}
-                strokeWidth={2}
-              />
-              <Area
-                yAxisId="left"
-                dataKey="pageviews"
-                type="monotone"
-                fill={COLOR_PAGEVIEWS}
-                fillOpacity={0.12}
-                stroke={COLOR_PAGEVIEWS}
-                strokeWidth={2}
-              />
-              <Line
-                yAxisId="right"
-                dataKey="bandwidth_bytes"
-                type="monotone"
-                dot={false}
-                stroke={COLOR_BANDWIDTH}
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ChartContainer>
+              <AreaChart
+                data={timeline.data ?? []}
+                margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+              >
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="bucket"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={32}
+                  tickFormatter={(v: string) => String(v).slice(5, 16)}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                  tickFormatter={(v: number) => formatCompact(v)}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tickLine={false}
+                  axisLine={false}
+                  width={56}
+                  tickFormatter={(v: number) => formatBytes(v)}
+                />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area
+                  yAxisId="left"
+                  dataKey="requests"
+                  type="monotone"
+                  fill={COLOR_REQUESTS}
+                  fillOpacity={0.15}
+                  stroke={COLOR_REQUESTS}
+                  strokeWidth={2}
+                />
+                <Area
+                  yAxisId="left"
+                  dataKey="pageviews"
+                  type="monotone"
+                  fill={COLOR_PAGEVIEWS}
+                  fillOpacity={0.12}
+                  stroke={COLOR_PAGEVIEWS}
+                  strokeWidth={2}
+                />
+                <Line
+                  yAxisId="right"
+                  dataKey="bandwidth_bytes"
+                  type="monotone"
+                  dot={false}
+                  stroke={COLOR_BANDWIDTH}
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </div>
         )}
       </Card>
 
