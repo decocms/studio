@@ -3,6 +3,7 @@ import {
   CpuChip01,
   FilterLines,
   Inbox01,
+  LayersThree01,
   Monitor01,
   Stars02,
   Users03,
@@ -39,7 +40,7 @@ export interface Release {
 const ALL_RELEASES: Release[] = [
   {
     id: "new-layout",
-    date: "2026-09-17",
+    date: "2026-09-22",
     eyebrow: "Now Available",
     title: "New Layout",
     bullets: [
@@ -50,13 +51,13 @@ const ALL_RELEASES: Release[] = [
       },
       {
         icon: FilterLines,
-        title: "Consistent sidebar navigation",
-        body: "Settings and project pages now use a predictable sidebar for sections, instead of scattered tabs and buttons.",
+        title: "Consistent navigation and controls",
+        body: "Settings and project pages use a predictable sidebar instead of scattered tabs. Buttons, inputs and toolbars share one shape and one height, and the layout adapts to smaller screens.",
       },
       {
-        icon: Stars02,
-        title: "Refined controls & mobile",
-        body: "Buttons and toolbars have been redesigned for clarity. The layout adapts gracefully to smaller screens with the same consistent structure.",
+        icon: LayersThree01,
+        title: "Site editor redesigned",
+        body: "Every block wears the same icon and the same actions, the variant you are editing is named in the header beside the block it belongs to, and picking a section is now a search rather than a scroll.",
       },
     ],
     cta: { label: "Try it now", action: "enable-new-layout" },
