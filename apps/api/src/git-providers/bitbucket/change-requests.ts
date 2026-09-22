@@ -234,8 +234,10 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
     this.repoBase = `${BITBUCKET_API_BASE}${repositoryApiPath(params.repo)}`;
   }
 
-  private async token(): Promise<string> {
-    const issued = await this.tokenSource.get();
+  private async token(force?: boolean): Promise<string> {
+    const issued = await this.tokenSource.get(
+      force ? { forceRefresh: true } : undefined,
+    );
     if (issued) return issued.token;
     throw new GitProviderError({
       provider: "bitbucket",
@@ -244,7 +246,12 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
     });
   }
 
-  /** One REST call under the repository. 404 answers null; other non-2xx throws. */
+  /**
+   * One REST call under the repository. 404 answers null; other non-2xx
+   * throws. A 401 means the token died before its own expiry said so
+   * (revoked, rotated): re-mint/refresh once and retry, matching
+   * `BitbucketProviderClient.authedFetch`.
+   */
   private async call(
     pathAndQuery: string,
     init: {
@@ -253,11 +260,19 @@ export class BitbucketChangeRequestClient implements ChangeRequestClient {
       accept?: string;
     } = {},
   ): Promise<Response | null> {
-    const res = await bitbucketFetch(
+    let res = await bitbucketFetch(
       `${this.repoBase}${pathAndQuery}`,
       await this.token(),
       init,
     );
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      res = await bitbucketFetch(
+        `${this.repoBase}${pathAndQuery}`,
+        await this.token(true),
+        init,
+      );
+    }
     if (res.status === 404) {
       await res.body?.cancel().catch(() => {});
       return null;
