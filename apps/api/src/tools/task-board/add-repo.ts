@@ -389,13 +389,13 @@ export function gitConfigPatch(args: {
 async function secondaryRepoConfigs(
   ctx: StudioContext,
   organizationId: string,
-  userId: string,
   repos: {
     owner: string;
     name: string;
     connectionId?: string;
     repositoryId?: string;
   }[],
+  submoduleCredentials: { host: string; token: string }[],
 ): Promise<
   {
     cloneUrl: string;
@@ -404,11 +404,6 @@ async function secondaryRepoConfigs(
   }[]
 > {
   const dirNames = secondaryRepoDirNames(repos);
-  const submoduleCredentials = await orgGitCredentials(
-    ctx,
-    organizationId,
-    userId,
-  );
   // Independent per-repo credential mints — run concurrently, not in series.
   const settled = await Promise.all(
     repos.map(async (repo, i) => {
@@ -642,6 +637,12 @@ export const TASK_ADD_REPO = defineTool({
       recordedHeadRef: null,
       sticky: false,
     });
+    // Resolved once: reused for both the top-level key and each secondary's copy.
+    const submoduleCredentials = await orgGitCredentials(
+      ctx,
+      organization.id,
+      userId,
+    );
     const configRes = await provider.proxyDaemonRequest(
       record.sandboxHandle,
       "/_sandbox/config",
@@ -663,15 +664,11 @@ export const TASK_ADD_REPO = defineTool({
                   secondaries: await secondaryRepoConfigs(
                     ctx,
                     organization.id,
-                    userId,
                     secondaries,
+                    submoduleCredentials,
                   ),
                 }),
-            submoduleCredentials: await orgGitCredentials(
-              ctx,
-              organization.id,
-              userId,
-            ),
+            submoduleCredentials,
             gitUserName,
             gitUserEmail,
           }),
