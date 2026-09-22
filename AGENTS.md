@@ -68,8 +68,11 @@ what failed, and what was not run.
   after a health signal.
 - Changes on boot, install, or dispatch hot paths need their own default-off
   flag. Keep rollout separate from deployment; do not reuse an unrelated flag.
-- Include relevant verification and migration notes in PRs. UI changes need
-  screenshots; follow the [PR template](.github/pull_request_template.md).
+- Include relevant verification and migration notes in PRs. For UI changes,
+  upload screenshots or videos as GitHub attachments and embed their asset
+  URLs in the PR body. Never commit PR-only evidence to the repository,
+  including `.github/screenshots/` or `.github/pr-assets/`. Follow the
+  [PR template](.github/pull_request_template.md).
 
 ## Credentials and shared artifacts
 
