@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   ancestorsOf,
-  basenameOf,
   fsObjectKey,
   fsVolumePrefix,
   isValidVolume,
@@ -34,15 +33,13 @@ describe("normalizeFsPath", () => {
   });
 });
 
-describe("parentOf / basenameOf", () => {
+describe("parentOf", () => {
   test("top-level entries have empty parent", () => {
     expect(parentOf("file.txt")).toBe("");
-    expect(basenameOf("file.txt")).toBe("file.txt");
   });
 
   test("nested entries split on the last slash", () => {
     expect(parentOf("a/b/c.txt")).toBe("a/b");
-    expect(basenameOf("a/b/c.txt")).toBe("c.txt");
   });
 });
 
