@@ -71,6 +71,15 @@ RUN chmod 0755 /usr/local/bin/qa-android \
 USER sandbox
 # /opt/flutter belongs to `sandbox` in the base image, so the Android engine
 # artifacts land without a chown that would duplicate the whole SDK layer.
-RUN flutter precache --android --no-ios --no-web --no-linux
+# Every Android build compiles Flutter's Gradle plugin as an included build in
+# place, writing .gradle/, build/ and .kotlin/ inside the read-only SDK. Point
+# them into /tmp, as the base image does for engine.stamp; qa-android creates
+# the targets before it builds.
+RUN flutter precache --android --no-ios --no-web --no-linux \
+  && cd /opt/flutter/packages/flutter_tools/gradle \
+  && rm -rf .gradle build .kotlin \
+  && ln -s /tmp/flutter-gradle/dot-gradle .gradle \
+  && ln -s /tmp/flutter-gradle/build build \
+  && ln -s /tmp/flutter-gradle/kotlin .kotlin
 
 ENV STUDIO_SANDBOX_ANDROID_EMULATOR=1

@@ -96,6 +96,8 @@ exclude_build_output() {
 gradle_error() {
   local report
   report=$(sed -n '/What went wrong/,/\* Try:/p' "$1" | sed 's/^\[[^]]*\] //' | head -40)
+  [ -n "$report" ] || report=$(grep -E "FAILURE|rror|xception|denied|[Rr]ead-only" "$1" \
+    | grep -v -E "^\s+#[0-9]|<asynchronous" | head -40)
   [ -n "$report" ] && echo "$report" || tail -40 "$1"
 }
 
@@ -116,6 +118,7 @@ cmd_start() {
   # Build first, verbosely: without -v, flutter reduces any Gradle failure to
   # "assembleDebug failed". The run that follows reuses this build.
   echo "qa-android: building — the first Gradle build takes minutes"
+  mkdir -p /tmp/flutter-gradle/dot-gradle /tmp/flutter-gradle/build /tmp/flutter-gradle/kotlin
   flutter build apk --debug -v ${target:+-t "$target"} >"$STATE/build.log" 2>&1 \
     || die "the Android build failed (full log: $STATE/build.log):
 $(gradle_error "$STATE/build.log")"
