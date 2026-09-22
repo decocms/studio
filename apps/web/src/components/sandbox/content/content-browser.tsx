@@ -36,6 +36,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import { SoonOverlay } from "@/components/soon-overlay";
 import { useProjectContext } from "@/sdk";
 import { useChatTask } from "@/components/chat/context";
 import { useDecofile } from "@/components/sections-editor/use-decofile";
@@ -1092,25 +1093,31 @@ function ContentBrowserReady({
                 />
               )
             ) : activeCollection === "context" ? (
-              <BlogContext
-                orgSlug={orgSlug}
-                virtualMcpId={virtualMcpId}
-                branch={branch}
-                decofile={decofile}
-                meta={meta}
-                onOpenPost={(key) => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection({ collection: "posts", key });
-                  setOpenPageSeoKey(null);
-                }}
-                onManageCategoryPosts={() => {
-                  setActiveCollection("posts");
-                  setPrevCollection("posts");
-                  setSelection(null);
-                  setOpenPageSeoKey(null);
-                }}
-              />
+              // Behind a veil until the brand context is good enough to ship.
+              <SoonOverlay
+                title={t("sandbox.blogContext.soonTitle")}
+                description={t("sandbox.blogContext.soonDescription")}
+              >
+                <BlogContext
+                  orgSlug={orgSlug}
+                  virtualMcpId={virtualMcpId}
+                  branch={branch}
+                  decofile={decofile}
+                  meta={meta}
+                  onOpenPost={(key) => {
+                    setActiveCollection("posts");
+                    setPrevCollection("posts");
+                    setSelection({ collection: "posts", key });
+                    setOpenPageSeoKey(null);
+                  }}
+                  onManageCategoryPosts={() => {
+                    setActiveCollection("posts");
+                    setPrevCollection("posts");
+                    setSelection(null);
+                    setOpenPageSeoKey(null);
+                  }}
+                />
+              </SoonOverlay>
             ) : activeCollection === "seo" ? (
               <SeoEditor
                 orgSlug={orgSlug}

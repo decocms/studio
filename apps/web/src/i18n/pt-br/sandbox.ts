@@ -90,6 +90,9 @@ export const sandbox = {
   "sandbox.blogContext.categoriesHint":
     "Os temas sob os quais seus posts são classificados. Adicione um e abra para editar.",
   "sandbox.blogContext.removeEntry": "Remover",
+  "sandbox.blogContext.soonDescription":
+    "Ainda estamos fechando como o contexto de marca, os formatos e os pilares do blog são escritos. Em breve dá pra editar tudo por aqui.",
+  "sandbox.blogContext.soonTitle": "O contexto de marca chega em breve",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
   "sandbox.blogContext.tabAuthors": "Autores",

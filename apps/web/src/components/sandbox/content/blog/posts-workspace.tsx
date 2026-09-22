@@ -521,8 +521,9 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
+              {/* Off until generation is good enough; the handler stays wired. */}
               <DropdownMenuItem
-                disabled={!hasAi}
+                disabled
                 onClick={() => {
                   setGenerateSeed(undefined);
                   setGenerateOpen(true);
@@ -530,7 +531,10 @@ export function PostsWorkspace({
               >
                 <Stars02 size={14} />
                 <div className="flex flex-col">
-                  <span>{t("sandbox.postBoard.newPostGenerate")}</span>
+                  <span className="flex items-center gap-1.5">
+                    {t("sandbox.postBoard.newPostGenerate")}
+                    <Badge variant="secondary">{t("common.soon")}</Badge>
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     {t("sandbox.postBoard.newPostGenerateHint")}
                   </span>
@@ -634,7 +638,6 @@ export function PostsWorkspace({
         <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-4">
           <IdeaTray
             ideas={ideas}
-            hasAi={hasAi}
             collapsed={collapsedLanes.includes(IDEAS_LANE)}
             pillarTitleOf={pillarTitleOf}
             onToggleCollapsed={() => toggleLane(IDEAS_LANE)}
@@ -1157,7 +1160,6 @@ function PostCard({
  */
 function IdeaTray({
   ideas,
-  hasAi,
   collapsed,
   pillarTitleOf,
   onToggleCollapsed,
@@ -1165,7 +1167,6 @@ function IdeaTray({
   onDelete,
 }: {
   ideas: IdeaEntry[];
-  hasAi: boolean;
   collapsed: boolean;
   pillarTitleOf: (key?: string) => string | undefined;
   onToggleCollapsed: () => void;
@@ -1245,16 +1246,20 @@ function IdeaTray({
                   )}
                 </div>
                 <div className="border-t px-3 py-2">
+                  {/* The other door into the same generation dialog. */}
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={!hasAi}
+                    disabled
                     className="h-7 w-full justify-start px-1.5 text-xs"
                     onClick={() => onGenerate(idea)}
                   >
                     <Stars02 size={13} />
                     {t("sandbox.postBoard.writeFromIdea")}
+                    <Badge variant="secondary" className="ml-auto">
+                      {t("common.soon")}
+                    </Badge>
                   </Button>
                 </div>
               </div>
