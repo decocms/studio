@@ -55,7 +55,9 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
        "platform-tools" "emulator" \
        "platforms;android-36" "build-tools;36.0.0" "build-tools;35.0.0" \
        "ndk;28.2.13676358" "cmake;3.22.1" \
-       "system-images;android-36;google_apis;x86_64" >/dev/null
+       "system-images;android-36;google_apis;x86_64" >/dev/null \
+  # sdkmanager extracts binaries owner-only (0744); the sandbox user runs them.
+  && chmod -R a+rX ${ANDROID_HOME}
 
 COPY bin/qa-android /usr/local/bin/qa-android
 # The base image's engine.stamp/realm/lockfile are symlinks into /tmp, and a
