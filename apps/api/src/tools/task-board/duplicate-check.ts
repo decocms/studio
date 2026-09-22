@@ -226,18 +226,23 @@ function excerpt(text: string | null): string {
     : oneLine;
 }
 
-/** The user turn: the draft, then every candidate as `[id] (lane, repo) title — description`. */
-export function buildDuplicatePrompt(
-  draft: TaskDraft,
-  candidates: readonly TaskBoardItem[],
-): string {
-  const cardList = candidates
+/** Every candidate as `[id] (lane, repo) title — description`, one per line. */
+function renderCandidateList(candidates: readonly TaskBoardItem[]): string {
+  return candidates
     .map((c) => {
       const meta = [c.status, c.repo].filter(Boolean).join(", ");
       const desc = excerpt(c.description);
       return `- [${c.id}] (${meta}) ${c.title}${desc ? ` — ${desc}` : ""}`;
     })
     .join("\n");
+}
+
+/** The user turn: the draft, then every candidate as `[id] (lane, repo) title — description`. */
+export function buildDuplicatePrompt(
+  draft: TaskDraft,
+  candidates: readonly TaskBoardItem[],
+): string {
+  const cardList = renderCandidateList(candidates);
   const draftDesc = excerpt(draft.description ?? null);
   return `New task being filed:
 Title: ${draft.title}
@@ -451,13 +456,7 @@ export function buildBatchDuplicatePrompt(
       return `- draft ${d.index}${repo}: ${d.title}${desc ? ` — ${desc}` : ""}`;
     })
     .join("\n");
-  const cardList = candidates
-    .map((c) => {
-      const meta = [c.status, c.repo].filter(Boolean).join(", ");
-      const desc = excerpt(c.description);
-      return `- [${c.id}] (${meta}) ${c.title}${desc ? ` — ${desc}` : ""}`;
-    })
-    .join("\n");
+  const cardList = renderCandidateList(candidates);
   return `New tasks being filed:
 ${draftList}
 
