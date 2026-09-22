@@ -92,52 +92,66 @@ func renderGitConfig(hosts []string, credFile, home string) string {
 	return b.String()
 }
 
+// Installed is what InstallGitCredentials put on disk, for the boot log —
+// never the tokens. `Hosts` are the configured credentials' hosts; `Fallback`
+// is the clone token's host when it was the only thing to install, which is a
+// materially weaker state and has to be said out loud (see cloneCredentialLine).
+type Installed struct {
+	Hosts        []string
+	InvalidHosts []string
+	Fallback     string
+}
+
 // InstallGitCredentials writes the pod's git config and points the daemon's
 // environment at it, or — with no valid credential — removes both files and
-// unsets the variable, so git falls back to its own defaults. Returns the hosts
-// it authenticated and the hosts it rejected as malformed, so the caller can say
-// which in the boot log — never the tokens.
+// unsets the variable, so git falls back to its own defaults.
 //
 // Removal is not a special case but the point: a pod is reused across configs,
 // and a credential dropped in the UI has to stop working rather than linger in
 // a file nothing rewrites.
-func InstallGitCredentials(tmpDir, home, cloneUrl string, credentials []config.SubmoduleCredential) (hosts, invalidHosts []string, err error) {
+func InstallGitCredentials(tmpDir, home, cloneUrl string, credentials []config.SubmoduleCredential) (Installed, error) {
 	if tmpDir == "" {
-		return nil, nil, nil
+		return Installed{}, nil
 	}
 	configPath := GitConfigPath(tmpDir)
 	credPath := GitCredentialsStorePath(tmpDir)
 
 	lines, hosts, invalidHosts := prepareSubmoduleCredentials(credentials)
+	out := Installed{Hosts: hosts, InvalidHosts: invalidHosts}
 	if line, host, ok := cloneCredentialLine(cloneUrl, hosts); ok {
 		lines = append(lines, line)
-		hosts = append(hosts, host)
+		out.Fallback = host
 	}
-	if len(hosts) == 0 {
+	// Every host gets the SSH→HTTPS rewrite, the clone's included.
+	rewriteHosts := hosts
+	if out.Fallback != "" {
+		rewriteHosts = append(append([]string{}, hosts...), out.Fallback)
+	}
+	if len(lines) == 0 {
 		os.Unsetenv("GIT_CONFIG_GLOBAL")
-		return nil, invalidHosts, SweepGitCredentials(tmpDir)
+		return out, SweepGitCredentials(tmpDir)
 	}
 
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
-		return nil, invalidHosts, err
+		return out, err
 	}
 	// Remove first: WriteFile's mode applies only when it CREATES the file, so
 	// writing over a leftover would inherit that file's permissions.
 	os.Remove(credPath)
 	if err := os.WriteFile(credPath, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
-		return nil, invalidHosts, err
+		return out, err
 	}
-	if err := os.WriteFile(configPath, []byte(renderGitConfig(hosts, credPath, home)), 0o600); err != nil {
+	if err := os.WriteFile(configPath, []byte(renderGitConfig(rewriteHosts, credPath, home)), 0o600); err != nil {
 		// The store file is on disk and nothing points at it — clear it rather
 		// than strand a live token for a feature that did not turn on.
 		os.Remove(credPath)
-		return nil, invalidHosts, err
+		return out, err
 	}
 	// Last: a child that reads the variable must find a complete file behind it.
 	if err := os.Setenv("GIT_CONFIG_GLOBAL", configPath); err != nil {
-		return nil, invalidHosts, err
+		return out, err
 	}
-	return hosts, invalidHosts, nil
+	return out, nil
 }
 
 // cloneCredentialLine is the clone URL's own token as a trailing store entry,

@@ -154,15 +154,26 @@ func (o *Orchestrator) clearCrashError() {
 }
 
 func (o *Orchestrator) Handle(t config.Transition) {
+	// EVERY transition, before the kind is even looked at. `Classify` returns the
+	// FIRST kind that matches and the credential checks are last, so credentials
+	// arriving alongside a port/pm/runtime/repos/env change are labelled that
+	// instead — and only bootstrap and branch-change reach `gitSetup`, where this
+	// otherwise runs. A warm-pool pod adopted by a claim is exactly that case: the
+	// claim's config differs from the pool template's on the workload, so the PAT
+	// riding the same payload was stored and never written to disk, leaving the
+	// pod on the clone token, which by definition cannot reach a private
+	// dependency in another repository.
+	//
+	// Idempotent (clear-then-write), so paying it on every transition costs two
+	// file writes and buys independence from Classify's ordering.
+	o.installGitCredentials(o.deps.Store.Read())
 	if t.Kind == config.KindGitCredentialRefresh {
 		if t.CloneUrl != "" {
 			o.syncGitRemoteCredentials(t.CloneUrl)
 		}
-		// The same transition covers a credential edited in the UI, which reaches
-		// a pod that is already serving. Rewriting the files is the whole fix —
-		// nothing needs a step, and a dropped credential has to stop working here
-		// rather than at the next boot.
-		o.installGitCredentials(o.deps.Store.Read())
+		// Nothing else to do: the install above IS the fix for a credential
+		// edited in the UI on a pod that is already serving, and a dropped one
+		// has to stop working here rather than at the next boot.
 		return
 	}
 	// A fresh claim/reclaim or branch switch is an explicit "start over" — clear
@@ -923,16 +934,26 @@ func (o *Orchestrator) installGitCredentials(cfg *config.Enriched) {
 	// the partly-synced $HOME. Home is passed only so the generated config can
 	// INCLUDE the user's own `~/.gitconfig` rather than replace it.
 	home, _ := os.UserHomeDir()
-	hosts, invalidHosts, err := InstallGitCredentials(o.deps.LogsDir, home, cfg.CloneUrl(), cfg.SubmoduleCredentials())
-	for _, host := range invalidHosts {
+	installed, err := InstallGitCredentials(o.deps.LogsDir, home, cfg.CloneUrl(), cfg.SubmoduleCredentials())
+	for _, host := range installed.InvalidHosts {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: skipping git credential with invalid host %q\r\n", host))
 	}
 	if err != nil {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: git credentials setup failed: %s\r\n", err.Error()))
 		return
 	}
-	if len(hosts) > 0 {
-		o.chunk(fmt.Sprintf("[orchestrator] git credentials configured for: %s\r\n", strings.Join(hosts, ", ")))
+	if len(installed.Hosts) > 0 {
+		o.chunk(fmt.Sprintf("[orchestrator] git credentials configured for: %s\r\n", strings.Join(installed.Hosts, ", ")))
+		return
+	}
+	// Say it plainly. "Some credential is installed" and "the configured PAT is
+	// installed" look identical from inside the pod, and telling them apart cost
+	// five round trips once already.
+	if installed.Fallback != "" {
+		o.chunk(fmt.Sprintf(
+			"[orchestrator] no git credentials configured — falling back to the clone token for %s; a private dependency in another repository will 404\r\n",
+			installed.Fallback,
+		))
 	}
 }
 

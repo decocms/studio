@@ -377,3 +377,54 @@ func TestGlabConfigPath(t *testing.T) {
 		t.Errorf("GlabConfigPath() = %q, want %q", got, want)
 	}
 }
+
+// The hazard the orchestrator's unconditional install exists for.
+//
+// Classify returns the FIRST kind that matches and the credential checks are
+// last, so credentials arriving on the same apply as any workload change are
+// labelled that change — and only bootstrap and branch-change run the clone
+// step, which is where credentials would otherwise be written to disk. A
+// warm-pool pod adopted by a claim is exactly this: the claim's config differs
+// from the pool template's on the workload, so the PAT rode in, was merged into
+// the stored config, and never reached the pod's git config. The pod stayed on
+// the clone token and every private dependency in another repository 404'd.
+//
+// This pins the shadowing so it is a decision and not a surprise. The fix is in
+// Orchestrator.Handle, which installs on every transition regardless of kind;
+// if this test ever flips to KindGitCredentialRefresh, that is a behaviour
+// change to make deliberately, not a reason to drop the unconditional install.
+func TestClassifyShadowsACredentialChangeBehindAWorkloadChange(t *testing.T) {
+	const url = "https://x-access-token:tok@github.com/acme/app.git"
+	withCreds := func(c *TenantConfig, token string) *TenantConfig {
+		out := *c
+		g := *out.Git
+		r := *g.Repository
+		r.SubmoduleCredentials = []SubmoduleCredential{{Host: "github.com", Token: token}}
+		g.Repository = &r
+		out.Git = &g
+		return &out
+	}
+
+	base := withPort(repo(url, "main"), 3000)
+	for _, tc := range []struct {
+		name  string
+		after *TenantConfig
+		want  string
+	}{
+		{"port", withPort(withCreds(base, "pat"), 4000), KindPortChange},
+		{"package manager", withPm(withCreds(base, "pat"), "pnpm", ""), KindPmChange},
+		{"env", withEnv(withCreds(base, "pat"), map[string]string{"A": "1"}), KindEnvChange},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Classify(base, tc.after).Kind; got != tc.want {
+				t.Fatalf("Classify = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	// On its own it IS a credential refresh — the shadowing above is purely an
+	// ordering effect, not a missing case.
+	if got := Classify(base, withCreds(base, "pat")).Kind; got != KindGitCredentialRefresh {
+		t.Fatalf("Classify = %q, want %q", got, KindGitCredentialRefresh)
+	}
+}

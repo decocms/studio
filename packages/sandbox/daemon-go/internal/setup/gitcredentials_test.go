@@ -13,17 +13,17 @@ func TestInstallGitCredentialsPointsEveryGitInThePodAtADaemonOwnedConfig(t *test
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, invalid, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
+	got, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com", Token: "ghs_live_token"},
 	})
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if len(invalid) != 0 {
-		t.Fatalf("invalid hosts = %v, want none", invalid)
+	if len(got.InvalidHosts) != 0 {
+		t.Fatalf("invalid hosts = %v, want none", got.InvalidHosts)
 	}
-	if len(hosts) != 1 || hosts[0] != "github.com" {
-		t.Fatalf("hosts = %v, want [github.com]", hosts)
+	if len(got.Hosts) != 1 || got.Hosts[0] != "github.com" {
+		t.Fatalf("hosts = %v, want [github.com]", got.Hosts)
 	}
 
 	// The env var is how a package manager's git finds this at all, and it must
@@ -37,8 +37,8 @@ func TestInstallGitCredentialsPointsEveryGitInThePodAtADaemonOwnedConfig(t *test
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	got := string(cfg)
-	if strings.Contains(got, "ghs_live_token") {
+	body := string(cfg)
+	if strings.Contains(body, "ghs_live_token") {
 		t.Fatal("git config carries the token; it belongs only in the store file")
 	}
 	for _, want := range []string{
@@ -49,8 +49,8 @@ func TestInstallGitCredentialsPointsEveryGitInThePodAtADaemonOwnedConfig(t *test
 		"insteadOf = git@github.com:",
 		"insteadOf = ssh://git@github.com/",
 	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("git config missing %q:\n%s", want, got)
+		if !strings.Contains(body, want) {
+			t.Fatalf("git config missing %q:\n%s", want, body)
 		}
 	}
 
@@ -74,7 +74,7 @@ func TestInstallGitCredentialsKeepsEverythingOutOfTheWorkingTreeAndHome(t *testi
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	if _, _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
+	if _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com", Token: "ghs_live_token"},
 	}); err != nil {
 		t.Fatalf("install: %v", err)
@@ -100,12 +100,12 @@ func TestInstallGitCredentialsClearsBothFilesWhenTheLastCredentialIsRemoved(t *t
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	if _, _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
+	if _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com", Token: "ghs_live_token"},
 	}); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if _, _, err := InstallGitCredentials(tmpDir, home, "", nil); err != nil {
+	if _, err := InstallGitCredentials(tmpDir, home, "", nil); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 
@@ -124,17 +124,17 @@ func TestInstallGitCredentialsRejectsAMalformedHostWithoutWritingIt(t *testing.T
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, invalid, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
+	got, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com/somalabs", Token: "ghs_live_token"},
 	})
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if len(hosts) != 0 {
-		t.Fatalf("hosts = %v, want none", hosts)
+	if len(got.Hosts) != 0 {
+		t.Fatalf("hosts = %v, want none", got.Hosts)
 	}
-	if len(invalid) != 1 || invalid[0] != "github.com/somalabs" {
-		t.Fatalf("invalid = %v, want [github.com/somalabs]", invalid)
+	if len(got.InvalidHosts) != 1 || got.InvalidHosts[0] != "github.com/somalabs" {
+		t.Fatalf("invalid = %v, want [github.com/somalabs]", got.InvalidHosts)
 	}
 	if _, err := os.Stat(GitCredentialsStorePath(tmpDir)); !os.IsNotExist(err) {
 		t.Fatalf("store file written for a rejected host (err=%v)", err)
@@ -163,7 +163,7 @@ func TestInstallGitCredentialsFallsBackToTheCloneTokenSoGhAuthSetupGitIsUnnecess
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, _, err := InstallGitCredentials(
+	got, err := InstallGitCredentials(
 		tmpDir, home,
 		"https://x-access-token:ghs_clone_token@github.com/acme/app.git",
 		nil,
@@ -171,8 +171,13 @@ func TestInstallGitCredentialsFallsBackToTheCloneTokenSoGhAuthSetupGitIsUnnecess
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if len(hosts) != 1 || hosts[0] != "github.com" {
-		t.Fatalf("hosts = %v, want [github.com]", hosts)
+	// Reported apart from Hosts: the boot log has to be able to say this pod is
+	// on the clone token, which reaches no other repository.
+	if len(got.Hosts) != 0 {
+		t.Fatalf("hosts = %v, want none configured", got.Hosts)
+	}
+	if got.Fallback != "github.com" {
+		t.Fatalf("fallback = %q, want github.com", got.Fallback)
 	}
 	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
 	if err != nil {
@@ -190,7 +195,7 @@ func TestInstallGitCredentialsPrefersTheConfiguredCredentialOverTheCloneToken(t 
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, _, err := InstallGitCredentials(
+	got, err := InstallGitCredentials(
 		tmpDir, home,
 		"https://x-access-token:ghs_clone_token@github.com/acme/app.git",
 		[]config.SubmoduleCredential{{Host: "github.com", Token: "pat_configured"}},
@@ -198,8 +203,11 @@ func TestInstallGitCredentialsPrefersTheConfiguredCredentialOverTheCloneToken(t 
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if len(hosts) != 1 || hosts[0] != "github.com" {
-		t.Fatalf("hosts = %v, want [github.com] once, not duplicated", hosts)
+	if len(got.Hosts) != 1 || got.Hosts[0] != "github.com" {
+		t.Fatalf("hosts = %v, want [github.com] once, not duplicated", got.Hosts)
+	}
+	if got.Fallback != "" {
+		t.Fatalf("fallback = %q, want none — the host is configured", got.Fallback)
 	}
 	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
 	if err != nil {
@@ -215,7 +223,7 @@ func TestInstallGitCredentialsKeepsTheCloneTokenAlongsideAnotherHostsPat(t *test
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, _, err := InstallGitCredentials(
+	got, err := InstallGitCredentials(
 		tmpDir, home,
 		"https://x-access-token:ghs_clone_token@github.com/acme/app.git",
 		[]config.SubmoduleCredential{{Host: "gitlab.com", Token: "pat_configured"}},
@@ -223,8 +231,11 @@ func TestInstallGitCredentialsKeepsTheCloneTokenAlongsideAnotherHostsPat(t *test
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if len(hosts) != 2 || hosts[0] != "gitlab.com" || hosts[1] != "github.com" {
-		t.Fatalf("hosts = %v, want [gitlab.com github.com]", hosts)
+	if len(got.Hosts) != 1 || got.Hosts[0] != "gitlab.com" {
+		t.Fatalf("hosts = %v, want [gitlab.com]", got.Hosts)
+	}
+	if got.Fallback != "github.com" {
+		t.Fatalf("fallback = %q, want github.com", got.Fallback)
 	}
 	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
 	if err != nil {
@@ -243,14 +254,14 @@ func TestInstallGitCredentialsIgnoresACloneUrlWithNoToken(t *testing.T) {
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, _, err := InstallGitCredentials(
+	got, err := InstallGitCredentials(
 		tmpDir, home, "https://github.com/acme/app.git", nil,
 	)
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if len(hosts) != 0 {
-		t.Fatalf("hosts = %v, want none", hosts)
+	if len(got.Hosts) != 0 || got.Fallback != "" {
+		t.Fatalf("installed %+v, want nothing", got)
 	}
 	if _, err := os.Stat(GitCredentialsStorePath(tmpDir)); !os.IsNotExist(err) {
 		t.Fatalf("store file written for an anonymous clone (err=%v)", err)
