@@ -58,7 +58,11 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
        "system-images;android-36;google_apis;x86_64" >/dev/null
 
 COPY bin/qa-android /usr/local/bin/qa-android
-RUN chmod 0755 /usr/local/bin/qa-android
+# The base image's engine.stamp/realm/lockfile are symlinks into /tmp, and a
+# root layer there left the targets root-owned; `sandbox` cannot overwrite them
+# in sticky /tmp. Pods mount a fresh /tmp, so only this build trips on it.
+RUN chmod 0755 /usr/local/bin/qa-android \
+  && rm -f /tmp/flutter-engine.stamp /tmp/flutter-engine.realm /tmp/flutter-lockfile
 
 USER sandbox
 # /opt/flutter belongs to `sandbox` in the base image, so the Android engine
