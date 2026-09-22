@@ -137,10 +137,8 @@ bun test apps/api/src/settings/resolve-config.test.ts
 bun run --cwd=apps/api build:server
 ```
 
-The workspace test script runs Bun tests under `apps/api/src`. Pure logic belongs
-in colocated `*.test.ts` files. Tests that need a real database, network, or full
-application process belong in the black-box E2E tier under `packages/e2e`, as
-described in `TESTING.md`.
+The workspace test script runs Bun tests under `apps/api/src`. Before adding
+or changing tests, read [TESTING.md](../../TESTING.md) to choose the right tier.
 
 Run schema operations explicitly with:
 
@@ -149,7 +147,33 @@ bun run --cwd=apps/api migrate
 bun run --cwd=apps/api better-auth:migrate
 ```
 
-Run `bun run fmt` from the repository root after code changes.
+### Querying local Postgres
+
+The embedded development database uses a dynamic port. While `bun run dev`
+is running, find its port in the `-p` argument:
+
+```bash
+ps -Ao args | rg '[p]ostgres -D'
+```
+
+Run queries from `apps/api` so Bun resolves the `pg` dependency. Replace
+`<PORT>` with the discovered port:
+
+```bash
+cat << 'EOF' | bun run --cwd apps/api -
+import pg from "pg";
+const client = new pg.Client("postgresql://postgres:postgres@localhost:<PORT>/postgres");
+await client.connect();
+try {
+  const { rows } = await client.query("SELECT current_database()");
+  console.log(rows);
+} finally {
+  await client.end();
+}
+EOF
+```
+
+Follow the [repository verification instructions](../../AGENTS.md#working-locally).
 
 ## Boundaries
 

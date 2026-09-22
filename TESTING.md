@@ -123,8 +123,8 @@ These are not part of the default test loop. They run on dedicated CI workflows.
 ## Running tests
 
 ```bash
-# Unit (pure logic) + storage-integration both run under bun test locally.
-bun test                                         # everything bun-test can run
+# Unit suite, with isolation and infrastructure suites excluded
+bun run test
 bun test apps/api/src/encryption                 # subset
 
 # A single storage-integration file needs a real DATABASE_URL pointing at Postgres
@@ -160,5 +160,3 @@ Adding a test is just choosing the right filename — it auto-routes.
 - Good unit test: [`apps/api/src/encryption/credential-vault.test.ts`](apps/api/src/encryption/credential-vault.test.ts)
 - Good storage-integration test: [`apps/api/src/storage/threads.integration.test.ts`](apps/api/src/storage/threads.integration.test.ts)
 - Good e2e spec: [`packages/e2e/tests/connection-create.spec.ts`](packages/e2e/tests/connection-create.spec.ts)
-</content>
-</invoke>

@@ -125,10 +125,12 @@ identity once:
 bun run --cwd=apps/native dev:signing:setup
 ```
 
-The Cargo runner signs each development binary with that identity. This gives
-Keychain entries a stable designated requirement across Rust rebuilds, so a
-saved Studio session remains readable. The shipped app continues to use its
-release signing identity; there is no filesystem token-store fallback.
+Setup builds, signs, and installs a fixed `decocms-keychain-helper` in the
+user's Application Support directory. Debug builds access Keychain through
+that helper, whose executable stays unchanged across app rebuilds. The Cargo
+runner also signs each development app binary. The shipped app uses its
+release signing identity. Credential-handling constraints live in
+[AGENTS.md](AGENTS.md).
 
 ### Verification matrix
 
@@ -138,7 +140,7 @@ Code and Codex fixtures to prove PTY behavior, scoped MCP and hook
 capabilities, persisted provider-session resume, and that an accepted prompt
 is never replayed after restart.
 
-Run `bun run fmt` after changes.
+Follow the [repository verification instructions](../../AGENTS.md#working-locally).
 
 ## Boundaries
 
