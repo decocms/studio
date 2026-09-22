@@ -134,10 +134,10 @@ export function useConnectGithubCli() {
           body: "{}",
         },
       );
-      const body: unknown = await response.json();
+      const body: unknown = await response.json().catch(() => null);
       if (!response.ok) {
-        const error = z.object({ error: z.string() }).parse(body);
-        throw new Error(error.error);
+        const error = z.object({ error: z.string() }).safeParse(body);
+        throw new Error(error.success ? error.data.error : response.statusText);
       }
       return z
         .object({ account: z.object({ id: z.string(), login: z.string() }) })
