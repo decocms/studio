@@ -178,8 +178,8 @@ export interface TemplateProbe {
 export type TemplateProbes = Record<string, TemplateProbe>;
 
 /**
- * `claimTemplateName`, degraded to the base template while the derived one is
- * not on the cluster.
+ * `claimTemplateName`, degraded while the derived one is not on the cluster:
+ * first without the image suffix, then to the base template.
  *
  * Studio and the sandbox-env chart deploy independently (the chart is pinned by
  * targetRevision), so there is a window where Studio names a template the
@@ -223,6 +223,15 @@ export async function resolveClaimTemplateName(args: {
   const probes = { ...args.probes, [wanted]: fresh };
   if (fresh.present) return { name: wanted, probes };
   if (cached?.present !== false) args.onAbsent?.(wanted);
+  // Drop the image before the size: a missing variant must not also cost a
+  // harness run its `-medium` memory ceiling.
+  if (args.sandboxImage && args.sandboxImage !== "default") {
+    return resolveClaimTemplateName({
+      ...args,
+      sandboxImage: undefined,
+      probes,
+    });
+  }
   return { name: args.templateName, probes };
 }
 

@@ -124,8 +124,8 @@ click` takes. (The web build needs `qa-screenshot --flutter` only because its
 DOM is one opaque `<canvas>`.)
 
 **`linux/` is generated, not yours.** If the repo targets only android/ios/web,
-`qa-app start` runs `flutter create --platforms=linux .` and registers `linux/`
-in `.git/info/exclude`, because the daemon checkpoints your working tree to the
+`qa-app start` copies in a freshly generated `linux/` (nothing else) and
+registers it in git's exclude file, because the daemon checkpoints your working tree to the
 branch every couple of minutes. Do not commit it, and do not "fix" its absence.
 
 **The failure to expect is a plugin with no Linux implementation.** Those

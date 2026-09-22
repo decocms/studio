@@ -1309,7 +1309,7 @@ export class AgentSandboxProvider {
         sandboxTemplateExists(this.kubeConfig, this.namespace, template),
       onAbsent: (template) =>
         console.warn(
-          `[${LOG_LABEL}] SandboxTemplate ${template} not found (or not readable) — this claim falls back to ${this.sandboxTemplateName}. Upgrade the sandbox-env chart to the version that renders it.`,
+          `[${LOG_LABEL}] SandboxTemplate ${template} not found (or not readable) — this claim falls back to a template without that suffix. Upgrade the sandbox-env chart to the version that renders it.`,
         ),
     });
     this.templateProbes = probes;
@@ -3199,6 +3199,8 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   if (opts.cloneOnly) out.cloneOnly = true;
   // Lose it and a resurrected harness run names the default template again.
   if (opts.purpose) out.purpose = opts.purpose;
+  // Same for the image: a resurrected Flutter-repo claim must not boot default.
+  if (opts.sandboxImage) out.sandboxImage = opts.sandboxImage;
   // Without this, `resurrectByHandle` re-provisioning from these persisted
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs
   // mounts a live sandbox had.

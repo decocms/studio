@@ -34,6 +34,7 @@ jobs:
       # "true" when the tag was already in GHCR (build skipped) — the bump job
       # uses this to skip docs/test-only pushes that reuse the existing tag.
       image-exists: ${{ steps.tag-check.outputs.exists }}
+      flutter-image-exists: ${{ steps.tag-check.outputs.flutter-exists }}
 
     steps:
       - name: Checkout code
@@ -66,6 +67,16 @@ jobs:
             echo "::notice::Image ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }} already exists — skipping push. Bump packages/sandbox/package.json to publish."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Checked on its own: a Flutter build that failed after the base was
+          # pushed must be retryable, not skipped because the base tag exists.
+          FLUTTER_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://${{ env.REGISTRY }}/v2/${{ env.FLUTTER_IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
+          if [ "${FLUTTER_STATUS}" = "200" ]; then
+            echo "flutter-exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "flutter-exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Bun and install dependencies
@@ -167,7 +178,7 @@ jobs:
   build-push-flutter:
     name: Build & Push studio-sandbox-flutter image
     needs: [build-push]
-    if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'
+    if: needs.build-push.result == 'success' && needs.build-push.outputs.flutter-image-exists != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

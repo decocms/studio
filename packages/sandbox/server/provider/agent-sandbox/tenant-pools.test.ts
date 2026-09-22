@@ -364,6 +364,17 @@ describe("resolveClaimTemplateName with an image variant", () => {
     expect(result.name).toBe("sbx");
   });
 
+  it("keeps the -medium ceiling when only the variant is absent", async () => {
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      sandboxImage: "flutter",
+      probes: {},
+      exists: async (name) => name === "sbx-medium",
+    });
+    expect(result.name).toBe("sbx-medium");
+  });
+
   // One slot would thrash: an interactive flutter claim and a harness-run one
   // ask for different names, and each would invalidate the other's answer.
   it("caches each derived name separately", async () => {

@@ -49,20 +49,30 @@ cmd_start() {
     esac
   done
   [[ $size =~ ^[0-9]+x[0-9]+$ ]] || die "--size must look like 390x844"
-  [ -f pubspec.yaml ] || die "no pubspec.yaml in $PWD — run this from the Flutter repo root"
+  [ -f pubspec.yaml ] || die "no pubspec.yaml in $PWD — run this from the Flutter app root"
 
   mkdir -p "$STATE"
-  # A repo targeting only android/ios/web has no linux runner. Generating one
-  # is additive, but the daemon checkpoints the working tree to the branch
-  # every couple of minutes, so it has to be excluded or QA scaffolding lands
-  # in the user's PR.
+  # A repo targeting only android/ios/web has no linux runner. The daemon
+  # checkpoints the working tree to the branch every couple of minutes, so the
+  # runner is generated in a scratch project and only linux/ is copied in —
+  # `flutter create .` would also rewrite .metadata and add template files —
+  # then excluded via git's own paths, which hold for a subdirectory app and a
+  # worktree alike.
   if [ ! -d linux ]; then
     echo "qa-app: generating linux/ runner (excluded from git)"
-    flutter create --platforms=linux . >/dev/null
-    if [ -d .git ]; then
-      mkdir -p .git/info
-      grep -qxF "/linux/" .git/info/exclude 2>/dev/null \
-        || echo "/linux/" >> .git/info/exclude
+    local name scratch
+    name=$(sed -n 's/^name:[[:space:]]*\([A-Za-z0-9_]*\).*/\1/p' pubspec.yaml | head -1)
+    [ -n "$name" ] || die "could not read the package name from pubspec.yaml"
+    scratch=$(mktemp -d)
+    flutter create --platforms=linux --project-name "$name" "$scratch/app" >/dev/null
+    cp -R "$scratch/app/linux" linux
+    rm -rf "$scratch"
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+      local exclude pattern
+      exclude=$(git rev-parse --git-path info/exclude)
+      pattern="/$(git rev-parse --show-prefix)linux/"
+      mkdir -p "$(dirname "$exclude")"
+      grep -qxF "$pattern" "$exclude" 2>/dev/null || echo "$pattern" >> "$exclude"
     fi
   fi
 
