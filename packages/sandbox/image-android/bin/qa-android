@@ -106,14 +106,21 @@ cmd_start() {
   exclude_build_output
   boot_emulator
   stop_app
+  # Build first: `flutter run` reduces a Gradle failure to "assembleDebug
+  # failed", while `flutter build` prints Gradle's own error. The run that
+  # follows reuses this build.
+  echo "qa-android: building — the first Gradle build takes minutes"
+  flutter build apk --debug ${target:+-t "$target"} >"$STATE/build.log" 2>&1 \
+    || die "the Android build failed. Last 80 lines of $STATE/build.log:
+$(tail -80 "$STATE/build.log")"
   : > "$STATE/app.log"
   # `flutter run` rather than build + install: it streams the app's own output,
   # which is where a crash on startup shows up.
   setsid flutter run -d "$SERIAL" ${target:+-t "$target"} \
     >>"$STATE/app.log" 2>&1 < /dev/null &
   echo $! > "$STATE/app.pid"
-  echo "qa-android: building and installing — the first Gradle build takes minutes; tail $STATE/app.log"
-  for _ in $(seq 1 1200); do
+  echo "qa-android: installing and launching; tail $STATE/app.log"
+  for _ in $(seq 1 600); do
     grep -q "Flutter run key commands" "$STATE/app.log" && break
     kill -0 "$(cat "$STATE/app.pid")" 2>/dev/null \
       || die "flutter run exited. Last 60 log lines:
@@ -121,7 +128,7 @@ $(tail -60 "$STATE/app.log")"
     sleep 1
   done
   grep -q "Flutter run key commands" "$STATE/app.log" \
-    || die "the app did not launch in 20 minutes; see $STATE/app.log"
+    || die "the app did not launch in 10 minutes; see $STATE/app.log"
   sleep 3   # first frame
   echo "qa-android: app running on $SERIAL (720x1600)"
 }
