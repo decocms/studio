@@ -250,6 +250,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LIST",
   "REPOSITORY_SEARCH",
   "REPOSITORY_LINK",
+  "REPOSITORY_UPDATE",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
 
@@ -1229,6 +1230,12 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "CHANGE_REQUEST_MERGE",
     description: "Land a change request, reporting why it could not merge",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_UPDATE",
+    description:
+      "Change a linked repository's settings, such as its sandbox image",
     category: "Git",
   },
   {

@@ -9,6 +9,19 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.18.0: sandbox IMAGE variants. `imageVariants` (ships one entry, `flutter`)
+# renders two more SandboxTemplates per variant — `<base>-<name>` and
+# `<base>-<name>-medium` — identical to the defaults except for the image, so
+# a repository can pin a heavier toolchain without every sandbox pulling it.
+# Studio composes `<base><imageSuffix><sizeSuffix>` and degrades a template the
+# cluster lacks to the base one, so this is additive: a Studio that predates it
+# names the same two templates it always did. Each variant also gets its own
+# SandboxWarmPools at size 0 (`imageVariants.<name>.warmPoolSize` /
+# `.warmPoolMediumSize`), so prewarming a variant is a values change — an empty
+# pool is served cold from the claim's own template, exactly like `-medium`.
+# Minor bump — new templates and a new values key, no change to existing ones.
+# Deploy this BEFORE the Studio release that lets repos pick a variant, or
+# those claims silently fall back to the default image.
 # 0.17.0: opt-in `commitSigning` — mounts the bot's SSH signing key into every
 # sandbox pod and tells the daemon which committer it belongs to, so commits
 # made as the bot are signed and repositories that require verified signatures
@@ -158,7 +171,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.17.11
+version: 0.18.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.68.3"
 kubeVersion: ">=1.30.0-0"

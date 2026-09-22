@@ -42,7 +42,12 @@ Sandbox container image. The daemon implementation IS the image, so there is no
 runtime switch a pod could use to disagree with the template that created it.
 */}}
 {{- define "sandbox-env.sandboxImage" -}}
+{{- if .imageVariant -}}
+{{- $variant := index .Values.imageVariants .imageVariant -}}
+{{- printf "%s:%s" $variant.repository ($variant.tag | default .Values.image.tag | default .Chart.AppVersion) -}}
+{{- else -}}
 {{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- end -}}
 {{- end }}
 
 {{/*

@@ -19,6 +19,7 @@ import {
 import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import { secondaryRepoDirNames } from "@decocms/shared/secondary-repo-dirs";
 import { sleep } from "@decocms/shared/std";
 import { defineTool } from "../../core/define-tool";
@@ -483,6 +484,8 @@ async function provisionSandbox(params: StartParams): Promise<{
   } = params;
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
+  // Set from the primary repository below, once it is resolved.
+  let sandboxImage: SandboxImage = "default";
 
   // A recorded connectionId can dangle — deleting a connection (force-delete,
   // or another agent's delete tearing down its repo-scoped child) removes
@@ -536,6 +539,10 @@ async function provisionSandbox(params: StartParams): Promise<{
       orgId,
       githubRepo,
     );
+    // The PRIMARY repo decides the image: one pod, one toolchain. A secondary
+    // checkout that wanted another image does not get one, and saying so here
+    // beats a sandbox that silently disagrees with one of its repos.
+    sandboxImage = repository?.sandboxImage ?? "default";
     const studioRepository = await resolveStudioRepository(
       ctx,
       repository,
@@ -750,6 +757,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       // that only wanted the checkout).
       cloneOnly,
       ...(purpose ? { purpose } : {}),
+      ...(sandboxImage !== "default" ? { sandboxImage } : {}),
       tenant: {
         orgId,
         // The sandbox's owner, so the pod's `user_id` label/metric matches the

@@ -16,6 +16,7 @@ import {
   GitProviderKindSchema,
   parseRepoUrl,
   RepositorySchema,
+  SandboxImageSchema,
   RepoRefSchema,
 } from "@decocms/shared/git-providers";
 import { defineTool } from "@/core/define-tool";
@@ -433,6 +434,40 @@ export const REPOSITORY_LINK = defineTool({
       visibility: summary.visibility,
       createdBy: userId,
     });
+    return { repository: toRepositoryOutput(repository) };
+  },
+});
+
+export const REPOSITORY_UPDATE = defineTool({
+  name: "REPOSITORY_UPDATE",
+  description:
+    "Change a linked repository's settings. Currently the sandbox image its sandboxes boot from: `default`, or `flutter` for repos whose UI can only be exercised by running the app on a Linux desktop target.",
+  annotations: {
+    title: "Update repository",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  _meta: { ui: { visibility: "app" } },
+  inputSchema: z.object({
+    id: z.string(),
+    sandboxImage: SandboxImageSchema,
+  }),
+  outputSchema: z.object({ repository: RepositorySchema }),
+  handler: async (input, ctx) => {
+    requireAuth(ctx);
+    await ctx.access.check();
+    const organization = requireOrganization(ctx);
+    const repository = await ctx.storage.repositories.setSandboxImage(
+      input.id,
+      organization.id,
+      input.sandboxImage,
+    );
+    if (!repository) throw new Error("Repository not found");
+    // Existing sandboxes keep the image they booted with — a SandboxClaim
+    // names its template once and the pod cannot be re-imaged under it. The
+    // next sandbox for this repo picks the new one up.
     return { repository: toRepositoryOutput(repository) };
   },
 });

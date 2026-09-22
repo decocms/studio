@@ -6756,6 +6756,7 @@ export interface StudioToolIO {
         defaultBranch: string | null;
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
+        sandboxImage: "default" | "flutter";
         createdAt: string;
         updatedAt: string;
         usable: boolean;
@@ -6800,6 +6801,27 @@ export interface StudioToolIO {
         defaultBranch: string | null;
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
+        sandboxImage: "default" | "flutter";
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_UPDATE: {
+    input: { id: string; sandboxImage: "default" | "flutter" };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: "default" | "flutter";
         createdAt: string;
         updatedAt: string;
       };

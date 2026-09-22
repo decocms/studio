@@ -1,9 +1,24 @@
 # SandboxTemplates consumed by the SandboxClaims the Studio runner creates for
-# THIS environment. Rendered once per size (see the bottom of this file): the
-# default one that interactive claims use, and `-medium`, which differs ONLY in
-# `resources` — a SandboxClaim has no resource override (CRD: additionalPodMetadata,
-# env, lifecycle, sandboxTemplateRef, warmpool), so a second ceiling means a
-# second template. Studio picks it per claim; see values.yaml mediumResources.
+# THIS environment. Rendered once per (image x size) — see the bottom of this
+# file — because a SandboxClaim can override NEITHER (CRD: additionalPodMetadata,
+# env, lifecycle, sandboxTemplateRef, warmpool), so every combination has to be
+# its own template. Studio composes the name as
+# `<base><imageSuffix><sizeSuffix>` and picks it per claim; see
+# `claimTemplateName` in packages/sandbox.
+#
+# Size: the default one that interactive claims use, and `-medium`, which
+# differs ONLY in `resources` (values.yaml mediumResources).
+#
+# Image: the default image, and one per entry in values.yaml `imageVariants`.
+# A variant carries a heavier toolchain than every sandbox should pull — the
+# `flutter` one adds ~1.3GB of Linux-desktop packages so an agent can run a
+# Flutter app and screenshot it. Both sizes are rendered for every variant, so
+# a variant is present in both or neither: Studio degrades a missing derived
+# template to the BASE one in a single step, and a half-rendered variant would
+# make that fallback lose the image and the memory ceiling at once.
+#
+# A variant can be prewarmed like any other template — see
+# sandbox-warm-pool.yaml, which renders its pools at size 0 by default.
 #
 # Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
 # ship with that as the install target, and the operator's RBAC watches it by
@@ -14,7 +29,7 @@
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
-  name: {{ include "sandbox-env.sandboxName" . }}{{ .sizeSuffix }}
+  name: {{ include "sandbox-env.sandboxName" . }}{{ .imageSuffix }}{{ .sizeSuffix }}
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
@@ -445,6 +460,13 @@ spec:
             sizeLimit: 1Mi
         {{- end }}
 {{- end }}
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "sizeSuffix" "" "resources" .Values.resources) .) }}
+{{- $mediumResources := mergeOverwrite (deepCopy .Values.resources) .Values.mediumResources }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" "" "sizeSuffix" "" "resources" .Values.resources) .) }}
 ---
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "sizeSuffix" "-medium" "resources" (mergeOverwrite (deepCopy .Values.resources) .Values.mediumResources)) .) }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" "" "sizeSuffix" "-medium" "resources" $mediumResources) .) }}
+{{- range $variant, $spec := .Values.imageVariants }}
+---
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "" "resources" $.Values.resources) $) }}
+---
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "-medium" "resources" $mediumResources) $) }}
+{{- end }}

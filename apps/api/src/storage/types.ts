@@ -2321,6 +2321,8 @@ export interface RepositoryTable {
   default_branch: string | null;
   web_url: string;
   visibility: "public" | "private" | "internal" | null;
+  /** SandboxImage. NULL = the deployment default image. */
+  sandbox_image: string | null;
   /** Repo-scoped `mcp-github` child whose token still clones this repo. */
   legacy_connection_id: string | null;
   created_by: string | null;

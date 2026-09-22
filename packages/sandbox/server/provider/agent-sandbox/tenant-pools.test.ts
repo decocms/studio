@@ -216,7 +216,7 @@ describe("resolveClaimTemplateName", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "interactive",
-      probe: null,
+      probes: {},
       exists: async () => {
         probes++;
         return true;
@@ -230,11 +230,14 @@ describe("resolveClaimTemplateName", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      probe: null,
+      probes: {},
       exists: async (name) => name === "studio-sandbox-medium",
     });
     expect(result.name).toBe("studio-sandbox-medium");
-    expect(result.probe).toEqual({ checkedAt: base.now, present: true });
+    expect(result.probes["studio-sandbox-medium"]).toEqual({
+      checkedAt: base.now,
+      present: true,
+    });
   });
 
   // Studio ahead of the chart: that claim would park at TemplateNotFound.
@@ -243,12 +246,15 @@ describe("resolveClaimTemplateName", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      probe: null,
+      probes: {},
       exists: async () => false,
       onAbsent: (name) => warned.push(name),
     });
     expect(result.name).toBe("studio-sandbox");
-    expect(result.probe).toEqual({ checkedAt: base.now, present: false });
+    expect(result.probes["studio-sandbox-medium"]).toEqual({
+      checkedAt: base.now,
+      present: false,
+    });
     expect(warned).toEqual(["studio-sandbox-medium"]);
   });
 
@@ -257,7 +263,12 @@ describe("resolveClaimTemplateName", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      probe: { checkedAt: base.now - 59_999, present: true },
+      probes: {
+        "studio-sandbox-medium": {
+          checkedAt: base.now - 59_999,
+          present: true,
+        },
+      },
       exists: async () => {
         probes++;
         return true;
@@ -271,11 +282,19 @@ describe("resolveClaimTemplateName", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      probe: { checkedAt: base.now - 60_000, present: false },
+      probes: {
+        "studio-sandbox-medium": {
+          checkedAt: base.now - 60_000,
+          present: false,
+        },
+      },
       exists: async () => true,
     });
     expect(result.name).toBe("studio-sandbox-medium");
-    expect(result.probe).toEqual({ checkedAt: base.now, present: true });
+    expect(result.probes["studio-sandbox-medium"]).toEqual({
+      checkedAt: base.now,
+      present: true,
+    });
   });
 
   it("warns once per absence, not once per claim", async () => {
@@ -283,18 +302,102 @@ describe("resolveClaimTemplateName", () => {
     const first = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      probe: null,
+      probes: {},
       exists: async () => false,
       onAbsent: (name) => warned.push(name),
     });
     await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      probe: first.probe,
+      probes: first.probes,
       exists: async () => false,
       onAbsent: (name) => warned.push(name),
     });
     expect(warned).toEqual(["studio-sandbox-medium"]);
+  });
+});
+
+describe("claimTemplateName with an image variant", () => {
+  it("suffixes the image before the size", () => {
+    expect(claimTemplateName("interactive", "sbx", null, "flutter")).toBe(
+      "sbx-flutter",
+    );
+    expect(claimTemplateName("harness-run", "sbx", null, "flutter")).toBe(
+      "sbx-flutter-medium",
+    );
+  });
+
+  it("treats the default image as no suffix at all", () => {
+    expect(claimTemplateName("interactive", "sbx", null, "default")).toBe(
+      "sbx",
+    );
+    expect(claimTemplateName("harness-run", "sbx", null, "default")).toBe(
+      "sbx-medium",
+    );
+  });
+});
+
+describe("resolveClaimTemplateName with an image variant", () => {
+  const base = { templateName: "sbx", now: 1_000_000, ttlMs: 60_000 };
+
+  it("probes and uses the variant template", async () => {
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "interactive",
+      sandboxImage: "flutter",
+      probes: {},
+      exists: async (name) => name === "sbx-flutter",
+    });
+    expect(result.name).toBe("sbx-flutter");
+  });
+
+  // A chart that predates image variants: better the default image than a
+  // claim parked at TemplateNotFound.
+  it("falls back to the base template when the variant is absent", async () => {
+    const result = await resolveClaimTemplateName({
+      ...base,
+      purpose: "interactive",
+      sandboxImage: "flutter",
+      probes: {},
+      exists: async () => false,
+    });
+    expect(result.name).toBe("sbx");
+  });
+
+  // One slot would thrash: an interactive flutter claim and a harness-run one
+  // ask for different names, and each would invalidate the other's answer.
+  it("caches each derived name separately", async () => {
+    const asked: string[] = [];
+    const exists = async (name: string) => {
+      asked.push(name);
+      return true;
+    };
+    const first = await resolveClaimTemplateName({
+      ...base,
+      purpose: "interactive",
+      sandboxImage: "flutter",
+      probes: {},
+      exists,
+    });
+    const second = await resolveClaimTemplateName({
+      ...base,
+      purpose: "harness-run",
+      sandboxImage: "flutter",
+      probes: first.probes,
+      exists,
+    });
+    const third = await resolveClaimTemplateName({
+      ...base,
+      purpose: "interactive",
+      sandboxImage: "flutter",
+      probes: second.probes,
+      exists,
+    });
+    expect(first.name).toBe("sbx-flutter");
+    expect(second.name).toBe("sbx-flutter-medium");
+    expect(third.name).toBe("sbx-flutter");
+    // Two distinct names probed once each; the third call reused the cache.
+    expect(asked).toEqual(["sbx-flutter", "sbx-flutter-medium"]);
   });
 });
 

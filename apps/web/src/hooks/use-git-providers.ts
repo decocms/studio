@@ -179,6 +179,18 @@ export function useLinkRepository() {
   });
 }
 
+export function useUpdateRepository() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: StudioToolIO["REPOSITORY_UPDATE"]["input"]) =>
+      (await studio.call("REPOSITORY_UPDATE", input)).repository,
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: KEYS.repositories(org.id) }),
+  });
+}
+
 export function useDeleteRepository() {
   const { org } = useProjectContext();
   const studio = useStudioTools();

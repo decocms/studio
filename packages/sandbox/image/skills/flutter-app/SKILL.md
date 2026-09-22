@@ -14,6 +14,20 @@ What you have instead: the Flutter SDK at `/opt/flutter` (already on `PATH`),
 and the ability to compile the app **to web** and point a real browser at it.
 That is how you look at the UI.
 
+## First: check which sandbox image you are on
+
+If `qa-app` is on your `PATH` (equivalently, `$STUDIO_SANDBOX_FLUTTER_DESKTOP`
+is set), this repo opted into the **Flutter sandbox image** and you can run the
+app for real — see [Running the real app](#running-the-real-app-qa-app), which
+is strictly better than the web build and is what you should reach for first.
+
+Otherwise you are on the default image and the web build below is your only
+way to see a UI. If the web build then fails for a reason you cannot fix (the
+common one is a dependency that does not compile to JS — see [When the web
+build fails](#when-the-web-build-fails)), say so in your report **and say that
+the repo can be switched to the Flutter image in Settings → Repositories**.
+That is the fix; do not spend the run working around it.
+
 ## Check the version pin first
 
 `flutter analyze` produces different findings on different releases. Compare
@@ -79,7 +93,55 @@ flutter test           # unit + widget tests
 
 Run these before you hand over. They are fast and they are what CI will say.
 
-## Looking at the UI
+## Running the real app (`qa-app`)
+
+Only on the Flutter sandbox image. This runs the app's actual `main()` on the
+Linux desktop target — real routing, real state, real navigation — inside a
+headless X server, and lets you click it and screenshot it.
+
+Prefer it over the web build whenever it is available. It is a NATIVE target,
+so the two things that most often kill `flutter build web` (64-bit integer
+literals, `dart:html`) cannot happen, and you are looking at the whole app
+rather than one widget.
+
+```bash
+qa-app start --size 390x844      # generates linux/ if absent; first build is slow
+qa-app shot org/output/qa/01.png
+qa-app click 346 800             # coordinates read off that screenshot
+qa-app type "search term"
+qa-app key Return
+qa-app shot org/output/qa/02.png
+qa-app logs 80                   # the app's stdout — where plugin errors land
+qa-app stop
+```
+
+Then `Read` the PNGs. A screenshot you never opened is not verification.
+
+**Read the coordinates off the screenshot.** There is no semantics tree to
+consult and none is needed: the picture and the X display are the same pixels
+at the same size, so a button's centre in the PNG is exactly what `qa-app
+click` takes. (The web build needs `qa-screenshot --flutter` only because its
+DOM is one opaque `<canvas>`.)
+
+**`linux/` is generated, not yours.** If the repo targets only android/ios/web,
+`qa-app start` runs `flutter create --platforms=linux .` and registers `linux/`
+in `.git/info/exclude`, because the daemon checkpoints your working tree to the
+branch every couple of minutes. Do not commit it, and do not "fix" its absence.
+
+**The failure to expect is a plugin with no Linux implementation.** Those
+compile fine and throw `MissingPluginException` or `PlatformException` on first
+call — commonly Firebase, push, webview, biometrics. `qa-app logs` is where you
+see it. If it throws during app startup the app never paints; report which
+plugin and which screen you could not reach rather than approving blind. What
+this is NOT: `MissingPlatformDirectoryException` from `path_provider`, which is
+an environment problem, not a missing implementation — if you see it, say so,
+because it means the image is missing `xdg-user-dirs` and that is a bug to
+file, not to work around.
+
+## Looking at the UI (web build)
+
+On the default image this is the only option; on the Flutter image prefer
+`qa-app` above.
 
 ```bash
 flutter build web --release        # ~30s for a small app, minutes for a real one
@@ -175,6 +237,14 @@ than working around:
   catches it: a page that looks right and throws is the failure a screenshot
   alone reports as a pass. Screenshot the screens that do work, and say plainly
   which path you could not exercise.
+- **A DEPENDENCY that cannot compile to JS.** Two signatures: "The integer
+  literal 0x… can't be represented exactly in JavaScript" (dart2js) and
+  "dart:html unsupported" (dart2wasm). Check the file path in the error — if it
+  is under `.pub-cache`, it is a transitive dependency and it is **not yours to
+  fix**. Neither is it worth retrying: `--release`, `--profile`, `--wasm` and
+  `run -d web-server` all go through those same two compilers, so if one fails
+  this way they all do. Stop, and report that the repo needs the Flutter
+  sandbox image (Settings → Repositories), which has no such limit.
 
 If the app genuinely cannot reach web, fall back to the checks above plus
 reading the code end to end — and **say what you could not see**, rather than

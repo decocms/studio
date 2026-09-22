@@ -310,6 +310,11 @@ export const settings = {
   "settings.repositories.visibilityPrivate": "Private",
   "settings.repositories.visibilityInternal": "Internal",
   "settings.repositories.anonymousClone": "Anonymous clone",
+  "settings.repositories.sandboxImageLabel": "Sandbox image",
+  "settings.repositories.sandboxImageDefault": "Default image",
+  "settings.repositories.sandboxImageFlutter": "Flutter",
+  "settings.repositories.sandboxImageError":
+    "Could not change the sandbox image",
   "settings.repositories.addDialogTitle": "Add repository",
   "settings.repositories.cancel": "Cancel",
   "settings.repositories.failed": "Something went wrong",

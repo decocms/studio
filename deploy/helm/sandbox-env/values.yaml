@@ -50,6 +50,38 @@ image:
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
+# ── sandbox image variants (extra SandboxTemplates) ────────────────────
+# Each entry renders TWO more SandboxTemplates —
+# `<base>-<name>` and `<base>-<name>-medium` — identical to the default ones
+# except for the image. A repository opts in (Settings → Repositories), Studio
+# composes the template name, and a name the cluster does not have degrades to
+# the base template rather than parking the claim.
+#
+# Why a separate image instead of more packages on the shared one: `flutter`
+# adds ~1.3GB of Linux desktop toolchain (GTK/clang/ninja + Xvfb + xdotool) so
+# an agent can RUN a Flutter app, click through it and screenshot it. The base
+# image already has the Flutter SDK; what it cannot do is see a UI whose
+# dependency graph does not compile to JS, which `flutter build web` requires.
+# Paying 1.3GB on every sandbox pull for a capability only Flutter repos use
+# is the trade this split avoids.
+#
+# `tag` defaults to `image.tag`, because the variant is built FROM that exact
+# base image and the release workflow publishes both under one version.
+#
+# A variant CAN be prewarmed: `warmPoolSize` / `warmPoolMediumSize` render its
+# own SandboxWarmPools (requires warmPool.enabled, like every other pool). Both
+# default to 0 — few repos use a variant, so idle pods of a heavier image are
+# opt-in — and 0 costs nothing: a claim whose pool is empty is served by a cold
+# pod from its own template.
+#
+# Set to {} to render no variants at all.
+imageVariants:
+  flutter:
+    repository: ghcr.io/decocms/studio/studio-sandbox-flutter
+    # tag: ""   # defaults to image.tag
+    warmPoolSize: 0
+    warmPoolMediumSize: 0
+
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.
 # memory request = observed p95 of per-pod peak working-set (~2Gi over 7d;

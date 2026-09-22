@@ -11,6 +11,7 @@
  */
 import { z } from "zod";
 
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import type { SandboxPurpose } from "../types";
 
 const tenantPoolSchema = z.object({
@@ -136,16 +137,21 @@ export function claimWarmPoolName(
 }
 
 /**
- * The claim's `spec.sandboxTemplateRef`. A `harness-run` claim gets the roomier
- * `-medium` template the sandbox-env chart renders alongside the default one —
- * that is where prod's 4Gi OOMKills happened, and a SandboxClaim cannot
- * override resources, so the ceiling can only come from another template.
+ * The claim's `spec.sandboxTemplateRef`.
  *
- * A claim that matched a TENANT POOL also names `-medium`, because the chart
- * now renders tenant pools from that template. This has to agree: operator
- * v0.4.5 binds warm pods by template hash, so a claim naming a template the
- * pool wasn't built from gets a cold pod and no error. That mismatch is
- * precisely why task runs kept starting cold with warm tenant pods idle.
+ * Two independent suffixes, in this order: the IMAGE the repo asked for, then
+ * the SIZE the claim needs. A SandboxClaim can override neither the image nor
+ * the resources, so each combination has to be its own template, and the
+ * sandbox-env chart renders the cross product.
+ *
+ * Size — a `harness-run` claim gets the roomier `-medium` template: that is
+ * where prod's 4Gi OOMKills happened. A claim that matched a TENANT POOL also
+ * names `-medium`, because the chart builds tenant pools from that template
+ * and operator v0.4.5 binds warm pods by template hash — a claim naming a
+ * template the pool wasn't built from gets a cold pod and no error.
+ *
+ * Image — `flutter` selects the image carrying a Linux desktop toolchain, so
+ * an agent can run the app and look at it. Default asks for no suffix.
  *
  * The returned name is also the warm pool's name for the GENERIC pools (the
  * chart names those after their template), so it feeds `claimWarmPoolName`.
@@ -154,21 +160,26 @@ export function claimTemplateName(
   purpose: SandboxPurpose | undefined,
   templateName: string,
   tenantPool?: TenantPool | null,
+  sandboxImage?: SandboxImage,
 ): string {
-  return purpose === "harness-run" || tenantPool
-    ? `${templateName}-medium`
-    : templateName;
+  const image =
+    sandboxImage && sandboxImage !== "default" ? `-${sandboxImage}` : "";
+  const size = purpose === "harness-run" || tenantPool ? "-medium" : "";
+  return `${templateName}${image}${size}`;
 }
 
-/** Result of the last `-medium` template lookup, cached for `ttlMs`. */
-export interface MediumTemplateProbe {
+/** Result of one derived-template lookup, cached for `ttlMs`. */
+export interface TemplateProbe {
   checkedAt: number;
   present: boolean;
 }
 
+/** Probes by template name — one entry per derived name actually asked for. */
+export type TemplateProbes = Record<string, TemplateProbe>;
+
 /**
- * `claimTemplateName`, degraded to the default template while the `-medium` one
- * is not on the cluster.
+ * `claimTemplateName`, degraded to the base template while the derived one is
+ * not on the cluster.
  *
  * Studio and the sandbox-env chart deploy independently (the chart is pinned by
  * targetRevision), so there is a window where Studio names a template the
@@ -184,26 +195,35 @@ export async function resolveClaimTemplateName(args: {
   purpose: SandboxPurpose | undefined;
   /** Set when the claim matched a tenant pool — see `claimTemplateName`. */
   tenantPool?: TenantPool | null;
+  /** Set when the repository pinned a non-default image. */
+  sandboxImage?: SandboxImage;
   templateName: string;
-  probe: MediumTemplateProbe | null;
+  probes: TemplateProbes;
   now: number;
   ttlMs: number;
   exists: (name: string) => Promise<boolean>;
   onAbsent?: (name: string) => void;
-}): Promise<{ name: string; probe: MediumTemplateProbe | null }> {
+}): Promise<{ name: string; probes: TemplateProbes }> {
   const wanted = claimTemplateName(
     args.purpose,
     args.templateName,
     args.tenantPool,
+    args.sandboxImage,
   );
-  if (wanted === args.templateName) return { name: wanted, probe: args.probe };
+  if (wanted === args.templateName) {
+    return { name: wanted, probes: args.probes };
+  }
+  // Keyed by name: the image and size suffixes compose, so one deployment asks
+  // for several derived names and a single slot would thrash between them.
+  const cached = args.probes[wanted] ?? null;
   const fresh =
-    args.probe !== null && args.now - args.probe.checkedAt < args.ttlMs
-      ? args.probe
+    cached !== null && args.now - cached.checkedAt < args.ttlMs
+      ? cached
       : { checkedAt: args.now, present: await args.exists(wanted) };
-  if (fresh.present) return { name: wanted, probe: fresh };
-  if (args.probe?.present !== false) args.onAbsent?.(wanted);
-  return { name: args.templateName, probe: fresh };
+  const probes = { ...args.probes, [wanted]: fresh };
+  if (fresh.present) return { name: wanted, probes };
+  if (cached?.present !== false) args.onAbsent?.(wanted);
+  return { name: args.templateName, probes };
 }
 
 /**

@@ -5,6 +5,8 @@ import {
   type RepoRef,
   type Repository,
   repoWebUrl,
+  type SandboxImage,
+  SandboxImageSchema,
 } from "@decocms/shared/git-providers";
 import type { Database } from "./types";
 
@@ -29,6 +31,7 @@ type Row = {
   default_branch: string | null;
   web_url: string;
   visibility: "public" | "private" | "internal" | null;
+  sandbox_image: string | null;
   legacy_connection_id: string | null;
   created_by: string | null;
   created_at: Date | string;
@@ -52,6 +55,9 @@ function toEntity(row: Row): RepositoryRecord {
     defaultBranch: row.default_branch,
     webUrl: row.web_url,
     visibility: row.visibility,
+    // NULL predates the column and means "whatever this deployment boots by
+    // default", which is exactly what `default` selects.
+    sandboxImage: SandboxImageSchema.catch("default").parse(row.sandbox_image),
     legacyConnectionId: row.legacy_connection_id,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -69,6 +75,7 @@ export interface UpsertRepositoryParams {
   externalId?: string | null;
   defaultBranch?: string | null;
   visibility?: "public" | "private" | "internal" | null;
+  sandboxImage?: SandboxImage;
   legacyConnectionId?: string | null;
   createdBy?: string | null;
 }
@@ -104,6 +111,9 @@ export class RepositoryStorage {
           ...(params.visibility !== undefined
             ? { visibility: params.visibility }
             : {}),
+          ...(params.sandboxImage !== undefined
+            ? { sandbox_image: params.sandboxImage }
+            : {}),
           ...(params.legacyConnectionId !== undefined
             ? { legacy_connection_id: params.legacyConnectionId }
             : {}),
@@ -127,6 +137,7 @@ export class RepositoryStorage {
         default_branch: params.defaultBranch ?? null,
         web_url: repoWebUrl({ ...params.ref, host }),
         visibility: params.visibility ?? null,
+        sandbox_image: params.sandboxImage ?? null,
         legacy_connection_id: params.legacyConnectionId ?? null,
         created_by: params.createdBy ?? null,
       })
@@ -183,6 +194,23 @@ export class RepositoryStorage {
     if (filter?.accountId) q = q.where("account_id", "=", filter.accountId);
     const rows = await q.orderBy("path", "asc").execute();
     return (rows as Row[]).map(toEntity);
+  }
+
+  /** Set the sandbox image for one repository. Returns null when it is not
+   *  this org's. */
+  async setSandboxImage(
+    id: string,
+    organizationId: string,
+    sandboxImage: SandboxImage,
+  ): Promise<RepositoryRecord | null> {
+    const row = await this.db
+      .updateTable("repositories")
+      .set({ sandbox_image: sandboxImage, updated_at: new Date() })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? toEntity(row as Row) : null;
   }
 
   async delete(id: string, organizationId: string): Promise<boolean> {

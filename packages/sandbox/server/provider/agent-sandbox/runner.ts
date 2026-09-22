@@ -97,7 +97,7 @@ import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
 import {
   claimWarmPoolName,
   resolveClaimTemplateName,
-  type MediumTemplateProbe,
+  type TemplateProbes,
   poolCloneUrl,
   poolsMatchingPush,
   resolveTenantPool,
@@ -536,8 +536,8 @@ export class AgentSandboxProvider {
     string,
     { lastConfigAt: number; lastFailureAt: number; failures: number }
   >();
-  /** Last `-medium` SandboxTemplate lookup; see `resolveTemplateName`. */
-  private mediumTemplateProbe: MediumTemplateProbe | null = null;
+  /** Derived SandboxTemplate lookups by name; see `resolveTemplateName`. */
+  private templateProbes: TemplateProbes = {};
   /** Pool names a GitHub push says are stale; drained by the next tick. */
   private readonly dirtyPools = new Set<string>();
   private closed = false;
@@ -1288,29 +1288,31 @@ export class AgentSandboxProvider {
   }
 
   /**
-   * SandboxTemplate for this claim, with the `-medium` one probed (cached) so a
-   * deploy whose sandbox-env chart predates it degrades to the default template
+   * SandboxTemplate for this claim, with the derived one probed (cached) so a
+   * deploy whose sandbox-env chart predates it degrades to the base template
    * instead of parking every dispatch at `TemplateNotFound`.
    */
   private async resolveTemplateName(
     purpose: EnsureOptions["purpose"],
     tenantPool: TenantPool | null,
+    sandboxImage: EnsureOptions["sandboxImage"],
   ): Promise<string> {
-    const { name, probe } = await resolveClaimTemplateName({
+    const { name, probes } = await resolveClaimTemplateName({
       purpose,
       tenantPool,
+      ...(sandboxImage ? { sandboxImage } : {}),
       templateName: this.sandboxTemplateName,
-      probe: this.mediumTemplateProbe,
+      probes: this.templateProbes,
       now: Date.now(),
       ttlMs: MEDIUM_TEMPLATE_PROBE_TTL_MS,
       exists: (template) =>
         sandboxTemplateExists(this.kubeConfig, this.namespace, template),
       onAbsent: (template) =>
         console.warn(
-          `[${LOG_LABEL}] SandboxTemplate ${template} not found (or not readable) — harness-run claims fall back to ${this.sandboxTemplateName}. Upgrade the sandbox-env chart to the version that renders it.`,
+          `[${LOG_LABEL}] SandboxTemplate ${template} not found (or not readable) — this claim falls back to ${this.sandboxTemplateName}. Upgrade the sandbox-env chart to the version that renders it.`,
         ),
     });
-    this.mediumTemplateProbe = probe;
+    this.templateProbes = probes;
     return name;
   }
 
@@ -1396,15 +1398,21 @@ export class AgentSandboxProvider {
     // Resolved BEFORE the template, because a tenant-pool claim must name the
     // template that pool's pods were built from — the operator binds warm pods
     // by template hash and a mismatch silently yields a cold pod.
-    const pool = resolveTenantPool(this.tenantPools, {
-      orgId: opts.tenant?.orgId,
-      cloneUrl: opts.repo?.cloneUrl,
-    });
+    // Tenant pools are built from the DEFAULT image's template, so a repo
+    // that asked for another image cannot be served from one: the pod would
+    // be pre-warmed with the wrong toolchain. Such a claim starts cold.
+    const pool =
+      !opts.sandboxImage || opts.sandboxImage === "default"
+        ? resolveTenantPool(this.tenantPools, {
+            orgId: opts.tenant?.orgId,
+            cloneUrl: opts.repo?.cloneUrl,
+          })
+        : null;
     const claim = this.buildClaim(
       handle,
       opts,
       { token, daemonBootId, workdir },
-      await this.resolveTemplateName(opts.purpose, pool),
+      await this.resolveTemplateName(opts.purpose, pool, opts.sandboxImage),
     );
     try {
       await createSandboxClaim(this.kubeConfig, this.namespace, claim);

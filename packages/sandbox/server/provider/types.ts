@@ -1,3 +1,5 @@
+import type { SandboxImage } from "@decocms/shared/git-providers";
+
 /** Shared inputs and outputs for the hosted AgentSandboxProvider. */
 
 export interface SandboxId {
@@ -114,6 +116,17 @@ export interface EnsureOptions {
    * to survive into the persisted opts a resurrected claim is rebuilt from.
    */
   purpose?: SandboxPurpose;
+  /**
+   * The image the primary repository asked for, defaulting to `default`.
+   * AgentSandboxProvider turns it into a SandboxTemplate suffix — a claim can
+   * override neither image nor resources, so each one is its own template —
+   * and a non-default image opts out of tenant and warm pools, which are
+   * built from the default image's template.
+   *
+   * Persisted alongside `purpose` for the same reason: a resurrected claim is
+   * rebuilt from these opts and must land on the same image.
+   */
+  sandboxImage?: SandboxImage;
   /**
    * The synthetic isolation key, recorded as the claim's `git-branch`
    * ANNOTATION for operators reading `kubectl get sandboxclaim -o yaml`.
