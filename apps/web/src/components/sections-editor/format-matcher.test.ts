@@ -78,7 +78,7 @@ describe("formatMatcher", () => {
         __resolveType: "website/matchers/date.ts",
         start: "2024-06-15T10:00:00Z",
       });
-      expect(result).toContain("From");
+      expect(result).toContain("Starts on");
     });
 
     test("formats end-only date", () => {
@@ -86,7 +86,7 @@ describe("formatMatcher", () => {
         __resolveType: "website/matchers/date.ts",
         end: "2024-12-31T23:59:59Z",
       });
-      expect(result).toContain("Until");
+      expect(result).toContain("Ends on");
     });
 
     /** These use local-time literals (no trailing Z) so the day-boundary check
@@ -117,7 +117,7 @@ describe("formatMatcher", () => {
         __resolveType: "website/matchers/date.ts",
         start: "2026-06-15T10:00:00",
       });
-      expect(from.startsWith("From ")).toBe(true);
+      expect(from.startsWith("Starts on ")).toBe(true);
       expect(from).toContain("Jun 15, 2026");
       expect(from).toContain("10:00 AM");
 
@@ -125,7 +125,7 @@ describe("formatMatcher", () => {
         __resolveType: "website/matchers/date.ts",
         end: "2026-06-15T10:00:00",
       });
-      expect(until.startsWith("Until ")).toBe(true);
+      expect(until.startsWith("Ends on ")).toBe(true);
       expect(until).toContain("Jun 15, 2026");
       expect(until).toContain("10:00 AM");
     });
