@@ -78,6 +78,8 @@ export const common = {
     "O nome da sua empresa ou organização",
   "common.createOrganizationDialog.nameLabel": "Nome da Organização",
   "common.createOrganizationDialog.namePlaceholder": "Acme Inc.",
+  "common.createOrganizationDialog.nameRequired":
+    "O nome da organização é obrigatório",
   "common.createOrganizationDialog.title": "Criar uma nova organização",
   "common.createOrganizationDialog.urlLabel": "URL da Organização:",
   "common.deleteConnectionDialogs.cancel": "Cancelar",
