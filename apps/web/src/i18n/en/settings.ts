@@ -1149,6 +1149,7 @@ export const settings = {
   "settings.gitCredentials.removeAriaLabel": "Remove git credential",
   "settings.gitCredentials.saveSecret": "Save secret",
   "settings.gitCredentials.saving": "Saving…",
+  "settings.gitCredentials.secretAriaLabel": "Git credential {index} secret",
   "settings.gitCredentials.scopeLabel": "Scope",
   "settings.gitCredentials.scopeOrganization":
     "Organization — visible to all members",

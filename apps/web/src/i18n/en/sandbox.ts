@@ -164,6 +164,7 @@ export const sandbox = {
     "Move this value into the encrypted vault. The env var will then reference the secret by id — its value never leaves the server.",
   "sandbox.envVarsField.saveValueAsSecretTitle": "Save value as secret",
   "sandbox.envVarsField.saving": "Saving…",
+  "sandbox.envVarsField.secretAriaLabel": "Env var {index} secret",
   "sandbox.envVarsField.scopeLabel": "Scope",
   "sandbox.envVarsField.scopeOrganization":
     "Organization — visible to all members",

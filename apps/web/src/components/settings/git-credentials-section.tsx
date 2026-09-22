@@ -249,6 +249,9 @@ function GitCredentialRow({
               "h-9 w-full",
               !row.secretId && "text-muted-foreground",
             )}
+            aria-label={t("settings.gitCredentials.secretAriaLabel", {
+              index: index + 1,
+            })}
           >
             <SelectValue
               placeholder={t("settings.gitCredentials.pickSecretPlaceholder")}

@@ -172,6 +172,8 @@ export const sandbox = {
     "Mova este valor para o cofre criptografado. A variável de ambiente referenciará o segredo por id — seu valor nunca sai do servidor.",
   "sandbox.envVarsField.saveValueAsSecretTitle": "Salvar valor como segredo",
   "sandbox.envVarsField.saving": "Salvando…",
+  "sandbox.envVarsField.secretAriaLabel":
+    "Segredo da variável de ambiente {index}",
   "sandbox.envVarsField.scopeLabel": "Escopo",
   "sandbox.envVarsField.scopeOrganization":
     "Organização — visível para todos os membros",
