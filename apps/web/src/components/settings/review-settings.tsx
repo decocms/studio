@@ -1,4 +1,6 @@
 import { toast } from "sonner";
+import { QueryErrorResetBoundary } from "@tanstack/react-query";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
@@ -117,12 +119,39 @@ export function AgentToolsSettings() {
  * available, which an exclusion list gives for free and an allowlist would not.
  */
 function OrgMcpExclusions() {
+  const t = useT();
   const enabled = useOrgFlag("coding_agent_org_mcps");
   if (!enabled) return null;
   return (
-    <Suspense fallback={<OrgMcpExclusionsFallback />}>
-      <OrgMcpExclusionList />
-    </Suspense>
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          fallback={({ resetError }) => (
+            <SettingsCardItem title={t("settings.agentTools.orgMcpsPickTitle")}>
+              <div role="alert" className="mt-3 flex items-center gap-2">
+                <p className="text-sm text-destructive">
+                  {t("settings.agentTools.orgMcpsPickLoadFailed")}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    reset();
+                    resetError();
+                  }}
+                >
+                  {t("common.errorBoundary.tryAgain")}
+                </Button>
+              </div>
+            </SettingsCardItem>
+          )}
+        >
+          <Suspense fallback={<OrgMcpExclusionsFallback />}>
+            <OrgMcpExclusionList />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
   );
 }
 

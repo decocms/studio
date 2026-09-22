@@ -818,6 +818,8 @@ export const settings = {
   "settings.agentTools.orgMcpsPickFailed":
     "N\u00e3o foi poss\u00edvel salvar quais conex\u00f5es os runs alcan\u00e7am",
   "settings.agentTools.orgMcpsPickSearch": "Buscar conex\u00f5es\u2026",
+  "settings.agentTools.orgMcpsPickLoadFailed":
+    "N\u00e3o foi poss\u00edvel carregar as conex\u00f5es MCP",
   "settings.agentTools.orgMcpsPickEnableAll": "Ligar todas",
   "settings.agentTools.orgMcpsPickDisableAll": "Desligar todas",
   "settings.agentTools.orgMcpsPickNoMatch":

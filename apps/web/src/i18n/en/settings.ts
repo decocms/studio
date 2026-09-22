@@ -790,6 +790,7 @@ export const settings = {
     "This organization has no MCP connections yet",
   "settings.agentTools.orgMcpsPickFailed":
     "Could not save which connections runs can reach",
+  "settings.agentTools.orgMcpsPickLoadFailed": "Could not load MCP connections",
   "settings.agentTools.orgMcpsPickSearch": "Search connections\u2026",
   "settings.agentTools.orgMcpsPickEnableAll": "Enable all",
   "settings.agentTools.orgMcpsPickDisableAll": "Disable all",

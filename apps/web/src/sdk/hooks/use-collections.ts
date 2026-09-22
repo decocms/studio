@@ -361,6 +361,9 @@ export function collectionListQueryOptions<T extends CollectionEntity>(
         name: listToolName,
         arguments: toolArguments,
       });
+      // Reject tool errors before caching; a select error can expose undefined
+      // data during a refetch even to suspense consumers.
+      extractPayload<CollectionListOutput<T>>(result);
       return result;
     },
     staleTime: 30_000,
