@@ -16,7 +16,7 @@ import {
   requireAuth,
   requireOrganization,
 } from "../../core/studio-context";
-import { normalizeThreadForResponse } from "./helpers";
+import { assertThreadWritable, normalizeThreadForResponse } from "./helpers";
 import { broadcastRunCancel } from "@/api/routes/decopilot/cancel-registry";
 import { cancelHostedHarness } from "@/dispatch-queue";
 import { cancelThreadGateHead } from "@/dispatch-queue/thread-gate-queue";
@@ -45,6 +45,11 @@ export const COLLECTION_THREADS_DELETE = defineTool({
     if (!thread) {
       throw new Error(`Thread not found: ${input.id}`);
     }
+
+    assertThreadWritable(thread, {
+      userId: getUserId(ctx),
+      role: organization.role,
+    });
 
     // Stop an in-flight run before deleting its thread, or it keeps running orphaned.
     if (thread.status === "in_progress") {
