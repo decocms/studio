@@ -138,4 +138,12 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("rejects an empty or whitespace-only organizationId", () => {
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "",
+      }).success,
+    ).toBe(false);
+  });
 });

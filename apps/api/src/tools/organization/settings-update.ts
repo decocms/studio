@@ -28,7 +28,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    organizationId: z.string(),
+    organizationId: z.string().min(1, "organizationId is required"),
     sidebar_items: z.array(SidebarItemSchema).max(MAX_SIDEBAR_ITEMS).optional(),
     coding_agent_mcp_excluded: z
       .array(z.string().max(MAX_STRING_LENGTH))
