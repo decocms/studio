@@ -314,6 +314,78 @@ async function cloneInfoForChoice(
  * gone is dropped rather than sent with a dead URL, so one revoked connection
  * costs its own checkout and not the others.
  */
+/**
+ * The organization's per-host git credentials, resolved to tokens.
+ *
+ * Every checkout this tool configures needs them, primary included: the pod
+ * installs them from `git.repository.submoduleCredentials`, so a `repository`
+ * patch that omits the key leaves a pod whose only credential is the clone
+ * token — which is exactly the token that cannot reach a private dependency.
+ */
+async function orgGitCredentials(
+  ctx: StudioContext,
+  organizationId: string,
+  userId: string,
+): Promise<{ host: string; token: string }[]> {
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  return resolveSubmoduleCredentials({
+    ctx,
+    orgId: organizationId,
+    userId,
+    entries: settings?.submodule_credentials,
+  });
+}
+
+/**
+ * The `/_sandbox/config` body for a checkout this tool just bound.
+ *
+ * Pure, and exported, because the credentials on it have now been forgotten
+ * twice: the pod installs them from `git.repository.submoduleCredentials`, and
+ * a patch that omits the key leaves the daemon's "absent means keep current"
+ * to decide — which on a sandbox that booted with no repository means keeping
+ * nothing, so its only credential is the clone token, the one token that by
+ * definition cannot reach a private dependency in another repository.
+ *
+ * `submoduleCredentials` therefore rides BOTH shapes, empty included: the
+ * primary's own key, and every secondary's (`secondaryRepoConfigs` already put
+ * the same list on each).
+ */
+export function gitConfigPatch(args: {
+  primary?: { cloneUrl: string; branch: string; repoName: string };
+  secondaries?: { cloneUrl: string; repoName: string }[];
+  submoduleCredentials: { host: string; token: string }[];
+  gitUserName: string;
+  gitUserEmail: string;
+}): {
+  git: {
+    repository?: {
+      cloneUrl: string;
+      branch: string;
+      repoName: string;
+      submoduleCredentials: { host: string; token: string }[];
+    };
+    repositories?: { cloneUrl: string; repoName: string }[];
+    identity: { userName: string; userEmail: string };
+  };
+} {
+  return {
+    git: {
+      // The full list every time, not just the new entry: the daemon's merge
+      // replaces this key, and a recreated pod has to be able to read one
+      // config and know every checkout it owes.
+      ...(args.primary
+        ? {
+            repository: {
+              ...args.primary,
+              submoduleCredentials: args.submoduleCredentials,
+            },
+          }
+        : { repositories: args.secondaries ?? [] }),
+      identity: { userName: args.gitUserName, userEmail: args.gitUserEmail },
+    },
+  };
+}
+
 async function secondaryRepoConfigs(
   ctx: StudioContext,
   organizationId: string,
@@ -332,15 +404,11 @@ async function secondaryRepoConfigs(
   }[]
 > {
   const dirNames = secondaryRepoDirNames(repos);
-  // Same org credentials the primary checkout gets — a secondary's submodules
-  // sit behind the same hosts.
-  const submoduleCredentials = await resolveSubmoduleCredentials({
+  const submoduleCredentials = await orgGitCredentials(
     ctx,
-    orgId: organizationId,
+    organizationId,
     userId,
-    entries: (await ctx.storage.organizationSettings.get(organizationId))
-      ?.submodule_credentials,
-  });
+  );
   // Independent per-repo credential mints — run concurrently, not in series.
   const settled = await Promise.all(
     repos.map(async (repo, i) => {
@@ -581,30 +649,33 @@ export const TASK_ADD_REPO = defineTool({
         method: "PUT",
         headers: new Headers({ "content-type": "application/json" }),
         // ⚠️ SECURITY: `cloneUrl` embeds a GitHub token. Never log this body.
-        body: JSON.stringify({
-          git: {
-            // The full list every time, not just the new entry: the daemon's
-            // merge replaces this key, and a recreated pod has to be able to
-            // read one config and know every checkout it owes.
+        body: JSON.stringify(
+          gitConfigPatch({
             ...(isPrimary
               ? {
-                  repository: {
+                  primary: {
                     cloneUrl,
                     branch: gitRef,
                     repoName: `${repo.owner}/${repo.name}`,
                   },
                 }
               : {
-                  repositories: await secondaryRepoConfigs(
+                  secondaries: await secondaryRepoConfigs(
                     ctx,
                     organization.id,
                     userId,
                     secondaries,
                   ),
                 }),
-            identity: { userName: gitUserName, userEmail: gitUserEmail },
-          },
-        }),
+            submoduleCredentials: await orgGitCredentials(
+              ctx,
+              organization.id,
+              userId,
+            ),
+            gitUserName,
+            gitUserEmail,
+          }),
+        ),
       },
     );
     if (!configRes.ok) {
