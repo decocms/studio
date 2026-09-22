@@ -1,22 +1,23 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import {
   useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
-const SIDEBAR_MIN_WIDTH = 240;
 const SIDEBAR_MAX_WIDTH = 400;
+const KEYBOARD_STEP = 16;
 const STORAGE_KEY = "sidebar.width";
-
-function clamp(w: number) {
-  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, w));
-}
 
 export interface SidebarResize {
   width: number;
+  minWidth: number;
+  maxWidth: number;
   wrapperRef: RefObject<HTMLDivElement | null>;
   onStartResize: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  onKeyDownResize: (e: ReactKeyboardEvent<HTMLDivElement>) => void;
   resetWidth: () => void;
 }
 
@@ -28,8 +29,12 @@ export interface SidebarResize {
  * (and localStorage).
  */
 export function useSidebarResize(): SidebarResize {
+  const compact = useCompactPageLayout();
+  const minWidth = compact ? 224 : 240;
+  const clamp = (w: number) =>
+    Math.max(minWidth, Math.min(SIDEBAR_MAX_WIDTH, w));
   const [width, setWidth] = useLocalStorage<number>(STORAGE_KEY, (existing) =>
-    typeof existing === "number" ? clamp(existing) : SIDEBAR_MIN_WIDTH,
+    typeof existing === "number" ? clamp(existing) : minWidth,
   );
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -70,6 +75,7 @@ export function useSidebarResize(): SidebarResize {
       }
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
     };
@@ -78,11 +84,30 @@ export function useSidebarResize(): SidebarResize {
     document.body.style.cursor = "col-resize";
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
   };
 
   const resetWidth = () => {
-    setWidth(SIDEBAR_MIN_WIDTH);
+    setWidth(minWidth);
   };
 
-  return { width: clamp(width), wrapperRef, onStartResize, resetWidth };
+  // ARIA window-splitter keys: arrows step, Home/End jump to the ends.
+  const onKeyDownResize = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowLeft") setWidth(clamp(width - KEYBOARD_STEP));
+    else if (e.key === "ArrowRight") setWidth(clamp(width + KEYBOARD_STEP));
+    else if (e.key === "Home") setWidth(minWidth);
+    else if (e.key === "End") setWidth(SIDEBAR_MAX_WIDTH);
+    else return;
+    e.preventDefault();
+  };
+
+  return {
+    width: clamp(width),
+    minWidth,
+    maxWidth: SIDEBAR_MAX_WIDTH,
+    wrapperRef,
+    onStartResize,
+    onKeyDownResize,
+    resetWidth,
+  };
 }

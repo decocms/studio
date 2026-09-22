@@ -28,6 +28,7 @@ import { useProjectContext } from "@/sdk";
 import { useStudioTools } from "@/lib/studio-tools";
 import { KEYS } from "@/lib/query-keys";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useFeature, usePlansEnabled } from "@/hooks/use-entitlements";
 import { useT } from "@/i18n/use-t.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 
@@ -38,7 +39,13 @@ const TOP_UP_PRESETS = {
   brl: [50, 100, 500],
 } as const;
 
-function QuickTopUp() {
+/**
+ * The credit top-up control. Exported because with plans ON it renders inside
+ * PlanUsageCard rather than here: credits are the second of that card's two
+ * pools, so a separate titled section for them was a second place to look for
+ * one subject.
+ */
+export function QuickTopUp() {
   const t = useT();
   const studio = useStudioTools();
   const [preferences] = usePreferences();
@@ -77,16 +84,16 @@ function QuickTopUp() {
         <ToggleGroup
           type="single"
           variant="outline"
-          size="default"
+          size="sm"
           value={currency}
           onValueChange={(v) => {
             if (v) setCurrency(v as "usd" | "brl");
           }}
         >
-          <ToggleGroupItem value="usd" className="px-3.5 text-sm">
+          <ToggleGroupItem value="usd" className="h-8 px-3 text-sm">
             USD
           </ToggleGroupItem>
-          <ToggleGroupItem value="brl" className="px-3.5 text-sm">
+          <ToggleGroupItem value="brl" className="h-8 px-3 text-sm">
             BRL
           </ToggleGroupItem>
         </ToggleGroup>
@@ -96,7 +103,7 @@ function QuickTopUp() {
               <Button
                 key={dollars}
                 variant="outline"
-                className="h-10 px-4 text-sm font-medium tabular-nums"
+                className="tabular-nums"
                 disabled={isPending}
                 onClick={() => topUp(dollars * 100)}
               >
@@ -106,7 +113,7 @@ function QuickTopUp() {
             ))}
             <Button
               variant="ghost"
-              className="h-10 px-4 text-sm text-muted-foreground"
+              className="text-muted-foreground"
               onClick={() => setCustomOpen(true)}
               disabled={isPending}
             >
@@ -127,12 +134,11 @@ function QuickTopUp() {
                 placeholder={t("settings.decoCreditsHero.amountPlaceholder")}
                 value={customAmount}
                 onChange={(e) => setCustomAmount(e.target.value)}
-                className="h-10 text-sm pl-7"
+                className="h-8 text-sm pl-7"
                 autoFocus
               />
             </div>
             <Button
-              className="h-10"
               disabled={!isCustomValid || isPending}
               onClick={() => topUp(Math.round(customNum * 100))}
             >
@@ -140,7 +146,7 @@ function QuickTopUp() {
             </Button>
             <Button
               variant="ghost"
-              className="h-10 text-sm text-muted-foreground"
+              className="text-muted-foreground"
               onClick={() => {
                 setCustomOpen(false);
                 setCustomAmount("");
@@ -163,6 +169,68 @@ function creditColorClass(dollars: number): string {
   return "text-foreground";
 }
 
+/**
+ * The dollar balance this card used to own. With plans ON it moved into
+ * PlanUsageCard, where it reads as the second of the two pools; with plans OFF
+ * that card is not rendered at all, so it stays here rather than disappearing.
+ */
+function CreditsBalance({ enabled }: { enabled: boolean }) {
+  const t = useT();
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: KEYS.aiProviderCredits(org.id, "deco"),
+    enabled,
+    staleTime: 60_000,
+    queryFn: async () => {
+      try {
+        return await studio.call("AI_PROVIDER_CREDITS", { providerId: "deco" });
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  if (!enabled) return null;
+
+  const balanceDollars =
+    data?.balanceCents != null ? data.balanceCents / 100 : null;
+  const displayBalance =
+    balanceDollars != null ? `$${balanceDollars.toFixed(2)}` : "—";
+
+  return (
+    <div className="flex flex-col gap-2 pt-2">
+      <div className="flex items-baseline gap-2">
+        {isLoading || isFetching ? (
+          <Skeleton className="h-9 w-24" />
+        ) : (
+          <span
+            className={cn(
+              "text-3xl font-semibold tabular-nums tracking-tight",
+              balanceDollars != null && creditColorClass(balanceDollars),
+            )}
+          >
+            {displayBalance}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 classic:rounded-md compact:rounded-lg hover:bg-muted/50"
+          aria-label={t("settings.decoCreditsHero.refreshBalance")}
+        >
+          <RefreshCw01 size={14} className={cn(isFetching && "animate-spin")} />
+        </button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("settings.decoCreditsHero.availableBalance")}
+      </p>
+    </div>
+  );
+}
+
 export function DecoCreditsHero() {
   const t = useT();
   const { org } = useProjectContext();
@@ -170,6 +238,9 @@ export function DecoCreditsHero() {
   const queryClient = useQueryClient();
   const allKeys = useAiProviderKeys();
   const decoKey = allKeys.find((k) => k.providerId === "deco");
+  // With plans on, the balance lives on PlanUsageCard instead.
+  const plansEnabled = usePlansEnabled();
+  const canBuyCredits = useFeature("credits");
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const { mutate: disconnect, isPending: isDisconnecting } = useMutation({
@@ -190,25 +261,7 @@ export function DecoCreditsHero() {
     },
   });
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: KEYS.aiProviderCredits(org.id, "deco"),
-    enabled: !!decoKey,
-    staleTime: 60_000,
-    queryFn: async () => {
-      try {
-        return await studio.call("AI_PROVIDER_CREDITS", { providerId: "deco" });
-      } catch {
-        return null;
-      }
-    },
-  });
-
   if (!decoKey) return null;
-
-  const balanceDollars =
-    data?.balanceCents != null ? data.balanceCents / 100 : null;
-  const displayBalance =
-    balanceDollars != null ? `$${balanceDollars.toFixed(2)}` : "—";
 
   return (
     <SettingsSection title={t("settings.decoCreditsHero.title")}>
@@ -222,11 +275,6 @@ export function DecoCreditsHero() {
                 alt={t("settings.decoCreditsHero.decoAiGatewayAlt")}
                 className="size-9 rounded-lg object-contain dark:bg-white dark:p-0.5"
               />
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {t("settings.decoCreditsHero.accessModels")}
-                </p>
-              </div>
             </div>
             <Button
               variant="ghost"
@@ -266,46 +314,20 @@ export function DecoCreditsHero() {
             </AlertDialogContent>
           </AlertDialog>
 
-          {/* Balance */}
-          <div className="flex flex-col gap-2 pt-2">
-            <div className="flex items-baseline gap-2">
-              {isLoading || isFetching ? (
-                <Skeleton className="h-9 w-24" />
-              ) : (
-                <span
-                  className={cn(
-                    "text-3xl font-semibold tabular-nums tracking-tight",
-                    balanceDollars != null && creditColorClass(balanceDollars),
-                  )}
-                >
-                  {displayBalance}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-md hover:bg-muted/50"
-                aria-label={t("settings.decoCreditsHero.refreshBalance")}
-              >
-                <RefreshCw01
-                  size={14}
-                  className={cn(isFetching && "animate-spin")}
-                />
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.decoCreditsHero.availableBalance")}
-            </p>
-          </div>
+          <CreditsBalance enabled={!plansEnabled} />
 
-          {/* Quick top-up */}
-          <div className="pt-4 border-t border-border/60">
-            <p className="text-xs font-medium text-muted-foreground mb-2.5">
-              {t("settings.decoCreditsHero.addCredits")}
-            </p>
-            <QuickTopUp />
-          </div>
+          {/* Quick top-up. Withheld from a plan without `credits` — every plan
+              carries it today, Free included, so this is the per-org revoke
+              case. Fails OPEN like every other gate, so a gateway blip still
+              lets an org pay. */}
+          {canBuyCredits ? (
+            <div className="pt-4 border-t border-border/60">
+              <p className="text-xs font-medium text-muted-foreground mb-2.5">
+                {t("settings.decoCreditsHero.addCredits")}
+              </p>
+              <QuickTopUp />
+            </div>
+          ) : null}
         </div>
       </SettingsCard>
     </SettingsSection>

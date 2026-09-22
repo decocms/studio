@@ -544,7 +544,7 @@ function ConnectionRow({
             <button
               type="button"
               onClick={() => setIsReplacingToken(true)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-muted"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 classic:rounded hover:bg-muted compact:rounded-lg"
               title={t("registry.monitorConnectionsPanel.replaceToken")}
             >
               {t("registry.monitorConnectionsPanel.edit")}
@@ -654,7 +654,7 @@ export function MonitorConnectionsPanel() {
             <button
               type="button"
               className={cn(
-                "px-2.5 py-1 text-xs rounded-md transition-colors",
+                "px-2.5 py-1 text-xs classic:rounded-md compact:rounded-lg transition-colors",
                 sourceFilter === "all"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -666,7 +666,7 @@ export function MonitorConnectionsPanel() {
             <button
               type="button"
               className={cn(
-                "px-2.5 py-1 text-xs rounded-md transition-colors",
+                "px-2.5 py-1 text-xs classic:rounded-md compact:rounded-lg transition-colors",
                 sourceFilter === "store"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -678,7 +678,7 @@ export function MonitorConnectionsPanel() {
             <button
               type="button"
               className={cn(
-                "px-2.5 py-1 text-xs rounded-md transition-colors",
+                "px-2.5 py-1 text-xs classic:rounded-md compact:rounded-lg transition-colors",
                 sourceFilter === "request"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground",

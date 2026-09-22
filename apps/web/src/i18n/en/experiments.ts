@@ -1,0 +1,36 @@
+export const experiments = {
+  "experiments.title": "Experiments",
+  "experiments.subtitle":
+    "A/B tests for this site. The traffic split lives in the site's content; results come from analytics.",
+  "experiments.new": "New experiment",
+  "experiments.noSite":
+    "This project has no linked site, so it has no experiments.",
+  "experiments.empty.title": "No experiments yet",
+  "experiments.empty.desc": "Create the first A/B test for this site.",
+  "experiments.col.name": "Name",
+  "experiments.col.key": "Key",
+  "experiments.col.status": "Status",
+  "experiments.col.variants": "Variants",
+  "experiments.dialog.newTitle": "New experiment",
+  "experiments.dialog.key": "Key",
+  "experiments.dialog.name": "Name",
+  "experiments.dialog.variants": "Variants",
+  "experiments.dialog.weightSum": "Weights must sum to 100 (now {sum})",
+  "experiments.dialog.addVariant": "Add variant",
+  "experiments.dialog.create": "Create",
+  "experiments.dialog.cancel": "Cancel",
+  "experiments.action.delete": "Delete",
+  "experiments.deleteConfirm":
+    'Delete experiment "{key}"? This cannot be undone.',
+  "experiments.results.title": "Results",
+  "experiments.results.unavailable":
+    "Analytics isn't wired for this deployment, so results are unavailable here. They appear in staging and production.",
+  "experiments.results.empty": "No participants yet for this experiment.",
+  "experiments.results.control": "Control",
+  "experiments.results.variant": "Variant",
+  "experiments.results.visitors": "Visitors",
+  "experiments.results.participants": "Participants",
+  "experiments.results.sampleSize": "Target sample size",
+  "experiments.results.probBest": "Probability variant best",
+  "experiments.results.goal": "Goal",
+} as const;

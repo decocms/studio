@@ -1,3 +1,4 @@
+import type { GitProviderKind } from "@decocms/shared/git-providers";
 import { GitAccountConnect } from "@/components/git-account-connect";
 import { useDeferredValue, useState } from "react";
 import { ArrowLeft, ChevronRight, GitBranch01 } from "@untitledui/icons";
@@ -14,8 +15,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { CollectionSearch } from "@/components/collections/collection-search";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { GitLabIcon } from "@/components/icons/gitlab-icon";
+import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   type GitAccount,
@@ -36,13 +36,11 @@ function ProviderIcon({
   provider,
   className,
 }: {
-  provider: "github" | "gitlab";
+  provider: GitProviderKind;
   className?: string;
 }) {
-  return provider === "gitlab" ? (
-    <GitLabIcon size={16} className={className} />
-  ) : (
-    <GitHubIcon size={16} className={className} />
+  return (
+    <GitProviderIcon provider={provider} size={16} className={className} />
   );
 }
 
@@ -60,7 +58,7 @@ function RepoRow({
   busy,
   onSelect,
 }: {
-  provider: "github" | "gitlab";
+  provider: GitProviderKind;
   path: string;
   host: string;
   hint?: string | null;

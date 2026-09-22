@@ -239,8 +239,10 @@ export function parseRepoProbe(stdout: string): {
  * ends up with both authenticated; a second host of the SAME provider replaces
  * the first, which is why one account per host is the supported shape.
  *
- * The userinfo username tells the two apart, exactly as the daemon does:
- * `x-access-token` is GitHub, `oauth2` is GitLab. `glab` needs `is_oauth2` so
+ * The userinfo username tells the providers apart, exactly as the daemon does:
+ * `x-access-token` is GitHub, `oauth2` is GitLab, `x-token-auth` is Bitbucket —
+ * which has no CLI to configure, so it falls through; the daemon exports the
+ * primary checkout's token as `BITBUCKET_TOKEN` for `curl` instead. `glab` needs `is_oauth2` so
  * it sends a bearer token (the only form GitLab accepts for an OAuth token, and
  * one it also accepts for an access token), and refuses a config that is not
  * 0600.
@@ -372,8 +374,9 @@ export const TASK_ADD_REPO = defineTool({
     "files, and do not run git, before it returns. Call it once, with the " +
     "repository the task is about; it waits for the checkout and returns the " +
     "repository root listing, so you can start reading files immediately after. " +
-    "`git` and the repository's CLI (`gh` for GitHub, `glab` for GitLab) are " +
-    "authenticated once it returns. Call TASK_ADD_REPO with " +
+    "`git` and the repository's CLI (`gh` for GitHub, `glab` for GitLab; Bitbucket has " +
+    "no CLI — its token is the password in `git remote get-url origin`, for `curl` " +
+    "against api.bitbucket.org) are authenticated once it returns. Call TASK_ADD_REPO with " +
     "no arguments to list the repositories available.",
   annotations: {
     title: "Add Repository",

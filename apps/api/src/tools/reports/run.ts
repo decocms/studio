@@ -1,32 +1,82 @@
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { z } from "zod";
+import {
+  fromWire,
+  legacyGithubRepo,
+  type ReportsRepositoryRef,
+} from "@decocms/shared/reports/repository-ref";
 import { normalizeReportsSiteUrl } from "@decocms/shared/reports/site-url";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
-import { triggerCommerceDiscoveryRun } from "./auth-client";
+import { triggerReportsRun } from "./auth-client";
 
-const CommerceDiscoveryRunInputSchema = z.object({
+const ReportsRunInputSchema = z.object({
   siteUrl: z.string().min(1).describe("Website URL to run the diagnostic for."),
 });
 
-const CommerceDiscoveryRunOutputSchema = z.object({
+const ReportsRunOutputSchema = z.object({
   triggered: z.boolean(),
   reason: z.string().optional(),
 });
 
-export const COMMERCE_DISCOVERY_RUN = defineTool({
-  name: "COMMERCE_DISCOVERY_RUN",
+const ConfigurationStateSchema = z
+  .object({
+    repository: z.unknown().optional(),
+    github_repo: z.string().optional(),
+  })
+  .passthrough()
+  .nullable()
+  .optional();
+
+/**
+ * The repository a run should be scoped to, from the CD connection's
+ * `configuration_state` — decrypted JSON with no runtime shape guarantee, so a
+ * malformed value (a corrupted decrypt, a pre-migration row) degrades to "no
+ * repository" instead of failing the run.
+ */
+export function resolveRunRepository(configurationState: unknown): {
+  repository: ReportsRepositoryRef | undefined;
+  githubRepo: string | undefined;
+} {
+  const parsed = ConfigurationStateSchema.safeParse(configurationState);
+  const state = parsed.success ? parsed.data : undefined;
+
+  const repository =
+    (state ? fromWire(state.repository) : undefined) ?? undefined;
+  const legacy =
+    state &&
+    typeof state.github_repo === "string" &&
+    state.github_repo.length > 0
+      ? state.github_repo
+      : undefined;
+
+  return {
+    repository: repository ?? undefined,
+    githubRepo:
+      (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
+  };
+}
+
+export const REPORTS_RUN = defineTool({
+  name: "REPORTS_RUN",
   description:
-    "Trigger the Commerce Discovery diagnostic run for the current organization's store. Call once the data sources (GA4/GSC/VTEX) are connected — this run resolves credentials and produces the enriched report.",
+    "Trigger the Reports diagnostic run for the current organization's store. Call once the data sources (GA4/GSC/VTEX) are connected — this run resolves credentials and produces the enriched report.",
   annotations: {
-    title: "Run Commerce Discovery",
+    title: "Run Reports",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },
-  inputSchema: CommerceDiscoveryRunInputSchema,
-  outputSchema: CommerceDiscoveryRunOutputSchema,
+  inputSchema: ReportsRunInputSchema,
+  outputSchema: ReportsRunOutputSchema,
+  // This run IS the enriched report (see the description), and it is the step
+  // that spends. Free is the only plan without the flag, so a Free org can
+  // still connect its sources and see the basic diagnostic — it is stopped
+  // here, at the spend, which is also where the upsell belongs.
+  requiresFeature: "diagnostic_enriched",
+  // …and it is real token spend, so a spent envelope stops it too.
+  requiresAiBudget: true,
 
   handler: async (input, ctx) => {
     requireAuth(ctx);
@@ -34,40 +84,45 @@ export const COMMERCE_DISCOVERY_RUN = defineTool({
     // Enforce the caller's role/permission for this tool (connections:manage),
     // like every other org-scoped tool — the internal API key gates the wire, not
     // who in the org may trigger a run.
-    await ctx.access.check();
+    /**
+     * Both names, because a tool name IS the permission resource: a stored
+     * grant (an API key's allowlist, a custom role) that named the tool
+     * before it was renamed would otherwise be silently revoked. `check`
+     * grants on the first resource that passes.
+     */
+    await ctx.access.check("REPORTS_RUN", "COMMERCE_DISCOVERY_RUN");
 
     const normalized = normalizeReportsSiteUrl(input.siteUrl);
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }
 
-    // The repo the client picked in the GitHub companion is persisted on the CD
-    // connection's configuration_state (github_repo). Forward it so Commerce
-    // Discovery can run repo-audit against the right repo; its absence just means
-    // GitHub isn't connected and never blocks the run.
-    const cdConnectionId = WellKnownOrgMCPId.COMMERCE_DISCOVERY(
-      organization.id,
-    );
+    /**
+     * The repository the client picked is persisted on the CD connection's
+     * `configuration_state`. Forward it so Reports audits the right
+     * one; its absence just means no repository is linked and never blocks the
+     * run.
+     *
+     * Both spellings go out for the deprecation window: `repository` is the
+     * identity (any provider, any host, resolvable back to a credential), and
+     * `github_repo` is the legacy string a Reports still on the old reader
+     * needs — derived from the reference when it is a github.com one, and read
+     * straight off the state for an org the backfill has not reached.
+     */
+    const cdConnectionId = WellKnownOrgMCPId.REPORTS(organization.id);
     const cdConnection = await ctx.storage.connections.findById(
       cdConnectionId,
       organization.id,
     );
-    const configState = cdConnection?.configuration_state as
-      | Record<string, unknown>
-      | string
-      | null
-      | undefined;
-    const githubRepo =
-      configState &&
-      typeof configState === "object" &&
-      typeof configState.github_repo === "string" &&
-      configState.github_repo.length > 0
-        ? (configState.github_repo as string)
-        : undefined;
 
-    return triggerCommerceDiscoveryRun({
+    const { repository, githubRepo } = resolveRunRepository(
+      cdConnection?.configuration_state,
+    );
+
+    return triggerReportsRun({
       siteUrl: normalized.value,
       orgId: organization.id,
+      repository,
       githubRepo,
     });
   },

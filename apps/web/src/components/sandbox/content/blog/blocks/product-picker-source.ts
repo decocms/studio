@@ -27,6 +27,8 @@ export interface ProductPickerOption {
   id: string;
   label: string;
   image?: string;
+  /** PDP path/URL, when the loader reports one — used to link to the product. */
+  url?: string;
 }
 
 /** A category surfaced by the tree loader, selectable to filter products. */
@@ -63,33 +65,30 @@ export function categoryPathToFacets(path: string): string {
   return segments.map((seg, i) => `category-${i + 1}/${seg}`).join("/");
 }
 
-/**
- * Build the productList requests for the current mode + term. A search term
- * fans out: a numeric term also tries the `ids` variant (exact SKU match),
- * slug-like terms are de-hyphenated so their words match the product name.
- * Category/cluster take a single request. An empty/blank term yields no
- * requests (the picker shows nothing until the user narrows).
- */
+/** Build the productList requests for a mode + term (empty search → default catalog listing). */
 export function buildProductRequests(
   mode: ProductPickerMode,
   term: string,
 ): PickerLoaderRequest[] {
   const trimmed = term.trim();
-  if (!trimmed) return [];
-
   const resolveType = VTEX_PRODUCT_LIST_RESOLVE_TYPE;
   const count = PRODUCT_PICKER_COUNT;
 
   if (mode === "cluster") {
-    return [{ resolveType, props: { collection: trimmed, count } }];
+    return trimmed
+      ? [{ resolveType, props: { collection: trimmed, count } }]
+      : [];
   }
   if (mode === "category") {
+    if (!trimmed) return [];
     const facets = categoryPathToFacets(trimmed);
     if (!facets) return [];
     return [{ resolveType, props: { facets, count } }];
   }
 
-  // mode === "search"
+  // mode === "search": empty term browses the default catalog listing.
+  if (!trimmed) return [{ resolveType, props: { count } }];
+
   const requests: PickerLoaderRequest[] = [];
   if (/^\d+$/.test(trimmed)) {
     requests.push({ resolveType, props: { ids: [trimmed] } });
@@ -154,7 +153,11 @@ export function productOptionsFromPayload(
       : null;
     const image =
       typeof imageEntry?.url === "string" ? imageEntry.url : undefined;
-    options.push({ id, label, image });
+    const url =
+      (typeof product.url === "string" && product.url) ||
+      (typeof variant?.url === "string" && variant.url) ||
+      undefined;
+    options.push({ id, label, image, url });
   }
   return options;
 }

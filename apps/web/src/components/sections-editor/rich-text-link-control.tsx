@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Check, Link01, Trash01 } from "@untitledui/icons";
 import type { Editor } from "@tiptap/core";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -7,6 +7,18 @@ import { isSafeLinkUrl, normalizeLinkUrl } from "./rich-text-link-validation";
 
 /** rel applied to new-tab links (security best practice for target=_blank). */
 const NEW_TAB_REL = "noopener noreferrer nofollow";
+
+/**
+ * An extra way to pick a link target beyond typing a URL — e.g. "a post" or "a
+ * product". `render` gets an `apply(url)` it calls once the user picks; the url
+ * is trusted (internal path or catalog PDP), so it is linked as-is.
+ */
+export interface LinkSource {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  render: (apply: (url: string) => void) => ReactNode;
+}
 
 export function ToolbarButton({
   active,
@@ -28,7 +40,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "flex h-7 w-7 items-center justify-center rounded transition-colors cursor-pointer",
+        "flex h-7 w-7 items-center justify-center classic:rounded transition-colors cursor-pointer compact:rounded-lg",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -56,12 +68,43 @@ function TabChoice({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onSelect}
       className={cn(
-        "flex-1 rounded px-2 py-1 text-xs transition-colors cursor-pointer",
+        "flex-1 classic:rounded px-2 py-1 text-xs transition-colors cursor-pointer compact:rounded-lg",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
+      {label}
+    </button>
+  );
+}
+
+/** Source-mode tab (URL / Post / Product), mousedown-safe to keep the popover open. */
+function ModeTab({
+  active,
+  icon,
+  label,
+  onSelect,
+}: {
+  active: boolean;
+  icon?: ReactNode;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onSelect}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-xs transition-colors cursor-pointer",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      {icon}
       {label}
     </button>
   );
@@ -78,16 +121,20 @@ export function RichTextLinkControl({
   active,
   open,
   onOpenChange,
+  sources,
 }: {
   editor: Editor;
   active: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Extra pick-a-target tabs beyond the URL field (post/product links). */
+  sources?: LinkSource[];
 }) {
   const t = useT();
   const [draft, setDraft] = useState("");
   const [newTab, setNewTab] = useState(true);
   const [invalid, setInvalid] = useState(false);
+  const [mode, setMode] = useState("url");
 
   const openEditor = () => {
     const attrs = editor.getAttributes("link");
@@ -95,6 +142,7 @@ export function RichTextLinkControl({
     // Reflect an existing link's target; default new links to a new tab.
     setNewTab(active ? attrs.target === "_blank" : true);
     setInvalid(false);
+    setMode("url");
     onOpenChange(true);
   };
 
@@ -103,14 +151,19 @@ export function RichTextLinkControl({
     editor.chain().focus().run();
   };
 
-  const apply = () => {
-    const url = normalizeLinkUrl(draft);
+  /**
+   * Set the link to `href`. A URL typed by the user is normalized and safety-
+   * checked; a `trusted` href from a source (internal path / catalog PDP) is
+   * linked as-is so relative paths survive.
+   */
+  const applyHref = (href: string, trusted = false) => {
+    const url = trusted ? href.trim() : normalizeLinkUrl(href);
     if (url === "") {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
       onOpenChange(false);
       return;
     }
-    if (!isSafeLinkUrl(url)) {
+    if (!trusted && !isSafeLinkUrl(url)) {
       setInvalid(true);
       return;
     }
@@ -127,10 +180,16 @@ export function RichTextLinkControl({
     onOpenChange(false);
   };
 
+  const apply = () => applyHref(draft);
+
   const removeLink = () => {
     editor.chain().focus().extendMarkRange("link").unsetLink().run();
     onOpenChange(false);
   };
+
+  const hasSources = !!sources?.length;
+  const activeSource = sources?.find((s) => s.id === mode);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="relative">
@@ -143,63 +202,93 @@ export function RichTextLinkControl({
       </ToolbarButton>
       {open && (
         <div
-          className="absolute left-0 top-full z-20 mt-1.5 flex w-64 flex-col gap-1 rounded-md border bg-popover p-1 shadow-md"
-          onBlur={(e) => {
-            // Close when focus leaves the popover entirely (toolbar buttons
-            // preventDefault on mousedown, so they never steal focus).
-            if (!e.currentTarget.contains(e.relatedTarget)) {
-              onOpenChange(false);
-            }
+          ref={popoverRef}
+          className={cn(
+            "absolute left-0 top-full z-20 mt-1.5 flex flex-col gap-1 rounded-md border bg-popover p-1 shadow-md",
+            hasSources ? "w-80" : "w-64",
+          )}
+          onBlur={() => {
+            // Deferred so a tab switch (input remount) doesn't close the popover.
+            requestAnimationFrame(() => {
+              if (!popoverRef.current?.contains(document.activeElement)) {
+                onOpenChange(false);
+              }
+            });
           }}
         >
-          <div className="flex items-center gap-0.5">
-            <input
-              // oxlint-disable-next-line no-autofocus -- the popover only opens on explicit user action; focus must move to the URL input
-              autoFocus
-              type="text"
-              aria-label={t(
-                "sectionsEditor.richTextLinkControl.urlInputAriaLabel",
-              )}
-              aria-invalid={invalid}
-              placeholder={t(
-                "sectionsEditor.richTextLinkControl.urlInputPlaceholder",
-              )}
-              value={draft}
-              onChange={(e) => {
-                setDraft(e.target.value);
-                setInvalid(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  apply();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  close();
-                }
-              }}
-              className={cn(
-                "h-7 flex-1 rounded bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none",
-                invalid && "text-destructive",
-              )}
-            />
-            <ToolbarButton
-              active={false}
-              label={t("sectionsEditor.richTextLinkControl.applyLinkLabel")}
-              onClick={apply}
-            >
-              <Check size={14} />
-            </ToolbarButton>
-            {active && (
+          {hasSources && (
+            <div className="flex items-center gap-0.5 rounded bg-muted/40 p-0.5">
+              <ModeTab
+                active={mode === "url"}
+                icon={<Link01 size={12} />}
+                label={t("sectionsEditor.richTextLinkControl.tabUrl")}
+                onSelect={() => setMode("url")}
+              />
+              {sources?.map((source) => (
+                <ModeTab
+                  key={source.id}
+                  active={mode === source.id}
+                  icon={source.icon}
+                  label={source.label}
+                  onSelect={() => setMode(source.id)}
+                />
+              ))}
+            </div>
+          )}
+          {activeSource ? (
+            activeSource.render((url) => applyHref(url, true))
+          ) : (
+            <div className="flex items-center gap-0.5">
+              <input
+                // oxlint-disable-next-line no-autofocus -- the popover only opens on explicit user action; focus must move to the URL input
+                autoFocus
+                type="text"
+                aria-label={t(
+                  "sectionsEditor.richTextLinkControl.urlInputAriaLabel",
+                )}
+                aria-invalid={invalid}
+                placeholder={t(
+                  "sectionsEditor.richTextLinkControl.urlInputPlaceholder",
+                )}
+                value={draft}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setInvalid(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    apply();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    close();
+                  }
+                }}
+                className={cn(
+                  "h-7 flex-1 rounded bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none",
+                  invalid && "text-destructive",
+                )}
+              />
               <ToolbarButton
                 active={false}
-                label={t("sectionsEditor.richTextLinkControl.removeLinkLabel")}
-                onClick={removeLink}
+                label={t("sectionsEditor.richTextLinkControl.applyLinkLabel")}
+                onClick={apply}
               >
-                <Trash01 size={14} />
+                <Check size={14} />
               </ToolbarButton>
-            )}
-          </div>
+              {active && (
+                <ToolbarButton
+                  active={false}
+                  label={t(
+                    "sectionsEditor.richTextLinkControl.removeLinkLabel",
+                  )}
+                  onClick={removeLink}
+                >
+                  <Trash01 size={14} />
+                </ToolbarButton>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-0.5 rounded bg-muted/40 p-0.5">
             <TabChoice
               active={!newTab}

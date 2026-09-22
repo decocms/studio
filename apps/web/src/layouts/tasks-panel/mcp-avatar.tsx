@@ -27,7 +27,7 @@ export function McpAvatar({
       {showAutomationBadge && (
         <span
           aria-label={t("tasksPanel.mcpAvatar.automationTriggered")}
-          className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-blue-500 border border-blue-600 text-white"
+          className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-special border border-special text-special-foreground"
         >
           <Zap size={10} className="text-white" />
         </span>

@@ -28,7 +28,7 @@ interface Repository {
   id: string;
   organizationId: string;
   accountId: string | null;
-  provider: "github" | "gitlab";
+  provider: "github" | "gitlab" | "bitbucket";
   host: string;
   path: string;
   externalId: string | null;
@@ -36,6 +36,42 @@ interface Repository {
   webUrl: string;
   visibility: "public" | "private" | "internal" | null;
 }
+
+test("local CLI connections cannot be created or used outside local mode", async ({
+  playwright,
+}) => {
+  const request = await newApiContext(playwright);
+  try {
+    const { orgSlug } = await signUpViaApi(request);
+    const response = await request.post(
+      `/api/${orgSlug}/git-providers/github/cli/connect`,
+      { data: {} },
+    );
+    expect(response.status()).toBe(403);
+    const db = await connectDevDb();
+    let accountId: string;
+    try {
+      // Simulate a local database copied to a hosted deployment. There is
+      // deliberately no API that creates this auth kind outside local mode.
+      const { rows } = await db.query<{ id: string }>(
+        "INSERT INTO git_provider_accounts (organization_id, type, host, auth_kind, external_account_id, login) SELECT id, 'github', 'github.com', 'github_cli', 'cli:user:123', 'synthetic-cli-user' FROM organization WHERE slug=$1 RETURNING id",
+        [orgSlug],
+      );
+      accountId = rows[0]!.id;
+    } finally {
+      await db.end();
+    }
+    const { accounts } = await callSelfMcpTool<{
+      accounts: Array<{ id: string; servable: boolean }>;
+    }>(request, orgSlug, "GIT_ACCOUNT_LIST", {});
+    expect(accounts).toMatchObject([{ id: accountId, servable: false }]);
+    await expect(
+      callSelfMcpTool(request, orgSlug, "REPOSITORY_SEARCH", { accountId }),
+    ).rejects.toThrow();
+  } finally {
+    await request.dispose();
+  }
+});
 
 function linkRepository(
   ctx: APIRequestContext,
@@ -243,12 +279,15 @@ test.describe("Git providers: repositories as an org entity", () => {
     const caps = await callSelfMcpTool<{
       github: {
         configured: boolean;
+        cliConnectPath: string | null;
         connectPath: string | null;
         installPath: string | null;
       };
       gitlab: { oauthHosts: string[]; connectPath: string | null };
+      bitbucket: { oauthHosts: string[]; connectPath: string | null };
     }>(ctx, orgSlug, "GIT_PROVIDER_CAPABILITIES", {});
 
+    expect(caps.github.cliConnectPath).toBeNull();
     if (caps.github.configured) {
       expect(caps.github.connectPath).toBe(
         `/api/${orgSlug}/git-providers/github/connect`,
@@ -265,6 +304,14 @@ test.describe("Git providers: repositories as an org entity", () => {
     } else {
       expect(caps.gitlab.connectPath).toBe(
         `/api/${orgSlug}/git-providers/gitlab/connect`,
+      );
+    }
+    if (caps.bitbucket.oauthHosts.length === 0) {
+      expect(caps.bitbucket.connectPath).toBeNull();
+    } else {
+      expect(caps.bitbucket.oauthHosts).toEqual(["bitbucket.org"]);
+      expect(caps.bitbucket.connectPath).toBe(
+        `/api/${orgSlug}/git-providers/bitbucket/connect`,
       );
     }
   });
@@ -306,6 +353,30 @@ test.describe("Git providers: repositories as an org entity", () => {
         token: "not-a-real-github-token",
       }),
     ).rejects.toThrow(/GitHub App/i);
+  });
+
+  /** `/workspaces/{slug}` is the only call that identifies an access token. */
+  test("Bitbucket refuses a token without the workspace it belongs to", async ({
+    playwright,
+  }) => {
+    const ctx = await newApiContext(playwright);
+    const { orgSlug } = await signUpViaApi(ctx);
+
+    await expect(
+      callSelfMcpTool(ctx, orgSlug, "GIT_ACCOUNT_CONNECT_TOKEN", {
+        type: "bitbucket",
+        host: "bitbucket.org",
+        token: `not-a-real-bitbucket-token-${Date.now()}`,
+      }),
+    ).rejects.toThrow(/workspace/i);
+
+    const { accounts } = await callSelfMcpTool<{ accounts: unknown[] }>(
+      ctx,
+      orgSlug,
+      "GIT_ACCOUNT_LIST",
+      {},
+    );
+    expect(accounts).toEqual([]);
   });
 
   test("rejects a host that is not a bare hostname", async ({ playwright }) => {
@@ -394,5 +465,97 @@ test.describe("Git providers: tenancy", () => {
     expect(rows).toHaveLength(1);
     const victimOrgId = await findOrgId(victimCtx, victim.orgSlug);
     expect(rows[0]?.organization_id).toBe(victimOrgId);
+  });
+});
+
+test.describe("Git providers: connect permission", () => {
+  let db: Client;
+
+  test.beforeAll(async () => {
+    db = await connectDevDb();
+  });
+
+  test.afterAll(async () => {
+    await db.end();
+  });
+
+  /**
+   * The GitHub connect/install starters gate behind `GIT_ACCOUNT_CONNECT_TOKEN`
+   * (apps/api/src/api/routes/git-providers.ts); the GitLab and Bitbucket OAuth
+   * starters must too — a member on a role that doesn't grant it must not be
+   * able to link an org-wide git credential just by being a member.
+   */
+  test("a member without GIT_ACCOUNT_CONNECT_TOKEN cannot start GitLab or Bitbucket OAuth", async ({
+    playwright,
+  }) => {
+    const ownerCtx = await newApiContext(playwright);
+    const owner = await signUpViaApi(ownerCtx);
+    const orgRow = await db.query<{ id: string }>(
+      `SELECT id FROM "organization" WHERE slug = $1`,
+      [owner.orgSlug],
+    );
+    const orgId = orgRow.rows[0]?.id;
+    if (!orgId) throw new Error("org not found after signup");
+
+    // A custom role with NO permissions at all.
+    const roleSlug = `restricted-connect-${Date.now()}-${Math.floor(
+      Math.random() * 1e6,
+    )}`;
+    const createRole = await ownerCtx.post(
+      "/api/auth/organization/create-role",
+      { data: { organizationId: orgId, role: roleSlug, permission: {} } },
+    );
+    expect(
+      createRole.ok(),
+      `create-role failed: ${await createRole.text().catch(() => "")}`,
+    ).toBe(true);
+
+    const memberCtx = await newApiContext(playwright);
+    const member = await signUpViaApi(memberCtx);
+    const invite = await ownerCtx.post("/api/auth/organization/invite-member", {
+      data: { organizationId: orgId, email: member.email, role: "user" },
+    });
+    expect(invite.ok()).toBe(true);
+    const inviteJson = (await invite.json()) as {
+      id?: string;
+      invitation?: { id?: string };
+    };
+    const invitationId = inviteJson.id ?? inviteJson.invitation?.id;
+    const accept = await memberCtx.post(
+      "/api/auth/organization/accept-invitation",
+      { data: { invitationId } },
+    );
+    expect(
+      accept.ok(),
+      `accept-invitation failed: ${await accept.text().catch(() => "")}`,
+    ).toBe(true);
+
+    const memberRow = await db.query<{ id: string }>(
+      `SELECT id FROM "member" WHERE "userId" = $1 AND "organizationId" = $2`,
+      [member.userId, orgId],
+    );
+    const memberId = memberRow.rows[0]?.id;
+    if (!memberId) throw new Error("member row not found after accept");
+    const assign = await ownerCtx.post(
+      "/api/auth/organization/update-member-role",
+      { data: { organizationId: orgId, memberId, role: [roleSlug] } },
+    );
+    expect(
+      assign.ok(),
+      `update-member-role failed: ${await assign.text().catch(() => "")}`,
+    ).toBe(true);
+
+    for (const provider of ["gitlab", "bitbucket"]) {
+      const res = await memberCtx.get(
+        `/api/${owner.orgSlug}/git-providers/${provider}/connect`,
+        { maxRedirects: 0 },
+      );
+      // Denied before ever reaching the OAuth redirect.
+      expect(res.status(), `${provider} connect status`).toBeGreaterThanOrEqual(
+        400,
+      );
+      const body = await res.text();
+      expect(body).toMatch(/access denied/i);
+    }
   });
 });

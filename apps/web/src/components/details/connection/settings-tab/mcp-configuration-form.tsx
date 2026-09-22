@@ -242,7 +242,7 @@ function BindingSelector({
               }}
               disabled={isInstalling}
               variant="ghost"
-              className="w-full justify-start gap-2 px-2 py-2 h-auto hover:bg-muted rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full justify-start gap-2 px-2 py-2 h-auto hover:bg-muted classic:rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               type="button"
             >
               {isInstalling ? (

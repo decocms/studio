@@ -1,3 +1,5 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { cn } from "@decocms/ui/lib/utils.ts";
 /**
  * Settings sub-navigation — the page heading plus a pill tab strip for the
  * sibling routes a merged sidebar row owns (see `settings-tab-groups.ts`).
@@ -8,7 +10,7 @@
  */
 
 import { Link, useParams, useRouterState } from "@tanstack/react-router";
-import { cn } from "@decocms/ui/lib/utils.ts";
+import { Panel } from "@/components/panel";
 import { Page } from "@/components/page";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
@@ -18,7 +20,50 @@ import {
 } from "./settings-tab-groups";
 import { useVisibleSettingsTabs } from "./use-settings-tabs";
 
-export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
+function CompactSettingsSubnav({ group }: { group: SettingsGroupKey }) {
+  const t = useT();
+  const { org } = useParams({ from: "/shell/$org" });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const tabs = useVisibleSettingsTabs()[group];
+  const { titleKey } = SETTINGS_TAB_GROUPS[group];
+
+  return (
+    <>
+      <Page.Title>{t(titleKey)}</Page.Title>
+      {tabs.length > 1 && (
+        <Panel.Toolbar.Left.Portal>
+          <Page.Tabs
+            data-testid="settings-subnav"
+            aria-label={t("settings.subnav.ariaLabel")}
+          >
+            {tabs.map((tab) => {
+              const to = tab.to.replace("$org", org);
+              const isActive = pathname === to || pathname.startsWith(`${to}/`);
+              return (
+                <Page.Tab key={tab.key} active={isActive} asChild>
+                  <Link
+                    to={tab.to}
+                    params={{ org }}
+                    onClick={() =>
+                      track("settings_subnav_clicked", {
+                        group_key: group,
+                        tab_key: tab.key,
+                      })
+                    }
+                  >
+                    {t(tab.labelKey)}
+                  </Link>
+                </Page.Tab>
+              );
+            })}
+          </Page.Tabs>
+        </Panel.Toolbar.Left.Portal>
+      )}
+    </>
+  );
+}
+
+function ClassicSettingsSubnav({ group }: { group: SettingsGroupKey }) {
   const t = useT();
   const { org } = useParams({ from: "/shell/$org" });
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -62,5 +107,14 @@ export function SettingsSubnav({ group }: { group: SettingsGroupKey }) {
         </nav>
       )}
     </div>
+  );
+}
+
+export function SettingsSubnav(props: { group: SettingsGroupKey }) {
+  const compact = useCompactPageLayout();
+  return compact ? (
+    <CompactSettingsSubnav {...props} />
+  ) : (
+    <ClassicSettingsSubnav {...props} />
   );
 }

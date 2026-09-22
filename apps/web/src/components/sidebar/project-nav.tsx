@@ -9,11 +9,13 @@
 import type { ReactNode } from "react";
 import {
   BarChartSquare02,
+  Beaker02,
   CheckDone01,
   Globe02,
   Grid01,
   Image01,
   Lightning01,
+  Lock01,
   Monitor01,
   Server01,
 } from "@untitledui/icons";
@@ -30,6 +32,7 @@ import {
   parseAutomationTabId,
 } from "@/layouts/main-panel-tabs/tab-id";
 import { isSurfaceTab } from "@/layouts/main-panel-tabs/source-system-tabs";
+import { useTabLocked } from "./use-tab-locked";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
@@ -88,6 +91,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const leafPath = useLeafRoutePath();
   const activeTabId = useActivePanelTabId();
   const nativeViews = useProjectNativeViewPresence(project);
+  const isLocked = useTabLocked();
   const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
 
   if (!project) return null;
@@ -146,6 +150,10 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
       label: t("common.mainPanelTabs.cdn"),
       icon: <Globe02 size={16} />,
     },
+    experiments: {
+      label: t("experiments.title"),
+      icon: <Beaker02 size={16} />,
+    },
   };
   for (const viewId of PROJECT_NATIVE_VIEW_IDS) {
     if (!selectedViews.has(viewId)) continue;
@@ -201,7 +209,7 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     });
   }
 
-  const onProject = leafPath === DESTINATION_ROUTE.agents;
+  const onProject = leafPath.startsWith(DESTINATION_ROUTE.projects);
 
   return (
     <SidebarMenu className="gap-1">
@@ -212,6 +220,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
           label={view.label}
           dataTour={view.dataTour}
           isActive={onProject && view.isActive(activeTabId)}
+          trailing={
+            isLocked(view.panel) ? (
+              <Lock01 size={14} className="text-muted-foreground" />
+            ) : undefined
+          }
           /** No `link`, so this renders a button: these resolve a SESSION,
            *  reusing an empty thread of the right runtime or minting one. The
            *  destination id is not knowable at render time, so there is no

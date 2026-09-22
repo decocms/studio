@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
@@ -170,11 +170,10 @@ export const BLOG_FORMAT_SUGGEST = defineTool({
       `## Your task\nPropose at most ${input.count} formats.`,
     ].join("\n\n");
 
-    const { object } = await generateObject({
+    const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: z.object({ formats: z.array(FormatSchema) }),
       system: SYSTEM,
-      temperature: 0.6,
       prompt,
     });
 

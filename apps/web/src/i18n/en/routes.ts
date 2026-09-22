@@ -16,150 +16,149 @@ export const routes = {
   "routes.agentsList.noAgentsYet": "No projects yet",
   "routes.agentsList.searchPlaceholder": "Search for a project...",
   "routes.agentsList.title": "Projects",
-  "routes.commerceOnboarding.authCopy.accountExists":
+  "routes.reportsOnboarding.authCopy.accountExists":
     "An account with this email already exists. Try signing in instead.",
-  "routes.commerceOnboarding.authCopy.alreadyHaveAccount":
+  "routes.reportsOnboarding.authCopy.alreadyHaveAccount":
     "Already have an account? ",
-  "routes.commerceOnboarding.authCopy.authenticationFailed":
+  "routes.reportsOnboarding.authCopy.authenticationFailed":
     "Authentication failed",
-  "routes.commerceOnboarding.authCopy.backToSignIn": "Back to sign in",
-  "routes.commerceOnboarding.authCopy.codeSentTo": "Code sent to {email}",
-  "routes.commerceOnboarding.authCopy.continue": "Continue",
-  "routes.commerceOnboarding.authCopy.continueWith": "Continue with {provider}",
-  "routes.commerceOnboarding.authCopy.creatingAccount": "Creating account...",
-  "routes.commerceOnboarding.authCopy.defaultSubtitle":
+  "routes.reportsOnboarding.authCopy.backToSignIn": "Back to sign in",
+  "routes.reportsOnboarding.authCopy.codeSentTo": "Code sent to {email}",
+  "routes.reportsOnboarding.authCopy.continue": "Continue",
+  "routes.reportsOnboarding.authCopy.continueWith": "Continue with {provider}",
+  "routes.reportsOnboarding.authCopy.creatingAccount": "Creating account...",
+  "routes.reportsOnboarding.authCopy.defaultSubtitle":
     "Sign in or create a new account",
-  "routes.commerceOnboarding.authCopy.divider": "or",
-  "routes.commerceOnboarding.authCopy.dontHaveAccount":
+  "routes.reportsOnboarding.authCopy.divider": "or",
+  "routes.reportsOnboarding.authCopy.dontHaveAccount":
     "Don't have an account? ",
-  "routes.commerceOnboarding.authCopy.emailLabel": "Email",
-  "routes.commerceOnboarding.authCopy.emailPlaceholder": "Email address",
-  "routes.commerceOnboarding.authCopy.enterCodePlaceholder": "Enter code",
-  "routes.commerceOnboarding.authCopy.forgotPassword": "Forgot password?",
-  "routes.commerceOnboarding.authCopy.genericError":
+  "routes.reportsOnboarding.authCopy.emailLabel": "Email",
+  "routes.reportsOnboarding.authCopy.emailPlaceholder": "Email address",
+  "routes.reportsOnboarding.authCopy.enterCodePlaceholder": "Enter code",
+  "routes.reportsOnboarding.authCopy.forgotPassword": "Forgot password?",
+  "routes.reportsOnboarding.authCopy.genericError":
     "Something went wrong. Please try again.",
-  "routes.commerceOnboarding.authCopy.invalidCode": "Invalid code",
-  "routes.commerceOnboarding.authCopy.invalidEmail": "Invalid email",
-  "routes.commerceOnboarding.authCopy.invalidEmailOrPassword":
+  "routes.reportsOnboarding.authCopy.invalidCode": "Invalid code",
+  "routes.reportsOnboarding.authCopy.invalidEmail": "Invalid email",
+  "routes.reportsOnboarding.authCopy.invalidEmailOrPassword":
     "Invalid email or password. Please try again.",
-  "routes.commerceOnboarding.authCopy.invalidOrExpiredCode":
+  "routes.reportsOnboarding.authCopy.invalidOrExpiredCode":
     "Invalid or expired code. Please try again.",
-  "routes.commerceOnboarding.authCopy.nameLabel": "Name",
-  "routes.commerceOnboarding.authCopy.namePlaceholder": "Your name",
-  "routes.commerceOnboarding.authCopy.networkError":
+  "routes.reportsOnboarding.authCopy.nameLabel": "Name",
+  "routes.reportsOnboarding.authCopy.namePlaceholder": "Your name",
+  "routes.reportsOnboarding.authCopy.networkError":
     "Network error. Check your connection and try again.",
-  "routes.commerceOnboarding.authCopy.otpSendFailed": "Could not send code",
-  "routes.commerceOnboarding.authCopy.passwordLabel": "Password",
-  "routes.commerceOnboarding.authCopy.resetEmailFailed":
+  "routes.reportsOnboarding.authCopy.otpSendFailed": "Could not send code",
+  "routes.reportsOnboarding.authCopy.passwordLabel": "Password",
+  "routes.reportsOnboarding.authCopy.resetEmailFailed":
     "Could not send reset email",
-  "routes.commerceOnboarding.authCopy.resetEmailSent":
+  "routes.reportsOnboarding.authCopy.resetEmailSent":
     "Check your email to reset your password.",
-  "routes.commerceOnboarding.authCopy.resetPasswordSubtitle":
+  "routes.reportsOnboarding.authCopy.resetPasswordSubtitle":
     "We'll send you a reset link",
-  "routes.commerceOnboarding.authCopy.resetPasswordTitle":
-    "Reset your password",
-  "routes.commerceOnboarding.authCopy.sendCode": "Send code",
-  "routes.commerceOnboarding.authCopy.sendResetLink": "Send reset link",
-  "routes.commerceOnboarding.authCopy.sending": "Sending...",
-  "routes.commerceOnboarding.authCopy.signIn": "Sign in",
-  "routes.commerceOnboarding.authCopy.signInFailed": "Sign in failed",
-  "routes.commerceOnboarding.authCopy.signInWithEmailCode":
+  "routes.reportsOnboarding.authCopy.resetPasswordTitle": "Reset your password",
+  "routes.reportsOnboarding.authCopy.sendCode": "Send code",
+  "routes.reportsOnboarding.authCopy.sendResetLink": "Send reset link",
+  "routes.reportsOnboarding.authCopy.sending": "Sending...",
+  "routes.reportsOnboarding.authCopy.signIn": "Sign in",
+  "routes.reportsOnboarding.authCopy.signInFailed": "Sign in failed",
+  "routes.reportsOnboarding.authCopy.signInWithEmailCode":
     "Sign in with email code",
-  "routes.commerceOnboarding.authCopy.signInWithPassword":
+  "routes.reportsOnboarding.authCopy.signInWithPassword":
     "Sign in with password",
-  "routes.commerceOnboarding.authCopy.signUp": "Create account",
-  "routes.commerceOnboarding.authCopy.signUpFailed": "Sign up failed",
-  "routes.commerceOnboarding.authCopy.signingIn": "Signing in...",
-  "routes.commerceOnboarding.authCopy.tooManyAttempts":
+  "routes.reportsOnboarding.authCopy.signUp": "Create account",
+  "routes.reportsOnboarding.authCopy.signUpFailed": "Sign up failed",
+  "routes.reportsOnboarding.authCopy.signingIn": "Signing in...",
+  "routes.reportsOnboarding.authCopy.tooManyAttempts":
     "Too many attempts. Wait a moment and try again.",
-  "routes.commerceOnboarding.authCopy.useDifferentEmail":
+  "routes.reportsOnboarding.authCopy.useDifferentEmail":
     "Use a different email",
-  "routes.commerceOnboarding.authCopy.verificationCodeLabel":
+  "routes.reportsOnboarding.authCopy.verificationCodeLabel":
     "Verification code",
-  "routes.commerceOnboarding.authCopy.verificationCodeTitle":
+  "routes.reportsOnboarding.authCopy.verificationCodeTitle":
     "Enter verification code",
-  "routes.commerceOnboarding.authCopy.verify": "Verify",
-  "routes.commerceOnboarding.authCopy.verifying": "Verifying...",
-  "routes.commerceOnboarding.authCopy.welcomeTitle": "Welcome to deco",
-  "routes.commerceOnboarding.chooseOrg": "Choose an organization",
-  "routes.commerceOnboarding.commerceDiagnostic": "Commerce diagnostic",
-  "routes.commerceOnboarding.commerceDiscoveryBeingPrepared":
-    "Commerce Discovery is being prepared for {url}.",
-  "routes.commerceOnboarding.configurationFailed":
-    "Commerce Discovery configuration failed.",
-  "routes.commerceOnboarding.configurationWillContinueIn":
+  "routes.reportsOnboarding.authCopy.verify": "Verify",
+  "routes.reportsOnboarding.authCopy.verifying": "Verifying...",
+  "routes.reportsOnboarding.authCopy.welcomeTitle": "Welcome to deco",
+  "routes.reportsOnboarding.chooseOrg": "Choose an organization",
+  "routes.reportsOnboarding.commerceDiagnostic": "Commerce diagnostic",
+  "routes.reportsOnboarding.reportsBeingPrepared":
+    "Reports is being prepared for {url}.",
+  "routes.reportsOnboarding.configurationFailed":
+    "Reports configuration failed.",
+  "routes.reportsOnboarding.configurationWillContinueIn":
     "Commerce setup will continue in {orgName}.",
-  "routes.commerceOnboarding.couldNotDetermineOrg":
+  "routes.reportsOnboarding.couldNotDetermineOrg":
     "We could not determine a commerce organization for this account.",
-  "routes.commerceOnboarding.couldNotFindOrg":
+  "routes.reportsOnboarding.couldNotFindOrg":
     "We could not find that organization in your account.",
-  "routes.commerceOnboarding.couldNotLoadOrgs":
+  "routes.reportsOnboarding.couldNotLoadOrgs":
     "Could not load your organizations",
-  "routes.commerceOnboarding.couldNotPrepareOrg":
+  "routes.reportsOnboarding.couldNotPrepareOrg":
     "Could not prepare an organization for commerce setup. Try again from this page or contact support.",
-  "routes.commerceOnboarding.couldNotVerifyCommerceSetting":
-    "Unable to verify Commerce Discovery configuration.",
-  "routes.commerceOnboarding.createNewOrg": "Create new organization",
-  "routes.commerceOnboarding.emailAccessMultipleOrgs":
+  "routes.reportsOnboarding.couldNotVerifyCommerceSetting":
+    "Unable to verify Reports configuration.",
+  "routes.reportsOnboarding.createNewOrg": "Create new organization",
+  "routes.reportsOnboarding.emailAccessMultipleOrgs":
     "Your email can access more than one organization. Choose where commerce setup should continue.",
-  "routes.commerceOnboarding.onboardingNeedsSupport":
+  "routes.reportsOnboarding.onboardingNeedsSupport":
     "Commerce onboarding needs support",
-  "routes.commerceOnboarding.onboardingUnavailable":
+  "routes.reportsOnboarding.onboardingUnavailable":
     "Commerce onboarding unavailable",
-  "routes.commerceOnboarding.orgNotFound": "Organization not found",
-  "routes.commerceOnboarding.retryAgain": "Try again",
-  "routes.commerceOnboarding.retryToConfigureCommerce":
+  "routes.reportsOnboarding.orgNotFound": "Organization not found",
+  "routes.reportsOnboarding.retryAgain": "Try again",
+  "routes.reportsOnboarding.retryToConfigureCommerce":
     "Try again to continue commerce setup from this page.",
-  "routes.commerceOnboarding.selectWhereCommerceContinues":
+  "routes.reportsOnboarding.selectWhereCommerceContinues":
     "Select where the commerce diagnostic should continue.",
-  "routes.commerceOnboarding.siteUrl.enterUrl": "Enter a website URL.",
-  "routes.commerceOnboarding.siteUrl.enterValidUrl":
+  "routes.reportsOnboarding.siteUrl.enterUrl": "Enter a website URL.",
+  "routes.reportsOnboarding.siteUrl.enterValidUrl":
     "Enter a valid website URL.",
-  "routes.commerceOnboarding.siteUrl.useHttpOrHttps":
+  "routes.reportsOnboarding.siteUrl.useHttpOrHttps":
     "Use an HTTP or HTTPS website URL.",
-  "routes.commerceOnboarding.siteUrlLabel": "Site URL",
-  "routes.commerceOnboarding.siteUrlPlaceholder": "https://example.com",
-  "routes.commerceOnboarding.unlockDiagnostic": "Unlock your full diagnostic",
-  "routes.commerceOnboarding.loading.preparingWorkspace":
+  "routes.reportsOnboarding.siteUrlLabel": "Site URL",
+  "routes.reportsOnboarding.siteUrlPlaceholder": "https://example.com",
+  "routes.reportsOnboarding.unlockDiagnostic": "Unlock your full diagnostic",
+  "routes.reportsOnboarding.loading.preparingWorkspace":
     "Preparing your commerce workspace...",
-  "routes.commerceOnboarding.loading.preparing": "Preparing...",
-  "routes.commerceOnboarding.scheduleMeeting.headline": "Need help? Talk to us",
-  "routes.commerceOnboarding.scheduleMeeting.body":
+  "routes.reportsOnboarding.loading.preparing": "Preparing...",
+  "routes.reportsOnboarding.scheduleMeeting.headline": "Need help? Talk to us",
+  "routes.reportsOnboarding.scheduleMeeting.body":
     "Schedule a call and we'll help you connect your tools.",
-  "routes.commerceOnboarding.scheduleMeeting.scheduleButton":
+  "routes.reportsOnboarding.scheduleMeeting.scheduleButton":
     "Schedule a meeting",
-  "routes.commerceOnboarding.scheduleMeeting.expertAlt": "deco specialist",
-  "routes.commerceOnboarding.connectModal.dialogTitle":
+  "routes.reportsOnboarding.scheduleMeeting.expertAlt": "deco specialist",
+  "routes.reportsOnboarding.connectModal.dialogTitle":
     "Connect your tools to see the full diagnostic",
-  "routes.commerceOnboarding.connectModal.loadError":
+  "routes.reportsOnboarding.connectModal.loadError":
     "Could not load integrations. You can continue and open the report anyway.",
-  "routes.commerceOnboarding.connectModal.continueButton": "Continue",
-  "routes.commerceOnboarding.connectModal.couldNotGenerateReport":
+  "routes.reportsOnboarding.connectModal.continueButton": "Continue",
+  "routes.reportsOnboarding.connectModal.couldNotGenerateReport":
     "Could not generate the report for this site. Reload the page and try again.",
-  "routes.commerceOnboarding.connectModal.somethingWentWrong":
+  "routes.reportsOnboarding.connectModal.somethingWentWrong":
     "Something went wrong generating your report. Try again in a moment.",
-  "routes.commerceOnboarding.connectModal.openingReport": "Opening report...",
-  "routes.commerceOnboarding.connectModal.viewDiagnostic": "View diagnostic",
-  "routes.commerceOnboarding.connectModal.skip": "Skip",
-  "routes.commerceOnboarding.connectModal.close": "Close",
-  "routes.commerceOnboarding.connectModal.quote":
+  "routes.reportsOnboarding.connectModal.openingReport": "Opening report...",
+  "routes.reportsOnboarding.connectModal.viewDiagnostic": "View diagnostic",
+  "routes.reportsOnboarding.connectModal.skip": "Skip",
+  "routes.reportsOnboarding.connectModal.close": "Close",
+  "routes.reportsOnboarding.connectModal.quote":
     "I was grinning ear to ear, because we had already spotted all of it, we just didn't know what to do next... you brought a really meaningful perspective on the next steps.",
-  "routes.commerceOnboarding.connectModal.quoteAuthor": "Ágata Esteves",
-  "routes.commerceOnboarding.connectModal.trustRevoke": "Revoke anytime",
-  "routes.commerceOnboarding.connectModal.trustEncrypted": "Encrypted",
-  "routes.commerceOnboarding.connectModal.trustNeverSold": "Never sold",
-  "routes.commerceOnboarding.connectSourcesTab.title": "Connect data sources",
-  "routes.commerceOnboarding.connectSourcesTab.refresh": "Refresh report",
-  "routes.commerceOnboarding.connectSourcesTab.refreshing":
+  "routes.reportsOnboarding.connectModal.quoteAuthor": "Ágata Esteves",
+  "routes.reportsOnboarding.connectModal.trustRevoke": "Revoke anytime",
+  "routes.reportsOnboarding.connectModal.trustEncrypted": "Encrypted",
+  "routes.reportsOnboarding.connectModal.trustNeverSold": "Never sold",
+  "routes.reportsOnboarding.connectSourcesTab.title": "Connect data sources",
+  "routes.reportsOnboarding.connectSourcesTab.refresh": "Refresh report",
+  "routes.reportsOnboarding.connectSourcesTab.refreshing":
     "Refreshing report...",
-  "routes.commerceOnboarding.companionSection.title":
+  "routes.reportsOnboarding.companionSection.title":
     "Connect your tools to see the full diagnostic",
-  "routes.commerceOnboarding.companionSection.loadError":
+  "routes.reportsOnboarding.companionSection.loadError":
     "Could not load companion integrations.",
-  "routes.commerceOnboarding.companionSection.loadErrorDescription":
+  "routes.reportsOnboarding.companionSection.loadErrorDescription":
     "Something went wrong loading your integrations.",
-  "routes.commerceOnboarding.companionSection.retry": "Try again",
-  "routes.commerceOnboarding.companionSection.statusUnavailable":
+  "routes.reportsOnboarding.companionSection.retry": "Try again",
+  "routes.reportsOnboarding.companionSection.statusUnavailable":
     "We couldn't verify your Google connections right now — sources you already connected may show as disconnected. You can still continue.",
   "routes.oauthCallback.authenticationComplete": "Authentication complete.",
   "routes.oauthCallback.authenticationFailed": "MCP authentication failed",

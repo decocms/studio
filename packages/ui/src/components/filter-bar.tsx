@@ -471,7 +471,7 @@ export function FilterBar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 rounded-lg text-muted-foreground hover:text-foreground"
+            className="h-8 classic:rounded-lg text-muted-foreground hover:text-foreground"
           >
             <Plus size={16} />
             Add filter

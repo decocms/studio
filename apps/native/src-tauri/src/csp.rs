@@ -1,6 +1,6 @@
 //! CSP adaptation for the HTTP-served bundled UI.
 //!
-//! Tauri derives the base policy and injects the entry script hashes.
+//! The declared Tauri policy covers the entry's external, same-origin scripts.
 //! local-api adds the exact sandbox preview origin when it serves
 //! `index.html`. This module only grants the self-test harness its script
 //! injection mechanisms; production never receives these sources.

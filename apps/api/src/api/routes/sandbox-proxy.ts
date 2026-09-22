@@ -35,6 +35,7 @@ import {
 import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
 import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { assertAiBudget } from "../../core/plan-feature-gate";
 import {
   getUserId,
   requireAuth,
@@ -67,8 +68,10 @@ import {
 } from "../../decofile/git-compat";
 import {
   buildLoaderInvokeUrl,
+  isCatalogLoaderResolveType,
   parseLoaderInvokeRequest,
 } from "../../lib/loader-invoke";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import {
   GitPushAuthError,
   parseGithubRepoFromMetadata,
@@ -1169,6 +1172,18 @@ export const createSandboxRoutes = () => {
                     repoGitDiff(client, claim.branch),
                   ]);
                 })();
+        // These two routes are the only ones under /sandbox that spend real
+        // money: each is one `generateText` on the org's gateway credential,
+        // with a prompt the caller sizes (up to the body limit above). They
+        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
+        // them and an org whose bar reads `exhausted` could loop either one.
+        // Fails OPEN when the gateway has no answer, like every other gate.
+        await assertAiBudget(
+          ctx,
+          requireOrganization(ctx).id,
+          "suggesting a commit message",
+        );
+
         const suggestion = await suggestCommitMessageWithLlm(ctx, status, diff);
         return c.json(suggestion, 200, SANDBOX_PROXY_CACHE_HEADERS);
       } catch (err) {
@@ -1258,6 +1273,18 @@ export const createSandboxRoutes = () => {
                     repoGitDiff(client, claim.branch),
                   ]);
                 })();
+        // These two routes are the only ones under /sandbox that spend real
+        // money: each is one `generateText` on the org's gateway credential,
+        // with a prompt the caller sizes (up to the body limit above). They
+        // are plain BFF routes, so `defineTool`'s `requiresAiBudget` never saw
+        // them and an org whose bar reads `exhausted` could loop either one.
+        // Fails OPEN when the gateway has no answer, like every other gate.
+        await assertAiBudget(
+          ctx,
+          requireOrganization(ctx).id,
+          "judging whether a change needs review",
+        );
+
         const verdict = await judgeRequiresReviewWithLlm(
           ctx,
           status,
@@ -1361,6 +1388,67 @@ export const createSandboxRoutes = () => {
       const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
       if (!invoke) {
         return c.json({ error: "Invalid or missing __resolveType" }, 400);
+      }
+
+      const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);
+      return proxyPreviewUpstream(c, invokeUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(invoke.payload),
+        signal: AbortSignal.timeout(30_000),
+      });
+    },
+  );
+
+  /**
+   * Catalog invoke — like `preview-invoke`, but works WITHOUT a running sandbox.
+   * A CMS/no-sandbox session has no runner, so the origin is the site's own
+   * public deco runtime (`resolvePreviewServerUrl(metadata)`) instead of
+   * `runner.getPreviewUrl()`. Because that origin can be PRODUCTION (not the
+   * caller's private sandbox), the resolveType is held to the read-only VTEX
+   * catalog loaders — this is what lets the blog ProductShelf picker browse the
+   * real catalog in local mode.
+   */
+  app.post(
+    "/:virtualMcpId/:branch/catalog-invoke",
+    bodyLimit({
+      maxSize: PREVIEW_INVOKE_MAX_BODY_BYTES,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+    async (c) => {
+      const { runner, claimName, virtualMcpMetadata } = c.get("vmClaim");
+
+      let previewUrl: string | null;
+      try {
+        previewUrl = runner
+          ? await runner.getPreviewUrl(claimName)
+          : resolvePreviewServerUrl(virtualMcpMetadata);
+      } catch {
+        return c.json({ error: "Preview not available" }, 502);
+      }
+      if (!previewUrl) {
+        return c.json({ error: "Preview not available" }, 502);
+      }
+
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
+
+      const invoke = parseLoaderInvokeRequest(body as Record<string, unknown>);
+      if (!invoke) {
+        return c.json({ error: "Invalid or missing __resolveType" }, 400);
+      }
+      if (!isCatalogLoaderResolveType(invoke.resolveType)) {
+        return c.json({ error: "resolveType not allowed" }, 403);
       }
 
       const invokeUrl = buildLoaderInvokeUrl(previewUrl, invoke.resolveType);

@@ -9,15 +9,23 @@
 
 import type { ReactNode } from "react";
 import type { LinkProps } from "@tanstack/react-router";
-import { BarChartSquare02, Columns03, Folder, Home02 } from "@untitledui/icons";
+import {
+  BarChartSquare02,
+  Columns03,
+  Folder,
+  Home02,
+  Lock01,
+} from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
+import { useTabLocked } from "./use-tab-locked";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useProjectContext } from "@/sdk";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import {
   DESTINATION_ROUTE,
+  PROJECT_ROUTE,
   routeExistsInScope,
   useLeafRoutePath,
 } from "@/hooks/use-destination-route";
@@ -144,9 +152,16 @@ function useNavDestinations(): NavDestination[] {
             icon: <Home02 size={16} />,
             isActive:
               leafPath === DESTINATION_ROUTE.home ||
-              leafPath === DESTINATION_ROUTE.orgIndex,
+              leafPath === DESTINATION_ROUTE.orgIndex ||
+              leafPath === PROJECT_ROUTE.root ||
+              leafPath === `${PROJECT_ROUTE.root}/`,
             trackAs: "overview",
-            link: { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
+            link: scopeId
+              ? {
+                  to: PROJECT_ROUTE.root,
+                  params: { org: org.slug, agentId: scopeId },
+                }
+              : { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
           },
     reports:
       routeExistsInScope(DESTINATION_ROUTE.reports, scopeId) &&
@@ -156,9 +171,16 @@ function useNavDestinations(): NavDestination[] {
             key: "reports",
             label: t("sidebar.navDestinations.reports"),
             icon: <BarChartSquare02 size={16} />,
-            isActive: leafPath === DESTINATION_ROUTE.reports,
+            isActive:
+              leafPath === DESTINATION_ROUTE.reports ||
+              leafPath === PROJECT_ROUTE.reports,
             trackAs: "reports",
-            link: { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
+            link: scopeId
+              ? {
+                  to: PROJECT_ROUTE.reports,
+                  params: { org: org.slug, agentId: scopeId },
+                }
+              : { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
           }
         : null,
     board:
@@ -168,15 +190,21 @@ function useNavDestinations(): NavDestination[] {
             key: "board",
             label: t("sidebar.navDestinations.tasks"),
             icon: <Columns03 size={16} />,
-            isActive: leafPath === DESTINATION_ROUTE.tasks,
+            isActive:
+              leafPath === DESTINATION_ROUTE.tasks ||
+              leafPath === PROJECT_ROUTE.tasks,
             trackAs: "board",
             dataTour: LAYOUT_TOUR_ANCHORS.tasks,
             link: {
-              to: DESTINATION_ROUTE.tasks,
+              to: scopeId ? PROJECT_ROUTE.tasks : DESTINATION_ROUTE.tasks,
               /** Explicitly cleared: params merge with the current match, so an open
                *  card would otherwise keep its segment and this link would go
                *  nowhere. Tasks means the lanes. */
-              params: { org: org.slug, taskKey: undefined },
+              params: {
+                org: org.slug,
+                agentId: scopeId ?? undefined,
+                taskKey: undefined,
+              },
               /** Entering a project SEEDS the board's Project filter with it — a
                *  hint on entry, not a lock: clearing the filter stays cleared
                *  until you enter the project again. The `?repo=` value is a
@@ -205,7 +233,7 @@ function useNavDestinations(): NavDestination[] {
   );
 }
 
-/** The destination list. New chat lives in the panel header (NewChatCrumb) and
+/** The destination list. Chat opens from the sidebar header, and
  *  chat search lives in the chat panel's threads menu, so this renders
  *  destinations only. Collapsed, it becomes an icon rail — `SidebarNavRow`
  *  supplies the tooltips and the accessible names. */
@@ -215,6 +243,7 @@ export function NavDestinationsContent({
   onNavigate?: () => void;
 }) {
   const destinations = useNavDestinations();
+  const isLocked = useTabLocked();
 
   return (
     <SidebarMenu className="gap-1">
@@ -226,6 +255,11 @@ export function NavDestinationsContent({
           dataTour={item.dataTour}
           isActive={item.isActive}
           link={item.link}
+          trailing={
+            isLocked(item.key) ? (
+              <Lock01 size={14} className="text-muted-foreground" />
+            ) : undefined
+          }
           onSelect={() => {
             track("nav_destination_clicked", { destination: item.trackAs });
             onNavigate?.();

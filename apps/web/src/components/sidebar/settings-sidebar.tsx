@@ -1,3 +1,4 @@
+import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 /** The settings sidebar: what the settings tree puts in `SidebarShell`'s four
  *  slots, on desktop and in the mobile sheet. It is the same shell, the same
  *  header and the same row primitive the org sidebar uses — settings should
@@ -12,14 +13,12 @@ import { authClient } from "@/lib/auth-client";
 import { track } from "@/lib/posthog-client";
 import { clearPersistedQueryCache } from "@/lib/query-persist";
 import { useProjectContext } from "@/sdk";
-import { SidebarPickerHeaderMobile } from "./header";
 import { SidebarBackRow, SidebarNavRow } from "./nav-row";
 import {
   type SettingsNavGroup,
   useIsActiveSettingsPath,
   useSettingsSidebarGroups,
 } from "./settings-nav-items";
-import { SidebarShell } from "./shell";
 
 /** Open/closed state for the collapsible groups. A group starts open when it
  *  holds the page you're on, so a deep link into Advanced never lands you in a
@@ -65,7 +64,7 @@ function SettingsGroupHeading({
       onClick={onToggle}
       aria-expanded={open}
       className={cn(
-        "flex w-full items-center gap-1 rounded-md hover:text-muted-foreground",
+        "flex w-full items-center gap-1 classic:rounded-md compact:rounded-lg hover:text-muted-foreground",
         style,
       )}
     >
@@ -93,6 +92,7 @@ function SettingsNavIcon({ icon, badge }: { icon: ReactNode; badge?: number }) {
  *  disclosure. A fragment, so both stay direct children of the shell's body and
  *  `mt-auto` has the shell's free space to push against. */
 export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
+  const collapsed = useSidebarCollapsed();
   const t = useT();
   const groups = useSettingsSidebarGroups();
   const { org, isActive } = useIsActiveSettingsPath();
@@ -102,7 +102,7 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
     <>
       {groups.map((group, i) => (
         <div key={group.key} className="flex flex-col">
-          {group.label && (
+          {group.label && !collapsed && (
             <SettingsGroupHeading
               group={group}
               open={isOpen(group)}
@@ -110,7 +110,7 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
               className={cn("px-2 pt-1.5 pb-0.5", i > 0 && "mt-3")}
             />
           )}
-          {isOpen(group) && (
+          {(collapsed || isOpen(group)) && (
             <SidebarMenu className="gap-0.5">
               {group.items.map((item) => (
                 <SidebarNavRow
@@ -135,8 +135,8 @@ export function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       ))}
 
-      <div className="mt-auto flex flex-col">
-        <div className="mx-2 my-2 border-t border-border/50" />
+      <div className="mt-auto flex flex-col compact:pt-4">
+        <div className="mx-2 my-2 border-t border-border/50 compact:hidden" />
         <SidebarMenu className="gap-0.5">
           <SidebarNavRow
             icon={
@@ -184,32 +184,10 @@ export function SettingsBackRow({ onNavigate }: { onNavigate?: () => void }) {
 
 export function SettingsVersion() {
   return (
-    <div className="px-4 pb-1">
+    <div className="px-4 pb-1 group-data-[state=collapsed]/sidebar:hidden">
       <span className="text-xs text-muted-foreground/50">
         v{__STUDIO_VERSION__}
       </span>
     </div>
-  );
-}
-
-/** The mobile sheet: the same four slots as desktop, with the shared mobile
- *  header strip — the SAME picker, so org and project can be switched from
- *  settings exactly as from anywhere else, and a close button in place of the
- *  desktop collapse toggle. It carries no agent switcher: that reads the thread
- *  manager, which this route tree does not mount.
- *
- *  The back row is NOT optional here. Settings is its own route tree, so none
- *  of the org's destinations are reachable from inside it, and the toolbar this
- *  sheet hangs off carries only the hamburger — without this row a phone can
- *  leave settings only with the browser's back button. */
-export function SettingsSidebarMobile({ onClose }: { onClose: () => void }) {
-  return (
-    <SidebarShell
-      sheet
-      header={<SidebarPickerHeaderMobile onClose={onClose} />}
-      back={<SettingsBackRow onNavigate={onClose} />}
-      body={<SettingsNav onNavigate={onClose} />}
-      footer={<SettingsVersion />}
-    />
   );
 }

@@ -49,4 +49,30 @@ describe("parseSkillMd", () => {
     expect(parseSkillMd("").description).toBeNull();
     expect(parseSkillMd("").name).toBeNull();
   });
+
+  // Hiding a skill from the model on a typo is the failure nobody would go
+  // looking for — the skill just quietly stops being offered. So only an
+  // explicit `true` hides it, and everything else stays discoverable.
+  describe("disable-model-invocation", () => {
+    const parse = (fm: string) =>
+      parseSkillMd(`---\nname: x\n${fm}\n---\nBody.\n`).disableModelInvocation;
+
+    it("is set only by an explicit true", () => {
+      expect(parse("disable-model-invocation: true")).toBe(true);
+    });
+
+    it("stays off for anything else", () => {
+      expect(parse("disable-model-invocation: false")).toBe(false);
+      expect(parse("disable-model-invocation: yes")).toBe(false);
+      expect(parse("disable-model-invocation: TRUE")).toBe(false);
+      expect(parse("disable_model_invocation: true")).toBe(false);
+      expect(parse("name: x")).toBe(false);
+    });
+
+    it("is off for a file with no frontmatter at all", () => {
+      expect(parseSkillMd("# Plain\n\nBody.\n").disableModelInvocation).toBe(
+        false,
+      );
+    });
+  });
 });

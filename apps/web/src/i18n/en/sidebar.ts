@@ -1,4 +1,5 @@
 export const sidebar = {
+  "sidebar.projects.addProject": "Add project",
   "sidebar.archiveWorktreeDialog.cancel": "Cancel",
   "sidebar.archiveWorktreeDialog.confirm": "Continue",
   "sidebar.archiveWorktreeDialog.reclaimFailed":
@@ -16,7 +17,7 @@ export const sidebar = {
   "sidebar.navDestinations.library": "Library",
   "sidebar.navDestinations.reports": "Reports",
   "sidebar.navDestinations.settings": "Settings",
-  "sidebar.navDestinations.tasks": "Tasks",
+  "sidebar.navDestinations.tasks": "Board",
   "sidebar.projectNav.automations": "Automations",
   "sidebar.projectNav.siteEditor": "Site Editor",
   "sidebar.projects.heading": "Projects",
@@ -34,12 +35,10 @@ export const sidebar = {
   "sidebar.picker.title": "Organizations and projects",
   "sidebar.picker.moreExist":
     "More projects than fit here \u2014 keep typing to narrow",
-  "sidebar.picker.verbLeaves": "\u00b7 leaves {name}",
   "sidebar.picker.verbTravel": "Open {name}",
   "sidebar.showMoreButton.ariaLabel": "Show more tasks",
   "sidebar.showMoreButton.loading": "Loading…",
   "sidebar.showMoreButton.showMore": "Show more",
-  "sidebar.sidebarFooter.addConnection": "Add connection",
   "sidebar.sidebarFooter.inviteMembers": "Invite members",
   "sidebar.sidebarResizeHandle.ariaLabel": "Resize sidebar",
   "sidebar.sidebarResizeHandle.title": "Drag to resize, double-click to reset",
@@ -56,6 +55,7 @@ export const sidebar = {
   "sidebar.taskGroupsList.typeChats": "Chats",
   "sidebar.taskGroupsList.viewList": "List",
   "sidebar.taskGroupsList.viewStatus": "Status",
+  "sidebar.taskGroupsList.toggleStatusGroup": "Toggle {status} group",
   "sidebar.inbox.title": "Inbox",
   "sidebar.inbox.markAllRead": "Mark all read",
   "sidebar.inbox.emptyTitle": "Nothing here yet",

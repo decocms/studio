@@ -281,6 +281,7 @@ export interface ControlPlaneViews {
   analytics: boolean;
   e2e: boolean;
   monitor: boolean;
+  experiments: boolean;
 }
 
 /**
@@ -312,11 +313,13 @@ export function useControlPlaneViews(): ControlPlaneViews {
   const analyticsFlag = useOrgFlag("deco_analytics_enabled");
   const e2eFlag = useOrgFlag("e2e_enabled");
   const monitorFlag = useOrgFlag("monitor_enabled");
+  const experimentsFlag = useOrgFlag("experiments_enabled");
   return {
     hosting: staffOrLocal || controlPlaneGa || hostingFlag,
     analytics: staffOrLocal || controlPlaneGa || analyticsFlag,
     e2e: staffOrLocal || controlPlaneGa || e2eFlag,
     monitor: staffOrLocal || monitorGa || monitorFlag,
+    experiments: staffOrLocal || controlPlaneGa || experimentsFlag,
   };
 }
 
@@ -397,16 +400,6 @@ export function useUpdateRegistryConfig() {
     mutateAsync: (config: RegistryConfig, options?: OrgSettingsMutateOptions) =>
       mutation.mutateAsync({ registry_config: config }, options),
   };
-}
-
-export interface HomeAgentsWriter {
-  /** The freshest id list, read live from the cache (not a render snapshot). */
-  currentIds: () => string[];
-  /**
-   * Queue a write. `transform` receives the freshest id list and returns the
-   * next one, or `null` to skip (no-op guards like "already on home").
-   */
-  apply: (transform: (ids: string[]) => string[] | null) => Promise<void>;
 }
 
 export function useIsRegistryEnabled(): (connectionId: string) => boolean {

@@ -11,7 +11,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
 import {
   type Crumb,
@@ -60,11 +60,12 @@ export function AvailableSectionEditor({
   ) => void;
 }) {
   const t = useT();
-  const inset = useInsetContext();
-  const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
-      : null;
+  const task = useOptionalChatTask();
+  const sessionAgentId = task?.virtualMcpId;
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
+  const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
 
   const [formValue, setFormValue] = useState<Record<string, unknown>>({});
   const [fieldBreadcrumbs, setFieldBreadcrumbs] = useState<Crumb[]>([]);
@@ -78,7 +79,7 @@ export function AvailableSectionEditor({
       .pop()
       ?.replace(/\.tsx?$/, "") ?? resolveType;
 
-  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const threadId = task?.taskId ?? null;
   const sandbox = {
     orgSlug,
     virtualMcpId,
@@ -130,7 +131,7 @@ export function AvailableSectionEditor({
                       onClick={() => handleBreadcrumbClick(index)}
                       title={crumbText}
                       className={cn(
-                        "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
+                        "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
                         isLast
                           ? "font-medium text-foreground"
                           : "text-muted-foreground",

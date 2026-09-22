@@ -11,12 +11,7 @@ interface Preferences {
   enableSounds: boolean;
   theme: ThemeMode;
   language: Locale;
-  /**
-   * Reveal a settings shortcut on each sidebar project row on hover. Off by
-   * default — the row is a navigation target first, and the shortcut is a
-   * second control competing for the same space.
-   */
-  showProjectSettingsGear: boolean;
+  compactPageLayout: boolean;
   /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
@@ -31,7 +26,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  showProjectSettingsGear: false,
+  compactPageLayout: false,
   shownTaskBoardLanes: [],
 };
 
@@ -91,6 +86,11 @@ export function usePreferences() {
     LOCALSTORAGE_KEYS.preferences(),
     (existing) => {
       const merged = { ...DEFAULT_PREFERENCES, ...existing };
+      // Remove the retired shortcut from existing browser preferences.
+      if ("showProjectSettingsGear" in merged) {
+        delete merged.showProjectSettingsGear;
+      }
+      merged.compactPageLayout = merged.compactPageLayout === true;
       if (!VALID_TOOL_APPROVAL_LEVELS.includes(merged.toolApprovalLevel)) {
         merged.toolApprovalLevel = "auto";
       }
@@ -106,4 +106,9 @@ export function usePreferences() {
       return merged;
     },
   );
+}
+
+export function useCompactPageLayout(): boolean {
+  const [preferences] = usePreferences();
+  return preferences.compactPageLayout;
 }

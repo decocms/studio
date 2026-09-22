@@ -296,6 +296,8 @@ describe("mapInstallation", () => {
     expect(
       mapInstallation({
         id: 77,
+        html_url:
+          "https://github.com/organizations/org_example/settings/installations/77",
         account: {
           id: 9001,
           login: "org_example",
@@ -309,10 +311,12 @@ describe("mapInstallation", () => {
       login: "org_example",
       avatarUrl: "https://avatars.example/9001",
       accountType: "Organization",
+      htmlUrl:
+        "https://github.com/organizations/org_example/settings/installations/77",
     });
   });
 
-  test("tolerates a missing avatar and type", () => {
+  test("tolerates a missing avatar, type and html_url", () => {
     expect(
       mapInstallation({ id: 1, account: { id: 2, login: "someone" } }),
     ).toEqual({
@@ -321,6 +325,7 @@ describe("mapInstallation", () => {
       login: "someone",
       avatarUrl: null,
       accountType: "User",
+      htmlUrl: null,
     });
   });
 

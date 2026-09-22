@@ -428,7 +428,7 @@ function SignInToBeNotified({ domain }: { domain: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-11 w-full items-center justify-center rounded-xl px-5 text-[14px] font-medium transition-transform active:scale-[0.98]"
+        className="flex h-11 w-full items-center justify-center classic:rounded-xl compact:rounded-lg px-5 text-[14px] font-medium transition-transform active:scale-[0.98]"
         style={{ background: DECK.primary, color: DECK.primaryFg }}
       >
         {t("reports.scanGate.anonymousSignIn")}

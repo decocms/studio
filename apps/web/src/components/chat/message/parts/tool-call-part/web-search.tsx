@@ -14,6 +14,7 @@ import { MemoizedMarkdown } from "../../../markdown.tsx";
 import { formatDuration } from "@/lib/format-time.ts";
 import { type UsageStats, type UsageData, getCostFromUsage } from "@/sdk";
 import { parseStudioStorageKey } from "@decocms/shared/harness/studio-storage-uri";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 
 function resolveStorageUri(uri: string, orgSlug: string): string {
   const key = parseStudioStorageKey(uri);
@@ -157,7 +158,7 @@ function SourcesList({ citations }: { citations: Citation[] }) {
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
+          className="inline-flex items-center classic:rounded-md compact:rounded-lg border border-border/50 bg-muted/30 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:border-border hover:text-foreground"
         >
           {expanded
             ? t("chat.webSearch.showLess")
@@ -199,6 +200,7 @@ export function WebSearchPart({
 
   const isLoading = state === "loading";
   const isDone = state !== "loading" && state !== "error";
+  const showModel = useModelDisclosure();
   const citations = result?.citations;
   const usage = extractUsage(result);
 
@@ -242,7 +244,11 @@ export function WebSearchPart({
       }
       summary={
         isDone
-          ? (result?.model ?? input?.query?.slice(0, 60))
+          ? // §6: the model's name is withheld below Ultra. The query is the
+            // org's own input, so it stays as the summary either way — this
+            // only drops the model, it does not blank the card.
+            ((showModel ? result?.model : undefined) ??
+            input?.query?.slice(0, 60))
           : input?.query
             ? `"${input.query.slice(0, 80)}"`
             : undefined

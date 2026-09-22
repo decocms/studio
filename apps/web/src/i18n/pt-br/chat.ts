@@ -1,6 +1,13 @@
 import type { chat as chatEn } from "../en/chat.ts";
 
 export const chat = {
+  "chat.input.taskMode": "Tarefa",
+  "chat.input.startTask": "Iniciar tarefa",
+  "chat.input.taskPlaceholder":
+    "O que precisa ser corrigido? Cole um relato ou anexe uma captura de tela…",
+  "chat.input.taskHint":
+    "Vamos iniciar um agente e enviar um e-mail quando o PR estiver pronto para revisão.",
+
   "chat.agentCreate.agentCreated": "Projeto criado: {name}",
   "chat.agentCreate.cancelled": "Criação de projeto cancelada",
   "chat.agentCreate.couldntCreate": "Não foi possível criar o projeto",
@@ -123,35 +130,20 @@ export const chat = {
   "chat.contextPanel.toolsActive": "ferramentas ativas",
   "chat.contextPanel.usageLabel": "Uso",
   "chat.contextPanel.userPercent": "Usuário {pct}%",
-  "chat.creditsEmptyState.add": "Adicionar",
-  "chat.creditsEmptyState.bestValueLabel": "Melhor custo",
   "chat.creditsEmptyState.description":
     "Seus créditos gratuitos foram utilizados em outro workspace. Adicione créditos para usar IA aqui.",
-  "chat.creditsEmptyState.enterCustomAmount": "Inserir valor personalizado",
-  "chat.creditsEmptyState.opening": "Abrindo...",
-  "chat.creditsEmptyState.popularLabel": "Popular",
   "chat.creditsEmptyState.skipForNow": "Pular por enquanto",
-  "chat.creditsEmptyState.starterLabel": "Iniciante",
   "chat.creditsEmptyState.title": "Este workspace não possui créditos",
-  "chat.creditsEmptyState.topUpFailed": "Falha ao recarregar: {message}",
   "chat.creditsEmptyState.useYourOwnProvider": "Usar seu próprio provedor",
-  "chat.creditsExhaustedBanner.add": "Adicionar",
   "chat.creditsExhaustedBanner.benefit1": "Acesso a 100+ modelos de IA",
   "chat.creditsExhaustedBanner.benefit2":
     "API unificada, sem necessidade de chaves separadas",
   "chat.creditsExhaustedBanner.benefit3": "Pague apenas pelo que usar",
-  "chat.creditsExhaustedBanner.customPlaceholder": "50",
   "chat.creditsExhaustedBanner.description":
     "Seus créditos foram esgotados. Adicione mais para continuar usando IA em todos os seus agentes.",
   "chat.creditsExhaustedBanner.dismiss": "Descartar",
-  "chat.creditsExhaustedBanner.enterCustom": "Inserir valor personalizado",
   "chat.creditsExhaustedBanner.manageProviders": "Gerenciar provedores",
-  "chat.creditsExhaustedBanner.opening": "Abrindo...",
-  "chat.creditsExhaustedBanner.tierBestValue": "Melhor valor",
-  "chat.creditsExhaustedBanner.tierPopular": "Popular",
-  "chat.creditsExhaustedBanner.tierStarter": "Iniciante",
   "chat.creditsExhaustedBanner.title": "Recarregue para continuar criando",
-  "chat.creditsExhaustedBanner.topupError": "Falha na recarga: {error}",
   "chat.decopilot.back": "Voltar",
   "chat.decopilot.couldNotFetchModels":
     "Não foi possível buscar modelos deste provedor.",
@@ -270,6 +262,7 @@ export const chat = {
     "Apenas leitura - você está visualizando o chat de {name}",
   "chat.input.readOnlyThread":
     "Apenas leitura - este chat não aceita respostas",
+  "chat.input.allowanceExhaustedTitle": "Limite de IA esgotado",
   "chat.input.sendMessage": "Enviar mensagem",
   "chat.input.sendMessageEnter": "Enviar mensagem (Enter)",
   "chat.input.stillSendingPreviousMessage":
@@ -527,6 +520,7 @@ export const chat = {
   "chat.webSearch.showMore": "+{count} mais",
   "chat.webSearch.title": "Busca na web",
   "chat.mention.editPrompt": "Editar argumentos do prompt {name}",
+  "chat.mention.openSkill": "Abrir a skill {name}",
   "chat.mention.noItemsFound": "Nenhum item encontrado",
   "chat.modelPreferences.customizeModel": "Personalizar modelo de {tier}",
   "chat.modelPreferences.reset": "Redefinir",
@@ -545,4 +539,11 @@ export const chat = {
   "chat.subscriptionLimit.runsTitle":
     "Esta task atingiu o limite de re-execuções. Crie uma nova task para continuar.",
   "chat.subscriptionLimit.subscribeButton": "Assinar",
+  "chat.planRefused.budgetLabel": "Limite de IA esgotado",
+  "chat.planRefused.budgetTitle":
+    "Esta organização usou 100% do seu limite de IA. Escolha um plano para continuar conversando.",
+  "chat.planRefused.featureLabel": "Fora deste plano",
+  "chat.planRefused.featureTitle":
+    "O plano desta organização não inclui chat. Escolha um plano para continuar conversando.",
+  "chat.planRefused.seePlans": "Ver planos",
 } satisfies Record<keyof typeof chatEn, string>;

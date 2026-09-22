@@ -7,7 +7,7 @@
  */
 
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { DueFilter, TaskFilters } from "./task-filters";
+import type { DueFilter, TaskFilters } from "./task-filters-core";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
 
 export type Layout = "board" | "list";

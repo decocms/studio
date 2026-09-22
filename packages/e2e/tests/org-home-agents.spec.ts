@@ -16,6 +16,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
+import { connectDevDb } from "../fixtures/db";
 
 /** Cold-Vite route compiles are slow on a loaded box, and this crosses the
  *  shell plus a lazy main-panel view. */
@@ -45,6 +46,8 @@ async function createAgent(
   );
   return agent.item.id;
 }
+
+test.use({ compactPageLayout: true });
 
 test.describe("org home — the agent roster", () => {
   test("lists the agents a person made and hides the Studio Pack managers", async ({
@@ -87,10 +90,46 @@ test.describe("org home — the agent roster", () => {
     await expect(page.getByText("No projects yet")).toBeVisible({
       timeout: SHELL_TIMEOUT_MS,
     });
-    /* Named for the repository, not for GitHub: the same control imports a
-       GitLab project, and the picker behind it lists both. */
+    // The project action opens the same provider-neutral repository picker.
     await expect(
-      page.getByRole("button", { name: "Import repository" }),
+      page.getByRole("button", { name: "New Project" }),
     ).toBeVisible();
+  });
+  test("Home shows the CMS training playlist when the organization owns a legacy site", async ({
+    authedPage: { page, user, orgSlug },
+  }, testInfo) => {
+    const db = await connectDevDb();
+    const siteSlug = `training-${orgSlug}`;
+    try {
+      // Legacy sites are imported by deployment administration, not created
+      // through the workspace UI. Seed only this test's organization.
+      await db.query(
+        `INSERT INTO org_sites
+           (slug, organization_id, source, created_by, updated_by)
+         SELECT $1, id, 'manual', $2, $2 FROM organization WHERE slug = $3`,
+        [siteSlug, user.userId, orgSlug],
+      );
+      await page.goto(`/${orgSlug}/home`);
+      const playlist = page
+        .getByTestId("main-panel")
+        .getByRole("link", { name: /CMS training/ });
+      await expect(playlist).toBeVisible({ timeout: SHELL_TIMEOUT_MS });
+      await expect(playlist).toHaveAttribute(
+        "href",
+        "https://www.youtube.com/playlist?list=PLZ4WtTgnJfBw",
+      );
+      await expect(playlist).toHaveAttribute("target", "_blank");
+      await expect(
+        playlist.getByRole("img", { name: "deco CMS training playlist" }),
+      ).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath("home-training.png") });
+    } finally {
+      await db.query(
+        `DELETE FROM org_sites WHERE slug = $1 AND organization_id IN
+           (SELECT id FROM organization WHERE slug = $2)`,
+        [siteSlug, orgSlug],
+      );
+      await db.end();
+    }
   });
 });

@@ -42,6 +42,13 @@ const BUILTIN_TOOL_ANNOTATIONS: Record<
   TASK_BOARD_ITEM_UPDATE: { readOnly: false, destructive: false },
   TASK_BOARD_ITEM_DELETE: { readOnly: false, destructive: true },
   TASK_BOARD_ITEM_PRS_GET: { readOnly: true, destructive: false },
+  TASK_BOARD_ADMIN_ORG_LIST: { readOnly: true, destructive: false },
+  TASK_BOARD_DELIVERY: { readOnly: true, destructive: false },
+  TASK_BOARD_STUCK: { readOnly: true, destructive: false },
+  TASK_BOARD_COST: { readOnly: true, destructive: false },
+  TASK_BOARD_QUALITY: { readOnly: true, destructive: false },
+  TASK_BOARD_ERRORS: { readOnly: true, destructive: false },
+  TASK_BOARD_TENANTS: { readOnly: true, destructive: false },
 };
 import { createReadToolOutputTool } from "@/harnesses/lib/decopilot/built-in-tools/read-tool-output";
 import { type VirtualClient } from "@/harnesses/lib/decopilot/built-in-tools/sandbox";
@@ -234,7 +241,7 @@ async function buildAllTools(
     tools,
     (await isJiraRun(ctx, taskId))
       ? createJiraRunTools(ctx, taskId)
-      : createTaskBoardTools(ctx),
+      : createTaskBoardTools(ctx, toolOutputMap),
   );
   // Agent-management built-ins — the Super Agent is the only agent that has
   // no connections to reach them through, and it is the one asked to create or

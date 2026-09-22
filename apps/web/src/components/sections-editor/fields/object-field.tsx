@@ -4,9 +4,12 @@ import {
   FieldDescriptionTooltip,
   useFieldDescriptionTooltips,
 } from "./field-label";
+import { MissingRequiredDot } from "../missing-required-dot";
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
 import { SchemaForm } from "../schema-form";
+import { useObjectFieldExpansion } from "../object-field-expansion";
+import { useRequiredField } from "./required-field-context";
 
 export function ObjectField({
   schema,
@@ -25,8 +28,14 @@ export function ObjectField({
   onRequestAddSection,
   sandbox,
 }: FieldProps) {
-  const [open, setOpen] = useState(false);
+  // Shared store persists group open state across drill-in/out; local is fallback.
+  const expansion = useObjectFieldExpansion();
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = expansion ? expansion.isExpanded(path) : localOpen;
+  const toggleOpen = () =>
+    expansion ? expansion.toggle(path) : setLocalOpen((prev) => !prev);
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
+  const { required, invalid } = useRequiredField();
   const objValue =
     value != null && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
@@ -79,8 +88,8 @@ export function ObjectField({
         type="button"
         aria-expanded={isOpen}
         aria-controls={contentId}
-        onClick={() => setOpen((prev) => !prev)}
-        className="group flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+        onClick={toggleOpen}
+        className="group flex w-full min-w-0 items-center gap-2 classic:rounded-md compact:rounded-lg py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:text-accent-foreground">
           {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -89,7 +98,12 @@ export function ObjectField({
           description={schema.description}
           virtualMcpId={sandbox?.virtualMcpId}
         >
-          <span className="min-w-0 truncate text-sm font-medium">{label}</span>
+          <span className="min-w-0 truncate text-sm font-medium">
+            {label}
+            {required && invalid && (
+              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+            )}
+          </span>
         </FieldDescriptionTooltip>
       </button>
 

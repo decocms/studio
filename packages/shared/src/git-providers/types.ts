@@ -5,14 +5,16 @@
  * row (the credential holder) whose `type` selects the provider client. Both
  * schemas here are the wire shape the API tools return and the web reads;
  * nothing in them names a GitHub-only concept except the optional
- * `installationId`, which is null for every other provider.
+ * `installationId`, which is null for every other provider. Bitbucket means
+ * Bitbucket Cloud (bitbucket.org); Bitbucket Data Center has a different API
+ * and is not a kind here.
  *
  * Pure module (no DB / network / node deps) so api and web share it.
  */
 
 import { z } from "zod";
 
-export const GIT_PROVIDER_KINDS = ["github", "gitlab"] as const;
+export const GIT_PROVIDER_KINDS = ["github", "gitlab", "bitbucket"] as const;
 export const GitProviderKindSchema = z.enum(GIT_PROVIDER_KINDS);
 export type GitProviderKind = z.infer<typeof GitProviderKindSchema>;
 
@@ -22,8 +24,14 @@ export type GitProviderKind = z.infer<typeof GitProviderKindSchema>;
  *   minted per repository from the App private key. No stored user grant.
  * - `oauth`: a refreshable OAuth grant stored in the account credential row.
  * - `token`: a long-lived personal / project / group access token.
+ * - `github_cli`: local-only credentials read from the selected gh account.
  */
-export const GIT_AUTH_KINDS = ["github_app", "oauth", "token"] as const;
+export const GIT_AUTH_KINDS = [
+  "github_app",
+  "oauth",
+  "token",
+  "github_cli",
+] as const;
 export const GitAuthKindSchema = z.enum(GIT_AUTH_KINDS);
 export type GitAuthKind = z.infer<typeof GitAuthKindSchema>;
 
@@ -56,7 +64,7 @@ export const GitProviderAccountSchema = z.object({
   externalAccountId: z
     .string()
     .describe(
-      "Provider-side account identity: installation id (GitHub App) or user/group id.",
+      "Provider-side account identity: installation id (GitHub App), user/group id (GitLab) or user/workspace uuid (Bitbucket).",
     ),
   login: z.string().describe("Display login of the account/namespace"),
   avatarUrl: z.string().nullable(),

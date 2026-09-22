@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/i18n/use-t";
 import { KEYS } from "@/lib/query-keys";
-import { useInsetContext } from "@/layouts/agent-shell-layout";
+import { useVirtualMCPNonBlocking } from "@/sdk";
 import {
   ChevronDown,
   ChevronLeft,
@@ -177,7 +177,8 @@ export function SectionsEditor({
   onVariantPreviewOverride?: (params: string[] | null) => void;
 }) {
   const t = useT();
-  const threadId = useOptionalChatTask()?.taskId ?? null;
+  const task = useOptionalChatTask();
+  const threadId = task?.taskId ?? null;
   const previewFetchParams = previewReady
     ? { orgSlug, virtualMcpId, branch, threadId, previewUrl }
     : null;
@@ -185,11 +186,11 @@ export function SectionsEditor({
     useDecofile(previewFetchParams);
   const { data: meta, isLoading: metaLoading } =
     useLiveMeta(previewFetchParams);
-  const inset = useInsetContext();
-  const agentSiteSlug =
-    inset?.entity?.id === virtualMcpId
-      ? (inset.entity.metadata?.siteSlug ?? null)
-      : null;
+  const sessionAgentId = task?.virtualMcpId;
+  const agent = useVirtualMCPNonBlocking(
+    sessionAgentId === virtualMcpId ? virtualMcpId : null,
+  );
+  const agentSiteSlug = agent?.metadata?.siteSlug ?? null;
   // Section-gallery previews render against the sandbox dev server, falling
   // back to the Fast Preview production deployment while the sandbox boots.
   const sectionPreviewBase = useSectionPreviewBase({
@@ -2538,7 +2539,7 @@ export function SectionsEditor({
                   title={t("sectionsEditor.sectionsEditor.back")}
                   aria-label={t("sectionsEditor.sectionsEditor.back")}
                   className={cn(
-                    "shrink-0 inline-flex size-6 items-center justify-center rounded-md transition-colors",
+                    "shrink-0 inline-flex size-6 items-center justify-center classic:rounded-md compact:rounded-lg transition-colors",
                     showGlobalBanner
                       ? "text-foreground/80 hover:bg-global-section/15"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -2555,7 +2556,7 @@ export function SectionsEditor({
                     variant: activeVariant.label,
                   })}
                   className={cn(
-                    "shrink-0 inline-flex items-center gap-1 rounded-md h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
+                    "shrink-0 inline-flex items-center gap-1 classic:rounded-md compact:rounded-lg h-6 px-1.5 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80",
                     VARIANT_TAB_ACTIVE_CLASS,
                   )}
                 >
@@ -2595,7 +2596,7 @@ export function SectionsEditor({
                         onClick={() => handleBreadcrumbClick(index)}
                         title={crumbText}
                         className={cn(
-                          "min-w-0 truncate rounded-md px-1 py-0.5 text-left transition-colors",
+                          "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors",
                           isLast
                             ? showGlobalBanner
                               ? "font-semibold text-global-section-fg dark:text-global-section-fg-dark"
@@ -2863,7 +2864,7 @@ export function SectionsEditor({
               <button
                 type="button"
                 onClick={() => setIsVariantRuleOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-2 text-left cursor-pointer rounded-sm py-0.5 hover:bg-muted/40"
+                className="flex w-full items-center justify-between gap-2 text-left cursor-pointer classic:rounded-sm compact:rounded-lg py-0.5 hover:bg-muted/40"
                 aria-expanded={isVariantRuleOpen}
               >
                 <span className="text-xs font-medium text-muted-foreground">
@@ -2921,6 +2922,7 @@ export function SectionsEditor({
               rawSections={rawSections}
               sections={parsedSections}
               meta={meta}
+              decofile={decofile}
               selectedIndex={selectedSectionIndex}
               onSelect={handleSelectSection}
               onReorder={handleReorder}

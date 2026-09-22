@@ -30,7 +30,7 @@ export function ShowMoreButton({
       onClick={onClick}
       disabled={isFetching}
       className={cn(
-        "flex items-center gap-2 py-1.5 rounded-md text-sm text-muted-foreground",
+        "flex items-center gap-2 py-1.5 classic:rounded-md compact:rounded-lg text-sm text-muted-foreground",
         indented ? "-ml-4 pl-6 pr-2" : "px-2",
         "hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         "transition-colors disabled:cursor-progress disabled:opacity-60",

@@ -26,6 +26,7 @@ describe("reserved organization slugs", () => {
       "onboarding",
       "org",
       "report",
+      "reports-onboarding",
       "reset-password",
     ]);
     expect(isReservedOrganizationSlug(" Report ")).toBe(true);

@@ -1,15 +1,5 @@
-/** HeaderTabButton — a tab in the agent-shell header bar. Every tab shows its
- *  icon; the label drops out per `labelCollapse`, on a CONTAINER query against
- *  the enclosing PanelHeader rather than the viewport, because the button cares
- *  how wide its panel is. Active gets the accent background, inactive is muted,
- *  and that skin — colours, transition, focus ring — comes from
- *  `panelButtonChrome`, shared with the icon buttons beside it.
- *
- * Every button is wrapped in a Tooltip so the title stays discoverable in both
- * states — and, once the label is gone, so an icon-only tab is identifiable at
- * all. Tabs whose icon resolves to the generic fallback (see resolve-tab-icon)
- * are otherwise indistinguishable from one another.
- */
+/** Classic panel tab. Icon-bearing tabs collapse their labels with the panel;
+ *  Preview and Content keep their labels and render without an icon. */
 
 import {
   Tooltip,
@@ -42,6 +32,7 @@ export function HeaderTabButton({
   testId,
   tooltip,
   labelCollapse = "later",
+  showIcon = true,
 }: {
   title: string;
   icon: TabIcon;
@@ -75,6 +66,7 @@ export function HeaderTabButton({
    *    tools). Their icon can resolve to the generic fallback, so several open
    *    at once would be indistinguishable; they hold their text longest. */
   labelCollapse?: "sooner" | "later";
+  showIcon?: boolean;
 }) {
   const button = (
     <button
@@ -93,12 +85,14 @@ export function HeaderTabButton({
         className,
       )}
     >
-      <span className="flex size-5 items-center justify-center shrink-0">
-        <TabIconGlyph icon={icon} />
-      </span>
+      {showIcon && (
+        <span className="flex size-5 items-center justify-center shrink-0">
+          <TabIconGlyph icon={icon} />
+        </span>
+      )}
       <span
         className={cn(
-          LABEL_HIDDEN_BELOW[labelCollapse],
+          showIcon && LABEL_HIDDEN_BELOW[labelCollapse],
           "whitespace-nowrap text-sm font-medium leading-none",
         )}
       >

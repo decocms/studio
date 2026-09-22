@@ -100,6 +100,7 @@ export async function createFastPreviewProject(
      * on an outbound connection to a real host.
      */
     connectionUrl?: string;
+    previewServerUrl?: string;
   },
 ): Promise<FastPreviewProject> {
   const {
@@ -164,7 +165,8 @@ export async function createFastPreviewProject(
         title: `${repo} ${Date.now()}`,
         metadata: {
           fastPreview: true,
-          previewServerUrl: `https://${repo}.example.com`,
+          previewServerUrl:
+            params.previewServerUrl ?? `https://${repo}.example.com`,
           githubRepo: {
             owner,
             name: repo,

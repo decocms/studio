@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type Ref, useRef, useState } from "react";
 import type { RepoToolTarget } from "@/lib/github-repo.ts";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -126,6 +126,8 @@ export function BranchPicker({
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<Release | null>(null);
+  // Scroll the selected row into view when the popover opens.
+  const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
 
@@ -206,12 +208,12 @@ export function BranchPicker({
   const saveUnlistedName = () => {
     const next = editName.trim();
     if (next && value) {
-      void createRelease({
+      createRelease({
         branch: value,
         name: next,
         color: nextReleaseColor(releases.length),
         createdAt: new Date().toISOString(),
-      });
+      }).catch(reportReleaseError);
     }
     setEditing(null);
     setEditName("");
@@ -293,7 +295,10 @@ export function BranchPicker({
         className="w-[min(300px,calc(100vw-2rem))] p-1.5"
         align="start"
         // Don't steal focus onto the first row: it fires that row's branch tooltip.
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+        }}
       >
         {spawnsNewChat && (
           <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
@@ -315,7 +320,8 @@ export function BranchPicker({
           />
         ) : (
           <>
-            <div className="flex flex-col">
+            {/* Scroll the list, not the popover: the rows below must stay reachable. */}
+            <div className="always-scrollbar flex max-h-[min(50vh,20rem)] flex-col overflow-y-auto">
               {unlisted &&
                 value &&
                 (editing === value ? (
@@ -327,6 +333,7 @@ export function BranchPicker({
                   />
                 ) : (
                   <ReleaseRow
+                    rowRef={selectedRowRef}
                     dot={releaseDotClass("orange")}
                     label={t("thread.branchPicker.defaultVersionName")}
                     branch={value}
@@ -355,6 +362,7 @@ export function BranchPicker({
                 ) : (
                   <ReleaseRow
                     key={r.branch}
+                    rowRef={r.branch === value ? selectedRowRef : undefined}
                     dot={releaseDotClass(r.color)}
                     label={r.name}
                     branch={r.branch}
@@ -372,7 +380,7 @@ export function BranchPicker({
             <button
               type="button"
               onClick={() => void create()}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="flex w-full items-center gap-2 classic:rounded-md compact:rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <Plus className="h-4 w-4 shrink-0" />
               {t("thread.branchPicker.newVersion")}
@@ -380,7 +388,7 @@ export function BranchPicker({
             <button
               type="button"
               onClick={() => setAdvanced(true)}
-              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="flex w-full items-center justify-between gap-2 classic:rounded-md compact:rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               {t("thread.branchPicker.advanced")}
               <ChevronRight className="h-4 w-4 shrink-0" />
@@ -471,6 +479,7 @@ function RenameInput({
 /** A version row: click to switch, with a ⋯ menu to rename (always) and discard
  *  (only a stored release — an unlisted branch has nothing to discard). */
 function ReleaseRow({
+  rowRef,
   dot,
   label,
   branch,
@@ -479,6 +488,7 @@ function ReleaseRow({
   onRename,
   onDelete,
 }: {
+  rowRef?: Ref<HTMLDivElement>;
   dot: string;
   label: string;
   branch: string;
@@ -490,8 +500,9 @@ function ReleaseRow({
   const t = useT();
   return (
     <div
+      ref={rowRef}
       className={cn(
-        "group flex items-center rounded-md",
+        "group flex items-center classic:rounded-md compact:rounded-lg",
         selected ? "bg-accent" : "hover:bg-accent/60",
       )}
     >

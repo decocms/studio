@@ -11,6 +11,7 @@
  * source, so it can drive a non-TS implementation just as well.
  */
 import { execSync, spawn, type ChildProcess } from "node:child_process";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -452,4 +453,67 @@ export async function writeRepoFile(
     body: JSON.stringify({ path, content }),
   });
   expect(res.status).toBe(200);
+}
+
+// --- Commit signing fixture --------------------------------------------------
+
+function sshUint32(value: number): Buffer {
+  const out = Buffer.alloc(4);
+  out.writeUInt32BE(value);
+  return out;
+}
+
+/** Length-prefixed string, the one primitive the OpenSSH key format is made of. */
+function sshString(value: Buffer | string): Buffer {
+  const body = Buffer.isBuffer(value) ? value : Buffer.from(value);
+  return Buffer.concat([sshUint32(body.length), body]);
+}
+
+/**
+ * A throwaway ed25519 signing keypair, in the formats git wants: an unencrypted
+ * OpenSSH private key and an `ssh-ed25519 …` public line.
+ *
+ * Generated per call rather than committed — a key that looks like a credential
+ * has no business living in a repository, even a synthetic one. Built here
+ * rather than shelled out to `ssh-keygen` so the fixture needs nothing but the
+ * runtime; the daemon under test still calls `ssh-keygen` itself to sign.
+ */
+export function generateSigningKeyPair(comment = "daemon-e2e"): {
+  privateKey: string;
+  publicKey: string;
+} {
+  const { privateKey } = generateKeyPairSync("ed25519");
+  const jwk = privateKey.export({ format: "jwk" }) as { x: string; d: string };
+  const pub = Buffer.from(jwk.x, "base64url");
+  const seed = Buffer.from(jwk.d, "base64url");
+
+  const publicBlob = Buffer.concat([sshString("ssh-ed25519"), sshString(pub)]);
+  const check = randomBytes(4);
+  let privateBlob = Buffer.concat([
+    check,
+    check,
+    publicBlob,
+    sshString(Buffer.concat([seed, pub])),
+    sshString(comment),
+  ]);
+  // The "none" cipher still pads to its 8-byte block, with 1,2,3… not zeros.
+  for (let i = 1; privateBlob.length % 8 !== 0; i++) {
+    privateBlob = Buffer.concat([privateBlob, Buffer.from([i])]);
+  }
+
+  const body = Buffer.concat([
+    Buffer.from("openssh-key-v1\0"),
+    sshString("none"),
+    sshString("none"),
+    sshString(""),
+    sshUint32(1),
+    sshString(publicBlob),
+    sshString(privateBlob),
+  ]);
+  const wrapped = body.toString("base64").replace(/(.{70})/g, "$1\n");
+
+  return {
+    privateKey: `-----BEGIN OPENSSH PRIVATE KEY-----\n${wrapped.trimEnd()}\n-----END OPENSSH PRIVATE KEY-----\n`,
+    publicKey: `ssh-ed25519 ${publicBlob.toString("base64")} ${comment}`,
+  };
 }

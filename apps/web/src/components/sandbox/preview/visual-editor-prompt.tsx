@@ -143,7 +143,7 @@ export function VisualEditorPrompt({
         <button
           type="submit"
           disabled={!input.trim()}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-30"
+          className="flex h-6 w-6 shrink-0 items-center justify-center classic:rounded-full compact:rounded-lg bg-foreground text-background transition-opacity disabled:opacity-30"
           title={t("sandbox.visualEditorPrompt.sendButton")}
         >
           <svg

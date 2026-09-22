@@ -14,6 +14,7 @@ import { useChatStream, useChatTask, useChatPrefs } from "./context";
 import type { ChatMessage, SubtaskToolPart } from "./types";
 import { Suspense, useState } from "react";
 import { useT } from "@/i18n/use-t.ts";
+import { useModelDisclosure } from "@/hooks/use-entitlements";
 
 // ============================================================================
 // Helpers
@@ -348,6 +349,12 @@ export function ChatContextPanel({
 
   const agentTitle = selectedVirtualMcp?.title ?? "Super Agent";
 
+  // Below Ultra neither the model's NAME nor a dollar figure is this org's
+  // to see (§6 of the pricing model): the tier is the vocabulary, and money
+  // appears only at a top-up. Both rows drop out rather than showing a
+  // placeholder — a greyed "cost —" still tells you a cost exists.
+  const showCost = useModelDisclosure();
+
   const allStats: StatItem[] = [
     {
       label: t("chat.contextPanel.sessionLabel"),
@@ -358,7 +365,9 @@ export function ChatContextPanel({
       value: visibleMessages.length,
     },
     { label: t("chat.contextPanel.agentLabel"), value: agentTitle },
-    { label: t("chat.contextPanel.modelLabel"), value: modelLabel },
+    ...(showCost
+      ? [{ label: t("chat.contextPanel.modelLabel"), value: modelLabel }]
+      : []),
     {
       label: t("chat.contextPanel.contextLimitLabel"),
       value: contextWindow ? formatTokens(contextWindow) : "—",
@@ -384,13 +393,17 @@ export function ChatContextPanel({
       value:
         stats.reasoningTokens > 0 ? formatTokens(stats.reasoningTokens) : "0",
     },
-    {
-      label: t("chat.contextPanel.costLabel"),
-      value:
-        stats.cost > 0
-          ? `$${stats.cost < 0.001 ? stats.cost.toFixed(6) : stats.cost.toFixed(4)}`
-          : "$0.00",
-    },
+    ...(showCost
+      ? [
+          {
+            label: t("chat.contextPanel.costLabel"),
+            value:
+              stats.cost > 0
+                ? `$${stats.cost < 0.001 ? stats.cost.toFixed(6) : stats.cost.toFixed(4)}`
+                : "$0.00",
+          },
+        ]
+      : []),
     {
       label: t("chat.contextPanel.sessionCreatedLabel"),
       value: formatDate(sessionCreated),
@@ -416,7 +429,7 @@ export function ChatContextPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-6 items-center justify-center rounded hover:bg-accent transition-colors"
+            className="flex size-6 items-center justify-center classic:rounded hover:bg-accent transition-colors compact:rounded-lg"
           >
             {back ? (
               <ChevronLeft size={14} className="text-muted-foreground" />
@@ -449,7 +462,7 @@ export function ChatContextPanel({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="flex h-7 w-7 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           {back ? <ChevronLeft size={14} /> : <XClose size={14} />}
         </button>

@@ -47,6 +47,8 @@ type OrchestratorDeps struct {
 	InstallState *InstallState
 	Lifecycle    *lifecycle.Manager
 	BranchStatus *gitx.BranchStatusMonitor
+	// CommitSigning is what the pod signs commits with; zero means unsigned.
+	CommitSigning gitx.CommitSigning
 }
 
 type Orchestrator struct {
@@ -879,7 +881,7 @@ func (o *Orchestrator) stopDevTask() {
 func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 	if cfg.Git != nil && cfg.Git.Identity != nil &&
 		cfg.Git.Identity.UserName != nil && cfg.Git.Identity.UserEmail != nil {
-		if err := gitx.ConfigureGitIdentity(o.deps.RepoDir, *cfg.Git.Identity.UserName, *cfg.Git.Identity.UserEmail); err != nil {
+		if err := gitx.ConfigureGitIdentity(o.deps.RepoDir, o.deps.LogsDir, *cfg.Git.Identity.UserName, *cfg.Git.Identity.UserEmail, o.deps.CommitSigning); err != nil {
 			o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: git identity setup failed: %s\r\n", err.Error()))
 		}
 	}

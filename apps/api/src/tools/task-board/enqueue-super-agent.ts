@@ -14,10 +14,7 @@ import { isReportsTask } from "@decocms/shared/task-board";
 import { captureOrgEvent } from "@/posthog";
 import { getSettings } from "@/settings";
 import { enqueueAgentRunForTask } from "./enqueue-task-run";
-import {
-  JIRA_DEFAULT_LEAD,
-  jiraRunFinishInstructions,
-} from "./jira-run-prompt";
+import { studioToolNamespaceFact } from "./jira-run-prompt";
 import type { RunClass } from "@/dispatch-queue/run-priority";
 import type { ClaudeCodeModelClass } from "@/harnesses/claude-code-env";
 import { fetchPrHeadRef } from "./prs-get";
@@ -113,7 +110,7 @@ export function buildSuperAgentTaskPrompt(
     // Super Agent's, which is what every run used before rules existed.
     opts?.instruction?.trim() ||
       (opts?.source?.kind === "jira"
-        ? JIRA_DEFAULT_LEAD
+        ? ""
         : "You've been assigned this task. Complete it."),
     "",
     "You are running AUTONOMOUSLY — no human is watching this run, so drive it " +
@@ -159,27 +156,37 @@ export function buildSuperAgentTaskPrompt(
               "",
             ].join("\n")
           : "",
-    "How to work:",
-    "- First decide whether this task requires changing code in a repository. Some tasks (research, answering a question, planning) don't. If it doesn't, just do the work directly — don't load a repo or open a PR.",
-    // A re-run's lead block above (reviewer feedback OR conflict resolution)
-    // overrides this: only a FIRST attempt opens a new branch + PR; a re-run
-    // checks out the existing PR's branch and pushes to it.
-    opts?.pr
-      ? "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, make the change, then commit and push to the pull request named above."
-      : "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
-    "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
-    // "IF a dev server is running" was a condition the run could not evaluate,
-    // on a pod where the answer is always no (`harness-run` => `cloneOnly`), so
-    // it read as an invitation to go looking. State the fact instead.
-    "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port, and don't run a full typecheck/build just to verify a small edit.",
-    "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
-    "- Only if you hit a genuine blocker a human must clear (see above) may you call `user_ask` — otherwise keep going and finish the task.",
-    "",
-    // Bare names: on this path the issue tools are Decopilot built-ins, not
-    // MCP tools behind a namespace.
+    // A Jira run gets the pod's facts and nothing else: how to work is what
+    // its column rule says, in text a person wrote and can change. Everything
+    // below the facts is board guidance, and a Jira run is not a card.
     ...(opts?.source?.kind === "jira"
-      ? [...jiraRunFinishInstructions(""), ""]
-      : []),
+      ? [
+          "How this environment works:",
+          "- No repository is loaded yet. Use the `load_repo` tool to load the one this issue is about.",
+          "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port.",
+        ]
+      : [
+          "How to work:",
+          "- First decide whether this task requires changing code in a repository. Some tasks (research, answering a question, planning) don't. If it doesn't, just do the work directly — don't load a repo or open a PR.",
+          // A re-run's lead block above (reviewer feedback OR conflict
+          // resolution) overrides this: only a FIRST attempt opens a new
+          // branch + PR; a re-run checks out the existing PR's branch.
+          opts?.pr
+            ? "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, make the change, then commit and push to the pull request named above."
+            : "- If it DOES need code changes: use the `load_repo` tool to load the relevant repository, then make the change, commit on a new branch, push, and open a pull request. Only then does a PR apply.",
+          "- Prefer the GitHub tool to open the PR. If it errors or targets the wrong repo, fall back to `git push` + the GitHub REST API (the auth token is embedded in the `origin` URL).",
+          // "IF a dev server is running" was a condition the run could not
+          // evaluate, on a pod where the answer is always no (`harness-run` =>
+          // `cloneOnly`), so it read as an invitation to go looking.
+          "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port, and don't run a full typecheck/build just to verify a small edit.",
+          "- Change only what the task needs. Don't trace the definition of a pre-existing symbol that's incidental to your change — note it in one line and move on. Prefer one or two broad searches over many narrow retries.",
+          "- Only if you hit a genuine blocker a human must clear (see above) may you call `user_ask` — otherwise keep going and finish the task.",
+        ]),
+    "",
+    // On this path the Studio tools are Decopilot built-ins under their bare
+    // names, which is what a skill's text already assumes — so the fact is a
+    // confirmation rather than a translation.
+    ...(opts?.source?.kind === "jira" ? [studioToolNamespaceFact(""), ""] : []),
     `(task id: ${task.id})`,
   ].join("\n");
   // prompt-region:end super-agent
@@ -331,7 +338,12 @@ export async function enqueueSuperAgentForTask(
     // in — bound before dispatch when there's exactly one, otherwise chosen
     // mid-run with `TASK_ADD_REPO` (see `claude-code-task-run.ts`). An org with
     // no repos imported runs Decopilot exactly as before.
-    const choice = await resolveTaskRepoChoice(ctx, task.organizationId);
+    // A card that already names its repo binds THAT one, so a multi-repo org
+    // doesn't spend a turn re-picking what the card already decided.
+    const choice = await resolveTaskRepoChoice(ctx, task.organizationId, {
+      repositoryId: task.repositoryId,
+      repo: task.repo,
+    });
 
     // A run on an external issue reads the issue, not the card: the card's
     // description is empty on purpose, so the prompt gets the rendered issue.

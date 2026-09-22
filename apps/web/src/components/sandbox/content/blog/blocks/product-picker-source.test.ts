@@ -37,9 +37,18 @@ describe("categoryPathToFacets", () => {
 });
 
 describe("buildProductRequests", () => {
-  test("returns nothing for a blank term", () => {
-    expect(buildProductRequests("search", "")).toEqual([]);
-    expect(buildProductRequests("search", "   ")).toEqual([]);
+  test("blank search term browses the default catalog listing", () => {
+    const expected = [
+      {
+        resolveType: VTEX_PRODUCT_LIST_RESOLVE_TYPE,
+        props: { count: PRODUCT_PICKER_COUNT },
+      },
+    ];
+    expect(buildProductRequests("search", "")).toEqual(expected);
+    expect(buildProductRequests("search", "   ")).toEqual(expected);
+  });
+
+  test("cluster/category need a selection — blank yields no requests", () => {
     expect(buildProductRequests("cluster", "")).toEqual([]);
     expect(buildProductRequests("category", "")).toEqual([]);
   });
@@ -132,6 +141,20 @@ describe("productOptionsFromPayload", () => {
         label: "Tênis Corrida",
         image: "https://cdn/img.jpg",
       },
+    ]);
+  });
+
+  test("captures the PDP url from the product or its variant", () => {
+    expect(
+      productOptionsFromPayload([
+        { productID: "1", name: "A", url: "/a/p" },
+        { productID: "2", name: "B", isVariantOf: { url: "/b/p" } },
+        { productID: "3", name: "C" },
+      ]),
+    ).toEqual([
+      { id: "1", label: "A", image: undefined, url: "/a/p" },
+      { id: "2", label: "B", image: undefined, url: "/b/p" },
+      { id: "3", label: "C", image: undefined, url: undefined },
     ]);
   });
 

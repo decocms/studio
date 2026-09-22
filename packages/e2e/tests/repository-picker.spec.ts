@@ -1,6 +1,8 @@
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
+test.use({ compactPageLayout: true });
+
 for (const width of [1280, 390]) {
   test(`first import offers provider selection without a URL form or legacy OAuth at ${width}px`, async ({
     authedPage: { page, orgSlug },
@@ -8,34 +10,62 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 720 });
     await page.goto(`/${orgSlug}/home`);
     await page
-      .getByRole("button", { name: "Import repository", exact: true })
+      .getByRole("button", { name: "New Project", exact: true })
       .click();
     const dialog = page.getByRole("dialog");
+    // One entry point, not a button per provider-and-method combination.
     await expect(
-      dialog.getByRole("button", {
-        name: "Connect GitLab with a token",
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(
-      dialog.getByText("Add GitHub account or organization", { exact: true }),
+      dialog.getByRole("button", { name: "Add account", exact: true }),
     ).toBeVisible();
     await expect(dialog.getByLabel("Repository URL")).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath("repository-picker.png"),
       animations: "disabled",
     });
+
     await dialog
-      .getByRole("button", { name: "Connect GitLab with a token", exact: true })
+      .getByRole("button", { name: "Add account", exact: true })
       .click();
+    const flow = page.getByRole("dialog", {
+      name: "Connect a git account",
+      exact: true,
+    });
+    for (const provider of ["GitHub", "GitLab", "Bitbucket"]) {
+      await expect(
+        flow.getByRole("button", { name: provider, exact: true }),
+      ).toBeVisible();
+    }
+    await flow.getByRole("button", { name: "GitLab", exact: true }).click();
+
+    // GitLab always offers a token; OAuth appears only where this deployment
+    // registered an application, and then the method step is not skipped.
+    const capabilities = await callSelfMcpTool<{
+      gitlab: { oauthHosts: string[] };
+    }>(page.request, orgSlug, "GIT_PROVIDER_CAPABILITIES", {});
+    if (capabilities.gitlab.oauthHosts.length > 0) {
+      await expect(
+        page.getByText(
+          "Reaches every repository this account can see; it cannot be narrowed to a subset.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Use an access token", exact: true })
+        .click();
+    }
+
     const tokenDialog = page.getByRole("dialog", {
       name: "Connect GitLab with a token",
       exact: true,
     });
     await expect(tokenDialog.getByLabel("Access token")).toBeVisible();
     await tokenDialog
-      .getByRole("button", { name: "Cancel", exact: true })
+      .getByRole("button", { name: "Back", exact: true })
       .click();
+    await expect(
+      page.getByRole("button", { name: "GitLab", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(
       page.getByRole("dialog", { name: "Import repository", exact: true }),
     ).toBeVisible();
@@ -58,10 +88,11 @@ test("repository management shares the searchable picker and lives outside Stora
     await callSelfMcpTool(page.request, orgSlug, "REPOSITORY_LINK", { url });
   }
   await page.goto(`/${orgSlug}/settings/repositories`);
-  await expect(page.locator('[data-slot="settings-heading"]')).toHaveText(
-    "Repositories",
-    { timeout: 15000 },
-  );
+  await expect(
+    page
+      .getByTestId("page-header")
+      .getByRole("heading", { name: "Repositories", exact: true }),
+  ).toBeVisible({ timeout: 15000 });
   await page
     .getByRole("button", { name: "Add repository", exact: true })
     .click();
@@ -102,9 +133,7 @@ test("home imports an already linked GitLab repository as an agent without a Git
     { url: "https://gitlab.com/example-group/nested/import-project" },
   );
   await page.goto(`/${orgSlug}/home`);
-  await page
-    .getByRole("button", { name: "Import repository", exact: true })
-    .click();
+  await page.getByRole("button", { name: "New Project", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: /example-group\/nested\/import-project/ })

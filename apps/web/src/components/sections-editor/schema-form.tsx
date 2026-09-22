@@ -19,6 +19,10 @@ import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
 import { isSecretBlock, SecretField } from "./fields/secret-field";
 import {
+  isEmptyFieldValue,
+  RequiredFieldProvider,
+} from "./fields/required-field-context";
+import {
   isMultivariateArrayWrapper,
   isPageMultivariateSectionArrayField,
   isSectionMultivariateWrapperValue,
@@ -41,6 +45,10 @@ import {
   blockRefArrayItemSchemaFromRefs,
   inferBlockRefArrayItemSchema,
 } from "./block-ref-array-inference";
+import {
+  ObjectFieldExpansionProvider,
+  useHasObjectFieldExpansion,
+} from "./object-field-expansion";
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -348,13 +356,17 @@ export function renderField(props: FieldProps) {
 
   const effectiveProps = { ...props, value: effectiveValue };
 
-  // Determine render type
+  // Determine render type. A boolean/number schema wins over a mis-seeded stored value's typeof.
   const renderType: string =
-    value === null || value === undefined
-      ? (schema.type ?? typeof effectiveValue)
-      : Array.isArray(effectiveValue)
-        ? "array"
-        : typeof effectiveValue;
+    schema.type === "boolean" ||
+    schema.type === "number" ||
+    schema.type === "integer"
+      ? schema.type
+      : value === null || value === undefined
+        ? (schema.type ?? typeof effectiveValue)
+        : Array.isArray(effectiveValue)
+          ? "array"
+          : typeof effectiveValue;
 
   if (renderType === "array" || Array.isArray(effectiveValue)) {
     return <ArrayField key={props.path} {...effectiveProps} />;
@@ -420,21 +432,7 @@ function renderMultivariateInnerField(
   );
 }
 
-export function SchemaForm({
-  schema,
-  value,
-  onChange,
-  basePath,
-  breadcrumbPath = [],
-  onBreadcrumbChange,
-  meta,
-  decofile,
-  onSaveReferencedBlock,
-  previewBaseUrl,
-  onAddSectionItem,
-  onRequestAddSection,
-  sandbox,
-}: {
+interface SchemaFormProps {
   schema: SchemaProperty;
   value: unknown;
   onChange: (value: unknown) => void;
@@ -451,7 +449,39 @@ export function SchemaForm({
   onAddSectionItem?: FieldProps["onAddSectionItem"];
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
-}) {
+}
+
+/**
+ * Render a schema-driven form. The outermost instance provides the
+ * `ObjectField` expansion store so manually-expanded groups survive breadcrumb
+ * drill-in/out (which unmounts sibling fields); nested instances reuse it. See
+ * `object-field-expansion.tsx`.
+ */
+export function SchemaForm(props: SchemaFormProps) {
+  const hasExpansionProvider = useHasObjectFieldExpansion();
+  if (hasExpansionProvider) return <SchemaFormBody {...props} />;
+  return (
+    <ObjectFieldExpansionProvider>
+      <SchemaFormBody {...props} />
+    </ObjectFieldExpansionProvider>
+  );
+}
+
+function SchemaFormBody({
+  schema,
+  value,
+  onChange,
+  basePath,
+  breadcrumbPath = [],
+  onBreadcrumbChange,
+  meta,
+  decofile,
+  onSaveReferencedBlock,
+  previewBaseUrl,
+  onAddSectionItem,
+  onRequestAddSection,
+  sandbox,
+}: SchemaFormProps) {
   const t = useT();
   const properties = schema.properties;
   // The resolved root can itself be a single union field — a discriminated
@@ -647,13 +677,14 @@ export function SchemaForm({
                   fieldOnBreadcrumbChange(prependCrumbIfAbsent(label, next))
             : fieldOnBreadcrumbChange;
 
-        return renderField({
+        const isRequired = requiredKeys.has(key);
+        const field = renderField({
           schema: propSchema,
           value: objValue[key],
           onChange: (val) => updateField(key, val),
           path: fieldPath,
           label,
-          required: requiredKeys.has(key),
+          required: isRequired,
           breadcrumbPath: fieldBreadcrumbPath,
           onBreadcrumbChange: fieldOnBreadcrumbChangeForKey,
           hasSiblingDrillDownFields,
@@ -670,6 +701,17 @@ export function SchemaForm({
           onRequestAddSection,
           sandbox,
         });
+        if (field === null) return null;
+        // Only real object properties get the marker (see RequiredFieldProvider).
+        return (
+          <RequiredFieldProvider
+            key={fieldPath}
+            required={isRequired}
+            invalid={isRequired && isEmptyFieldValue(objValue[key])}
+          >
+            {field}
+          </RequiredFieldProvider>
+        );
       })}
     </div>
   );

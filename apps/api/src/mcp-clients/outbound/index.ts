@@ -15,7 +15,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { buildRequestHeaders } from "./headers";
+import { buildRequestHeaders, sanitizeCustomHeaders } from "./headers";
 import { createClientPool } from "./client-pool";
 import { createStdioTransport } from "./transport-stdio";
 import {
@@ -114,7 +114,7 @@ export async function createOutboundClient(
 
         const httpParams = connection.connection_headers;
         if (httpParams && "headers" in httpParams) {
-          Object.assign(headers, httpParams.headers);
+          Object.assign(headers, sanitizeCustomHeaders(httpParams.headers));
         }
 
         let transport: Transport = makeBaseTransport(

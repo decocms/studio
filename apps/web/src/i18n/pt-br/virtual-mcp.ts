@@ -121,28 +121,26 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.showChatDescription":
     "Exibir Chat no painel lateral junto com a visualização principal.",
   "virtualMcp.layoutTabContent.siteEditor": "Editor do site",
+  "virtualMcp.settings.title": "Configurações do projeto",
+  "virtualMcp.settings.navigation": "Seções das configurações do projeto",
+  "virtualMcp.settings.identity.icon": "Ícone do projeto",
+  "virtualMcp.settings.identity.iconDescription":
+    "Como seu projeto aparece na barra lateral e no Studio.",
+  "virtualMcp.settings.identity.name": "Nome do projeto",
+  "virtualMcp.settings.identity.description": "Descrição",
   "virtualMcp.settings.general.title": "Geral",
-  "virtualMcp.settings.general.description":
-    "Instruções, arquivos anexados e para quem este projeto pode delegar.",
-  "virtualMcp.settings.site.title": "Site e sandbox",
-  "virtualMcp.settings.site.description":
-    "Como as edições chegam ao site e o repositório de onde ele roda.",
-  "virtualMcp.settings.backToSettings": "Configurações",
+  "virtualMcp.settings.site.title": "CMS",
+  "virtualMcp.settings.site.classicTitle": "Site e sandbox",
   "virtualMcp.settings.groups.advanced": "Avançado",
   "virtualMcp.settings.connections.title": "Conexões",
-  "virtualMcp.settings.connections.description":
-    "Os servidores MCP que este projeto reúne.",
-  "virtualMcp.settings.views.projectViews": "Visualizações",
+  "virtualMcp.settings.views.defaults": "Layout padrão",
+  "virtualMcp.settings.views.sidebar": "Visualizações",
   "virtualMcp.settings.views.open": "Abrir",
   "virtualMcp.settings.views.pin": "Fixar na barra lateral",
   "virtualMcp.settings.views.unpin": "Remover da barra lateral",
   "virtualMcp.settings.views.setMainView":
     "Definir como visualização principal",
   "virtualMcp.settings.views.rowActions": "Opções da visualização",
-  "virtualMcp.settings.value.notLinked": "Sem repositório",
-  "virtualMcp.settings.value.connectionOne": "1 conexão",
-  "virtualMcp.settings.value.connectionMany": "{count} conexões",
-  "virtualMcp.settings.value.inSidebar": "{count} na barra lateral",
   "virtualMcp.subAgentsSection.addSubAgent": "Adicionar sub-projeto",
   "virtualMcp.subAgentsSection.anyAgent": "Qualquer projeto",
   "virtualMcp.subAgentsSection.canDelegateToAnyAgent":
@@ -230,12 +228,10 @@ Defina passo a passo como o agente deve tratar as solicitações.
   "virtualMcp.virtualMcp.publishPolicyOpenDescription":
     "Publica qualquer alteração diretamente, sem revisão.",
   "virtualMcp.virtualMcp.sandbox": "Sandbox",
-  "virtualMcp.virtualMcp.settings": "Configurações",
   "virtualMcp.virtualMcp.spaceNotFound": "Espaço não encontrado",
   "virtualMcp.virtualMcp.spaceNotFoundDescription":
     "Este espaço pode ter sido excluído ou você pode não ter acesso.",
   "virtualMcp.virtualMcp.subAgents": "Sub-projetos",
-  "virtualMcp.virtualMcp.testAgent": "Testar Projeto",
   "virtualMcp.virtualMcpShareModal.agentUrlCopied":
     "URL do projeto copiada para a área de transferência",
   "virtualMcp.virtualMcpShareModal.callFromYourApp": "Chamar do seu aplicativo",
@@ -272,4 +268,18 @@ Defina passo a passo como o agente deve tratar as solicitações.
     "Variáveis de tempo de execução",
   "virtualMcp.virtualMcpShareModal.storeKeySecurely":
     "Armazene esta chave com segurança — ela não será exibida novamente.",
+  "virtualMcp.settings.general.description":
+    "Instruções, arquivos anexados e para quem este projeto pode delegar.",
+  "virtualMcp.settings.site.description":
+    "Como as edições chegam ao site e o repositório de onde ele roda.",
+  "virtualMcp.settings.backToSettings": "Configurações",
+  "virtualMcp.settings.connections.description":
+    "Os servidores MCP que este projeto reúne.",
+  "virtualMcp.settings.views.projectViews": "Visualizações",
+  "virtualMcp.settings.value.notLinked": "Sem repositório",
+  "virtualMcp.settings.value.connectionOne": "1 conexão",
+  "virtualMcp.settings.value.connectionMany": "{count} conexões",
+  "virtualMcp.settings.value.inSidebar": "{count} na barra lateral",
+  "virtualMcp.virtualMcp.settings": "Configurações",
+  "virtualMcp.virtualMcp.testAgent": "Testar Projeto",
 } satisfies Record<keyof typeof virtualMcpEn, string>;

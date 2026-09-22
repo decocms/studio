@@ -33,7 +33,7 @@
  */
 
 const LAYER = "git-providers";
-const PROVIDERS = ["github", "gitlab"];
+const PROVIDERS = ["github", "gitlab", "bitbucket"];
 
 /** Files permitted to reach a provider directory. Suffix-matched. */
 const ALLOWLIST = [

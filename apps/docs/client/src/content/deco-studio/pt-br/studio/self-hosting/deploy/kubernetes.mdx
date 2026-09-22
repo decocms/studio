@@ -51,9 +51,9 @@ Em produção, agende pods de sandbox em um node pool dedicado e com taint. Esse
 Os comandos abaixo fixam versões de chart explicitamente. Fixe também no seu deployment, em vez de acompanhar a versão mais recente.
 
 ```bash
-export STUDIO_CHART_VERSION=0.13.1
+export STUDIO_CHART_VERSION=0.16.1
 export SANDBOX_OPERATOR_CHART_VERSION=0.1.4
-export SANDBOX_ENV_CHART_VERSION=0.15.3
+export SANDBOX_ENV_CHART_VERSION=0.17.3
 ```
 
 Os charts são publicados como artefatos OCI públicos, então não é preciso credencial de registry. Para escolher uma versão mais nova, liste o que está publicado:

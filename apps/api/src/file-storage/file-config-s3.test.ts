@@ -391,4 +391,24 @@ describe("buildS3Client", () => {
       }),
     ).toThrow(/missing siteSlug/);
   });
+
+  test("a hit refreshes recency so a hot client survives eviction", () => {
+    const build = (id: string) =>
+      buildS3Client({
+        info: info({ id }),
+        credentials: {
+          type: "static",
+          accessKeyId: "AKIA",
+          secretAccessKey: "secret",
+        },
+      });
+
+    const hot = build("fcfg_hot");
+    // FIFO eviction would drop "hot" here; LRU keeps it since it's re-hit below.
+    for (let i = 0; i < 260; i++) {
+      build(`fcfg_fill_${i}`);
+      expect(build("fcfg_hot")).toBe(hot);
+    }
+    expect(build("fcfg_hot")).toBe(hot);
+  });
 });

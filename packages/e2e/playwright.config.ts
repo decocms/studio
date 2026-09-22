@@ -5,9 +5,9 @@ const appPort = process.env.VITE_PORT || "4000";
 const apiOrigin = `http://localhost:${serverPort}`;
 const appOrigin = process.env.BASE_URL || `http://localhost:${appPort}`;
 
-// Commerce Discovery setup mints a one-time client token by calling the
+// Reports setup mints a one-time client token by calling the
 // commerce-skills internal upgrade API. We point the studio server at a local
-// mock (commerce-upgrade-mock.ts, started as a webServer below) so onboarding
+// mock (reports-upgrade-mock.ts, started as a webServer below) so onboarding
 // specs exercise the real setup path without hitting the production worker.
 const commerceMockPort = process.env.COMMERCE_MOCK_PORT || "4100";
 const commerceMockOrigin = `http://localhost:${commerceMockPort}`;
@@ -52,11 +52,12 @@ const jiraStubPort = process.env.JIRA_STUB_PORT || "4103";
 // by requireDeploymentAdmin first, before that guard runs.
 // Shared internal service bearer for the service-token routes (credential
 // vault, task-board import, commerce-diagnostic share-invite). Kept in sync by
-// hand with the literal in commerce-diagnostic-share.spec.ts (no shared import:
+// hand with the literal in reports-share.spec.ts (no shared import:
 // the config isn't a spec module).
 const vaultServiceToken = "e2e-vault-service-token";
+const organizationNoticesApiKey = "e2e-organization-notices-api-key";
 
-const apiServerCommand = `MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} JIRA_ALLOW_LOCAL_SITE_URL=1 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
+const apiServerCommand = `MCP_CACHE_ENABLED=true GITHUB_WEBHOOK_SECRET=e2e-github-webhook-secret VAULT_SERVICE_TOKEN=${vaultServiceToken} ORGANIZATION_NOTICES_API_KEY=${organizationNoticesApiKey} REPORTS_INTERNAL_API_URL=${commerceMockOrigin} REPORTS_INTERNAL_API_KEY=${commerceMockKey} GITHUB_API_BASE_URL=${githubStubOrigin} JIRA_ALLOW_LOCAL_SITE_URL=1 BASE_URL=${appOrigin} PORT=${serverPort} VITE_PORT=${appPort} RUN_IDLE_TIMEOUT_MS=120000 DEPLOYMENT_ADMIN_EMAILS=deployment-admin@e2e.local,deployment-admin-2@e2e.local bun run dev`;
 // CI serves the PRODUCTION build via `vite preview` (same Node proxy as dev —
 // see apps/web/vite.config.ts): the suite's charter is production-like
 // behavior, and the dev server's on-demand transform inflated browser-heavy
@@ -77,7 +78,7 @@ export default defineConfig({
   testDir: "./tests",
   // Uses a separate server with a synthetic GitHub App. Enabling that app
   // here changes credential resolution for the CMS suite's legacy fixtures.
-  testIgnore: "**/github-connect.spec.ts",
+  testIgnore: ["**/github-connect.spec.ts", "**/github-cli.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // Whole-suite backstop: even if a single spec wedges (a dangling fetch /
@@ -111,9 +112,9 @@ export default defineConfig({
   webServer: [
     {
       // Mock commerce-skills upgrade API. Started before the studio server so
-      // COMMERCE_DISCOVERY_SETUP can mint a token over HTTP without reaching
+      // REPORTS_SETUP can mint a token over HTTP without reaching
       // the production worker. Standalone process (no app imports).
-      command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/commerce-upgrade-mock.ts`,
+      command: `COMMERCE_MOCK_PORT=${commerceMockPort} bun run fixtures/reports-upgrade-mock.ts`,
       url: `${commerceMockOrigin}/health`,
       reuseExistingServer: true,
       timeout: 30_000,

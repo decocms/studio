@@ -3,6 +3,9 @@ import { inferBlockRefArrayItemSchema } from "./block-ref-array-inference";
 import { renderField, SchemaForm } from "./schema-form";
 import { ObjectField } from "./fields/object-field";
 import { AnyOfField } from "./fields/any-of-field";
+import { BooleanField } from "./fields/boolean-field";
+import { NumberField } from "./fields/number-field";
+import { StringField } from "./fields/string-field";
 import type { LiveMeta } from "./resolve-schema";
 
 describe("inferBlockRefArrayItemSchema", () => {
@@ -120,5 +123,64 @@ describe("renderField – collapsed loader-ref value routing", () => {
       meta: loaderMeta,
     });
     expect(typeOf(el)).toBe(AnyOfField);
+  });
+});
+
+describe("renderField – boolean schema wins over stored value type", () => {
+  const typeOf = (el: unknown) => (el as { type?: unknown } | null)?.type;
+  const baseProps = {
+    onChange: () => {},
+    path: "noIndexing",
+    label: "No Indexing",
+  };
+
+  // Regression: a boolean flag mis-seeded with `""` used to render a text input.
+  test("boolean schema with a string value renders a switch", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "boolean" },
+      value: "",
+    });
+    expect(typeOf(el)).toBe(BooleanField);
+  });
+
+  test("boolean schema with a boolean value renders a switch", () => {
+    const el = renderField({
+      ...baseProps,
+      schema: { type: "boolean" },
+      value: true,
+    });
+    expect(typeOf(el)).toBe(BooleanField);
+  });
+
+  test("string schema still renders a text input", () => {
+    const el = renderField({
+      ...baseProps,
+      path: "title",
+      schema: { type: "string" },
+      value: "hello",
+    });
+    expect(typeOf(el)).toBe(StringField);
+  });
+
+  // Same regression class: a number/integer flag mis-seeded with `""` used to render a text input.
+  test("number schema with a string value renders a number input", () => {
+    const el = renderField({
+      ...baseProps,
+      path: "priority",
+      schema: { type: "number" },
+      value: "",
+    });
+    expect(typeOf(el)).toBe(NumberField);
+  });
+
+  test("integer schema with a string value renders a number input", () => {
+    const el = renderField({
+      ...baseProps,
+      path: "priority",
+      schema: { type: "integer" },
+      value: "",
+    });
+    expect(typeOf(el)).toBe(NumberField);
   });
 });

@@ -74,6 +74,11 @@ interface SlashItem extends BaseItem {
 export interface SkillMentionMeta {
   /** Sandbox dir the skill's files are mounted under (for omitted files). */
   sandboxPath: string;
+  /** Where the skill lives in the Library, so the chip can open it. Kept as
+   *  the two fields rather than parsed back out of `sandboxPath`, which can't
+   *  distinguish a synced-repo volume from an org-slug-prefixed path. */
+  volume: string;
+  path: string;
   /** Markdown/text docs, inlined (content baked) at select time. */
   files: OrgFsSkillFile[];
   /** Relative paths of files left on disk (scripts/assets/oversized). */
@@ -161,6 +166,8 @@ async function fetchAndInsertSkill(
     );
     const metadata: SkillMentionMeta = {
       sandboxPath: skill.sandboxPath,
+      volume: skill.volume,
+      path: skill.path,
       files,
       omittedPaths,
     };
@@ -478,11 +485,17 @@ async function fetchPrompts(
 ) {
   let cached = queryClient.getQueryData<ListPromptsResult>(queryKey);
   if (!cached) {
-    cached = await queryClient.fetchQuery({
-      queryKey,
-      queryFn: () => listPrompts(client),
-      staleTime: 60000,
-    });
+    // Degrades like skills below: the three sources are additive, and an MCP
+    // that serves no `prompts/list` must not take the picker down with it.
+    // The self MCP is exactly that, so before this the "/" menu hung forever
+    // anywhere it ran without a virtual MCP — which is every surface but chat.
+    cached = await queryClient
+      .fetchQuery({
+        queryKey,
+        queryFn: () => listPrompts(client),
+        staleTime: 60000,
+      })
+      .catch(() => undefined);
   } else {
     queryClient
       .fetchQuery({
@@ -521,11 +534,14 @@ async function fetchResources(
 ) {
   let cached = queryClient.getQueryData<ListResourcesResult>(queryKey);
   if (!cached) {
-    cached = await queryClient.fetchQuery({
-      queryKey,
-      queryFn: () => listResources(client),
-      staleTime: 60000,
-    });
+    // Same reasoning as fetchPrompts: additive, so a failure degrades to none.
+    cached = await queryClient
+      .fetchQuery({
+        queryKey,
+        queryFn: () => listResources(client),
+        staleTime: 60000,
+      })
+      .catch(() => undefined);
   } else {
     queryClient
       .fetchQuery({

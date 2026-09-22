@@ -71,6 +71,7 @@ type RoleRow =
   | { kind: "custom"; role: OrganizationRole & { memberCount: number } };
 
 function RolesPageContent() {
+  const compact = useCompactPageLayout();
   const t = useT();
   const [search, setSearch] = useState("");
   const [roleToDelete, setRoleToDelete] = useState<{
@@ -330,10 +331,15 @@ function RolesPageContent() {
             }
           }}
         />
-        <Button onClick={() => setActiveRole("new")}>
-          <Plus size={16} />
-          {t("settings.roles.createRole")}
-        </Button>
+        <Page.Actions>
+          <Button
+            size={compact ? "sm" : "default"}
+            onClick={() => setActiveRole("new")}
+          >
+            <Plus size={16} />
+            {t("settings.roles.createRole")}
+          </Button>
+        </Page.Actions>
       </div>
       <CollectionTableWrapper
         columns={columns}
@@ -438,3 +444,4 @@ export default function RolesRoute() {
     </RequirePrivileged>
   );
 }
+import { useCompactPageLayout } from "@/hooks/use-preferences";

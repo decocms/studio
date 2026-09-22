@@ -45,6 +45,9 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.useValue": 'Usar "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Selecionar...",
   "sectionsEditor.enumField.clearOption": "Nenhum",
+  "sectionsEditor.field.missingRequired": "Falta um campo obrigatório",
+  "sectionsEditor.field.missingRequiredTooltip":
+    "Campo obrigatório não preenchido.",
   "sectionsEditor.fileField.browseButton": "Procurar",
   "sectionsEditor.fileField.dropFileHint":
     "Solte um arquivo ou clique para procurar",
@@ -163,6 +166,7 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.applyLinkLabel": "Aplicar link",
   "sectionsEditor.richTextLinkControl.linkButtonLabel": "Link",
   "sectionsEditor.richTextLinkControl.newTabLabel": "Nova aba",
+  "sectionsEditor.richTextLinkControl.tabUrl": "URL",
   "sectionsEditor.richTextLinkControl.removeLinkLabel": "Remover link",
   "sectionsEditor.richTextLinkControl.sameTabLabel": "Mesma aba",
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "URL do link",

@@ -1,3 +1,4 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 /**
  * The sidebar's project list, with what each one needs FROM YOU nested under
  * it.
@@ -15,8 +16,11 @@
  */
 
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
+import { Suspense, useState } from "react";
+import { Plus } from "@untitledui/icons";
+import { RepositoryImportPicker } from "@/components/repository-import-picker";
+import { useCapability } from "@/hooks/use-capability";
 import { useQuery } from "@tanstack/react-query";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { ProjectIcon } from "@/components/project-icon";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
@@ -173,6 +177,9 @@ export function SidebarProjectsSection({
 }) {
   const t = useT();
   const collapsed = useSidebarCollapsed();
+  const compact = useCompactPageLayout();
+  const [importOpen, setImportOpen] = useState(false);
+  const { granted: canManageProjects } = useCapability("agents:manage");
   const { org, locator } = useProjectContext();
   const studio = useStudioTools();
   const { projects } = useProjectScope();
@@ -192,7 +199,8 @@ export function SidebarProjectsSection({
    *  that says where you could be instead. The picker and the way back out are
    *  the controls for leaving; this section is the org's map.
    *  Collapsed keeps the rows at icon width; only the heading and the nested task rows drop, having no icon to be. */
-  if (scopeId || projects.length === 0) return null;
+  if (scopeId || (projects.length === 0 && (!compact || !canManageProjects)))
+    return null;
 
   const byProject = tasksNeedingMeByProject(
     buildProjectIndex(projects),
@@ -202,13 +210,11 @@ export function SidebarProjectsSection({
 
   return (
     <div
-      className={cn("flex flex-col gap-1", collapsed && "pt-3")}
+      className="flex flex-col classic:gap-1 compact:gap-2 classic:group-data-[state=collapsed]/sidebar:pt-3"
       data-tour={LAYOUT_TOUR_ANCHORS.projects}
     >
-      {/* The heading carries the gap that separates the org's map from the
-          destinations above it; collapsed, the container carries it instead. */}
       {!collapsed && (
-        <p className="px-2 pt-5 pb-0.5 text-xs font-medium text-muted-foreground/60">
+        <p className="px-2 classic:pt-5 classic:pb-0.5 text-xs font-medium classic:text-muted-foreground/60 compact:text-muted-foreground">
           {t("sidebar.projects.heading")}
         </p>
       )}
@@ -248,7 +254,26 @@ export function SidebarProjectsSection({
             </SidebarNavRow>
           );
         })}
+        {compact && canManageProjects && (
+          <SidebarNavRow
+            icon={<Plus size={16} />}
+            label={t("sidebar.projects.addProject")}
+            onSelect={() => setImportOpen(true)}
+          />
+        )}
       </SidebarMenu>
+      {importOpen && (
+        <Suspense fallback={null}>
+          <RepositoryImportPicker
+            open
+            onOpenChange={setImportOpen}
+            onImportComplete={({ virtualMcpId }) => {
+              if (virtualMcpId) navigateToAgent(virtualMcpId);
+              onNavigate?.();
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

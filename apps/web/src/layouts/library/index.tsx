@@ -1,3 +1,6 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { SearchLg, XClose } from "@untitledui/icons";
+import { Breadcrumbs } from "./library-views";
 /**
  * Library — the org filesystem as a Drive-like home (Figma qFc7wr91 node
  * 7870-5644).
@@ -5,31 +8,29 @@
  * It opens on the org's own home folder, named after the org: no synthetic
  * "root" listing of volumes and nothing labelled "home". The other volumes
  * (`uploads`, `outputs`, `public`) present as system folders inside it — same
- * mounts, different framing. The breadcrumb is the only place the current
- * folder is named, which frees the header row for the search box.
+ * mounts, different framing. Folder ancestors extend the shared header's
+ * breadcrumb trail, and its title names the current folder.
  *
- * Search sits in that row and follows you: cross-volume at the home root,
+ * Search sits in the shared page toolbar and follows you: cross-volume at the home root,
  * narrowed to the current folder's subtree anywhere else. Browse location lives
  * in `?path=` and the open preview in `?preview=`, so both are linkable and
  * survive reload.
  */
 
 import { useRef, useState } from "react";
+import { Page } from "@/components/page";
+import { Panel } from "@/components/panel";
+import { type LibraryFileView } from "./file-view";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useProjectContext } from "@/sdk";
 import { toast } from "sonner";
 import { useT } from "@/i18n/use-t.ts";
-import {
-  Eye,
-  Plus,
-  RefreshCw01,
-  SearchLg,
-  Upload01,
-  XClose,
-} from "@untitledui/icons";
+import { Eye, Plus, RefreshCw01, Upload01 } from "@untitledui/icons";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,7 +64,6 @@ import { ShareDialog, type ShareTarget } from "./file-share-button";
 import { LibraryPreviewDialog } from "./preview-dialog";
 import { SkillPreviewDialog } from "./skill-preview";
 import {
-  Breadcrumbs,
   LIBRARY_VOLUMES,
   type PendingDelete,
   PublicSetsView,
@@ -82,12 +82,14 @@ export function LibraryPage({
   onOpenSkill?: (skillPath: string) => void;
   onOpenBrand?: (brandPath: string) => void;
 } = {}) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const search = useSearch({ strict: false }) as {
+    fileView?: LibraryFileView;
     path?: string;
     preview?: string;
     skill?: string;
@@ -95,6 +97,15 @@ export function LibraryPage({
   };
   // The home folder is the top of the tree, so a missing (or emptied) `?path=`
   // lands there rather than on a volumes listing.
+  const fileView = compact ? (search.fileView ?? "all") : "all";
+  const setFileView = (view: LibraryFileView) =>
+    navigate({
+      to: ".",
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        fileView: view === "all" ? undefined : view,
+      }),
+    });
   const browsePath = search.path || HOME_MOUNT_PATH;
   const parsedLocation = parseLibraryPath(browsePath);
   // Synced-repo volumes are mirrors of their GitHub source: local writes would
@@ -118,6 +129,31 @@ export function LibraryPage({
       }),
     });
   const onOpenDir = (path: string) => setSearchParam("path", path);
+  const folderSegments =
+    location.segments[0] === HOME_MOUNT_PATH
+      ? location.segments.slice(1)
+      : location.segments;
+  const segmentOffset = location.segments.length - folderSegments.length;
+  const currentFolder = folderSegments.at(-1);
+  const breadcrumbs = currentFolder
+    ? [
+        {
+          key: HOME_MOUNT_PATH,
+          label: t("library.library.title"),
+          onClick: () => onOpenDir(HOME_MOUNT_PATH),
+        },
+        ...folderSegments.slice(0, -1).map((segment, index) => {
+          const path = location.segments
+            .slice(0, segmentOffset + index + 1)
+            .join("/");
+          return {
+            key: path,
+            label: segmentLabel(segment),
+            onClick: () => onOpenDir(path),
+          };
+        }),
+      ]
+    : [];
   // preview/skill/brand share the single right panel, so opening one clears
   // the others — otherwise a second one just queues behind the precedence
   // order (preview › skill › brand) and only shows once the first is closed.
@@ -400,61 +436,57 @@ export function LibraryPage({
           </div>
         </div>
       )}
-      <div className="h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-10 px-6 py-10 lg:px-10">
-          {/* One header row: the breadcrumb names the location (no heading
-              repeating it), and the reclaimed space holds the search box. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-              <Breadcrumbs
-                segments={location.segments}
-                onNavigate={onOpenDir}
-              />
-            </div>
-            <div className="relative w-full shrink-0 sm:w-56">
-              <SearchLg
-                size={16}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setSearchText("");
-                }}
-                placeholder={searchPlaceholder}
-                className="h-9 rounded-xl pr-9 pl-9"
-              />
-              {searchText && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
-                  onClick={() => setSearchText("")}
-                  aria-label={t("library.library.clearSearch")}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => void handleUpload(e.target.files)}
+      />
+      {compact && (
+        <>
+          <Page.Breadcrumbs items={breadcrumbs} />
+          <Page.Title>
+            {currentFolder
+              ? segmentLabel(currentFolder)
+              : t("library.library.title")}
+          </Page.Title>
+          <Page.Actions
+            secondary={
+              <>
+                <SearchToggle
+                  value={searchText}
+                  onChange={setSearchText}
+                  label={t("library.library.searchPlaceholder")}
+                  placeholder={searchPlaceholder}
+                  clearLabel={t("library.library.clearSearch")}
+                />
+                <IconButton
+                  label={t("library.library.refresh")}
+                  tooltipSide="bottom"
+                  variant="secondary"
+                  onClick={refresh}
                 >
-                  <XClose size={14} />
-                </Button>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={refresh}
-              aria-label={t("library.library.refresh")}
-            >
-              <RefreshCw01 size={14} />
-            </Button>
-            {browseVolume && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setNewFolderOpen(true)}
-              >
-                <Plus size={14} />
-                {t("library.library.newFolder")}
-              </Button>
-            )}
+                  <RefreshCw01 />
+                </IconButton>
+                {browseVolume && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setNewFolderOpen(true)}
+                  >
+                    <Plus size={14} />
+                    <span className="hidden sm:inline">
+                      {t("library.library.newFolder")}
+                    </span>
+                    <span className="sr-only sm:hidden">
+                      {t("library.library.newFolder")}
+                    </span>
+                  </Button>
+                )}
+              </>
+            }
+          >
             {location.readOnly ? (
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Eye size={12} />
@@ -472,17 +504,101 @@ export function LibraryPage({
                   : t("library.library.uploadFile")}
               </Button>
             )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => void handleUpload(e.target.files)}
-            />
-          </div>
+          </Page.Actions>
 
+          <Panel.Toolbar.Left.Portal>
+            <Page.Tabs>
+              {(["all", "documents", "media"] as const).map((view) => (
+                <Page.Tab
+                  key={view}
+                  active={fileView === view}
+                  onClick={() => void setFileView(view)}
+                >
+                  {t(`library.library.${view}`)}
+                </Page.Tab>
+              ))}
+            </Page.Tabs>
+          </Panel.Toolbar.Left.Portal>
+        </>
+      )}
+      <div className="h-full overflow-y-auto">
+        <div className="mx-auto flex w-full flex-col classic:max-w-[900px] classic:gap-10 classic:px-6 classic:py-10 classic:lg:px-10 compact:max-w-[1200px] compact:gap-6 compact:px-4 compact:py-6 compact:md:px-8">
+          {!compact && (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+                  <Breadcrumbs
+                    segments={location.segments}
+                    onNavigate={onOpenDir}
+                  />
+                </div>
+                <div className="relative w-full shrink-0 sm:w-56">
+                  <SearchLg
+                    size={16}
+                    className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+                  />
+                  <Input
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setSearchText("");
+                    }}
+                    placeholder={searchPlaceholder}
+                    className="h-9 rounded-xl pr-9 pl-9"
+                  />
+                  {searchText && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2"
+                      onClick={() => setSearchText("")}
+                      aria-label={t("library.library.clearSearch")}
+                    >
+                      <XClose size={14} />
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={refresh}
+                  aria-label={t("library.library.refresh")}
+                >
+                  <RefreshCw01 size={14} />
+                </Button>
+                {browseVolume && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewFolderOpen(true)}
+                  >
+                    <Plus size={14} />
+                    {t("library.library.newFolder")}
+                  </Button>
+                )}
+                {location.readOnly ? (
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Eye size={12} />
+                    {t("library.library.readOnly")}
+                  </span>
+                ) : (
+                  <Button
+                    size="sm"
+                    disabled={upload.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload01 size={14} />
+                    {upload.isPending
+                      ? t("library.library.uploading")
+                      : t("library.library.uploadFile")}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
           {searchQuery ? (
             <SearchResultsView
+              fileView={fileView}
               query={searchQuery}
               scope={searchScope}
               stale={searchText.trim() !== searchQuery}
@@ -494,6 +610,7 @@ export function LibraryPage({
             <PublicSetsView onOpenDir={onOpenDir} />
           ) : (
             <VolumeView
+              fileView={fileView}
               // remount on volume switch so list state never bleeds across
               key={location.volume}
               location={location}

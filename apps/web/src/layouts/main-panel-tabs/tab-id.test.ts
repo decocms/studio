@@ -4,8 +4,10 @@ import {
   formatCodeTabId,
   formatDeckTabId,
   formatFileTabId,
+  formatAgentViewTabId,
   formatLibraryFileTabId,
   parseCodeTabId,
+  parseAgentViewTabId,
   isLegacySettingsTab,
   isPerThreadTab,
   normalizePanelSegment,
@@ -66,6 +68,27 @@ describe("parseAutomationTabId", () => {
 
   test("automation: with empty id → null", () => {
     expect(parseAutomationTabId("automation:")).toBeNull();
+  });
+});
+
+describe("agent view tab id", () => {
+  test("round-trips ids that collide with every built-in grammar", () => {
+    for (const id of [
+      "reports",
+      "git",
+      "content",
+      "app:conn:tool",
+      "code:src/app.tsx",
+      "agent-view:nested",
+    ]) {
+      expect(parseAgentViewTabId(formatAgentViewTabId(id))).toEqual({ id });
+    }
+  });
+
+  test("rejects empty and malformed encoded ids", () => {
+    expect(parseAgentViewTabId("agent-view:")).toBeNull();
+    expect(parseAgentViewTabId("agent-view:%E0%A4%A")).toBeNull();
+    expect(parseAgentViewTabId("reports")).toBeNull();
   });
 });
 
@@ -177,13 +200,13 @@ describe("resolveDefaultTabId", () => {
     expect(resolveDefaultTabId({ defaultMainView: null })).toBe("settings");
   });
 
-  test("ext-app with id → id", () => {
+  test("ext-app with id → a provenance-preserving agent-view id", () => {
     expect(
       resolveDefaultTabId({
         defaultMainView: { type: "ext-app", id: "analytics" },
         tabs: [{ id: "analytics" }],
       }),
-    ).toBe("analytics");
+    ).toBe(formatAgentViewTabId("analytics"));
   });
 
   test("ext-app no id → first declared tab id", () => {
@@ -192,7 +215,7 @@ describe("resolveDefaultTabId", () => {
         defaultMainView: { type: "ext-app" },
         tabs: [{ id: "t1" }, { id: "t2" }],
       }),
-    ).toBe("t1");
+    ).toBe(formatAgentViewTabId("t1"));
   });
 
   test("ext-app id not in declared tabs → first declared tab id", () => {
@@ -201,7 +224,7 @@ describe("resolveDefaultTabId", () => {
         defaultMainView: { type: "ext-app", id: "stale" },
         tabs: [{ id: "t1" }, { id: "t2" }],
       }),
-    ).toBe("t1");
+    ).toBe(formatAgentViewTabId("t1"));
   });
 
   test("ext-app id not in declared tabs and no tabs → 'settings'", () => {
@@ -276,6 +299,15 @@ describe("resolveDefaultTabId", () => {
       resolveDefaultTabId({ defaultMainView: { type: "automation" } }),
     ).toBe("settings");
   });
+
+  test("unknown type preserves the first declared tab's provenance", () => {
+    expect(
+      resolveDefaultTabId({
+        defaultMainView: { type: "retired-custom-shape" },
+        tabs: [{ id: "reports" }],
+      }),
+    ).toBe(formatAgentViewTabId("reports"));
+  });
 });
 
 describe("resolveActiveTabAndOpen", () => {
@@ -287,7 +319,10 @@ describe("resolveActiveTabAndOpen", () => {
   test("no segment + defaultMainView set → open, tab = default", () => {
     expect(
       resolveActiveTabAndOpen({ panelTabId: undefined, metadata: meta }),
-    ).toEqual({ mainOpen: true, activeTab: "analytics" });
+    ).toEqual({
+      mainOpen: true,
+      activeTab: formatAgentViewTabId("analytics"),
+    });
   });
 
   test("no segment + no defaultMainView → closed, tab = 'settings'", () => {

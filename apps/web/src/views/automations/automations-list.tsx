@@ -1,5 +1,6 @@
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useState } from "react";
-import { Plus, Zap } from "@untitledui/icons";
+import { Plus, Settings01, Zap } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import { Page } from "@/components/page";
@@ -11,15 +12,43 @@ import {
 } from "@/hooks/use-automations";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { AutomationListRow } from "./automation-list-row";
+import { isAutomationsNotConfiguredError } from "./automations-error";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
 export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
+  const compact = useCompactPageLayout();
   const t = useT();
   const { openPanel } = usePanelNavigate();
-  const { data: automations = [] } = useAutomations(virtualMcpId);
+  const { data: automations = [], error } = useAutomations(virtualMcpId);
   const { create } = useAutomationActions();
   const [search, setSearch] = useState("");
+
+  // Only the missing-relation case gets the setup prompt; any other error keeps surfacing as an error.
+  if (error && isAutomationsNotConfiguredError(error)) {
+    return (
+      <Page>
+        <Page.Content>
+          <Page.Container>
+            <div className="flex items-center justify-center py-20">
+              <EmptyState
+                image={
+                  <Settings01 size={48} className="text-muted-foreground" />
+                }
+                title={t("automations.setupRequired.title")}
+                description={t("automations.setupRequired.description")}
+                actions={
+                  <Button size="sm" onClick={() => openPanel("settings")}>
+                    {t("automations.setupRequired.goToSetup")}
+                  </Button>
+                }
+              />
+            </div>
+          </Page.Container>
+        </Page.Content>
+      </Page>
+    );
+  }
 
   const lowerSearch = search.toLowerCase();
   const filtered = automations.filter((a) =>
@@ -50,9 +79,11 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
   return (
     <Page>
       <Page.Content>
-        <Page.Body>
+        <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title>{t("automations.automationsList.title")}</Page.Title>
+            <Page.Title actions={compact && newButton}>
+              {t("automations.automationsList.title")}
+            </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {automations.length > 0 && (
                 <SearchInput
@@ -64,7 +95,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                   className="w-full md:w-[375px]"
                 />
               )}
-              {newButton}
+              {!compact && newButton}
             </div>
           </div>
 
@@ -74,7 +105,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
                 image={<Zap size={48} className="text-muted-foreground" />}
                 title={t("automations.automationsList.emptyTitle")}
                 description={t("automations.automationsList.emptyDescription")}
-                actions={newButton}
+                actions={!compact && newButton}
               />
             </div>
           ) : filtered.length === 0 ? (
@@ -99,7 +130,7 @@ export function AutomationsList({ virtualMcpId }: { virtualMcpId: string }) {
               ))}
             </div>
           )}
-        </Page.Body>
+        </Page.Container>
       </Page.Content>
     </Page>
   );

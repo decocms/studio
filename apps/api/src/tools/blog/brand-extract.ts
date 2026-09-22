@@ -1,4 +1,5 @@
-import { generateObject, generateText } from "ai";
+import { generateText } from "ai";
+import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
@@ -83,12 +84,11 @@ async function searchCompetitors(
       smartTier.credentialId,
       organizationId,
     );
-    const { object } = await generateObject({
+    const { object } = await retryGenerateObject({
       model: smartProvider.aiSdk.languageModel(smartTier.modelId),
       schema: CompetitorsSchema,
       system: COMPETITOR_SYSTEM,
       prompt: `Brand: ${brand.companyName}\nWrite the values in: ${brand.language || "the brand's own language"}\n\nResearch:\n${text}`,
-      temperature: 0.2,
     });
     return object.competitors;
   } catch (err) {
@@ -158,14 +158,13 @@ export const BLOG_BRAND_EXTRACT = defineTool({
       organizationId,
     );
 
-    const { object } = await generateObject({
+    const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: BlogBrandSchema,
       system: SYSTEM,
       prompt: input.blocks
         .map((b) => `# Block: ${b.key}\n\n${b.content}`)
         .join("\n\n---\n\n"),
-      temperature: 0.2,
     });
 
     // The blocks can't name competitors, so search only when they didn't.

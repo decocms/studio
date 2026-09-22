@@ -63,7 +63,7 @@
       // jira-stub-server.ts wraps fixtures/jira-stub.ts (the stand-in Jira the
       // run-trigger spec points an integration's siteUrl at).
       "entry": [
-        "fixtures/commerce-upgrade-mock.ts",
+        "fixtures/reports-upgrade-mock.ts",
         "fixtures/github-stub-server.ts",
         "fixtures/jira-stub-server.ts"
       ]

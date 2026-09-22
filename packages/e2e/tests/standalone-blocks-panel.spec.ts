@@ -47,6 +47,8 @@ async function createClonableAgent(
   return { agentId: agent.item.id, threadId: thread.item.id };
 }
 
+test.use({ compactPageLayout: true });
+
 test.describe("Blocks preview mode", () => {
   test.setTimeout(90_000);
 
@@ -81,12 +83,10 @@ test.describe("Blocks preview mode", () => {
     await page
       .getByRole("button", { name: "Site Editor", exact: true })
       .click();
-    /* The VIEW is the segment (`site-editor`, which `preview` normalises to);
-       the project rides in `?virtualmcpid=`. Assert both halves: a shrinking
-       path alone would also pass if the project scope had been dropped. */
-    await expect(page).toHaveURL(/\/agents\/site-editor/);
     await expect(page).toHaveURL(
-      (url) => url.searchParams.get("virtualmcpid") === agentId,
+      (url) =>
+        url.pathname === `/${orgSlug}/projects/${agentId}/site-editor` &&
+        !url.searchParams.has("virtualmcpid"),
     );
     await expect(contentTab).toBeVisible();
     await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
@@ -120,7 +120,7 @@ test.describe("Blocks preview mode", () => {
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
   });
 
-  test("mobile renders one workspace surface at a time without Blocks", async ({
+  test("mobile uses Content for editing and returns from chat to the same Preview", async ({
     authedPage,
   }) => {
     const { page, orgSlug } = authedPage;
@@ -133,35 +133,34 @@ test.describe("Blocks preview mode", () => {
       `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=false&main=preview`,
     );
 
-    // Mobile has no side-by-side split and no standalone Chat toggle: every
-    // destination (Chat, the main views, Tasks, Library) lives in the single
-    // "View" dropdown, and only one surface shows at a time.
-    const viewSelect = page.getByRole("combobox", { name: "View" });
-    await expect(viewSelect).toBeVisible({ timeout: 30_000 });
-    // Preview is the single visible surface to start.
-    await expect(page.getByTestId("main-panel")).toBeVisible();
+    await expect(page.getByTestId("main-panel")).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
-
-    // Pick Chat: main closes, but the view stays in the path so Preview returns.
-    await viewSelect.click();
-    await page.getByRole("option", { name: "Chat" }).click();
-    await expect(page).toHaveURL(/sidepanel=true/);
-    await expect(page).toHaveURL(/mainpanel=false/);
+    const contentTab = page.getByRole("button", {
+      name: "Content",
+      exact: true,
+    });
+    await contentTab.click();
+    await expect(contentTab).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Toggle sidebar", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Navigation", exact: true })
+      .getByRole("button", { name: "Open chat", exact: true })
+      .click();
+    await expect(page.getByTestId("chat-panel")).toBeVisible();
     await expect(page.getByTestId("main-panel")).toHaveCount(0);
-
-    // Pick Preview again: chat closes, the main panel returns.
-    await viewSelect.click();
-    await page.getByRole("option", { name: "Preview" }).click();
-    await expect(page).toHaveURL(/sidepanel=false/);
-    await expect(page).toHaveURL(/\/agents\/site-editor/);
-    // The project scope moved from the path into search — it must still be here.
-    await expect(page).toHaveURL(
-      (url) => url.searchParams.get("virtualmcpid") === agentId,
-    );
+    await page.getByRole("combobox", { name: "View", exact: true }).click();
+    await page.getByRole("option", { name: "Preview", exact: true }).click();
     await expect(page.getByTestId("main-panel")).toBeVisible();
-    await expect(page.getByTestId("preview-blocks-toggle")).toHaveCount(0);
     await expect(page.getByTestId("blocks-panel")).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe(
+      `/${orgSlug}/projects/${agentId}/site-editor`,
+    );
   });
 });

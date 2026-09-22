@@ -129,7 +129,7 @@ function TierDropdown({
                   setOpen(false);
                 }}
                 className={cn(
-                  "flex items-start gap-2 px-2 py-1.5 rounded-md text-left hover:bg-muted",
+                  "flex items-start gap-2 px-2 py-1.5 classic:rounded-md compact:rounded-lg text-left hover:bg-muted",
                 )}
               >
                 <Icon
@@ -268,7 +268,7 @@ function SpecificModelPicker({
   }
 
   return (
-    <div className="w-fit max-w-full [&_button]:rounded-md">
+    <div className="w-fit max-w-full">
       <ModelSelector
         variant="bordered"
         placeholder={t("automations.automationConfig.pickModelPlaceholder")}

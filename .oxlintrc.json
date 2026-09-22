@@ -10,7 +10,8 @@
     "./plugins/ban-cross-tree-imports.js",
     "./plugins/ban-e2e-app-imports.js",
     "./plugins/ban-web-server-imports.js",
-    "./plugins/ban-git-provider-reachthrough.js"
+    "./plugins/ban-git-provider-reachthrough.js",
+    "./plugins/ensure-tailwind-design-system-tokens.js"
   ],
   "ignorePatterns": ["apps/docs/*"],
   "rules": {
@@ -28,7 +29,8 @@
     "ban-cross-tree-imports/ban-cross-tree-imports": "warn",
     "ban-e2e-app-imports/ban-e2e-app-imports": "error",
     "ban-web-server-imports/ban-web-server-imports": "warn",
-    "ban-git-provider-reachthrough/ban-git-provider-reachthrough": "error"
+    "ban-git-provider-reachthrough/ban-git-provider-reachthrough": "error",
+    "ensure-tailwind-design-system-tokens/ensure-tailwind-design-system-tokens": "error"
   },
   "plugins": ["react"]
 }

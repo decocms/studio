@@ -19,20 +19,34 @@ const CONTINUE_LEAD = "already has an open pull request";
 const OPEN_A_PR = "commit on a new branch, push, and open a pull request";
 
 describe("buildSuperAgentTaskPrompt", () => {
-  // Decopilot registers the issue tools as built-ins, so they are named bare
-  // here and namespaced in the sandbox builder. Same instruction, two spellings
-  // — a run told the wrong one spends a turn searching for the tool.
-  it("a Jira-triggered run is told to report on the issue, unprefixed", () => {
-    const p = buildSuperAgentTaskPrompt(task, {
-      source: {
-        kind: "jira",
-        issueKey: "ABC-1",
-        title: "Jira ABC-1: x",
-        body: "# ABC-1",
-      },
-    });
+  const jiraSource = {
+    source: {
+      kind: "jira" as const,
+      issueKey: "ABC-1",
+      title: "Jira ABC-1: x",
+      body: "# ABC-1",
+    },
+  };
+
+  // Decopilot registers the Studio tools as built-ins, under bare names, which
+  // is what a skill's text already assumes — so here the namespace fact is a
+  // confirmation. The sandbox builder states the opposite for the same skill.
+  it("a Jira-triggered run is told its tools are unprefixed", () => {
+    const p = buildSuperAgentTaskPrompt(task, jiraSource);
     expect(p).toContain("`JIRA_COMMENT_ADD`");
     expect(p).not.toContain("mcp__studio__");
+  });
+
+  // Symmetric with the sandbox builder: how to work on the issue is what the
+  // column rule says, in text a person wrote. Only the pod's own facts — no
+  // repo loaded, no dev server — survive, because nobody writing a rule could
+  // state those.
+  it("a Jira-triggered run gets the pod's facts, not the board's script", () => {
+    const p = buildSuperAgentTaskPrompt(task, jiraSource);
+    expect(p).toContain("How this environment works:");
+    expect(p).toContain("`load_repo`");
+    expect(p).not.toContain("How to work:");
+    expect(p).not.toContain("open a pull request");
   });
 
   it("a board run is told nothing about Jira", () => {

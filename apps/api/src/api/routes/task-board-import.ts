@@ -16,7 +16,7 @@ import { TaskBoardItemPrioritySchema } from "@/tools/task-board/schema";
 import { bearerToken, isVaultServiceToken } from "./credential-vault";
 
 /**
- * Internal task-board import — a trusted machine service (commerce-discovery's
+ * Internal task-board import — a trusted machine service (reports's
  * diagnostic worker) batch-creates task board items for the org at the end of
  * an enriched report run.
  *
@@ -63,6 +63,14 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * `addItemTags`): a refresh re-asserts the sender's labels without removing the
  * ones a human put on the card.
  *
+ * An item may carry `repositoryId` — the Studio repository the sender read
+ * while writing the finding. It travels because a NAME is not an identity: the
+ * dispatch that binds a checkout matches `owner/name` against the org's
+ * repositories, which is ambiguous for an org that mirrors one project across
+ * two hosts and wrong for a card whose repository was renamed since. The id is
+ * verified against this org before anything is written, so a sender cannot
+ * point a card at another tenant's repository.
+ *
  * An item may carry `assigneeId` — a real org member, or the Super Agent
  * sentinel to queue the task for an agent run (status forced to To Do, same as
  * the create tool). A delegated run must execute as a REAL org member
@@ -99,6 +107,9 @@ export const importBodySchema = z.object({
          *  plus the finding's domain). Resolved case-insensitively against the
          *  org's tags, created when missing, attached additively. */
         tags: z.array(z.string().min(1).max(50)).max(8).optional(),
+        /** The Studio repository the finding was written against. Must belong
+         *  to this org; see the module note on why it is worth carrying. */
+        repositoryId: z.string().min(1).max(200).optional(),
       }),
     )
     .min(1)
@@ -161,6 +172,26 @@ export const createTaskBoardImportRoutes = () => {
           { error: `assignee is not a member: ${item.assigneeId}` },
           400,
         );
+      }
+    }
+
+    // Every repository named in the batch must be one THIS org owns. Checked
+    // once for the distinct set rather than per item, and before the
+    // transaction, so a bad id costs one query and writes nothing.
+    const repositoryIds = [
+      ...new Set(items.flatMap((item) => item.repositoryId ?? [])),
+    ];
+    if (repositoryIds.length > 0) {
+      const owned = await ctx.db
+        .selectFrom("repositories")
+        .select(["id"])
+        .where("organization_id", "=", organizationId)
+        .where("id", "in", repositoryIds)
+        .execute();
+      const ownedIds = new Set(owned.map((row) => row.id));
+      const foreign = repositoryIds.find((id) => !ownedIds.has(id));
+      if (foreign) {
+        return c.json({ error: `invalid_repository: ${foreign}` }, 400);
       }
     }
 
@@ -324,6 +355,13 @@ export const createTaskBoardImportRoutes = () => {
             {
               description: item.description ?? null,
               priority: item.priority,
+              // Refreshed like the evidence, not preserved like the title: a
+              // card created before the sender knew the repository has to pick
+              // it up, and a re-diagnosis that moved to a different repository
+              // is the sender correcting itself, not a human's edit.
+              ...(item.repositoryId !== undefined
+                ? { repositoryId: item.repositoryId }
+                : {}),
             },
             "system",
           );
@@ -349,6 +387,7 @@ export const createTaskBoardImportRoutes = () => {
               ? "system"
               : null,
           externalKey: item.externalKey ?? null,
+          repositoryId: item.repositoryId ?? null,
           by: "system",
         });
         // A within-batch duplicate key folds into the row just created.

@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
-  bindCommerceDiscoveryResource,
-  CommerceDiscoveryClaimError,
-  commerceDiscoveryClaimMessagePtBr,
-  fetchCommerceDiscoveryAuth,
-  fetchCommerceDiscoveryConnectionStatus,
-  triggerCommerceDiscoveryRun,
+  bindReportsResource,
+  ReportsClaimError,
+  reportsClaimMessagePtBr,
+  fetchReportsAuth,
+  fetchReportsConnectionStatus,
+  triggerReportsRun,
 } from "./auth-client";
 
-describe("fetchCommerceDiscoveryAuth", () => {
+describe("fetchReportsAuth", () => {
   test("upgrades the normalized domain and returns the generated client token", async () => {
     const captured: Array<{
       method: string;
@@ -17,13 +17,13 @@ describe("fetchCommerceDiscoveryAuth", () => {
       body: unknown;
     }> = [];
 
-    const auth = await fetchCommerceDiscoveryAuth(
+    const auth = await fetchReportsAuth(
       {
         siteUrl: "https://example.com/path",
         orgId: "org_123",
         orgName: "Acme",
         email: "owner@acme.com",
-        reportUrl: "https://studio.example.test/commerce-onboarding?org=acme",
+        reportUrl: "https://studio.example.test/reports-onboarding?org=acme",
       },
       {
         baseUrl: "https://commerce.example.test",
@@ -59,8 +59,7 @@ describe("fetchCommerceDiscoveryAuth", () => {
           org_id: "org_123",
           name: "Acme",
           email: "owner@acme.com",
-          report_url:
-            "https://studio.example.test/commerce-onboarding?org=acme",
+          report_url: "https://studio.example.test/reports-onboarding?org=acme",
         },
       },
     ]);
@@ -68,7 +67,7 @@ describe("fetchCommerceDiscoveryAuth", () => {
 
   test("requires an internal API key", async () => {
     await expect(
-      fetchCommerceDiscoveryAuth(
+      fetchReportsAuth(
         {
           siteUrl: "https://example.com",
           orgId: "org_123",
@@ -88,9 +87,9 @@ describe("fetchCommerceDiscoveryAuth", () => {
   async function captureClaimError(
     fetchImpl: () => Promise<Response>,
     input: Partial<{ siteUrl: string; email: string }> = {},
-  ): Promise<CommerceDiscoveryClaimError> {
+  ): Promise<ReportsClaimError> {
     try {
-      await fetchCommerceDiscoveryAuth(
+      await fetchReportsAuth(
         {
           siteUrl: input.siteUrl ?? "https://example.com",
           orgId: "org_123",
@@ -103,10 +102,10 @@ describe("fetchCommerceDiscoveryAuth", () => {
         },
       );
     } catch (error) {
-      if (error instanceof CommerceDiscoveryClaimError) return error;
+      if (error instanceof ReportsClaimError) return error;
       throw error;
     }
-    throw new Error("expected fetchCommerceDiscoveryAuth to reject");
+    throw new Error("expected fetchReportsAuth to reject");
   }
 
   test("maps a 403 ownership_unverified to a friendly pt-BR message with email + domain", async () => {
@@ -148,14 +147,12 @@ describe("fetchCommerceDiscoveryAuth", () => {
     );
 
     expect(error.code).toBe("unknown");
-    expect(error.message).toContain(
-      "Não foi possível configurar o Commerce Discovery",
-    );
+    expect(error.message).toContain("Não foi possível configurar o Reports");
   });
 
   test("rejects upgrade responses without a token", async () => {
     await expect(
-      fetchCommerceDiscoveryAuth(
+      fetchReportsAuth(
         {
           siteUrl: "https://example.com",
           orgId: "org_123",
@@ -166,14 +163,12 @@ describe("fetchCommerceDiscoveryAuth", () => {
           fetchImpl: async () => Response.json({ scope: "private" }),
         },
       ),
-    ).rejects.toThrow(
-      "Commerce Discovery auth response did not include a token.",
-    );
+    ).rejects.toThrow("Reports auth response did not include a token.");
   });
 
   test("rejects a non-JSON 200 body with the classified error, not a raw SyntaxError", async () => {
     await expect(
-      fetchCommerceDiscoveryAuth(
+      fetchReportsAuth(
         {
           siteUrl: "https://example.com",
           orgId: "org_123",
@@ -184,15 +179,13 @@ describe("fetchCommerceDiscoveryAuth", () => {
           fetchImpl: async () => new Response("<html>not json</html>"),
         },
       ),
-    ).rejects.toThrow(
-      "Commerce Discovery auth response did not include a token.",
-    );
+    ).rejects.toThrow("Reports auth response did not include a token.");
   });
 });
 
-describe("commerceDiscoveryClaimMessagePtBr", () => {
+describe("reportsClaimMessagePtBr", () => {
   test("ownership_unverified interpolates email + domain and guides to a different email / domain alias", () => {
-    const message = commerceDiscoveryClaimMessagePtBr("ownership_unverified", {
+    const message = reportsClaimMessagePtBr("ownership_unverified", {
       email: "someone@gmail.com",
       domain: "loja.com.br",
     });
@@ -203,36 +196,32 @@ describe("commerceDiscoveryClaimMessagePtBr", () => {
   });
 
   test("ownership_unverified degrades gracefully without email/domain", () => {
-    const message = commerceDiscoveryClaimMessagePtBr("ownership_unverified");
+    const message = reportsClaimMessagePtBr("ownership_unverified");
     expect(message).toContain("Este e-mail");
     expect(message).toContain("este site");
   });
 
   test("already_claimed_by_other_org points to support and does NOT suggest retrying", () => {
-    const message = commerceDiscoveryClaimMessagePtBr(
-      "already_claimed_by_other_org",
-    );
+    const message = reportsClaimMessagePtBr("already_claimed_by_other_org");
     expect(message).toContain("outra organização");
     expect(message).toContain("suporte");
     expect(message).not.toContain("Tente novamente");
   });
 
   test("the two main codes produce genuinely different messages", () => {
-    expect(commerceDiscoveryClaimMessagePtBr("ownership_unverified")).not.toBe(
-      commerceDiscoveryClaimMessagePtBr("already_claimed_by_other_org"),
+    expect(reportsClaimMessagePtBr("ownership_unverified")).not.toBe(
+      reportsClaimMessagePtBr("already_claimed_by_other_org"),
     );
   });
 
   test("unknown falls back to a generic friendly message", () => {
-    const message = commerceDiscoveryClaimMessagePtBr("unknown");
-    expect(message).toContain(
-      "Não foi possível configurar o Commerce Discovery",
-    );
+    const message = reportsClaimMessagePtBr("unknown");
+    expect(message).toContain("Não foi possível configurar o Reports");
     expect(message).toContain("Tente novamente");
   });
 });
 
-describe("triggerCommerceDiscoveryRun", () => {
+describe("triggerReportsRun", () => {
   test("POSTs /run for the normalized domain with the org id + bearer", async () => {
     const captured: Array<{
       method: string;
@@ -241,7 +230,7 @@ describe("triggerCommerceDiscoveryRun", () => {
       body: unknown;
     }> = [];
 
-    const out = await triggerCommerceDiscoveryRun(
+    const out = await triggerReportsRun(
       { siteUrl: "https://example.com/path", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",
@@ -277,7 +266,7 @@ describe("triggerCommerceDiscoveryRun", () => {
 
   test("forwards github_repo in the body when provided", async () => {
     let body: unknown;
-    await triggerCommerceDiscoveryRun(
+    await triggerReportsRun(
       {
         siteUrl: "https://example.com",
         orgId: "org_123",
@@ -302,8 +291,83 @@ describe("triggerCommerceDiscoveryRun", () => {
     });
   });
 
+  test("forwards the repository identity, snake_case, for any provider", async () => {
+    let body: unknown;
+    await triggerReportsRun(
+      {
+        siteUrl: "https://example.com",
+        orgId: "org_123",
+        repository: {
+          repositoryId: "repo_1",
+          provider: "gitlab",
+          host: "gitlab.example.dev",
+          path: "group/sub/project",
+          defaultBranch: "main",
+          webUrl: "https://gitlab.example.dev/group/sub/project",
+        },
+      },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async (input, init) => {
+          body = await new Request(input, init).json();
+          return Response.json({
+            url: "example.com",
+            scope: "private",
+            run: {},
+          });
+        },
+      },
+    );
+    expect(body).toEqual({
+      org_id: "org_123",
+      repository: {
+        repository_id: "repo_1",
+        provider: "gitlab",
+        host: "gitlab.example.dev",
+        path: "group/sub/project",
+        default_branch: "main",
+        web_url: "https://gitlab.example.dev/group/sub/project",
+      },
+    });
+  });
+
+  test("a github.com repository goes out under both spellings for the window", async () => {
+    let body: unknown;
+    await triggerReportsRun(
+      {
+        siteUrl: "https://example.com",
+        orgId: "org_123",
+        repository: {
+          repositoryId: "repo_2",
+          provider: "github",
+          host: "github.com",
+          path: "acme/storefront",
+        },
+        githubRepo: "acme/storefront",
+      },
+      {
+        baseUrl: "https://commerce.example.test",
+        apiKey: "master-key",
+        fetchImpl: async (input, init) => {
+          body = await new Request(input, init).json();
+          return Response.json({
+            url: "example.com",
+            scope: "private",
+            run: {},
+          });
+        },
+      },
+    );
+    expect(body).toMatchObject({
+      org_id: "org_123",
+      github_repo: "acme/storefront",
+      repository: { repository_id: "repo_2", path: "acme/storefront" },
+    });
+  });
+
   test("treats a 409 (not upgraded yet) as a soft skip, not a throw", async () => {
-    const out = await triggerCommerceDiscoveryRun(
+    const out = await triggerReportsRun(
       { siteUrl: "https://example.com", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",
@@ -320,7 +384,7 @@ describe("triggerCommerceDiscoveryRun", () => {
 
   test("requires an internal API key", async () => {
     await expect(
-      triggerCommerceDiscoveryRun(
+      triggerReportsRun(
         { siteUrl: "https://example.com", orgId: "org_123" },
         {
           settings: {
@@ -335,7 +399,7 @@ describe("triggerCommerceDiscoveryRun", () => {
   });
 });
 
-describe("bindCommerceDiscoveryResource", () => {
+describe("bindReportsResource", () => {
   test("POSTs /bindings for the normalized domain and returns the verified binding", async () => {
     const captured: Array<{
       method: string;
@@ -344,7 +408,7 @@ describe("bindCommerceDiscoveryResource", () => {
       body: unknown;
     }> = [];
 
-    const out = await bindCommerceDiscoveryResource(
+    const out = await bindReportsResource(
       {
         siteUrl: "https://example.com/loja",
         orgId: "org_123",
@@ -391,7 +455,7 @@ describe("bindCommerceDiscoveryResource", () => {
   });
 
   test("returns the pt-BR detail on a 422 verification failure (not a throw)", async () => {
-    const out = await bindCommerceDiscoveryResource(
+    const out = await bindReportsResource(
       {
         siteUrl: "https://attacker.com.br",
         orgId: "org_123",
@@ -422,7 +486,7 @@ describe("bindCommerceDiscoveryResource", () => {
   });
 
   test("maps a 409 (already bound elsewhere) to an actionable pt-BR detail", async () => {
-    const out = await bindCommerceDiscoveryResource(
+    const out = await bindReportsResource(
       {
         siteUrl: "https://example.com",
         orgId: "org_123",
@@ -446,7 +510,7 @@ describe("bindCommerceDiscoveryResource", () => {
 
   test("rejects a non-JSON 200 binding body with the classified error", async () => {
     await expect(
-      bindCommerceDiscoveryResource(
+      bindReportsResource(
         {
           siteUrl: "https://example.com",
           orgId: "org_123",
@@ -459,13 +523,11 @@ describe("bindCommerceDiscoveryResource", () => {
           fetchImpl: async () => new Response("<html>not json</html>"),
         },
       ),
-    ).rejects.toThrow(
-      "Commerce Discovery bind response did not include a binding.",
-    );
+    ).rejects.toThrow("Reports bind response did not include a binding.");
   });
 
   test("treats a non-JSON 422 body as a generic verification failure, not a throw", async () => {
-    const out = await bindCommerceDiscoveryResource(
+    const out = await bindReportsResource(
       {
         siteUrl: "https://example.com",
         orgId: "org_123",
@@ -489,7 +551,7 @@ describe("bindCommerceDiscoveryResource", () => {
 
   test("throws on an unexpected status", async () => {
     await expect(
-      bindCommerceDiscoveryResource(
+      bindReportsResource(
         {
           siteUrl: "https://example.com",
           orgId: "org_123",
@@ -503,12 +565,12 @@ describe("bindCommerceDiscoveryResource", () => {
             Response.json({ error: "boom" }, { status: 500 }),
         },
       ),
-    ).rejects.toThrow("Commerce Discovery auth failed");
+    ).rejects.toThrow("Reports auth failed");
   });
 
   test("requires an internal API key", async () => {
     await expect(
-      bindCommerceDiscoveryResource(
+      bindReportsResource(
         {
           siteUrl: "https://example.com",
           orgId: "org_123",
@@ -528,11 +590,11 @@ describe("bindCommerceDiscoveryResource", () => {
   });
 });
 
-describe("fetchCommerceDiscoveryConnectionStatus", () => {
+describe("fetchReportsConnectionStatus", () => {
   test("GETs the status for the normalized domain + org and returns providers", async () => {
     const captured: Array<{ method: string; url: string }> = [];
 
-    const out = await fetchCommerceDiscoveryConnectionStatus(
+    const out = await fetchReportsConnectionStatus(
       { siteUrl: "https://example.com/loja", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",
@@ -569,7 +631,7 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
   });
 
   test("degrades a non-JSON 200 status body to empty providers, not a throw", async () => {
-    const out = await fetchCommerceDiscoveryConnectionStatus(
+    const out = await fetchReportsConnectionStatus(
       { siteUrl: "https://example.com", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",
@@ -581,7 +643,7 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
   });
 
   test("flags a 409 (not claimed for this org) as claimed:false, not a throw", async () => {
-    const out = await fetchCommerceDiscoveryConnectionStatus(
+    const out = await fetchReportsConnectionStatus(
       { siteUrl: "https://example.com", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",
@@ -595,7 +657,7 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
 
   test("retries a transient 503 and succeeds once the upstream recovers", async () => {
     let calls = 0;
-    const out = await fetchCommerceDiscoveryConnectionStatus(
+    const out = await fetchReportsConnectionStatus(
       { siteUrl: "https://example.com", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",
@@ -616,7 +678,7 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
   test("gives up after exhausting retries on a persistent 503, surfacing the status", async () => {
     let calls = 0;
     await expect(
-      fetchCommerceDiscoveryConnectionStatus(
+      fetchReportsConnectionStatus(
         { siteUrl: "https://example.com", orgId: "org_123" },
         {
           baseUrl: "https://commerce.example.test",
@@ -627,13 +689,13 @@ describe("fetchCommerceDiscoveryConnectionStatus", () => {
           },
         },
       ),
-    ).rejects.toThrow("Commerce Discovery auth failed with status 503.");
+    ).rejects.toThrow("Reports auth failed with status 503.");
     expect(calls).toBe(3);
   });
 
   test("does not retry a 404 (not a transient failure)", async () => {
     let calls = 0;
-    const out = await fetchCommerceDiscoveryConnectionStatus(
+    const out = await fetchReportsConnectionStatus(
       { siteUrl: "https://example.com", orgId: "org_123" },
       {
         baseUrl: "https://commerce.example.test",

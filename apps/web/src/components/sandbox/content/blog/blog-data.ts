@@ -976,6 +976,27 @@ function pick<T>(...candidates: Array<T | undefined>): T | undefined {
 }
 
 /**
+ * Some site schemas leave `@title`/`@description` as the raw resolveType (e.g.
+ * "site/sections/Blog/Post/BlockImage.tsx"). That is a path, not a label — drop
+ * it so the friendly catalog name shows instead.
+ */
+function humanLabel(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value.includes("/") || /\.(tsx?|jsx?)$/.test(value)) return undefined;
+  return value;
+}
+
+/** "BlockImage" -> "Block image", "ProductShelf" -> "Product shelf". */
+function humanizeComponentName(name: string): string {
+  const spaced = name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .trim();
+  if (!spaced) return name;
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
+/**
  * Discover the content block types a post can contain from the live
  * manifest, with title/icon metadata for the inserter UI. Recognizes both
  * the `deco-cms/blog` app blocks (`blog/sections/blocks/*`) and
@@ -999,16 +1020,17 @@ export function discoverBlogBlockTypes(meta: LiveMeta): BlogBlockType[] {
       const catalog = KNOWN_BLOG_BLOCK_CATALOG[name];
       const source = blogBlockSource(resolveType);
 
-      // Site blocks: schema's @title/@description/@icon wins. App blocks:
-      // catalog wins (built-in schemas just echo class names like "BlockImage").
+      // Site schema label wins, but only a real one — never a path-like default.
+      const mdTitle = humanLabel(md.title);
+      const mdDescription = humanLabel(md.description);
       const title =
         (source === "site"
-          ? pick(md.title, catalog?.title)
-          : pick(catalog?.title, md.title)) ?? name;
+          ? pick(mdTitle, catalog?.title)
+          : pick(catalog?.title, mdTitle)) ?? humanizeComponentName(name);
       const description =
         source === "site"
-          ? pick(md.description, catalog?.description)
-          : pick(catalog?.description, md.description);
+          ? pick(mdDescription, catalog?.description)
+          : pick(catalog?.description, mdDescription);
 
       // `@icon` on a site block can be a URL (rendered as <img>) or an
       // @untitledui/icons component name. App blocks always use the

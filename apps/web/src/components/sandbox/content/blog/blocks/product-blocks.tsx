@@ -108,7 +108,7 @@ function BrowseButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
+      className="flex items-center gap-1.5 classic:rounded-md compact:rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
     >
       <SearchSm size={13} />
       {label}
@@ -193,7 +193,7 @@ function SortableProductCard({
           aria-label={t("sandbox.productBlocks.dragToReorderLabel")}
           {...attributes}
           {...listeners}
-          className="absolute left-1 top-1 flex h-6 w-6 cursor-grab items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground active:cursor-grabbing group-hover/card:opacity-100"
+          className="absolute left-1 top-1 flex h-6 w-6 cursor-grab items-center justify-center classic:rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-foreground active:cursor-grabbing group-hover/card:opacity-100 compact:rounded-lg"
         >
           <DotsGrid size={13} />
         </button>
@@ -201,7 +201,7 @@ function SortableProductCard({
           type="button"
           aria-label={t("sandbox.productBlocks.removeProductLabel")}
           onClick={onRemove}
-          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-destructive group-hover/card:opacity-100 cursor-pointer"
+          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center classic:rounded bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity hover:text-destructive group-hover/card:opacity-100 cursor-pointer compact:rounded-lg"
         >
           <XClose size={13} />
         </button>
@@ -533,7 +533,7 @@ export function ProductCardBlock({
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed py-3 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
+              className="flex w-full items-center justify-center gap-1.5 classic:rounded-md compact:rounded-lg border border-dashed py-3 text-sm text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
             >
               <SearchSm size={14} />
               {t("sandbox.productBlocks.chooseProductButton")}
