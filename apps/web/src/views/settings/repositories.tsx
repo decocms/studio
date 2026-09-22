@@ -57,6 +57,7 @@ import {
   useRepositories,
 } from "@/hooks/use-git-providers";
 import { useT } from "@/i18n/use-t.ts";
+import { errorMessage } from "@/lib/error-message";
 
 function ProviderIcon({
   provider,
@@ -72,10 +73,6 @@ function ProviderIcon({
       className="text-muted-foreground"
     />
   );
-}
-
-function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 function authKindLabel(
