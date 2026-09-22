@@ -4,7 +4,7 @@
  */
 
 import { type OAuthConfig, OAuthConfigSchema } from "@decocms/shared/sdk/types";
-import type { RegistryItem, MCPRegistryServer } from "@/components/store/types";
+import type { RegistryItem } from "@/components/store/types";
 import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
 import { getGitHubAvatarUrl } from "@/utils/github.ts";
 import { getConnectionTypeLabel } from "@/utils/registry-utils";
@@ -74,7 +74,7 @@ export function extractConnectionData(
   userId: string,
   options?: ExtractConnectionDataOptions,
 ) {
-  const server = item.server as MCPRegistryServer["server"] | undefined;
+  const server = item.server;
   const studioMeta = getStudioMcpMetadata(item._meta);
   const now = new Date().toISOString();
 
