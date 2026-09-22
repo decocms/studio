@@ -263,7 +263,7 @@ test.describe("compact page layout", () => {
           .getByTestId("main-panel")
           .getByRole("button", { name: "Open chat", exact: true }),
       ).toHaveCount(0);
-      await picker.getByTestId("preview-page-origin").click();
+      await picker.click();
       const search = page.getByPlaceholder("Search pages and components...");
       await expect(search).toBeFocused();
       await search.fill("About");
@@ -292,17 +292,11 @@ test.describe("compact page layout", () => {
       await search.press("Enter");
       await expect(picker).toContainText("About us");
       await expect(picker).toContainText("/about");
-      const pageOrigin = new URL(previewSite.url).origin;
-      await expect(picker.getByTestId("preview-page-origin")).toHaveText(
-        pageOrigin,
-      );
+      await expect(picker).not.toContainText(new URL(previewSite.url).host);
       await expect(picker.getByTestId("preview-page-path")).toHaveText(
         "/about",
       );
-      await expect(picker).toHaveAttribute(
-        "title",
-        `${pageOrigin} · About us · /about`,
-      );
+      await expect(picker).toHaveAttribute("title", "About us · /about");
       await picker.getByTestId("preview-page-path").click();
       await expect(page.getByRole("dialog")).not.toContainText(
         new URL(previewSite.url).host,
@@ -415,8 +409,8 @@ test.describe("compact page layout", () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(picker).toBeVisible();
       const pickerBounds = (await picker.boundingBox())!;
+      expect(pickerBounds.width).toBeGreaterThanOrEqual(320);
       for (const part of [
-        picker.getByTestId("preview-page-origin"),
         picker.getByText("About us", { exact: true }),
         picker.getByTestId("preview-page-path"),
       ]) {

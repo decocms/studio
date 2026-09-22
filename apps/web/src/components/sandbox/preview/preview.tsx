@@ -1503,9 +1503,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setPagesOpen(false);
     setPagesSearch("");
   };
-  const pageOrigin = previewOrigin(previewServerUrl ?? previewUrl);
   const pageName =
     activeGlobalSection?.name ?? activeLoader?.title ?? currentPage?.name;
+  const blocksLoading = decofileQuery.isPending || metaQuery.isPending;
+  const pagePickerLabel = blocksLoading
+    ? previewOrigin(display.iframeBase)
+    : pageName;
   const currentPickerValue = activeGlobalSection
     ? `section:${activeGlobalSection.key}`
     : activeLoaderKey
@@ -1528,22 +1531,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             aria-label={t("sandbox.preview.choosePage")}
             data-testid="preview-page-picker"
             title={
-              activeGlobalSection || activeLoader
-                ? pageName
-                : [pageOrigin, pageName, currentPath]
-                    .filter(Boolean)
-                    .join(" · ")
+              blocksLoading
+                ? (pagePickerLabel ?? undefined)
+                : activeGlobalSection || activeLoader
+                  ? pageName
+                  : [pageName, currentPath].filter(Boolean).join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-0 items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {!activeGlobalSection && !activeLoader && pageOrigin && (
-              <span
-                data-testid="preview-page-origin"
-                className="flex min-w-0 max-w-56 items-center border-r border-border/60 bg-muted/60 px-2 font-mono text-muted-foreground @max-xl/panel-toolbar:max-w-1/4"
-              >
-                <span className="truncate">{pageOrigin}</span>
-              </span>
-            )}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
@@ -1557,12 +1552,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   {t("sandbox.preview.loaderBadge")}
                 </span>
               )}
-              {(pageName || !pageOrigin) && (
-                <span className="min-w-0 truncate font-medium text-foreground">
-                  {pageName ?? previewLabel}
+              {pagePickerLabel && (
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {pagePickerLabel}
                 </span>
               )}
-              {!activeGlobalSection && !activeLoader && (
+              {!blocksLoading && !activeGlobalSection && !activeLoader && (
                 <span
                   data-testid="preview-page-path"
                   className="ml-auto min-w-0 truncate text-right font-mono text-muted-foreground"
