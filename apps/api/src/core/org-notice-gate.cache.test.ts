@@ -11,7 +11,7 @@ import {
 
 describe("evictExpiredOrgNoticeEntries", () => {
   it("leaves the cache untouched when under the cap", () => {
-    const cache = new Map([["org_1", { notice: null, at: Date.now() }]]);
+    const cache = new Map([["org_1", { value: null, at: Date.now() }]]);
     evictExpiredOrgNoticeEntries(cache, 10, 60_000);
     expect(cache.size).toBe(1);
   });
@@ -19,8 +19,8 @@ describe("evictExpiredOrgNoticeEntries", () => {
   it("drops expired entries first when over the cap", () => {
     const now = Date.now();
     const cache = new Map([
-      ["org_stale", { notice: null, at: now - 120_000 }],
-      ["org_fresh", { notice: null, at: now }],
+      ["org_stale", { value: null, at: now - 120_000 }],
+      ["org_fresh", { value: null, at: now }],
     ]);
     evictExpiredOrgNoticeEntries(cache, 1, 60_000);
     expect(cache.has("org_stale")).toBe(false);
@@ -30,9 +30,9 @@ describe("evictExpiredOrgNoticeEntries", () => {
   it("trims the oldest entries when still over the cap after expiry", () => {
     const now = Date.now();
     const cache = new Map([
-      ["org_a", { notice: null, at: now }],
-      ["org_b", { notice: null, at: now }],
-      ["org_c", { notice: null, at: now }],
+      ["org_a", { value: null, at: now }],
+      ["org_b", { value: null, at: now }],
+      ["org_c", { value: null, at: now }],
     ]);
     evictExpiredOrgNoticeEntries(cache, 1, 60_000);
     expect(cache.size).toBe(1);
@@ -42,7 +42,7 @@ describe("evictExpiredOrgNoticeEntries", () => {
 
 describe("refreshOrgNoticeCacheEntry", () => {
   it("moves a re-looked-up org past older untouched ones, so a hot org isn't the first evicted", () => {
-    const cache = new Map<string, { notice: null; at: number }>();
+    const cache = new Map<string, { value: null; at: number }>();
     refreshOrgNoticeCacheEntry(cache, "org_a", null);
     refreshOrgNoticeCacheEntry(cache, "org_b", null);
     refreshOrgNoticeCacheEntry(cache, "org_c", null);

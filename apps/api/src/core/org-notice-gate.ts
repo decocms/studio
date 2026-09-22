@@ -19,6 +19,10 @@ import type { Kysely } from "kysely";
 import { ForbiddenError } from "./access-control";
 import { OrganizationNoticeStorage } from "../storage/organization-notices";
 import type { Database, OrganizationNotice } from "../storage/types";
+import {
+  evictExpiredTtlCacheEntries,
+  refreshTtlCacheEntry,
+} from "./ttl-lru-cache";
 
 /**
  * A notice is set by a human in the admin UI and read on nearly every request,
@@ -30,20 +34,17 @@ const ORG_NOTICE_CACHE_TTL_MS = 5 * 60_000;
 // Cap: entries are only ever overwritten on their own next lookup, never dropped otherwise.
 const ORG_NOTICE_CACHE_MAX_SIZE = 10_000;
 
-type OrgNoticeCacheEntry = { notice: OrganizationNotice | null; at: number };
+type OrgNoticeCacheEntry = { value: OrganizationNotice | null; at: number };
 
 const orgNoticeCache = new Map<string, OrgNoticeCacheEntry>();
 
-/** Write (or refresh) a cache entry, moving it to the most-recently-set
- *  position so a hot org isn't the first thing evicted once the cache is
- *  full. Exported for unit testing. */
+/** Write (or refresh) a cache entry. Exported for unit testing. */
 export function refreshOrgNoticeCacheEntry(
   cache: Map<string, OrgNoticeCacheEntry>,
   organizationId: string,
   notice: OrganizationNotice | null,
 ): void {
-  cache.delete(organizationId);
-  cache.set(organizationId, { notice, at: Date.now() });
+  refreshTtlCacheEntry(cache, organizationId, notice);
 }
 
 /** Exported for unit testing. */
@@ -52,21 +53,7 @@ export function evictExpiredOrgNoticeEntries(
   maxSize: number,
   ttlMs: number,
 ): void {
-  if (cache.size <= maxSize) return;
-  const now = Date.now();
-  for (const [key, entry] of cache) {
-    if (now - entry.at >= ttlMs) cache.delete(key);
-  }
-  // Trims oldest first (Map iteration order = insertion order).
-  if (cache.size > maxSize) {
-    const excess = cache.size - maxSize;
-    let removed = 0;
-    for (const key of cache.keys()) {
-      if (removed >= excess) break;
-      cache.delete(key);
-      removed++;
-    }
-  }
+  evictExpiredTtlCacheEntries(cache, maxSize, ttlMs);
 }
 
 /** Thrown when a blocked org's control plane is touched. Serialized as 403. */
@@ -88,7 +75,7 @@ export async function getActiveOrgNoticeCached(
   organizationId: string,
 ): Promise<OrganizationNotice | null> {
   const hit = orgNoticeCache.get(organizationId);
-  if (hit && Date.now() - hit.at < ORG_NOTICE_CACHE_TTL_MS) return hit.notice;
+  if (hit && Date.now() - hit.at < ORG_NOTICE_CACHE_TTL_MS) return hit.value;
   const notice = await new OrganizationNoticeStorage(db).getActive(
     organizationId,
   );
