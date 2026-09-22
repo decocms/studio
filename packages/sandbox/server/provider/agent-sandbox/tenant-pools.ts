@@ -150,8 +150,8 @@ export function claimWarmPoolName(
  * and operator v0.4.5 binds warm pods by template hash — a claim naming a
  * template the pool wasn't built from gets a cold pod and no error.
  *
- * Image — `flutter` selects the image carrying a Linux desktop toolchain, so
- * an agent can run the app and look at it. Default asks for no suffix.
+ * Image — `android` selects the image carrying an Android emulator, so an
+ * agent can run a mobile app and look at it. Default asks for no suffix.
  *
  * The returned name is also the warm pool's name for the GENERIC pools (the
  * chart names those after their template), so it feeds `claimWarmPoolName`.

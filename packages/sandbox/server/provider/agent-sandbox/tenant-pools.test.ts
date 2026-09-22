@@ -319,11 +319,11 @@ describe("resolveClaimTemplateName", () => {
 
 describe("claimTemplateName with an image variant", () => {
   it("suffixes the image before the size", () => {
-    expect(claimTemplateName("interactive", "sbx", null, "flutter")).toBe(
-      "sbx-flutter",
+    expect(claimTemplateName("interactive", "sbx", null, "android")).toBe(
+      "sbx-android",
     );
-    expect(claimTemplateName("harness-run", "sbx", null, "flutter")).toBe(
-      "sbx-flutter-medium",
+    expect(claimTemplateName("harness-run", "sbx", null, "android")).toBe(
+      "sbx-android-medium",
     );
   });
 
@@ -344,11 +344,11 @@ describe("resolveClaimTemplateName with an image variant", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "interactive",
-      sandboxImage: "flutter",
+      sandboxImage: "android",
       probes: {},
-      exists: async (name) => name === "sbx-flutter",
+      exists: async (name) => name === "sbx-android",
     });
-    expect(result.name).toBe("sbx-flutter");
+    expect(result.name).toBe("sbx-android");
   });
 
   // A chart that predates image variants: better the default image than a
@@ -357,7 +357,7 @@ describe("resolveClaimTemplateName with an image variant", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "interactive",
-      sandboxImage: "flutter",
+      sandboxImage: "android",
       probes: {},
       exists: async () => false,
     });
@@ -368,14 +368,14 @@ describe("resolveClaimTemplateName with an image variant", () => {
     const result = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      sandboxImage: "flutter",
+      sandboxImage: "android",
       probes: {},
       exists: async (name) => name === "sbx-medium",
     });
     expect(result.name).toBe("sbx-medium");
   });
 
-  // One slot would thrash: an interactive flutter claim and a harness-run one
+  // One slot would thrash: an interactive android claim and a harness-run one
   // ask for different names, and each would invalidate the other's answer.
   it("caches each derived name separately", async () => {
     const asked: string[] = [];
@@ -386,29 +386,29 @@ describe("resolveClaimTemplateName with an image variant", () => {
     const first = await resolveClaimTemplateName({
       ...base,
       purpose: "interactive",
-      sandboxImage: "flutter",
+      sandboxImage: "android",
       probes: {},
       exists,
     });
     const second = await resolveClaimTemplateName({
       ...base,
       purpose: "harness-run",
-      sandboxImage: "flutter",
+      sandboxImage: "android",
       probes: first.probes,
       exists,
     });
     const third = await resolveClaimTemplateName({
       ...base,
       purpose: "interactive",
-      sandboxImage: "flutter",
+      sandboxImage: "android",
       probes: second.probes,
       exists,
     });
-    expect(first.name).toBe("sbx-flutter");
-    expect(second.name).toBe("sbx-flutter-medium");
-    expect(third.name).toBe("sbx-flutter");
+    expect(first.name).toBe("sbx-android");
+    expect(second.name).toBe("sbx-android-medium");
+    expect(third.name).toBe("sbx-android");
     // Two distinct names probed once each; the third call reused the cache.
-    expect(asked).toEqual(["sbx-flutter", "sbx-flutter-medium"]);
+    expect(asked).toEqual(["sbx-android", "sbx-android-medium"]);
   });
 });
 

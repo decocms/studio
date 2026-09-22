@@ -82,7 +82,7 @@ export type GitProviderAccount = z.infer<typeof GitProviderAccountSchema>;
  * Which sandbox image this repository's sandboxes boot from.
  *
  * `default` is the image every sandbox uses. Any other value names a variant
- * SandboxTemplate the cluster renders as `<base>-<value>` (today: `flutter`,
+ * SandboxTemplate the cluster renders as `<base>-<value>` (today: `android`,
  * which adds a Linux desktop toolchain so an agent can run the app itself).
  *
  * A shape-validated string rather than a closed enum: the set of variants is

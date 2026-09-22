@@ -65,28 +65,28 @@ describe("RepositoryStorage — sandbox image", () => {
 
   it("round-trips a variant", async () => {
     const repo = await storage.upsert({ organizationId: "org_1", ref });
-    const updated = await storage.setSandboxImage(repo.id, "org_1", "flutter");
-    expect(updated?.sandboxImage).toBe("flutter");
-    expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("flutter");
+    const updated = await storage.setSandboxImage(repo.id, "org_1", "android");
+    expect(updated?.sandboxImage).toBe("android");
+    expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("android");
   });
 
   // Re-linking a repo (the provider-facts refresh) must not silently reset it.
   it("survives an upsert that does not mention it", async () => {
     const repo = await storage.upsert({ organizationId: "org_1", ref });
-    await storage.setSandboxImage(repo.id, "org_1", "flutter");
+    await storage.setSandboxImage(repo.id, "org_1", "android");
     await storage.upsert({
       organizationId: "org_1",
       ref,
       defaultBranch: "main",
     });
-    expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("flutter");
+    expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("android");
   });
 
   // Tenancy by construction: another org's id must not reach this row.
   it("will not set the image from another organization", async () => {
     const repo = await storage.upsert({ organizationId: "org_1", ref });
     expect(
-      await storage.setSandboxImage(repo.id, "org_123", "flutter"),
+      await storage.setSandboxImage(repo.id, "org_123", "android"),
     ).toBeNull();
     expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("default");
   });

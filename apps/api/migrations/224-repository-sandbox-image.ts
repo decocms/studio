@@ -3,11 +3,11 @@ import type { Kysely } from "kysely";
 /**
  * Which sandbox image a repository's sandboxes boot from.
  *
- * The default image cannot look at a Flutter app: `flutter build web` is its
- * only path to a UI, and a repo whose transitive dependencies do not compile
- * to JS has none at all. The Flutter image adds a Linux desktop toolchain and
- * a headless X server, which is ~1.3GB of apt — too much to put on the image
- * every sandbox pulls, so it is a separate image and repos opt in.
+ * The default image cannot run a mobile app: its only path to a Flutter UI is
+ * `flutter build web`, which neither compiles every dependency graph nor runs
+ * native-only plugins like Firebase. The Android image adds an emulator and
+ * needs KVM nodes — too heavy, and too specific, for the image every sandbox
+ * pulls — so it is a separate image and repos opt in.
  *
  * A column rather than a flag bag: this selects infrastructure (it resolves to
  * a SandboxTemplate name), it is per-repository rather than per-org, and it is

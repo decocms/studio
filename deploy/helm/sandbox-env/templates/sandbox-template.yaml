@@ -26,6 +26,10 @@
 # environments' SandboxTemplates coexist; Studio in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
 {{ define "sandbox-env.sandboxTemplate" -}}
+{{- /* A variant may pin its own nodes: its image can need hardware the default
+       pool lacks (android: /dev/kvm, only on nested-virtualization nodes). */}}
+{{- $variant := dict }}
+{{- if .imageVariant }}{{- $variant = index .Values.imageVariants .imageVariant }}{{- end }}
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
@@ -86,11 +90,11 @@ spec:
       # 30s) before SIGKILL — the pushed branch is the only durable copy of the
       # user's work. See values.yaml.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
-      {{- with .Values.nodeSelector }}
+      {{- with ($variant.nodeSelector | default .Values.nodeSelector) }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with ($variant.tolerations | default .Values.tolerations) }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -465,8 +469,10 @@ spec:
 ---
 {{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" "" "sizeSuffix" "-medium" "resources" $mediumResources) .) }}
 {{- range $variant, $spec := .Values.imageVariants }}
+{{- $variantResources := mergeOverwrite (deepCopy $.Values.resources) ($spec.resources | default dict) }}
+{{- $variantMediumResources := mergeOverwrite (deepCopy $mediumResources) ($spec.resources | default dict) }}
 ---
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "" "resources" $.Values.resources) $) }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "" "resources" $variantResources) $) }}
 ---
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "-medium" "resources" $mediumResources) $) }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "-medium" "resources" $variantMediumResources) $) }}
 {{- end }}

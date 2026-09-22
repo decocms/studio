@@ -1,7 +1,7 @@
 # Sandbox image variants
 
 Status: proposal. Supersedes the shape of #7461 (`feat(sandbox): per-repository
-sandbox image, with a Flutter variant`). The runtime half of that PR stands; the
+sandbox image, with an Android emulator variant`). The runtime half of that PR stands; the
 ownership of images and templates moves out of this repo, into a new
 **sandbox control plane** (`decocms/sandbox-control-plane`, to be created).
 The hosting control-plane (`decocms/control-plane`) is the pattern, not the
@@ -10,18 +10,24 @@ host: it stays site-shaped, and the sandbox one is its own service.
 ## Problem
 
 Some repositories need a toolchain the default sandbox image does not carry.
-First case: a customer's Flutter app whose transitive dependencies do not
-compile to JS (`xxh3` for dart2js, `get_storage` for dart2wasm), so the only
-way to QA its UI is the Linux desktop target, which needs ~1.3GB of GTK, clang,
-Xvfb and xdotool. Putting that on the image every sandbox pulls slows every
-pull and every daemon CI run.
+First case: a customer's Flutter mobile app. Its transitive dependencies do
+not compile to JS (`xxh3` for dart2js, `get_storage` for dart2wasm), and its
+startup calls native-only plugins (Firebase, attribution and push SDKs) that
+neither the web nor the Linux desktop target can run — and the app is not ours
+to change. The only way to QA it unmodified is an Android emulator: ~6GB of
+SDK and system image, and `/dev/kvm`, which only nodes launched with nested
+virtualization have. Putting that on the image every sandbox pulls, or on
+every sandbox node, slows and constrains everyone for one kind of repo.
 
 Two constraints from the first case that generalise:
 
-1. **A variant is customer-shaped.** It must stay compatible with the
+1. **A variant can need its own hardware.** `android` needs KVM, so a
+   variant is an image PLUS where it may run (node selector, tolerations, a
+   device request) and how big it is.
+2. **A variant is customer-shaped.** It must stay compatible with the
    customer's own Dockerfile (Flutter version, native deps). When they bump,
    we bump.
-2. **New variants will keep appearing.** Adding one must not need a Studio
+3. **New variants will keep appearing.** Adding one must not need a Studio
    deploy, a Studio PR, a sandbox release-workflow change, or a Helm values
    PR per environment.
 
@@ -77,11 +83,11 @@ Change from #7461:
   cluster is the truth the claim will hit, and Studio already has the client.
 - **Auto-select on link.** `REPOSITORY_LINK` sets `sandbox_image` from a
   detection table when the field is not given; `REPOSITORY_UPDATE` still
-  overrides. First entry: root `pubspec.yaml` → `flutter`. One contents API
+  overrides. First entry: root `pubspec.yaml` plus an `android/` project → `android`. One contents API
   call at link time. The detected name still goes through the probe.
 - Delete: `SandboxImageSchema`, the picker's i18n option strings,
-  `packages/sandbox/image-flutter/`, the `build-push-flutter` job, the
-  `needs: build-push-flutter` on the deco-apps-cd bump, and the
+  `packages/sandbox/image-android/`, the `build-push-android` job, the
+  `needs: build-push-android` on the deco-apps-cd bump, and the
   `imageVariants` block in `deploy/helm/sandbox-env` (the chart renders the
   default templates only; variants are control-plane state).
 
@@ -131,8 +137,10 @@ new object.
 **Tools** (MCP; REST mirror under `/api/v1` for CI):
 
 - `SANDBOX_IMAGE_LIST` — variants on this cluster, from the labelled templates.
-- `SANDBOX_IMAGE_UPSERT { name, repository, tag, baseTag, warmPool? }` —
-  renders and applies the four objects. Rejects `latest`. Does a registry
+- `SANDBOX_IMAGE_UPSERT { name, repository, tag, baseTag, nodeSelector?,
+  tolerations?, resources?, warmPool? }` — renders and applies the four
+  objects; the scheduling fields are what a hardware-bound variant (`android`:
+  KVM nodes, a `/dev/kvm` device request) needs. Rejects `latest`. Does a registry
   `HEAD` on `repository:tag` first and refuses a tag that does not exist:
   the template existing while the image does not is `ImagePullBackOff`, not
   a Studio degrade, so this is the one check worth doing here.
@@ -189,10 +197,10 @@ cluster for no reader.
 ```
 sandbox-images/
   README.md
-  flutter/
+  android/
     Dockerfile        # ARG BASE_TAG; FROM ghcr.io/decocms/studio/studio-sandbox-go:${BASE_TAG}
-    bin/qa-app
-    smoke.sh          # the read-only-rootfs click test from #7461
+    bin/qa-android
+    smoke.sh          # the Flutter + Firebase emulator test from #7461 (needs a KVM runner)
 ```
 
 CI (`.github/workflows/sandbox-images.yaml`):
@@ -231,7 +239,7 @@ on the gap later if it bites.
 The base already pins `FLUTTER_VERSION=3.41.2` and documents that the pin
 drifts. The variant inherits the problem. Two options, pick one:
 
-1. **Human loop.** Customer bumps, we bump `sandbox-images/flutter/Dockerfile`.
+1. **Human loop.** Customer bumps, we bump `sandbox-images/android/Dockerfile`.
    Adequate for one customer.
 2. **Repo-driven (recommended once a second Flutter customer exists).**
    Install `fvm` in the variant. The skill runs `fvm use` from the repo's
@@ -258,11 +266,11 @@ No Studio deploy, no Helm PR.
 not on who owns the template. `#7461` ships first with one change: the
 `z.enum` becomes a validated string, because that is the only part of the PR
 the control plane design would have to undo at a contract level. The
-`image-flutter/` directory, the variant CI job and the chart's
+`image-android/` directory, the variant CI job and the chart's
 `imageVariants` block are landed as they are and removed later; each is a
 `git mv` or a deletion, about a day in total, which is less than the wait
 costs. The control plane is then built with nothing waiting on it, and the
-Flutter variant becomes its first migration rather than its first feature —
+Android variant becomes its first migration rather than its first feature —
 a better first test, since the expected end state already exists in the
 cluster.
 
@@ -274,16 +282,17 @@ tools, REST mirror, console, review).
 1. `#7461` lands with the enum replaced by a string. Chart before Studio,
    image published before the chart references its tag.
 2. Studio follow-up: cluster-listed picker, detection on link, delete
-   `image-flutter/`, the variant CI job and the chart's `imageVariants` —
+   `image-android/`, the variant CI job and the chart's `imageVariants` —
    each once its replacement below is live.
-3. infra_applications: `sandbox-images/flutter/` + workflow. Publish once by
+3. infra_applications: `sandbox-images/android/` + workflow. Publish once by
    `workflow_dispatch` against the current base tag.
 4. `decocms/sandbox-control-plane`: scaffold from the hosting control-plane,
    render + applier, the four tools, REST mirror, service tokens, console
    table. RBAC + Deployment manifests in its own chart; ArgoCD app in
    deco-apps-cd for stg.
-5. `SANDBOX_IMAGE_UPSERT flutter` on stg; pin one repo; verify it boots on
-   the variant and that `qa-app` works under the pod's constraints. Then prod.
+5. `SANDBOX_IMAGE_UPSERT android` on stg; pin one repo; verify it lands on a
+   KVM node and that `qa-android` drives the app under the pod's constraints.
+   Then prod.
 6. studio release workflow: add the `sandbox-base-released` dispatch.
 7. After one release of real runs on the variant: remove Flutter from the
    base image.

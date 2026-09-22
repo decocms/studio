@@ -53,34 +53,55 @@ image:
 # ── sandbox image variants (extra SandboxTemplates) ────────────────────
 # Each entry renders TWO more SandboxTemplates —
 # `<base>-<name>` and `<base>-<name>-medium` — identical to the default ones
-# except for the image. A repository opts in (Settings → Repositories), Studio
-# composes the template name, and a name the cluster does not have degrades to
-# the base template rather than parking the claim.
+# except for what the entry overrides. A repository opts in (Settings →
+# Repositories), Studio composes the template name, and a name the cluster does
+# not have degrades to the base template rather than parking the claim.
 #
-# Why a separate image instead of more packages on the shared one: `flutter`
-# adds ~1.3GB of Linux desktop toolchain (GTK/clang/ninja + Xvfb + xdotool) so
-# an agent can RUN a Flutter app, click through it and screenshot it. The base
-# image already has the Flutter SDK; what it cannot do is see a UI whose
-# dependency graph does not compile to JS, which `flutter build web` requires.
-# Paying 1.3GB on every sandbox pull for a capability only Flutter repos use
-# is the trade this split avoids.
+# Per entry:
+#   repository / tag   the image; `tag` defaults to `image.tag`, because the
+#                      variant is built FROM that exact base image and the
+#                      release workflow publishes both under one version.
+#   nodeSelector /     REPLACE the chart-wide ones for this variant's pods —
+#   tolerations        for an image that needs hardware the default pool lacks.
+#   resources          deep-merged over `resources` (and `mediumResources` for
+#                      the -medium template).
+#   warmPoolSize /     its own SandboxWarmPools (requires warmPool.enabled).
+#   warmPoolMediumSize Default 0, which costs nothing: an empty pool is served
+#                      by a cold pod from the claim's own template.
 #
-# `tag` defaults to `image.tag`, because the variant is built FROM that exact
-# base image and the release workflow publishes both under one version.
+# Default {}: a variant's templates are only safe to render where its nodes
+# exist. A template that renders but cannot schedule does not trigger Studio's
+# fallback — the claim sits Pending instead — so enable a variant per
+# environment, alongside its NodePool.
 #
-# A variant CAN be prewarmed: `warmPoolSize` / `warmPoolMediumSize` render its
-# own SandboxWarmPools (requires warmPool.enabled, like every other pool). Both
-# default to 0 — few repos use a variant, so idle pods of a heavier image are
-# opt-in — and 0 costs nothing: a claim whose pool is empty is served by a cold
-# pod from its own template.
-#
-# Set to {} to render no variants at all.
-imageVariants:
-  flutter:
-    repository: ghcr.io/decocms/studio/studio-sandbox-flutter
-    # tag: ""   # defaults to image.tag
-    warmPoolSize: 0
-    warmPoolMediumSize: 0
+# `android` runs an Android emulator so an agent can build a mobile app, tap
+# through it and screenshot it (packages/sandbox/image-android). The emulator
+# needs /dev/kvm, so its pods go to nodes launched with nested virtualization
+# (terraform-eks-cluster: the `sandbox-android` NodePool) and request the KVM
+# device from the device plugin that runs there. The memory is the emulator's
+# 4Gi plus a Gradle build; the disk is its data partition plus Gradle's caches.
+imageVariants: {}
+# imageVariants:
+#   android:
+#     repository: ghcr.io/decocms/studio/studio-sandbox-android
+#     nodeSelector:
+#       decocms.com/nodepool: sandbox-android
+#     tolerations:
+#       - key: decocms.com/sandbox-android
+#         operator: Equal
+#         value: "true"
+#         effect: NoSchedule
+#     resources:
+#       requests:
+#         cpu: "2"
+#         memory: 8Gi
+#       limits:
+#         cpu: "4"
+#         memory: 12Gi
+#         ephemeral-storage: 30Gi
+#         devices.kubevirt.io/kvm: "1"
+#     warmPoolSize: 0
+#     warmPoolMediumSize: 0
 
 # ── sandbox pod resources (per SandboxClaim) ───────────────────────────
 # Prod ceilings. Adjust per measured workload.

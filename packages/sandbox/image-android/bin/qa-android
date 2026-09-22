@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# qa-android — boot an Android emulator, run the app on it, and drive it.
+#
+#   qa-android start [-t lib/main.dart]   qa-android shot <out.png>
+#   qa-android ui                         qa-android tap <x> <y>
+#   qa-android swipe <x1> <y1> <x2> <y2> [ms]
+#   qa-android type "text"                qa-android key BACK|ENTER|HOME|...
+#   qa-android logs [n]                   qa-android stop
+#
+# `start` boots a headless emulator (KVM required) and then `flutter run`s the
+# app from the current directory onto it: build, install, launch, and a live
+# log of the app's output. Everything after that is adb.
+#
+# Coordinates are screenshot pixels: the display is 720x1600 and `shot`
+# captures it 1:1, so a point read off the PNG is exactly what `tap` takes.
+# `ui` lists the on-screen elements Android's accessibility layer sees — for a
+# Flutter app that is its Semantics tree — with the centre of each, which beats
+# guessing a button's position from the picture.
+set -euo pipefail
+
+STATE="${TMPDIR:-/tmp}/qa-android"
+SERIAL=emulator-5554
+AVD=qa
+SYSTEM_IMAGE="system-images;android-36;google_apis;x86_64"
+export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+
+die() { echo "qa-android: $*" >&2; exit 1; }
+adb_() { adb -s "$SERIAL" "$@"; }
+
+ensure_avd() {
+  [ -d "$ANDROID_AVD_HOME/$AVD.avd" ] && return 0
+  mkdir -p "$ANDROID_AVD_HOME"
+  echo no | avdmanager create avd -n "$AVD" -k "$SYSTEM_IMAGE" --force >/dev/null
+  # A modest, fixed display keeps screenshots small enough to read and makes
+  # coordinates stable across runs.
+  cat >> "$ANDROID_AVD_HOME/$AVD.avd/config.ini" <<'EOF'
+hw.lcd.width=720
+hw.lcd.height=1600
+hw.lcd.density=320
+hw.ramSize=4096
+hw.keyboard=yes
+disk.dataPartition.size=6G
+showDeviceFrame=no
+EOF
+}
+
+boot_emulator() {
+  if adb_ shell getprop sys.boot_completed 2>/dev/null | grep -q 1; then
+    return 0
+  fi
+  [ -r /dev/kvm ] && [ -w /dev/kvm ] \
+    || die "/dev/kvm is not available to this sandbox, so the emulator cannot run. This repo needs the Android sandbox image on a KVM node; report that rather than retrying."
+  ensure_avd
+  mkdir -p "$STATE"
+  setsid emulator -avd "$AVD" -port 5554 -no-window -no-audio -no-boot-anim \
+    -no-snapshot -no-metrics -gpu swiftshader_indirect -accel on \
+    -memory 4096 -cores "${QA_ANDROID_CORES:-4}" \
+    >"$STATE/emulator.log" 2>&1 < /dev/null &
+  echo $! > "$STATE/emulator.pid"
+  adb start-server >/dev/null 2>&1
+  echo "qa-android: booting emulator"
+  for _ in $(seq 1 300); do
+    kill -0 "$(cat "$STATE/emulator.pid")" 2>/dev/null \
+      || die "emulator exited. Last 40 log lines:
+$(tail -40 "$STATE/emulator.log")"
+    adb_ shell getprop sys.boot_completed 2>/dev/null | grep -q 1 && break
+    sleep 1
+  done
+  adb_ shell getprop sys.boot_completed 2>/dev/null | grep -q 1 \
+    || die "emulator did not finish booting in 300s; see $STATE/emulator.log"
+  # Animations make a screenshot taken right after a tap catch a transition
+  # instead of the result.
+  for s in window_animation_scale transition_animation_scale animator_duration_scale; do
+    adb_ shell settings put global "$s" 0
+  done
+  adb_ shell svc power stayon true
+  adb_ shell input keyevent KEYCODE_WAKEUP
+  adb_ shell wm dismiss-keyguard >/dev/null 2>&1 || true
+}
+
+cmd_start() {
+  local target=""
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -t) target=${2:?-t needs a path}; shift 2 ;;
+      *) die "unknown flag $1" ;;
+    esac
+  done
+  [ -f pubspec.yaml ] || die "no pubspec.yaml in $PWD — run this from the Flutter app root"
+  [ -d android ] || die "no android/ project here, so there is nothing to run on the emulator"
+
+  boot_emulator
+  stop_app
+  : > "$STATE/app.log"
+  # `flutter run` rather than build + install: it streams the app's own output,
+  # which is where a crash on startup shows up.
+  setsid flutter run -d "$SERIAL" ${target:+-t "$target"} \
+    >>"$STATE/app.log" 2>&1 < /dev/null &
+  echo $! > "$STATE/app.pid"
+  echo "qa-android: building and installing — the first Gradle build takes minutes; tail $STATE/app.log"
+  for _ in $(seq 1 1200); do
+    grep -q "Flutter run key commands" "$STATE/app.log" && break
+    kill -0 "$(cat "$STATE/app.pid")" 2>/dev/null \
+      || die "flutter run exited. Last 60 log lines:
+$(tail -60 "$STATE/app.log")"
+    sleep 1
+  done
+  grep -q "Flutter run key commands" "$STATE/app.log" \
+    || die "the app did not launch in 20 minutes; see $STATE/app.log"
+  sleep 3   # first frame
+  echo "qa-android: app running on $SERIAL (720x1600)"
+}
+
+cmd_ui() {
+  adb_ shell uiautomator dump /sdcard/qa-ui.xml >/dev/null
+  adb_ exec-out cat /sdcard/qa-ui.xml | python3 -c '
+import re, sys
+import xml.etree.ElementTree as ET
+for n in ET.parse(sys.stdin).iter("node"):
+    label = n.get("text") or n.get("content-desc")
+    if not label:
+        continue
+    x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+    flags = " clickable" if n.get("clickable") == "true" else ""
+    print(f"{(x1 + x2) // 2},{(y1 + y2) // 2}{flags}\t{label}")
+'
+}
+
+stop_app() {
+  [ -f "$STATE/app.pid" ] && kill -- -"$(cat "$STATE/app.pid")" 2>/dev/null || true
+  rm -f "$STATE/app.pid"
+}
+
+cmd_stop() {
+  stop_app
+  adb_ emu kill >/dev/null 2>&1 || true
+  [ -f "$STATE/emulator.pid" ] && kill -- -"$(cat "$STATE/emulator.pid")" 2>/dev/null || true
+  rm -f "$STATE/emulator.pid"
+  echo "qa-android: stopped"
+}
+
+case "${1:-}" in
+  start) shift; cmd_start "$@" ;;
+  shot)  shift; out=${1:?usage: qa-android shot <out.png>}
+         mkdir -p "$(dirname "$out")"; adb_ exec-out screencap -p > "$out"; echo "$out" ;;
+  ui)    cmd_ui ;;
+  tap)   shift; adb_ shell input tap "${1:?x}" "${2:?y}" ;;
+  swipe) shift; adb_ shell input swipe "${1:?x1}" "${2:?y1}" "${3:?x2}" "${4:?y2}" "${5:-300}" ;;
+  # `input text` takes %s for a space and runs through the device shell.
+  type)  shift; text="$*"; adb_ shell input text "$(printf '%q' "${text// /%s}")" ;;
+  key)   shift; k=${1:?key}; [[ $k =~ ^[0-9]+$|^KEYCODE_ ]] || k="KEYCODE_$k"
+         adb_ shell input keyevent "$k" ;;
+  logs)  tail -n "${2:-60}" "$STATE/app.log" ;;
+  stop)  cmd_stop ;;
+  *) sed -n '3,8p' "$0" | sed 's/^# \?//'; exit 1 ;;
+esac

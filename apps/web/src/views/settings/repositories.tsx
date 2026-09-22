@@ -294,13 +294,13 @@ function SandboxImageSelect({ repository }: { repository: Repository }) {
         <SelectItem value="default" className="text-xs">
           {t("settings.repositories.sandboxImageDefault")}
         </SelectItem>
-        <SelectItem value="flutter" className="text-xs">
-          {t("settings.repositories.sandboxImageFlutter")}
+        <SelectItem value="android" className="text-xs">
+          {t("settings.repositories.sandboxImageAndroid")}
         </SelectItem>
         {/* A variant set through REPOSITORY_UPDATE that this list doesn't
             name still has to show as the current value. */}
         {repository.sandboxImage !== "default" &&
-          repository.sandboxImage !== "flutter" && (
+          repository.sandboxImage !== "android" && (
             <SelectItem value={repository.sandboxImage} className="text-xs">
               {repository.sandboxImage}
             </SelectItem>

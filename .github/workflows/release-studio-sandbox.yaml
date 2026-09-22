@@ -16,9 +16,9 @@ env:
   # One image, one daemon (Go). The `studio-sandbox` name is frozen at its last
   # TS-daemon tag (1.35.2) — kept pullable for rollback, never pushed again.
   IMAGE_NAME: ${{ github.repository }}/studio-sandbox-go
-  # The Flutter variant, built FROM the image above and published under the
-  # same version. See packages/sandbox/image-flutter.
-  FLUTTER_IMAGE_NAME: ${{ github.repository }}/studio-sandbox-flutter
+  # The Android variant, built FROM the image above and published under the
+  # same version. See packages/sandbox/image-android.
+  ANDROID_IMAGE_NAME: ${{ github.repository }}/studio-sandbox-android
 
 jobs:
   build-push:
@@ -34,7 +34,7 @@ jobs:
       # "true" when the tag was already in GHCR (build skipped) — the bump job
       # uses this to skip docs/test-only pushes that reuse the existing tag.
       image-exists: ${{ steps.tag-check.outputs.exists }}
-      flutter-image-exists: ${{ steps.tag-check.outputs.flutter-exists }}
+      android-image-exists: ${{ steps.tag-check.outputs.android-exists }}
 
     steps:
       - name: Checkout code
@@ -68,15 +68,15 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-          # Checked on its own: a Flutter build that failed after the base was
+          # Checked on its own: an Android build that failed after the base was
           # pushed must be retryable, not skipped because the base tag exists.
-          FLUTTER_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+          ANDROID_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://${{ env.REGISTRY }}/v2/${{ env.FLUTTER_IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
-          if [ "${FLUTTER_STATUS}" = "200" ]; then
-            echo "flutter-exists=true" >> "$GITHUB_OUTPUT"
+            "https://${{ env.REGISTRY }}/v2/${{ env.ANDROID_IMAGE_NAME }}/manifests/${{ steps.version.outputs.version }}")
+          if [ "${ANDROID_STATUS}" = "200" ]; then
+            echo "android-exists=true" >> "$GITHUB_OUTPUT"
           else
-            echo "flutter-exists=false" >> "$GITHUB_OUTPUT"
+            echo "android-exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Bun and install dependencies
@@ -170,15 +170,15 @@ jobs:
           push-to-registry: true
 
   # ---------------------------------------------------------------------------
-  # The Flutter variant. Derived from the image just built, so it can never
+  # The Android variant. Derived from the image just built, so it can never
   # disagree with the daemon it runs, and published under the SAME version —
-  # the chart defaults `imageVariants.flutter.tag` to `image.tag`, so one bump
-  # moves both.
+  # the chart defaults `imageVariants.android.tag` to `image.tag`, so one bump
+  # moves both. amd64 only: the Linux emulator exists for x86_64 alone.
   # ---------------------------------------------------------------------------
-  build-push-flutter:
-    name: Build & Push studio-sandbox-flutter image
+  build-push-android:
+    name: Build & Push studio-sandbox-android image
     needs: [build-push]
-    if: needs.build-push.result == 'success' && needs.build-push.outputs.flutter-image-exists != 'true'
+    if: needs.build-push.result == 'success' && needs.build-push.outputs.android-image-exists != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -189,6 +189,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # The base image alone is ~6GB and the SDK adds about as much again;
+      # the runner's preinstalled toolchains are what stand between that and
+      # a full disk.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af >/dev/null
+          df -h /
+
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -201,7 +211,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.FLUTTER_IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.ANDROID_IMAGE_NAME }}
           tags: |
             type=raw,value=${{ needs.build-push.outputs.version }}
             type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
@@ -214,8 +224,8 @@ jobs:
         id: build
         uses: docker/build-push-action@v5
         with:
-          context: ./packages/sandbox/image-flutter
-          file: ./packages/sandbox/image-flutter/Dockerfile
+          context: ./packages/sandbox/image-android
+          file: ./packages/sandbox/image-android/Dockerfile
           push: true
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -224,40 +234,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
 
-      # The whole point of this image is running a real app, and the two
-      # conditions `docker build` cannot exercise are the ones that broke it in
-      # development: a read-only rootfs, and uid 1000. `/app` is mounted exec
-      # because the pod's workdir is an emptyDir — a `noexec` mount makes the
-      # built GTK binary unrunnable and the failure reads as a Flutter bug.
-      - name: Smoke-test a real app on a read-only rootfs
-        env:
-          IMAGE: ${{ env.REGISTRY }}/${{ env.FLUTTER_IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-        run: |
-          set -euo pipefail
-          docker run --rm --read-only --shm-size=1g \
-            --tmpfs /tmp:rw,exec,size=3g \
-            --tmpfs /home/sandbox:rw,exec,size=5g,uid=1000,gid=1000 \
-            --tmpfs /app:rw,exec,size=4g,uid=1000,gid=1000 \
-            --user 1000:1000 -e HOME=/home/sandbox \
-            "${IMAGE}" bash -c '
-              set -e
-              cd /app
-              flutter create demo --platforms=linux >/dev/null
-              cd demo
-              qa-app start --size 390x844
-              qa-app shot /tmp/qa/before.png
-              qa-app click 346 800
-              sleep 2
-              qa-app shot /tmp/qa/after.png
-              # A screenshot proves the window exists; differing bytes prove the
-              # click reached the app. A frozen first frame passes the first
-              # check and fails this one.
-              cmp -s /tmp/qa/before.png /tmp/qa/after.png \
-                && { echo "click changed nothing — the app is not interactive"; exit 1; }
-              echo "drove a real Flutter app headlessly"
-            '
+      - name: Smoke-test a Flutter + Firebase app on the emulator
+        uses: ./.github/actions/sandbox-android-smoke
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.ANDROID_IMAGE_NAME }}@${{ steps.build.outputs.digest }}
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -275,7 +257,7 @@ jobs:
       - name: Generate SLSA build provenance
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.FLUTTER_IMAGE_NAME }}
+          subject-name: ${{ env.REGISTRY }}/${{ env.ANDROID_IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
@@ -291,9 +273,9 @@ jobs:
   bump-deco-apps-cd:
     name: Trigger deco-apps-cd bump
     # Waits on the variant as well: the chart defaults the variant's tag to
-    # image.tag, so bumping before it is published would point the flutter
+    # image.tag, so bumping before it is published would point the android
     # SandboxTemplates at a tag that does not exist yet.
-    needs: [build-push, build-push-flutter]
+    needs: [build-push, build-push-android]
     # Only when a NEW image was actually pushed (skip docs/test-only changes to
     # packages/sandbox that reuse the existing tag).
     if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'

@@ -441,7 +441,7 @@ export const REPOSITORY_LINK = defineTool({
 export const REPOSITORY_UPDATE = defineTool({
   name: "REPOSITORY_UPDATE",
   description:
-    "Change a linked repository's settings. Currently the sandbox image its sandboxes boot from: `default`, or the name of a variant the cluster renders (e.g. `flutter`, for repos whose UI can only be exercised by running the app on a Linux desktop target). A variant the cluster lacks degrades to `default`.",
+    "Change a linked repository's settings. Currently the sandbox image its sandboxes boot from: `default`, or the name of a variant the cluster renders (e.g. `android`, for mobile apps an agent should run on an Android emulator). A variant the cluster lacks degrades to `default`.",
   annotations: {
     title: "Update repository",
     readOnlyHint: false,
