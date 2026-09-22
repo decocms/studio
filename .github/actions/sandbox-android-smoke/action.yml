@@ -38,7 +38,7 @@ runs:
           --user 1000:1000 -e HOME=/home/sandbox \
           -v "${GITHUB_WORKSPACE}/packages/sandbox/image-android/smoke-test.sh:/smoke-test.sh:ro" \
           -v "${RUNNER_TEMP}/qa:/qa" \
-          "${IMAGE}" bash -x /smoke-test.sh /qa
+          "${IMAGE}" bash /smoke-test.sh /qa
 
     - name: Upload screenshots
       if: always()
