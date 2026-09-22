@@ -40,10 +40,11 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 # Everything Gradle would otherwise try to download INTO the SDK at build time,
-# which it cannot do at runtime on a read-only rootfs. The versions are the
-# ones Flutter's Gradle plugin defaults to (compileSdk 36, NDK 28.2.13676358,
-# cmake 3.22.1 for native plugins); a repo pinning something else fails its
-# Gradle build naming the missing package.
+# which it cannot do at runtime on a read-only rootfs. The app compiles against
+# Flutter's defaults (compileSdk 36, NDK 28.2.13676358, cmake 3.22.1 for
+# native plugins), but each plugin compiles against its OWN compileSdk —
+# firebase_core pins 34 — so the recent platforms are all here. A repo needing
+# something else fails its Gradle build naming the missing package.
 ARG CMDLINE_TOOLS=commandlinetools-linux-16111833_latest.zip
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
   && curl -fsSL -o /tmp/cmdline-tools.zip "https://dl.google.com/android/repository/${CMDLINE_TOOLS}" \
@@ -53,7 +54,8 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
   && yes | sdkmanager --licenses >/dev/null \
   && sdkmanager --install \
        "platform-tools" "emulator" \
-       "platforms;android-36" "build-tools;36.0.0" "build-tools;35.0.0" \
+       "platforms;android-36" "platforms;android-35" "platforms;android-34" \
+       "build-tools;36.0.0" "build-tools;35.0.0" \
        "ndk;28.2.13676358" "cmake;3.22.1" \
        "system-images;android-36;google_apis;x86_64" >/dev/null \
   # sdkmanager extracts binaries owner-only (0744); the sandbox user runs them.
