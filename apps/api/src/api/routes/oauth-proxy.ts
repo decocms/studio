@@ -93,21 +93,23 @@ async function checkOriginSupportsOAuth(
     // If we get a 401 with WWW-Authenticate, the server supports OAuth
     if (response.status === 401) {
       const wwwAuth = response.headers.get("WWW-Authenticate");
-      if (wwwAuth) {
-        if (looksLikeOAuthWwwAuthenticate(wwwAuth)) {
-          return wwwAuth;
-        }
+      if (wwwAuth && looksLikeOAuthWwwAuthenticate(wwwAuth)) {
+        await drainDiscardedBody(response);
+        return wwwAuth;
       }
 
       // Fallback: Check if server has OAuth metadata endpoints even without WWW-Authenticate.
       // Some servers like ClickHouse support OAuth but don't include WWW-Authenticate header.
+      await drainDiscardedBody(response);
       const hasOAuthMetadata = await checkHasOAuthMetadata(connectionUrl);
       if (hasOAuthMetadata) {
         // Return a synthetic WWW-Authenticate value to indicate OAuth is supported
         return 'Bearer realm="mcp"';
       }
+      return null;
     }
 
+    await drainDiscardedBody(response);
     return null;
   } catch {
     return null;
@@ -138,8 +140,10 @@ async function checkHasOAuthMetadata(connectionUrl: string): Promise<boolean> {
       if (data.authorization_endpoint || data.token_endpoint || data.issuer) {
         return true;
       }
+      return false;
     }
 
+    await drainDiscardedBody(authServerRes);
     return false;
   } catch {
     return false;
