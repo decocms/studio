@@ -8,6 +8,8 @@ interface Props {
   value: string | null | undefined;
   onChange: (branch: string) => void;
   onCreateBranch?: (branch: string) => void;
+  /** Adopting a branch/PR opens a sandbox coding session on it. */
+  onAdoptBranch?: (branch: string) => void;
   locked: boolean;
   placement?: "chat" | "header";
   /** Production branch shown as "Produção" in the releases switcher. */
@@ -33,6 +35,7 @@ export function BranchPill({
   baseBranch,
   onChange,
   onCreateBranch,
+  onAdoptBranch,
   orgId,
   orgSlug,
   userId,
@@ -56,6 +59,7 @@ export function BranchPill({
       sandboxMap={sandboxMap}
       onChange={onChange}
       onCreateBranch={onCreateBranch}
+      onAdoptBranch={onAdoptBranch}
       spawnsNewChat={locked}
       placement={placement}
     />

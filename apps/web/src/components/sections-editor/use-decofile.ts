@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { KEYS } from "@/lib/query-keys";
 import { decoRepoPath } from "./deco-repo-path";
@@ -19,13 +20,38 @@ interface UseDecofileParams {
   previewUrl?: string | null;
 }
 
+/**
+ * The `KEYS.decofile` cache key. Local mode reads a different source (the
+ * tunnel) than the branch's git/sandbox, so it gets its own key suffix —
+ * shared with `useSaveBlock` so its optimistic writes land where the read
+ * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
+ * branch's decofile and vice-versa.
+ */
+export function decofileCacheKey(input: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  localPreviewUrl?: string | null;
+}): string {
+  const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
+  return input.localPreviewUrl
+    ? `${base}:local:${input.localPreviewUrl}`
+    : base;
+}
+
 export function useDecofile(
   params: UseDecofileParams | null,
   options?: { fetchEnabled?: boolean },
 ) {
-  const key = params
-    ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}`
-    : "";
+  /**
+   * Local mode reads `/.decofile` straight from the pasted tunnel (a live dev
+   * server), keyed by it so toggling Local re-fetches. The tunnel is a non-
+   * localhost origin, so `buildDecofileFetchUrl`'s proxy path can't reach it —
+   * the Local branch below fetches it directly instead.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  const localOverride = !!localPreviewUrl;
+  const key = params ? decofileCacheKey({ ...params, localPreviewUrl }) : "";
   // `fetchEnabled` means the dev server is up, so the live `/.decofile` route is
   // worth hitting. When it's down we read `.deco/blocks.gen.json` straight from
   // the working tree — and if that artifact is absent (it's commonly gitignored)
@@ -56,6 +82,19 @@ export function useDecofile(
   return useQuery({
     queryKey: KEYS.decofile(key),
     queryFn: async () => {
+      if (localOverride) {
+        const res = await fetch(
+          new URL("/.decofile", localPreviewUrl).toString(),
+          { cache: "no-store" },
+        ).catch(() => null);
+        const decofile = res?.ok ? parseDecofileBody(await res.text()) : null;
+        if (decofile) return decofile;
+        const err = new Error(
+          "decofile unavailable (local tunnel unreachable)",
+        );
+        (err as { status?: number }).status = 502;
+        throw err;
+      }
       if (fastPreviewActive) {
         return fetchDecofile(queryClient, params!);
       }
@@ -119,7 +158,7 @@ export function useDecofile(
     // 404 = no decofile route on this repo (not a deco site) — as terminal as
     // 502 for retry purposes.
     retry: (failureCount, error) => {
-      if (fastPreviewActive) return failureCount < 3;
+      if (fastPreviewActive || localOverride) return failureCount < 3;
       const status = (error as { status?: number }).status;
       return status !== 502 && status !== 404 && failureCount < 2;
     },

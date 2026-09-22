@@ -171,5 +171,5 @@ type: application
 # stay ahead of the latest published chart (0.7.5 at time of writing).
 version: 0.18.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
-appVersion: "1.68.3"
+appVersion: "1.68.4"
 kubeVersion: ">=1.30.0-0"

@@ -1586,7 +1586,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   // StudioContext Injection Middleware
   // ============================================================================
 
-  // Create context factory with the provided database and event bus
   // Context factory only needs the Kysely instance, not the full StudioDatabase
   const memberRoleCache = createMemberRoleCache({ ttlMs: 2 * 60 * 1000 });
   const factory = await createStudioContextFactory({

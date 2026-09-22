@@ -26,6 +26,7 @@
     "dev:conductor": "WORKTREE_SLUG=$CONDUCTOR_WORKSPACE_NAME bun run dev:worktree",
     "dev:native": "bun run --cwd=apps/native dev",
     "fmt": "biome format --write",
+    "verify": "bun run fmt && bun run lint && bun run knip && bun run test",
     "lint": "oxlint",
     "check": "bun run check:readmes && bun run --workspaces check",
     "check:ci": "bun run check",

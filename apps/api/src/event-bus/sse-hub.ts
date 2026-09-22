@@ -1,9 +1,9 @@
 /**
- * SSE Hub — In-memory fan-out for event bus events
+ * SSE Hub: organization-scoped fan-out for realtime updates
  *
  * Provides a lightweight pub/sub layer that SSE connections subscribe to.
- * When events are published through the EventBus, they are also pushed
- * to all connected SSE clients for the same organization.
+ * Producers call emit() to push updates to connected SSE clients for the
+ * same organization.
  *
  * Cross-pod support:
  * The hub delegates broadcasting to an SSEBroadcastStrategy (NatsSSEBroadcast),
@@ -68,7 +68,7 @@ const MAX_TOTAL_CONNECTIONS = 500;
 // ============================================================================
 
 /**
- * SSE hub for fan-out of event bus events to SSE connections.
+ * SSE hub for delivery of realtime updates to connected clients.
  *
  * Holds references to active listener callbacks — no event data.
  * Memory usage is proportional to connected SSE clients, not event volume.

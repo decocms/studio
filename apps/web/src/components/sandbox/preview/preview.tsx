@@ -24,6 +24,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -479,9 +480,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const vmEntry = lifecycle.vmEntry;
-  const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
-  const devServerReady = lifecyclePhase === "running";
+  /**
+   * Local mode: the pasted tunnel stands in for the managed sandbox dev server.
+   * It replaces `previewUrl` everywhere below — the CMS reads, the preview
+   * iframe, and the editor bridge all target it — and the boot gating is
+   * bypassed (the tunnel is already up), so no pod ever boots.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
+  const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
 
   // Live production URL of the linked site, persisted on the agent's
   // `metadata.previewServerUrl` at import time (deco.cx reports the real domain,
@@ -492,7 +500,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewServerUrl =
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const fastPreviewEnabled =
-    agent?.id === virtualMcpId && session.runtime === "cms";
+    !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
   const projectDefaultsToCms = session.projectDefault === "cms";
 
@@ -725,6 +733,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
     codingSession,
+    localPreviewUrl,
   });
   const previewSurfaceActive = display.mode !== "none";
 
@@ -737,17 +746,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production" && display.iframeBase
       ? previewOrigin(display.iframeBase)
       : null;
-  // In the desktop app, an external production origin must be registered
-  // with the native shell's navigation policy BEFORE the iframe below is
-  // allowed to navigate there — see `registerPreviewOrigin`'s doc comment
-  // for why this can't be fire-and-forget. Plain browser tabs have no such
-  // gate, so this is a no-op there.
-  const productionOriginReady =
+  /**
+   * The external origin the iframe will load and that the desktop shell must
+   * register before navigating there: the published site under Fast Preview, or
+   * the Local tunnel (a "sandbox"-display external origin, unlike the normal
+   * sandbox proxy which is this app's own already-allowed origin). `null` for
+   * the normal sandbox proxy. Plain browser tabs have no such gate (no-op).
+   */
+  const externalPreviewOrigin =
+    productionOrigin ??
+    (localPreviewUrl && display.mode === "sandbox" && display.iframeBase
+      ? previewOrigin(display.iframeBase)
+      : null);
+  const externalOriginReady =
     !isDesktopApp ||
-    !productionOrigin ||
-    registeredPreviewOrigin === productionOrigin;
+    !externalPreviewOrigin ||
+    registeredPreviewOrigin === externalPreviewOrigin;
 
-  // Origin of the in-iframe editor bridge — sandbox proxy, or the site's own origin under Fast Preview.
+  // Origin of the in-iframe editor bridge — sandbox proxy / Local tunnel, or the site's own origin under Fast Preview.
   const editorBridgeOrigin =
     display.mode === "production"
       ? productionOrigin
@@ -764,12 +780,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    */
   const inPlaceRenderEnabled =
     agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
-  const inPlaceRenderActive =
-    display.mode === "production" &&
-    fastPreviewEnabled &&
-    inPlaceRenderEnabled &&
-    blocksEditingEnabled &&
-    editingMode === "blocks";
+  // Local renders fake edits in place against the tunnel's `/live/previews`.
+  const inPlaceRenderActive = localPreviewUrl
+    ? display.mode === "sandbox" &&
+      blocksEditingEnabled &&
+      editingMode === "blocks"
+    : display.mode === "production" &&
+      fastPreviewEnabled &&
+      inPlaceRenderEnabled &&
+      blocksEditingEnabled &&
+      editingMode === "blocks";
   // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
   const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
   const { pin: nextPinnedDraft, effective: effectiveDraftPreviewUrl } =
@@ -783,7 +803,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
   const iframeSrc = withDecoFBT(
-    display.mode === "sandbox"
+    display.mode === "sandbox" && externalOriginReady
       ? withVariantMatcherOverride(
           withDeviceHint(
             directPreviewUrl ??
@@ -793,7 +813,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ),
           workspace.state.variantOverride ?? [],
         )
-      : display.mode === "production" && productionOriginReady
+      : display.mode === "production" && externalOriginReady
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
@@ -812,28 +832,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         : null,
   );
 
-  // Registers `productionOrigin` with the native shell before the iframe
-  // above is allowed to navigate there (see `productionOriginReady`).
+  /** Registers `externalPreviewOrigin` with the native shell before the iframe navigates there (see `externalOriginReady`). */
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
   useEffect(() => {
-    if (!isDesktopApp || !productionOrigin) return;
-    if (registeredPreviewOrigin === productionOrigin) return;
+    if (!isDesktopApp || !externalPreviewOrigin) return;
+    if (registeredPreviewOrigin === externalPreviewOrigin) return;
     let cancelled = false;
-    registerPreviewOrigin(productionOrigin)
+    registerPreviewOrigin(externalPreviewOrigin)
       .then(() => {
-        if (!cancelled) setRegisteredPreviewOrigin(productionOrigin);
+        if (!cancelled) setRegisteredPreviewOrigin(externalPreviewOrigin);
       })
       .catch((error) => {
         console.error(
           "Failed to register preview origin",
-          productionOrigin,
+          externalPreviewOrigin,
           error,
         );
       });
     return () => {
       cancelled = true;
     };
-  }, [isDesktopApp, productionOrigin, registeredPreviewOrigin]);
+  }, [isDesktopApp, externalPreviewOrigin, registeredPreviewOrigin]);
 
   // "Open outside the preview pane". In a browser that's a new tab; inside the
   // Tauri webview there is no tab strip to open into, so `window.open` cannot
@@ -1212,9 +1231,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
-    // Sandbox speaks the daemon's `visual-editor::activate`; a Fast Preview production frame speaks the deco framework's `editor::inject`.
+    // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`.
     win.postMessage(
-      display.mode === "production"
+      display.mode === "production" || localPreviewUrl
         ? { type: "editor::inject", args: { script: CMS_EDITOR_SCRIPT } }
         : { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
       origin,
@@ -1484,9 +1503,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     setPagesOpen(false);
     setPagesSearch("");
   };
-  const pageOrigin = previewOrigin(previewServerUrl ?? previewUrl);
   const pageName =
     activeGlobalSection?.name ?? activeLoader?.title ?? currentPage?.name;
+  const blocksLoading = decofileQuery.isPending || metaQuery.isPending;
+  const pagePickerLabel = blocksLoading
+    ? previewOrigin(display.iframeBase)
+    : pageName;
   const currentPickerValue = activeGlobalSection
     ? `section:${activeGlobalSection.key}`
     : activeLoaderKey
@@ -1509,22 +1531,14 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             aria-label={t("sandbox.preview.choosePage")}
             data-testid="preview-page-picker"
             title={
-              activeGlobalSection || activeLoader
-                ? pageName
-                : [pageOrigin, pageName, currentPath]
-                    .filter(Boolean)
-                    .join(" · ")
+              blocksLoading
+                ? (pagePickerLabel ?? undefined)
+                : activeGlobalSection || activeLoader
+                  ? pageName
+                  : [pageName, currentPath].filter(Boolean).join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-0 items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/page-picker flex h-7 w-fit min-w-[320px] items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            {!activeGlobalSection && !activeLoader && pageOrigin && (
-              <span
-                data-testid="preview-page-origin"
-                className="flex min-w-0 max-w-56 items-center border-r border-border/60 bg-muted/60 px-2 font-mono text-muted-foreground @max-xl/panel-toolbar:max-w-1/4"
-              >
-                <span className="truncate">{pageOrigin}</span>
-              </span>
-            )}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
@@ -1538,12 +1552,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                   {t("sandbox.preview.loaderBadge")}
                 </span>
               )}
-              {(pageName || !pageOrigin) && (
-                <span className="min-w-0 truncate font-medium text-foreground">
-                  {pageName ?? previewLabel}
+              {pagePickerLabel && (
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {pagePickerLabel}
                 </span>
               )}
-              {!activeGlobalSection && !activeLoader && (
+              {!blocksLoading && !activeGlobalSection && !activeLoader && (
                 <span
                   data-testid="preview-page-path"
                   className="ml-auto min-w-0 truncate text-right font-mono text-muted-foreground"
@@ -2381,7 +2395,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
-                    {previewState.kind === "suspended" && (
+                    {/* Local mode stands in for the managed sandbox, so its lifecycle cards never own the canvas. */}
+                    {!localPreviewUrl && previewState.kind === "suspended" && (
                       <div className="absolute inset-0 z-30">
                         <SandboxStateCard
                           kind="suspended"
@@ -2390,7 +2405,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
-                    {previewState.kind === "errored" && (
+                    {!localPreviewUrl && previewState.kind === "errored" && (
                       <div className="absolute inset-0 z-30">
                         <SandboxStateCard
                           kind="errored"
@@ -2463,11 +2478,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // The page finished loading — always clear the navigation
                             // indicator first, before any of the early returns below.
                             endNavigation();
-                            // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                            if (display.mode !== "sandbox") {
+                            // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                            if (display.mode !== "sandbox" || localPreviewUrl) {
                               if (
-                                display.mode === "production" &&
-                                !display.showWakingPill &&
+                                ((display.mode === "production" &&
+                                  !display.showWakingPill) ||
+                                  localPreviewUrl) &&
                                 effectiveEditingMode === "blocks"
                               ) {
                                 injectCmsEditor();

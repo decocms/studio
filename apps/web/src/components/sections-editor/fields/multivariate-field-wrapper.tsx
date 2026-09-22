@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { LayersThree01 } from "@untitledui/icons";
+import { Flag01, LayersThree01 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
 import {
@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import {
   SectionVariantList,
   type SectionVariantEntry,
@@ -70,10 +71,10 @@ import type { FieldProps } from "./field-props";
 export interface MultivariateFieldWrapperProps extends FieldProps {
   multivariateResolveType: string;
   /**
-   * Set where this wrapper is one property among many: the field then reads as
-   * a row you open, the way a multivariate section does, instead of stacking a
-   * variant list and a rule on top of its neighbours. The section-level call
-   * site leaves it off — there the wrapper already owns the panel.
+   * Set where this wrapper is one property among many: in compact layout the
+   * field reads as a row you open. Classic layout keeps the inline editor.
+   * The section-level call site leaves it off — there the wrapper already
+   * owns the panel.
    */
   asDestination?: boolean;
   /** Render the inner field (used for both plain and variant values). */
@@ -94,6 +95,8 @@ export function MultivariateFieldWrapper({
   ...props
 }: MultivariateFieldWrapperProps) {
   const t = useT();
+  const compact = useCompactPageLayout();
+  const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [renameIndex, setRenameIndex] = useState<number | null>(null);
@@ -118,7 +121,7 @@ export function MultivariateFieldWrapper({
                 setSelectedIndex(0);
               }}
             >
-              <LayersThree01 size={14} />
+              <VariantIcon size={14} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -132,7 +135,7 @@ export function MultivariateFieldWrapper({
   // Closed: one row that opens the variants, so a property with variants reads
   // the same as a section with variants. The crumb is the field's own label —
   // that is what the breadcrumb resolver matches to narrow back to this field.
-  if (asDestination && !focused) {
+  if (compact && asDestination && !focused) {
     return (
       <EditorRowLink
         icon={
@@ -282,7 +285,7 @@ export function MultivariateFieldWrapper({
   const closeManage = () => props.onBreadcrumbChange?.([]);
 
   // Same shape as every other level: select in the header, list behind it.
-  if (asDestination && focused) {
+  if (compact && asDestination && focused) {
     return (
       <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)] gap-0">
         {!managing && (

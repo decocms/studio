@@ -47,6 +47,38 @@ describe("resolvePreviewDisplay", () => {
     expect(result.showWakingPill).toBe(false);
   });
 
+  describe("Local mode", () => {
+    const LOCAL = "https://my-tunnel.example.com";
+
+    it("renders the tunnel as a sandbox iframe immediately, ignoring boot gating", () => {
+      expect(
+        run({
+          previewState: STARTING,
+          progressStatus: "doing",
+          localPreviewUrl: LOCAL,
+        }),
+      ).toEqual({
+        mode: "sandbox",
+        iframeBase: LOCAL,
+        showBlockingOverlay: false,
+        showWakingPill: false,
+      });
+    });
+
+    it("wins over Fast Preview and suspended/errored lifecycle states", () => {
+      for (const previewState of [IFRAME, SUSPENDED, ERRORED] as const) {
+        const result = run({
+          previewState,
+          fastPreviewActive: true,
+          fastPreviewReady: true,
+          localPreviewUrl: LOCAL,
+        });
+        expect(result.mode).toBe("sandbox");
+        expect(result.iframeBase).toBe(LOCAL);
+      }
+    });
+  });
+
   it("falls back to production + pill while a fresh boot is in progress", () => {
     expect(run({ previewState: STARTING, progressStatus: "doing" })).toEqual({
       mode: "production",

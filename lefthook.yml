@@ -5,7 +5,7 @@ pre-commit:
   parallel: true
   commands:
     fmt:
-      glob: "*.{ts,tsx,js,jsx,json,md}"
+      glob: "*.{ts,tsx,js,jsx,json}"
       run: bunx biome format --write {staged_files}
       stage_fixed: true
     lint:

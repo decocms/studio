@@ -16,6 +16,13 @@ export const thread = {
     'Delete "{name}"? This can\'t be undone.',
   "thread.branchPicker.deleteTitle": "Discard draft?",
   "thread.branchPicker.live": "Production",
+  "thread.branchPicker.localTab": "Local",
+  "thread.branchPicker.localLabel": "Local",
+  "thread.branchPicker.localHint":
+    "Point preview and the CMS at your own dev server. Paste a public tunnel URL (e.g. ngrok, cloudflared) reachable from this browser.",
+  "thread.branchPicker.localUrlLabel": "Local tunnel URL",
+  "thread.branchPicker.localUrlPlaceholder": "https://your-tunnel.example.com",
+  "thread.branchPicker.localTurnOff": "Turn off",
   "thread.branchPicker.moreActions": "More actions",
   "thread.branchPicker.newVersion": "New draft",
   "thread.branchPicker.capReached":

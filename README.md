@@ -130,7 +130,6 @@ Account for every model and tool call. Trace the user, agent, model, tools, late
 | **Observability** | Traces, costs, errors, and latency per user, agent, and connection — one dashboard |
 | **Access Control** | SSO + RBAC via Better Auth — OAuth 2.1 and tool-scoped API keys per workspace/project |
 | **Multi-tenancy** | Organization/project isolation for config, credentials, policies, and audit logs |
-| **Event Bus** | Pub/sub between connections with scheduled/cron delivery and at-least-once guarantees |
 | **Bindings** | Capability contracts so tools target interfaces, not specific implementations |
 | **Store** | Discover and install agents, tools, and templates |
 
@@ -263,7 +262,7 @@ No vendor lock-in. Runs on Docker, Kubernetes, AWS, GCP, or local runtimes.
 |---|---|
 | **Laptop** | Nothing. One process, embedded PostgreSQL. |
 | **Docker** | The published image. Bring PostgreSQL or use the embedded one. |
-| **Production (Helm)** | PostgreSQL you bring, plus optional NATS (event bus wake-up), ClickHouse + OTel Collector (traces and analytics), and the sandbox operator (isolated agent environments on Kubernetes). Your identity provider, your model keys, your storage. |
+| **Production (Helm)** | PostgreSQL you bring, plus NATS for streaming and cross-pod coordination, ClickHouse + OTel Collector (traces and analytics), and the sandbox operator (isolated agent environments on Kubernetes). Your identity provider, your model keys, your storage. |
 
 ### Production topology
 
@@ -276,15 +275,15 @@ graph TB
     subgraph k8s ["Kubernetes (Helm)"]
         api["Studio API + Admin UI"]
         api --> sandbox["Agent sandboxes<br/>(sandbox-operator)"]
-        api -->|"notify"| nats["NATS"]
+        api <-->|"streams and broadcasts"| nats["NATS"]
         api -->|"traces · costs"| otel["OTel Collector"]
-        nats -->|"wake"| worker["Workers<br/>event bus · schedules"]
+        nats <-->|"streams and broadcasts"| worker["Workers<br/>DBOS runs"]
         otel --> ch[("ClickHouse")]
     end
 
     pg[("PostgreSQL")]
     api --> pg
-    worker --> pg
+    worker <-->|"DBOS queues and journal"| pg
 
     subgraph upstream ["Models & tools"]
         models["Anthropic · OpenAI<br/>OpenRouter · Ollama"]
