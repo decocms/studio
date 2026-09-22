@@ -923,7 +923,7 @@ func (o *Orchestrator) installGitCredentials(cfg *config.Enriched) {
 	// the partly-synced $HOME. Home is passed only so the generated config can
 	// INCLUDE the user's own `~/.gitconfig` rather than replace it.
 	home, _ := os.UserHomeDir()
-	hosts, invalidHosts, err := InstallGitCredentials(o.deps.LogsDir, home, cfg.SubmoduleCredentials())
+	hosts, invalidHosts, err := InstallGitCredentials(o.deps.LogsDir, home, cfg.CloneUrl(), cfg.SubmoduleCredentials())
 	for _, host := range invalidHosts {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: skipping git credential with invalid host %q\r\n", host))
 	}

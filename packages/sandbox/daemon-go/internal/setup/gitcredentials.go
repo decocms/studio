@@ -2,6 +2,7 @@ package setup
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,17 +56,22 @@ func GitCredentialsStorePath(tmpDir string) string {
 }
 
 // renderGitConfig is the file's entire contents: the user's own `~/.gitconfig`
-// included FIRST (so `gh auth setup-git` and anything an agent configures still
-// applies — `GIT_CONFIG_GLOBAL` replaces that file rather than adding to it,
-// and a missing include is silently ignored), then the store helper and an
-// SSH→HTTPS rewrite per host so a `git@host:` dependency URL resolves to
-// something the stored credential applies to.
+// included FIRST (so anything an agent configures still applies —
+// `GIT_CONFIG_GLOBAL` replaces that file rather than adding to it, and a
+// missing include is silently ignored), then the store helper and an SSH→HTTPS
+// rewrite per host so a `git@host:` dependency URL resolves to something the
+// stored credential applies to.
 //
-// One consequence of setting GIT_CONFIG_GLOBAL at all: `git config --global`
-// inside the pod now WRITES here rather than to `~/.gitconfig`, so what
-// `gh auth setup-git` adds holds for the session and is dropped by the next
-// rewrite. Both helpers are consulted meanwhile — git tries the list in order —
-// so that costs durability, not authentication.
+// ⚠️ This helper is NOT robust against a `git config --global credential.…`
+// write from inside the pod, and cannot be made so. Setting GIT_CONFIG_GLOBAL
+// means such a write lands in THIS file, appended after the helper below, and
+// git reads an empty `credential.<url>.helper` value — the first thing
+// `gh auth setup-git` writes — as "discard every helper configured earlier".
+// Config order cannot be won from here: a global write always follows the
+// system scope, and a command-line helper is appended (queried last), so the
+// intruder answers first either way. The defence is that nothing needs to run
+// it: cloneCredentialLine installs the floor `gh auth setup-git` used to
+// provide, and the skills say not to.
 //
 // Carries NO token — deterministic, and safe to log.
 func renderGitConfig(hosts []string, credFile, home string) string {
@@ -95,7 +101,7 @@ func renderGitConfig(hosts []string, credFile, home string) string {
 // Removal is not a special case but the point: a pod is reused across configs,
 // and a credential dropped in the UI has to stop working rather than linger in
 // a file nothing rewrites.
-func InstallGitCredentials(tmpDir, home string, credentials []config.SubmoduleCredential) (hosts, invalidHosts []string, err error) {
+func InstallGitCredentials(tmpDir, home, cloneUrl string, credentials []config.SubmoduleCredential) (hosts, invalidHosts []string, err error) {
 	if tmpDir == "" {
 		return nil, nil, nil
 	}
@@ -103,6 +109,10 @@ func InstallGitCredentials(tmpDir, home string, credentials []config.SubmoduleCr
 	credPath := GitCredentialsStorePath(tmpDir)
 
 	lines, hosts, invalidHosts := prepareSubmoduleCredentials(credentials)
+	if line, host, ok := cloneCredentialLine(cloneUrl, hosts); ok {
+		lines = append(lines, line)
+		hosts = append(hosts, host)
+	}
 	if len(hosts) == 0 {
 		os.Unsetenv("GIT_CONFIG_GLOBAL")
 		return nil, invalidHosts, SweepGitCredentials(tmpDir)
@@ -128,6 +138,41 @@ func InstallGitCredentials(tmpDir, home string, credentials []config.SubmoduleCr
 		return nil, invalidHosts, err
 	}
 	return hosts, invalidHosts, nil
+}
+
+// cloneCredentialLine is the clone URL's own token as a trailing store entry,
+// so a private dependency on the CLONE's host resolves with no configured PAT
+// at all. `git-credential-store` answers with the first line matching a host,
+// so a configured credential for the same host still wins — this is only the
+// floor.
+//
+// It replaces `gh auth setup-git`, which used to be how a package manager's git
+// got a credential and which cannot coexist with this file: the first thing it
+// writes is an empty `credential.<url>.helper`, and git reads an empty helper
+// value as "discard every helper configured earlier". Since GIT_CONFIG_GLOBAL
+// points here, that write lands after our own helper and silently drops it.
+//
+// The token is the clone token, already on disk in the working tree's
+// `.git/config` as origin's userinfo, so this adds no exposure.
+func cloneCredentialLine(cloneUrl string, configured []string) (line, host string, ok bool) {
+	if cloneUrl == "" {
+		return "", "", false
+	}
+	u, err := url.Parse(cloneUrl)
+	if err != nil || u.Host == "" || u.User == nil {
+		return "", "", false
+	}
+	password, hasPassword := u.User.Password()
+	if !hasPassword || password == "" {
+		return "", "", false
+	}
+	for _, h := range configured {
+		if h == u.Host {
+			return "", "", false
+		}
+	}
+	creds := url.URL{Scheme: "https", User: u.User, Host: u.Host}
+	return creds.String(), u.Host, true
 }
 
 // SweepGitCredentials unlinks the pair. Called on removal, and at boot before

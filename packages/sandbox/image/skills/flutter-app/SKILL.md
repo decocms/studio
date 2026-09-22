@@ -34,38 +34,39 @@ dependencies:
       ref: v1.2.3
 ```
 
-`flutter pub get` fetches those over plain HTTPS with no credential and fails.
-Fix it once, before `pub get`, with the token the run already has:
+`flutter pub get` fetches those over plain HTTPS, and the sandbox is already set
+up for it: the daemon installs the run's credentials in the pod's git config at
+boot, so `flutter pub get` needs no preparation. Just run it.
 
-```bash
-gh auth setup-git          # wires git's credential helper to $GH_TOKEN
-flutter pub get
-```
+> **Never run `gh auth setup-git` here.** The first thing it writes is an empty
+> `credential.<url>.helper`, which git reads as "discard every helper configured
+> earlier" — and because `GIT_CONFIG_GLOBAL` points at the daemon's config, that
+> write lands in the same file and deletes the credentials the pod booted with.
+> A `pub get` that worked will start 404ing.
 
-This writes no token to disk — the helper asks `gh` each time.
-
-What the token reaches is decided before the run starts: Studio walks the
+What the credentials reach is decided before the run starts: Studio walks the
 `git:` dependencies in `pubspec.yaml`, and the dependencies of those, and mints
 the token for this repository plus **every same-owner repository in that graph**
-(capped at 20). So a normal private dependency tree resolves, and three cases
-do not:
+(capped at 20), plus any **git credential** the organization configured for the
+host. So a normal private dependency tree resolves, and three cases do not:
 
-- **A dependency under a different owner.** The token belongs to one GitHub App
-  installation, which is one account; nothing minted for this run can reach
-  another owner's repository. The fix is not yours to apply: someone adds a
-  **git credential** for that host in the agent's Sandbox settings (a PAT stored
-  as an org secret), and the next boot installs it for every git in the pod —
-  `pub get` included, with no `gh auth setup-git`. **Report that as the blocker
-  and name the host**; do not go looking for a token yourself.
+- **A repository outside the token and with no configured credential.** The
+  minted token belongs to one GitHub App installation and covers only the
+  repositories that installation was granted, so a dependency under a different
+  owner — or one the installation was never given — is out of reach. The fix is
+  not yours to apply: someone adds a git credential for that host in
+  Settings → Repositories (a PAT stored as an org secret), and the next boot
+  installs it for every git in the pod, `pub get` included. **Report that as
+  the blocker and name the host**; do not go looking for a token yourself.
 - **A private dependency added on your working branch.** The walk read each
   repository's default branch, so a `git:` dependency your PR introduces is not
   in the token. Say so in your report rather than working around it.
 - **A repository the organization did not authorize for Studio.** The walk stops
   at the grant, by design.
 
-So a 404 after `gh auth setup-git` is one of those three — **report it**. Do not
-go looking for another token, and never paste one into `pubspec.yaml`, a git
-URL, or a config file.
+So a 404 from `pub get` is one of those three — **report it**. Do not go looking
+for another token, and never paste one into `pubspec.yaml`, a git URL, or a
+config file.
 
 `flutter pub get` on a cold sandbox takes a few minutes. Run it once.
 

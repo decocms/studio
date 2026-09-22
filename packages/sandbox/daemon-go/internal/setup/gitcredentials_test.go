@@ -13,7 +13,7 @@ func TestInstallGitCredentialsPointsEveryGitInThePodAtADaemonOwnedConfig(t *test
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, invalid, err := InstallGitCredentials(tmpDir, home, []config.SubmoduleCredential{
+	hosts, invalid, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com", Token: "ghs_live_token"},
 	})
 	if err != nil {
@@ -42,8 +42,7 @@ func TestInstallGitCredentialsPointsEveryGitInThePodAtADaemonOwnedConfig(t *test
 		t.Fatal("git config carries the token; it belongs only in the store file")
 	}
 	for _, want := range []string{
-		// Without this, GIT_CONFIG_GLOBAL would SHADOW the user's own file and
-		// silently undo `gh auth setup-git`.
+		// Without this, GIT_CONFIG_GLOBAL would SHADOW the user's own file.
 		"path = " + filepath.Join(home, ".gitconfig"),
 		"helper = store --file=" + GitCredentialsStorePath(tmpDir),
 		"[url \"https://github.com/\"]",
@@ -75,7 +74,7 @@ func TestInstallGitCredentialsKeepsEverythingOutOfTheWorkingTreeAndHome(t *testi
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	if _, _, err := InstallGitCredentials(tmpDir, home, []config.SubmoduleCredential{
+	if _, _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com", Token: "ghs_live_token"},
 	}); err != nil {
 		t.Fatalf("install: %v", err)
@@ -101,12 +100,12 @@ func TestInstallGitCredentialsClearsBothFilesWhenTheLastCredentialIsRemoved(t *t
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	if _, _, err := InstallGitCredentials(tmpDir, home, []config.SubmoduleCredential{
+	if _, _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com", Token: "ghs_live_token"},
 	}); err != nil {
 		t.Fatalf("install: %v", err)
 	}
-	if _, _, err := InstallGitCredentials(tmpDir, home, nil); err != nil {
+	if _, _, err := InstallGitCredentials(tmpDir, home, "", nil); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 
@@ -125,7 +124,7 @@ func TestInstallGitCredentialsRejectsAMalformedHostWithoutWritingIt(t *testing.T
 	tmpDir, home := t.TempDir(), t.TempDir()
 	t.Setenv("GIT_CONFIG_GLOBAL", "")
 
-	hosts, invalid, err := InstallGitCredentials(tmpDir, home, []config.SubmoduleCredential{
+	hosts, invalid, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
 		{Host: "github.com/somalabs", Token: "ghs_live_token"},
 	})
 	if err != nil {
@@ -152,5 +151,108 @@ func TestSweepGitCredentialsClearsAFileAKillStranded(t *testing.T) {
 	}
 	if _, err := os.Stat(GitCredentialsStorePath(tmpDir)); !os.IsNotExist(err) {
 		t.Fatalf("stranded credentials survived the sweep (err=%v)", err)
+	}
+}
+
+// Regression: a private `git:` dependency on the clone's own host used to need
+// `gh auth setup-git`, whose first write is an empty `credential.<url>.helper`
+// — which git reads as "discard every helper configured earlier", wiping this
+// file's helper out of the very config it lands in. The floor is installed
+// here instead so nothing has to run that command.
+func TestInstallGitCredentialsFallsBackToTheCloneTokenSoGhAuthSetupGitIsUnnecessary(t *testing.T) {
+	tmpDir, home := t.TempDir(), t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+
+	hosts, _, err := InstallGitCredentials(
+		tmpDir, home,
+		"https://x-access-token:ghs_clone_token@github.com/acme/app.git",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if len(hosts) != 1 || hosts[0] != "github.com" {
+		t.Fatalf("hosts = %v, want [github.com]", hosts)
+	}
+	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
+	if err != nil {
+		t.Fatalf("read store: %v", err)
+	}
+	if string(store) != "https://x-access-token:ghs_clone_token@github.com\n" {
+		t.Fatalf("store file = %q", string(store))
+	}
+}
+
+// `git-credential-store` answers with the FIRST line matching a host, so the
+// order decides which token a shared host gets. The org's PAT is the one the
+// clone token cannot stand in for.
+func TestInstallGitCredentialsPrefersTheConfiguredCredentialOverTheCloneToken(t *testing.T) {
+	tmpDir, home := t.TempDir(), t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+
+	hosts, _, err := InstallGitCredentials(
+		tmpDir, home,
+		"https://x-access-token:ghs_clone_token@github.com/acme/app.git",
+		[]config.SubmoduleCredential{{Host: "github.com", Token: "pat_configured"}},
+	)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if len(hosts) != 1 || hosts[0] != "github.com" {
+		t.Fatalf("hosts = %v, want [github.com] once, not duplicated", hosts)
+	}
+	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
+	if err != nil {
+		t.Fatalf("read store: %v", err)
+	}
+	if string(store) != "https://x-access-token:pat_configured@github.com\n" {
+		t.Fatalf("store file = %q", string(store))
+	}
+}
+
+// A different host keeps both: the PAT for its host, the clone token for its own.
+func TestInstallGitCredentialsKeepsTheCloneTokenAlongsideAnotherHostsPat(t *testing.T) {
+	tmpDir, home := t.TempDir(), t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+
+	hosts, _, err := InstallGitCredentials(
+		tmpDir, home,
+		"https://x-access-token:ghs_clone_token@github.com/acme/app.git",
+		[]config.SubmoduleCredential{{Host: "gitlab.com", Token: "pat_configured"}},
+	)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if len(hosts) != 2 || hosts[0] != "gitlab.com" || hosts[1] != "github.com" {
+		t.Fatalf("hosts = %v, want [gitlab.com github.com]", hosts)
+	}
+	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
+	if err != nil {
+		t.Fatalf("read store: %v", err)
+	}
+	want := "https://x-access-token:pat_configured@gitlab.com\n" +
+		"https://x-access-token:ghs_clone_token@github.com\n"
+	if string(store) != want {
+		t.Fatalf("store file = %q, want %q", string(store), want)
+	}
+}
+
+// An anonymous public clone carries no userinfo — nothing to install, and the
+// pair must not be left behind for it.
+func TestInstallGitCredentialsIgnoresACloneUrlWithNoToken(t *testing.T) {
+	tmpDir, home := t.TempDir(), t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+
+	hosts, _, err := InstallGitCredentials(
+		tmpDir, home, "https://github.com/acme/app.git", nil,
+	)
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if len(hosts) != 0 {
+		t.Fatalf("hosts = %v, want none", hosts)
+	}
+	if _, err := os.Stat(GitCredentialsStorePath(tmpDir)); !os.IsNotExist(err) {
+		t.Fatalf("store file written for an anonymous clone (err=%v)", err)
 	}
 }
