@@ -39,6 +39,20 @@ describe("reuseVariantEntryIds", () => {
     expect(copy?.id).not.toBe("e1");
   });
 
+  it("keeps a renamed tab's own id stable", () => {
+    const current = [
+      { id: "e0", index: 0, variant: variant("A") },
+      { id: "e1", index: 1, variant: variant("B") },
+      { id: "e2", index: 2, variant: variant("C") },
+    ];
+    // "B" (index 1) was renamed to "B2" — its label no longer matches.
+    const variants = [variant("A"), variant("B2"), variant("C")];
+
+    const next = reuseVariantEntryIds(current, variants);
+
+    expect(next.map((entry) => entry.id)).toEqual(["e0", "e1", "e2"]);
+  });
+
   it("keeps two same-label tabs' ids stable in order across an unrelated rebuild", () => {
     // Un-renamed duplicates share a label — matching must not collapse them.
     const current = [

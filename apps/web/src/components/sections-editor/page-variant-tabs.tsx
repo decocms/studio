@@ -88,6 +88,11 @@ function createEntries(variants: PageVariant[]): VariantTabEntry[] {
  * before a tab shifts every later tab's position, so matching by position
  * hands it a stale id — remounting its DnD-sortable identity and dropping
  * e.g. an open row menu on an unrelated tab.
+ *
+ * A rename changes the one label a match would key on, so it always misses
+ * the first pass — fall back to pairing whatever's left over, in order. A
+ * rename touches exactly one variant, so its old entry is the one leftover
+ * on each side.
  */
 export function reuseVariantEntryIds(
   current: VariantTabEntry[],
@@ -100,14 +105,27 @@ export function reuseVariantEntryIds(
     if (queue) queue.push(entry);
     else byLabel.set(entry.variant.label, [entry]);
   }
-  return variants.map((variant, index) => {
+
+  const unmatchedIndices: number[] = [];
+  const matchedIds = new Set<string>();
+  const result = variants.map((variant, index) => {
     const prior = byLabel.get(variant.label)?.shift();
-    return {
-      id: prior?.id ?? crypto.randomUUID(),
-      index,
-      variant,
-    };
+    if (!prior) {
+      unmatchedIndices.push(index);
+      return { id: "", index, variant };
+    }
+    matchedIds.add(prior.id);
+    return { id: prior.id, index, variant };
   });
+
+  const leftoverEntries = current.filter((entry) => !matchedIds.has(entry.id));
+  for (const index of unmatchedIndices) {
+    const prior = leftoverEntries.shift();
+    const entry = result[index] as VariantTabEntry;
+    entry.id = prior?.id ?? crypto.randomUUID();
+  }
+
+  return result;
 }
 
 function remapEntryIndices(entries: VariantTabEntry[]): VariantTabEntry[] {
