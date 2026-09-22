@@ -74,8 +74,15 @@ export const openaiCompatibleAdapter: ProviderAdapter = {
         if (!res.ok) {
           await throwResponseError("OpenAI-compatible listModels", res);
         }
-        const body: { data: Array<{ id: string; owned_by?: string }> } =
-          await res.json();
+        const text = await res.text();
+        let body: { data: Array<{ id: string; owned_by?: string }> };
+        try {
+          body = JSON.parse(text);
+        } catch {
+          throw new Error(
+            `OpenAI-compatible listModels returned malformed JSON: ${text.slice(0, 200)}`,
+          );
+        }
         return body.data.map((m) => ({
           providerId: "openai-compatible",
           modelId: m.id,
