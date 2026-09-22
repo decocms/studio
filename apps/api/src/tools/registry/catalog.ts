@@ -220,6 +220,15 @@ export function listCatalog(
   };
 }
 
+export function resolveItemIdentifier(input: {
+  id?: string;
+  name?: string;
+}): string {
+  const itemId = input.id ?? input.name;
+  if (!itemId) throw new Error("Either 'id' or 'name' is required");
+  return itemId;
+}
+
 export function findCatalogItem(items: CatalogItem[], identifier: string) {
   return (
     items.find((item) => item.id === identifier) ??
