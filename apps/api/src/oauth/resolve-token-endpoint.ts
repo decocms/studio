@@ -11,7 +11,7 @@ import {
   fetchProtectedResourceMetadata,
   fetchAuthorizationServerMetadata,
 } from "../api/routes/oauth-proxy";
-import { isPrivateUrl } from "../mcp-clients/url-security";
+import { guardAgainstPrivateUrl } from "../mcp-clients/url-security";
 
 /**
  * Resolve the origin's actual OAuth token endpoint from a connection URL.
@@ -52,13 +52,13 @@ export async function resolveOriginTokenEndpoint(
       const data = (await authRes.json()) as {
         token_endpoint?: unknown;
       };
-      // token_endpoint is untrusted, origin-controlled input — reject a private/internal target.
+      // token_endpoint is untrusted, origin-controlled input — reject a private/internal target, resolving DNS so a rebinding domain doesn't slip past.
       if (typeof data.token_endpoint === "string") {
         try {
           const parsed = new URL(data.token_endpoint);
           if (
             (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-            !isPrivateUrl(data.token_endpoint)
+            !(await guardAgainstPrivateUrl(data.token_endpoint))
           ) {
             return data.token_endpoint;
           }
