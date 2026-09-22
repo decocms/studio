@@ -8,6 +8,10 @@ import type {
   ProviderAdapter,
 } from "./types";
 import { getProviders } from "./registry";
+import {
+  fetchWithTransientRetry,
+  throwResponseError,
+} from "./adapters/fetch-transient-retry";
 
 // Sentinel org ID for the shared OpenRouter metadata cache (not org-specific)
 const OR_INDEX_ORG_ID = "_global";
@@ -76,10 +80,12 @@ async function getOpenRouterIndex(
     if (cached) return buildIndex(cached);
   }
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/models", {
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return new Map();
+    const res = await fetchWithTransientRetry(
+      "OpenRouter enrichment index",
+      "https://openrouter.ai/api/v1/models",
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    if (!res.ok) await throwResponseError("OpenRouter enrichment index", res);
     const { data }: { data: OpenRouterAPIModel[] } = await res.json();
     const models = data.map(mapOpenRouterModel);
     if (cache) await cache.set(OR_INDEX_ORG_ID, "openrouter", models);

@@ -100,4 +100,38 @@ describe("AIProviderFactory.listModels", () => {
     expect(models[0]?.costs?.input).toBe(0.0000005808);
     expect(models[0]?.costs?.output).toBe(0.0000017424);
   });
+
+  test("retries a transient 503 fetching the OpenRouter enrichment index instead of blanking enrichment", async () => {
+    let openRouterCalls = 0;
+    globalThis.fetch = (async (url: unknown): Promise<Response> => {
+      const u = String(url);
+      const parsed = new URL(u);
+      if (parsed.hostname === "generativelanguage.googleapis.com") {
+        return new Response(JSON.stringify(GOOGLE_MODELS_BODY), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (
+        parsed.hostname === "openrouter.ai" &&
+        parsed.pathname === "/api/v1/models"
+      ) {
+        openRouterCalls++;
+        if (openRouterCalls === 1) {
+          return new Response("upstream hiccup", { status: 503 });
+        }
+        return new Response(JSON.stringify(OPENROUTER_MODELS_BODY), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    }) as unknown as typeof fetch;
+
+    const factory = new AIProviderFactory(fakeStorage());
+    const models = await factory.listModels("key-1", "org-1");
+
+    expect(openRouterCalls).toBeGreaterThan(1);
+    expect(models[0]?.capabilities).toContain("vision");
+  });
 });
