@@ -383,6 +383,7 @@ export const EmailTagsInput = forwardRef<
                 type="button"
                 variant="ghost"
                 size="icon"
+                aria-label={`Remove ${email}`}
                 className={cn(
                   "h-4 w-4 classic:rounded-full transition-colors",
                   getBadgeVariant(email) === "destructive"
