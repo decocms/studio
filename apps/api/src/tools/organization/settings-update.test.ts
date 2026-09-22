@@ -121,6 +121,29 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     ).toBe(false);
   });
 
+  it("rejects duplicate hosts in submodule_credentials", () => {
+    // A second entry for the same host would silently never take effect.
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        submodule_credentials: [
+          { host: "github.com", secretId: "secret-1" },
+          { host: "github.com", secretId: "secret-2" },
+        ],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+        organizationId: "org-a",
+        submodule_credentials: [
+          { host: "github.com", secretId: "secret-1" },
+          { host: "gitlab.com", secretId: "secret-2" },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   it("rejects an oversized string in a sidebar item or default_home_agents id", () => {
     const longString = "x".repeat(501);
 

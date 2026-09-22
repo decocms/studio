@@ -54,6 +54,11 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     submodule_credentials: z
       .array(SubmoduleCredentialSchema)
       .max(GIT_CREDENTIALS_MAX)
+      // A second entry for the same host would silently never take effect.
+      .refine(
+        (creds) => new Set(creds.map((c) => c.host)).size === creds.length,
+        "Each git credential host must be unique.",
+      )
       .optional()
       .describe(
         "Per-host PATs (as vault secret ids) every sandbox in the org installs in its git config. Replaces the stored list; pass [] to clear it.",
