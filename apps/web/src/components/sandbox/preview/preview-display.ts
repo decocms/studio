@@ -70,6 +70,13 @@ export interface PreviewDisplayInput {
    * withheld and the boot console owns the canvas.
    */
   codingSession?: boolean;
+  /**
+   * "Local" mode: a tunnel URL the user pasted, pointing at their own live dev
+   * server. When set it wins over every other source — the tunnel is already
+   * up, so we paint it as a sandbox-style iframe immediately, ignoring the
+   * managed sandbox lifecycle, Fast Preview, and the boot gating below.
+   */
+  localPreviewUrl?: string | null;
 }
 
 const NONE: PreviewDisplay = {
@@ -93,6 +100,16 @@ export function resolvePreviewDisplay(
   } = input;
   /** Withheld for a coding session — see `codingSession`. */
   const previewServerUrl = codingSession ? null : input.previewServerUrl;
+
+  // Local mode wins outright: the tunnel is already serving, render it now.
+  if (input.localPreviewUrl) {
+    return {
+      mode: "sandbox",
+      iframeBase: input.localPreviewUrl,
+      showBlockingOverlay: false,
+      showWakingPill: false,
+    };
+  }
 
   // Suspended / errored render their own dedicated card — hand the canvas over
   // so we don't paint a toolbar or load the production iframe behind/around it.

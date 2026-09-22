@@ -4,8 +4,8 @@
  * The mount invalidator (daemon side) long-polls `/api/:org/fs/:volume/changes`
  * to learn about external writes. Rather than poll on a timer, the server holds
  * each request open and publishes a per-(org, volume) NATS notify on every
- * write, waking the long-poll instantly. This is the same NatsNotify +
- * poll-timeout safety-net pattern the event bus uses.
+ * write, waking the long-poll. The request timeout remains a fallback when a
+ * notification is missed.
  *
  * The payload is intentionally empty: the daemon re-queries the change feed on
  * wake, so a nudge only needs to signal "something changed for this volume".

@@ -283,7 +283,7 @@ export function resolveConfig(
     monitoringOtlpEndpoint: envVars.MONITORING_OTLP_ENDPOINT,
     otelServiceName: envVars.OTEL_SERVICE_NAME || "studio",
 
-    // Event Bus & Networking
+    // NATS connectivity
     natsCredsPath: envVars.NATS_CREDS,
 
     // Config files

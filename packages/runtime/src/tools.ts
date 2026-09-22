@@ -698,7 +698,7 @@ const toolsFor = <TSchema extends ZodTypeAny = never>({
           createTool({
             id: "ON_EVENTS",
             description:
-              "Receive and process CloudEvents from the event bus. Returns per-event or batch results.",
+              "Receive and process batched CloudEvents. Returns per-event or batch results.",
             inputSchema: OnEventsInputSchema,
             outputSchema: OnEventsOutputSchema,
             execute: async (input) => {

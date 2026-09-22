@@ -68,7 +68,7 @@ export interface Settings {
   monitoringOtlpEndpoint: string | undefined;
   otelServiceName: string;
 
-  // Event Bus & Networking
+  // NATS connectivity
   natsUrls: string[];
   /**
    * Optional NATS credentials file for the Studio process. Managed local NATS

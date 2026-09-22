@@ -9,6 +9,7 @@ import {
   agentShowsGithubHeaderActions,
 } from "@/lib/agent-capabilities";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-drawer-gate";
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
@@ -20,13 +21,15 @@ function SiteEditorActions() {
   const entity = useVirtualMCP(session?.virtualMcpId);
   const currentBranch = session?.currentBranch ?? null;
   const runtime = useSessionRuntime(entity?.id).runtime;
+  // Local mode edits are ephemeral (nothing to promote) → withhold publish.
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   if (!entity) return null;
   return (
     <>
       <div className="flex min-w-0 shrink items-center justify-end">
         <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
       </div>
-      {agentShowsGithubHeaderActions(entity) && (
+      {!localPreviewUrl && agentShowsGithubHeaderActions(entity) && (
         <>
           <Separator
             orientation="vertical"
@@ -51,13 +54,16 @@ function SiteEditorDrawer() {
   const activeTask = session?.activeTask;
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
-  const showDrawer = shouldShowTerminalDrawer({
-    hasClonableSource:
-      agentHasClonableSource(entity?.metadata) ||
-      agentHasClonableSource(activeTask?.metadata),
-    fastPreviewActive: sessionRuntime === "cms",
-    mainTab: activeTabId ?? null,
-  });
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
+  const showDrawer =
+    !localPreviewUrl &&
+    shouldShowTerminalDrawer({
+      hasClonableSource:
+        agentHasClonableSource(entity?.metadata) ||
+        agentHasClonableSource(activeTask?.metadata),
+      fastPreviewActive: sessionRuntime === "cms",
+      mainTab: activeTabId ?? null,
+    });
   return showDrawer ? <PreviewDrawerHost /> : null;
 }
 

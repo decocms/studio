@@ -7,6 +7,7 @@ import {
   readCommittedMetaViaGit,
 } from "./read-committed-file";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { usePackagePath } from "./use-package-path";
 import type { LiveMeta } from "./resolve-schema";
 
@@ -95,8 +96,16 @@ export function useLiveMeta(
       | ((query: Query<LiveMeta>) => number | false | undefined);
   },
 ) {
-  const fetchEnabled = options?.fetchEnabled ?? true;
-  const previewUrl = params?.previewUrl;
+  /**
+   * Local mode: the pasted tunnel is a live dev server, so read `/live/_meta`
+   * from it directly (fetch forced on) and skip every committed fallback — both
+   * the sandbox `/read` proxy and the git route go through gated/absent surfaces
+   * a tunnel-only project doesn't have.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
+  const localOverride = !!localPreviewUrl;
+  const fetchEnabled = localOverride || (options?.fetchEnabled ?? true);
+  const previewUrl = localPreviewUrl ?? params?.previewUrl;
   // Committed snapshot lives under the project's package path
   // (`metadata.runtime.path`) when the project isn't at the repo root; the live
   // `/live/_meta` route already resolves relative to the dev-server cwd.
@@ -104,7 +113,7 @@ export function useLiveMeta(
   const { previewServerUrl: productionUrl, runtime } = useSessionRuntime(
     params?.virtualMcpId,
   );
-  const fastPreviewActive = runtime === "cms";
+  const fastPreviewActive = !localOverride && runtime === "cms";
   return useQuery({
     queryKey: params
       ? liveMetaQueryKey({ ...params, previewUrl, productionUrl })
@@ -139,12 +148,15 @@ export function useLiveMeta(
       // is reachable yet — surface 502 so the query waits for the sandbox
       // lifecycle to re-invalidate (see sandbox-events-context) instead of
       // hammering a known-down endpoint.
-      const sources = metaSourceOrder({
-        fetchEnabled,
-        previewUrl,
-        productionUrl,
-        fastPreviewActive,
-      });
+      const sources: MetaSource[] =
+        localOverride && previewUrl
+          ? [{ kind: "live", baseUrl: previewUrl }]
+          : metaSourceOrder({
+              fetchEnabled,
+              previewUrl,
+              productionUrl,
+              fastPreviewActive,
+            });
       for (const source of sources) {
         if (source.kind === "committed") {
           const committed = await readCommitted();
@@ -170,8 +182,9 @@ export function useLiveMeta(
     // has no lifecycle event coming — a transient failure of the production
     // /live/_meta fetch would stick as a terminal error card, so bounded
     // retries ARE the recovery there.
+    // Local mode, like sandbox-less Fast Preview, has no lifecycle event to re-invalidate a 502, so bounded retries are its recovery.
     retry: (failureCount, error) =>
-      fastPreviewActive
+      fastPreviewActive || localOverride
         ? failureCount < 3
         : (error as { status?: number }).status !== 502 && failureCount < 3,
     retryDelay: (attempt) =>

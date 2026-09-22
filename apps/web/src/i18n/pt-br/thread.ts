@@ -18,6 +18,13 @@ export const thread = {
     'Descartar "{name}"? Isso não pode ser desfeito.',
   "thread.branchPicker.deleteTitle": "Descartar draft?",
   "thread.branchPicker.live": "Produção",
+  "thread.branchPicker.localTab": "Local",
+  "thread.branchPicker.localLabel": "Local",
+  "thread.branchPicker.localHint":
+    "Aponte o preview e o CMS para o seu próprio dev server. Cole uma URL de túnel público (ex.: ngrok, cloudflared) acessível a partir deste navegador.",
+  "thread.branchPicker.localUrlLabel": "URL do túnel local",
+  "thread.branchPicker.localUrlPlaceholder": "https://seu-tunel.exemplo.com",
+  "thread.branchPicker.localTurnOff": "Desligar",
   "thread.branchPicker.moreActions": "Mais ações",
   "thread.branchPicker.newVersion": "Novo Draft",
   "thread.branchPicker.capReached":

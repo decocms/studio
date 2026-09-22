@@ -8,8 +8,7 @@
  * window, then mails whatever is still unread. Mail lands ~30s after the first
  * event of a burst instead of on a five-minute tick.
  *
- * The two-minute sweep is the safety net, the same pairing the event bus uses
- * (NotifyStrategy + PollingStrategy): the enqueue happens after the row
+ * The two-minute sweep recovers missed enqueues. Enqueue happens after the row
  * commits and is rejected outright from inside a DBOS step, so a row whose
  * enqueue never landed must still find a sender. It also carries retention.
  *

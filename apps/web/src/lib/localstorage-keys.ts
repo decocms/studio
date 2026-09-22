@@ -40,4 +40,10 @@ export const LOCALSTORAGE_KEYS = {
     `studio:announcement:pt-br:${userId}`,
   cmsTourSeen: (userId: string) => `studio:cms-tour:seen:${userId}`,
   blogBoardCollapsedLanes: () => `studio:blog-board:collapsed-lanes`,
+  /** Per-project "Local" preview override — a tunnel URL the CMS + preview point
+   *  at instead of the managed sandbox/production. Per-browser: a tunnel to a
+   *  dev server only this machine can reach, so it never belongs on shared
+   *  project metadata. */
+  localPreviewUrl: (virtualMcpId: string) =>
+    `studio:local-preview-url:${virtualMcpId}`,
 } as const;

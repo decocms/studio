@@ -2,8 +2,8 @@
  * Event Subscriber Well-Known Binding
  *
  * Defines the interface for MCP connections that can receive events.
- * Any MCP that implements this binding can receive batched CloudEvents
- * from the Studio event bus.
+ * Callers can deliver batched CloudEvents through ON_EVENTS. The binding
+ * defines the subscriber contract, not a publisher or delivery queue.
  *
  * This binding includes:
  * - ON_EVENTS: Receive a batch of CloudEvents

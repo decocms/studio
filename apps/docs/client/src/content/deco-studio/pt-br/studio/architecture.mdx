@@ -72,10 +72,6 @@ O conjunto de queues que um pod worker escuta é configurado por env (`listenQue
 | **DB** (PostgreSQL, via Kysely) | Sistema de registro: orgs, connections, credential vault, audit, threads + mensagens e `sandbox_runner_state`. Também mantém as **queues do DBOS e o journal `workflow_status`** que tornam os runs duráveis e recuperáveis. |
 | **NATS** | Infraestrutura de mensageria ao vivo com três tarefas: (1) o log de runs com fencing no JetStream (`decopilot.stream.<thread>`), usado por `/stream` e pelo projector durável; (2) broadcasts de cancelamento de runs entre pods; (3) estado em JetStream KV compartilhado entre réplicas para caches de listas MCP e circuit breakers de connections. |
 
-<Callout type="warning">
-  **O event bus está dormente.** O *recurso* de pub/sub de CloudEvents (`EVENT_PUBLISH`/`EVENT_SUBSCRIBE`, a queue de eventos durável, os subscribers `ON_EVENTS`) só é consumido pelo plugin de workflow, que não está em uso. O NATS em si **não** está dormente — ele serve as tarefas ao vivo listadas acima. Não confunda as duas coisas.
-</Callout>
-
 ## O ciclo de vida de um run do Decopilot
 
 1. Uma mensagem (`POST /messages`) ou o disparo de uma automation cria um **run** em uma thread.
@@ -151,5 +147,5 @@ O roteamento do provider segue a superfície que recebe o request, e não uma op
 - **Os runs são duráveis** via queues + journal do DBOS no Postgres; a recuperação é automática.
 - **As chamadas de tool de MCP são in-process** no worker; as rotas de proxy `/mcp/*` são apenas para clients externos.
 - **As rotas de file/object-storage** são a superfície compartilhada entre API e worker.
-- **O NATS está ao vivo**; o recurso de event-bus de CloudEvents está dormente.
+- **O NATS dá suporte a streaming e coordenação entre pods.**
 - **O roteamento de sandbox pertence à superfície**: o Studio hosted usa AgentSandbox; a app nativa intercepta localmente e registra `local-api`.

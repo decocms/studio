@@ -1,4 +1,5 @@
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { resolveSectionPreviewBase } from "./section-preview-url";
 
 /**
@@ -16,7 +17,10 @@ export function useSectionPreviewBase(input: {
   sandboxUrl: string | null | undefined;
 }): string | null {
   const { previewServerUrl, runtime } = useSessionRuntime(input.virtualMcpId);
+  const { url: localPreviewUrl } = useLocalPreviewUrl(input.virtualMcpId);
   const active = runtime === "cms";
+  // Local tunnel is a live deco dev server: render the gallery against it.
+  if (localPreviewUrl) return localPreviewUrl;
   return resolveSectionPreviewBase({
     sandboxUrl: input.sandboxUrl,
     previewServerUrl,
