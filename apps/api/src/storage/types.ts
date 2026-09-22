@@ -185,7 +185,6 @@ export interface OrganizationSettingsTable {
   flags: JsonObject<OrgFlags> | null;
   // Per-host PATs every sandbox in the org installs in its git config.
   submodule_credentials: JsonArray<SubmoduleCredential[]> | null;
-  // Virtual MCP id the org lands on (`/$org`) instead of the Super Agent.
   createdAt: ColumnType<Date, Date | string, never>;
   updatedAt: ColumnType<Date, Date | string, Date | string>;
 }

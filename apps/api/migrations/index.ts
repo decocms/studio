@@ -1,5 +1,6 @@
 import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration222orggitcredentials from "./222-org-git-credentials";
+import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
 import * as migration216githubcliauth from "./216-github-cli-auth";
@@ -481,6 +482,7 @@ const migrations: Record<string, Migration> = {
   "220-jira-automation-continue-pr": migration220jiraautomationcontinuepr,
   "221-remove-private-registry": migration221removeprivateregistry,
   "222-org-git-credentials": migration222orggitcredentials,
+  "223-drop-org-main-agent-id": migration223droporgmainagentid,
 };
 
 export default migrations;
