@@ -2497,6 +2497,12 @@ export interface Database {
   jira_trigger_claims: JiraTriggerClaimTable;
 
   // Follow/inbox for the task board
+  task_board_read_markers: {
+    user_id: string;
+    task_board_item_id: string;
+    comment_created_at: ColumnType<Date, Date | string, Date | string>;
+    comment_id: string;
+  };
   notification_subscriptions: NotificationSubscriptionTable;
   notifications: NotificationTable;
 

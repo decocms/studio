@@ -1,3 +1,7 @@
+import {
+  ConversationReadMarker,
+  FirstUnreadCommentContext,
+} from "./conversation-read-marker";
 import { useState, type ReactNode } from "react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -23,6 +27,11 @@ export function TaskConversationFrame({
   const t = useT();
   const stick = useStickToBottom({ initial: false, resize: "instant" });
   const comments = useTaskBoardComments(item?.id);
+  const [initialUnread, setInitialUnread] = useState<{
+    id: string | null;
+  } | null>(null);
+  if (!comments.isLoading && initialUnread === null)
+    setInitialUnread({ id: comments.unreadCommentIds[0] ?? null });
   const [seenIds, setSeenIds] = useState<string[] | null>(null);
   const messageIds = comments.threads.flatMap((thread) => [
     thread.id,
@@ -39,6 +48,14 @@ export function TaskConversationFrame({
     ? messageIds.filter((id) => !seenIds.includes(id)).length
     : 0;
 
+  const readMarker = item && (
+    <ConversationReadMarker
+      itemId={item.id}
+      throughCommentId={comments.comments.at(-1)?.id ?? null}
+      notificationIds={comments.notificationIds}
+      unreadCount={comments.unreadCommentIds.length}
+    />
+  );
   if (!item || !enabled)
     return <div className="min-w-0 sm:flex-1">{children}</div>;
 
@@ -54,7 +71,12 @@ export function TaskConversationFrame({
         ref={stick.scrollRef}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        <div ref={stick.contentRef}>{children}</div>
+        <div ref={stick.contentRef}>
+          <FirstUnreadCommentContext value={initialUnread?.id ?? null}>
+            {children}
+          </FirstUnreadCommentContext>
+          {readMarker}
+        </div>
       </div>
       {item && (
         <div className="relative shrink-0 border-t border-border bg-background px-5 pb-4 pt-3 sm:px-8">

@@ -267,6 +267,8 @@ const ALL_TOOL_NAMES = [
   // Task board tools
   "TASK_BOARD_ITEM_CREATE",
   "TASK_BOARD_ITEM_LIST",
+  "TASK_BOARD_FORUM_LIST",
+  "TASK_BOARD_CONVERSATION_MARK_READ",
   "TASK_BOARD_ITEM_UPDATE",
   "TASK_BOARD_ITEM_DELETE",
   "TASK_BOARD_AUTOMATION_LIST",
@@ -1370,6 +1372,17 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "TASK_BOARD_FORUM_LIST",
+    description:
+      "List task conversations with personal relevance and unread summaries",
+    category: "Task Board",
+  },
+  {
+    name: "TASK_BOARD_CONVERSATION_MARK_READ",
+    description: "Mark an observed task conversation read",
+    category: "Task Board",
+  },
+  {
     name: "TASK_BOARD_COMMENT_LIST",
     description: "List a task board item's comment threads",
     category: "Task Board",
@@ -1567,6 +1580,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       // tier as chat threads.
       "TASK_BOARD_ITEM_CREATE",
       "TASK_BOARD_ITEM_LIST",
+      "TASK_BOARD_FORUM_LIST",
+      "TASK_BOARD_CONVERSATION_MARK_READ",
       "TASK_BOARD_ITEM_UPDATE",
       "TASK_BOARD_ITEM_DELETE",
       "TASK_BOARD_AUTOMATION_LIST",

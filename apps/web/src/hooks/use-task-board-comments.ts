@@ -1,3 +1,4 @@
+import { useTaskConversationEvents } from "./use-task-conversation-events";
 /** A task's comment threads, plus the mutations that post, resolve and delete
  *  them. Comments come back flat and are nested here — a reply's `parentId` is
  *  always a thread root, so the tree is one level deep. */
@@ -36,17 +37,18 @@ export function useTaskBoardComments(itemId: string | undefined) {
   const query = useQuery({
     queryKey,
     enabled: !!itemId,
-    queryFn: async () =>
-      nest(
-        (
-          await studio.call("TASK_BOARD_COMMENT_LIST", {
-            taskBoardItemId: itemId!,
-          })
-        ).comments,
-      ),
+    refetchInterval: 60_000,
+    queryFn: () =>
+      studio.call("TASK_BOARD_COMMENT_LIST", { taskBoardItemId: itemId! }),
   });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey });
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
+  useTaskConversationEvents((changedId) => {
+    if (itemId && (!changedId || changedId === itemId)) {
+      void invalidate();
+    }
+  });
 
   const post = useMutation({
     mutationFn: (input: { body: string; parentId?: string }) =>
@@ -70,7 +72,10 @@ export function useTaskBoardComments(itemId: string | undefined) {
   });
 
   return {
-    threads: query.data ?? [],
+    threads: nest(query.data?.comments ?? []),
+    comments: query.data?.comments ?? [],
+    unreadCommentIds: query.data?.unreadCommentIds ?? [],
+    notificationIds: query.data?.notificationIds ?? [],
     isLoading: query.isPending,
     post,
     setResolved,

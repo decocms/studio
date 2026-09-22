@@ -19,7 +19,19 @@ test("classic task details keep inline editing, newest-first cards, and replies"
   for (const body of ["First comment", "Second comment"]) {
     await call("TASK_BOARD_COMMENT_CREATE", { taskBoardItemId: item.id, body });
   }
-  await page.goto(`/${orgSlug}/tasks`);
+  const forumCalls: string[] = [];
+  page.on("request", (request) => {
+    if (/TASK_BOARD_(FORUM_LIST|CONVERSATION_MARK_READ)/.test(request.url()))
+      forumCalls.push(request.url());
+  });
+  await page.goto(`/${orgSlug}/tasks?view=list&forumFilter=unread_mentions`);
+  await expect(page.getByTestId("task-forum")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Unread", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Mentions", exact: true }),
+  ).toHaveCount(0);
   await page.getByText("Classic task layout", { exact: true }).click();
   const detail = page.getByTestId("task-detail");
   await expect(
@@ -59,4 +71,5 @@ test("classic task details keep inline editing, newest-first cards, and replies"
   await expect(
     detail.getByRole("button", { name: "Details", exact: true }),
   ).toHaveCount(0);
+  expect(forumCalls).toEqual([]);
 });

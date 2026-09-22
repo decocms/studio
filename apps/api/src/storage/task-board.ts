@@ -1,3 +1,9 @@
+import {
+  listForum,
+  conversationReadState,
+  markConversationRead,
+  type ForumInput,
+} from "./task-board-forum";
 /**
  * Task Board Storage Implementation
  *
@@ -244,6 +250,57 @@ export class TaskBoardStorage {
     return this.db.isTransaction
       ? fn(this.db)
       : this.db.transaction().execute(fn);
+  }
+
+  listForum(organizationId: string, userId: string, input: ForumInput) {
+    return listForum(this.db, organizationId, userId, input);
+  }
+
+  async listConversation(
+    organizationId: string,
+    userId: string,
+    itemId: string,
+  ) {
+    const read = async (db: Kysely<Database>) => {
+      const comments = await new TaskBoardStorage(db).listComments(
+        itemId,
+        organizationId,
+      );
+      const state = await conversationReadState(
+        db,
+        organizationId,
+        userId,
+        itemId,
+      );
+      return {
+        comments,
+        unreadCommentIds: state?.unreadCommentIds ?? [],
+        notificationIds: state?.notificationIds ?? [],
+      };
+    };
+    return this.db.isTransaction
+      ? read(this.db)
+      : this.db
+          .transaction()
+          .setIsolationLevel("repeatable read")
+          .execute(read);
+  }
+
+  markConversationRead(
+    organizationId: string,
+    userId: string,
+    itemId: string,
+    throughCommentId: string | null,
+    notificationIds: string[],
+  ) {
+    return markConversationRead(
+      this.db,
+      organizationId,
+      userId,
+      itemId,
+      throughCommentId,
+      notificationIds,
+    );
   }
 
   async list(organizationId: string): Promise<TaskBoardItem[]> {
@@ -2362,6 +2419,7 @@ export class TaskBoardStorage {
       .where("item.organization_id", "=", organizationId)
       .where("c.task_board_item_id", "=", taskBoardItemId)
       .orderBy("c.created_at", "asc")
+      .orderBy("c.id", "asc")
       .execute();
     return rows.map((row) => commentFromDbRow(row));
   }

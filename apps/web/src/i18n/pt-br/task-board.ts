@@ -1,6 +1,27 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.forum.markReadFailed":
+    "Não foi possível salvar seu progresso de leitura.",
+  "taskBoard.forum.forYou": "Para você",
+  "taskBoard.forum.mentions": "Menções",
+  "taskBoard.forum.unread": "Não lidas",
+  "taskBoard.forum.sort": "Ordenar conversas",
+  "taskBoard.forum.personal": "Relevância para você",
+  "taskBoard.forum.latest": "Atividade recente",
+  "taskBoard.forum.updates": "Mostrar novas atividades",
+  "taskBoard.forum.loadFailed": "Não foi possível carregar as conversas.",
+  "taskBoard.forum.retry": "Tentar novamente",
+  "taskBoard.forum.empty": "Nenhuma conversa corresponde a estes filtros.",
+  "taskBoard.forum.mentionedYou": "Mencionou você",
+  "taskBoard.forum.noReplies": "Comece a conversa",
+  "taskBoard.forum.participants": "Participantes",
+  "taskBoard.forum.replyCount": "{count} respostas",
+  "taskBoard.forum.unreadCount": "{count} respostas não lidas",
+  "taskBoard.forum.loadMore": "Carregar mais conversas",
+  "taskBoard.forum.newSinceVisit": "Novidades desde sua última visita",
+  "taskBoard.forum.brief": "A proposta",
+
   "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",

@@ -540,3 +540,7 @@ export function isCardNotReady(
   const activeAt = card.updatedAt ? Date.parse(card.updatedAt) : Number.NaN;
   return Number.isFinite(activeAt) && now - activeAt < PREVIEW_CHASE_MS;
 }
+
+/** Comments changed, or one viewer advanced their read marker. */
+export const TASK_BOARD_CONVERSATION_UPDATED_EVENT =
+  "task-board.conversation.updated";

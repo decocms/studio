@@ -1,3 +1,5 @@
+import { ForumControls, useForumSearch } from "./forum-controls";
+import { ForumList } from "./forum-list";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { Columns03, List } from "@untitledui/icons";
 import { TaskFiltersBar, TaskFiltersDrawer } from "./task-filters";
@@ -87,25 +89,25 @@ import {
 } from "@/hooks/use-task-board-items";
 import { formatTimeAgo } from "@/lib/format-time";
 import {
+  isTaskBlocked,
+  isTaskHandedToHuman,
+  statusIconClassName,
+  laneVisual,
   agentRunState,
   cardNeedsAttention,
   TASK_TYPE_CONFIG,
   type TaskBoardItemType,
   dueDateUrgency,
   insertSortOrder,
-  isTaskBlocked,
-  isTaskHandedToHuman,
   HIDDEN_STATUSES,
   laneVisibility,
   moveTargets,
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
-  statusIconClassName,
   dropLane,
   LANE_DROPPABLE_PREFIX,
   laneHeader,
-  laneVisual,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   TASK_TYPES,
@@ -912,6 +914,14 @@ function TaskBoardBody() {
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const { filters, setFilters, layout, setLayout } = useBoardSearch();
+  const forumSearch = useForumSearch();
+  const mentionFilter =
+    compact && layout === "list"
+      ? {
+          active: forumSearch.mentions,
+          toggle: () => forumSearch.toggle("mentions"),
+        }
+      : undefined;
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
@@ -1169,9 +1179,6 @@ function TaskBoardBody() {
                 secondary={
                   items.length > 0 && (
                     <>
-                      {/* No width swap: these three are ~100px together, so there
-                      is no panel narrow enough to be worth trading them for a
-                      drawer of the chip pickers they replaced. */}
                       <div className="flex items-center gap-2">
                         <SearchToggle
                           value={filters.search}
@@ -1186,7 +1193,9 @@ function TaskBoardBody() {
                             "taskBoard.taskFilters.searchClearLabel",
                           )}
                         />
+                        {layout === "list" && <ForumControls />}
                         <TaskFilterButton
+                          mentions={mentionFilter}
                           filters={filters}
                           items={items}
                           members={members}
@@ -1395,6 +1404,12 @@ function TaskBoardBody() {
             );
           }}
           onRerun={(item) => setRerunTargets([item])}
+        />
+      ) : compact ? (
+        <ForumList
+          items={visibleListItems}
+          members={members}
+          onOpen={openTask}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">

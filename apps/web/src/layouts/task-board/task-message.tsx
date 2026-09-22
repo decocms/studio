@@ -1,3 +1,4 @@
+import { useFirstUnreadCommentId } from "./conversation-read-marker";
 import type { ReactNode } from "react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -30,43 +31,56 @@ export function TaskMessage({
   commentId?: string;
 }) {
   const t = useT();
+  const firstUnreadId = useFirstUnreadCommentId();
   return (
-    <article
-      data-comment-id={commentId}
-      data-testid="task-message"
-      className="group flex min-w-0 flex-col gap-1.5 py-3"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        {avatar}
-        <span className="text-sm font-medium text-foreground">{author}</span>
-        <time dateTime={createdAt} className="text-sm text-muted-foreground">
-          {formatTimeAgo(new Date(createdAt))}
-        </time>
-        {metadata}
-        <div className="ml-auto flex items-center gap-1">
-          {onOpenThread && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-muted-foreground"
-              onClick={onOpenThread}
-            >
-              {t("taskBoard.conversation.openChat")}
-            </Button>
-          )}
-          {actions}
-        </div>
-      </div>
-      {body && (
+    <>
+      {commentId && commentId === firstUnreadId && (
         <div
-          className={cn(
-            "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
-            isReply && "ml-3 border-l border-border pl-5",
-          )}
+          data-testid="task-unread-divider"
+          className="flex items-center gap-3 pt-4 text-xs text-success"
         >
-          <MemoizedMarkdown id={id} text={body} />
+          <span className="h-px flex-1 bg-border" />
+          {t("taskBoard.forum.newSinceVisit")}
+          <span className="h-px flex-1 bg-border" />
         </div>
       )}
-    </article>
+      <article
+        data-comment-id={commentId}
+        data-testid="task-message"
+        className="group flex min-w-0 flex-col gap-1.5 py-3"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {avatar}
+          <span className="text-sm font-medium text-foreground">{author}</span>
+          <time dateTime={createdAt} className="text-sm text-muted-foreground">
+            {formatTimeAgo(new Date(createdAt))}
+          </time>
+          {metadata}
+          <div className="ml-auto flex items-center gap-1">
+            {onOpenThread && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={onOpenThread}
+              >
+                {t("taskBoard.conversation.openChat")}
+              </Button>
+            )}
+            {actions}
+          </div>
+        </div>
+        {body && (
+          <div
+            className={cn(
+              "min-w-0 break-words pl-8 text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
+              isReply && "ml-3 border-l border-border pl-5",
+            )}
+          >
+            <MemoizedMarkdown id={id} text={body} />
+          </div>
+        )}
+      </article>
+    </>
   );
 }

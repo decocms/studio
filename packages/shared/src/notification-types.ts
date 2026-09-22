@@ -31,3 +31,6 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
  * from streaming through another's connection.
  */
 export const NOTIFICATION_CREATED_EVENT = "notification.created";
+
+/** One viewer acknowledged inbox updates; other tabs refresh their counts. */
+export const NOTIFICATION_READ_EVENT = "notification.read";

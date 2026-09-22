@@ -1,3 +1,4 @@
+import { emitTaskConversationUpdated } from "./conversation-events";
 /**
  * Ad-hoc code agent opened a PR — put it on the board for review.
  *
@@ -207,12 +208,13 @@ export async function applyBoardDecision(
   });
   await storage.linkThread(item.id, threadId, orgId);
   if (decision.comment?.trim()) {
-    await storage.createComment({
+    const comment = await storage.createComment({
       taskBoardItemId: item.id,
       organizationId: orgId,
       authorId: userId,
       body: decision.comment.trim(),
     });
+    if (comment) emitTaskConversationUpdated(orgId, item.id);
   }
 
   const fresh = await storage.getById(item.id, orgId);

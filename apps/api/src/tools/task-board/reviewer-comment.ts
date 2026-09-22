@@ -1,3 +1,4 @@
+import { emitTaskConversationUpdated } from "./conversation-events";
 /**
  * "A reviewer that reviewed and said nothing on the card" — closed
  * deterministically.
@@ -153,7 +154,7 @@ export async function ensureReviewerCommented(
   // one channel the timeline truncates. Move it where it renders.
   if (gap === "missing") {
     const body = verdictCommentBody(kind, verdict.decision, verdict.notes);
-    await ctx.storage.taskBoard.createComment({
+    const comment = await ctx.storage.taskBoard.createComment({
       taskBoardItemId: item.id,
       organizationId: item.organizationId,
       // Same author id the agent's own comments carry, so the UI renders it as
@@ -163,6 +164,7 @@ export async function ensureReviewerCommented(
       threadId,
       body,
     });
+    if (comment) emitTaskConversationUpdated(item.organizationId, item.id);
     console.warn(
       `[task-board] ${kind} reviewer on ${item.id} recorded no comment — ` +
         `mirrored its verdict notes`,

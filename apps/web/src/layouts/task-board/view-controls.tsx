@@ -32,6 +32,7 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
+  AtSign,
   Calendar,
   Check,
   ChevronRight,
@@ -409,6 +410,8 @@ function FlatRow({
 /** Arrowing counts as browsing too; a just-opened menu is neither, and cmdk always has a row selected. */
 const BROWSE_KEYS = new Set(["ArrowDown", "ArrowUp", "ArrowRight"]);
 
+type MentionFilter = { active: boolean; toggle: () => void };
+
 function FilterMenu({
   filters,
   items,
@@ -416,7 +419,9 @@ function FilterMenu({
   fields,
   onChange,
   onClose,
+  mentions,
 }: {
+  mentions?: MentionFilter;
   filters: TaskFilters;
   items: TaskBoardItem[];
   index: ProjectIndex;
@@ -461,6 +466,21 @@ function FilterMenu({
       />
       <CommandList onPointerMove={() => setBrowsing(true)}>
         <CommandEmpty>{t("taskBoard.viewControls.noMatches")}</CommandEmpty>
+        {mentions && (
+          <CommandGroup>
+            <CommandItem
+              value={t("taskBoard.forum.mentions")}
+              onSelect={() => {
+                mentions.toggle();
+                onClose();
+              }}
+            >
+              <AtSign size={16} />
+              <span>{t("taskBoard.forum.mentions")}</span>
+              {mentions.active && <Check size={14} className="ml-auto" />}
+            </CommandItem>
+          </CommandGroup>
+        )}
         {query.trim() === "" ? (
           <CommandGroup>
             {offered.map((field) => (
@@ -498,6 +518,7 @@ function FilterMenuPopover({
   ...menu
 }: {
   trigger: ReactNode;
+  mentions?: MentionFilter;
   filters: TaskFilters;
   items: TaskBoardItem[];
   index: ProjectIndex;
@@ -524,7 +545,9 @@ export function TaskFilterButton({
   tags,
   index,
   onChange,
+  mentions,
 }: {
+  mentions?: MentionFilter;
   filters: TaskFilters;
   items: TaskBoardItem[];
   members: Member[];
@@ -534,10 +557,12 @@ export function TaskFilterButton({
 }) {
   const t = useT();
   const fields = useFilterFields({ members, tags, index });
-  const active = activeFilterFieldIds(filters, index).length > 0;
+  const active =
+    activeFilterFieldIds(filters, index).length > 0 || mentions?.active;
 
   return (
     <FilterMenuPopover
+      mentions={mentions}
       filters={filters}
       items={items}
       index={index}
