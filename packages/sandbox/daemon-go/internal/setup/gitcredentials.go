@@ -55,12 +55,40 @@ func GitCredentialsStorePath(tmpDir string) string {
 	return filepath.Join(tmpDir, "git-credentials")
 }
 
+// getOnlyStoreHelper is `git-credential-store` with `store` and `erase` dropped:
+// git passes the operation as the helper's first argument, so the wrapper
+// forwards only `get` and exits silently otherwise. Quoted for the config
+// parser (the shell body carries `;` and `"`), with the inner quotes escaped.
+//
+// credFile is daemon-built (GitCredentialsStorePath under its own tmp dir), so
+// it needs no escaping of its own.
+func getOnlyStoreHelper(credFile string) string {
+	return fmt.Sprintf(
+		`"!f() { if [ \"$1\" = get ]; then git credential-store --file=%s get; fi; }; f"`,
+		credFile,
+	)
+}
+
 // renderGitConfig is the file's entire contents: the user's own `~/.gitconfig`
 // included FIRST (so anything an agent configures still applies —
 // `GIT_CONFIG_GLOBAL` replaces that file rather than adding to it, and a
 // missing include is silently ignored), then the store helper and an SSH→HTTPS
 // rewrite per host so a `git@host:` dependency URL resolves to something the
 // stored credential applies to.
+//
+// The helper is `get`-only on purpose. `git-credential-store`'s `store` (which
+// git runs on every successful auth) REPLACES the entry matching
+// protocol+host+username before appending. Our PAT line and the clone token
+// are both `https`/`github.com`/`x-access-token`, so the first fetch of
+// `origin` — whose URL carries the clone token — approved that token straight
+// over the PAT, and every later `flutter pub get` / `go mod download` saw only
+// a token scoped to the one repository. Delegating `get` to
+// `git-credential-store` and dropping `store`/`erase` keeps git's own parser
+// and makes the file exactly what this daemon wrote.
+//
+// `credential.useHttpPath` is NOT the fix: it does stop the eviction, but a
+// stored entry with no path then fails to match a path-qualified query, so the
+// PAT stops answering for the dependency repositories it exists for.
 //
 // ⚠️ This helper is NOT robust against a `git config --global credential.…`
 // write from inside the pod, and cannot be made so. Setting GIT_CONFIG_GLOBAL
@@ -82,7 +110,7 @@ func renderGitConfig(hosts []string, credFile, home string) string {
 		b.WriteString("\tpath = " + filepath.Join(home, ".gitconfig") + "\n")
 	}
 	b.WriteString("[credential]\n")
-	b.WriteString("\thelper = store --file=" + credFile + "\n")
+	b.WriteString("\thelper = " + getOnlyStoreHelper(credFile) + "\n")
 	for _, host := range hosts {
 		// Quoted subsection: the host is matched case-sensitively and verbatim.
 		b.WriteString(fmt.Sprintf("[url \"https://%s/\"]\n", host))

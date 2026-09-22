@@ -2,6 +2,7 @@ package setup
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func TestInstallGitCredentialsPointsEveryGitInThePodAtADaemonOwnedConfig(t *test
 	for _, want := range []string{
 		// Without this, GIT_CONFIG_GLOBAL would SHADOW the user's own file.
 		"path = " + filepath.Join(home, ".gitconfig"),
-		"helper = store --file=" + GitCredentialsStorePath(tmpDir),
+		"helper = " + getOnlyStoreHelper(GitCredentialsStorePath(tmpDir)),
 		"[url \"https://github.com/\"]",
 		"insteadOf = git@github.com:",
 		"insteadOf = ssh://git@github.com/",
@@ -265,5 +266,63 @@ func TestInstallGitCredentialsIgnoresACloneUrlWithNoToken(t *testing.T) {
 	}
 	if _, err := os.Stat(GitCredentialsStorePath(tmpDir)); !os.IsNotExist(err) {
 		t.Fatalf("store file written for an anonymous clone (err=%v)", err)
+	}
+}
+
+// The regression this file exists for: `git-credential-store`'s `store` REPLACES
+// the entry matching protocol+host+username, and git runs it on every
+// successful auth. The clone token rides `origin`'s URL under the same
+// `x-access-token`@`github.com` key as the org PAT, so before the helper was
+// made get-only the first fetch of origin silently overwrote the PAT and every
+// later `flutter pub get` 404'd on the private dependency repositories.
+//
+// Drives real git against the real config, because the bug was entirely in what
+// git does with a file whose bytes were already correct.
+func TestInstallGitCredentialsSurvivesGitApprovingTheCloneTokenOverIt(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	tmpDir, home := t.TempDir(), t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", "")
+
+	if _, err := InstallGitCredentials(tmpDir, home, "", []config.SubmoduleCredential{
+		{Host: "github.com", Token: "org_pat"},
+	}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	approve := exec.Command(git, "credential", "approve")
+	approve.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL="+GitConfigPath(tmpDir),
+		"GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_CONFIG_NOSYSTEM=1",
+		"HOME="+home,
+	)
+	approve.Stdin = strings.NewReader(
+		"protocol=https\nhost=github.com\nusername=x-access-token\npassword=clone_token\n\n")
+	if out, err := approve.CombinedOutput(); err != nil {
+		t.Fatalf("git credential approve: %v: %s", err, out)
+	}
+
+	store, err := os.ReadFile(GitCredentialsStorePath(tmpDir))
+	if err != nil {
+		t.Fatalf("read store: %v", err)
+	}
+	if string(store) != "https://x-access-token:org_pat@github.com\n" {
+		t.Fatalf("git overwrote the PAT: store = %q", string(store))
+	}
+
+	// And the PAT is still what git hands a private dependency's clone.
+	fill := exec.Command(git, "credential", "fill")
+	fill.Env = approve.Env
+	fill.Stdin = strings.NewReader(
+		"protocol=https\nhost=github.com\npath=org/private-dep.git\n\n")
+	out, err := fill.Output()
+	if err != nil {
+		t.Fatalf("git credential fill: %v", err)
+	}
+	if !strings.Contains(string(out), "password=org_pat") {
+		t.Fatalf("git served the wrong credential: %s", out)
 	}
 }
