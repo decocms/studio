@@ -55,6 +55,7 @@ import {
   CheckCircle,
   ChevronRight,
   DotsHorizontal,
+  HelpCircle,
   Lightning01,
   Plus,
   RefreshCw01,
@@ -86,7 +87,12 @@ import {
   useTaskBoardItemActions,
   useTaskBoardItems,
 } from "@/hooks/use-task-board-items";
+import { formatTimeAgo } from "@/lib/format-time";
 import {
+  isTaskBlocked,
+  isTaskHandedToHuman,
+  statusIconClassName,
+  laneVisual,
   agentRunState,
   cardNeedsAttention,
   TASK_TYPE_CONFIG,
@@ -203,6 +209,33 @@ const PROPERTY_GLYPH_CLASS = "size-3.5";
 /** Tags a card shows before collapsing the rest into `+N`. Matches the list
  *  view's existing cap; the full set is in the task dialog. */
 const CARD_TAG_LIMIT = 2;
+
+/** Card flag for a task whose agent is paused waiting on human input. */
+function BlockedBadge() {
+  const t = useT();
+  return (
+    <span
+      className={cn(PILL, "border-warning/50 text-warning")}
+      title={t("taskBoard.taskBoard.blockedBadgeTitle")}
+    >
+      <HelpCircle size={FOOTER_GLYPH} />
+      {t("taskBoard.taskBoard.needsInput")}
+    </span>
+  );
+}
+
+function HandedToHumanBadge() {
+  const t = useT();
+  return (
+    <span
+      className={cn(PILL, "border-warning/50 text-warning")}
+      title={t("taskBoard.taskBoard.handedToHumanBadgeTitle")}
+    >
+      <HelpCircle size={FOOTER_GLYPH} />
+      {t("taskBoard.taskBoard.needsYou")}
+    </span>
+  );
+}
 
 /** Priority as a single glyph: a tooltip when read-only, a picker when `onChange` is given. */
 function PriorityIcon({
@@ -515,6 +548,34 @@ function CardFooter({
         />
       </span>
     </div>
+  );
+}
+
+/** List-row priority: dot + name. Cards use {@link PriorityIcon} instead. */
+function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
+  const t = useT();
+  const config = PRIORITY_CONFIG[priority];
+  const label = t(config.labelKey);
+  return (
+    <span className={PILL} title={label}>
+      <span
+        className={cn("size-2 shrink-0 rounded-full", config.dotClassName)}
+      />
+      {label}
+    </span>
+  );
+}
+
+/** List-row due date. Cards use {@link FooterDueDate} instead. */
+function DueDatePill({ iso }: { iso: string }) {
+  const { label, overdue } = formatDueDate(iso);
+  return (
+    <span
+      className={cn(PILL, overdue && "border-destructive/50 text-destructive")}
+    >
+      <Calendar size={FOOTER_GLYPH} />
+      {label}
+    </span>
   );
 }
 
@@ -855,7 +916,7 @@ function TaskBoardBody() {
   const { filters, setFilters, layout, setLayout } = useBoardSearch();
   const forumSearch = useForumSearch();
   const mentionFilter =
-    layout === "list"
+    compact && layout === "list"
       ? {
           active: forumSearch.mentions,
           toggle: () => forumSearch.toggle("mentions"),
@@ -1236,21 +1297,7 @@ function TaskBoardBody() {
                 </>
               )}
 
-              <div className="ml-auto flex flex-wrap items-center gap-2">
-                {layout === "list" && (
-                  <>
-                    <ForumControls />
-                    <TaskFilterButton
-                      mentions={mentionFilter}
-                      filters={filters}
-                      items={items}
-                      members={members}
-                      tags={orgTags}
-                      index={projectIndex}
-                      onChange={handleFiltersChange}
-                    />
-                  </>
-                )}
+              <div className="ml-auto flex items-center gap-2">
                 <TaskBoardAdminControls />
                 <div className="inline-flex rounded-lg bg-muted p-0.5">
                   <LayoutToggle
@@ -1358,12 +1405,34 @@ function TaskBoardBody() {
           }}
           onRerun={(item) => setRerunTargets([item])}
         />
-      ) : (
+      ) : compact ? (
         <ForumList
           items={visibleListItems}
           members={members}
           onOpen={openTask}
         />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
+          <div className="mx-auto flex max-w-[820px] flex-col gap-2">
+            {visibleListItems.map((item) => (
+              <ListRow
+                key={item.id}
+                item={item}
+                assignee={
+                  item.assigneeId
+                    ? memberByUserId.get(item.assigneeId)
+                    : undefined
+                }
+                assignedBy={
+                  item.assignedBy
+                    ? memberByUserId.get(item.assignedBy)
+                    : undefined
+                }
+                onOpen={() => openTask(item)}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </>
   );
@@ -2644,6 +2713,65 @@ function TaskCard({
         onTypeChange={onTypeChange}
         onDueDateChange={onDueDateChange}
       />
+    </button>
+  );
+}
+
+function ListRow({
+  item,
+  assignee,
+  assignedBy,
+  onOpen,
+}: {
+  item: TaskBoardItem;
+  assignee?: Member;
+  assignedBy?: Member;
+  onOpen: () => void;
+}) {
+  const StatusIcon = laneVisual(item.status).icon;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
+    >
+      <StatusIcon
+        size={16}
+        className={cn("shrink-0", statusIconClassName(item))}
+      />
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        {item.title}
+      </span>
+      {isTaskBlocked(item) && <BlockedBadge />}
+      {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
+      {item.priority !== "none" && (
+        <span className="hidden sm:inline-flex">
+          <PriorityPill priority={item.priority} />
+        </span>
+      )}
+      {item.dueDate && (
+        <span className="hidden sm:inline-flex">
+          <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      {item.tags.length > 0 && (
+        <span className="hidden items-center gap-1.5 sm:inline-flex">
+          {item.tags.slice(0, 2).map((tag) => (
+            <TagPill key={tag.id} tag={tag} />
+          ))}
+          {item.tags.length > 2 && (
+            <span className={PILL}>+{item.tags.length - 2}</span>
+          )}
+        </span>
+      )}
+      <AssigneeDisplay
+        item={item}
+        assignee={assignee}
+        assignedBy={assignedBy}
+      />
+      <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
+        {formatTimeAgo(new Date(item.createdAt))}
+      </span>
     </button>
   );
 }

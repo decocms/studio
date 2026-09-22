@@ -57,12 +57,7 @@ export function TaskConversationFrame({
     />
   );
   if (!item || !enabled)
-    return (
-      <div className="min-w-0 sm:flex-1">
-        {children}
-        {readMarker}
-      </div>
-    );
+    return <div className="min-w-0 sm:flex-1">{children}</div>;
 
   return (
     <div
