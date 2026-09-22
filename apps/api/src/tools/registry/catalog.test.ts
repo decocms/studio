@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildTextSearchWhere,
   catalogFilters,
   findCatalogItem,
   listCatalog,
@@ -133,6 +134,19 @@ describe("Deco JSON catalog", () => {
     expect(findCatalogItem(items, "deco/alpha")?.title).toBe("Alpha");
     expect(findCatalogItem(items, "zeta")?.id).toBe("deco/zeta");
     expect(findCatalogItem(items, "unknown")).toBeNull();
+  });
+
+  test("requires every search token to match, not just one of them", () => {
+    expect(
+      listCatalog(items, {
+        where: buildTextSearchWhere(["alpha", "zeta"]),
+      }).items,
+    ).toEqual([]);
+    expect(
+      listCatalog(items, {
+        where: buildTextSearchWhere(["search", "alpha"]),
+      }).items.map((item) => item.id),
+    ).toEqual(["deco/alpha"]);
   });
 
   test("builds facets from both supported metadata namespaces", () => {

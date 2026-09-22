@@ -1,5 +1,5 @@
 import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
-import { getCatalog, listCatalog } from "./catalog";
+import { buildTextSearchWhere, getCatalog, listCatalog } from "./catalog";
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
 import {
@@ -23,26 +23,7 @@ export const REGISTRY_ITEM_SEARCH = defineTool({
     const tokens = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
     const result = listCatalog(await getCatalog(), {
       ...input,
-      where: tokens.length
-        ? {
-            operator: "or",
-            conditions: tokens.flatMap((token) =>
-              ["id", "title", "description"]
-                .map((field) => ({
-                  field: [field],
-                  operator: "contains" as const,
-                  value: token,
-                }))
-                .concat([
-                  {
-                    field: ["server", "name"],
-                    operator: "contains" as const,
-                    value: token,
-                  },
-                ]),
-            ),
-          }
-        : undefined,
+      where: tokens.length ? buildTextSearchWhere(tokens) : undefined,
     });
     return {
       ...result,

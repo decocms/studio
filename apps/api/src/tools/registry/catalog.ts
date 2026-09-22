@@ -220,6 +220,28 @@ export function listCatalog(
   };
 }
 
+const TEXT_SEARCH_FIELDS: string[][] = [
+  ["id"],
+  ["title"],
+  ["description"],
+  ["server", "name"],
+];
+
+/** Every token must match somewhere; a token matches if any text field contains it. */
+export function buildTextSearchWhere(tokens: string[]): WhereExpression {
+  return {
+    operator: "and",
+    conditions: tokens.map((token) => ({
+      operator: "or",
+      conditions: TEXT_SEARCH_FIELDS.map((field) => ({
+        field,
+        operator: "contains" as const,
+        value: token,
+      })),
+    })),
+  };
+}
+
 export function findCatalogItem(items: CatalogItem[], identifier: string) {
   return (
     items.find((item) => item.id === identifier) ??
