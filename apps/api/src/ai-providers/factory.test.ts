@@ -100,4 +100,41 @@ describe("AIProviderFactory.listModels", () => {
     expect(models[0]?.costs?.input).toBe(0.0000005808);
     expect(models[0]?.costs?.output).toBe(0.0000017424);
   });
+
+  test("defaults OpenRouter enrichment costs to 0 when pricing is malformed, not NaN", async () => {
+    globalThis.fetch = (async (url: unknown): Promise<Response> => {
+      const u = String(url);
+      const parsed = new URL(u);
+      if (parsed.hostname === "generativelanguage.googleapis.com") {
+        return new Response(JSON.stringify(GOOGLE_MODELS_BODY), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (
+        parsed.hostname === "openrouter.ai" &&
+        parsed.pathname === "/api/v1/models"
+      ) {
+        const body = {
+          data: [
+            {
+              ...OPENROUTER_MODELS_BODY.data[0],
+              pricing: { prompt: "", completion: "", request: "0", image: "0" },
+            },
+          ],
+        };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch: ${u}`);
+    }) as unknown as typeof fetch;
+
+    const factory = new AIProviderFactory(fakeStorage());
+    const models = await factory.listModels("key-1", "org-1");
+
+    expect(models[0]?.costs?.input).toBe(0);
+    expect(models[0]?.costs?.output).toBe(0);
+  });
 });
