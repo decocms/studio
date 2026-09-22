@@ -167,6 +167,24 @@ func TestDiscardRestoresRenamedFile(t *testing.T) {
 	}
 }
 
+// Regression: Run's error text unconditionally embeds argv (see run.go), and
+// SyncOriginRemote is the one call site whose argv carries a live token. A
+// `remote set-url` failure — no `origin` remote configured, here — must not
+// leak it into the returned error, which the orchestrator broadcasts to the
+// setup log and a publish caller may surface to the client.
+func TestSyncOriginRemoteRedactsTokenOnFailure(t *testing.T) {
+	repo := initRepoOnBranch(t, "main")
+	cloneUrl := "https://x-access-token:ghs_live_secret@github.com/acme/site.git"
+
+	err := SyncOriginRemote(repo, cloneUrl)
+	if err == nil {
+		t.Fatal("expected an error: repo has no origin remote to set-url on")
+	}
+	if strings.Contains(err.Error(), "ghs_live_secret") {
+		t.Fatalf("error leaked the token: %q", err.Error())
+	}
+}
+
 func TestRequiresCloneCredentials(t *testing.T) {
 	cases := []struct {
 		url  string

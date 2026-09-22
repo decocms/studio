@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -52,12 +53,35 @@ func RequiresCloneCredentials(originUrl string) bool {
 }
 
 // SyncOriginRemote points `origin` at the credentialed clone URL.
+//
+// Run's error text unconditionally embeds the joined argv (see run.go), and
+// this is the one Run call in the daemon whose argv carries a live token —
+// every other credentialed git operation keeps it out of argv entirely (see
+// prepareSubmoduleCredentials). A `remote set-url` failure here would
+// otherwise put the token in the orchestrator's setup-log broadcast
+// (syncGitRemoteCredentials) or a publish error surfaced to the caller.
 func SyncOriginRemote(repoDir, cloneUrl string) error {
 	if !CloneUrlHasCredentials(cloneUrl) {
 		return nil
 	}
 	_, err := Run([]string{"remote", "set-url", "origin", cloneUrl}, RunOpts{Cwd: repoDir})
-	return err
+	return redactCredentialedURL(err, cloneUrl)
+}
+
+// redactCredentialedURL strips rawUrl's userinfo out of err's message. Fails
+// closed: an unparseable rawUrl means the token can't be located to redact,
+// so the whole message is dropped rather than risking a raw token surviving
+// in a shape this substring match missed.
+func redactCredentialedURL(err error, rawUrl string) error {
+	if err == nil {
+		return nil
+	}
+	u, parseErr := url.Parse(rawUrl)
+	if parseErr != nil || u.User == nil {
+		return errors.New("git remote set-url origin failed")
+	}
+	u.User = nil
+	return errors.New(strings.ReplaceAll(err.Error(), rawUrl, u.String()))
 }
 
 // PublishBlockedError is returned when publish refuses the current branch. The
