@@ -9,6 +9,7 @@ import {
   agentShowsGithubHeaderActions,
 } from "@/lib/agent-capabilities";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { useActivePanelTabId } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { shouldShowTerminalDrawer } from "@/layouts/main-panel-tabs/terminal-drawer-gate";
 import { PreviewDrawerHost } from "@/layouts/main-panel-tabs/preview-drawer-host";
@@ -51,13 +52,16 @@ function SiteEditorDrawer() {
   const activeTask = session?.activeTask;
   const activeTabId = useActivePanelTabId();
   const sessionRuntime = useSessionRuntime(entity?.id).runtime;
-  const showDrawer = shouldShowTerminalDrawer({
-    hasClonableSource:
-      agentHasClonableSource(entity?.metadata) ||
-      agentHasClonableSource(activeTask?.metadata),
-    fastPreviewActive: sessionRuntime === "cms",
-    mainTab: activeTabId ?? null,
-  });
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
+  const showDrawer =
+    !localPreviewUrl &&
+    shouldShowTerminalDrawer({
+      hasClonableSource:
+        agentHasClonableSource(entity?.metadata) ||
+        agentHasClonableSource(activeTask?.metadata),
+      fastPreviewActive: sessionRuntime === "cms",
+      mainTab: activeTabId ?? null,
+    });
   return showDrawer ? <PreviewDrawerHost /> : null;
 }
 

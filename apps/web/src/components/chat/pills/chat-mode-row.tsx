@@ -86,6 +86,10 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
       createTask({ branch: next });
     else if (setCurrentTaskBranch) void setCurrentTaskBranch(next);
   };
+  // Adopting a branch/PR opens a sandbox coding session on its code.
+  const onAdoptBranch = createTask
+    ? (next: string) => createTask({ runtime: "sandbox", branch: next })
+    : undefined;
 
   const branchPill =
     githubRepo && hasRepoCredential(repoTarget) ? (
@@ -105,6 +109,7 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         sandboxMap={virtualMcp?.metadata?.sandboxMap}
         onChange={onChange}
         onCreateBranch={onCreateBranch}
+        onAdoptBranch={onAdoptBranch}
         locked={locked}
         placement="chat"
       />

@@ -38,4 +38,10 @@ export const LOCALSTORAGE_KEYS = {
     `sidebar.group-order.${orgId}.${userId}`,
   ptBrAnnouncementSeen: (userId: string) =>
     `studio:announcement:pt-br:${userId}`,
+  /** Per-project "Local" preview override — a tunnel URL the CMS + preview point
+   *  at instead of the managed sandbox/production. Per-browser: a tunnel to a
+   *  dev server only this machine can reach, so it never belongs on shared
+   *  project metadata. */
+  localPreviewUrl: (virtualMcpId: string) =>
+    `studio:local-preview-url:${virtualMcpId}`,
 } as const;

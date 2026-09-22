@@ -24,6 +24,7 @@ import { resolvePreviewDisplay } from "./preview-display";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { resolveCmsMode } from "@decocms/shared/sdk/types";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { useT } from "@/i18n/use-t.ts";
@@ -477,9 +478,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const vmEvents = useSandboxEvents();
   const lifecycle = useSandboxLifecycle();
   const vmEntry = lifecycle.vmEntry;
-  const previewUrl = lifecycle.previewUrl;
   const lifecyclePhase = vmEvents.lifecycle.phase;
-  const devServerReady = lifecyclePhase === "running";
+  /**
+   * Local mode: the pasted tunnel stands in for the managed sandbox dev server.
+   * It replaces `previewUrl` everywhere below — the CMS reads, the preview
+   * iframe, and the editor bridge all target it — and the boot gating is
+   * bypassed (the tunnel is already up), so no pod ever boots.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const previewUrl = localPreviewUrl ?? lifecycle.previewUrl;
+  const devServerReady = !!localPreviewUrl || lifecyclePhase === "running";
 
   // Live production URL of the linked site, persisted on the agent's
   // `metadata.previewServerUrl` at import time (deco.cx reports the real domain,
@@ -490,7 +498,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const previewServerUrl =
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const fastPreviewEnabled =
-    agent?.id === virtualMcpId && session.runtime === "cms";
+    !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
   const projectDefaultsToCms = session.projectDefault === "cms";
 
@@ -714,6 +722,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     fastPreviewActive: fastPreviewEnabled,
     fastPreviewReady: !!draftPreviewUrl,
     codingSession,
+    localPreviewUrl,
   });
   const previewSurfaceActive = display.mode !== "none";
 
@@ -726,17 +735,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     display.mode === "production" && display.iframeBase
       ? previewOrigin(display.iframeBase)
       : null;
-  // In the desktop app, an external production origin must be registered
-  // with the native shell's navigation policy BEFORE the iframe below is
-  // allowed to navigate there — see `registerPreviewOrigin`'s doc comment
-  // for why this can't be fire-and-forget. Plain browser tabs have no such
-  // gate, so this is a no-op there.
-  const productionOriginReady =
+  /**
+   * The external origin the iframe will load and that the desktop shell must
+   * register before navigating there: the published site under Fast Preview, or
+   * the Local tunnel (a "sandbox"-display external origin, unlike the normal
+   * sandbox proxy which is this app's own already-allowed origin). `null` for
+   * the normal sandbox proxy. Plain browser tabs have no such gate (no-op).
+   */
+  const externalPreviewOrigin =
+    productionOrigin ??
+    (localPreviewUrl && display.mode === "sandbox" && display.iframeBase
+      ? previewOrigin(display.iframeBase)
+      : null);
+  const externalOriginReady =
     !isDesktopApp ||
-    !productionOrigin ||
-    registeredPreviewOrigin === productionOrigin;
+    !externalPreviewOrigin ||
+    registeredPreviewOrigin === externalPreviewOrigin;
 
-  // Origin of the in-iframe editor bridge — sandbox proxy, or the site's own origin under Fast Preview.
+  // Origin of the in-iframe editor bridge — sandbox proxy / Local tunnel, or the site's own origin under Fast Preview.
   const editorBridgeOrigin =
     display.mode === "production"
       ? productionOrigin
@@ -772,7 +788,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   pinnedDraftUrlRef.current = nextPinnedDraft;
 
   const iframeSrc = withDecoFBT(
-    display.mode === "sandbox"
+    display.mode === "sandbox" && externalOriginReady
       ? withVariantMatcherOverride(
           withDeviceHint(
             directPreviewUrl ??
@@ -782,7 +798,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           ),
           workspace.state.variantOverride ?? [],
         )
-      : display.mode === "production" && productionOriginReady
+      : display.mode === "production" && externalOriginReady
         ? // Fast Preview's draft route honours the variant matcher override like the sandbox dev server, so append it here too.
           withVariantMatcherOverride(
             withDeviceHint(
@@ -801,28 +817,27 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         : null,
   );
 
-  // Registers `productionOrigin` with the native shell before the iframe
-  // above is allowed to navigate there (see `productionOriginReady`).
+  /** Registers `externalPreviewOrigin` with the native shell before the iframe navigates there (see `externalOriginReady`). */
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- imperative native-shell IPC gate before cross-origin iframe navigation, mirrors the draft-URL effect just below
   useEffect(() => {
-    if (!isDesktopApp || !productionOrigin) return;
-    if (registeredPreviewOrigin === productionOrigin) return;
+    if (!isDesktopApp || !externalPreviewOrigin) return;
+    if (registeredPreviewOrigin === externalPreviewOrigin) return;
     let cancelled = false;
-    registerPreviewOrigin(productionOrigin)
+    registerPreviewOrigin(externalPreviewOrigin)
       .then(() => {
-        if (!cancelled) setRegisteredPreviewOrigin(productionOrigin);
+        if (!cancelled) setRegisteredPreviewOrigin(externalPreviewOrigin);
       })
       .catch((error) => {
         console.error(
           "Failed to register preview origin",
-          productionOrigin,
+          externalPreviewOrigin,
           error,
         );
       });
     return () => {
       cancelled = true;
     };
-  }, [isDesktopApp, productionOrigin, registeredPreviewOrigin]);
+  }, [isDesktopApp, externalPreviewOrigin, registeredPreviewOrigin]);
 
   // "Open outside the preview pane". In a browser that's a new tab; inside the
   // Tauri webview there is no tab strip to open into, so `window.open` cannot
@@ -2334,7 +2349,8 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
-                    {previewState.kind === "suspended" && (
+                    {/* Local mode stands in for the managed sandbox, so its lifecycle cards never own the canvas. */}
+                    {!localPreviewUrl && previewState.kind === "suspended" && (
                       <div className="absolute inset-0 z-30">
                         <SandboxStateCard
                           kind="suspended"
@@ -2343,7 +2359,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       </div>
                     )}
 
-                    {previewState.kind === "errored" && (
+                    {!localPreviewUrl && previewState.kind === "errored" && (
                       <div className="absolute inset-0 z-30">
                         <SandboxStateCard
                           kind="errored"
