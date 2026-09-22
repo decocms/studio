@@ -60,3 +60,19 @@ export async function throwResponseError(
   const body = await res.text().catch(() => "");
   throw new Error(`${label} failed: ${res.status}${body ? ` ${body}` : ""}`);
 }
+
+/**
+ * Parse a 2xx response body as JSON, degrading a malformed body into a
+ * labeled error instead of a bare SyntaxError with no request context.
+ */
+export async function parseJsonResponse<T>(
+  label: string,
+  res: Response,
+): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} returned malformed JSON: ${text.slice(0, 200)}`);
+  }
+}

@@ -56,4 +56,16 @@ describe("llmapiAdapter.listModels", () => {
     );
     expect(calls).toBe(1);
   });
+
+  test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response("not json", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const provider = llmapiAdapter.create("secret-key");
+
+    await expect(provider.listModels()).rejects.toThrow(
+      "LLMAPI listModels returned malformed JSON: not json",
+    );
+  });
 });

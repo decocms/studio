@@ -176,4 +176,19 @@ describe("googleAdapter.listModels", () => {
       "deep-research-preview-04-2026",
     ]);
   });
+
+  test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response("not json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+
+    await expect(provider.listModels()).rejects.toThrow(
+      "Google listModels returned malformed JSON: not json",
+    );
+  });
 });

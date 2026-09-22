@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { StudioProvider, ModelInfo, ProviderAdapter } from "../types";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
 import { deriveModalityCapabilities } from "./model-capabilities";
@@ -69,7 +70,10 @@ export const llmapiAdapter: ProviderAdapter = {
         if (!res.ok) {
           await throwResponseError("LLMAPI listModels", res);
         }
-        const { data }: { data: LlmapiModel[] } = await res.json();
+        const { data } = await parseJsonResponse<{ data: LlmapiModel[] }>(
+          "LLMAPI listModels",
+          res,
+        );
         return data.map((m) => {
           const arch = m.architecture ?? {};
           const canReason =

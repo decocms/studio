@@ -7,6 +7,7 @@ import {
 } from "./gemini-interactions";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
@@ -114,8 +115,10 @@ export const googleAdapter: ProviderAdapter = {
           if (!res.ok) {
             await throwResponseError("Google listModels", res);
           }
-          const data: { models: GoogleModel[]; nextPageToken?: string } =
-            await res.json();
+          const data = await parseJsonResponse<{
+            models: GoogleModel[];
+            nextPageToken?: string;
+          }>("Google listModels", res);
           models.push(...data.models);
           pageToken = data.nextPageToken;
         } while (pageToken);
