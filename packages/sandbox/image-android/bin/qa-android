@@ -17,6 +17,7 @@
 # Flutter app that is its Semantics tree — with the centre of each, which beats
 # guessing a button's position from the picture.
 set -euo pipefail
+[ -n "${QA_ANDROID_TRACE:-}" ] && set -x
 
 STATE="${TMPDIR:-/tmp}/qa-android"
 SERIAL=emulator-5554
@@ -57,7 +58,7 @@ boot_emulator() {
     -memory 4096 -cores "${QA_ANDROID_CORES:-4}" \
     >"$STATE/emulator.log" 2>&1 < /dev/null &
   echo $! > "$STATE/emulator.pid"
-  adb start-server >/dev/null 2>&1
+  adb start-server >/dev/null
   echo "qa-android: booting emulator"
   for _ in $(seq 1 300); do
     kill -0 "$(cat "$STATE/emulator.pid")" 2>/dev/null \

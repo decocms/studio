@@ -68,8 +68,9 @@ git init -q
 git -c user.email=smoke@example.com -c user.name=smoke add -A
 git -c user.email=smoke@example.com -c user.name=smoke commit -qm init
 
+ls -l "$(command -v adb)" "$(command -v emulator)" /dev/kvm
 start=$(date +%s)
-qa-android start
+QA_ANDROID_TRACE=1 qa-android start
 echo "smoke: emulator boot + build + launch took $(( $(date +%s) - start ))s"
 
 qa-android shot "$out/before.png" >/dev/null
