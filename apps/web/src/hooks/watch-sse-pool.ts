@@ -6,11 +6,15 @@
 
 import { ALL_DECOPILOT_EVENT_TYPES } from "@/sdk";
 import {
+  TASK_BOARD_CONVERSATION_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
   TASK_BOARD_ITEM_UPDATED_EVENT,
 } from "@decocms/shared/task-board";
-import { NOTIFICATION_CREATED_EVENT } from "@decocms/shared/notification-types";
+import {
+  NOTIFICATION_CREATED_EVENT,
+  NOTIFICATION_READ_EVENT,
+} from "@decocms/shared/notification-types";
 import {
   createSSESubscription,
   filterEventTypes,
@@ -21,9 +25,11 @@ import {
 const WATCH_TYPES = [
   ...ALL_DECOPILOT_EVENT_TYPES,
   TASK_BOARD_ITEM_UPDATED_EVENT,
+  TASK_BOARD_CONVERSATION_UPDATED_EVENT,
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
   NOTIFICATION_CREATED_EVENT,
+  NOTIFICATION_READ_EVENT,
 ];
 
 /** `?types=` patterns sent to the server. */
@@ -67,5 +73,17 @@ export const taskBoardPrsWatchView: SSESubscription = filterEventTypes(
  *  event's `subject` against its own user id. */
 export const notificationWatchView: SSESubscription = filterEventTypes(
   watchSSE,
-  [NOTIFICATION_CREATED_EVENT],
+  [NOTIFICATION_CREATED_EVENT, NOTIFICATION_READ_EVENT],
 );
+
+export const taskConversationWatchView: SSESubscription = filterEventTypes(
+  watchSSE,
+  [TASK_BOARD_CONVERSATION_UPDATED_EVENT],
+);
+export const taskForumWatchView: SSESubscription = filterEventTypes(watchSSE, [
+  TASK_BOARD_CONVERSATION_UPDATED_EVENT,
+  TASK_BOARD_ITEM_UPDATED_EVENT,
+  TASK_BOARD_ITEM_DELETED_EVENT,
+  NOTIFICATION_CREATED_EVENT,
+  NOTIFICATION_READ_EVENT,
+]);

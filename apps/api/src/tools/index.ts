@@ -67,6 +67,8 @@ export const CORE_TOOLS = [
   // here — the Super Agent imports these tools directly (see
   // `decopilot/built-in-tools/task-board-tools.ts`) and never reads this list.
   TaskBoardTools.TASK_BOARD_ITEM_LIST,
+  TaskBoardTools.TASK_BOARD_FORUM_LIST,
+  TaskBoardTools.TASK_BOARD_CONVERSATION_MARK_READ,
   TaskBoardTools.TASK_BOARD_ITEM_UPDATE,
   TaskBoardTools.TASK_BOARD_ITEM_DELETE,
   TaskBoardTools.TASK_BOARD_AUTOMATION_LIST,

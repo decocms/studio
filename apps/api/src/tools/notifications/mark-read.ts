@@ -1,3 +1,4 @@
+import { emitNotificationsRead } from "@/notifications/read-events";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
@@ -24,6 +25,7 @@ export const NOTIFICATION_MARK_READ = defineTool({
       requireOrg(ctx),
       input.ids,
     );
+    if (marked) emitNotificationsRead(requireOrg(ctx), getUserId(ctx)!);
     return { marked };
   },
 });

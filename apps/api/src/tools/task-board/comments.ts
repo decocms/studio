@@ -1,3 +1,4 @@
+import { emitTaskConversationUpdated } from "./conversation-events";
 /**
  * Comments on a task — threads in the task dialog's activity feed, one level of
  * replies deep. Create/update/delete ship together; the list tool is flat and
@@ -51,15 +52,19 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({ taskBoardItemId: z.string() }),
-  outputSchema: z.object({ comments: z.array(TaskBoardCommentSchema) }),
+  outputSchema: z.object({
+    comments: z.array(TaskBoardCommentSchema),
+    unreadCommentIds: z.array(z.string()),
+    notificationIds: z.array(z.string()),
+  }),
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
-    const comments = await ctx.storage.taskBoard.listComments(
-      input.taskBoardItemId,
+    return ctx.storage.taskBoard.listConversation(
       requireOrg(ctx),
+      getUserId(ctx)!,
+      input.taskBoardItemId,
     );
-    return { comments };
   },
 });
 
@@ -145,6 +150,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       actorId: taskRun ? null : getUserId(ctx)!,
       body: comment.body,
     });
+    emitTaskConversationUpdated(organizationId, comment.taskBoardItemId);
     return { comment };
   },
 });
@@ -197,6 +203,7 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
         previousBody: existing?.body ?? null,
       });
     }
+    emitTaskConversationUpdated(organizationId, comment.taskBoardItemId);
     return { comment };
   },
 });
@@ -217,11 +224,18 @@ export const TASK_BOARD_COMMENT_DELETE = defineTool({
   handler: async (input, ctx) => {
     requireAuth(ctx);
     await ctx.access.check();
+    const organizationId = requireOrg(ctx);
+    const existing = await ctx.storage.taskBoard.getComment(
+      input.id,
+      organizationId,
+    );
     const deleted = await ctx.storage.taskBoard.deleteComment(
       input.id,
       requireOrg(ctx),
       getUserId(ctx)!,
     );
+    if (deleted && existing)
+      emitTaskConversationUpdated(organizationId, existing.taskBoardItemId);
     return { success: deleted };
   },
 });

@@ -22,6 +22,8 @@ export const siteEditorContentSearchShape = contentSearchParams;
 
 /** Task board view/filter state that has to survive legacy workspace hops. */
 export const taskBoardSearchShape = {
+  forumFilter: z.string().optional(),
+  forumSort: z.string().optional(),
   view: z.string().optional(),
   q: z.string().optional(),
   assignee: z.string().optional(),

@@ -507,6 +507,8 @@ function TaskBoardItemEditor({
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [editingPost, setEditingPost] = useState(!item);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [inspectorHidden, setInspectorHidden] = useState(false);
+  const [briefCollapsed, setBriefCollapsed] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const collapseDescription = descriptionOverflows && !descriptionExpanded;
   /** Measured against the collapsed cap, not the rendered box, so expanding
@@ -695,6 +697,17 @@ function TaskBoardItemEditor({
           className="lg:hidden"
           onClick={() => setDetailsOpen((value) => !value)}
           aria-expanded={detailsOpen}
+        >
+          {t("taskBoard.conversation.details")}
+        </Button>
+      )}
+      {compact && item && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hidden lg:inline-flex"
+          aria-expanded={!inspectorHidden}
+          onClick={() => setInspectorHidden((value) => !value)}
         >
           {t("taskBoard.conversation.details")}
         </Button>
@@ -917,7 +930,7 @@ function TaskBoardItemEditor({
         <div
           className={cn(
             "mx-auto w-full",
-            compact ? "max-w-[1280px]" : "max-w-[1040px]",
+            compact ? "max-w-none" : "max-w-[1040px]",
           )}
         >
           {header}
@@ -938,17 +951,17 @@ function TaskBoardItemEditor({
             "flex flex-col",
             compact ? "min-h-0 flex-1 lg:flex-row" : "sm:flex-row",
             chrome === "page" && "mx-auto w-full",
-            chrome === "page" &&
-              (compact ? "max-w-[1280px]" : "max-w-[1040px]"),
+            chrome === "page" && (compact ? "max-w-none" : "max-w-[1040px]"),
           )}
         >
           {/* The original post and conversation share one reading column. */}
           <TaskConversationFrame
+            key={item?.id ?? "new"}
             enabled={compact}
             item={item}
             hidden={!!item && detailsOpen}
           >
-            <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8">
+            <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8 xl:px-12">
               {compact && item && (
                 <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar
@@ -1052,79 +1065,114 @@ function TaskBoardItemEditor({
               )}
 
               <div className="flex flex-col">
-                <div className="flex flex-col py-6">
-                  <div
-                    // Clip only while folded: the image node's remove button is
-                    // absolute and reaches outside a 1px image's box, so a
-                    // permanent clip puts it out of reach.
-                    className={cn(
-                      "relative",
-                      collapseDescription && "overflow-hidden",
-                    )}
-                    style={
-                      collapseDescription
-                        ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
-                        : undefined
-                    }
-                    // Expand before editing: no caret under the fold.
-                    onFocusCapture={() => setDescriptionExpanded(true)}
-                    onBlurCapture={flush}
-                  >
-                    <div
-                      ref={measureDescription}
-                      data-testid="task-description"
-                    >
-                      {/* Markdown in, markdown out — the value also becomes
-                        prompt context for the agent, and plain-text
-                        descriptions written before this editor existed still
-                        parse as-is. */}
-                      {compact && item && !editingPost ? (
-                        <MemoizedMarkdown
-                          id={`task-post-${item.id}`}
-                          text={description}
-                        />
-                      ) : (
-                        <MarkdownEditor
-                          defaultValue={description}
-                          onChange={(next) =>
-                            patch({ description: next }, true)
-                          }
-                          placeholder={t(
-                            "taskBoard.taskDialog.descriptionPlaceholder",
-                          )}
-                          editable={!contentLocked}
-                        />
-                      )}
-                    </div>
-                    {collapseDescription && (
-                      <div
-                        aria-hidden
-                        className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
-                      />
-                    )}
-                  </div>
-                  {descriptionOverflows && (
-                    <Button
+                <div
+                  className={cn(
+                    "my-5 flex flex-col",
+                    compact
+                      ? "rounded-xl border border-border bg-muted/20 px-5 py-4"
+                      : "py-6",
+                  )}
+                >
+                  {compact && item && !editingPost && (
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 w-fit text-muted-foreground hover:text-foreground"
-                      onClick={() => setDescriptionExpanded((open) => !open)}
+                      aria-expanded={!briefCollapsed}
+                      className="flex items-center gap-2 text-left text-sm font-medium"
+                      onClick={() => setBriefCollapsed((value) => !value)}
                     >
                       <ChevronDown
                         size={14}
                         className={cn(
                           "transition-transform",
-                          descriptionExpanded && "rotate-180",
+                          briefCollapsed && "-rotate-90",
                         )}
                       />
-                      {t(
-                        descriptionExpanded
-                          ? "taskBoard.taskDialog.showLess"
-                          : "taskBoard.taskDialog.showMore",
-                      )}
-                    </Button>
+                      {t("taskBoard.forum.brief")}
+                    </button>
                   )}
+                  <div
+                    className={cn(
+                      compact &&
+                        item &&
+                        !editingPost &&
+                        briefCollapsed &&
+                        "hidden",
+                      compact && "pt-3",
+                    )}
+                  >
+                    <div
+                      // Clip only while folded: the image node's remove button is
+                      // absolute and reaches outside a 1px image's box, so a
+                      // permanent clip puts it out of reach.
+                      className={cn(
+                        "relative",
+                        collapseDescription && "overflow-hidden",
+                      )}
+                      style={
+                        collapseDescription
+                          ? { maxHeight: DESCRIPTION_MAX_HEIGHT }
+                          : undefined
+                      }
+                      // Expand before editing: no caret under the fold.
+                      onFocusCapture={() => setDescriptionExpanded(true)}
+                      onBlurCapture={flush}
+                    >
+                      <div
+                        ref={measureDescription}
+                        data-testid="task-description"
+                      >
+                        {/* Markdown in, markdown out — the value also becomes
+                        prompt context for the agent, and plain-text
+                        descriptions written before this editor existed still
+                        parse as-is. */}
+                        {compact && item && !editingPost ? (
+                          <MemoizedMarkdown
+                            id={`task-post-${item.id}`}
+                            text={description}
+                          />
+                        ) : (
+                          <MarkdownEditor
+                            defaultValue={description}
+                            onChange={(next) =>
+                              patch({ description: next }, true)
+                            }
+                            placeholder={t(
+                              "taskBoard.taskDialog.descriptionPlaceholder",
+                            )}
+                            editable={!contentLocked}
+                          />
+                        )}
+                      </div>
+                      {collapseDescription && (
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background to-transparent"
+                        />
+                      )}
+                    </div>
+                    {descriptionOverflows && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2 w-fit text-muted-foreground hover:text-foreground"
+                        onClick={() => setDescriptionExpanded((open) => !open)}
+                      >
+                        <ChevronDown
+                          size={14}
+                          className={cn(
+                            "transition-transform",
+                            descriptionExpanded && "rotate-180",
+                          )}
+                        />
+                        {t(
+                          descriptionExpanded
+                            ? "taskBoard.taskDialog.showLess"
+                            : "taskBoard.taskDialog.showMore",
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Separates the task itself from the record of it (links,
@@ -1163,7 +1211,10 @@ function TaskBoardItemEditor({
             className={cn(
               "w-full flex-col gap-6 border-t border-border p-6",
               compact
-                ? "min-h-0 flex-1 overflow-y-auto lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0"
+                ? cn(
+                    "min-h-0 flex-1 overflow-y-auto bg-muted/10 lg:w-[280px] lg:flex-none lg:border-l lg:border-t-0",
+                    inspectorHidden ? "lg:hidden" : "lg:flex",
+                  )
                 : "flex sm:w-[280px] sm:shrink-0 sm:border-l sm:border-t-0",
               compact && (item ? (detailsOpen ? "flex" : "hidden") : "flex"),
             )}

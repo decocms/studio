@@ -39,6 +39,13 @@ export const KEYS = {
     [locator, "my-capabilities"] as const,
 
   // Task board items (scoped by org)
+  taskBoardForumPage: (
+    locator: ProjectLocator,
+    userId: string | undefined,
+    input: { itemIds: string[]; filter: string; sort: string },
+  ) => [locator, "task-board-forum", userId, input] as const,
+  taskBoardForum: (locator: ProjectLocator) =>
+    [locator, "task-board-forum"] as const,
   taskBoardItems: (locator: ProjectLocator) =>
     [locator, "task-board-items"] as const,
   /** The rules a board runs when a card lands in a column — not the
