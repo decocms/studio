@@ -66,7 +66,14 @@ export function CollectionDisplayButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="relative">
+              <Button
+                variant="outline"
+                size="icon"
+                className="relative"
+                aria-label={t(
+                  "collections.collectionDisplayButton.displayAndFilters",
+                )}
+              >
                 <Sliders01 size={16} />
                 {activeFilterCount > 0 && (
                   <Badge
