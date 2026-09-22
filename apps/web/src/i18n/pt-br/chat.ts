@@ -553,4 +553,7 @@ export const chat = {
   "chat.planRefused.featureTitle":
     "O plano desta organização não inclui chat. Escolha um plano para continuar conversando.",
   "chat.planRefused.seePlans": "Ver planos",
+  "chat.threadHtmlPreviews.slidesAndPages": "Slides e páginas neste chat",
+  "chat.threadHtmlPreviews.slides": "Slides neste chat",
+  "chat.threadHtmlPreviews.pages": "Páginas neste chat",
 } satisfies Record<keyof typeof chatEn, string>;

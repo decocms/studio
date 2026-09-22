@@ -538,4 +538,7 @@ export const chat = {
   "chat.planRefused.featureTitle":
     "This organization's plan does not include chat. Choose a plan to keep chatting.",
   "chat.planRefused.seePlans": "See plans",
+  "chat.threadHtmlPreviews.slidesAndPages": "Slides & pages in this chat",
+  "chat.threadHtmlPreviews.slides": "Slides in this chat",
+  "chat.threadHtmlPreviews.pages": "Pages in this chat",
 } as const;

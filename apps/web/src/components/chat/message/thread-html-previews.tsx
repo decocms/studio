@@ -17,6 +17,7 @@
 import { Globe01, Monitor01 } from "@untitledui/icons";
 import { formatDeckTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
+import { useT } from "@/i18n/use-t.ts";
 import { useOptionalChatStream } from "../context.tsx";
 
 interface DeckRef {
@@ -60,6 +61,7 @@ function collectChips(
 }
 
 export function ThreadHtmlPreviews() {
+  const t = useT();
   const { openPanel } = usePanelNavigate();
   const messages = useOptionalChatStream()?.messages ?? [];
   const chips = collectChips(messages);
@@ -70,9 +72,9 @@ export function ThreadHtmlPreviews() {
   const hasPages = chips.some((c) => c.kind === "page");
   const heading = hasDecks
     ? hasPages
-      ? "Slides & pages in this chat"
-      : "Slides in this chat"
-    : "Pages in this chat";
+      ? t("chat.threadHtmlPreviews.slidesAndPages")
+      : t("chat.threadHtmlPreviews.slides")
+    : t("chat.threadHtmlPreviews.pages");
 
   return (
     <div className="flex flex-col gap-1.5 py-2">
