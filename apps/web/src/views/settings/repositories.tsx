@@ -9,10 +9,7 @@ import { Page } from "@/components/page";
  * disconnected.
  */
 
-import type {
-  GitProviderKind,
-  SandboxImage,
-} from "@decocms/shared/git-providers";
+import type { GitProviderKind } from "@decocms/shared/git-providers";
 import { GitAccountConnect } from "@/components/git-account-connect";
 import { GithubConnectDialog } from "@/components/github-connect-dialog";
 import { useProjectContext } from "@/sdk";
@@ -274,7 +271,7 @@ function SandboxImageSelect({ repository }: { repository: Repository }) {
       disabled={update.isPending}
       onValueChange={(value) =>
         update.mutate(
-          { id: repository.id, sandboxImage: value as SandboxImage },
+          { id: repository.id, sandboxImage: value },
           {
             onError: (error) =>
               toast.error(

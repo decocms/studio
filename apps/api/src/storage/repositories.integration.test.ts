@@ -1,4 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from "bun:test";
 import {
   closeTestPgDatabase,
   connectTestPgDatabase,
@@ -78,7 +85,9 @@ describe("RepositoryStorage — sandbox image", () => {
   // Tenancy by construction: another org's id must not reach this row.
   it("will not set the image from another organization", async () => {
     const repo = await storage.upsert({ organizationId: "org_1", ref });
-    expect(await storage.setSandboxImage(repo.id, "org_123", "flutter")).toBeNull();
+    expect(
+      await storage.setSandboxImage(repo.id, "org_123", "flutter"),
+    ).toBeNull();
     expect((await storage.get(repo.id, "org_1"))?.sandboxImage).toBe("default");
   });
 });

@@ -81,17 +81,18 @@ export type GitProviderAccount = z.infer<typeof GitProviderAccountSchema>;
 /**
  * Which sandbox image this repository's sandboxes boot from.
  *
- * `default` is the image every sandbox uses. `flutter` adds a Linux desktop
- * toolchain and a headless X server so an agent can run the app itself, click
- * through it and screenshot it — the default image can only reach a Flutter UI
- * through `flutter build web`, which a repo whose transitive dependencies do
- * not compile to JS cannot do at all.
+ * `default` is the image every sandbox uses. Any other value names a variant
+ * SandboxTemplate the cluster renders as `<base>-<value>` (today: `flutter`,
+ * which adds a Linux desktop toolchain so an agent can run the app itself).
  *
- * Deliberately a closed enum rather than a free-text image reference: each
- * value maps to a SandboxTemplate the cluster renders, and a name the cluster
- * does not have would park every claim at `TemplateNotFound`.
+ * A shape-validated string rather than a closed enum: the set of variants is
+ * owned by the cluster, not by Studio, so adding one must not need a Studio
+ * deploy. A name the cluster does not render is safe — the sandbox provider
+ * probes the template and degrades to the default one.
  */
-export const SandboxImageSchema = z.enum(["default", "flutter"]);
+export const SandboxImageSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,31}$/, "lowercase letters, digits and dashes only");
 export type SandboxImage = z.infer<typeof SandboxImageSchema>;
 
 export const RepositorySchema = z.object({

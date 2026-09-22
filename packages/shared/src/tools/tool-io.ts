@@ -6756,7 +6756,7 @@ export interface StudioToolIO {
         defaultBranch: string | null;
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
-        sandboxImage: "default" | "flutter";
+        sandboxImage: string;
         createdAt: string;
         updatedAt: string;
         usable: boolean;
@@ -6801,14 +6801,14 @@ export interface StudioToolIO {
         defaultBranch: string | null;
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
-        sandboxImage: "default" | "flutter";
+        sandboxImage: string;
         createdAt: string;
         updatedAt: string;
       };
     };
   };
   REPOSITORY_UPDATE: {
-    input: { id: string; sandboxImage: "default" | "flutter" };
+    input: { id: string; sandboxImage: string };
     output: {
       repository: {
         id: string;
@@ -6821,7 +6821,7 @@ export interface StudioToolIO {
         defaultBranch: string | null;
         webUrl: string;
         visibility: "public" | "private" | "internal" | null;
-        sandboxImage: "default" | "flutter";
+        sandboxImage: string;
         createdAt: string;
         updatedAt: string;
       };
