@@ -99,7 +99,7 @@ imageVariants: {}
 #         cpu: "4"
 #         memory: 12Gi
 #         ephemeral-storage: 30Gi
-#         devices.kubevirt.io/kvm: "1"
+#         decocms.com/kvm: "1"
 #     warmPoolSize: 0
 #     warmPoolMediumSize: 0
 
