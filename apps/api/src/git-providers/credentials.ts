@@ -270,16 +270,11 @@ export async function repoCredentialForRepository(
       message: `${repository.path} is linked without an account; link it again to read and write it`,
     });
   }
-  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+  const account = await getRepositoryAccount(
+    deps,
+    repository,
     repository.accountId,
   );
-  if (!account || account.organizationId !== repository.organizationId) {
-    throw new GitProviderError({
-      provider: repository.provider,
-      status: 404,
-      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
-    });
-  }
   const client = clientForAccount(deps, account);
   const kind = tokenKindOf(account);
   return {
@@ -307,16 +302,11 @@ export async function cloneInfoForRepository(
   const ref = repoRefOf(repository);
   if (!repository.accountId) return anonymousCloneInfo(ref);
 
-  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+  const account = await getRepositoryAccount(
+    deps,
+    repository,
     repository.accountId,
   );
-  if (!account || account.organizationId !== repository.organizationId) {
-    throw new GitProviderError({
-      provider: repository.provider,
-      status: 404,
-      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
-    });
-  }
   const client = clientForAccount(deps, account);
   const mintsPerRepository = tokenKindOf(account) === "installation";
   // An account-wide token already reaches the siblings, so it skips the read.
@@ -344,6 +334,29 @@ function anonymousCloneInfo(ref: RepoRef): RepoCloneInfo {
     gitUserName: DECOBOT_GIT_IDENTITY.name,
     gitUserEmail: DECOBOT_GIT_IDENTITY.email,
   };
+}
+
+/**
+ * Resolve a repository's git provider account, validating it exists and
+ * belongs to the same organization. Shared by credential resolution paths.
+ * Assumes `accountId` is already verified to be non-null by the caller.
+ */
+async function getRepositoryAccount(
+  deps: GitProviderDeps,
+  repository: RepositoryRecord,
+  accountId: string,
+): Promise<GitProviderAccountRecord> {
+  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+    accountId,
+  );
+  if (!account || account.organizationId !== repository.organizationId) {
+    throw new GitProviderError({
+      provider: repository.provider,
+      status: 404,
+      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
+    });
+  }
+  return account;
 }
 
 /** The storage ports these lookups need — satisfied by `ctx.storage`. */
