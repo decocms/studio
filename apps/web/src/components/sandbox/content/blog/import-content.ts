@@ -64,36 +64,34 @@ function decodeEntities(text: string): string {
 }
 
 /**
- * Apply `re` until the text stops changing. A single pass is not a sanitizer:
- * removing the inner match of `<scr<x>ipt>` leaves `<script>` behind.
+ * Strip tags to plain text — for headings, list items and quotes.
+ *
+ * Each of these strips repeats until the text stops changing, because a single
+ * pass is not a sanitizer: removing the inner match of `<scr<x>ipt>` leaves
+ * `<script>` behind. The loops are written out rather than factored into a
+ * helper so that both a reader and a scanner can see the iteration.
  */
-function stripUntilStable(input: string, apply: (s: string) => string): string {
-  let out = input;
+function stripTags(html: string): string {
+  let text = html;
   let previous: string;
   do {
-    previous = out;
-    out = apply(out);
-  } while (out !== previous);
-  return out;
-}
-
-/** Strip tags to plain text — for headings, list items and quotes. */
-function stripTags(html: string): string {
-  return decodeEntities(
-    stripUntilStable(html, (s) => s.replace(/<[^>]+>/g, "")),
-  )
-    .replace(/\s+/g, " ")
-    .trim();
+    previous = text;
+    text = text.replace(/<[^>]+>/g, "");
+  } while (text !== previous);
+  return decodeEntities(text).replace(/\s+/g, " ").trim();
 }
 
 /** Comments and script/style bodies, removed together so neither can hide in
  *  the other and neither can reassemble after the other is cut. */
 function stripHostileMarkup(html: string): string {
-  return stripUntilStable(html, (s) =>
-    s
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ""),
-  );
+  let out = html;
+  let previous: string;
+  do {
+    previous = out;
+    out = out.replace(/<!--[\s\S]*?-->/g, "");
+    out = out.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "");
+  } while (out !== previous);
+  return out;
 }
 
 /** Inline tags a paragraph may keep. Anything else loses its markup. */
@@ -130,8 +128,11 @@ function escapeAttr(value: string): string {
  * `<img onerror>` would be stored XSS on the customer's published blog.
  */
 function sanitizeInlineHtml(html: string): string {
-  return stripUntilStable(stripHostileMarkup(html), (s) =>
-    s.replace(
+  let out = stripHostileMarkup(html);
+  let previous: string;
+  do {
+    previous = out;
+    out = out.replace(
       /<\/?([a-z][a-z0-9]*)\b([^>]*)>/gi,
       (whole, rawName: string, rawAttrs: string) => {
         const name = rawName.toLowerCase();
@@ -145,8 +146,9 @@ function sanitizeInlineHtml(html: string): string {
           ? `<a href="${escapeAttr(href)}">`
           : "<a>";
       },
-    ),
-  );
+    );
+  } while (out !== previous);
+  return out;
 }
 
 function attr(tag: string, name: string): string {
