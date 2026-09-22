@@ -43,6 +43,7 @@ import {
   buildCloneInfo,
   ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
+import { resolveSubmoduleCredentials } from "@/tools/sandbox/resolve-submodule-creds";
 import { resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
   getThreadSandboxMap,
@@ -316,6 +317,7 @@ async function cloneInfoForChoice(
 async function secondaryRepoConfigs(
   ctx: StudioContext,
   organizationId: string,
+  userId: string,
   repos: {
     owner: string;
     name: string;
@@ -323,9 +325,22 @@ async function secondaryRepoConfigs(
     repositoryId?: string;
   }[],
 ): Promise<
-  { cloneUrl: string; repoName: string; submoduleCredentials: never[] }[]
+  {
+    cloneUrl: string;
+    repoName: string;
+    submoduleCredentials: { host: string; token: string }[];
+  }[]
 > {
   const dirNames = secondaryRepoDirNames(repos);
+  // Same org credentials the primary checkout gets — a secondary's submodules
+  // sit behind the same hosts.
+  const submoduleCredentials = await resolveSubmoduleCredentials({
+    ctx,
+    orgId: organizationId,
+    userId,
+    entries: (await ctx.storage.organizationSettings.get(organizationId))
+      ?.submodule_credentials,
+  });
   // Independent per-repo credential mints — run concurrently, not in series.
   const settled = await Promise.all(
     repos.map(async (repo, i) => {
@@ -353,7 +368,7 @@ async function secondaryRepoConfigs(
               ctx.vault,
               { bufferMs: CLONE_TOKEN_MIN_TTL_MS },
             );
-        return { cloneUrl, repoName: dirNames[i]!, submoduleCredentials: [] };
+        return { cloneUrl, repoName: dirNames[i]!, submoduleCredentials };
       } catch (err) {
         console.warn(
           `[TASK_ADD_REPO] skipping secondary ${repo.owner}/${repo.name}:`,
@@ -583,6 +598,7 @@ export const TASK_ADD_REPO = defineTool({
                   repositories: await secondaryRepoConfigs(
                     ctx,
                     organization.id,
+                    userId,
                     secondaries,
                   ),
                 }),

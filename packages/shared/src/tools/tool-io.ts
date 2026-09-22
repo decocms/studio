@@ -134,6 +134,10 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
+      submodule_credentials?:
+        | { host: string; secretId: string }[]
+        | null
+        | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -205,6 +209,7 @@ export interface StudioToolIO {
             cms_auto_fresh_branch?: boolean | undefined;
           }
         | undefined;
+      submodule_credentials?: { host: string; secretId: string }[] | undefined;
     };
     output: {
       organizationId: string;
@@ -275,6 +280,10 @@ export interface StudioToolIO {
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
+        | null
+        | undefined;
+      submodule_credentials?:
+        | { host: string; secretId: string }[]
         | null
         | undefined;
     };
@@ -2413,10 +2422,6 @@ export interface StudioToolIO {
                     )[]
                   | null
                   | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
-                  | null
-                  | undefined;
               }
             | null
             | undefined;
@@ -2684,10 +2689,6 @@ export interface StudioToolIO {
                         )[]
                       | null
                       | undefined;
-                    submoduleCredentials?:
-                      | { host: string; secretId: string }[]
-                      | null
-                      | undefined;
                   }
                 | null
                 | undefined;
@@ -2877,10 +2878,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3111,10 +3108,6 @@ export interface StudioToolIO {
                     )[]
                   | null
                   | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
-                  | null
-                  | undefined;
               }
             | null
             | undefined;
@@ -3332,10 +3325,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3557,10 +3546,6 @@ export interface StudioToolIO {
                         )[]
                       | null
                       | undefined;
-                    submoduleCredentials?:
-                      | { host: string; secretId: string }[]
-                      | null
-                      | undefined;
                   }
                 | null
                 | undefined;
@@ -3758,10 +3743,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3979,10 +3960,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -5192,10 +5169,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }

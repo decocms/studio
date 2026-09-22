@@ -5,7 +5,9 @@ import {
   SidebarItemSchema,
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
+  GIT_CREDENTIALS_MAX,
   OrgFlagsSchema,
+  SubmoduleCredentialSchema,
 } from "@decocms/shared/organization/schema";
 
 // Bounds on client-controlled collection sizes not enforced by the shared schema.
@@ -49,6 +51,13 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
       .describe(
         "Org boolean toggles. Shallow-merged into the stored flags: keys you pass win (explicit false persists), omitted keys keep their value.",
       ),
+    submodule_credentials: z
+      .array(SubmoduleCredentialSchema)
+      .max(GIT_CREDENTIALS_MAX)
+      .optional()
+      .describe(
+        "Per-host PATs (as vault secret ids) every sandbox in the org installs in its git config. Replaces the stored list; pass [] to clear it.",
+      ),
   }),
 
   outputSchema: z.object({
@@ -58,6 +67,10 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
+    submodule_credentials: z
+      .array(SubmoduleCredentialSchema)
+      .nullable()
+      .optional(),
     createdAt: z.string().datetime().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().describe("ISO 8601 timestamp"),
   }),
@@ -83,6 +96,7 @@ export const ORGANIZATION_SETTINGS_UPDATE = defineTool({
         simple_mode: input.simple_mode,
         default_home_agents: input.default_home_agents,
         flags: input.flags,
+        submodule_credentials: input.submodule_credentials,
       },
     );
 

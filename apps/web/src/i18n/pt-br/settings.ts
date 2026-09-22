@@ -1171,4 +1171,44 @@ export const settings = {
   "settings.infraBilling.statusPaid": "Paga",
   "settings.infraBilling.statusOverdue": "Vencida",
   "settings.infraBilling.statusPending": "Pendente",
+  "settings.gitCredentials.title": "Credenciais git",
+  "settings.gitCredentials.description":
+    "Tokens de acesso pessoal para repositórios git privados dos quais seus projetos dependem mas que o sandbox não alcança sozinho — submódulos e dependências privadas resolvidas por pub, go, npm ou cargo. Usados por todos os sandboxes desta organização. Referencie um segredo de org/usuário por host; URLs SSH são reescritas para HTTPS para que o token se aplique.",
+  "settings.gitCredentials.addCredential": "Adicionar credencial git",
+  "settings.gitCredentials.cancel": "Cancelar",
+  "settings.gitCredentials.createNewSecret": "Criar novo segredo",
+  "settings.gitCredentials.createNewSecretAriaLabel": "Criar novo segredo",
+  "settings.gitCredentials.createNewSecretDescription":
+    "Armazenado criptografado no cofre de credenciais. A credencial git fará referência ao novo segredo pelo id — seu valor nunca sai do servidor.",
+  "settings.gitCredentials.createNewSecretTitle": "Criar novo segredo",
+  "settings.gitCredentials.descriptionLabel": "Descrição (opcional)",
+  "settings.gitCredentials.descriptionPlaceholder":
+    "Para que este token é usado?",
+  "settings.gitCredentials.failedToLoadSecrets": "Falha ao carregar segredos",
+  "settings.gitCredentials.failedToSave": "Falha ao salvar as credenciais git",
+  "settings.gitCredentials.failedToSaveSecret": "Falha ao salvar",
+  "settings.gitCredentials.hostAriaLabel": "Host da credencial git {index}",
+  "settings.gitCredentials.hostInvalidMessage":
+    "Nome de host simples, ex.: github.com (sem esquema ou caminho).",
+  "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.nameLabel": "Nome",
+  "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
+  "settings.gitCredentials.nameHelperText":
+    "Letras, dígitos, underscore, ponto, hífen.",
+  "settings.gitCredentials.noSecretsYet":
+    'Nenhum segredo ainda. Use o "+" para criar um.',
+  "settings.gitCredentials.pickSecretPlaceholder": "Escolha um segredo…",
+  "settings.gitCredentials.remove": "Remover",
+  "settings.gitCredentials.removeAriaLabel": "Remover credencial git",
+  "settings.gitCredentials.saveSecret": "Salvar segredo",
+  "settings.gitCredentials.saving": "Salvando…",
+  "settings.gitCredentials.scopeLabel": "Escopo",
+  "settings.gitCredentials.scopeOrganization":
+    "Organização — visível para todos os membros",
+  "settings.gitCredentials.scopePrivate": "Privado — visível apenas para mim",
+  "settings.gitCredentials.secretSaved": 'Segredo "{name}" salvo',
+  "settings.gitCredentials.tokenExposureWarning":
+    "O token é instalado na configuração git do sandbox durante a sessão, então comandos e agentes executados lá podem usá-lo. Restrinja-o aos repositórios necessários.",
+  "settings.gitCredentials.tokenLabel": "Token de acesso pessoal",
+  "settings.gitCredentials.tokenPlaceholder": "ghp_…",
 } satisfies Record<keyof typeof settingsEn, string>;

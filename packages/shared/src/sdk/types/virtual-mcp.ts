@@ -70,9 +70,6 @@ export const RELEASES_MAX = 50;
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
 
-/** Cap on git submodule credentials per sandbox. */
-const SUBMODULE_CREDENTIALS_MAX = 50;
-
 /** Cap on a single literal env var's value length — an unbounded string here
  *  is attacker-controlled payload size on a mutation input (posted verbatim
  *  to the sandbox daemon on every SANDBOX_START), not a real env value. 8KB
@@ -420,42 +417,6 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
 export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
- * One git credential on a virtual MCP, for repositories the main clone's
- * per-repo GitHub App token cannot reach — a submodule or a private `git:`
- * package dependency in another repository or org. The user supplies a PAT
- * (stored as a vault secret) keyed by the remote's host. Studio resolves
- * `secretId` against the credential vault on every SANDBOX_START and posts the
- * token to the daemon on a git-only channel (never the env bag); the daemon
- * installs it in the sandbox's git config, so `git submodule update` AND the
- * git a package manager spawns (`flutter pub get`, `go mod download`, npm,
- * cargo) both authenticate. `host` is the bare hostname (e.g. "github.com");
- * `git@<host>:` SSH URLs are rewritten to HTTPS so the token applies.
- *
- * Kept named `submoduleCredentials` on the wire — renaming it would break every
- * stored virtual MCP for a copy change.
- */
-/**
- * A bare submodule hostname with an optional port (e.g. "github.com",
- * "gitlab.example.com:8443"). Single source of truth for the shape: the schema
- * below enforces it, and both the sandbox UI and daemon import it.
- */
-export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
-
-const SubmoduleCredentialSchema = z.object({
-  host: z
-    .string()
-    .min(1)
-    .regex(SUBMODULE_HOST_RE)
-    .describe("Submodule host, e.g. 'github.com' (bare hostname, no scheme)."),
-  secretId: z
-    .string()
-    .min(1)
-    .describe("Vault secret id holding the PAT used to fetch this host."),
-});
-
-export type SubmoduleCredential = z.infer<typeof SubmoduleCredentialSchema>;
-
-/**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
  * fields fall back to autodetect on the next SANDBOX_START.
  */
@@ -488,14 +449,6 @@ const RuntimeMetadataSchema = z.object({
     .optional()
     .describe(
       "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config.",
-    ),
-  submoduleCredentials: z
-    .array(SubmoduleCredentialSchema)
-    .max(SUBMODULE_CREDENTIALS_MAX)
-    .nullable()
-    .optional()
-    .describe(
-      "Git credentials injected on every SANDBOX_START. Each entry maps a host to a vault secret (PAT) that Studio resolves before posting /_sandbox/config; the daemon installs it in the sandbox's git config, authenticating submodules and private package dependencies on that host.",
     ),
 });
 

@@ -78,6 +78,50 @@ export const UserModelPreferencesSchema = z.object({
 
 export type UserModelPreferences = z.infer<typeof UserModelPreferencesSchema>;
 
+/** Cap on git credentials per organization. */
+export const GIT_CREDENTIALS_MAX = 50;
+
+/**
+ * A bare git hostname with an optional port (e.g. "github.com",
+ * "gitlab.example.com:8443"). Single source of truth for the shape: the schema
+ * below enforces it, and both the settings UI and the daemon import it.
+ */
+export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
+
+/**
+ * One of the organization's git credentials, for repositories the clone's own
+ * per-repo GitHub App token cannot reach — a submodule or a private `git:`
+ * package dependency in another repository or org. The user supplies a PAT
+ * (stored as a vault secret) keyed by the remote's host. Studio resolves
+ * `secretId` against the credential vault on every SANDBOX_START and posts the
+ * token to the daemon on a git-only channel (never the env bag); the daemon
+ * installs it in the sandbox's git config, so `git submodule update` AND the
+ * git a package manager spawns (`flutter pub get`, `go mod download`, npm,
+ * cargo) both authenticate. `host` is the bare hostname (e.g. "github.com");
+ * `git@<host>:` SSH URLs are rewritten to HTTPS so the token applies.
+ *
+ * Org-level, not per-agent: a host's PAT resolves the same dependency for
+ * every repo in the org, and a task-board run's sandbox belongs to Decopilot,
+ * which has no agent metadata to read one from (see migration 222).
+ *
+ * Kept named `submoduleCredentials` on the wire — that is the daemon's field.
+ */
+export const SubmoduleCredentialSchema = z.object({
+  host: z
+    .string()
+    .min(1)
+    .regex(SUBMODULE_HOST_RE)
+    .describe("Git host, e.g. 'github.com' (bare hostname, no scheme)."),
+  secretId: z
+    .string()
+    .min(1)
+    .describe(
+      "Vault secret id holding the PAT used to authenticate this host.",
+    ),
+});
+
+export type SubmoduleCredential = z.infer<typeof SubmoduleCredentialSchema>;
+
 /**
  * Default home agents config schema - matches DefaultHomeAgentsConfig from storage/types.ts.
  *

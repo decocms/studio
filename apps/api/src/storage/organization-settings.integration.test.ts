@@ -71,4 +71,23 @@ describe("OrganizationSettingsStorage — flags bag", () => {
     });
     expect((await storage.get("org_1"))?.flags).toBeNull();
   });
+
+  it("round-trips git credentials", async () => {
+    await storage.upsert("org_1", {
+      submodule_credentials: [{ host: "github.com", secretId: "sec_1" }],
+    });
+    expect((await storage.get("org_1"))?.submodule_credentials).toEqual([
+      { host: "github.com", secretId: "sec_1" },
+    ]);
+  });
+
+  // The whole list is replaced, unlike flags: emptying it must persist as `[]`
+  // and not read back as the previous list, or a revoked PAT keeps working.
+  it("emptying the git credential list persists", async () => {
+    await storage.upsert("org_1", {
+      submodule_credentials: [{ host: "github.com", secretId: "sec_1" }],
+    });
+    await storage.upsert("org_1", { submodule_credentials: [] });
+    expect((await storage.get("org_1"))?.submodule_credentials).toEqual([]);
+  });
 });

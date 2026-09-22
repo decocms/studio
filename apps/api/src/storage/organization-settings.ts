@@ -24,6 +24,7 @@ function mapRecord(record: {
   simple_mode: unknown;
   default_home_agents: unknown;
   flags: unknown;
+  submodule_credentials: unknown;
   createdAt: OrganizationSettings["createdAt"];
   updatedAt: OrganizationSettings["updatedAt"];
 }): OrganizationSettings {
@@ -42,6 +43,9 @@ function mapRecord(record: {
       OrganizationSettings["default_home_agents"]
     >(record.default_home_agents),
     flags: parseJsonColumn<OrganizationSettings["flags"]>(record.flags),
+    submodule_credentials: parseJsonColumn<
+      OrganizationSettings["submodule_credentials"]
+    >(record.submodule_credentials),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -72,6 +76,7 @@ export class OrganizationSettingsStorage
         | "simple_mode"
         | "default_home_agents"
         | "flags"
+        | "submodule_credentials"
       >
     >,
   ): Promise<OrganizationSettings> {
@@ -82,6 +87,7 @@ export class OrganizationSettingsStorage
       simple_mode: toJsonColumn(data?.simple_mode),
       default_home_agents: toJsonColumn(data?.default_home_agents),
       flags: toJsonColumn(data?.flags),
+      submodule_credentials: toJsonColumn(data?.submodule_credentials),
     };
     // RETURNING the write itself, instead of a follow-up SELECT, so a concurrent upsert can't make this call return someone else's write.
     const record = await this.db
@@ -105,6 +111,7 @@ export class OrganizationSettingsStorage
           flags: json.flags
             ? sql<string>`coalesce("organization_settings"."flags", '{}'::jsonb) || ${json.flags}::jsonb`
             : undefined,
+          submodule_credentials: json.submodule_credentials ?? undefined,
           updatedAt: now,
         }),
       )

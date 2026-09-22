@@ -46,6 +46,7 @@ import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 import { SettingsSection } from "@/components/settings/settings-section";
+import { GitCredentialsSection } from "@/components/settings/git-credentials-section";
 import {
   type GitAccount,
   type Repository,
@@ -578,6 +579,8 @@ function RepositoriesContent() {
         onAdd={() => setAddOpen(true)}
         onUnlink={setPendingRepository}
       />
+
+      <GitCredentialsSection />
 
       {addOpen && (
         <RepositoryPicker

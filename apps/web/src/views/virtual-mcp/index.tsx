@@ -61,7 +61,6 @@ import {
 import {
   ENV_VAR_KEY_RE,
   getWellKnownDecopilotVirtualMCP,
-  SUBMODULE_HOST_RE,
   useConnectionActions,
   useProjectContext,
   useVirtualMCP,
@@ -112,7 +111,6 @@ import {
 import { DevAgentSetup } from "@/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
 import { omitSandboxMap } from "@/lib/omit-sandbox-map";
-import { SubmoduleCredentialsField } from "@/components/sandbox/runtime-card/submodule-credentials-field";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
@@ -281,36 +279,6 @@ function stripIncompleteEnvEntries(
       runtime: {
         ...(data.metadata?.runtime ?? {}),
         env: cleaned,
-      },
-    },
-  };
-}
-
-/**
- * Drop half-filled submodule-credential rows (no host, invalid host, or no
- * secretId) before autosave, same rationale as `stripIncompleteEnvEntries`:
- * the partial row stays in form state so the user keeps editing, but the
- * request body only carries entries the server schema accepts.
- */
-function stripIncompleteSubmoduleCredentials(
-  data: VirtualMcpFormData,
-): VirtualMcpFormData {
-  const creds = data.metadata?.runtime?.submoduleCredentials;
-  if (!creds || creds.length === 0) return data;
-  const cleaned = creds.filter((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    const host = ((entry as { host?: string }).host ?? "").trim();
-    if (!host || !SUBMODULE_HOST_RE.test(host)) return false;
-    return Boolean((entry as { secretId?: string }).secretId);
-  });
-  if (cleaned.length === creds.length) return data;
-  return {
-    ...data,
-    metadata: {
-      ...data.metadata,
-      runtime: {
-        ...(data.metadata?.runtime ?? {}),
-        submoduleCredentials: cleaned,
       },
     },
   };
@@ -611,13 +579,10 @@ function VirtualMcpDetailViewWithData({
     // current form values; only _defaultValues advances.
     form.reset(formData, { keepValues: true });
 
-    // Strip in-progress env rows (no key, or kind=secret with no secretId) and
-    // submodule-credential rows (no host / no secretId). The partial rows stay
-    // in form state so the user keeps editing, but the request body only
-    // carries entries the server schema accepts.
-    const payload = stripIncompleteSubmoduleCredentials(
-      stripIncompleteEnvEntries(formData),
-    );
+    // Strip in-progress env rows (no key, or kind=secret with no secretId).
+    // They stay in form state so the user keeps editing, but the request body
+    // only carries entries the server schema accepts.
+    const payload = stripIncompleteEnvEntries(formData);
     const cachedVirtualMcp = readCachedVirtualMcp(
       queryClient,
       org.id,
@@ -1347,12 +1312,6 @@ function VirtualMcpDetailViewWithData({
                           sandboxMap={virtualMcp.metadata.sandboxMap}
                         />
                       </SettingsCardRow>
-                      <SettingsCardRow>
-                        <SubmoduleCredentialsField
-                          control={form.control}
-                          form={form}
-                        />
-                      </SettingsCardRow>
                     </SettingsCard>
                   </SettingsSection>
                 )}
@@ -1786,12 +1745,6 @@ function VirtualMcpDetailViewWithData({
                               virtualMcpId={virtualMcp.id}
                               orgSlug={org.slug}
                               sandboxMap={virtualMcp.metadata.sandboxMap}
-                            />
-                          </SettingsCardRow>
-                          <SettingsCardRow>
-                            <SubmoduleCredentialsField
-                              control={form.control}
-                              form={form}
                             />
                           </SettingsCardRow>
                         </SettingsCard>

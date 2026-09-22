@@ -30,7 +30,6 @@ import {
 } from "../../core/studio-context";
 import {
   readValidatedRuntimeEnv,
-  readValidatedSubmoduleCredentials,
   resolveRuntimeConfig,
   type RuntimeConfigMeta,
 } from "./helpers";
@@ -400,6 +399,7 @@ async function buildExtraRepoOpts(args: {
   primary: GithubRepo | null;
   gitUserName: string;
   gitUserEmail: string;
+  submoduleCredentials: { host: string; token: string }[];
 }): Promise<EnsureRepo[]> {
   const primaryKey = args.primary
     ? `${args.primary.owner}/${args.primary.name}`.toLowerCase()
@@ -451,7 +451,7 @@ async function buildExtraRepoOpts(args: {
           ? studioRepository.path
           : `${repo.owner}/${repo.name}`,
         directoryName: dirNames[i]!,
-        submoduleCredentials: [],
+        submoduleCredentials: args.submoduleCredentials,
       });
     } catch (err) {
       console.warn(
@@ -502,6 +502,17 @@ async function provisionSandbox(params: StartParams): Promise<{
 
   let { runtime, packageManager, port, packageManagerPath } =
     resolveRuntimeConfig(metadata);
+
+  // Submodules and private package deps live in repos a per-repo clone token
+  // can't reach. Read off the ORG, not this agent: a task-board run's sandbox
+  // belongs to Decopilot, which has no metadata to hold them (migration 222).
+  const orgSettings = await ctx.storage.organizationSettings.get(orgId);
+  const submoduleCredentials = await resolveSubmoduleCredentials({
+    ctx,
+    orgId,
+    userId,
+    entries: orgSettings?.submodule_credentials,
+  });
 
   // Skip clone + lockfile probe entirely when no repo is connected — the
   // sandbox boots blank.
@@ -626,16 +637,6 @@ async function provisionSandbox(params: StartParams): Promise<{
       sticky: stickyHeadRef,
     });
 
-    // Private submodules live in repos the per-repo clone token can't reach;
-    // resolve the user's per-host PATs here so they ride the initial daemon
-    // config (the clone + `git submodule update` run during provisioning).
-    const submoduleCredentials = await resolveSubmoduleCredentials({
-      ctx,
-      orgId,
-      userId,
-      entries: readValidatedSubmoduleCredentials(metadata),
-    });
-
     repoOpts = {
       cloneUrl,
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
@@ -668,6 +669,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     primary: githubRepo,
     gitUserName: repoOpts?.userName ?? "",
     gitUserEmail: repoOpts?.userEmail ?? "",
+    submoduleCredentials,
   });
 
   // Missing workload = clone-only; the runner picks its default. `devPort` is

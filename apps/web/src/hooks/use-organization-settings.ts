@@ -22,6 +22,7 @@ import {
 import type {
   OrgFlags,
   SimpleModeTier,
+  SubmoduleCredential,
 } from "@decocms/shared/organization/schema";
 import { reviewerEnabled } from "@decocms/shared/task-board";
 
@@ -46,6 +47,7 @@ export interface OrganizationSettings {
   simple_mode: SimpleModeConfig | null;
   default_home_agents: DefaultHomeAgentsConfig | null;
   flags: OrgFlags | null;
+  submodule_credentials: SubmoduleCredential[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -57,6 +59,7 @@ const EMPTY_SETTINGS: OrganizationSettings = {
   simple_mode: null,
   default_home_agents: null,
   flags: null,
+  submodule_credentials: null,
 };
 
 const EMPTY_SIMPLE_MODE: SimpleModeConfig = {
@@ -119,6 +122,7 @@ type OrgSettingsUpdateInput = Partial<
     | "simple_mode"
     | "default_home_agents"
     | "flags"
+    | "submodule_credentials"
   >
 >;
 
@@ -352,5 +356,26 @@ export function useSetCodingAgentExcludedMcps() {
     ...mutation,
     mutate: (ids: string[], options?: OrgSettingsMutateOptions) =>
       mutation.mutate({ coding_agent_mcp_excluded: ids }, options),
+  };
+}
+
+/**
+ * Per-host PATs (as vault secret ids) every sandbox in the org installs in its
+ * git config, for submodules and private package deps the clone token can't
+ * reach. The full list is stored, so a write replaces it.
+ */
+export function useGitCredentials(): SubmoduleCredential[] {
+  const { data } = useOrganizationSettings((s) => s.submodule_credentials);
+  return data ?? [];
+}
+
+export function useSetGitCredentials() {
+  const mutation = useUpdateOrganizationSettings();
+  return {
+    ...mutation,
+    mutateAsync: (
+      credentials: SubmoduleCredential[],
+      options?: OrgSettingsMutateOptions,
+    ) => mutation.mutateAsync({ submodule_credentials: credentials }, options),
   };
 }

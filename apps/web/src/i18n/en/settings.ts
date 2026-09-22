@@ -1118,4 +1118,44 @@ export const settings = {
   "settings.infraBilling.statusPaid": "Paid",
   "settings.infraBilling.statusOverdue": "Overdue",
   "settings.infraBilling.statusPending": "Pending",
+  "settings.gitCredentials.title": "Git credentials",
+  "settings.gitCredentials.description":
+    "Personal access tokens for private git repositories your projects pull from but a sandbox cannot otherwise reach — submodules, and private dependencies resolved by pub, go, npm or cargo. Used by every sandbox in this organization. Reference an org/user secret per host; SSH URLs are rewritten to HTTPS so the token applies.",
+  "settings.gitCredentials.addCredential": "Add git credential",
+  "settings.gitCredentials.cancel": "Cancel",
+  "settings.gitCredentials.createNewSecret": "Create new secret",
+  "settings.gitCredentials.createNewSecretAriaLabel": "Create new secret",
+  "settings.gitCredentials.createNewSecretDescription":
+    "Stored encrypted in the credential vault. The git credential will reference the new secret by id — its value never leaves the server.",
+  "settings.gitCredentials.createNewSecretTitle": "Create new secret",
+  "settings.gitCredentials.descriptionLabel": "Description (optional)",
+  "settings.gitCredentials.descriptionPlaceholder":
+    "What is this token used for?",
+  "settings.gitCredentials.failedToLoadSecrets": "Failed to load secrets",
+  "settings.gitCredentials.failedToSave": "Failed to save git credentials",
+  "settings.gitCredentials.failedToSaveSecret": "Failed to save",
+  "settings.gitCredentials.hostAriaLabel": "Git credential {index} host",
+  "settings.gitCredentials.hostInvalidMessage":
+    "Bare hostname, e.g. github.com (no scheme or path).",
+  "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.nameLabel": "Name",
+  "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
+  "settings.gitCredentials.nameHelperText":
+    "Letters, digits, underscore, dot, hyphen.",
+  "settings.gitCredentials.noSecretsYet":
+    'No secrets yet. Use the "+" to create one.',
+  "settings.gitCredentials.pickSecretPlaceholder": "Pick a secret…",
+  "settings.gitCredentials.remove": "Remove",
+  "settings.gitCredentials.removeAriaLabel": "Remove git credential",
+  "settings.gitCredentials.saveSecret": "Save secret",
+  "settings.gitCredentials.saving": "Saving…",
+  "settings.gitCredentials.scopeLabel": "Scope",
+  "settings.gitCredentials.scopeOrganization":
+    "Organization — visible to all members",
+  "settings.gitCredentials.scopePrivate": "Private — only visible to me",
+  "settings.gitCredentials.secretSaved": 'Saved secret "{name}"',
+  "settings.gitCredentials.tokenExposureWarning":
+    "The token is installed in the sandbox's git config for the session, so commands and agents running there can use it. Scope it to the repositories it needs.",
+  "settings.gitCredentials.tokenLabel": "Personal access token",
+  "settings.gitCredentials.tokenPlaceholder": "ghp_…",
 } as const;

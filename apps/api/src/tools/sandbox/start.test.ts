@@ -216,6 +216,8 @@ function makeCtx(overrides: {
   /** Whether the `connections` row backing the linked repo still exists —
    *  false exercises buildCloneInfo's deleted-connection branch. */
   connectionRowExists?: boolean;
+  /** `organization_settings.submodule_credentials` — the org's git credentials. */
+  gitCredentials?: { host: string; secretId: string }[];
 }): StudioContext {
   const {
     orgId = ORG_ID,
@@ -225,6 +227,7 @@ function makeCtx(overrides: {
     thread = null,
     connections,
     connectionRowExists = true,
+    gitCredentials,
   } = overrides;
 
   const findById = mock(async (_id: string) => virtualMcp ?? null);
@@ -269,6 +272,12 @@ function makeCtx(overrides: {
         findByRef: mock(async () => null),
       },
       gitProviderAccounts: { getUnscoped: mock(async () => null) },
+      organizationSettings: {
+        get: mock(async () => ({ submodule_credentials: gitCredentials })),
+      },
+      secrets: {
+        resolveById: mock(async (id: string) => ({ value: `token-for-${id}` })),
+      },
     } as never,
     timings: {
       measure: async <T>(_name: string, cb: () => Promise<T>) => await cb(),
@@ -377,6 +386,37 @@ describe("SANDBOX_START", () => {
       packageManager: "npm",
       devPort: 3000,
     });
+  });
+
+  // Regression: these were read off `metadata.runtime.submoduleCredentials` of
+  // the virtual MCP being started. A task-board run starts its sandbox for
+  // Decopilot, which has no metadata, so an autonomous run booted with none
+  // and its private `git:` dependency 404'd. They live on the org now.
+  it("resolves git credentials off the org, not the agent's metadata", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({
+      virtualMcp,
+      gitCredentials: [{ host: "github.com", secretId: "sec_1" }],
+    });
+
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.submoduleCredentials).toEqual([
+      { host: "github.com", token: "token-for-sec_1" },
+    ]);
+  });
+
+  // Always sent, empty included: the daemon reads an absent field as "keep
+  // current", which would outlive a revoked PAT for the pod's lifetime.
+  it("sends an empty credential list when the org has none", async () => {
+    const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
+    const ctx = makeCtx({ virtualMcp });
+
+    await SANDBOX_START.handler({ virtualMcpId: VMCP_ID, branch: BRANCH }, ctx);
+
+    const [, opts] = mockEnsure.mock.calls[0]! as [SandboxId, EnsureOptions];
+    expect(opts.repo?.submoduleCredentials).toEqual([]);
   });
 
   it("sends a real git branch for a synthetic thread branch, keeping the ref synthetic", async () => {
