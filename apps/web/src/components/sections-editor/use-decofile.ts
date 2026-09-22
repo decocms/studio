@@ -20,6 +20,25 @@ interface UseDecofileParams {
   previewUrl?: string | null;
 }
 
+/**
+ * The `KEYS.decofile` cache key. Local mode reads a different source (the
+ * tunnel) than the branch's git/sandbox, so it gets its own key suffix —
+ * shared with `useSaveBlock` so its optimistic writes land where the read
+ * looks. Same string ⇒ shared cache; a Local edit never bleeds into the real
+ * branch's decofile and vice-versa.
+ */
+export function decofileCacheKey(input: {
+  orgSlug: string;
+  virtualMcpId: string;
+  branch: string;
+  localPreviewUrl?: string | null;
+}): string {
+  const base = `${input.orgSlug}/${input.virtualMcpId}/${input.branch}`;
+  return input.localPreviewUrl
+    ? `${base}:local:${input.localPreviewUrl}`
+    : base;
+}
+
 export function useDecofile(
   params: UseDecofileParams | null,
   options?: { fetchEnabled?: boolean },
@@ -32,11 +51,7 @@ export function useDecofile(
    */
   const { url: localPreviewUrl } = useLocalPreviewUrl(params?.virtualMcpId);
   const localOverride = !!localPreviewUrl;
-  const key = params
-    ? `${params.orgSlug}/${params.virtualMcpId}/${params.branch}${
-        localOverride ? `:local:${localPreviewUrl}` : ""
-      }`
-    : "";
+  const key = params ? decofileCacheKey({ ...params, localPreviewUrl }) : "";
   // `fetchEnabled` means the dev server is up, so the live `/.decofile` route is
   // worth hitting. When it's down we read `.deco/blocks.gen.json` straight from
   // the working tree — and if that artifact is absent (it's commonly gitignored)

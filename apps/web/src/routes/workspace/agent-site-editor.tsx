@@ -21,13 +21,15 @@ function SiteEditorActions() {
   const entity = useVirtualMCP(session?.virtualMcpId);
   const currentBranch = session?.currentBranch ?? null;
   const runtime = useSessionRuntime(entity?.id).runtime;
+  // Local mode edits are ephemeral (nothing to promote) → withhold publish.
+  const { url: localPreviewUrl } = useLocalPreviewUrl(entity?.id);
   if (!entity) return null;
   return (
     <>
       <div className="flex min-w-0 shrink items-center justify-end">
         <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
       </div>
-      {agentShowsGithubHeaderActions(entity) && (
+      {!localPreviewUrl && agentShowsGithubHeaderActions(entity) && (
         <>
           <Separator
             orientation="vertical"

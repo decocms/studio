@@ -769,12 +769,16 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    */
   const inPlaceRenderEnabled =
     agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
-  const inPlaceRenderActive =
-    display.mode === "production" &&
-    fastPreviewEnabled &&
-    inPlaceRenderEnabled &&
-    blocksEditingEnabled &&
-    editingMode === "blocks";
+  // Local renders fake edits in place against the tunnel's `/live/previews`.
+  const inPlaceRenderActive = localPreviewUrl
+    ? display.mode === "sandbox" &&
+      blocksEditingEnabled &&
+      editingMode === "blocks"
+    : display.mode === "production" &&
+      fastPreviewEnabled &&
+      inPlaceRenderEnabled &&
+      blocksEditingEnabled &&
+      editingMode === "blocks";
   // Frozen against autosave version bumps, re-latched on page switch — see resolveInPlaceDraftUrl.
   const pinnedDraftUrlRef = useRef<PinnedDraft | null>(null);
   const { pin: nextPinnedDraft, effective: effectiveDraftPreviewUrl } =
@@ -1216,9 +1220,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     const win = previewIframeRef.current?.contentWindow;
     const origin = editorBridgeOrigin;
     if (!win || !origin) return;
-    // Sandbox speaks the daemon's `visual-editor::activate`; a Fast Preview production frame speaks the deco framework's `editor::inject`.
+    // Daemon-proxied sandbox speaks `visual-editor::activate`; a Fast Preview production frame and a Local tunnel (a raw deco runtime) speak the framework's `editor::inject`.
     win.postMessage(
-      display.mode === "production"
+      display.mode === "production" || localPreviewUrl
         ? { type: "editor::inject", args: { script: CMS_EDITOR_SCRIPT } }
         : { type: "visual-editor::activate", script: CMS_EDITOR_SCRIPT },
       origin,
@@ -2432,11 +2436,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             // The page finished loading — always clear the navigation
                             // indicator first, before any of the early returns below.
                             endNavigation();
-                            // Production (Fast Preview) frame is cross-origin: skip the sandbox-only load handling, but the site's real pages still take the CMS overlay via the framework's `editor::inject` listener.
-                            if (display.mode !== "sandbox") {
+                            // Cross-origin frames (Fast Preview production AND the Local tunnel) skip the sandbox-only same-origin load handling; their real pages still take the CMS overlay via the framework's `editor::inject` listener.
+                            if (display.mode !== "sandbox" || localPreviewUrl) {
                               if (
-                                display.mode === "production" &&
-                                !display.showWakingPill &&
+                                ((display.mode === "production" &&
+                                  !display.showWakingPill) ||
+                                  localPreviewUrl) &&
                                 effectiveEditingMode === "blocks"
                               ) {
                                 injectCmsEditor();

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
+import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
 import { decoBlockFilePath } from "./deco-block-key";
@@ -38,6 +40,18 @@ export function useSaveBlock({
   // on the branch) instead of the sandbox working tree. The server owns the
   // key -> file mapping, so no path construction here.
   const fastPreviewActive = useSessionRuntime(virtualMcpId).runtime === "cms";
+  /**
+   * Local mode: edits are fake/ephemeral — the optimistic cache write below IS
+   * the whole save (no daemon, no commit), so it lives only until reload. The
+   * in-place render picks the merged decofile up and repaints the tunnel frame.
+   */
+  const { url: localPreviewUrl } = useLocalPreviewUrl(virtualMcpId);
+  const cacheKey = decofileCacheKey({
+    orgSlug,
+    virtualMcpId,
+    branch,
+    localPreviewUrl,
+  });
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
@@ -52,6 +66,8 @@ export function useSaveBlock({
       blockKey: string;
       data: unknown;
     }) => {
+      // Local: no persistence — the optimistic cache write is the save.
+      if (localPreviewUrl) return { blockKey, data };
       if (fastPreviewActive) {
         const draft = await patchDecofile(
           { orgSlug, virtualMcpId, branch },
@@ -92,7 +108,6 @@ export function useSaveBlock({
       return res.json();
     },
     onMutate: async ({ blockKey, data }) => {
-      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       const queryKey = KEYS.decofile(cacheKey);
       await queryClient.cancelQueries({ queryKey });
       const previous =
@@ -124,7 +139,6 @@ export function useSaveBlock({
       );
     },
     onSuccess: (_result, { blockKey, data }) => {
-      const cacheKey = `${orgSlug}/${virtualMcpId}/${branch}`;
       queryClient.setQueryData(
         KEYS.decofile(cacheKey),
         (current: Record<string, unknown> | undefined) => ({
