@@ -148,7 +148,8 @@ export function projectSidebarViewPresence(
     e2e: native.e2e,
     analytics: native.analytics,
     cdn: native.cdn,
-    experiments: native.experiments,
+    // Authored in the Site Editor decofile — only where a CMS source exists.
+    experiments: hasClonableSource && native.experiments,
     automations: true,
   };
 }

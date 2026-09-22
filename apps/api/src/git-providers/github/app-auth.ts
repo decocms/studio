@@ -389,7 +389,9 @@ export class GithubAppAuth {
         const json = await githubJson<AccessTokenJson>(res, operation);
         if (
           typeof json.token !== "string" ||
-          typeof json.expires_at !== "string"
+          json.token.length === 0 ||
+          typeof json.expires_at !== "string" ||
+          json.expires_at.length === 0
         ) {
           throw new GitProviderError({
             provider: "github",
@@ -397,9 +399,17 @@ export class GithubAppAuth {
             message: `GitHub ${operation} returned no token`,
           });
         }
+        const expiresAt = new Date(json.expires_at);
+        if (isNaN(expiresAt.getTime())) {
+          throw new GitProviderError({
+            provider: "github",
+            status: res.status,
+            message: `GitHub ${operation} returned invalid token expiration`,
+          });
+        }
         return {
           token: json.token,
-          expiresAt: new Date(json.expires_at),
+          expiresAt,
           permissions:
             grantedPermissions(json.permissions) ?? permissions ?? {},
         };

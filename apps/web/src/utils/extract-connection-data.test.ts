@@ -109,3 +109,20 @@ describe("extractConnectionData", () => {
     expect(data.oauth_config).toMatchObject({ clientId: "client-1" });
   });
 });
+
+it("the JSON catalog GitHub entry preserves the installed app identity", () => {
+  const data = extractConnectionData(
+    {
+      id: "deco/github-mcp",
+      title: "GitHub",
+      server: {
+        name: "github-mcp",
+        remotes: [{ type: "HTTP", url: "https://example.com/mcp" }],
+      },
+    },
+    "org-1",
+    "user-1",
+  );
+  expect(data.app_name).toBe("mcp-github");
+  expect(data.app_id).toBe("deco/github-mcp");
+});

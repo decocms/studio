@@ -20,7 +20,6 @@ import {
   Key01,
   LinkExternal01,
   Lock01,
-  PackageCheck,
   User01,
   Users03,
   Zap,
@@ -202,13 +201,6 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
           group: "storage",
         },
         {
-          key: "store",
-          label: t("settings.nav.store"),
-          icon: <PackageCheck size={14} />,
-          to: "/$org/settings/store",
-          requires: "registry:manage",
-        },
-        {
           key: "sso",
           label: t("settings.nav.security"),
           icon: <Lock01 size={14} />,
@@ -250,7 +242,7 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
 
 /** Resolves `$org`-templated `to` paths against the current org/pathname.
  *  Matching is segment-exact, so `/settings/connect` doesn't also light up on
- *  `/settings/connections` while a nested `/settings/store/registry` still
+ *  `/settings/connections` while a nested `/settings/connections/example` still
  *  does. */
 export function useIsActiveSettingsPath() {
   const { org } = useParams({ from: "/shell/$org" });

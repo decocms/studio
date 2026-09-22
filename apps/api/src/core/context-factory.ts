@@ -39,7 +39,6 @@ import type {
 import { getLogsDir, getMetricsDir } from "../monitoring/schema";
 import { OrganizationSettingsStorage } from "../storage/organization-settings";
 import { UserModelPreferencesStorage } from "../storage/user-model-preferences";
-import { VirtualMcpPluginConfigsStorage } from "../storage/virtual-mcp-plugin-configs";
 import { createAutomationsStorage } from "../storage/automations";
 import { KyselyTriggerCallbackTokenStorage } from "../storage/trigger-callback-tokens";
 import { BrandContextStorage } from "../storage/brand-context";
@@ -49,15 +48,6 @@ import { KyselyKVStorage } from "../storage/kv";
 import { KyselyInterestsStorage } from "../storage/interests";
 import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
-import {
-  RegistryItemStorage,
-  PublishRequestStorage,
-  PublishApiKeyStorage,
-  MonitorRunStorage,
-  MonitorResultStorage,
-  MonitorConnectionStorage,
-} from "../storage/registry";
-import type { PrivateRegistryDatabase } from "../storage/registry/types";
 import { TagStorage } from "../storage/tags";
 import { ExperimentStorage } from "../storage/experiments";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
@@ -65,7 +55,10 @@ import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
 import { AccessControl } from "./access-control";
 import { buildWildcardPermission } from "./permission-wildcard";
-import { isOrgArchived } from "@decocms/shared/organization/org-archived";
+import {
+  isOrgArchived,
+  ORG_ARCHIVED_ERROR,
+} from "@decocms/shared/organization/org-archived";
 import type {
   BetterAuthInstance,
   BoundAuthClient,
@@ -872,7 +865,7 @@ async function authenticateRequest(
       });
 
       if (isOrgArchived({ metadata: membership?.orgMetadata })) {
-        throw new Error("Organization is archived");
+        throw new Error(ORG_ARCHIVED_ERROR);
       }
 
       const role = membership?.role;
@@ -1187,7 +1180,7 @@ async function authenticateRequest(
         );
 
         if (isOrgArchived({ metadata: membership?.orgMetadata })) {
-          throw new Error("Organization is archived");
+          throw new Error(ORG_ARCHIVED_ERROR);
         }
 
         if (membership) {
@@ -1223,11 +1216,8 @@ async function authenticateRequest(
           session?: { activeOrganizationId?: string };
         } | null;
 
-        if (orgData) {
-          if (isOrgArchived(orgData)) {
-            throw new Error("Organization is archived");
-          }
-
+        // A stale active org means no fallback context, not a failed request.
+        if (orgData && !isOrgArchived(orgData)) {
           organization = {
             id: orgData.id,
             slug: orgData.slug,
@@ -1242,7 +1232,7 @@ async function authenticateRequest(
 
           // Browser sessions use Better Auth's hasPermission API
           // No need to fetch permissions - they're checked via the API
-        } else {
+        } else if (!orgData) {
           organization = {
             id: session.session.activeOrganizationId,
             slug: "",
@@ -1267,6 +1257,10 @@ async function authenticateRequest(
     }
   } catch (error) {
     const err = error as Error & { body?: unknown };
+    // An explicitly requested archived org is an answer, not an auth failure.
+    if (err.message === ORG_ARCHIVED_ERROR) {
+      throw error;
+    }
     console.error(
       "[Auth] Session check failed:",
       JSON.stringify(
@@ -1466,7 +1460,6 @@ export async function createStudioContextFactory(
     tags: new TagStorage(config.db),
     experiments: new ExperimentStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
-    virtualMcpPluginConfigs: new VirtualMcpPluginConfigsStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
       config.db,
       vault,
@@ -1498,26 +1491,6 @@ export async function createStudioContextFactory(
     triggerCallbackTokens: new KyselyTriggerCallbackTokenStorage(config.db),
     orgSsoConfig: new OrgSsoConfigStorage(config.db, vault),
     orgSsoSessions: new OrgSsoSessionStorage(config.db),
-    registry: {
-      items: new RegistryItemStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      publishRequests: new PublishRequestStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      publishApiKeys: new PublishApiKeyStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorRuns: new MonitorRunStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorResults: new MonitorResultStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-      monitorConnections: new MonitorConnectionStorage(
-        config.db as unknown as Kysely<PrivateRegistryDatabase>,
-      ),
-    },
     brandContext: new BrandContextStorage(config.db),
     organizationDomains: new OrganizationDomainStorage(config.db),
     organizationJoinRequests: new OrganizationJoinRequestStorage(config.db),
@@ -1681,7 +1654,7 @@ export async function createStudioContextFactory(
         wellKnownForwardableHeaders: Object.fromEntries(
           wellKnownForwardableHeaders
             .map((header) => [header, req?.headers.get(header) ?? null])
-            .filter(([_, value]) => value !== null),
+            .filter(([, value]) => value !== null),
         ),
         userAgent:
           (req ? readStudioHeader(req.headers, "client") : null) ||

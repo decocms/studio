@@ -183,4 +183,15 @@ describe("renderField – boolean schema wins over stored value type", () => {
     });
     expect(typeOf(el)).toBe(NumberField);
   });
+
+  // Same regression class: an object field mis-seeded with `""` used to vanish from the form.
+  test("object schema with a string value renders as an object, not dropped", () => {
+    const el = renderField({
+      ...baseProps,
+      path: "seo",
+      schema: { type: "object", properties: {} },
+      value: "",
+    });
+    expect(typeOf(el)).toBe(ObjectField);
+  });
 });

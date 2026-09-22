@@ -4,12 +4,19 @@ import {
   FieldDescriptionTooltip,
   useFieldDescriptionTooltips,
 } from "./field-label";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 import type { FieldProps } from "./field-props";
 import { isBreadcrumbInsideObject } from "../schema-form-breadcrumb";
 import { SchemaForm } from "../schema-form";
 import { useObjectFieldExpansion } from "../object-field-expansion";
 import { useRequiredField } from "./required-field-context";
+
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
 
 export function ObjectField({
   schema,
@@ -17,7 +24,7 @@ export function ObjectField({
   onChange,
   path,
   label,
-  breadcrumbPath = [],
+  breadcrumbPath = EMPTY_ARRAY,
   onBreadcrumbChange,
   focused,
   meta,
@@ -89,9 +96,9 @@ export function ObjectField({
         aria-expanded={isOpen}
         aria-controls={contentId}
         onClick={toggleOpen}
-        className="group flex w-full min-w-0 items-center gap-2 classic:rounded-md compact:rounded-lg py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
+        className="group flex w-full min-w-0 items-center gap-2 rounded-[var(--studio-control-radius,var(--radius-md))] py-1.5 pr-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground"
       >
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:text-accent-foreground">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--studio-control-radius,var(--radius-md))] text-muted-foreground transition-colors group-hover:text-accent-foreground">
           {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
         <FieldDescriptionTooltip
@@ -101,7 +108,7 @@ export function ObjectField({
           <span className="min-w-0 truncate text-sm font-medium">
             {label}
             {required && invalid && (
-              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+              <MissingRequiredMarker className="ml-1 inline-block align-middle" />
             )}
           </span>
         </FieldDescriptionTooltip>
@@ -116,7 +123,10 @@ export function ObjectField({
       {isOpen && (
         <div
           id={contentId}
-          className="ml-3 min-w-0 max-w-full overflow-hidden border-l border-border/80 pl-5"
+          /* A grid track caps the width instead of `overflow-hidden`, which
+             clipped the right border off every control nested in here — the
+             ring a control draws is a shadow, so a flush clip erases it. */
+          className="ml-3 grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] border-l border-border/80 pl-5"
         >
           {form}
         </div>

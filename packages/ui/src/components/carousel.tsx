@@ -95,6 +95,11 @@ function Carousel({
     setApi(api);
   }, [api, setApi]);
 
+  // Publishing the embla instance UP to a parent's setter. Doing that during
+  // render would be a cross-component state update, which React rejects, so
+  // an effect is the only correct place. Vendored shadcn shape — kept as-is
+  // so upstream diffs stay readable.
+  // oxlint-disable react/set-state-in-effect
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   React.useEffect(() => {
     if (!api) return;
@@ -106,6 +111,7 @@ function Carousel({
       api?.off("select", onSelect);
     };
   }, [api, onSelect]);
+  // oxlint-enable react/set-state-in-effect
 
   return (
     <CarouselContext.Provider

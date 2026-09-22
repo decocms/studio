@@ -95,19 +95,20 @@ function useMenuNavigation<T>({
 
   const deferredQuery = useDeferredValue(query);
 
-  // Reset selection when query changes
-  // eslint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
+  // Reset selection when the query changes. Adjusting state during render is
+  // React's documented answer to "derive from a prop change" — it re-renders
+  // before painting, so the stale index is never shown, and it needs no effect.
+  const [prevQuery, setPrevQuery] = useState(deferredQuery);
+  if (prevQuery !== deferredQuery) {
+    setPrevQuery(deferredQuery);
     setSelectedIndex(0);
-  }, [deferredQuery]);
+  }
 
-  // Reset selection when items shrink and current index is out of bounds
-  // eslint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
-    if (selectedIndex >= items.length && items.length > 0) {
-      setSelectedIndex(0);
-    }
-  }, [items.length, selectedIndex]);
+  // Reset selection when items shrink and the current index is out of bounds.
+  // Converges in one extra render: after the reset the guard is false.
+  if (selectedIndex >= items.length && items.length > 0) {
+    setSelectedIndex(0);
+  }
 
   // Keep refs in sync with props/state
   // eslint-disable-next-line ban-use-effect/ban-use-effect

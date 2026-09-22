@@ -20,6 +20,15 @@ export function toggleVisualEditingMode(
   return blocksEditingEnabled ? "blocks" : "preview";
 }
 
+/** Leaving Blocks drops to the plain preview, as leaving Visual does. */
+export function toggleBlocksEditingMode(
+  current: PreviewEditingMode,
+  blocksEditingEnabled: boolean,
+): PreviewEditingMode {
+  if (current === "blocks") return "preview";
+  return blocksEditingEnabled ? "blocks" : current;
+}
+
 /**
  * A fresh Preview follows the same product gate as Content. When content
  * editing is enabled, Blocks is part of the desktop Site Editor surface rather

@@ -181,6 +181,9 @@ export function FilePreview({ file }: { file: PreviewableFile }) {
         <iframe
           src={file.downloadUrl}
           title={file.filename}
+          // User-uploaded content. No `allow-scripts`, so the browser's PDF
+          // viewer renders but PDF-embedded JavaScript cannot run.
+          sandbox="allow-same-origin allow-downloads"
           className="block h-full w-full bg-white"
         />
       );

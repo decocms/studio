@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import type { TokenOptions } from "../types";
 import {
+  BitbucketChangeRequestClient,
   conflictFromDiffstat,
   countUnresolved,
   isConflictRefusal,
@@ -187,5 +189,40 @@ describe("refusal prose", () => {
   test("a conflict names itself", () => {
     expect(isConflictRefusal("There are merge conflicts")).toBe(true);
     expect(isConflictRefusal("You need two approvals")).toBe(false);
+  });
+});
+
+describe("BitbucketChangeRequestClient's 401 handling", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("a stale token is refreshed once and the call retried", async () => {
+    const tokensRequested: (TokenOptions | undefined)[] = [];
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 401 });
+      return new Response(JSON.stringify({ id: 7, title: "hi" }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new BitbucketChangeRequestClient({
+      repo: { provider: "bitbucket", host: "bitbucket.org", path: "acme/site" },
+      tokenSource: {
+        kind: "oauth",
+        get: async (opts) => {
+          tokensRequested.push(opts);
+          return { token: "t", kind: "oauth", expiresAt: null };
+        },
+      },
+    });
+
+    const pr = await client.read(7);
+    expect(pr?.number).toBe(7);
+    expect(calls).toBe(2);
+    expect(tokensRequested).toEqual([undefined, { forceRefresh: true }]);
   });
 });

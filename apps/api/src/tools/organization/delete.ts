@@ -5,6 +5,7 @@
  * Archived organizations are invisible to all API and UI surfaces.
  */
 
+import { sql } from "kysely";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
@@ -64,6 +65,12 @@ export const ORGANIZATION_DELETE = defineTool({
         },
       },
     });
+
+    // Raw SQL: Better Auth owns `session`, not in the Kysely types.
+    await sql`
+      update session set "activeOrganizationId" = null
+      where "activeOrganizationId" = ${input.id}
+    `.execute(ctx.db);
 
     return {
       success: true,

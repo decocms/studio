@@ -605,6 +605,9 @@ function EnvRow<T extends FieldValues>({
                       "h-9 w-full",
                       !field.value && "text-muted-foreground",
                     )}
+                    aria-label={t("sandbox.envVarsField.secretAriaLabel", {
+                      index: index + 1,
+                    })}
                   >
                     <SelectValue
                       placeholder={t(

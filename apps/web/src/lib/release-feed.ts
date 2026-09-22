@@ -3,6 +3,7 @@ import {
   CpuChip01,
   FilterLines,
   Inbox01,
+  LayersThree01,
   Monitor01,
   Stars02,
   Users03,
@@ -23,12 +24,12 @@ export interface Release {
   title: string;
   eyebrow?: string;
   bullets: ReleaseBullet[];
-  /** `href` navigates; `action` is handled by the card — either opening the
-   *  desktop-app download dialog, or starting the new-layout product tour. */
+  /** `href` navigates; `action` is one of: download-app | start-tour | enable-new-layout. */
   cta?:
     | { label: string; href: string }
     | { label: string; action: "download-app" }
-    | { label: string; action: "start-tour" };
+    | { label: string; action: "start-tour" }
+    | { label: string; action: "enable-new-layout" };
   learnMoreHref?: string;
 }
 
@@ -37,6 +38,30 @@ export interface Release {
  * The latest entry is the floating-card candidate; older entries live only in the inbox.
  */
 const ALL_RELEASES: Release[] = [
+  {
+    id: "new-layout",
+    date: "2026-09-22",
+    eyebrow: "Now Available",
+    title: "New Layout",
+    bullets: [
+      {
+        icon: Monitor01,
+        title: "Unified page headers",
+        body: "Every page now has a clear header with navigation breadcrumbs and actions, making it easy to orient yourself and move around.",
+      },
+      {
+        icon: FilterLines,
+        title: "Consistent navigation and controls",
+        body: "Settings and project pages use a predictable sidebar instead of scattered tabs. Buttons, inputs and toolbars share one shape and one height, and the layout adapts to smaller screens.",
+      },
+      {
+        icon: LayersThree01,
+        title: "Site editor redesigned",
+        body: "Every block wears the same icon and the same actions, the variant you are editing is named in the header beside the block it belongs to, and picking a section is now a search rather than a scroll.",
+      },
+    ],
+    cta: { label: "Try it now", action: "enable-new-layout" },
+  },
   {
     id: "unified-workspace-layout",
     date: "2026-09-01",

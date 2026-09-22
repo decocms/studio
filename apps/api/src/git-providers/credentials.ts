@@ -30,6 +30,7 @@ import {
   repoRefOf,
 } from "@/storage/repositories";
 import type { Database } from "@/storage/types";
+import { manifestSiblingRepos } from "./manifest-repos";
 import { getGithubAppAuth } from "./github/app-auth";
 import { GithubProviderClient } from "./github/client";
 import { githubCliEnabled, githubCliTokenSource } from "./github/cli-auth";
@@ -94,23 +95,34 @@ function grantKind(
  * every repository is an account nobody may use.
  */
 export function accountIsServable(account: GitProviderAccountRecord): boolean {
-  if (account.status !== "active") return false;
+  return accountAccessIssue(account) === null;
+}
+
+export function accountAccessIssue(
+  account: GitProviderAccountRecord,
+):
+  | "revoked"
+  | "provider_unavailable"
+  | "installation_missing"
+  | "authorization_required"
+  | "no_repositories"
+  | null {
+  if (account.status !== "active") return "revoked";
   if (account.authKind === "github_cli") {
-    return (
-      account.type === "github" &&
+    return account.type === "github" &&
       account.host === "github.com" &&
       githubCliEnabled()
-    );
+      ? null
+      : "provider_unavailable";
   }
   if (account.type === "github" && account.authKind === "github_app") {
-    return (
-      getGithubAppAuth() !== null &&
-      account.installationId !== null &&
-      !!account.installationAuthorizedBy &&
-      account.installationRepositoryIds?.length !== 0
-    );
+    if (getGithubAppAuth() === null) return "provider_unavailable";
+    if (account.installationId === null) return "installation_missing";
+    if (!account.installationAuthorizedBy) return "authorization_required";
+    if (account.installationRepositoryIds?.length === 0)
+      return "no_repositories";
   }
-  return true;
+  return null;
 }
 
 export function clientForAccount(
@@ -151,12 +163,20 @@ export function clientForAccount(
       }
       if (account.authKind === "github_app") {
         const appAuth = getGithubAppAuth();
-        if (!appAuth || account.installationId === null) {
+        if (!appAuth) {
           throw new GitProviderError({
             provider: "github",
             status: 503,
             message:
               "GitHub App credentials are not configured on this deployment",
+          });
+        }
+        if (account.installationId === null) {
+          throw new GitProviderError({
+            provider: "github",
+            status: 403,
+            message:
+              "This GitHub account has no installation linked. Reconnect it to select repositories.",
           });
         }
         return new GithubProviderClient({
@@ -250,16 +270,11 @@ export async function repoCredentialForRepository(
       message: `${repository.path} is linked without an account; link it again to read and write it`,
     });
   }
-  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+  const account = await getRepositoryAccount(
+    deps,
+    repository,
     repository.accountId,
   );
-  if (!account || account.organizationId !== repository.organizationId) {
-    throw new GitProviderError({
-      provider: repository.provider,
-      status: 404,
-      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
-    });
-  }
   const client = clientForAccount(deps, account);
   const kind = tokenKindOf(account);
   return {
@@ -287,18 +302,21 @@ export async function cloneInfoForRepository(
   const ref = repoRefOf(repository);
   if (!repository.accountId) return anonymousCloneInfo(ref);
 
-  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+  const account = await getRepositoryAccount(
+    deps,
+    repository,
     repository.accountId,
   );
-  if (!account || account.organizationId !== repository.organizationId) {
-    throw new GitProviderError({
-      provider: repository.provider,
-      status: 404,
-      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
-    });
-  }
   const client = clientForAccount(deps, account);
-  const token = await client.tokenForRepo(ref, opts);
+  const mintsPerRepository = tokenKindOf(account) === "installation";
+  // An account-wide token already reaches the siblings, so it skips the read.
+  const alsoRepositories = mintsPerRepository
+    ? await manifestSiblingRepos(
+        (repoPath, path) => client.readFile({ ...ref, path: repoPath }, path),
+        ref,
+      )
+    : [];
+  const token = await client.tokenForRepo(ref, { ...opts, alsoRepositories });
   const identity =
     token.kind === "installation"
       ? null
@@ -316,6 +334,29 @@ function anonymousCloneInfo(ref: RepoRef): RepoCloneInfo {
     gitUserName: DECOBOT_GIT_IDENTITY.name,
     gitUserEmail: DECOBOT_GIT_IDENTITY.email,
   };
+}
+
+/**
+ * Resolve a repository's git provider account, validating it exists and
+ * belongs to the same organization. Shared by credential resolution paths.
+ * Assumes `accountId` is already verified to be non-null by the caller.
+ */
+async function getRepositoryAccount(
+  deps: GitProviderDeps,
+  repository: RepositoryRecord,
+  accountId: string,
+): Promise<GitProviderAccountRecord> {
+  const account = await new GitProviderAccountStorage(deps.db).getUnscoped(
+    accountId,
+  );
+  if (!account || account.organizationId !== repository.organizationId) {
+    throw new GitProviderError({
+      provider: repository.provider,
+      status: 404,
+      message: `The account backing ${repository.path} no longer exists. Link the repository again.`,
+    });
+  }
+  return account;
 }
 
 /** The storage ports these lookups need — satisfied by `ctx.storage`. */

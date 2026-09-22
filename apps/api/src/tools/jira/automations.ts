@@ -15,6 +15,7 @@ const MAX_STATUS_NAME_LENGTH = 200;
 const AutomationSchema = z.object({
   jiraStatus: z.string(),
   prompt: z.string().nullable(),
+  continuePr: z.boolean(),
 });
 
 export const JIRA_AUTOMATION_LIST = defineTool({
@@ -56,6 +57,16 @@ export const JIRA_AUTOMATION_UPSERT = defineTool({
       .nullable()
       .optional()
       .describe("What to do with an issue landing here; null for the default."),
+    continuePr: z
+      .boolean()
+      .optional()
+      .describe(
+        "Runs this rule starts continue the pull request the issue already " +
+          "carries as a web link, instead of opening a new one — for the " +
+          "column a reviewer sends cards back to. An issue with no open pull " +
+          "request still starts fresh. Leave off on a review column, or its " +
+          "run is pinned to the pull request it is meant to judge.",
+      ),
   }),
   outputSchema: z.object({ automation: AutomationSchema }),
   handler: async (input, ctx) => {
@@ -68,6 +79,7 @@ export const JIRA_AUTOMATION_UPSERT = defineTool({
         organization.id,
         input.jiraStatus.trim(),
         prompt,
+        input.continuePr ?? false,
       ),
     };
   },

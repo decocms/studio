@@ -20,7 +20,11 @@
 import { LANES, SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
 import type { StudioContext } from "@/core/studio-context";
 import type { OrgJiraIntegration, TaskBoardItem } from "@/storage/types";
-import { enqueueSuperAgentForTask } from "@/tools/task-board/enqueue-super-agent";
+import {
+  type ContinuedPullRequest,
+  enqueueSuperAgentForTask,
+} from "@/tools/task-board/enqueue-super-agent";
+import { openPrForIssue } from "./open-pr";
 import { supersedeLiveRuns } from "@/tools/task-board/rerun";
 import { JiraClient, type JiraChangelogHistory } from "./client";
 import {
@@ -28,6 +32,7 @@ import {
   issueUrl,
   loadIssueForPrompt,
   renderIssueForPrompt,
+  renderIssuesForPrompt,
 } from "./issue-prompt";
 
 export interface IssueTransition {
@@ -107,8 +112,13 @@ export type TriggerOutcome = "started" | "no_rule" | "duplicate" | "disabled";
 const DEFAULT_JIRA_INSTRUCTION =
   "A Jira issue was moved into a column you are responsible for. Work the issue.";
 
-function jiraRunTitle(issue: { key: string; summary: string }): string {
-  return `Jira ${issue.key}: ${issue.summary}`;
+/** What a run on ONE issue is dispatched with: that issue, in full. */
+function oneIssue(issue: IssueForPrompt) {
+  return {
+    issueKeys: [issue.key],
+    title: `Jira ${issue.key}: ${issue.summary}`,
+    body: renderIssueForPrompt(issue),
+  };
 }
 
 function jiraClientFor(integration: OrgJiraIntegration): JiraClient {
@@ -136,8 +146,9 @@ export async function triggerRunForTransition(
   );
   if (!rule) return "no_rule";
 
+  const client = jiraClientFor(integration);
   const issue = await loadIssueForPrompt(
-    jiraClientFor(integration),
+    client,
     integration.siteUrl,
     transition.issueId,
   );
@@ -147,7 +158,6 @@ export async function triggerRunForTransition(
     issue,
     integration.createdBy,
   );
-
   const claimed = await ctx.storage.jiraIntegrations.claimTrigger(
     orgId,
     transition.issueId,
@@ -155,10 +165,19 @@ export async function triggerRunForTransition(
   );
   if (!claimed) return "duplicate";
 
+  // Resolved after the claim: a redelivered webhook must bail here, not after this network round trip.
+  const pr = rule.continuePr
+    ? await openPrForIssue(ctx, orgId, client, issue.key)
+    : null;
+
+  // Guards against a run still working an earlier transition on this anchor.
+  await supersedeLiveRuns(ctx, item);
   // A dispatch failure past here leaves the claim standing: the transition is spent.
-  await dispatchJiraRun(ctx, integration, item, issue, {
+  await dispatchJiraRun(ctx, integration, item, {
     instruction: rule.prompt,
     actorId: integration.createdBy,
+    ...oneIssue(issue),
+    ...(pr ? { pr } : {}),
   });
   return "started";
 }
@@ -181,14 +200,9 @@ export async function startJiraRunForIssue(
   opts: {
     instruction: string | null;
     actorId: string;
-    /**
-     * Hand the run an EXISTING pull request to continue instead of opening
-     * one. `resolveConflict` further leads it with "this is approved but no
-     * longer merges — rebase and push the SAME one", which is what the merge
-     * action escalates to when the provider refuses on a conflict.
-     */
-    pr?: { number: number; url: string };
-    resolveConflict?: boolean;
+    /** Hand the run an EXISTING pull request to continue instead of opening
+     *  one — a re-run after a review asked for changes. */
+    pr?: ContinuedPullRequest;
   },
 ): Promise<{
   item: TaskBoardItem;
@@ -204,15 +218,76 @@ export async function startJiraRunForIssue(
   const item = await ensureAnchorItem(ctx, integration, issue, opts.actorId);
   // Two agents on one issue would each comment and open their own pull request.
   const supersededThreadIds = await supersedeLiveRuns(ctx, item);
-  await dispatchJiraRun(ctx, integration, item, issue, {
+  await dispatchJiraRun(ctx, integration, item, {
     instruction: opts.instruction,
     actorId: opts.actorId,
+    ...oneIssue(issue),
     ...(opts.pr ? { pr: opts.pr } : {}),
-    ...(opts.resolveConflict ? { resolveConflict: true } : {}),
     // A person asked for this run, like a card's Re-run.
     userInitiated: true,
   });
   return { item, issue, supersededThreadIds };
+}
+
+/**
+ * Run the agent ONCE on several issues because a person asked for it.
+ *
+ * Not N runs of `startJiraRunForIssue`: the point is work that spans the
+ * issues — landing the pull requests of a whole epic in order, say — where
+ * one agent needs to see them all. The run is anchored on its own hidden item
+ * (there is no one issue for it to hang off), its opening message digests
+ * every issue, and its Jira tools take `issueKey` to act on any of them and
+ * refuse any other. Issues that cannot be read are reported, not fatal: one
+ * bad key must not cost the rest their run.
+ */
+export async function startJiraRunForIssues(
+  ctx: StudioContext,
+  integration: OrgJiraIntegration,
+  issueKeys: readonly string[],
+  opts: { instruction: string | null; actorId: string },
+): Promise<{
+  item: TaskBoardItem | null;
+  issues: IssueForPrompt[];
+  failed: Array<{ issueKey: string; error: string }>;
+}> {
+  const client = jiraClientFor(integration);
+  const issues: IssueForPrompt[] = [];
+  const failed: Array<{ issueKey: string; error: string }> = [];
+  for (const key of issueKeys) {
+    try {
+      issues.push(await loadIssueForPrompt(client, integration.siteUrl, key));
+    } catch (err) {
+      failed.push({
+        issueKey: key,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  if (issues.length === 0) return { item: null, issues, failed };
+
+  const keys = issues.map((issue) => issue.key);
+  const item = await ctx.storage.taskBoard.create({
+    organizationId: integration.organizationId,
+    title: batchTitle(keys),
+    status: LANES.progress,
+    source: "jira",
+    by: opts.actorId,
+  });
+  await dispatchJiraRun(ctx, integration, item, {
+    instruction: opts.instruction,
+    actorId: opts.actorId,
+    userInitiated: true,
+    issueKeys: keys,
+    title: `Jira ${batchTitle(keys)}`,
+    body: renderIssuesForPrompt(issues),
+  });
+  return { item, issues, failed };
+}
+
+/** `OS-1, OS-2, OS-3 (+11)` — enough of the batch to tell it apart. */
+function batchTitle(keys: readonly string[]): string {
+  const shown = keys.slice(0, 3).join(", ");
+  return keys.length > 3 ? `${shown} (+${keys.length - 3})` : shown;
 }
 
 /** Hand the anchor to the Super Agent and enqueue its run. */
@@ -220,13 +295,15 @@ async function dispatchJiraRun(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
   item: TaskBoardItem,
-  issue: IssueForPrompt,
   opts: {
     instruction: string | null;
     actorId: string;
     userInitiated?: boolean;
-    pr?: { number: number; url: string };
-    resolveConflict?: boolean;
+    pr?: ContinuedPullRequest;
+    /** The issues the run may act on, and what its message opens with. */
+    issueKeys: string[];
+    title: string;
+    body: string;
   },
 ): Promise<void> {
   const orgId = integration.organizationId;
@@ -241,16 +318,15 @@ async function dispatchJiraRun(
       instruction: opts.instruction ?? DEFAULT_JIRA_INSTRUCTION,
       ...(opts.userInitiated ? { userInitiated: true } : {}),
       ...(opts.pr ? { pr: opts.pr } : {}),
-      ...(opts.resolveConflict ? { resolveConflict: true } : {}),
       source: {
         kind: "jira",
-        issueKey: issue.key,
-        title: jiraRunTitle(issue),
-        // The issue only. How to report back is the prompt builder's job — it
-        // is the half that knows how this harness namespaces the tools, and it
-        // puts the instruction where the model weights it (the end) instead of
-        // in the middle of the issue body.
-        body: renderIssueForPrompt(issue),
+        issueKeys: opts.issueKeys,
+        title: opts.title,
+        // The issue(s) only. How to report back is the prompt builder's job —
+        // it is the half that knows how this harness namespaces the tools, and
+        // it puts the instruction where the model weights it (the end) instead
+        // of in the middle of the issue body.
+        body: opts.body,
       },
     });
   } catch (err) {

@@ -132,6 +132,66 @@ RUN apt-get update \
   && npm install -g "playwright-core@${PLAYWRIGHT_VERSION}" \
   && chromium --version
 
+# Flutter SDK, for repos that are apps rather than websites. Three things use
+# it: `flutter analyze` / `flutter test` as the repo's own checks, and
+# `flutter build web` as the ONLY way an agent here can look at the UI — a
+# mobile app has no deploy preview and no emulator (EKS nodes have no
+# /dev/kvm), so compiling to web and pointing the chromium above at it is the
+# whole QA story. See skills/flutter-app.
+#
+# Measured on arm64: 10s clone + 6s precache, and 1.1GB once the web SDK lands.
+# `--web` in the precache is what keeps that download off the first run.
+# No Android SDK: `flutter build apk` belongs in the repo's CI, and it would
+# cost multiples of this layer.
+#
+# ⚠️ The version is a pin that DRIFTS: `flutter analyze` disagrees with itself
+# across releases, so a repo whose CI pins another version gets findings its
+# own gate would not produce. The skill makes the agent check the repo's pin
+# against this and say so; bump here when that stops matching reality.
+ARG FLUTTER_VERSION=3.41.2
+#
+# FLUTTER_SUPPRESS_ANALYTICS rather than `flutter --disable-analytics`: that
+# command writes a per-user config file, and this layer runs as root while
+# every run is the `sandbox` user — so it would suppress nothing where it
+# matters and leave a first-run notice in the agent's output.
+#
+# PUB_CACHE is set for THIS layer only (reset below): pub bakes absolute cache
+# paths into flutter_tools' package_config.json and its snapshot, and the
+# default /root/.pub-cache is 0700 — unreadable by the `sandbox` user that runs
+# every command here, so the tool re-resolved its own deps on each invocation
+# and died writing to the read-only SDK.
+ENV FLUTTER_ROOT=/opt/flutter \
+    FLUTTER_SUPPRESS_ANALYTICS=true \
+    PUB_CACHE=/opt/pub-cache \
+    PATH=/opt/flutter/bin:$PATH
+RUN git clone --depth 1 -b "${FLUTTER_VERSION}" \
+      https://github.com/flutter/flutter.git /opt/flutter \
+  # git refuses to operate in a tree owned by another uid, and the sandbox user
+  # is not the root that cloned it.
+  && git config --system --add safe.directory /opt/flutter \
+  && flutter precache --universal --web --no-android --no-ios \
+  # `bin/flutter` rewrites these three on EVERY invocation — engine.stamp and
+  # engine.realm from bin/internal/update_engine_version.sh, lockfile from the
+  # tool's cache lock — and it runs under `set -e`, so on the read-only rootfs
+  # the sandbox uses (deploy/helm/sandbox-env) every flutter command aborted
+  # before it started. They are per-invocation state, not artifacts, so point
+  # them at /tmp, which is writable there.
+  && for f in engine.stamp engine.realm lockfile; do \
+       rm -f "/opt/flutter/bin/cache/$f" \
+       && ln -s "/tmp/flutter-$f" "/opt/flutter/bin/cache/$f"; \
+     done \
+  && chown -R sandbox:sandbox /opt/flutter \
+  && chmod -R a+rX /opt/pub-cache \
+  # Same reason deno and gh are symlinked here: Debian's /etc/profile resets
+  # PATH, so anything reached only through this image's ENV PATH disappears in
+  # a login shell. `bash -lc flutter` is "command not found" without these.
+  && ln -s /opt/flutter/bin/flutter /usr/local/bin/flutter \
+  && ln -s /opt/flutter/bin/dart /usr/local/bin/dart \
+  && flutter --version
+# A run's own `flutter pub get` must write somewhere writable; /opt/pub-cache is
+# read-only baked SDK state. /home/sandbox is the per-pod ephemeral volume.
+ENV PUB_CACHE=/home/sandbox/.pub-cache
+
 # Install the typegen build produced from this exact source revision. Installing
 # from npm here would race the post-merge package release and could bake the
 # previous CLI, which does not discover the materialized endpoint file.

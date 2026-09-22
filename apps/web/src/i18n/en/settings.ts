@@ -92,25 +92,14 @@ export const settings = {
   "settings.jira.testRunFailed": "Could not start the run",
   "settings.jira.testRunHelp":
     "This is a real run: the agent reads the actual issue, comments on it, and may move it. Running it again stops whatever run is still working that issue. Type “/” to insert the same skill the column rule would use.",
+  "settings.jira.continuePr":
+    "Continue the pull request the issue already carries (a re-run after a review asked for changes)",
+  "settings.jira.continuePrRuleHelp":
+    "Checked on every card that enters this status: one that already carries an open pull request continues it, one with none starts fresh. Leave it off on a review status.",
+  "settings.jira.together":
+    "One run for all of them — the agent sees every issue and works them as a batch, instead of one run per issue",
+  "settings.jira.togetherStarted": "Started one run on",
   "settings.jira.testRunWatch": "Watch runs in Monitor",
-  "settings.jira.mergeLabel": "Merge the pull requests",
-  "settings.jira.mergeDescription":
-    "Land the pull request each issue carries as a web link. A green one merges straight away and costs no agent run \u2014 only a merge conflict starts one, to rebase and push the same pull request.",
-  "settings.jira.mergeIssueAriaLabel": "Jira issue keys or links to merge",
-  "settings.jira.merge": "Merge {count}",
-  "settings.jira.mergeRunning": "Merging\u2026",
-  "settings.jira.mergeMerged": "Merged",
-  "settings.jira.mergeResolving":
-    "conflict \u2014 an agent is rebasing it; merge again when it finishes",
-  "settings.jira.mergeNoPr": "no pull request on this issue",
-  "settings.jira.mergeStarted": "Merging",
-  "settings.jira.mergeWhereResults":
-    "What each pull request did is posted as a comment on its issue \u2014 the batch keeps going even if you leave this page.",
-  "settings.jira.mergeNotOpen":
-    "its newest pull request is closed \u2014 a person closed it, so reviving an older one is their call",
-  "settings.jira.mergeFailed": "Could not merge",
-  "settings.jira.mergeHelp":
-    "Merged in the order given, because landing one moves the base under the next.",
   "settings.syncedRepos.pageDescription":
     "Git repositories mirrored into read-only library folders and kept in sync every few minutes. Great for a shared skills repo.",
   "settings.syncedRepos.addRepo": "Add repo",
@@ -158,6 +147,8 @@ export const settings = {
     "Members with repository permissions in {organization} can use the repositories you authorize here.",
   "settings.repositories.githubSelectHint":
     "Choose up to 500 repositories for this workspace.",
+  "settings.repositories.githubPreselectedHint":
+    "Previously authorized or linked repositories are already selected when you have permission to authorize them. Review the selection before saving.",
   "settings.repositories.githubReplaceHint":
     "Saving replaces this account’s existing workspace access with your selection. Removed repositories stop receiving new credentials. Previously issued credentials may work until they expire.",
   "settings.repositories.githubFilterRepos": "Search repositories",
@@ -203,9 +194,32 @@ export const settings = {
   "settings.repositories.authKindGithubApp": "GitHub App",
   "settings.repositories.authKindOauth": "OAuth",
   "settings.repositories.authKindToken": "Personal token",
-  "settings.repositories.needsReconnect": "Needs reconnect",
-  "settings.repositories.needsReconnectHint":
-    "This deployment can no longer authenticate as this account. Reconnect it to restore access to its private repositories.",
+  "settings.repositories.accessUnavailable": "Access unavailable",
+  "settings.repositories.accessUnavailableHint":
+    "Studio cannot access this account. Authorize it again to continue using its repositories.",
+  "settings.repositories.githubReconnect": "Reconnect GitHub",
+  "settings.repositories.authorizeWorkspaceAccess":
+    "Authorize workspace access",
+  "settings.repositories.selectRepositories": "Select repositories",
+  "settings.repositories.authorizationRequired":
+    "Workspace authorization required",
+  "settings.repositories.authorizationRequiredHint":
+    "Studio has a GitHub App installation recorded for {login}, but this workspace has no authorization to use it. Sign in to GitHub and choose the repositories to share with this workspace.",
+  "settings.repositories.accessRevoked": "Access revoked",
+  "settings.repositories.accessRevokedHint":
+    "Access to this account was revoked. Authorize it again to restore repository access.",
+  "settings.repositories.noAuthorizedRepositories":
+    "No repositories authorized",
+  "settings.repositories.noAuthorizedRepositoriesHint":
+    "This workspace has no repositories authorized through {login}. Select which repositories it can use.",
+  "settings.repositories.providerUnavailable": "Provider unavailable",
+  "settings.repositories.providerUnavailableHint":
+    "This deployment is not configured to access this account. Ask an administrator to enable the provider.",
+  "settings.repositories.installationMissing": "GitHub connection incomplete",
+  "settings.repositories.installationMissingHint":
+    "Studio has no GitHub App installation linked to this account. Connect GitHub and select the installation for {login}.",
+  "settings.repositories.githubReconnectUnavailable":
+    "GitHub reconnection is unavailable on this deployment. Ask an administrator to configure the GitHub App, then authorize workspace access.",
   "settings.repositories.disconnect": "Disconnect",
   "settings.repositories.disconnectTitle": 'Disconnect "{login}"?',
   "settings.repositories.disconnectDescription":
@@ -303,7 +317,6 @@ export const settings = {
   "settings.nav.agents": "Projects",
   "settings.nav.automations": "Automations",
   "settings.nav.skills": "Skills",
-  "settings.nav.store": "Store",
   "settings.nav.monitor": "Monitor",
   "settings.nav.members": "Members",
   "settings.nav.security": "Security",
@@ -326,9 +339,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.compactPageLayout": "Consistent Layout (beta)",
+  "settings.preferences.compactPageLayout": "New Layout",
   "settings.preferences.compactPageLayoutDescription":
-    "Try the redesigned navigation, page headers, and controls in this browser. Turn it off to return to the current layout.",
+    "Try the redesigned navigation, page headers, and controls. Turn it off to return to the current layout.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",
@@ -900,40 +913,6 @@ export const settings = {
   "settings.orgSso.testSsoButton": "Test SSO",
   "settings.orgSso.toggleEnforcementError": "Failed to toggle SSO enforcement",
   "settings.orgSso.updateButton": "Update",
-  "settings.orgStore.addRegistry": "Add Registry",
-  "settings.orgStore.adding": "Adding...",
-  "settings.orgStore.authTokenLabel": "Auth Token",
-  "settings.orgStore.authTokenPlaceholder": "Bearer token...",
-  "settings.orgStore.cancel": "Cancel",
-  "settings.orgStore.communityRegistryDescription":
-    "Community MCP registry with thousands of handy MCPs",
-  "settings.orgStore.communityRegistryNotAdded":
-    "Community MCP registry — not yet added",
-  "settings.orgStore.communitySection": "Community",
-  "settings.orgStore.connectionNotFound":
-    "Connection not found — will be created automatically.",
-  "settings.orgStore.decoStoreDescription":
-    "Official deco MCP registry with curated integrations",
-  "settings.orgStore.decoStoreName": "Deco Store",
-  "settings.orgStore.decoStoreSection": "Deco Store",
-  "settings.orgStore.failedAddRegistry": "Failed to add registry: {error}",
-  "settings.orgStore.failedLoadStoreSettings": "Failed to load store settings:",
-  "settings.orgStore.mcpRegistry": "MCP Registry",
-  "settings.orgStore.nameLabel": "Name",
-  "settings.orgStore.namePlaceholder": "e.g. Acme Corp Registry",
-  "settings.orgStore.optional": "Optional",
-  "settings.orgStore.pageTitle": "Store",
-  "settings.orgStore.privateMcpRegistry": "Private MCP registry",
-  "settings.orgStore.privateRegistriesSection": "Private Registries",
-  "settings.orgStore.privateRegistry": "Private Registry",
-  "settings.orgStore.privateRegistryAdded": "Private registry added",
-  "settings.orgStore.privateRegistryDescription":
-    "Your organization's private MCP registry",
-  "settings.orgStore.registryUrlLabel": "Registry URL",
-  "settings.orgStore.registryUrlPlaceholder":
-    "https://registry.example.com/mcp",
-  "settings.orgStore.remove": "Remove",
-  "settings.orgStore.removeRegistry": "Remove this registry?",
   "settings.organizationForm.failedToReadImage": "Failed to read image",
   "settings.organizationForm.failedToUpdateOrg":
     "Failed to update organization",
@@ -941,7 +920,9 @@ export const settings = {
   "settings.organizationForm.logoDescription": "Recommended size is 256x256px",
   "settings.organizationForm.logoTitle": "Logo",
   "settings.organizationForm.namePlaceholder": "Organization name",
+  "settings.organizationForm.nameRequired": "Name is required",
   "settings.organizationForm.nameTitle": "Name",
+  "settings.organizationForm.nameTooLong": "Name is too long",
   "settings.organizationForm.updateSuccess":
     "Organization updated successfully",
   "settings.organizationForm.uploadLogoLabel": "Upload organization logo",
@@ -1137,4 +1118,45 @@ export const settings = {
   "settings.infraBilling.statusPaid": "Paid",
   "settings.infraBilling.statusOverdue": "Overdue",
   "settings.infraBilling.statusPending": "Pending",
+  "settings.gitCredentials.title": "Git credentials",
+  "settings.gitCredentials.description":
+    "Personal access tokens for private git repositories your projects pull from but a sandbox cannot otherwise reach — submodules, and private dependencies resolved by pub, go, npm or cargo. Used by every sandbox in this organization. Reference an org/user secret per host; SSH URLs are rewritten to HTTPS so the token applies.",
+  "settings.gitCredentials.addCredential": "Add git credential",
+  "settings.gitCredentials.cancel": "Cancel",
+  "settings.gitCredentials.createNewSecret": "Create new secret",
+  "settings.gitCredentials.createNewSecretAriaLabel": "Create new secret",
+  "settings.gitCredentials.createNewSecretDescription":
+    "Stored encrypted in the credential vault. The git credential will reference the new secret by id — its value never leaves the server.",
+  "settings.gitCredentials.createNewSecretTitle": "Create new secret",
+  "settings.gitCredentials.descriptionLabel": "Description (optional)",
+  "settings.gitCredentials.descriptionPlaceholder":
+    "What is this token used for?",
+  "settings.gitCredentials.failedToLoadSecrets": "Failed to load secrets",
+  "settings.gitCredentials.failedToSave": "Failed to save git credentials",
+  "settings.gitCredentials.failedToSaveSecret": "Failed to save",
+  "settings.gitCredentials.hostAriaLabel": "Git credential {index} host",
+  "settings.gitCredentials.hostInvalidMessage":
+    "Bare hostname, e.g. github.com (no scheme or path).",
+  "settings.gitCredentials.hostPlaceholder": "github.com",
+  "settings.gitCredentials.nameLabel": "Name",
+  "settings.gitCredentials.namePlaceholder": "GITHUB_DEPS_PAT",
+  "settings.gitCredentials.nameHelperText":
+    "Letters, digits, underscore, dot, hyphen.",
+  "settings.gitCredentials.noSecretsYet":
+    'No secrets yet. Use the "+" to create one.',
+  "settings.gitCredentials.pickSecretPlaceholder": "Pick a secret…",
+  "settings.gitCredentials.remove": "Remove",
+  "settings.gitCredentials.removeAriaLabel": "Remove git credential",
+  "settings.gitCredentials.saveSecret": "Save secret",
+  "settings.gitCredentials.saving": "Saving…",
+  "settings.gitCredentials.secretAriaLabel": "Git credential {index} secret",
+  "settings.gitCredentials.scopeLabel": "Scope",
+  "settings.gitCredentials.scopeOrganization":
+    "Organization — visible to all members",
+  "settings.gitCredentials.scopePrivate": "Private — only visible to me",
+  "settings.gitCredentials.secretSaved": 'Saved secret "{name}"',
+  "settings.gitCredentials.tokenExposureWarning":
+    "The token is installed in the sandbox's git config for the session, so commands and agents running there can use it. Scope it to the repositories it needs.",
+  "settings.gitCredentials.tokenLabel": "Personal access token",
+  "settings.gitCredentials.tokenPlaceholder": "ghp_…",
 } as const;

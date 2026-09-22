@@ -14,7 +14,11 @@ import { DownstreamTokenStorage } from "@/storage/downstream-token";
 import { ensureRepoScopedToken } from "@/oauth/github-mint";
 import { getRepoScope } from "@decocms/shared/github-repo-scope";
 import type { ConnectionEntity } from "@/tools/connection/schema";
-import { writeStudioHeader } from "@/core/studio-headers";
+import {
+  LEGACY_HEADERS,
+  STUDIO_HEADERS,
+  writeStudioHeader,
+} from "@/core/studio-headers";
 
 /**
  * Strip `__binding` from configuration state values before embedding in JWTs.
@@ -74,14 +78,27 @@ export function serializeRunMetadataHeader(
   return isHeaderSafe(serialized) ? serialized : null;
 }
 
+// Names Studio computes itself and merges custom headers over afterwards — a same-named (case-insensitive) custom header would silently override them.
+const RESERVED_HEADER_NAMES = new Set(
+  [
+    "authorization",
+    "x-caller-id",
+    "x-request-id",
+    ...Object.values(STUDIO_HEADERS),
+    ...Object.values(LEGACY_HEADERS),
+  ].map((name) => name.toLowerCase()),
+);
+
 /**
  * Drop any org-configured custom connection header whose key or value is
  * unsafe (outside the HTTP header ByteString range, or containing a raw
- * CR/LF) or oversized — unlike `configuration_state`/`metadata`,
- * `connection_headers.headers` has no schema-level size or byte-range check,
- * but flows straight into every outbound request's headers, where an unsafe
- * key or value throws in `fetch`/undici and an oversized value gets the
- * request rejected with 431 by the downstream server/proxy.
+ * CR/LF), oversized, or reserved for Studio's own auth/identity headers —
+ * unlike `configuration_state`/`metadata`, `connection_headers.headers` has
+ * no schema-level size, byte-range, or name check, but flows straight into
+ * every outbound request's headers, where an unsafe key or value throws in
+ * `fetch`/undici, an oversized value gets the request rejected with 431 by
+ * the downstream server/proxy, and a reserved name overrides Studio's own
+ * computed auth headers.
  */
 export function sanitizeCustomHeaders(
   headers: Record<string, string> | undefined,
@@ -93,10 +110,11 @@ export function sanitizeCustomHeaders(
     if (
       !isHeaderSafe(key) ||
       byteLength > MAX_HEADER_VALUE_BYTES ||
-      !isHeaderSafe(value)
+      !isHeaderSafe(value) ||
+      RESERVED_HEADER_NAMES.has(key.toLowerCase())
     ) {
       console.warn(
-        `[Proxy] Dropping unsafe or oversized custom header "${key}"`,
+        `[Proxy] Dropping unsafe, oversized, or reserved custom header "${key}"`,
       );
       continue;
     }

@@ -662,6 +662,10 @@ export function SandboxLifecycleProvider({
     userStopped,
     alreadyHandled: claimRetryEpisode.handled,
   });
+  // oxlint-disable react/set-state-in-effect
+  // A one-shot latch consuming a retry budget: running it during render would
+  // fire it again on every re-render, which is the bug the `handled` flag exists
+  // to prevent.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- bridges the SSE failed phase into a one-shot bounded reprovision
   useEffect(() => {
     if (!failedPhase) {
@@ -706,6 +710,7 @@ export function SandboxLifecycleProvider({
     setCurrentTaskBranch,
     setSeededPreviewUrl,
   ]);
+  // oxlint-enable react/set-state-in-effect
 
   // User-driven actions.
   const start = () => {

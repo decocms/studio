@@ -145,11 +145,12 @@ export default function SignalDeck({
     navTimerRef.current = setTimeout(() => setNavVisible(false), 400);
   };
 
-  // Effect Events let the long-lived keyboard/wheel/touch listeners read the
-  // latest slide index without render-time ref mutation or listener churn.
-  const go = useEffectEvent((i: number) => {
-    // Every navigation path (keyboard, wheel/swipe, rail, footer, in-slide
-    // links) funnels through here, so gating it is enough to gate the deck.
+  /** Every navigation path (keyboard, wheel/swipe, rail, footer, in-slide
+   *  links) funnels through here, so gating it is enough to gate the deck.
+   *  Plain function: event handlers must NOT call an Effect Event, so this is
+   *  what JSX calls, and `go` below is the Effect Event wrapper the long-lived
+   *  listeners use. */
+  const goTo = (i: number) => {
     if (!authenticated && i > 0) {
       setAuthGateOpen(true);
       return;
@@ -161,7 +162,11 @@ export default function SignalDeck({
     setIndex(clamped);
     announceSlide(clamped);
     flashNav();
-  });
+  };
+
+  // Effect Events let the long-lived keyboard/wheel/touch listeners read the
+  // latest slide index without render-time ref mutation or listener churn.
+  const go = useEffectEvent((i: number) => goTo(i));
 
   // Advance one slide per gesture, then lock briefly so momentum scroll or a
   // long swipe doesn't fly through several slides at once.
@@ -251,6 +256,9 @@ export default function SignalDeck({
           el.isContentEditable)
       );
     };
+    // oxlint-disable react-hooks/rules-of-hooks -- `go` is an Effect Event and
+    // this listener IS effect scope; it is registered from a callback ref
+    // rather than a useEffect (banned here), which the rule cannot recognise.
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
       if (["ArrowDown", "ArrowRight", "PageDown", " "].includes(e.key)) {
@@ -261,6 +269,7 @@ export default function SignalDeck({
         go(index - 1);
       }
     };
+    // oxlint-enable react-hooks/rules-of-hooks
     window.addEventListener("keydown", onKey);
 
     return () => {
@@ -319,6 +328,10 @@ export default function SignalDeck({
       const delta = vertical ? e.deltaY : e.deltaX;
       if (Math.abs(delta) < 12) return;
       e.preventDefault();
+      // `step` is an Effect Event and this gesture listener IS effect scope:
+      // it is wired from a callback ref rather than a useEffect (banned here),
+      // which the rule cannot recognise.
+      // oxlint-disable-next-line react-hooks/rules-of-hooks
       step(delta > 0 ? 1 : -1);
     };
 
@@ -366,6 +379,10 @@ export default function SignalDeck({
       // horizontal swipe inside a carousel → it scrolled; don't also step.
       if (Math.abs(dx) > Math.abs(dy) && inHorizontalScroller(startTarget))
         return;
+      // `step` is an Effect Event and this gesture listener IS effect scope:
+      // it is wired from a callback ref rather than a useEffect (banned here),
+      // which the rule cannot recognise.
+      // oxlint-disable-next-line react-hooks/rules-of-hooks
       step(d > 0 ? 1 : -1);
     };
 
@@ -438,7 +455,10 @@ export default function SignalDeck({
   // is stamped on both the URL (recipient reads it back → inbound_share_id) and
   // the report_slide_shared event, so the share graph joins who-shared-what
   // to who-opened-it. utm_source=share lets us split share traffic in analytics.
+  // `react/purity` does not narrow to the render phase: this is only ever
+  // called from a share handler, where a fresh random id is the point.
   const newShareId = (s: DeckSlide) =>
+    // oxlint-disable-next-line react/purity
     `${deck.meta.domain}:${s.key}:${Math.random().toString(36).slice(2, 10)}`;
 
   const buildShareUrl = (s: DeckSlide, shareId: string) => {
@@ -728,7 +748,7 @@ export default function SignalDeck({
                     // clicked is past the gate" — step forward so `go` shows
                     // the sign-in prompt instead of silently doing nothing.
                     const i = deck.slides.findIndex((sl) => sl.key === key);
-                    go(i >= 0 ? i : index + 1);
+                    goTo(i >= 0 ? i : index + 1);
                   }}
                 />
               </div>
@@ -752,7 +772,7 @@ export default function SignalDeck({
               key={s.key}
               type="button"
               aria-label={t("reports.signalDeck.goToSlide", { title: s.title })}
-              onClick={() => go(i)}
+              onClick={() => goTo(i)}
               className="group relative flex h-5 items-center justify-end"
             >
               <span
@@ -778,7 +798,7 @@ export default function SignalDeck({
               aria-label={t("reports.signalDeck.goToSlide", {
                 title: entry.title,
               })}
-              onClick={() => go(index + 1)}
+              onClick={() => goTo(index + 1)}
               className="group relative flex h-5 items-center justify-end"
             >
               <span
@@ -1122,7 +1142,7 @@ export default function SignalDeck({
               <div className="flex items-center gap-1 sm:hidden">
                 <button
                   type="button"
-                  onClick={() => go(index - 1)}
+                  onClick={() => goTo(index - 1)}
                   disabled={index === 0}
                   aria-label={t("reports.signalDeck.previousSlide")}
                   className="grid h-12 w-12 place-items-center classic:rounded-full compact:rounded-lg border disabled:opacity-30"
@@ -1136,7 +1156,7 @@ export default function SignalDeck({
                 </button>
                 <button
                   type="button"
-                  onClick={() => go(index + 1)}
+                  onClick={() => goTo(index + 1)}
                   aria-label={t("reports.signalDeck.nextSlide")}
                   className="grid h-12 w-12 place-items-center classic:rounded-full compact:rounded-lg"
                   style={{ background: DECK.primary, color: DECK.primaryFg }}
@@ -1147,7 +1167,7 @@ export default function SignalDeck({
               {/* desktop: text button */}
               <button
                 type="button"
-                onClick={() => go(index + 1)}
+                onClick={() => goTo(index + 1)}
                 className="hidden h-12 items-center gap-2 classic:rounded-full compact:rounded-lg px-6 text-sm font-medium sm:inline-flex"
                 style={{ background: DECK.primary, color: DECK.primaryFg }}
               >

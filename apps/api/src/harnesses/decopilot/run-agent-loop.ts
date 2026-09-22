@@ -19,11 +19,11 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import {
-  stepCountIs,
+  isStepCount,
   type ModelMessage,
   type SystemModelMessage,
   type ToolSet,
-  type StreamTextOnStepFinishCallback,
+  type GenerateTextOnStepEndCallback,
   type UIMessageStreamWriter,
 } from "ai";
 import type { ModelsConfig } from "@/harnesses/lib/types";
@@ -90,7 +90,7 @@ export interface RunAgentLoopOptions {
   tracer?: Tracer;
   writer: UIMessageStreamWriter;
   subtaskParams: SubtaskParams;
-  onStepFinish?: StreamTextOnStepFinishCallback<ToolSet>;
+  onStepFinish?: GenerateTextOnStepEndCallback<ToolSet>;
   onUsageAggregated?: (usage: UsageStats) => void;
 
   // ── Parent-supplied overrides ──────────────────────────────────────
@@ -235,7 +235,7 @@ export async function runAgentLoop(
   // name can be mangled, so we key off the built-in `bash` tool + its command.)
   // `currentThreadId` lets the resolution fall back to the thread link when the
   // run carries no `runMetadata.taskBoardItemId` (a re-prompted task's 2nd PR).
-  const onStepFinish: StreamTextOnStepFinishCallback<ToolSet> = (step) => {
+  const onStepFinish: GenerateTextOnStepEndCallback<ToolSet> = (step) => {
     for (const call of step.toolCalls ?? []) {
       const command = (call.input as { command?: string } | undefined)?.command;
       if (
@@ -275,7 +275,7 @@ export async function runAgentLoop(
         estimateJsonTokens(opts.messages) +
         estimateJsonTokens(selectActiveTools(tools, opts.activeToolNames)),
     ),
-    stopWhen: stepCountIs(stepLimit),
+    stopWhen: isStepCount(stepLimit),
     abortSignal: opts.abortSignal,
     onStepFinish,
     streamText: (opts as { __streamText?: typeof import("ai").streamText })

@@ -25,7 +25,7 @@ import {
 import { ProductCardBlock, ProductShelfBlock } from "./product-blocks";
 import { TableBlock } from "./table-block";
 import { blockComponentName, isBlogPostBlockResolveType } from "../blog-data";
-import { str } from "./primitives";
+import { jsonField, str } from "./primitives";
 
 export type RawBlock = { __resolveType?: string } & Record<string, unknown>;
 
@@ -139,18 +139,14 @@ export function BlockEditor({
       case "StatGroup":
         return (
           <StatGroupBlock
-            stats={str(block.stats)}
+            stats={jsonField(block.stats)}
             onChange={(stats) => onChange({ ...block, stats })}
           />
         );
       case "CardGroup":
         return (
           <CardGroupBlock
-            cards={
-              typeof block.cards === "string"
-                ? block.cards
-                : JSON.stringify(block.cards ?? [])
-            }
+            cards={jsonField(block.cards)}
             onChange={(cards) => onChange({ ...block, cards })}
           />
         );
@@ -158,7 +154,7 @@ export function BlockEditor({
         return (
           <ChecklistBlock
             title={str(block.title)}
-            items={str(block.items)}
+            items={jsonField(block.items)}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
@@ -166,31 +162,23 @@ export function BlockEditor({
         return (
           <StepsBlock
             title={str(block.title)}
-            steps={str(block.steps)}
+            steps={jsonField(block.steps)}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
       case "Comparison":
         return (
           <ComparisonBlock
-            left={str(block.left)}
-            right={str(block.right)}
+            left={jsonField(block.left, {})}
+            right={jsonField(block.right, {})}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );
       case "Table":
         return (
           <TableBlock
-            headers={
-              typeof block.headers === "string"
-                ? block.headers
-                : JSON.stringify(block.headers ?? [])
-            }
-            rows={
-              typeof block.rows === "string"
-                ? block.rows
-                : JSON.stringify(block.rows ?? [])
-            }
+            headers={jsonField(block.headers)}
+            rows={jsonField(block.rows)}
             onChange={(next) => onChange({ ...block, ...next })}
           />
         );

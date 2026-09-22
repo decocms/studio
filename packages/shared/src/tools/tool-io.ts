@@ -71,15 +71,7 @@ export interface StudioToolIO {
         | { title: string; url: string; icon: string }[]
         | null
         | undefined;
-      enabled_plugins?: string[] | null | undefined;
       coding_agent_mcp_excluded?: string[] | null | undefined;
-      registry_config?:
-        | {
-            registries: Record<string, { enabled: boolean }>;
-            blockedMcps: string[];
-          }
-        | null
-        | undefined;
       simple_mode?:
         | {
             tiers: {
@@ -142,6 +134,10 @@ export interface StudioToolIO {
           }
         | null
         | undefined;
+      submodule_credentials?:
+        | { host: string; secretId: string }[]
+        | null
+        | undefined;
       createdAt?: string | undefined;
       updatedAt?: string | undefined;
     };
@@ -152,14 +148,7 @@ export interface StudioToolIO {
       sidebar_items?:
         | { title: string; url: string; icon: string }[]
         | undefined;
-      enabled_plugins?: string[] | undefined;
       coding_agent_mcp_excluded?: string[] | undefined;
-      registry_config?:
-        | {
-            registries: Record<string, { enabled: boolean }>;
-            blockedMcps: string[];
-          }
-        | undefined;
       simple_mode?:
         | {
             tiers: {
@@ -220,6 +209,7 @@ export interface StudioToolIO {
             cms_auto_fresh_branch?: boolean | undefined;
           }
         | undefined;
+      submodule_credentials?: { host: string; secretId: string }[] | undefined;
     };
     output: {
       organizationId: string;
@@ -229,15 +219,7 @@ export interface StudioToolIO {
         | { title: string; url: string; icon: string }[]
         | null
         | undefined;
-      enabled_plugins?: string[] | null | undefined;
       coding_agent_mcp_excluded?: string[] | null | undefined;
-      registry_config?:
-        | {
-            registries: Record<string, { enabled: boolean }>;
-            blockedMcps: string[];
-          }
-        | null
-        | undefined;
       simple_mode?:
         | {
             tiers: {
@@ -298,6 +280,10 @@ export interface StudioToolIO {
             delivery_lanes_enabled?: boolean | undefined;
             cms_auto_fresh_branch?: boolean | undefined;
           }
+        | null
+        | undefined;
+      submodule_credentials?:
+        | { host: string; secretId: string }[]
         | null
         | undefined;
     };
@@ -366,6 +352,7 @@ export interface StudioToolIO {
       dueDate?: string | null | undefined;
       tagIds?: string[] | undefined;
       prUrl?: string | null | undefined;
+      onDuplicate?: "create" | "return_existing" | undefined;
     };
     output: {
       item: {
@@ -388,6 +375,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -433,6 +421,9 @@ export interface StudioToolIO {
         updatedBy: string;
         updatedAt: string;
       };
+      deduplicated: boolean;
+      duplicateCheck: "off" | "matched" | "no_match" | "skipped";
+      duplicateReason: string | null;
     };
   };
   TASK_BOARD_ITEM_LIST: {
@@ -458,6 +449,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -555,6 +547,7 @@ export interface StudioToolIO {
         assigneeId: string | null;
         assignedBy: string | null;
         repo: string | null;
+        repositoryId: string | null;
         dueDate: string | null;
         sortOrder: number;
         keySeq: number | null;
@@ -666,6 +659,10 @@ export interface StudioToolIO {
     input: { id: string };
     output: { status: string; supersededThreadIds: string[] };
   };
+  TASK_BOARD_RUN_REVIEWER: {
+    input: { id: string };
+    output: { queued: boolean };
+  };
   TASK_BOARD_RESOLVE_CONFLICT: {
     input: { id: string; prNumber: number };
     output: { status: string };
@@ -729,7 +726,8 @@ export interface StudioToolIO {
           | "tags_changed"
           | "review_verdict_requested"
           | "merge_conflict_resolution"
-          | "type_changed";
+          | "type_changed"
+          | "duplicate_reported";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -748,6 +746,7 @@ export interface StudioToolIO {
         resolved: boolean;
         createdAt: string;
         updatedAt: string;
+        threadId?: string | null | undefined;
       }[];
     };
   };
@@ -767,6 +766,7 @@ export interface StudioToolIO {
         resolved: boolean;
         createdAt: string;
         updatedAt: string;
+        threadId?: string | null | undefined;
       };
     };
   };
@@ -786,6 +786,7 @@ export interface StudioToolIO {
         resolved: boolean;
         createdAt: string;
         updatedAt: string;
+        threadId?: string | null | undefined;
       };
     };
   };
@@ -2445,7 +2446,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -2475,7 +2475,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -2573,10 +2573,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -2741,8 +2737,8 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
-                            | "manual"
                             | "off"
+                            | "manual"
                             | "auto"
                             | "on"
                             | null
@@ -2846,10 +2842,6 @@ export interface StudioToolIO {
                         )[]
                       | null
                       | undefined;
-                    submoduleCredentials?:
-                      | { host: string; secretId: string }[]
-                      | null
-                      | undefined;
                   }
                 | null
                 | undefined;
@@ -2889,7 +2881,6 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
-              enabled_plugins?: string[] | null | undefined;
             }
           | null
           | undefined;
@@ -2913,7 +2904,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -2943,7 +2933,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3041,10 +3031,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3146,7 +3132,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -3176,7 +3161,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3274,10 +3259,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3370,7 +3351,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -3400,7 +3380,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3498,10 +3478,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -3618,8 +3594,8 @@ export interface StudioToolIO {
                           chatDefaultOpen?: boolean | null | undefined;
                           cmsDefaultOpen?: boolean | null | undefined;
                           cms?:
-                            | "manual"
                             | "off"
+                            | "manual"
                             | "auto"
                             | "on"
                             | null
@@ -3723,10 +3699,6 @@ export interface StudioToolIO {
                         )[]
                       | null
                       | undefined;
-                    submoduleCredentials?:
-                      | { host: string; secretId: string }[]
-                      | null
-                      | undefined;
                   }
                 | null
                 | undefined;
@@ -3766,7 +3738,6 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               fastPreviewInPlace?: boolean | null | undefined;
-              enabled_plugins?: string[] | null | undefined;
             }
           | null
           | undefined;
@@ -3798,7 +3769,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -3828,7 +3798,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -3926,10 +3896,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -4020,7 +3986,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -4050,7 +4015,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -4148,10 +4113,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -4562,6 +4523,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4632,6 +4594,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4678,6 +4641,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4712,6 +4676,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -4754,6 +4719,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4798,6 +4764,7 @@ export interface StudioToolIO {
               runtime?: "cms" | "sandbox" | undefined;
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
+              jira_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4823,7 +4790,7 @@ export interface StudioToolIO {
         id: string;
         thread_id: string;
         parts: Record<string, unknown>[];
-        role: "user" | "system" | "assistant";
+        role: "user" | "assistant" | "system";
         created_at: string;
         updated_at: string;
         metadata?: unknown;
@@ -5038,7 +5005,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "system" | "assistant";
+            role: "user" | "assistant" | "system";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -5112,7 +5079,7 @@ export interface StudioToolIO {
         | string
         | {
             [x: string]: unknown;
-            role: "user" | "system" | "assistant";
+            role: "user" | "assistant" | "system";
             parts: Record<string, unknown>[];
             id?: string | undefined;
             metadata?: unknown;
@@ -5190,39 +5157,6 @@ export interface StudioToolIO {
       };
     };
   };
-  VIRTUAL_MCP_PLUGIN_CONFIG_GET: {
-    input: { virtualMcpId: string; pluginId: string };
-    output: {
-      config: {
-        id: string;
-        virtualMcpId: string;
-        pluginId: string;
-        connectionId: string | null;
-        settings: Record<string, unknown> | null;
-        createdAt: string;
-        updatedAt: string;
-      } | null;
-    };
-  };
-  VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE: {
-    input: {
-      virtualMcpId: string;
-      pluginId: string;
-      connectionId?: string | null | undefined;
-      settings?: Record<string, unknown> | null | undefined;
-    };
-    output: {
-      config: {
-        id: string;
-        virtualMcpId: string;
-        pluginId: string;
-        connectionId: string | null;
-        settings: Record<string, unknown> | null;
-        createdAt: string;
-        updatedAt: string;
-      };
-    };
-  };
   VIRTUAL_MCP_PINNED_VIEWS_UPDATE: {
     input: {
       virtualMcpId: string;
@@ -5261,7 +5195,6 @@ export interface StudioToolIO {
         metadata: {
           [x: string]: unknown;
           instructions: string | null;
-          enabled_plugins?: string[] | null | undefined;
           subAgents?: string[] | null | undefined;
           liveAgentId?: string | null | undefined;
           ui?:
@@ -5291,7 +5224,7 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "manual" | "off" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
@@ -5389,10 +5322,6 @@ export interface StudioToolIO {
                       | { key: string; kind: "literal"; value: string }
                       | { key: string; kind: "secret"; secretId: string }
                     )[]
-                  | null
-                  | undefined;
-                submoduleCredentials?:
-                  | { host: string; secretId: string }[]
                   | null
                   | undefined;
               }
@@ -6053,18 +5982,39 @@ export interface StudioToolIO {
   };
   JIRA_AUTOMATION_LIST: {
     input: { [x: string]: never };
-    output: { automations: { jiraStatus: string; prompt: string | null }[] };
+    output: {
+      automations: {
+        jiraStatus: string;
+        prompt: string | null;
+        continuePr: boolean;
+      }[];
+    };
   };
   JIRA_AUTOMATION_UPSERT: {
-    input: { jiraStatus: string; prompt?: string | null | undefined };
-    output: { automation: { jiraStatus: string; prompt: string | null } };
+    input: {
+      jiraStatus: string;
+      prompt?: string | null | undefined;
+      continuePr?: boolean | undefined;
+    };
+    output: {
+      automation: {
+        jiraStatus: string;
+        prompt: string | null;
+        continuePr: boolean;
+      };
+    };
   };
   JIRA_AUTOMATION_DELETE: {
     input: { jiraStatus: string };
     output: { removed: boolean };
   };
   JIRA_RUN_START: {
-    input: { issueKey: string; prompt?: string | null | undefined };
+    input: {
+      issueKey: string;
+      prompt?: string | null | undefined;
+      together?: boolean | undefined;
+      continuePr?: boolean | undefined;
+    };
     output: {
       started: {
         issueKey: string;
@@ -6076,24 +6026,20 @@ export interface StudioToolIO {
       unreadable: string[];
     };
   };
-  JIRA_PR_MERGE: {
-    input: { issueKey: string };
-    output: { issueKeys: string[]; workflowId: string; unreadable: string[] };
-  };
   JIRA_ISSUE_GET: {
-    input: { [x: string]: never };
+    input: { issueKey?: string | undefined };
     output: { key: string; url: string; status: string; markdown: string };
   };
   JIRA_COMMENT_ADD: {
-    input: { body: string };
+    input: { body: string; issueKey?: string | undefined };
     output: { commentId: string; embeddedImages: string[] };
   };
   JIRA_ISSUE_TRANSITION: {
-    input: { toStatus: string };
+    input: { toStatus: string; issueKey?: string | undefined };
     output: { status: string };
   };
   JIRA_ATTACHMENT_DOWNLOAD: {
-    input: { attachmentId: string };
+    input: { attachmentId: string; issueKey?: string | undefined };
     output: {
       url: string;
       filename: string;
@@ -6105,6 +6051,7 @@ export interface StudioToolIO {
     input: {
       url: string;
       title: string;
+      issueKey?: string | undefined;
       summary?: string | undefined;
       key?: string | undefined;
     };
@@ -6158,336 +6105,6 @@ export interface StudioToolIO {
   DELETE_OBJECTS: {
     input: { keys: string[] };
     output: { deleted: string[]; errors: { key: string; message: string }[] };
-  };
-  COLLECTION_REGISTRY_APP_LIST: {
-    input: {
-      where?: unknown;
-      orderBy?:
-        | {
-            field: string[];
-            direction: "asc" | "desc";
-            nulls?: "first" | "last" | undefined;
-          }[]
-        | undefined;
-      limit?: number | undefined;
-      offset?: number | undefined;
-      tags?: string[] | undefined;
-      categories?: string[] | undefined;
-      cursor?: string | undefined;
-    };
-    output: {
-      items: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      }[];
-      totalCount: number;
-      hasMore?: boolean | undefined;
-      nextCursor?: string | undefined;
-    };
-  };
-  COLLECTION_REGISTRY_APP_GET: {
-    input: { id?: string | undefined; name?: string | undefined };
-    output: {
-      item: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      } | null;
-    };
-  };
-  COLLECTION_REGISTRY_APP_VERSIONS: {
-    input: { id?: string | undefined; name?: string | undefined };
-    output: {
-      versions: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      }[];
-    };
-  };
-  COLLECTION_REGISTRY_APP_FILTERS: {
-    input: { [x: string]: never };
-    output: {
-      tags: { value: string; count: number }[];
-      categories: { value: string; count: number }[];
-    };
   };
   REGISTRY_ITEM_LIST: {
     input: {
@@ -6544,8 +6161,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -6601,6 +6216,8 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
       }[];
       totalCount: number;
@@ -6608,22 +6225,119 @@ export interface StudioToolIO {
       nextCursor?: string | undefined;
     };
   };
-  REGISTRY_ITEM_SEARCH: {
+  COLLECTION_REGISTRY_APP_LIST: {
     input: {
-      query?: string | undefined;
+      where?: unknown;
+      orderBy?:
+        | {
+            field: string[];
+            direction: "asc" | "desc";
+            nulls?: "first" | "last" | undefined;
+          }[]
+        | undefined;
+      limit?: number | undefined;
+      offset?: number | undefined;
       tags?: string[] | undefined;
       categories?: string[] | undefined;
-      limit?: number | undefined;
       cursor?: string | undefined;
     };
     output: {
       items: {
+        [x: string]: unknown;
         id: string;
         title: string;
-        tags: string[];
-        categories: string[];
-        is_public: boolean;
-        is_unlisted: boolean;
+        server: {
+          [x: string]: unknown;
+          name: string;
+          title?: string | undefined;
+          description?: string | undefined;
+          version?: string | undefined;
+          websiteUrl?: string | undefined;
+          icons?: { [x: string]: unknown; src: string }[] | undefined;
+          remotes?:
+            | {
+                [x: string]: unknown;
+                type?: string | undefined;
+                url?: string | undefined;
+                name?: string | undefined;
+                title?: string | undefined;
+                description?: string | undefined;
+              }[]
+            | undefined;
+          packages?:
+            | {
+                [x: string]: unknown;
+                identifier: string;
+                version?: string | undefined;
+              }[]
+            | undefined;
+          repository?:
+            | {
+                [x: string]: unknown;
+                url?: string | undefined;
+                source?: string | undefined;
+                subfolder?: string | undefined;
+              }
+            | undefined;
+        };
+        name?: string | undefined;
+        description?: string | null | undefined;
+        _meta?:
+          | {
+              [x: string]: unknown;
+              "mcp.studio"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+              "mcp.mesh"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+            }
+          | undefined;
+        is_public?: boolean | undefined;
+        is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
+        created_by?: string | undefined;
       }[];
       totalCount: number;
       hasMore?: boolean | undefined;
@@ -6671,8 +6385,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -6728,6 +6440,110 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
+        created_by?: string | undefined;
+      } | null;
+    };
+  };
+  COLLECTION_REGISTRY_APP_GET: {
+    input: { id?: string | undefined; name?: string | undefined };
+    output: {
+      item: {
+        [x: string]: unknown;
+        id: string;
+        title: string;
+        server: {
+          [x: string]: unknown;
+          name: string;
+          title?: string | undefined;
+          description?: string | undefined;
+          version?: string | undefined;
+          websiteUrl?: string | undefined;
+          icons?: { [x: string]: unknown; src: string }[] | undefined;
+          remotes?:
+            | {
+                [x: string]: unknown;
+                type?: string | undefined;
+                url?: string | undefined;
+                name?: string | undefined;
+                title?: string | undefined;
+                description?: string | undefined;
+              }[]
+            | undefined;
+          packages?:
+            | {
+                [x: string]: unknown;
+                identifier: string;
+                version?: string | undefined;
+              }[]
+            | undefined;
+          repository?:
+            | {
+                [x: string]: unknown;
+                url?: string | undefined;
+                source?: string | undefined;
+                subfolder?: string | undefined;
+              }
+            | undefined;
+        };
+        name?: string | undefined;
+        description?: string | null | undefined;
+        _meta?:
+          | {
+              [x: string]: unknown;
+              "mcp.studio"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+              "mcp.mesh"?:
+                | {
+                    [x: string]: unknown;
+                    verified?: boolean | undefined;
+                    official?: boolean | undefined;
+                    tags?: string[] | undefined;
+                    categories?: string[] | undefined;
+                    friendly_name?: string | null | undefined;
+                    short_description?: string | null | undefined;
+                    owner?: string | null | undefined;
+                    readme?: string | null | undefined;
+                    readme_url?: string | null | undefined;
+                    has_remote?: boolean | undefined;
+                    has_oauth?: boolean | undefined;
+                    tools?:
+                      | {
+                          [x: string]: unknown;
+                          name: string;
+                          description?: string | null | undefined;
+                        }[]
+                      | undefined;
+                  }
+                | undefined;
+            }
+          | undefined;
+        is_public?: boolean | undefined;
+        is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
       } | null;
     };
@@ -6773,8 +6589,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -6830,106 +6644,16 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
       }[];
     };
   };
-  REGISTRY_ITEM_CREATE: {
-    input: {
-      data: {
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-      };
-    };
+  COLLECTION_REGISTRY_APP_VERSIONS: {
+    input: { id?: string | undefined; name?: string | undefined };
     output: {
-      item: {
+      versions: {
         [x: string]: unknown;
         id: string;
         title: string;
@@ -6967,8 +6691,6 @@ export interface StudioToolIO {
               }
             | undefined;
         };
-        created_at: string;
-        updated_at: string;
         name?: string | undefined;
         description?: string | null | undefined;
         _meta?:
@@ -7024,402 +6746,10 @@ export interface StudioToolIO {
           | undefined;
         is_public?: boolean | undefined;
         is_unlisted?: boolean | undefined;
+        created_at?: string | undefined;
+        updated_at?: string | undefined;
         created_by?: string | undefined;
-      };
-    };
-  };
-  REGISTRY_ITEM_BULK_CREATE: {
-    input: {
-      items: {
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
       }[];
-    };
-    output: { created: number; errors: { id: string; error: string }[] };
-  };
-  REGISTRY_ITEM_UPDATE: {
-    input: {
-      id: string;
-      data: {
-        title?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        server?:
-          | {
-              [x: string]: unknown;
-              name: string;
-              title?: string | undefined;
-              description?: string | undefined;
-              version?: string | undefined;
-              websiteUrl?: string | undefined;
-              icons?: { [x: string]: unknown; src: string }[] | undefined;
-              remotes?:
-                | {
-                    [x: string]: unknown;
-                    type?: string | undefined;
-                    url?: string | undefined;
-                    name?: string | undefined;
-                    title?: string | undefined;
-                    description?: string | undefined;
-                  }[]
-                | undefined;
-              packages?:
-                | {
-                    [x: string]: unknown;
-                    identifier: string;
-                    version?: string | undefined;
-                  }[]
-                | undefined;
-              repository?:
-                | {
-                    [x: string]: unknown;
-                    url?: string | undefined;
-                    source?: string | undefined;
-                    subfolder?: string | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-      };
-    };
-    output: {
-      item: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      };
-    };
-  };
-  REGISTRY_ITEM_DELETE: {
-    input: { id: string };
-    output: {
-      item: {
-        [x: string]: unknown;
-        id: string;
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        name?: string | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        is_public?: boolean | undefined;
-        is_unlisted?: boolean | undefined;
-        created_by?: string | undefined;
-      };
     };
   };
   REGISTRY_ITEM_FILTERS: {
@@ -7429,756 +6759,34 @@ export interface StudioToolIO {
       categories: { value: string; count: number }[];
     };
   };
-  REGISTRY_DISCOVER_TOOLS: {
-    input: { url: string; type?: "http" | "sse" | undefined };
+  COLLECTION_REGISTRY_APP_FILTERS: {
+    input: { [x: string]: never };
     output: {
-      tools: { name: string; description?: string | null | undefined }[];
-      error?: string | null | undefined;
+      tags: { value: string; count: number }[];
+      categories: { value: string; count: number }[];
     };
   };
-  REGISTRY_AI_GENERATE: {
+  REGISTRY_ITEM_SEARCH: {
     input: {
-      type:
-        | "description"
-        | "tags"
-        | "categories"
-        | "short_description"
-        | "readme";
-      llmConnectionId: string;
-      modelId: string;
-      context: {
-        name?: string | undefined;
-        provider?: string | undefined;
-        url?: string | undefined;
-        owner?: string | undefined;
-        repositoryUrl?: string | undefined;
-        description?: string | undefined;
-        shortDescription?: string | undefined;
-        tags?: string[] | undefined;
-        categories?: string[] | undefined;
-        availableTags?: string[] | undefined;
-        availableCategories?: string[] | undefined;
-        tools?:
-          | { name: string; description?: string | null | undefined }[]
-          | undefined;
-      };
-    };
-    output: { result?: string | undefined; items?: string[] | undefined };
-  };
-  REGISTRY_PUBLISH_REQUEST_LIST: {
-    input: {
-      status?: "pending" | "rejected" | "approved" | undefined;
+      query?: string | undefined;
+      tags?: string[] | undefined;
+      categories?: string[] | undefined;
       limit?: number | undefined;
-      offset?: number | undefined;
-      sortBy?: "title" | "created_at" | undefined;
-      sortDirection?: "asc" | "desc" | undefined;
+      cursor?: string | undefined;
     };
     output: {
       items: {
         id: string;
-        organization_id: string;
-        status: "pending" | "rejected" | "approved";
         title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        requested_id?: string | null | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        requester_name?: string | null | undefined;
-        requester_email?: string | null | undefined;
-        reviewer_notes?: string | null | undefined;
+        tags: string[];
+        categories: string[];
+        is_public: boolean;
+        is_unlisted: boolean;
       }[];
       totalCount: number;
+      hasMore?: boolean | undefined;
+      nextCursor?: string | undefined;
     };
-  };
-  REGISTRY_PUBLISH_REQUEST_REVIEW: {
-    input: {
-      id: string;
-      status: "rejected" | "approved";
-      reviewerNotes?: string | null | undefined;
-    };
-    output: {
-      item: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "rejected" | "approved";
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        requested_id?: string | null | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        requester_name?: string | null | undefined;
-        requester_email?: string | null | undefined;
-        reviewer_notes?: string | null | undefined;
-      };
-    };
-  };
-  REGISTRY_PUBLISH_REQUEST_COUNT: {
-    input: { [x: string]: never };
-    output: { pending: number };
-  };
-  REGISTRY_PUBLISH_REQUEST_DELETE: {
-    input: { id: string };
-    output: {
-      item: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "rejected" | "approved";
-        title: string;
-        server: {
-          [x: string]: unknown;
-          name: string;
-          title?: string | undefined;
-          description?: string | undefined;
-          version?: string | undefined;
-          websiteUrl?: string | undefined;
-          icons?: { [x: string]: unknown; src: string }[] | undefined;
-          remotes?:
-            | {
-                [x: string]: unknown;
-                type?: string | undefined;
-                url?: string | undefined;
-                name?: string | undefined;
-                title?: string | undefined;
-                description?: string | undefined;
-              }[]
-            | undefined;
-          packages?:
-            | {
-                [x: string]: unknown;
-                identifier: string;
-                version?: string | undefined;
-              }[]
-            | undefined;
-          repository?:
-            | {
-                [x: string]: unknown;
-                url?: string | undefined;
-                source?: string | undefined;
-                subfolder?: string | undefined;
-              }
-            | undefined;
-        };
-        created_at: string;
-        updated_at: string;
-        requested_id?: string | null | undefined;
-        description?: string | null | undefined;
-        _meta?:
-          | {
-              [x: string]: unknown;
-              "mcp.studio"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-              "mcp.mesh"?:
-                | {
-                    [x: string]: unknown;
-                    verified?: boolean | undefined;
-                    official?: boolean | undefined;
-                    tags?: string[] | undefined;
-                    categories?: string[] | undefined;
-                    friendly_name?: string | null | undefined;
-                    short_description?: string | null | undefined;
-                    owner?: string | null | undefined;
-                    readme?: string | null | undefined;
-                    readme_url?: string | null | undefined;
-                    has_remote?: boolean | undefined;
-                    has_oauth?: boolean | undefined;
-                    tools?:
-                      | {
-                          [x: string]: unknown;
-                          name: string;
-                          description?: string | null | undefined;
-                        }[]
-                      | undefined;
-                  }
-                | undefined;
-            }
-          | undefined;
-        requester_name?: string | null | undefined;
-        requester_email?: string | null | undefined;
-        reviewer_notes?: string | null | undefined;
-      } | null;
-    };
-  };
-  REGISTRY_PUBLISH_API_KEY_GENERATE: {
-    input: { name: string };
-    output: {
-      id: string;
-      name: string;
-      prefix: string;
-      key: string;
-      createdAt: string;
-    };
-  };
-  REGISTRY_PUBLISH_API_KEY_LIST: {
-    input: { [x: string]: never };
-    output: {
-      items: { id: string; name: string; prefix: string; createdAt: string }[];
-    };
-  };
-  REGISTRY_PUBLISH_API_KEY_REVOKE: {
-    input: { keyId: string };
-    output: { success: boolean; keyId: string };
-  };
-  REGISTRY_MONITOR_RUN_START: {
-    input: {
-      config?:
-        | {
-            monitorMode?:
-              | "health_check"
-              | "tool_call"
-              | "full_agent"
-              | undefined;
-            testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-            onFailure?:
-              | "none"
-              | "unlisted"
-              | "remove_public"
-              | "remove_private"
-              | "remove_all"
-              | undefined;
-            schedule?: "manual" | "cron" | undefined;
-            cronExpression?: string | undefined;
-            scheduleEventId?: string | undefined;
-            perMcpTimeoutMs?: number | undefined;
-            perToolTimeoutMs?: number | undefined;
-            maxAgentSteps?: number | undefined;
-            testPublicOnly?: boolean | undefined;
-            testPrivateOnly?: boolean | undefined;
-            includePendingRequests?: boolean | undefined;
-            agentContext?: string | undefined;
-            llmConnectionId?: string | undefined;
-            llmModelId?: string | undefined;
-          }
-        | undefined;
-    };
-    output: {
-      run: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "running" | "cancelled";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      };
-    };
-  };
-  REGISTRY_MONITOR_RUN_LIST: {
-    input: {
-      status?:
-        | "pending"
-        | "failed"
-        | "completed"
-        | "running"
-        | "cancelled"
-        | undefined;
-      limit?: number | undefined;
-      offset?: number | undefined;
-    };
-    output: {
-      items: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "running" | "cancelled";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      }[];
-      totalCount: number;
-    };
-  };
-  REGISTRY_MONITOR_RUN_GET: {
-    input: { runId: string };
-    output: {
-      run: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "running" | "cancelled";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      } | null;
-    };
-  };
-  REGISTRY_MONITOR_RUN_CANCEL: {
-    input: { runId: string };
-    output: {
-      run: {
-        id: string;
-        organization_id: string;
-        status: "pending" | "failed" | "completed" | "running" | "cancelled";
-        config_snapshot: {
-          monitorMode: "health_check" | "tool_call" | "full_agent";
-          onFailure:
-            | "none"
-            | "unlisted"
-            | "remove_public"
-            | "remove_private"
-            | "remove_all";
-          schedule: "manual" | "cron";
-          perMcpTimeoutMs: number;
-          perToolTimeoutMs: number;
-          maxAgentSteps: number;
-          testPublicOnly: boolean;
-          testPrivateOnly: boolean;
-          includePendingRequests: boolean;
-          testMode?: "health_check" | "tool_call" | "full_agent" | undefined;
-          cronExpression?: string | undefined;
-          scheduleEventId?: string | undefined;
-          agentContext?: string | undefined;
-          llmConnectionId?: string | undefined;
-          llmModelId?: string | undefined;
-        } | null;
-        total_items: number;
-        tested_items: number;
-        passed_items: number;
-        failed_items: number;
-        skipped_items: number;
-        current_item_id: string | null;
-        started_at: string | null;
-        finished_at: string | null;
-        created_at: string;
-      };
-    };
-  };
-  REGISTRY_MONITOR_RESULT_LIST: {
-    input: {
-      runId: string;
-      status?:
-        | "error"
-        | "failed"
-        | "skipped"
-        | "passed"
-        | "needs_auth"
-        | undefined;
-      limit?: number | undefined;
-      offset?: number | undefined;
-    };
-    output: {
-      items: {
-        id: string;
-        run_id: string;
-        organization_id: string;
-        item_id: string;
-        item_title: string;
-        status: "error" | "failed" | "skipped" | "passed" | "needs_auth";
-        error_message: string | null;
-        connection_ok: boolean;
-        tools_listed: boolean;
-        tool_results: {
-          toolName: string;
-          success: boolean;
-          durationMs: number;
-          input?: Record<string, unknown> | undefined;
-          outputPreview?: string | null | undefined;
-          error?: string | null | undefined;
-        }[];
-        agent_summary: string | null;
-        duration_ms: number;
-        action_taken: string;
-        tested_at: string;
-      }[];
-      totalCount: number;
-    };
-  };
-  REGISTRY_MONITOR_CONNECTION_LIST: {
-    input: { [x: string]: never };
-    output: {
-      items: {
-        mapping: {
-          id: string;
-          organization_id: string;
-          item_id: string;
-          connection_id: string;
-          auth_status: "none" | "needs_auth" | "authenticated";
-          created_at: string;
-          updated_at: string;
-        };
-        item: {
-          [x: string]: unknown;
-          id: string;
-          title: string;
-          server: {
-            [x: string]: unknown;
-            name: string;
-            title?: string | undefined;
-            description?: string | undefined;
-            version?: string | undefined;
-            websiteUrl?: string | undefined;
-            icons?: { [x: string]: unknown; src: string }[] | undefined;
-            remotes?:
-              | {
-                  [x: string]: unknown;
-                  type?: string | undefined;
-                  url?: string | undefined;
-                  name?: string | undefined;
-                  title?: string | undefined;
-                  description?: string | undefined;
-                }[]
-              | undefined;
-            packages?:
-              | {
-                  [x: string]: unknown;
-                  identifier: string;
-                  version?: string | undefined;
-                }[]
-              | undefined;
-            repository?:
-              | {
-                  [x: string]: unknown;
-                  url?: string | undefined;
-                  source?: string | undefined;
-                  subfolder?: string | undefined;
-                }
-              | undefined;
-          };
-          created_at: string;
-          updated_at: string;
-          name?: string | undefined;
-          description?: string | null | undefined;
-          _meta?:
-            | {
-                [x: string]: unknown;
-                "mcp.studio"?:
-                  | {
-                      [x: string]: unknown;
-                      verified?: boolean | undefined;
-                      official?: boolean | undefined;
-                      tags?: string[] | undefined;
-                      categories?: string[] | undefined;
-                      friendly_name?: string | null | undefined;
-                      short_description?: string | null | undefined;
-                      owner?: string | null | undefined;
-                      readme?: string | null | undefined;
-                      readme_url?: string | null | undefined;
-                      has_remote?: boolean | undefined;
-                      has_oauth?: boolean | undefined;
-                      tools?:
-                        | {
-                            [x: string]: unknown;
-                            name: string;
-                            description?: string | null | undefined;
-                          }[]
-                        | undefined;
-                    }
-                  | undefined;
-                "mcp.mesh"?:
-                  | {
-                      [x: string]: unknown;
-                      verified?: boolean | undefined;
-                      official?: boolean | undefined;
-                      tags?: string[] | undefined;
-                      categories?: string[] | undefined;
-                      friendly_name?: string | null | undefined;
-                      short_description?: string | null | undefined;
-                      owner?: string | null | undefined;
-                      readme?: string | null | undefined;
-                      readme_url?: string | null | undefined;
-                      has_remote?: boolean | undefined;
-                      has_oauth?: boolean | undefined;
-                      tools?:
-                        | {
-                            [x: string]: unknown;
-                            name: string;
-                            description?: string | null | undefined;
-                          }[]
-                        | undefined;
-                    }
-                  | undefined;
-              }
-            | undefined;
-          is_public?: boolean | undefined;
-          is_unlisted?: boolean | undefined;
-          created_by?: string | undefined;
-        } | null;
-        remoteUrl: string | null;
-        source: "request" | "store";
-      }[];
-    };
-  };
-  REGISTRY_MONITOR_CONNECTION_SYNC: {
-    input: { [x: string]: never };
-    output: { created: number; updated: number };
-  };
-  REGISTRY_MONITOR_CONNECTION_UPDATE_AUTH: {
-    input: {
-      connectionId: string;
-      authStatus: "none" | "needs_auth" | "authenticated";
-    };
-    output: { success: boolean };
   };
   SANDBOX_START: {
     input: {
@@ -8242,6 +6850,13 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        accessIssue:
+          | "revoked"
+          | "provider_unavailable"
+          | "installation_missing"
+          | "authorization_required"
+          | "no_repositories"
+          | null;
         connectedBy: { name: string } | null;
       }[];
     };
@@ -8268,6 +6883,13 @@ export interface StudioToolIO {
         createdAt: string;
         updatedAt: string;
         servable: boolean;
+        accessIssue:
+          | "revoked"
+          | "provider_unavailable"
+          | "installation_missing"
+          | "authorization_required"
+          | "no_repositories"
+          | null;
         connectedBy: { name: string } | null;
       };
     };
@@ -8379,13 +7001,13 @@ export interface StudioToolIO {
         checkRuns: {
           id: string | null;
           name: string;
-          state: "completed" | "running" | "queued";
+          state: "completed" | "queued" | "running";
           conclusion:
             | "success"
             | "skipped"
-            | "cancelled"
             | "failure"
             | "neutral"
+            | "cancelled"
             | "timed_out"
             | "action_required"
             | null;
@@ -8526,7 +7148,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("connection" | "task" | "thread")[] | undefined;
+      types?: ("connection" | "thread" | "task")[] | undefined;
     };
     output: {
       items: (

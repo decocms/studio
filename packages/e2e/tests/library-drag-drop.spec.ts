@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 test.describe("Library drag-drop, rename, and see-in-library", () => {

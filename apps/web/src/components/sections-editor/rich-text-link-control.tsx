@@ -40,7 +40,7 @@ export function ToolbarButton({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "flex h-7 w-7 items-center justify-center classic:rounded transition-colors cursor-pointer compact:rounded-lg",
+        "flex h-7 w-7 items-center justify-center rounded-[var(--studio-control-radius,var(--radius))] transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -68,7 +68,7 @@ function TabChoice({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onSelect}
       className={cn(
-        "flex-1 classic:rounded px-2 py-1 text-xs transition-colors cursor-pointer compact:rounded-lg",
+        "flex-1 rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -98,7 +98,7 @@ function ModeTab({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onSelect}
       className={cn(
-        "flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-xs transition-colors cursor-pointer",
+        "flex flex-1 items-center justify-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] px-2 py-1 text-xs transition-colors cursor-pointer",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -204,7 +204,7 @@ export function RichTextLinkControl({
         <div
           ref={popoverRef}
           className={cn(
-            "absolute left-0 top-full z-20 mt-1.5 flex flex-col gap-1 rounded-md border bg-popover p-1 shadow-md",
+            "absolute left-0 top-full z-20 mt-1.5 flex flex-col gap-1 rounded-[var(--studio-surface-radius,var(--radius-md))] border bg-popover p-1 shadow-md",
             hasSources ? "w-80" : "w-64",
           )}
           onBlur={() => {
@@ -217,7 +217,7 @@ export function RichTextLinkControl({
           }}
         >
           {hasSources && (
-            <div className="flex items-center gap-0.5 rounded bg-muted/40 p-0.5">
+            <div className="flex items-center gap-0.5 rounded-[var(--studio-control-radius,var(--radius))] bg-muted/40 p-0.5">
               <ModeTab
                 active={mode === "url"}
                 icon={<Link01 size={12} />}
@@ -265,7 +265,7 @@ export function RichTextLinkControl({
                   }
                 }}
                 className={cn(
-                  "h-7 flex-1 rounded bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none",
+                  "h-7 flex-1 rounded-[var(--studio-control-radius,var(--radius))] bg-transparent px-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none",
                   invalid && "text-destructive",
                 )}
               />
@@ -289,7 +289,7 @@ export function RichTextLinkControl({
               )}
             </div>
           )}
-          <div className="flex items-center gap-0.5 rounded bg-muted/40 p-0.5">
+          <div className="flex items-center gap-0.5 rounded-[var(--studio-control-radius,var(--radius))] bg-muted/40 p-0.5">
             <TabChoice
               active={!newTab}
               label={t("sectionsEditor.richTextLinkControl.sameTabLabel")}

@@ -505,6 +505,35 @@ produce a diagnostic; adding a plugin to `.oxlintrc.json` means adding its
 fixture there, and the suite fails if the two lists drift. Pin `oxlint`
 exactly (no `^`) and re-run `bun test ./plugins` on every bump.
 
+### Lint severity: error or off, never warn
+
+`bun run lint` fails CI on **errors only**, so a rule left at `"warn"` is a
+rule the repo has decided not to enforce — it is noise that trains everyone to
+ignore lint output. Every rule is therefore either `"error"` (it must hold) or
+`"off"` with a comment saying why. `.oxlintrc.json` allows comments, and
+`biome.json` has an override so `bun run fmt` keeps them. **There are currently
+zero `"warn"` rules, and a PR should not add one** — if a rule is worth turning
+on, fix its findings in the same PR; if it is not, turn it off and say why.
+
+An individual site that genuinely cannot comply gets a scoped
+`oxlint-disable`/`oxlint-disable-next-line` naming the rule **and the reason**,
+not a downgrade of the rule for everyone. Two placement traps: a directive
+applies to the line immediately after it, so a multi-line justification has to
+sit *above* the directive, not between it and the code; and some rules anchor
+their diagnostic on the offending expression rather than the construct (for
+example `react/set-state-in-effect` reports the `setState` call, not the
+`useEffect`), which needs a `disable`/`enable` block around the effect.
+
+Turning a rule **off** needs the same standard as adding one. Five of oxlint's
+React Compiler rules are off because they flag patterns this repo chose on
+purpose — reading callbacks off refs and module-scope latches are how a hook
+stays subscribed without `useEffect`, which is banned — or because the rule
+cannot see enough to judge (a registry lookup is not a component defined during
+render, and `react-hook-form`'s `watch()` is unfixable from our side). Each
+carries its reasoning in `.oxlintrc.json`. The case that is genuinely a bug,
+render-time `.current` access in a component body, is still caught by our own
+`ban-ref-current-assignment` at `"error"`.
+
 ### TypeScript
 - Favor explicit types over `any`
 - Use Zod for runtime validation and schema definitions

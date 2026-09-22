@@ -37,11 +37,9 @@ export {
   useMCPToolsList,
   useMCPToolsListQuery,
   useMCPToolCall,
-  useMCPToolCallQuery,
   type UseMcpToolsListOptions,
   type UseMcpToolsListQueryOptions,
   type UseMcpToolCallOptions,
-  type UseMcpToolCallQueryOptions,
 } from "./use-mcp-tools";
 
 // MCP resources hooks and helpers

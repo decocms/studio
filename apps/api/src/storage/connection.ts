@@ -28,7 +28,7 @@ import { isStdioParameters } from "../tools/connection/schema";
 import {
   createNoRedirectFetch,
   guardAgainstPrivateUrl,
-} from "../tools/registry/discover-tools";
+} from "../mcp-clients/url-security";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownDecopilotConnection,
@@ -366,12 +366,10 @@ export class ConnectionStorage implements ConnectionStoragePort {
       query = query.where(applyWhereToSql(options.where));
     }
 
-    // Count before pagination
+    // Count before pagination — built off the pre-orderBy/limit `query`, so it's independent of both.
     const countQuery = this.db
       .selectFrom(query.as("filtered"))
       .select(sql<number>`count(*)::int`.as("count"));
-    const countResult = await countQuery.executeTakeFirst();
-    const totalCount = countResult?.count ?? 0;
 
     // Apply orderBy
     if (options?.orderBy && options.orderBy.length > 0) {
@@ -393,7 +391,11 @@ export class ConnectionStorage implements ConnectionStoragePort {
       query = query.offset(options.offset);
     }
 
-    const rows = await query.execute();
+    const [countResult, rows] = await Promise.all([
+      countQuery.executeTakeFirst(),
+      query.execute(),
+    ]);
+    const totalCount = countResult?.count ?? 0;
 
     const items = await Promise.all(
       rows.map((row) => this.deserializeConnection(row as RawConnectionRow)),

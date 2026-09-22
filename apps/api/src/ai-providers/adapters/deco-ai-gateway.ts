@@ -1,5 +1,6 @@
 import type { PlanEntitlements, ProviderAdapter } from "../types";
 import { openrouterAdapter } from "./openrouter";
+import { throwResponseError } from "./fetch-transient-retry";
 import { getSettings } from "../../settings";
 
 function getBase(): string {
@@ -173,7 +174,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
-      throw new Error(`Failed to create top-up checkout: ${res.status}`);
+      await throwResponseError("Failed to create top-up checkout", res);
     }
     const data = (await res.json()) as { url: string };
     return data.url;
@@ -197,7 +198,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       },
     );
     if (!res.ok) {
-      throw new Error(`Failed to fetch credits balance: ${res.status}`);
+      await throwResponseError("Failed to fetch credits balance", res);
     }
     const data = (await res.json()) as { balance_cents: number };
     return { balanceCents: data.balance_cents };
@@ -299,7 +300,7 @@ export const decoAiGatewayAdapter: ProviderAdapter = {
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
-      throw new Error(`Deco AI Gateway key provisioning failed: ${res.status}`);
+      await throwResponseError("Deco AI Gateway key provisioning failed", res);
     }
     const data = (await res.json()) as { key: string };
     return data.key;

@@ -134,6 +134,26 @@ describe("sanitizeCustomHeaders CR/LF guard", () => {
   });
 });
 
+describe("sanitizeCustomHeaders reserved-name guard", () => {
+  test("drops a custom header that would override the Authorization header", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "X-Api-Key": "abc123",
+        Authorization: "Bearer spoofed",
+      }),
+    ).toEqual({ "X-Api-Key": "abc123" });
+  });
+
+  test("drops a reserved name regardless of case", () => {
+    expect(
+      sanitizeCustomHeaders({
+        "x-caller-id": "spoofed-connection",
+        "X-Studio-Token": "spoofed-token",
+      }),
+    ).toEqual({});
+  });
+});
+
 describe("sanitizeCustomHeaders", () => {
   test("returns an empty object for undefined headers", () => {
     expect(sanitizeCustomHeaders(undefined)).toEqual({});

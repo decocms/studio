@@ -1,3 +1,4 @@
+import { getCatalog, findCatalogItem, resolveItemIdentifier } from "./catalog";
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
 import { z } from "zod";
@@ -12,15 +13,11 @@ export const REGISTRY_ITEM_VERSIONS = defineTool({
   }),
 
   handler: async (input, ctx) => {
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
     await ctx.access.check();
-    const itemId = input.id ?? input.name;
-    if (!itemId) {
-      throw new Error("Either 'id' or 'name' is required");
-    }
+    const itemId = resolveItemIdentifier(input);
 
-    const storage = ctx.storage.registry;
-    const item = await storage.items.findByIdOrName(organization.id, itemId);
+    const item = findCatalogItem(await getCatalog(), itemId);
     return { versions: item ? [item] : [] };
   },
 });

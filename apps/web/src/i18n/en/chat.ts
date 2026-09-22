@@ -184,6 +184,8 @@ export const chat = {
   "chat.generic.openInPanel": "Open in panel",
   "chat.generic.preparing": "Preparing...",
   "chat.generic.runningFor": "Running for {elapsed}",
+  "chat.generic.waitingFor": "Waiting {duration}",
+  "chat.generic.wrappingUp": "Wrapping up…",
   "chat.generic.retry": "Retry",
   "chat.generic.tool.bash": "Run Command",
   "chat.generic.tool.edit": "Edit File",
@@ -483,6 +485,11 @@ export const chat = {
   "chat.uploader.fileTypeNotSupported": "File type not supported",
   "chat.uploader.gotIt": "Got it",
   "chat.userAskQuestion.choiceOptionsAriaLabel": "Choice options",
+  "chat.suggestTask.accepted": "Added to the board",
+  "chat.suggestTask.create": "Create task",
+  "chat.suggestTask.declined": "Kept in chat",
+  "chat.suggestTask.label": "Task suggestion",
+  "chat.suggestTask.notNow": "Not now",
   "chat.userAskQuestion.confirmNo": "No",
   "chat.userAskQuestion.confirmValue": "Confirm {value}",
   "chat.userAskQuestion.confirmYes": "Yes",
@@ -531,4 +538,7 @@ export const chat = {
   "chat.planRefused.featureTitle":
     "This organization's plan does not include chat. Choose a plan to keep chatting.",
   "chat.planRefused.seePlans": "See plans",
+  "chat.threadHtmlPreviews.slidesAndPages": "Slides & pages in this chat",
+  "chat.threadHtmlPreviews.slides": "Slides in this chat",
+  "chat.threadHtmlPreviews.pages": "Pages in this chat",
 } as const;

@@ -256,7 +256,7 @@ test.describe("compact page layout", () => {
       await expect(
         page
           .getByTestId("page-header")
-          .getByRole("heading", { name: "Site Editor", exact: true }),
+          .getByRole("heading", { name: "Home page", exact: true }),
       ).toBeVisible();
       await expect(
         page
@@ -602,16 +602,15 @@ test.describe("compact page layout", () => {
     await expect(page.getByText("September 2026", { exact: true })).toHaveCount(
       1,
     );
+    await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
+    // Five deep is short enough to read in full, so every ancestor is its own
+    // button and there is no overflow menu to open.
     await expect(
-      breadcrumbs.getByRole("button", { name: "Library", exact: true }),
-    ).toBeVisible();
-    await breadcrumbs
-      .getByRole("button", { name: "Show navigation path" })
-      .click();
+      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
+    ).toHaveCount(0);
     await expect(
-      page.getByRole("menuitem", { name: "Brand", exact: true }),
+      breadcrumbs.getByRole("button", { name: "Brand", exact: true }),
     ).toBeVisible();
-    await page.keyboard.press("Escape");
     await page.screenshot({
       animations: "disabled",
       path: testInfo.outputPath("compact-library-breadcrumbs.png"),
@@ -656,6 +655,7 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "Library", exact: true }),
     ).toBeInViewport();
+    // Library alone is the whole trail here, so there is nothing to collapse.
     await expect(
       breadcrumbs.getByRole("button", { name: "Show navigation path" }),
     ).toHaveCount(0);
@@ -667,10 +667,13 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "September 2026", exact: true }),
     ).toBeVisible();
+    // Five deep again, so the volume is its own button rather than a menu item.
+    await expect(
+      breadcrumbs.getByRole("button", { name: "Show navigation path" }),
+    ).toHaveCount(0);
     await breadcrumbs
-      .getByRole("button", { name: "Show navigation path" })
+      .getByRole("button", { name: "uploads", exact: true })
       .click();
-    await page.getByRole("menuitem", { name: "uploads", exact: true }).click();
     await expect(
       header.getByRole("heading", { name: "uploads", exact: true }),
     ).toBeVisible();
@@ -686,8 +689,7 @@ test.describe("compact page layout", () => {
     await expect(
       header.getByRole("heading", { name: "Tasks", exact: true }),
     ).toBeVisible();
-    await expect(header.locator('[data-slot="page-breadcrumbs"]')).toHaveCount(
-      0,
-    );
+    await expect(breadcrumbs.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(breadcrumbs.getByRole("listitem")).toHaveText(["Tasks"]);
   });
 });

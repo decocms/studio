@@ -171,11 +171,12 @@ describe("discoverBlogBlockTypes", () => {
     expect(paragraph.iconName).toBe("Pilcrow01");
   });
 
-  test("unknown component names get fallback icon and no description", () => {
+  test("unknown component names are humanized, with a fallback icon and no description", () => {
     const custom = discoverBlogBlockTypes(
       metaWith(["site/sections/Blog/Post/MyWeirdBlock.tsx"]),
     )[0]!;
-    expect(custom.title).toBe("MyWeirdBlock");
+    // The picker shows this to a person, so the class name is not the label.
+    expect(custom.title).toBe("My weird block");
     expect(custom.description).toBeUndefined();
     expect(custom.iconName).toBe("Box");
   });

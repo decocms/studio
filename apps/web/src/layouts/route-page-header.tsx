@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
-import { ChevronRight, LayoutLeft } from "@untitledui/icons";
+import { useRouterState } from "@tanstack/react-router";
+import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { Page } from "@/components/page";
+import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useInSettings } from "@/hooks/use-in-settings";
 import { useCompactPageLayout } from "@/hooks/use-preferences";
@@ -39,17 +40,27 @@ export function RoutePageHeader({
       ? projectTitle
       : t("sidebar.navDestinations.home")
     : t(page?.pageTitle ?? "page.view");
-  const separator = (
-    <ChevronRight
-      size={12}
-      className="shrink-0 text-muted-foreground/60"
-      aria-hidden="true"
-    />
-  );
   if (!compact) return null;
+  const breadcrumbs: BreadcrumbItem[] = [];
+  if (inSettings) {
+    breadcrumbs.push({
+      key: "settings",
+      label: t("sidebar.navDestinations.settings"),
+      link: { to: "/$org/settings/general", params: { org: org.slug } },
+    });
+  } else if (scopeId && !isHome) {
+    breadcrumbs.push({
+      key: "project",
+      label: projectTitle,
+      link: {
+        to: "/$org/projects/$agentId",
+        params: { org: org.slug, agentId: scopeId },
+      },
+    });
+  }
+  breadcrumbs.push({ key: "page", label: title });
   return (
     <Page.Header
-      title={title}
       leading={
         <ToolbarIconButton
           className="md:hidden"
@@ -59,38 +70,7 @@ export function RoutePageHeader({
           <LayoutLeft size={16} />
         </ToolbarIconButton>
       }
-      breadcrumbs={
-        // The org is never a crumb: it is the whole app, so naming it says
-        // nothing. A trail exists only where there is something ABOVE the
-        // page — the project you are in, or Settings.
-        (inSettings || (scopeId && !isHome)) && (
-          <div className="hidden min-w-0 shrink items-center gap-2 text-sm text-muted-foreground @min-xl/panel-header:flex">
-            {inSettings ? (
-              <>
-                <Link
-                  to="/$org/settings/general"
-                  params={{ org: org.slug }}
-                  className="truncate hover:text-foreground"
-                >
-                  {t("sidebar.navDestinations.settings")}
-                </Link>
-                {separator}
-              </>
-            ) : scopeId && !isHome ? (
-              <>
-                <Link
-                  to="/$org/projects/$agentId"
-                  params={{ org: org.slug, agentId: scopeId }}
-                  className="max-w-40 truncate hover:text-foreground"
-                >
-                  {projectTitle}
-                </Link>
-                {separator}
-              </>
-            ) : null}
-          </div>
-        )
-      }
+      breadcrumbs={breadcrumbs}
       actions={actions}
       navigation={navigation}
     />

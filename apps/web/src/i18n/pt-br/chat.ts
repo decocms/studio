@@ -190,6 +190,8 @@ export const chat = {
   "chat.generic.openInPanel": "Abrir no painel",
   "chat.generic.preparing": "Preparando...",
   "chat.generic.runningFor": "Executando há {elapsed}",
+  "chat.generic.waitingFor": "Aguardando {duration}",
+  "chat.generic.wrappingUp": "Finalizando…",
   "chat.generic.retry": "Tentar novamente",
   "chat.generic.tool.bash": "Executar Comando",
   "chat.generic.tool.edit": "Editar Arquivo",
@@ -496,6 +498,11 @@ export const chat = {
   "chat.uploader.fileTypeNotSupported": "Tipo de arquivo não suportado",
   "chat.uploader.gotIt": "Entendi",
   "chat.userAskQuestion.choiceOptionsAriaLabel": "Opções de escolha",
+  "chat.suggestTask.accepted": "Adicionada ao quadro",
+  "chat.suggestTask.create": "Criar tarefa",
+  "chat.suggestTask.declined": "Mantido no chat",
+  "chat.suggestTask.label": "Sugestão de tarefa",
+  "chat.suggestTask.notNow": "Agora não",
   "chat.userAskQuestion.confirmNo": "Não",
   "chat.userAskQuestion.confirmValue": "Confirme {value}",
   "chat.userAskQuestion.confirmYes": "Sim",
@@ -546,4 +553,7 @@ export const chat = {
   "chat.planRefused.featureTitle":
     "O plano desta organização não inclui chat. Escolha um plano para continuar conversando.",
   "chat.planRefused.seePlans": "Ver planos",
+  "chat.threadHtmlPreviews.slidesAndPages": "Slides e páginas neste chat",
+  "chat.threadHtmlPreviews.slides": "Slides neste chat",
+  "chat.threadHtmlPreviews.pages": "Páginas neste chat",
 } satisfies Record<keyof typeof chatEn, string>;

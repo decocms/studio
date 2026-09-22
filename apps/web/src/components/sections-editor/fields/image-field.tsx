@@ -155,7 +155,7 @@ export function ImageField({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          "group relative w-full overflow-hidden rounded-xl border border-border/60 bg-muted/30 transition",
+          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border compact:card-shadow border-border/60 bg-muted/30 transition",
           isDragging && "border-primary ring-2 ring-primary/30",
           upload.isPending && "pointer-events-none opacity-60",
         )}
@@ -202,7 +202,7 @@ export function ImageField({
                 {fileName}
               </span>
               {ext && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                <span className="shrink-0 rounded-[var(--studio-control-radius,var(--radius))] bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
                   {ext}
                 </span>
               )}

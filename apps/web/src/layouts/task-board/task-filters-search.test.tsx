@@ -14,6 +14,7 @@ import type { OrgTag } from "./config";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import { EMPTY_FILTERS } from "./task-filters-core";
 import { TaskFilterButton } from "./view-controls";
+import { TaskFiltersBar } from "./task-filters";
 
 const TAG: OrgTag = {
   id: "tag_1",
@@ -158,5 +159,46 @@ describe("search toggle — collapses when cleared externally", () => {
     );
 
     expect(getByPlaceholderText("Search tasks…")).not.toBeNull();
+  });
+});
+
+describe("task filters bar — search chip", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  test("Escape clears the search text and collapses the chip", () => {
+    let filters = { ...EMPTY_FILTERS, search: "login" };
+    const { getByPlaceholderText, queryByPlaceholderText, rerender } = render(
+      <TaskFiltersBar
+        filters={filters}
+        members={[]}
+        tags={[]}
+        index={EMPTY_INDEX}
+        onChange={(next) => {
+          filters = next;
+        }}
+        onOpenBoardSettings={() => {}}
+      />,
+    );
+
+    const input = getByPlaceholderText("Search tasks…");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(filters.search).toBe("");
+
+    rerender(
+      <TaskFiltersBar
+        filters={filters}
+        members={[]}
+        tags={[]}
+        index={EMPTY_INDEX}
+        onChange={(next) => {
+          filters = next;
+        }}
+        onOpenBoardSettings={() => {}}
+      />,
+    );
+
+    expect(queryByPlaceholderText("Search tasks…")).toBeNull();
   });
 });

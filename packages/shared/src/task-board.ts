@@ -279,6 +279,34 @@ export function isReviewerThreadTitle(
   );
 }
 
+/**
+ * True when a card should offer its human a manual "Run reviewer".
+ *
+ * The gap it fills: an org with `reviewer_enabled` off gets no review at all,
+ * so a card whose Super Agent shipped a pull request sits In Review with
+ * nobody having read it. The button is that card's way out, and it is offered
+ * only where it is the answer —
+ *
+ * - `reviewerEnabled` OFF, because with it on the reviewer is already coming
+ *   and a button would race the sweeper;
+ * - the task HAS a pull request, since a review with nothing to read is a
+ *   wasted agent run (`TASK_BOARD_RUN_REVIEWER` refuses it anyway);
+ * - no reviewer thread on the card, because one that already ran — or is
+ *   running — owns the verdict, and the server would skip the dispatch.
+ *
+ * Pure, so the three halves are unit-tested rather than clicked.
+ */
+export function canRunReviewerManually(args: {
+  reviewerEnabled: boolean;
+  hasPullRequest: boolean;
+  threadTitles: (string | null)[];
+}): boolean {
+  if (args.reviewerEnabled || !args.hasPullRequest) return false;
+  return !args.threadTitles.some((title) =>
+    REVIEWER_KINDS.some((kind) => isReviewerThreadTitle(title, kind)),
+  );
+}
+
 /** One activity entry, minimally shaped for the review-cycle reducers below.
  *  Both the server storage rows and the web `TASK_BOARD_ACTIVITY_LIST` output
  *  satisfy this, so the single source of truth for "which reviewer approved in

@@ -465,7 +465,7 @@ export function createSubtaskTool(
                 : undefined,
           });
 
-          for await (const part of handle.result.fullStream) {
+          for await (const part of handle.result.stream) {
             const now = performance.now();
             if (part.type === "text-delta") {
               commitPending();

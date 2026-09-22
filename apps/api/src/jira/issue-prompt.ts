@@ -127,13 +127,49 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
   if (issue.comments.length > 0) {
     lines.push("", "## Comments");
     let budget = MAX_COMMENTS_CHARS;
-    for (const c of issue.comments) {
+    for (const [index, c] of issue.comments.entries()) {
       const body = clip(c.body, Math.max(0, budget));
       lines.push(`**${c.author}** (${c.created}):`, body, "");
       budget -= body.length;
-      if (budget <= 0) {
+      const isLast = index === issue.comments.length - 1;
+      if (budget <= 0 && !isLast) {
         lines.push("[… older comments omitted]");
         break;
+      }
+    }
+  }
+  return lines.join("\n").trim();
+}
+
+/**
+ * Several issues, for the opening message of ONE run started on a batch.
+ *
+ * A digest, not the full rendering: fourteen issues' descriptions and comment
+ * threads would bury the instruction, and a batch run is about what the
+ * issues have in common (their pull requests, their status) more than any one
+ * body. The web links are kept — a pull request is one — and the full issue is
+ * a `JIRA_ISSUE_GET` away.
+ */
+export function renderIssuesForPrompt(
+  issues: readonly IssueForPrompt[],
+): string {
+  const lines: string[] = [
+    `# ${issues.length} Jira issues`,
+    "This run works on every issue below. Each Jira tool takes `issueKey` to say " +
+      "which one it is about; `JIRA_ISSUE_GET` with a key returns that issue in " +
+      "full — description, comments, attachments.",
+  ];
+  for (const issue of issues) {
+    lines.push(
+      "",
+      `## ${issue.key}: ${issue.summary}`,
+      `Status: ${issue.status}`,
+      `Link: ${issue.url}`,
+    );
+    if (issue.links.length > 0) {
+      lines.push("Web links:");
+      for (const link of issue.links) {
+        lines.push(`- [${link.title}](${link.url})`);
       }
     }
   }

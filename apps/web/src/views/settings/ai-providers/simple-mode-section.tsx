@@ -88,10 +88,13 @@ function SimpleModeModelRow({
     slotKeyId ?? defaultKeyId,
   );
 
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect
-  useEffect(() => {
+  // Adopt the slot's key whenever the slot changes to a real one, without an
+  // effect: adjusting state during render is React's documented answer here.
+  const [prevSlotKeyId, setPrevSlotKeyId] = useState(slotKeyId);
+  if (prevSlotKeyId !== slotKeyId) {
+    setPrevSlotKeyId(slotKeyId);
     if (slotKeyId) setLocalCredentialId(slotKeyId);
-  }, [slotKeyId]);
+  }
 
   const activeKeyId = allKeys.some((key) => key.id === localCredentialId)
     ? localCredentialId

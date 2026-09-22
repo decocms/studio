@@ -30,11 +30,12 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 
 import {
+  Code01,
   CursorClick01,
   LinkExternal01,
   ChevronDown,
   Database01,
-  Globe02,
+  Globe01,
   Plus,
   Monitor04,
   Phone02,
@@ -142,6 +143,7 @@ import {
   defaultPreviewEditingMode,
   isBlocksEditingEnabled,
   resolveEffectivePreviewEditingMode,
+  toggleBlocksEditingMode,
   toggleVisualEditingMode,
   type PreviewEditingMode,
 } from "./editing-mode";
@@ -583,6 +585,15 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     ? activeGlobalSection.name
     : (activeLoader?.title ?? currentPage?.name);
   const currentPageKey = currentPage?.key ?? null;
+  /**
+   * The block the JSON view shows: the global section when one is open —
+   * either as its own destination or opened from inside a page — otherwise the
+   * page itself. It follows the form, not the route.
+   */
+  const jsonBlockKey =
+    workspace.state.target?.kind === "section"
+      ? workspace.state.target.key
+      : (workspace.state.focusedBlockKey ?? currentPageKey);
   const currentPagePath = currentPage?.path ?? null;
 
   // Path templates: pages like `/blog/:slug` expose inputs in the page popover. `currentPath` keeps the template (so the page stays matched); the
@@ -878,6 +889,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   };
 
   const sharedTarget = workspace.state.target;
+  // oxlint-disable react/set-state-in-effect
+  // Not a pure state sync: the same pass writes the last page to storage and
+  // steers the mounted iframe, so it has to run after commit.
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- synchronizes the independent Blocks selection with the mounted Preview iframe
   useEffect(() => {
     if (!sharedTarget || !sectionPreviewBase || !meta) return;
@@ -919,6 +933,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
     // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- derived helpers must not retrigger selection synchronization every render
   }, [sharedTarget, sectionPreviewBase, meta, pathParamsByPage]);
+  // oxlint-enable react/set-state-in-effect
 
   // Publish the page Preview is showing to the shared workspace so the Blocks
   // panel follows it — Blocks has no page navigator, it edits whatever page
@@ -1241,8 +1256,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
       if (mode === "blocks") blocksPanelRef.current?.resize("30%");
       else blocksPanelRef.current?.collapse();
     }
-    // The JSON side panel only makes sense next to the Blocks editor.
-    if (mode !== "blocks") closeJsonPanel();
     setEditingMode(mode);
     setVisualElement(null);
     setCmsSelectedSection(null);
@@ -1257,6 +1270,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const toggleVisualEditing = () => {
     activateEditingMode(
       toggleVisualEditingMode(editingMode, blocksEditingEnabled),
+    );
+  };
+
+  const toggleBlocksEditing = () => {
+    activateEditingMode(
+      toggleBlocksEditingMode(editingMode, blocksEditingEnabled),
     );
   };
 
@@ -1496,7 +1515,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     .filter(Boolean)
                     .join(" · ")
             }
-            className="group/page-picker flex h-7 w-fit min-w-0 items-stretch overflow-hidden whitespace-nowrap rounded-lg border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/page-picker flex h-7 w-fit min-w-0 items-stretch overflow-hidden whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] border border-border/60 bg-background text-left text-xs text-muted-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {!activeGlobalSection && !activeLoader && pageOrigin && (
               <span
@@ -1509,7 +1528,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 transition-colors group-hover/page-picker:bg-accent/50 group-data-[state=open]/page-picker:bg-accent/50">
               {activeGlobalSection && (
                 <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                  <Globe02 size={11} />
+                  <Globe01 size={11} />
                   {t("sandbox.preview.globalBadge")}
                 </span>
               )}
@@ -1715,12 +1734,6 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
-          <ToolbarIconButton
-            onClick={handleRefresh}
-            aria-label={t("sandbox.preview.refresh")}
-          >
-            <RefreshCw01 size={16} />
-          </ToolbarIconButton>
         </div>
       </div>
     ) : null;
@@ -1759,7 +1772,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               >
                 {activeGlobalSection && (
                   <span className="shrink-0 inline-flex items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
-                    <Globe02 size={11} />
+                    <Globe01 size={11} />
                     {t("sandbox.preview.globalBadge")}
                   </span>
                 )}
@@ -1967,7 +1980,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                               navigatePreviewToGlobalSection(section);
                             }}
                           >
-                            <Globe02
+                            <Globe01
                               size={16}
                               className="shrink-0 text-muted-foreground"
                             />
@@ -2088,17 +2101,52 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         transformOrigin: "top center",
       };
 
-  const previewTools =
-    canVisualEdit && (showPreviewToolbar || contentEditingEnabled) ? (
-      <ToolbarIconButton
-        onClick={toggleVisualEditing}
-        aria-pressed={effectiveEditingMode === "visual"}
-        aria-label={t("sandbox.preview.visualEditor")}
-        active={effectiveEditingMode === "visual"}
-      >
-        <CursorClick01 size={16} />
-      </ToolbarIconButton>
-    ) : null;
+  const previewTools = (
+    <>
+      {canVisualEdit && (showPreviewToolbar || contentEditingEnabled) && (
+        <ToolbarIconButton
+          onClick={toggleVisualEditing}
+          aria-pressed={effectiveEditingMode === "visual"}
+          aria-label={t("sandbox.preview.visualEditor")}
+          active={effectiveEditingMode === "visual"}
+        >
+          <CursorClick01 size={16} />
+        </ToolbarIconButton>
+      )}
+      {blocksEditingEnabled && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={toggleBlocksEditing}
+              aria-pressed={effectiveEditingMode === "blocks"}
+              aria-label={t("sandbox.preview.blocksEditor")}
+              active={effectiveEditingMode === "blocks"}
+            >
+              <LayoutAlt01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>{t("sandbox.preview.blocksEditor")}</TooltipContent>
+        </Tooltip>
+      )}
+      {jsonBlockKey && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ToolbarIconButton
+              onClick={toggleJsonPanel}
+              aria-pressed={jsonPanelOpen}
+              aria-label={t("sectionsEditor.sectionsEditor.viewJson")}
+              active={jsonPanelOpen}
+            >
+              <Code01 size={16} />
+            </ToolbarIconButton>
+          </TooltipTrigger>
+          <TooltipContent>
+            {t("sectionsEditor.sectionsEditor.viewJson")}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </>
+  );
 
   const floatingPreviewControls =
     !compact && previewSurfaceActive ? (
@@ -2215,12 +2263,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
               externalSelection={cmsSelectedSection}
               onViewJsonFile={toggleJsonPanel}
             />
-            {jsonPanelOpen && currentPageKey && (
+            {jsonPanelOpen && jsonBlockKey && (
               <div className="absolute inset-0 z-10">
                 <PageJsonPanel
                   ref={jsonPanelHandleRef}
                   virtualMcpId={virtualMcpId}
-                  pageKey={currentPageKey}
+                  pageKey={jsonBlockKey}
                   onClose={closeJsonPanel}
                 />
               </div>
@@ -2260,9 +2308,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             >
               <ResizablePanelGroup
                 orientation="horizontal"
-                disabled={!(jsonPanelOpen && currentPageKey)}
+                disabled={!(jsonPanelOpen && jsonBlockKey)}
               >
-                {jsonPanelOpen && currentPageKey && (
+                {/* Classic opens the JSON editor to the left of the canvas;
+                    compact opens it to the right, beside the blocks panel it
+                    is toggled from. */}
+                {!compact && jsonPanelOpen && jsonBlockKey && (
                   <>
                     <ResizablePanel
                       id="preview-json-editor"
@@ -2273,7 +2324,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                       <PageJsonPanel
                         ref={jsonPanelHandleRef}
                         virtualMcpId={virtualMcpId}
-                        pageKey={currentPageKey}
+                        pageKey={jsonBlockKey}
                         onClose={closeJsonPanel}
                       />
                     </ResizablePanel>
@@ -2388,6 +2439,13 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                         style={previewFrameStyle}
                         onMouseLeave={clearEditorHover}
                       >
+                        {/* TODO(security): this frame has no sandbox. It loads the
+                            user's own dev server cross-origin and the editor drives it
+                            (navigation, hover, postMessage), so picking the token set is
+                            a change that needs the real sandbox running to verify — a
+                            missing token silently breaks a customer's site preview.
+                            Deliberately not bolted on during a lint sweep. */}
+                        {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
                         <iframe
                           // Key on the iframe base: remount when the base URL changes
                           // (branch switch, or the production→sandbox swap once the dev
@@ -2474,6 +2532,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                     )}
                   </div>
                 </ResizablePanel>
+                {compact && jsonPanelOpen && jsonBlockKey && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      id="preview-json-editor"
+                      defaultSize="43%"
+                      minSize="20%"
+                      className="min-w-0 overflow-hidden"
+                    >
+                      <PageJsonPanel
+                        ref={jsonPanelHandleRef}
+                        virtualMcpId={virtualMcpId}
+                        pageKey={jsonBlockKey}
+                        onClose={closeJsonPanel}
+                      />
+                    </ResizablePanel>
+                  </>
+                )}
               </ResizablePanelGroup>
             </ResizablePanel>
           </ResizablePanelGroup>

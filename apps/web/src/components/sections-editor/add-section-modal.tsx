@@ -1,5 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
-import { LayoutAlt01, SearchMd } from "@untitledui/icons";
+import { Cube01, Globe01, LayoutAlt01, SearchMd } from "@untitledui/icons";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +8,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import {
   extractSectionCatalog,
@@ -123,6 +124,7 @@ function LazySectionPreview({
 }) {
   const { ref, iframeActive } = useLazyPreviewVisible(scrollRootRef, slotId);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const PlaceholderIcon = useCompactPageLayout() ? Cube01 : LayoutAlt01;
 
   return (
     <div
@@ -131,18 +133,22 @@ function LazySectionPreview({
     >
       {!iframeActive ? (
         <div className="flex h-full items-center justify-center">
-          <LayoutAlt01 className="h-8 w-8 text-muted-foreground/30" />
+          <PlaceholderIcon className="h-8 w-8 text-muted-foreground/30" />
         </div>
       ) : (
         <>
           {!iframeLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/40">
-              <LayoutAlt01 className="h-8 w-8 animate-pulse text-muted-foreground/40" />
+              <PlaceholderIcon className="h-8 w-8 animate-pulse text-muted-foreground/40" />
             </div>
           )}
+          {/* Cross-origin sandbox preview URL, so `allow-same-origin` keeps the
+              PREVIEW's origin rather than inheriting ours — not the escape the
+              rule warns about (that is `srcDoc` or a same-origin src). */}
           <iframe
             src={previewUrl}
             title={`Preview ${title}`}
+            // oxlint-disable-next-line react/iframe-missing-sandbox
             sandbox="allow-scripts allow-same-origin"
             referrerPolicy="no-referrer"
             className="pointer-events-none h-[200%] w-[200%] origin-top-left scale-50 border-0 bg-white"
@@ -166,12 +172,20 @@ function SectionGalleryCard({
   scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: () => void;
 }) {
+  const compact = useCompactPageLayout();
+  // A shared section says so with the globe, as it does everywhere else.
+  const CardIcon = !compact
+    ? LayoutAlt01
+    : entry.isSavedBlock
+      ? Globe01
+      : Cube01;
+
   return (
     <button
       type="button"
       onClick={onSelect}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors",
+        "group flex flex-col overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-lg))] border bg-card text-left transition-colors compact:card-shadow",
         "hover:border-primary/40 hover:bg-accent/30",
         entry.isSavedBlock &&
           "border-global-section/35 hover:bg-global-section/8",
@@ -184,7 +198,7 @@ function SectionGalleryCard({
         slotId={entry.resolveType}
       />
       <div className="flex items-center gap-2 border-t px-3 py-2.5">
-        <LayoutAlt01
+        <CardIcon
           className="h-4 w-4 shrink-0"
           style={
             entry.isSavedBlock

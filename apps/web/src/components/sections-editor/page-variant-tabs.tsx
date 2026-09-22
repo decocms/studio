@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { GripVertical } from "lucide-react";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -7,7 +8,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import {
   Tooltip,
@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import {
   DndContext,
@@ -35,22 +36,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import {
-  Copy01,
-  DotsHorizontal,
-  Edit01,
-  Plus,
-  Trash01,
-} from "@untitledui/icons";
+import { Copy01, Edit01, Plus, Trash01 } from "@untitledui/icons";
 import { getIconComponent } from "../agent-icon";
 import { resolveEffectiveMatcherRule } from "./matcher-rules";
 import { resolveMatcherIconName } from "./matcher-icons";
 import type { PageVariant } from "./page-variants";
 import type { LiveMeta } from "./resolve-schema";
-import {
-  VARIANT_ROW_CLASS,
-  VARIANT_SELECTED_ROW_CLASS,
-} from "./section-variant-list";
+import { EditorRowActionsTrigger, editorRowClassName } from "./editor-list-row";
 
 export function VariantTabIcon({
   rule,
@@ -96,6 +88,11 @@ function createEntries(variants: PageVariant[]): VariantTabEntry[] {
  * before a tab shifts every later tab's position, so matching by position
  * hands it a stale id — remounting its DnD-sortable identity and dropping
  * e.g. an open row menu on an unrelated tab.
+ *
+ * A rename changes the one label a match would key on, so it always misses
+ * the first pass — fall back to pairing whatever's left over, in order. A
+ * rename touches exactly one variant, so its old entry is the one leftover
+ * on each side.
  */
 export function reuseVariantEntryIds(
   current: VariantTabEntry[],
@@ -108,14 +105,27 @@ export function reuseVariantEntryIds(
     if (queue) queue.push(entry);
     else byLabel.set(entry.variant.label, [entry]);
   }
-  return variants.map((variant, index) => {
+
+  const unmatchedIndices: number[] = [];
+  const matchedIds = new Set<string>();
+  const result = variants.map((variant, index) => {
     const prior = byLabel.get(variant.label)?.shift();
-    return {
-      id: prior?.id ?? crypto.randomUUID(),
-      index,
-      variant,
-    };
+    if (!prior) {
+      unmatchedIndices.push(index);
+      return { id: "", index, variant };
+    }
+    matchedIds.add(prior.id);
+    return { id: prior.id, index, variant };
   });
+
+  const leftoverEntries = current.filter((entry) => !matchedIds.has(entry.id));
+  for (const index of unmatchedIndices) {
+    const prior = leftoverEntries.shift();
+    const entry = result[index] as VariantTabEntry;
+    entry.id = prior?.id ?? crypto.randomUUID();
+  }
+
+  return result;
 }
 
 function remapEntryIndices(entries: VariantTabEntry[]): VariantTabEntry[] {
@@ -145,30 +155,50 @@ function PageVariantRowContent({
   onDelete?: () => void;
 }) {
   const t = useT();
+  const compact = useCompactPageLayout();
   return (
     <>
-      <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+      {compact ? (
+        /* One slot for both: matcher icon at rest, drag grip on hover or
+           keyboard focus, and the grip alone on the dragging clone. The row
+           itself is the drag target, so the grip is an affordance, not a
+           handle. */
+        <span className="relative size-4 shrink-0">
+          <span
+            className={cn(
+              "absolute inset-0 flex items-center justify-center transition-opacity",
+              dragging
+                ? "opacity-0"
+                : "group-hover:opacity-0 group-has-[:focus-visible]:opacity-0",
+            )}
+          >
+            <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+          </span>
+          <GripVertical
+            aria-hidden
+            className={cn(
+              "absolute inset-0 size-4 transition-opacity",
+              dragging
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100",
+            )}
+          />
+        </span>
+      ) : (
+        <VariantTabIcon rule={effectiveRule} matchers={matchers} />
+      )}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {label}
       </span>
 
       {!dragging && (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t("sectionsEditor.pageVariantTabs.actionsAriaLabel", {
-                label,
-              })}
-              className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <DotsHorizontal size={14} />
-            </Button>
-          </DropdownMenuTrigger>
+          <EditorRowActionsTrigger
+            label={t("sectionsEditor.pageVariantTabs.actionsAriaLabel", {
+              label,
+            })}
+            classicClassName="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+          />
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuItem
               onClick={(e) => {
@@ -236,6 +266,7 @@ function SortablePageVariantRow({
       animateLayoutChanges: () => false,
     });
 
+  const compact = useCompactPageLayout();
   const style = {
     transform: CSS.Transform.toString(
       transform ? { ...transform, x: 0 } : null,
@@ -264,11 +295,13 @@ function SortablePageVariantRow({
         }
       }}
       className={cn(
-        "group flex select-none items-center gap-2 rounded-md px-2 py-2.5 transition-colors touch-none",
+        editorRowClassName({
+          tone: compact ? "default" : "variant",
+          selected: isActive,
+        }),
         isDragging
           ? "cursor-grabbing"
           : "cursor-pointer active:cursor-grabbing",
-        isActive ? VARIANT_SELECTED_ROW_CLASS : VARIANT_ROW_CLASS,
       )}
     >
       <PageVariantRowContent
@@ -295,6 +328,7 @@ function PageVariantRowPreview({
   meta?: LiveMeta | null;
   matchers: Array<{ resolveType: string; iconName: string }>;
 }) {
+  const compact = useCompactPageLayout();
   const effectiveRule = resolveEffectiveMatcherRule(
     variant.rule,
     decofile,
@@ -304,8 +338,11 @@ function PageVariantRowPreview({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-2.5 shadow-lg ring-1 ring-border/60 cursor-grabbing",
-        VARIANT_SELECTED_ROW_CLASS,
+        editorRowClassName({
+          tone: compact ? "default" : "variant",
+          selected: true,
+          className: "cursor-grabbing shadow-lg ring-1 ring-border/60",
+        }),
       )}
     >
       <PageVariantRowContent
@@ -344,9 +381,11 @@ export function PageVariantTabs({
   onRename: (index: number) => void;
   onDuplicate: (index: number) => void;
   onDelete: (index: number) => void;
+  /** Classic only: compact pins the add button to the panel's foot instead. */
   onAdd: () => void;
 }) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const [entries, setEntries] = useState<VariantTabEntry[]>(() =>
     createEntries(variants),
   );
@@ -421,31 +460,35 @@ export function PageVariantTabs({
   };
 
   return (
-    <div className="space-y-1 border-b p-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("sectionsEditor.pageVariantTabs.variantsLabel")}
-        </span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t(
-                "sectionsEditor.pageVariantTabs.addVariantAriaLabel",
-              )}
-              className="size-6"
-              onClick={onAdd}
-            >
-              <Plus size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {t("sectionsEditor.pageVariantTabs.addVariantTooltip")}
-          </TooltipContent>
-        </Tooltip>
-      </div>
+    <div className={cn(compact ? "px-2" : "space-y-1 border-b p-2")}>
+      {/* Compact's panel header names this view and its footer owns the add
+          button, so classic is the only mode that still needs this row. */}
+      {!compact && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t("sectionsEditor.pageVariantTabs.variantsLabel")}
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t(
+                  "sectionsEditor.pageVariantTabs.addVariantAriaLabel",
+                )}
+                className="size-6"
+                onClick={onAdd}
+              >
+                <Plus size={14} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("sectionsEditor.pageVariantTabs.addVariantTooltip")}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -457,7 +500,7 @@ export function PageVariantTabs({
           items={entryIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-0.5">
+          <div className={cn(compact ? "space-y-1" : "space-y-0.5")}>
             {entries.map((entry) => (
               <SortablePageVariantRow
                 key={entry.id}
@@ -495,5 +538,17 @@ export function PageVariantTabs({
         )}
       </DndContext>
     </div>
+  );
+}
+
+/** Pinned to the panel's foot by the caller, mirroring the section list's own
+ *  add button so both destinations end the same way. */
+export function AddVariantListButton({ onAdd }: { onAdd: () => void }) {
+  const t = useT();
+  return (
+    <Button type="button" variant="outline" className="w-full" onClick={onAdd}>
+      <Plus size={14} />
+      {t("sectionsEditor.pageVariantTabs.addVariantTooltip")}
+    </Button>
   );
 }

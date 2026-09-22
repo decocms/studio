@@ -403,6 +403,7 @@ export function ToolSetSelector({
         {/* Filter Buttons */}
         <div className="flex gap-1 p-2 border-b border-border">
           <button
+            type="button"
             onClick={() => setFilterMode("all")}
             className={cn(
               "flex-1 px-3 py-1.5 text-xs font-medium classic:rounded-md compact:rounded-lg transition-colors border cursor-pointer",
@@ -414,6 +415,7 @@ export function ToolSetSelector({
             {t("common.toolSetSelector.filterAll")}
           </button>
           <button
+            type="button"
             onClick={() => setFilterMode("selected")}
             className={cn(
               "flex-1 px-3 py-1.5 text-xs font-medium classic:rounded-md compact:rounded-lg transition-colors border cursor-pointer",
@@ -425,6 +427,7 @@ export function ToolSetSelector({
             {t("common.toolSetSelector.filterSelected")}
           </button>
           <button
+            type="button"
             onClick={() => setFilterMode("unselected")}
             className={cn(
               "flex-1 px-3 py-1.5 text-xs font-medium classic:rounded-md compact:rounded-lg transition-colors border cursor-pointer",

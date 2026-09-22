@@ -1,4 +1,15 @@
 export const taskBoard = {
+  "taskBoard.taskDialog.commentReplyPlaceholder": "Leave a reply...",
+  "taskBoard.conversation.openChat": "Open chat",
+  "taskBoard.conversation.reviewer": "Reviewer",
+  "taskBoard.conversation.details": "Details",
+  "taskBoard.conversation.edit": "Edit",
+  "taskBoard.conversation.doneEditing": "Done editing",
+  "taskBoard.conversation.jumpToLatest": "Jump to latest",
+  "taskBoard.conversation.newReplies": "New replies ({count}) · Jump to latest",
+  "taskBoard.conversation.replies": "Conversation",
+  "taskBoard.conversation.sendFailed":
+    "Couldn't send your reply. Please try again.",
   "taskBoard.config.priorityHigh": "High",
   "taskBoard.config.priorityLow": "Low",
   "taskBoard.config.priorityMedium": "Medium",
@@ -76,6 +87,10 @@ export const taskBoard = {
   "taskBoard.taskDialog.runFailedLinkRepo": "Link repository",
   "taskBoard.taskDialog.activityLabel": "Activity",
   "taskBoard.taskDialog.activityCreated": "created the task",
+  "taskBoard.taskDialog.activityDuplicateReported":
+    "filed this task again; it was already on the board",
+  "taskBoard.taskDialog.activityDuplicateReportedTitled":
+    'filed "{title}" again; this card already tracks it',
   "taskBoard.taskDialog.activityMovedFromTo": "moved from {from} to {to}",
   "taskBoard.taskDialog.activityMovedTo": "moved to {to}",
   "taskBoard.taskDialog.activityRetryScheduled":
@@ -146,7 +161,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Collapse",
   "taskBoard.taskDialog.commentDelete": "Delete",
   "taskBoard.taskDialog.commentPlaceholder": "Leave a comment...",
-  "taskBoard.taskDialog.commentReplyPlaceholder": "Leave a reply...",
   "taskBoard.taskDialog.commentResolveThread": "Resolve thread",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} resolved comments from {names}",
@@ -180,6 +194,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.prStateDraft": "Draft",
   "taskBoard.taskDialog.prStateMerged": "Merged",
   "taskBoard.taskDialog.prStateOpen": "Open",
+  "taskBoard.taskDialog.prStateUnknown": "Unknown",
   "taskBoard.taskDialog.previewLabel": "Open preview",
   "taskBoard.taskDialog.previewRoutesLabel": "Pages changed in this PR",
   "taskBoard.taskDialog.previewUnavailable": "Preview unavailable",
@@ -195,6 +210,13 @@ export const taskBoard = {
   "taskBoard.taskDialog.resolveConflictSuccess":
     "Agent dispatched to resolve the conflicts",
   "taskBoard.taskDialog.resolveConflictError": "Couldn't start the agent",
+  "taskBoard.taskDialog.runReviewerButton": "Run reviewer",
+  "taskBoard.taskDialog.runReviewerTitle":
+    "Automated review is off for this organization — run the Reviewer on this task only",
+  "taskBoard.taskDialog.runReviewerSuccess": "Reviewer dispatched",
+  "taskBoard.taskDialog.runReviewerAlreadyRunning":
+    "A reviewer is already working this task",
+  "taskBoard.taskDialog.runReviewerError": "Couldn't start the reviewer",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
   "taskBoard.taskDialog.costTooltipSingular":
     "Estimated AI cost of this task, across its only run — the Super Agent plus every reviewer and re-run round. Calculated from the model provider's list prices; it is not a billed amount and your actual invoice may differ.",

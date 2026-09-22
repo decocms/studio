@@ -17,6 +17,10 @@ import { getProviders } from "../ai-providers/registry";
 import { EntitlementsFetchError } from "../ai-providers/adapters/deco-ai-gateway";
 import { mintGatewayJwt } from "../auth/jwt";
 import { getSettings } from "../settings";
+import {
+  evictExpiredTtlCacheEntries,
+  refreshTtlCacheEntry,
+} from "./ttl-lru-cache";
 
 /** The gate-able surfaces. Mirrors FEATURE_KEYS in the gateway's plans-shape. */
 export type PlanFeature =
@@ -97,47 +101,29 @@ interface OrgPlanState {
 
 type BarState = "ok" | "warn" | "exhausted";
 
-const planStateCache = new Map<string, { state: OrgPlanState; at: number }>();
+const planStateCache = new Map<string, { value: OrgPlanState; at: number }>();
 
 /** Cap: entries are only ever overwritten on their own next lookup, never
  *  dropped otherwise, and this is read on every gated tool call. Same bug and
  *  same bound as ARCHIVED_CACHE_MAX_SIZE in context-factory.ts. */
 const PLAN_STATE_CACHE_MAX_SIZE = 10_000;
 
-/** Write (or refresh) an entry, moving it to the most-recently-set position.
- *  `Map.set` on an existing key keeps its original iteration position, so a
- *  hot org refreshed on every lookup would otherwise sit at the "oldest" end
- *  and be evicted first. Exported for unit testing. */
+/** Write (or refresh) an entry. Exported for unit testing. */
 export function refreshPlanStateCacheEntry(
-  cache: Map<string, { state: OrgPlanState; at: number }>,
+  cache: Map<string, { value: OrgPlanState; at: number }>,
   organizationId: string,
   state: OrgPlanState,
 ): void {
-  cache.delete(organizationId);
-  cache.set(organizationId, { state, at: Date.now() });
+  refreshTtlCacheEntry(cache, organizationId, state);
 }
 
 /** Exported for unit testing. */
 export function evictExpiredPlanStateEntries(
-  cache: Map<string, { state: OrgPlanState; at: number }>,
+  cache: Map<string, { value: OrgPlanState; at: number }>,
   maxSize: number,
   ttlMs: number,
 ): void {
-  if (cache.size <= maxSize) return;
-  const now = Date.now();
-  for (const [key, entry] of cache) {
-    if (now - entry.at >= ttlMs) cache.delete(key);
-  }
-  // Trims oldest first (Map iteration order = insertion order).
-  if (cache.size > maxSize) {
-    const excess = cache.size - maxSize;
-    let removed = 0;
-    for (const key of cache.keys()) {
-      if (removed >= excess) break;
-      cache.delete(key);
-      removed++;
-    }
-  }
+  evictExpiredTtlCacheEntries(cache, maxSize, ttlMs);
 }
 
 /** Drop one org's cached plan, so a plan change lands on this instance now. */
@@ -176,7 +162,7 @@ async function getOrgPlanState(
   if (!getSettings().aiGatewayEnabled) return null;
 
   const hit = planStateCache.get(organizationId);
-  if (hit && Date.now() - hit.at < FEATURES_CACHE_TTL_MS) return hit.state;
+  if (hit && Date.now() - hit.at < FEATURES_CACHE_TTL_MS) return hit.value;
 
   const existing = inFlightPlanState.get(organizationId);
   if (existing) return existing;
@@ -191,7 +177,7 @@ async function getOrgPlanState(
 async function fetchOrgPlanState(
   ctx: StudioContext,
   organizationId: string,
-  hit: { state: OrgPlanState; at: number } | undefined,
+  hit: { value: OrgPlanState; at: number } | undefined,
 ): Promise<OrgPlanState | null> {
   const adapter = getProviders().deco;
   if (!adapter?.getEntitlements) return null;
@@ -275,13 +261,13 @@ async function fetchOrgPlanState(
  *  fresh read, so the ceiling cannot apply to one and not the other. */
 function servedStaleOrNull(
   organizationId: string,
-  hit: { state: OrgPlanState; at: number } | undefined,
+  hit: { value: OrgPlanState; at: number } | undefined,
 ): OrgPlanState | null {
   if (hit && Date.now() - hit.at >= MAX_STALE_MS) {
     planStateCache.delete(organizationId);
     return null;
   }
-  return hit?.state ?? null;
+  return hit?.value ?? null;
 }
 
 /**

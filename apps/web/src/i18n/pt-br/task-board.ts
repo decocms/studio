@@ -1,6 +1,18 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
+  "taskBoard.conversation.openChat": "Abrir chat",
+  "taskBoard.conversation.reviewer": "Revisor",
+  "taskBoard.conversation.details": "Detalhes",
+  "taskBoard.conversation.edit": "Editar",
+  "taskBoard.conversation.doneEditing": "Concluir edição",
+  "taskBoard.conversation.jumpToLatest": "Ir para o mais recente",
+  "taskBoard.conversation.newReplies":
+    "Novas respostas ({count}) · Ir para o mais recente",
+  "taskBoard.conversation.replies": "Conversa",
+  "taskBoard.conversation.sendFailed":
+    "Não foi possível enviar sua resposta. Tente novamente.",
   "taskBoard.config.priorityHigh": "Alta",
   "taskBoard.config.priorityLow": "Baixa",
   "taskBoard.config.priorityMedium": "Média",
@@ -79,6 +91,10 @@ export const taskBoard = {
   "taskBoard.taskDialog.runFailedLinkRepo": "Vincular repositório",
   "taskBoard.taskDialog.activityLabel": "Atividade",
   "taskBoard.taskDialog.activityCreated": "criou a tarefa",
+  "taskBoard.taskDialog.activityDuplicateReported":
+    "abriu esta tarefa de novo; ela já estava no board",
+  "taskBoard.taskDialog.activityDuplicateReportedTitled":
+    'abriu "{title}" de novo; este card já cobre isso',
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
   "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
   "taskBoard.taskDialog.activityRetryScheduled":
@@ -142,7 +158,7 @@ export const taskBoard = {
     "Nenhuma tag ainda. Digite um nome para criar uma.",
   "taskBoard.taskDialog.assignButton": "Atribuir",
   "taskBoard.taskDialog.createdByLabel": "Criado por",
-  "taskBoard.taskDialog.createdBySystemLabel": "Report",
+  "taskBoard.taskDialog.createdBySystemLabel": "Relatório",
   "taskBoard.taskDialog.unknownCreatorLabel": "Desconhecido",
   "taskBoard.taskDialog.projectButton": "Selecionar projeto",
   "taskBoard.taskDialog.noProject": "Sem projeto",
@@ -152,7 +168,6 @@ export const taskBoard = {
   "taskBoard.taskDialog.commentCollapseThread": "Recolher",
   "taskBoard.taskDialog.commentDelete": "Excluir",
   "taskBoard.taskDialog.commentPlaceholder": "Deixe um comentário...",
-  "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.taskDialog.commentResolveThread": "Resolver conversa",
   "taskBoard.taskDialog.commentResolvedSummaryMany":
     "{count} comentários resolvidos de {names}",
@@ -187,6 +202,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.prStateDraft": "Rascunho",
   "taskBoard.taskDialog.prStateMerged": "Mesclado",
   "taskBoard.taskDialog.prStateOpen": "Aberto",
+  "taskBoard.taskDialog.prStateUnknown": "Desconhecido",
   "taskBoard.taskDialog.previewLabel": "Abrir preview",
   "taskBoard.taskDialog.previewRoutesLabel": "Páginas alteradas neste PR",
   "taskBoard.taskDialog.previewUnavailable": "Preview indisponível",
@@ -204,6 +220,13 @@ export const taskBoard = {
     "Agente acionado para resolver os conflitos",
   "taskBoard.taskDialog.resolveConflictError":
     "Não foi possível acionar o agente",
+  "taskBoard.taskDialog.runReviewerButton": "Executar revisor",
+  "taskBoard.taskDialog.runReviewerTitle":
+    "A revisão automática está desligada nesta organização — execute o Revisor apenas nesta tarefa",
+  "taskBoard.taskDialog.runReviewerSuccess": "Revisor acionado",
+  "taskBoard.taskDialog.runReviewerAlreadyRunning":
+    "Um revisor já está trabalhando nesta tarefa",
+  "taskBoard.taskDialog.runReviewerError": "Não foi possível acionar o revisor",
   "taskBoard.taskDialog.costEstimatePrefix": "~{amount}",
   "taskBoard.taskDialog.costTooltipSingular":
     "Custo estimado de IA desta tarefa, somando sua única execução — o Super Agent mais cada rodada de revisão e reexecução. Calculado a partir da tabela de preços do provedor; não é um valor cobrado e sua fatura real pode diferir.",
@@ -306,9 +329,9 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.monthlyTitle": "Cota de auto tasks esgotada",
   "taskBoard.subscriptionPaywall.monthlyDescription":
     "Esta organização usou suas execuções de auto tasks deste ciclo de cobrança. Mais execuções ficam disponíveis no início do próximo ciclo.",
-  "taskBoard.subscriptionPaywall.runsTitle": "Esta task atingiu o limite",
+  "taskBoard.subscriptionPaywall.runsTitle": "Esta tarefa atingiu o limite",
   "taskBoard.subscriptionPaywall.runsDescription":
-    "Esta task já foi re-executada o máximo de vezes permitido. Crie uma nova task para continuar.",
+    "Esta tarefa já foi re-executada o máximo de vezes permitido. Crie uma nova tarefa para continuar.",
   "taskBoard.subscriptionPaywall.subscribeButton": "Assinar",
   "taskBoard.subscriptionPaywall.notNowButton": "Agora não",
   "taskBoard.subscriptionPaywall.dismissButton": "Fechar",

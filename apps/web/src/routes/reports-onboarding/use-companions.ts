@@ -1,6 +1,6 @@
 import { KEYS } from "@/lib/query-keys";
-import { callRegistryTool } from "@/utils/registry-utils";
-import { useMCPClient, WellKnownOrgMCPId } from "@/sdk";
+import { callStudioTool } from "@/lib/studio-tools";
+import { useMCPClient } from "@/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   useQuery,
@@ -230,15 +230,11 @@ export function useReportsCompanions({
         return { items: [] as RegistryItemLike[] };
       }
       const where = buildRegistryWhere(registryAppIds, nameOnly);
-      const result = await callRegistryTool<{ items: RegistryItemLike[] }>(
-        WellKnownOrgMCPId.REGISTRY(org.id),
-        org.id,
+      const result = await callStudioTool(
         org.slug,
         "COLLECTION_REGISTRY_APP_LIST",
         { ...(where ? { where } : {}), limit: 1000 },
       );
-      // callRegistryTool doesn't throw on isError; surface it here so the
-      // section renders its error state instead of silently gating out.
       return unwrapToolResult<{ items: RegistryItemLike[] }>(result);
     },
   });

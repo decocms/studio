@@ -271,7 +271,7 @@ export function ConnectionCardHeaderActions({
 }
 
 // ---------------------------------------------------------------------------
-// Floating bulk action bar (centered, same pattern as private-registry)
+// Floating bulk action bar
 // ---------------------------------------------------------------------------
 
 export function BulkActionBar({

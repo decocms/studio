@@ -53,6 +53,7 @@ describe("openrouterAdapter.listModels", () => {
     const provider = openrouterAdapter.create("secret-key");
     const models = await provider.listModels();
 
+    // Only the three chat-catalog attempts; Decisions must stay lazy.
     expect(calls).toBe(3);
     expect(models).toHaveLength(1);
     expect(models[0]?.modelId).toBe("openai/gpt-4");
@@ -71,5 +72,35 @@ describe("openrouterAdapter.listModels", () => {
       "OpenRouter listModels failed: 401",
     );
     expect(calls).toBe(1);
+  });
+
+  test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response("not json", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const provider = openrouterAdapter.create("secret-key");
+
+    await expect(provider.listModels()).rejects.toThrow(
+      "OpenRouter listModels returned malformed JSON: not json",
+    );
+  });
+});
+
+describe("openrouterAdapter.exchangeOAuthCode", () => {
+  test("rejects a 2xx response with a missing key instead of storing garbage", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ user_id: "u_1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as unknown as typeof fetch;
+
+    await expect(
+      openrouterAdapter.exchangeOAuthCode?.({
+        code: "code",
+        codeVerifier: "verifier",
+        codeChallengeMethod: "S256",
+      }),
+    ).rejects.toThrow("malformed response");
   });
 });

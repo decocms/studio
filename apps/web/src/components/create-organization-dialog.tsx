@@ -36,12 +36,12 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// ponytail: validation strings are not user-facing, they're internal error messages; actual errors will be translated in component below
-const createOrgSchema = z.object({
-  name: z.string().min(2, "Organization name is required"),
-});
+const createOrgSchema = (t: ReturnType<typeof useT>) =>
+  z.object({
+    name: z.string().min(2, t("common.createOrganizationDialog.nameRequired")),
+  });
 
-type CreateOrgFormData = z.infer<typeof createOrgSchema>;
+type CreateOrgFormData = z.infer<ReturnType<typeof createOrgSchema>>;
 
 interface CreateOrganizationDialogProps {
   open: boolean;
@@ -59,7 +59,7 @@ export function CreateOrganizationDialog({
 }: CreateOrganizationDialogProps) {
   const t = useT();
   const form = useForm<CreateOrgFormData>({
-    resolver: zodResolver(createOrgSchema),
+    resolver: zodResolver(createOrgSchema(t)),
     defaultValues: { name: "" },
   });
 

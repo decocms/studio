@@ -83,9 +83,12 @@ const gridCols2xlClasses: Record<number, string> = {
   8: "@min-8xl:grid-cols-8",
 };
 
+/** Stable identity: an inline default would be a new object every render. */
+const DEFAULT_COLUMNS: ColumnConfig = { sm: 2, md: 3, lg: 4 };
+
 function EntityGridRoot({
   children,
-  columns = { sm: 2, md: 3, lg: 4 },
+  columns = DEFAULT_COLUMNS,
   gap = 4,
   className,
 }: EntityGridProps) {
@@ -105,7 +108,7 @@ function EntityGridRoot({
 
 function EntityGridSkeleton({
   count = 8,
-  columns = { sm: 2, md: 3, lg: 4 },
+  columns = DEFAULT_COLUMNS,
   gap = 4,
   className,
 }: Omit<EntityGridProps, "children"> & { count?: number }) {

@@ -11,6 +11,10 @@ export function usePendingInvitations(): {
   refetch: () => void;
 } {
   const authUi = useContext(AuthUIContext);
+  // better-auth exposes its hooks on the context object, so the callee is
+  // not a statically-known hook identity. The call is still unconditional
+  // and top-level, which is what Rules of Hooks actually requires.
+  // oxlint-disable-next-line react/hooks
   const { data, refetch } = authUi.hooks.useListUserInvitations();
   const invitations = ((data ?? []) as Invitation[]).filter(
     (inv) => inv.status === "pending" && new Date(inv.expiresAt) > new Date(),

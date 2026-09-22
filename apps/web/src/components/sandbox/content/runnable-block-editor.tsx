@@ -1,9 +1,8 @@
+import { BlockBreadcrumbs } from "@/components/sections-editor/block-breadcrumbs";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft,
-  ChevronRight,
   Code01,
   LinkExternal01,
   Maximize01,
@@ -25,10 +24,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
-import {
-  type Crumb,
-  crumbLabel,
-} from "@/components/sections-editor/schema-form-breadcrumb";
+import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
 import {
   inferSchemaFromValue,
   isFreeformPropsSchema,
@@ -239,52 +235,15 @@ export function RunnableBlockEditor({
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col">
-      {/* Header: breadcrumb + Run + Save (available only) + JSON toggle. */}
+      <BlockBreadcrumbs
+        crumbs={headerCrumbs}
+        onSelect={handleBreadcrumbClick}
+        onSelectRoot={onBack}
+      />
+      {/* Run, Save (available only), and JSON controls. */}
       <div className="shrink-0 border-b px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-          {onBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
-              onClick={onBack}
-              aria-label={t("sandbox.runnableBlockEditor.backToList")}
-            >
-              <ArrowLeft size={14} />
-            </Button>
-          )}
-          <nav
-            aria-label={t("sandbox.runnableBlockEditor.editingBreadcrumb")}
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
-          >
-            {headerCrumbs.map((crumb, index) => {
-              const isLast = index === headerCrumbs.length - 1;
-              const crumbText = crumbLabel(crumb);
-              return (
-                <span
-                  key={`${crumbText}-${index}`}
-                  className="flex min-w-0 items-center gap-1 overflow-hidden"
-                >
-                  {index > 0 && (
-                    <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleBreadcrumbClick(index)}
-                    title={crumbText}
-                    className={cn(
-                      "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                      isLast
-                        ? "font-medium text-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {crumbText}
-                  </button>
-                </span>
-              );
-            })}
-          </nav>
+          <div className="flex-1" />
           {target.mode === "saved" && (
             <SaveStatus isPending={isSaving} isError={false} />
           )}

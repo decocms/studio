@@ -20,6 +20,8 @@ const TaskBoardCommentSchema = z.object({
   /** Null on a thread root; a reply points at its root. */
   parentId: z.string().nullable(),
   authorId: z.string(),
+  /** Source run, when this comment was written by an agent. */
+  threadId: z.string().nullable().optional(),
   body: z.string(),
   /** Thread roots only — a thread is settled or open as a whole. */
   resolved: z.boolean(),

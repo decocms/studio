@@ -320,16 +320,17 @@ export function siblingFieldLabel(
 }
 
 /**
- * Header crumb index the top-bar back button ("<") should navigate to.
+ * Header crumb index the back button ("<") should navigate to.
  *
- * Normally "back" targets the parent of the last crumb (`crumbCount - 2`). But a
- * multivariate section renders its variant list AND the selected variant's form
- * as one combined view, so the section-label crumb and the variant-label crumb
- * collapse to the same navigation level (both map to `fieldBreadcrumbs = []`). At
- * that top level `crumbCount - 2` points at the redundant section crumb, so back
- * only clears the (already empty) field trail and appears to do nothing. Treat the
- * variant top as a direct child of the section list instead, so back exits the
- * section (index 0).
+ * Normally back targets the parent of the last crumb (`crumbCount - 2`). The
+ * exception is a multivariate section in the classic layout, which spends two
+ * crumbs — the section label and the variant label — on one destination, since
+ * the variant list and the selected variant's form render as a single view.
+ * There `crumbCount - 2` points at the redundant section crumb, so back would
+ * only clear an already-empty field trail and appear to do nothing. Treat that
+ * variant top as a direct child of the section list so back exits the section.
+ *
+ * Compact merges those two crumbs into one, so it never sets the flag.
  */
 export function headerBackTargetIndex(
   crumbCount: number,

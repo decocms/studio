@@ -1,3 +1,5 @@
+import { getStudioMcpMetadata } from "@decocms/shared/registry/metadata";
+import { getCatalog, listCatalog } from "./catalog";
 import { defineTool } from "@/core/define-tool";
 import { requireOrganization } from "@/core/studio-context";
 import {
@@ -16,9 +18,42 @@ export const REGISTRY_ITEM_SEARCH = defineTool({
   outputSchema: RegistrySearchOutputSchema,
 
   handler: async (input, ctx) => {
-    const organization = requireOrganization(ctx);
+    requireOrganization(ctx);
     await ctx.access.check();
-    const storage = ctx.storage.registry;
-    return storage.items.search(organization.id, input);
+    const tokens = input.query?.trim().split(/\s+/).filter(Boolean) ?? [];
+    const result = listCatalog(await getCatalog(), {
+      ...input,
+      where: tokens.length
+        ? {
+            operator: "or",
+            conditions: tokens.flatMap((token) =>
+              ["id", "title", "description"]
+                .map((field) => ({
+                  field: [field],
+                  operator: "contains" as const,
+                  value: token,
+                }))
+                .concat([
+                  {
+                    field: ["server", "name"],
+                    operator: "contains" as const,
+                    value: token,
+                  },
+                ]),
+            ),
+          }
+        : undefined,
+    });
+    return {
+      ...result,
+      items: result.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        tags: getStudioMcpMetadata(item._meta)?.tags ?? [],
+        categories: getStudioMcpMetadata(item._meta)?.categories ?? [],
+        is_public: true,
+        is_unlisted: false,
+      })),
+    };
   },
 });

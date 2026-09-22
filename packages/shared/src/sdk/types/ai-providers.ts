@@ -51,6 +51,8 @@ export const MODEL_CAPABILITIES = [
   "video",
   "file",
   "reasoning",
+  "tools",
+  "decisions",
 ] as const;
 
 export type ModelCapability = (typeof MODEL_CAPABILITIES)[number];

@@ -64,6 +64,14 @@ export interface TokenOptions {
   bufferMs?: number;
   /** The upstream just rejected the token: skip the freshness check. */
   forceRefresh?: boolean;
+  /**
+   * Extra repositories of the SAME account to cover, by name — the private
+   * dependencies a checkout of this repository has to fetch. Honoured by
+   * `tokenForRepo` only, and only where the provider mints per-repository
+   * tokens (GitHub App installations); everywhere else the token is already
+   * account-wide and this is a no-op.
+   */
+  alsoRepositories?: string[];
 }
 
 export interface ListReposOptions {

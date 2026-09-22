@@ -20,6 +20,13 @@ import {
 import { Input } from "./input.tsx";
 import { ArrowLeft, X, Plus } from "@untitledui/icons";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 export type FilterOperator =
   | "contains"
   | "does_not_contain"
@@ -120,7 +127,7 @@ function getDefaultValue(column: FilterColumn): string {
 export function FilterBar({
   filters,
   onFiltersChange,
-  availableUsers = [],
+  availableUsers = EMPTY_ARRAY,
   renderUserItem,
   renderUserFilter,
 }: FilterBarProps) {

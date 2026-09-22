@@ -8,6 +8,8 @@
 import { ProjectLocator } from "@/sdk";
 
 export const KEYS = {
+  registryApp: (orgId: string, appId: string) =>
+    ["registry-app", orgId, appId] as const,
   // Public config (no auth required)
   publicConfig: () => ["publicConfig"] as const,
 

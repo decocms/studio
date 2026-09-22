@@ -45,7 +45,7 @@ import {
 } from "@/tools/task-board/dbos-github-read";
 import { getPublicUrl } from "@/core/server-constants";
 import { usesLocalObjectStorage } from "../tools/connection/dev-assets";
-import { DECO_STORE_URL, isDecoHostedMcp } from "@/core/deco-constants";
+import { isDecoHostedMcp } from "@/core/deco-constants";
 import { createDecopilotThreadStatusEvent } from "@decocms/shared/sdk";
 import { PrometheusSerializer } from "@opentelemetry/exporter-prometheus";
 import { Hono } from "hono";
@@ -132,8 +132,6 @@ import {
   registerJiraTriggerSweepWorkflow,
   setJiraTriggerSweepRuntime,
 } from "@/jira/dbos-jira-trigger-sweep";
-// Importing it is what runs its top-level `DBOS.registerWorkflow`.
-import { setJiraPrMergeRuntime } from "@/jira/dbos-pr-merge";
 import { gitProviderCallbackRoutes } from "./routes/git-providers";
 import filesRoutes from "./routes/files";
 import { createThreadOutputsRoutes } from "./routes/thread-outputs";
@@ -143,7 +141,6 @@ import {
   shouldSkipStudioContext,
   SYSTEM_PATHS,
 } from "./utils/paths";
-import { CredentialVault } from "../encryption/credential-vault";
 import type { CancelBroadcast } from "./routes/decopilot/cancel-broadcast";
 import { setCancelBroadcast } from "./routes/decopilot/cancel-registry";
 import {
@@ -278,63 +275,6 @@ function rejectAfter(ms: number): Promise<never> {
 
 // Track decopilot strategy cleanup (abort active runs, stop strategies) during HMR
 let currentDecopilotCleanup: (() => void | Promise<void>) | null = null;
-
-// ============================================================================
-// Deco Store OAuth Helpers
-// ============================================================================
-
-/**
- * Get project_locator from the Deco Store registry connection.
- * Returns the locator string or null if not found/configured.
- *
- * @param ctx - The studio context
- * @param organizationId - The organization ID to search for the registry connection
- */
-async function getDecoStoreProjectLocator(
-  ctx: StudioContext,
-  organizationId: string,
-): Promise<string | null> {
-  // Find registry connection by URL within the organization
-  const { items: connections } = await ctx.storage.connections.list(
-    organizationId,
-    {
-      where: {
-        field: ["connection_url"],
-        operator: "like",
-        value: `${DECO_STORE_URL}%`,
-      },
-      limit: 1,
-    },
-  );
-  const registryConn = connections[0];
-
-  if (!registryConn?.configuration_state) {
-    return null;
-  }
-
-  return (registryConn.configuration_state as Record<string, unknown>)
-    .project_locator as string | null;
-}
-
-/**
- * Build OAuth query params for deco-hosted MCPs.
- * Uses project_locator from Deco Store registry or falls back to auto_personal.
- */
-function buildDecoOAuthParams(projectLocator: string | null): URLSearchParams {
-  const params = new URLSearchParams();
-
-  if (projectLocator) {
-    const [org, project] = projectLocator.split("/");
-    if (org) params.set("workspace_hint", org);
-    if (project) params.set("project_hint", project);
-  } else {
-    params.set("auto_personal", "true");
-  }
-
-  params.set("force_new", "true");
-
-  return params;
-}
 
 // ============================================================================
 // Inline route handlers (extracted to named functions so they can be
@@ -623,24 +563,9 @@ const oauthProxyHandler: MiddlewareHandler<Env> = async (c) => {
       targetUrl.searchParams.set("resource", resourceIndicator);
     }
 
-    // Add smart OAuth params for deco-hosted MCPs to skip org/project selection
-    // Wrapped in try-catch to ensure OAuth redirect proceeds even if smart params fail
     if (isDecoHostedMcp(connection.connection_url)) {
-      try {
-        const projectLocator = await getDecoStoreProjectLocator(
-          ctx,
-          connection.organization_id,
-        );
-        const smartParams = buildDecoOAuthParams(projectLocator);
-        for (const [key, value] of smartParams) {
-          targetUrl.searchParams.set(key, value);
-        }
-      } catch (error) {
-        console.warn(
-          "[oauth-proxy] Failed to get smart OAuth params, proceeding without:",
-          error,
-        );
-      }
+      targetUrl.searchParams.set("auto_personal", "true");
+      targetUrl.searchParams.set("force_new", "true");
     }
 
     return c.redirect(targetUrl.toString(), 302);
@@ -1680,10 +1605,6 @@ export async function createApp(options: CreateAppOptions = {}) {
   });
   ContextFactory.set(factory);
 
-  // Credential vault — shared by the Private Registry public routes (mounted
-  // below).
-  const vault = new CredentialVault(getSettings().encryptionKey);
-
   // Public skill sets: synced by a DBOS scheduled workflow (one pod per tick
   // instead of every pod racing its own loop). This only stashes deps — the
   // workflow no-ops when ORGFS_PUBLIC_SETS is unset.
@@ -1703,9 +1624,6 @@ export async function createApp(options: CreateAppOptions = {}) {
     db: database.db,
     encryptionKey: getSettings().encryptionKey,
   });
-
-  // The durable merge batch started by JIRA_PR_MERGE.
-  setJiraPrMergeRuntime({ db: database.db });
 
   // Every 5 minutes: email what's still unread, then prune the 30-day window.
   setNotificationDigestRuntime({ db: database.db });
@@ -2325,40 +2243,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   legacyDecoSitesOrg.route("/", createDecoSitesOrgRoutes());
   app.route("/api/deco-sites", legacyDecoSitesOrg);
 
-  // ============================================================================
-  // Private Registry public routes (first-class feature)
-  // Registered BEFORE the org-scoped sub-app so the more specific
-  // `/api/:org/registry/*` mounts win over the catch-all org sub-app.
-  // These are PUBLIC endpoints — they do their own org lookup and must NOT
-  // go through `resolveOrgFromPath` (which would enforce membership).
-  // ============================================================================
-
-  const { createPublishRequestHandler, createPublicMCPHandler } = await import(
-    "@/api/routes/registry"
-  );
-  const registryRouteCtx = {
-    db: database.db as any,
-    vault: {
-      encrypt: (value: string) => vault.encrypt(value),
-      decrypt: (value: string) => vault.decrypt(value),
-    },
-  };
-  const publishRequestHandler = createPublishRequestHandler(registryRouteCtx);
-  const publicMCPHandler = createPublicMCPHandler(registryRouteCtx);
-
-  // Legacy mounts (with deprecation log)
-  app.use("/org/:orgRef/registry/publish-request", logDeprecatedRoute);
-  app.post("/org/:orgRef/registry/publish-request", publishRequestHandler);
-  app.use("/org/:orgSlug/registry/*", logDeprecatedRoute);
-  app.all("/org/:orgSlug/registry/*", publicMCPHandler);
-
-  // New canonical mounts (no deprecation log; mounted at the top level so they
-  // resolve their own org and bypass `resolveOrgFromPath`).
-  app.post("/api/:org/registry/publish-request", publishRequestHandler);
-  app.all("/api/:org/registry/*", publicMCPHandler);
-
   // Deployment admin dashboard. Static segment — must register before the
-  // `:org` catch-all below, same trick as the registry mounts above. That
+  // `:org` catch-all below, so that
   // registration order is the real no-collision guarantee: ORGANIZATION_CREATE
   // rejects slugs outside `^[a-z0-9-]+$`, but the raw better-auth
   // organization/create endpoint enforces no charset, so an `_admin`-slugged

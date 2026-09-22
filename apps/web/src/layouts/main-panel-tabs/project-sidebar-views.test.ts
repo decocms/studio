@@ -68,6 +68,28 @@ describe("project sidebar views", () => {
     ]);
   });
 
+  test("gates experiments on a CMS source, not the flag alone", () => {
+    // Flag on (native.experiments) but no clonable source → no experiments row.
+    expect(
+      availableProjectSidebarViews(
+        projectSidebarViewPresence(false, nativePresence(["experiments"])),
+      ),
+    ).toEqual(["automations"]);
+    // With a clonable source, the flag surfaces it.
+    expect(
+      availableProjectSidebarViews(
+        projectSidebarViewPresence(true, nativePresence(["experiments"])),
+      ),
+    ).toEqual([
+      "overview",
+      "reports",
+      "board",
+      "site-editor",
+      "automations",
+      "experiments",
+    ]);
+  });
+
   test("keeps only automations when a project has no source or native views", () => {
     expect(
       availableProjectSidebarViews(

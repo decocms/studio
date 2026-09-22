@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { lastRunFailure } from "./run-failure";
+import { decodeRunFailureReason, lastRunFailure } from "./run-failure";
 
 const moved = (data: Record<string, unknown> | null) => ({
   action: "status_changed",
@@ -39,6 +39,15 @@ describe("lastRunFailure", () => {
     });
   });
 
+  test("a benign machine move carrying a reason is not a failure", () => {
+    expect(
+      lastRunFailure([moved({ to: "done", reason: "pr_merged" })]),
+    ).toBeNull();
+    expect(
+      lastRunFailure([moved({ to: "in_progress", reason: "rerun" })]),
+    ).toBeNull();
+  });
+
   test("a pending retry is not a standing failure", () => {
     expect(
       lastRunFailure([moved({ to: "in_progress", retry: 1, reason: "boom" })]),
@@ -48,5 +57,20 @@ describe("lastRunFailure", () => {
   test("non-status entries and an empty timeline report nothing", () => {
     expect(lastRunFailure([{ action: "created", data: null }])).toBeNull();
     expect(lastRunFailure([])).toBeNull();
+  });
+});
+
+describe("decodeRunFailureReason", () => {
+  // Unlike lastRunFailure, this must decode a scheduled-retry entry's reason.
+  test("decodes a prefixed reason regardless of retry/lane", () => {
+    expect(
+      decodeRunFailureReason(
+        "Error: GITHUB_NOT_AUTHENTICATED::GitHub installation_access_token failed: 422",
+      ),
+    ).toBe("GitHub installation_access_token failed: 422");
+  });
+
+  test("a non-string reason renders as empty text", () => {
+    expect(decodeRunFailureReason(undefined)).toBe("");
   });
 });

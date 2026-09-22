@@ -1,3 +1,6 @@
+import { readLanguage } from "@/hooks/use-preferences.ts";
+import type { Locale } from "@/i18n/locale.ts";
+import { translate } from "@/i18n/use-t.ts";
 import { labelFromResolveType } from "./section-types";
 
 const capitalize = (s: string) =>
@@ -5,10 +8,71 @@ const capitalize = (s: string) =>
 
 const MAX_FORMAT_DEPTH = 5;
 
-const DATE_FORMATTER = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+/** Matcher modules that compose other matchers with AND / OR. */
+const MULTI_MATCHER_RESOLVE_TYPES = new Set([
+  "website/matchers/multi.ts",
+  "$live/matchers/MatchMulti.ts",
+]);
+
+/**
+ * A nested `multi` is flattened into its parent's join, so the result reads by
+ * ordinary boolean precedence — `multi(AND, [multi(OR, [a, b]), c])` would
+ * print "a OR b AND c", which means something else. Parenthesise a child whose
+ * operator differs from its parent's. A child with fewer than two matchers
+ * prints no operator of its own, so it needs no parentheses.
+ */
+function childNeedsParens(child: unknown, parentOp: string): boolean {
+  if (!child || typeof child !== "object" || Array.isArray(child)) return false;
+  const obj = child as Record<string, unknown>;
+  const rt = typeof obj.__resolveType === "string" ? obj.__resolveType : "";
+  if (!MULTI_MATCHER_RESOLVE_TYPES.has(rt)) return false;
+  if (!Array.isArray(obj.matchers) || obj.matchers.length < 2) return false;
+  return (obj.op === "OR" ? "OR" : "AND") !== parentOp;
+}
+
+/** Built per locale on first use: `Intl.DateTimeFormat` is costly enough to be
+ *  worth keeping, and a variant label is rendered for every row on the page. */
+const FORMATTER_CACHE = new Map<
+  Locale,
+  {
+    dateTime: Intl.DateTimeFormat;
+    date: Intl.DateTimeFormat;
+    day: Intl.DateTimeFormat;
+  }
+>();
+
+function dateFormatters(locale: Locale) {
+  const cached = FORMATTER_CACHE.get(locale);
+  if (cached) return cached;
+  const built = {
+    dateTime: new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }),
+    date: new Intl.DateTimeFormat(locale, { dateStyle: "medium" }),
+    day: new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }),
+  };
+  FORMATTER_CACHE.set(locale, built);
+  return built;
+}
+
+/**
+ * Whether a boundary sits on the edge of a day in the reader's own timezone —
+ * the two instants a whole-day window is stored as. Printing "12:00 AM" or
+ * "11:59 PM" tells them nothing they didn't already know from the date, and it
+ * is most of the label's width.
+ */
+function isDayBoundary(d: Date): boolean {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return (h === 0 && m === 0) || (h === 23 && m === 59);
+}
+
+const parseDate = (iso: string): Date | null => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
 /**
  * Render a `start`/`end` ISO-date pair as a compact range — used by deco's
@@ -19,21 +83,34 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en", {
  */
 function formatDateRange(rule: Record<string, unknown>): string | null {
   const { start, end } = rule as { start?: unknown; end?: unknown };
-  const startStr = typeof start === "string" ? start : "";
-  const endStr = typeof end === "string" ? end : "";
-  if (!startStr && !endStr) return null;
-  const tryFormat = (iso: string): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return DATE_FORMATTER.format(d);
-  };
-  const startFmt = tryFormat(startStr);
-  const endFmt = tryFormat(endStr);
-  if (startFmt && endFmt) return `${startFmt} → ${endFmt}`;
-  if (startFmt) return `From ${startFmt}`;
-  if (endFmt) return `Until ${endFmt}`;
-  return null;
+  const startDate = parseDate(typeof start === "string" ? start : "");
+  const endDate = parseDate(typeof end === "string" ? end : "");
+  if (!startDate && !endDate) return null;
+
+  const present = [startDate, endDate].filter((d): d is Date => d !== null);
+  const wholeDay = present.every(isDayBoundary);
+  const sameYear =
+    startDate !== null &&
+    endDate !== null &&
+    startDate.getFullYear() === endDate.getFullYear();
+
+  const formatters = dateFormatters(readLanguage());
+  const fmt = (d: Date, dropYear: boolean) =>
+    wholeDay
+      ? (dropYear ? formatters.day : formatters.date).format(d)
+      : formatters.dateTime.format(d);
+
+  if (startDate && endDate) {
+    return `${fmt(startDate, wholeDay && sameYear)} → ${fmt(endDate, false)}`;
+  }
+  if (startDate) {
+    return translate("sectionsEditor.formatMatcher.fromDate", {
+      date: fmt(startDate, false),
+    });
+  }
+  return translate("sectionsEditor.formatMatcher.untilDate", {
+    date: fmt(endDate!, false),
+  });
 }
 
 export function formatMatcher(
@@ -151,7 +228,10 @@ export function formatMatcher(
       if (matchers && matchers.length > 0) {
         const safeOp = op === "OR" ? "OR" : "AND";
         return matchers
-          .map((m) => formatMatcher(m, depth + 1))
+          .map((m) => {
+            const text = formatMatcher(m, depth + 1);
+            return childNeedsParens(m, safeOp) ? `(${text})` : text;
+          })
           .join(` ${safeOp} `);
       }
       return labelFromResolveType(rt);

@@ -51,4 +51,19 @@ describe("openaiCompatibleAdapter.listModels", () => {
     );
     expect(calls).toBe(1);
   });
+
+  test("degrades a malformed 2xx body instead of throwing a raw SyntaxError", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response("not json", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const provider = openaiCompatibleAdapter.create(CREDENTIAL);
+
+    await expect(provider.listModels?.()).rejects.toThrow(
+      "OpenAI-compatible listModels returned malformed JSON: not json",
+    );
+  });
 });

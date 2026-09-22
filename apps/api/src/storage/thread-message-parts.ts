@@ -62,6 +62,9 @@ function estimatePayloadBytes(value: unknown, budget: number): number {
 // The same pass redacts credentials (below) — this table is the one place every
 // harness's output funnels through on its way to durable storage, so it is the
 // only guard that cannot be bypassed by a new producer.
+// Matching the NUL control character is the entire purpose here: Postgres
+// rejects it in a text column, so it is stripped before the insert.
+// oxlint-disable-next-line eslint/no-control-regex
 const NUL = /\u0000/g;
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;

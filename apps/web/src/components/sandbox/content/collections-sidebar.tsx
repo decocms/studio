@@ -6,7 +6,7 @@ import {
   CornerUpRight,
   Database01,
   File02,
-  Globe02,
+  Globe01,
   Grid01,
   LayoutAlt01,
   Settings01,
@@ -157,7 +157,7 @@ function AdvancedGroup({
       <CollapsibleContent className="flex flex-col gap-0.5 pt-0.5">
         <CollectionRow
           id="sections"
-          icon={Globe02}
+          icon={Globe01}
           label={t("sandbox.collectionsSidebar.sections")}
           count={counts.sections}
           active={active === "sections"}

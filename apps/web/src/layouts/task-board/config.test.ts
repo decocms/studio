@@ -33,6 +33,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     assigneeId: null,
     assignedBy: null,
     repo: null,
+    repositoryId: null,
     dueDate: null,
     sortOrder,
     keySeq: 1,

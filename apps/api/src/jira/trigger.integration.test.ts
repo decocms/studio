@@ -116,7 +116,10 @@ describe("Jira trigger storage (real Postgres)", () => {
     expect(await jira.getAutomation(ORG, "Doing")).toEqual({
       jiraStatus: "Doing",
       prompt: null,
+      continuePr: false,
     });
+    await jira.upsertAutomation(ORG, "Doing", null, true);
+    expect((await jira.getAutomation(ORG, "Doing"))?.continuePr).toBe(true);
     await jira.upsertAutomation(ORG, "Doing", "Fix it");
     expect((await jira.getAutomation(ORG, "Doing"))?.prompt).toBe("Fix it");
     await jira.upsertAutomation(ORG, "QA", "Test it");

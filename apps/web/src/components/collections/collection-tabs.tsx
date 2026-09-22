@@ -1,4 +1,5 @@
 import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useT } from "@/i18n/use-t.ts";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 import { cn } from "@decocms/ui/lib/utils.ts";
@@ -69,8 +70,10 @@ function ClassicCollectionTabs({
   onTabChange,
   className,
 }: CollectionTabsProps) {
+  const t = useT();
   return (
-    <div
+    <nav
+      aria-label={t("collections.collectionTabs.tabList")}
       className={cn(
         "flex items-center gap-2 overflow-x-auto no-scrollbar",
         className,
@@ -82,6 +85,7 @@ function ClassicCollectionTabs({
           <button
             key={tab.id}
             type="button"
+            aria-pressed={isActive}
             onClick={() => onTabChange(tab.id)}
             className={cn(
               "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex gap-1.5 items-center",
@@ -107,7 +111,7 @@ function ClassicCollectionTabs({
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
 

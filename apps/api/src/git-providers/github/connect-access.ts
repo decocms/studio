@@ -100,6 +100,33 @@ export function coversSelection(
   return repositoryIds.every((id) => delegable.has(id));
 }
 
+/** Restore an explicit grant, or linked repositories for historical accounts. */
+export function preselectedRepositoryIds(
+  choices: RepositoryChoice[],
+  previousIds: number[] | null,
+  linked: { externalId: string | null; path: string }[],
+): number[] {
+  if (previousIds !== null) {
+    const previous = new Set(previousIds);
+    return choices
+      .filter((repo) => previous.has(repo.id))
+      .map((repo) => repo.id);
+  }
+  const ids = new Set(
+    linked.flatMap((repo) => (repo.externalId ? [repo.externalId] : [])),
+  );
+  const paths = new Set(
+    linked
+      .filter((repo) => !repo.externalId)
+      .map((repo) => repo.path.toLowerCase()),
+  );
+  return choices
+    .filter(
+      (repo) => ids.has(String(repo.id)) || paths.has(repo.name.toLowerCase()),
+    )
+    .map((repo) => repo.id);
+}
+
 interface FlowAccessEntry {
   expiresAt: number;
   installations?: GithubInstallation[];

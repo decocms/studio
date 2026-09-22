@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { SchemaProperty } from "./resolve-schema";
-import { isSectionArrayField } from "./section-array-field";
+import {
+  isSectionArrayField,
+  isSectionBlockRefField,
+} from "./section-array-field";
 import { PAGE_MULTIVARIATE_FLAG_RESOLVE_TYPE } from "./section-types";
 
 describe("isSectionArrayField", () => {
@@ -83,5 +86,77 @@ describe("isSectionArrayField", () => {
         "sections",
       ),
     ).toBe(true);
+  });
+});
+
+describe("isSectionBlockRefField", () => {
+  // The shape deco emits for a `Section`-typed prop: the multivariate branch
+  // plus whichever saved blocks it happened to name (here, all multivariate).
+  const countdownSection: SchemaProperty = {
+    type: "block-ref",
+    anyOfRefs: [
+      {
+        resolveType: "website/flags/multivariate/section.ts",
+        title: "website/flags/multivariate/section.ts",
+      },
+      { resolveType: "Alerta", title: "Alerta" },
+      {
+        resolveType: "carrossel quadrado vestidos",
+        title: "carrossel quadrado vestidos",
+      },
+    ],
+  };
+
+  test("a Section slot is one, however few branches the schema names", () => {
+    expect(isSectionBlockRefField(countdownSection)).toBe(true);
+  });
+
+  test("a module-typed section ref is one", () => {
+    expect(
+      isSectionBlockRefField({
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "site/sections/Images/BannerCollection.tsx",
+            title: "site/sections/Images/BannerCollection.tsx",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  test("a loader union is not", () => {
+    expect(
+      isSectionBlockRefField({
+        type: "block-ref",
+        anyOfRefs: [
+          {
+            resolveType: "vtex/loaders/product/list.ts",
+            title: "vtex/loaders/product/list.ts",
+          },
+          {
+            resolveType: "shopify/loaders/product/list.ts",
+            title: "shopify/loaders/product/list.ts",
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  test("an array of sections is not a slot — that is the array field's job", () => {
+    expect(
+      isSectionBlockRefField({
+        type: "array",
+        items: {
+          type: "block-ref",
+          anyOfRefs: [
+            {
+              resolveType: "site/sections/Foo.tsx",
+              title: "site/sections/Foo.tsx",
+            },
+          ],
+        },
+      }),
+    ).toBe(false);
   });
 });

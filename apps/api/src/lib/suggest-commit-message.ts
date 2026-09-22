@@ -290,7 +290,7 @@ export async function suggestCommitMessageWithLlm(
 
     const result = await generateText({
       model,
-      system: COMMIT_SUGGESTION_SYSTEM,
+      instructions: COMMIT_SUGGESTION_SYSTEM,
       prompt: summary,
       maxOutputTokens: 400,
       temperature: 0.2,

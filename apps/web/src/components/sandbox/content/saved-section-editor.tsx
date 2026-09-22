@@ -1,6 +1,7 @@
+import { BlockBreadcrumbs } from "@/components/sections-editor/block-breadcrumbs";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { useState } from "react";
-import { ChevronRight, Code01, X } from "@untitledui/icons";
+import { Code01, X } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { ScrollArea } from "@decocms/ui/components/scroll-area.tsx";
 import {
@@ -8,13 +9,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { cn } from "@decocms/ui/lib/utils.ts";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { SchemaForm } from "@/components/sections-editor/schema-form";
-import {
-  type Crumb,
-  crumbLabel,
-} from "@/components/sections-editor/schema-form-breadcrumb";
+import type { Crumb } from "@/components/sections-editor/schema-form-breadcrumb";
 import {
   resolveSchema,
   type LiveMeta,
@@ -161,7 +158,11 @@ export function SavedSectionEditor({
   return (
     <div className="flex h-full w-full min-w-0">
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header: breadcrumb + JSON toggle, with the global-section accent. */}
+        <BlockBreadcrumbs
+          crumbs={headerCrumbs}
+          onSelect={handleBreadcrumbClick}
+        />
+        {/* JSON toggle and shared-block context. */}
         <div className="shrink-0 border-b px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <span
@@ -169,38 +170,7 @@ export function SavedSectionEditor({
               style={{ backgroundColor: GLOBAL_SECTION_ICON_COLOR }}
               aria-hidden
             />
-            <nav
-              aria-label={t("sandbox.savedSectionEditor.editingBreadcrumb")}
-              className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-sm"
-            >
-              {headerCrumbs.map((crumb, index) => {
-                const isLast = index === headerCrumbs.length - 1;
-                const crumbText = crumbLabel(crumb);
-                return (
-                  <span
-                    key={`${crumbText}-${index}`}
-                    className="flex min-w-0 items-center gap-1 overflow-hidden"
-                  >
-                    {index > 0 && (
-                      <ChevronRight className="size-3 shrink-0 text-muted-foreground/60" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleBreadcrumbClick(index)}
-                      title={crumbText}
-                      className={cn(
-                        "min-w-0 truncate classic:rounded-md compact:rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                        isLast
-                          ? "font-medium text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {crumbText}
-                    </button>
-                  </span>
-                );
-              })}
-            </nav>
+            <div className="flex-1" />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

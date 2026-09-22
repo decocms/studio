@@ -446,47 +446,6 @@ test("VirtualMCPUpdateDataSchema rejects a description over 500 chars", () => {
   expect(result.success).toBe(false);
 });
 
-test("VirtualMCPCreateDataSchema rejects more than 200 enabled_plugins", () => {
-  const result = VirtualMCPCreateDataSchema.safeParse({
-    title: "Agent",
-    connections: [],
-    metadata: {
-      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
-    },
-  });
-  expect(result.success).toBe(false);
-});
-
-test("VirtualMCPUpdateDataSchema rejects more than 200 enabled_plugins", () => {
-  const result = VirtualMCPUpdateDataSchema.safeParse({
-    metadata: {
-      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
-    },
-  });
-  expect(result.success).toBe(false);
-});
-
-test("VirtualMCPEntitySchema rejects more than 200 enabled_plugins on read", () => {
-  const result = VirtualMCPEntitySchema.safeParse({
-    id: "x",
-    title: "x",
-    description: null,
-    icon: null,
-    created_at: "t",
-    updated_at: "t",
-    created_by: "u",
-    organization_id: "o",
-    status: "active",
-    pinned: false,
-    metadata: {
-      instructions: null,
-      enabled_plugins: Array.from({ length: 201 }, (_, i) => `plugin-${i}`),
-    },
-    connections: [],
-  });
-  expect(result.success).toBe(false);
-});
-
 test("VirtualMCPEntitySchema rejects more than 200 subAgents", () => {
   const result = VirtualMCPEntitySchema.safeParse({
     id: "x",

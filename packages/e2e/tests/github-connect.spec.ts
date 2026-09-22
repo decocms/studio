@@ -449,6 +449,117 @@ test("closing the chooser deletes the grant and a standalone return remains usab
   expect((await page.request.get(flow.path)).status()).toBe(410);
 });
 
+for (const { status, accessIssue, label, action } of [
+  {
+    status: "active",
+    accessIssue: "authorization_required",
+    label: "Workspace authorization required",
+    action: "Authorize workspace access",
+  },
+  {
+    status: "revoked",
+    accessIssue: "revoked",
+    label: "Access revoked",
+    action: "Reconnect GitHub",
+  },
+  {
+    status: "active",
+    accessIssue: "no_repositories",
+    label: "No repositories authorized",
+    action: "Select repositories",
+  },
+]) {
+  test(`account access issue ${accessIssue} explains the cause and offers authorization`, async ({
+    authedPage,
+  }, testInfo) => {
+    const { page, orgSlug, user } = authedPage;
+    const owned = installation("reconnect-example");
+    const flow = await seedFlow(authedPage, [owned]);
+    const db = await connectDevDb();
+    try {
+      await db.query(
+        `INSERT INTO git_provider_accounts (organization_id,type,host,auth_kind,external_account_id,login,installation_id,created_by,status,installation_authorized_by,installation_repository_ids) VALUES ($1,'github','github.com','github_app',$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          flow.orgId,
+          String(owned.id),
+          owned.account.login,
+          owned.id,
+          user.userId,
+          status,
+          accessIssue === "no_repositories" ? "1001" : null,
+          accessIssue === "no_repositories" ? "[]" : null,
+        ],
+      );
+    } finally {
+      await db.end();
+    }
+    await page.goto(`/${orgSlug}/settings/repositories`);
+    const accounts = page.getByTestId("git-accounts-list");
+    const reconnect = accounts.getByRole("link", {
+      name: action,
+      exact: true,
+    });
+    await expect(reconnect).toBeVisible();
+    await expect(accounts.getByText(label, { exact: true })).toBeVisible();
+    const listed = await callSelfMcpTool<{
+      accounts: Array<{ accessIssue: string; servable: boolean }>;
+    }>(page.request, orgSlug, "GIT_ACCOUNT_LIST", {});
+    expect(listed.accounts).toMatchObject([{ accessIssue, servable: false }]);
+    await expect(
+      accounts.getByRole("link", { name: "Change workspace access" }),
+    ).toHaveCount(0);
+    await expect(
+      accounts.getByRole("link", { name: "Manage repository access" }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("github-needs-reconnect.png"),
+      animations: "disabled",
+    });
+    const [authorization] = await Promise.all([
+      page.waitForRequest((request) =>
+        request.url().startsWith("https://github.com/login/oauth/authorize?"),
+      ),
+      reconnect.click({ noWaitAfter: true }),
+    ]);
+    const destination = new URL(authorization.url());
+    expect(destination.searchParams.get("prompt")).toBe("select_account");
+    const state = destination.searchParams.get("state");
+    expect(state).toBeTruthy();
+    const code = randomUUID();
+    const exchange = await page.request.post(
+      `${fixtureOrigin}/__admin/github-codes`,
+      {
+        data: { code, token: flow.token },
+      },
+    );
+    expect(exchange.ok()).toBe(true);
+    await page.goto(`/api/_git/github/callback?state=${state}&code=${code}`);
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("heading", { name: "Select repositories", exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: owned.account.login, exact: true }),
+    ).toHaveCount(0);
+    await dialog.getByRole("checkbox").first().check();
+    await dialog
+      .getByRole("button", { name: "Authorize 1 repository", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(
+      new RegExp(`/${orgSlug}/settings/repositories$`),
+    );
+    await expect(reconnect).toHaveCount(0);
+    await expect(accounts.getByText(label, { exact: true })).toHaveCount(0);
+    await expect(
+      accounts.getByRole("link", { name: "Change workspace access" }),
+    ).toBeVisible();
+    await expect(
+      accounts.getByRole("link", { name: "Manage repository access" }),
+    ).toBeVisible();
+  });
+}
+
 test("reconnect asks which GitHub user to authorize and cancellation is visible", async ({
   authedPage: { page, orgSlug },
 }) => {
@@ -871,6 +982,230 @@ test("connecting checks repositories only for the selected organization", async 
   expect(
     stats.paths.filter((path: string) => path.includes("/repositories?")),
   ).toEqual([repositoryPath, repositoryPath]);
+});
+
+test("reconnecting preselects the existing grant across pages and preserves deselections through search", async ({
+  authedPage,
+}, testInfo) => {
+  const { page } = authedPage;
+  const repositories = Array.from({ length: 102 }, (_, i) => ({
+    id: 8000 + i,
+  }));
+  const account = installation(
+    "existing-selection",
+    "Organization",
+    repositories,
+  );
+  const initial = await seedFlow(authedPage, [account]);
+  expect(
+    (
+      await page.request.post(initial.path, {
+        data: await grantInput(
+          page.request,
+          initial.path,
+          account,
+          [8000, 8100, 8101],
+        ),
+      })
+    ).status(),
+  ).toBe(200);
+  const flow = await seedFlow(authedPage, [account]);
+  await grantAccess(page.request, flow.token, [
+    {
+      ...account,
+      repositories: account.repositories!.map((repo) => ({
+        ...repo,
+        permissions: { admin: repo.id !== 8101 },
+      })),
+    },
+  ]);
+  const choices = await (
+    await page.request.get(
+      `${flow.path}/repositories?installationId=${account.id}&query=repo-8100`,
+    )
+  ).json();
+  expect(choices.selectedRepositoryIds).toEqual([8000, 8100]);
+  expect(choices.repositories).toHaveLength(1);
+
+  await page.goto(`${flow.url}&git_installation=${account.id}`);
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("heading", { name: "Select repositories", exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(100);
+  await expect(dialog.getByRole("checkbox").first()).toBeChecked();
+  await expect(
+    dialog.getByRole("button", {
+      name: "Authorize 2 repositories",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await page.screenshot({
+    path: testInfo.outputPath("github-preselected-repositories.png"),
+    animations: "disabled",
+  });
+
+  await dialog.getByRole("checkbox").first().uncheck();
+  const search = dialog.getByRole("textbox", { name: "Search repositories" });
+  await search.fill("repo-8100");
+  await expect(dialog.getByRole("checkbox")).toHaveCount(1);
+  await expect(dialog.getByRole("checkbox")).toBeChecked();
+  await search.fill("");
+  await expect(dialog.getByRole("checkbox")).toHaveCount(100);
+  await expect(dialog.getByRole("checkbox").first()).not.toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Load more repositories", exact: true })
+    .click();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(101);
+  await expect(dialog.getByRole("checkbox").last()).toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Authorize 1 repository", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  const db = await connectDevDb();
+  try {
+    const saved = await db.query(
+      "SELECT installation_repository_ids FROM git_provider_accounts WHERE organization_id=$1 AND installation_id=$2",
+      [flow.orgId, account.id],
+    );
+    expect(saved.rows).toEqual([{ installation_repository_ids: [8100] }]);
+  } finally {
+    await db.end();
+  }
+});
+
+test("historical accounts preselect only their linked repositories the current user can authorize", async ({
+  authedPage,
+}) => {
+  const { page, user } = authedPage;
+  const account = installation("historical-selection", "Organization", [
+    { id: 8200 },
+    { id: 8201 },
+    { id: 8202, permissions: { admin: false } },
+    { id: 8203 },
+    { id: 8204 },
+  ]);
+  const flow = await seedFlow(authedPage, [account]);
+  const db = await connectDevDb();
+  try {
+    const inserted = await db.query<{ id: string }>(
+      `INSERT INTO git_provider_accounts (organization_id,type,host,auth_kind,external_account_id,login,installation_id,created_by) VALUES ($1,'github','github.com','github_app',$2,$3,$4,$5) RETURNING id`,
+      [
+        flow.orgId,
+        String(account.id),
+        account.account.login,
+        account.id,
+        user.userId,
+      ],
+    );
+    for (const repo of [
+      {
+        path: "HISTORICAL-SELECTION/REPO-8200",
+        externalId: null,
+        linked: true,
+      },
+      {
+        path: "historical-selection/old-name",
+        externalId: "8201",
+        linked: true,
+      },
+      {
+        path: "historical-selection/repo-8202",
+        externalId: "8202",
+        linked: true,
+      },
+      {
+        path: "historical-selection/repo-8203",
+        externalId: "8203",
+        linked: false,
+      },
+    ]) {
+      await db.query(
+        `INSERT INTO repositories (organization_id,account_id,provider,host,path,external_id,web_url) VALUES ($1,$2,'github','github.com',$3,$4,$5)`,
+        [
+          flow.orgId,
+          repo.linked ? inserted.rows[0]!.id : null,
+          repo.path,
+          repo.externalId,
+          `https://github.com/${repo.path}`,
+        ],
+      );
+    }
+  } finally {
+    await db.end();
+  }
+  const choices = await (
+    await page.request.get(
+      `${flow.path}/repositories?installationId=${account.id}`,
+    )
+  ).json();
+  expect(choices.selectedRepositoryIds).toEqual([8200, 8201]);
+  // An inaccessible target must leave the account chooser usable.
+  await page.goto(`${flow.url}&git_installation=${account.id + 1}`);
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: account.account.login, exact: true })
+    .click();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(4);
+  await expect(dialog.getByRole("checkbox").nth(0)).toBeChecked();
+  await expect(dialog.getByRole("checkbox").nth(1)).toBeChecked();
+  await expect(dialog.getByRole("checkbox").nth(2)).not.toBeChecked();
+  await expect(dialog.getByRole("checkbox").nth(3)).not.toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Authorize 2 repositories", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test("searching a prefilled grant does not adopt a concurrent account version", async ({
+  authedPage,
+}) => {
+  const { page } = authedPage;
+  const account = installation("concurrent-selection", "Organization", [
+    { id: 8300 },
+    { id: 8301 },
+  ]);
+  const initial = await seedFlow(authedPage, [account]);
+  expect(
+    (
+      await page.request.post(initial.path, {
+        data: await grantInput(page.request, initial.path, account, [8300]),
+      })
+    ).status(),
+  ).toBe(200);
+  const flow = await seedFlow(authedPage, [account]);
+  await page.goto(`${flow.url}&git_installation=${account.id}`);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("checkbox").first()).toBeChecked();
+  const concurrent = await connectDevDb();
+  try {
+    await concurrent.query(
+      "UPDATE git_provider_accounts SET installation_repository_ids=$1, updated_at=clock_timestamp() WHERE organization_id=$2 AND installation_id=$3",
+      [JSON.stringify([8301]), flow.orgId, account.id],
+    );
+  } finally {
+    await concurrent.end();
+  }
+  await dialog
+    .getByRole("textbox", { name: "Search repositories" })
+    .fill("repo-8300");
+  await expect(dialog.getByRole("checkbox")).toHaveCount(1);
+  await dialog
+    .getByRole("button", { name: "Authorize 1 repository", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Someone changed this account’s access",
+  );
+  const db = await connectDevDb();
+  try {
+    const saved = await db.query(
+      "SELECT installation_repository_ids FROM git_provider_accounts WHERE organization_id=$1 AND installation_id=$2",
+      [flow.orgId, account.id],
+    );
+    expect(saved.rows).toEqual([{ installation_repository_ids: [8301] }]);
+  } finally {
+    await db.end();
+  }
 });
 
 test("reconnecting replaces the repository selection and an owner remains scoped", async ({

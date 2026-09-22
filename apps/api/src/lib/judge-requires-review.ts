@@ -87,7 +87,7 @@ export async function judgeRequiresReviewWithLlm(
     const { object } = await generateObject({
       model,
       schema: ReviewVerdictSchema,
-      system: `${REVIEW_JUDGE_SYSTEM}\n\n${languageInstruction(language)}`,
+      instructions: `${REVIEW_JUDGE_SYSTEM}\n\n${languageInstruction(language)}`,
       prompt: summary,
       temperature: 0,
     });

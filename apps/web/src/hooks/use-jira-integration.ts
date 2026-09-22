@@ -101,6 +101,7 @@ export function useSetJiraAutomation() {
     mutationFn: async (input: {
       jiraStatus: string;
       prompt: string | null;
+      continuePr?: boolean;
     }) => {
       if (input.prompt === null) {
         await studio.call("JIRA_AUTOMATION_DELETE", {
@@ -111,6 +112,7 @@ export function useSetJiraAutomation() {
       await studio.call("JIRA_AUTOMATION_UPSERT", {
         jiraStatus: input.jiraStatus,
         prompt: input.prompt.trim() === "" ? undefined : input.prompt,
+        continuePr: input.continuePr ?? false,
       });
     },
     onSettled: () =>
@@ -128,20 +130,5 @@ export function useStartJiraRun() {
   return useMutation({
     mutationFn: (input: StudioToolIO["JIRA_RUN_START"]["input"]) =>
       studio.call("JIRA_RUN_START", input),
-  });
-}
-
-/**
- * Merge the pull request each issue carries.
- *
- * Green merges with no agent at all — the ordinary case costs three API calls.
- * Only a merge conflict starts a run, because it is the one refusal with an
- * automatic answer; everything else comes back as a reason for a person.
- */
-export function useMergeJiraPrs() {
-  const studio = useStudioTools();
-  return useMutation({
-    mutationFn: (input: StudioToolIO["JIRA_PR_MERGE"]["input"]) =>
-      studio.call("JIRA_PR_MERGE", input),
   });
 }

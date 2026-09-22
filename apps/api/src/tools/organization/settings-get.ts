@@ -3,10 +3,10 @@ import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import {
   SidebarItemSchema,
-  RegistryConfigSchema,
   SimpleModeConfigSchema,
   DefaultHomeAgentsConfigSchema,
   OrgFlagsSchema,
+  SubmoduleCredentialSchema,
 } from "@decocms/shared/organization/schema";
 
 export const ORGANIZATION_SETTINGS_GET = defineTool({
@@ -25,12 +25,14 @@ export const ORGANIZATION_SETTINGS_GET = defineTool({
   outputSchema: z.object({
     organizationId: z.string(),
     sidebar_items: z.array(SidebarItemSchema).nullable().optional(),
-    enabled_plugins: z.array(z.string()).nullable().optional(),
     coding_agent_mcp_excluded: z.array(z.string()).nullable().optional(),
-    registry_config: RegistryConfigSchema.nullable().optional(),
     simple_mode: SimpleModeConfigSchema.nullable().optional(),
     default_home_agents: DefaultHomeAgentsConfigSchema.nullable().optional(),
     flags: OrgFlagsSchema.nullable().optional(),
+    submodule_credentials: z
+      .array(SubmoduleCredentialSchema)
+      .nullable()
+      .optional(),
     createdAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
     updatedAt: z.string().datetime().optional().describe("ISO 8601 timestamp"),
   }),

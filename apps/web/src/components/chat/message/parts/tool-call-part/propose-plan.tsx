@@ -46,7 +46,7 @@ export function ProposePlanPart({ part }: ProposePlanPartProps) {
         <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
           {t("chat.proposePlan.viewPlan")}
         </summary>
-        <div className="mt-1 pl-2 border-l-2 border-purple-500/30 prose prose-sm max-w-none text-sm">
+        <div className="mt-1 pl-2 border-l-2 border-special/30 prose prose-sm max-w-none text-sm">
           <MessageTextPart
             id="plan-content"
             part={{ type: "text", text: plan }}

@@ -19,7 +19,9 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
+import { AddListRow } from "../editor-list-row";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -53,9 +55,13 @@ import {
   useFieldDescriptionTooltips,
 } from "./field-label";
 import type { FieldProps } from "./field-props";
-import { ArrayRowContent, SortableArrayRow } from "./array-row";
+import {
+  ARRAY_ROW_THUMBNAIL_HEIGHT,
+  ArrayRowContent,
+  SortableArrayRow,
+} from "./array-row";
 import { hasMissingRequiredField } from "../section-required-status";
-import { MissingRequiredDot } from "../missing-required-dot";
+import { MissingRequiredMarker } from "../missing-required-marker";
 import { SchemaForm, renderField } from "../schema-form";
 import {
   RequiredFieldProvider,
@@ -66,6 +72,13 @@ import {
   type LiveMeta,
   type SchemaProperty,
 } from "../resolve-schema";
+
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
 
 function itemEditorSchema(
   item: unknown,
@@ -120,7 +133,7 @@ export function ArrayField({
   onChange,
   path,
   label,
-  breadcrumbPath = [],
+  breadcrumbPath = EMPTY_ARRAY,
   onBreadcrumbChange,
   hasSiblingDrillDownFields,
   meta,
@@ -133,6 +146,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const { required: requiredProp, invalid: requiredInvalid } =
     useRequiredField();
@@ -150,6 +164,9 @@ export function ArrayField({
     ),
   };
   const usesSectionPicker = isSectionArrayField(schema, arrayFieldKey);
+  const hasThumbnails = items.some((item) =>
+    Boolean(getArrayItemImageSrc(arrayItemDisplayValue(item), itemSchema)),
+  );
   // Only plain object arrays (banners, links, …) get the hide toggle. Section
   // pickers have their own hide flow, and primitive arrays can't be wrapped.
   const canHideItems = !usesSectionPicker && itemSchema?.type === "object";
@@ -527,7 +544,7 @@ export function ArrayField({
           <span className="min-w-0 truncate text-sm font-medium">
             {label}
             {requiredProp && requiredInvalid && (
-              <MissingRequiredDot className="ml-1 inline-block align-middle" />
+              <MissingRequiredMarker className="ml-1 inline-block align-middle" />
             )}
           </span>
         </FieldDescriptionTooltip>
@@ -544,7 +561,7 @@ export function ArrayField({
         </p>
       )}
 
-      {items.length > 0 && (
+      {(items.length > 0 || compact) && (
         <div className={cn(activeEntryId && "cursor-grabbing")}>
           <DndContext
             sensors={sensors}
@@ -557,57 +574,71 @@ export function ArrayField({
               items={entryIds}
               strategy={verticalListSortingStrategy}
             >
-              <div className="min-w-0 overflow-hidden rounded-xl border border-border/50 p-1.5">
-                {(() => {
-                  // Compute base labels once for the whole list rather than per
-                  // row. Display only — the row opens its item by `entry.index`,
-                  // not by label — so colliding rows share a clean label (no
-                  // positional " N" suffix); the breadcrumb addresses items by
-                  // the index its crumb carries.
-                  const itemLabels = getArrayItemDisplayLabels(
-                    items,
-                    itemSchema,
-                  );
-                  return entries.map((entry) => {
-                    const item = items[entry.index];
-                    if (item === undefined) return null;
-                    const labelText =
-                      itemLabels[entry.index] ?? itemLabel(item, entry.index);
-                    const displayValue = arrayItemDisplayValue(item);
-                    const imageSrc = getArrayItemImageSrc(
-                      displayValue,
+              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border compact:card-shadow border-border/50 p-1.5">
+                {items.length > 0 &&
+                  (() => {
+                    // Compute base labels once for the whole list rather than per
+                    // row. Display only — the row opens its item by `entry.index`,
+                    // not by label — so colliding rows share a clean label (no
+                    // positional " N" suffix); the breadcrumb addresses items by
+                    // the index its crumb carries.
+                    const itemLabels = getArrayItemDisplayLabels(
+                      items,
                       itemSchema,
                     );
-                    const missingRequired = hasMissingRequiredField(
-                      itemEditorSchema(
+                    return entries.map((entry) => {
+                      const item = items[entry.index];
+                      if (item === undefined) return null;
+                      const labelText =
+                        itemLabels[entry.index] ?? itemLabel(item, entry.index);
+                      const displayValue = arrayItemDisplayValue(item);
+                      const imageSrc = getArrayItemImageSrc(
                         displayValue,
                         itemSchema,
-                        meta,
-                        containerResolveType,
-                        arrayFieldKey,
-                      ),
-                      displayValue,
-                    );
-                    return (
-                      <SortableArrayRow
-                        key={entry.id}
-                        sortableId={entry.id}
-                        labelText={labelText}
-                        imageSrc={imageSrc}
-                        missingRequired={missingRequired}
-                        hidden={isArrayItemHidden(item)}
-                        onToggleHidden={
-                          canHideItems
-                            ? () => toggleItemHidden(entry.index)
-                            : undefined
-                        }
-                        onOpen={() => openItem(entry.index)}
-                        onDuplicate={() => duplicateItem(entry.index)}
-                        onRemove={() => removeItem(entry.index)}
-                      />
-                    );
-                  });
-                })()}
+                      );
+                      const missingRequired = hasMissingRequiredField(
+                        itemEditorSchema(
+                          displayValue,
+                          itemSchema,
+                          meta,
+                          containerResolveType,
+                          arrayFieldKey,
+                        ),
+                        displayValue,
+                      );
+                      return (
+                        <SortableArrayRow
+                          key={entry.id}
+                          sortableId={entry.id}
+                          labelText={labelText}
+                          imageSrc={imageSrc}
+                          missingRequired={missingRequired}
+                          hidden={isArrayItemHidden(item)}
+                          onToggleHidden={
+                            canHideItems
+                              ? () => toggleItemHidden(entry.index)
+                              : undefined
+                          }
+                          onOpen={() => openItem(entry.index)}
+                          onDuplicate={() => duplicateItem(entry.index)}
+                          onRemove={() => removeItem(entry.index)}
+                        />
+                      );
+                    });
+                  })()}
+                {compact && (
+                  <AddListRow
+                    iconHeightClassName={
+                      hasThumbnails ? ARRAY_ROW_THUMBNAIL_HEIGHT : undefined
+                    }
+                    label={
+                      usesSectionPicker
+                        ? t("sectionsEditor.arrayField.addSection")
+                        : t("sectionsEditor.arrayField.addItem")
+                    }
+                    onAdd={handleAddClick}
+                  />
+                )}
               </div>
             </SortableContext>
 
@@ -632,16 +663,18 @@ export function ArrayField({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleAddClick}
-        className="flex w-full items-center justify-center gap-1.5 classic:rounded-xl compact:rounded-lg border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
-      >
-        <Plus size={14} />
-        {usesSectionPicker
-          ? t("sectionsEditor.arrayField.addSection")
-          : t("sectionsEditor.arrayField.addItem")}
-      </button>
+      {!compact && (
+        <button
+          type="button"
+          onClick={handleAddClick}
+          className="flex w-full items-center justify-center gap-1.5 rounded-[var(--studio-surface-radius,var(--radius-xl))] border border-dashed border-border/60 py-2.5 text-sm text-muted-foreground transition-colors hover:border-border hover:bg-muted/30 disabled:pointer-events-none disabled:opacity-50"
+        >
+          <Plus size={14} />
+          {usesSectionPicker
+            ? t("sectionsEditor.arrayField.addSection")
+            : t("sectionsEditor.arrayField.addItem")}
+        </button>
+      )}
     </div>
   );
 }

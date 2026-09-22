@@ -49,6 +49,14 @@ import {
   ObjectFieldExpansionProvider,
   useHasObjectFieldExpansion,
 } from "./object-field-expansion";
+import type { VariantMatcherOps } from "./variant-matcher-rename";
+
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
 
 /** Skip internal deco properties that shouldn't be user-editable. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
@@ -265,6 +273,7 @@ export function renderField(props: FieldProps) {
         <MultivariateFieldWrapper
           key={props.path}
           {...props}
+          asDestination
           multivariateResolveType={ref.resolveType}
           renderInnerField={innerRenderer}
         />
@@ -337,11 +346,14 @@ export function renderField(props: FieldProps) {
     if (blockRefForm) return blockRefForm;
   }
 
-  // If value is null/undefined, try to produce a typed default from schema
+  // Typed default from schema for a missing or mis-seeded (non-object) value.
   const effectiveValue =
     value === null || value === undefined
       ? defaultForType(schema.type, schema.default)
-      : value;
+      : schema.type === "object" &&
+          (typeof value !== "object" || Array.isArray(value))
+        ? defaultForType(schema.type, schema.default)
+        : value;
 
   if (effectiveValue === null || effectiveValue === undefined) {
     if (isSecretBlock(value)) {
@@ -378,17 +390,8 @@ export function renderField(props: FieldProps) {
     case "number":
     case "integer":
       return <NumberField key={props.path} {...effectiveProps} />;
-    case "string": {
-      // Format-based widgets
-      const fmt = schema.format;
-      if (fmt === "color-input" || fmt === "color") {
-        return <StringField key={props.path} {...effectiveProps} />;
-      }
-      if (fmt === "textarea" || fmt === "rich-text" || fmt === "html") {
-        return <StringField key={props.path} {...effectiveProps} />;
-      }
+    case "string":
       return <StringField key={props.path} {...effectiveProps} />;
-    }
     case "object":
       if (
         effectiveValue !== null &&
@@ -449,6 +452,12 @@ interface SchemaFormProps {
   onAddSectionItem?: FieldProps["onAddSectionItem"];
   onRequestAddSection?: FieldProps["onRequestAddSection"];
   sandbox?: FieldProps["sandbox"];
+  /**
+   * Naming a variant's matcher as a global block. Supplied only on the
+   * top-level (global-block) surface, where a section-multivariate flag is
+   * opened directly and the form value is the whole block.
+   */
+  onVariantMatcherOp?: VariantMatcherOps;
 }
 
 /**
@@ -472,7 +481,7 @@ function SchemaFormBody({
   value,
   onChange,
   basePath,
-  breadcrumbPath = [],
+  breadcrumbPath = EMPTY_ARRAY,
   onBreadcrumbChange,
   meta,
   decofile,
@@ -481,6 +490,7 @@ function SchemaFormBody({
   onAddSectionItem,
   onRequestAddSection,
   sandbox,
+  onVariantMatcherOp,
 }: SchemaFormProps) {
   const t = useT();
   const properties = schema.properties;
@@ -534,6 +544,7 @@ function SchemaFormBody({
         onAddSectionItem={onAddSectionItem}
         onRequestAddSection={onRequestAddSection}
         sandbox={sandbox}
+        onVariantMatcherOp={onVariantMatcherOp}
         multivariateResolveType={value.__resolveType}
         renderInnerField={(fieldProps) =>
           renderMultivariateInnerField(fieldProps, variantValueSchema)

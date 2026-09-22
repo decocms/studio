@@ -4,6 +4,8 @@ import {
   ChevronRight,
   DotsHorizontal,
   Globe01,
+  Cube01,
+  Expand01,
   LayoutAlt01,
 } from "@untitledui/icons";
 import {
@@ -26,6 +28,10 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { isSectionBlockRefField } from "../section-array-field";
+import { extractSectionCatalog } from "../section-catalog";
+import { substringFilter } from "../matcher-picker";
+import { Combobox } from "@decocms/ui/components/combobox.tsx";
 import {
   blockRefLoaderConfigHasData,
   blockRefOptionLabel,
@@ -44,6 +50,14 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { EditorRowActionsTrigger, EditorRowLink } from "../editor-list-row";
+import {
+  HEADER_SELECT_TRIGGER_CLASS,
+  HeaderSelectOptions,
+  HeaderSelectTrigger,
+} from "../sections-editor-panels";
+import { HeaderSlotPortal } from "../header-slot";
 import { useT } from "@/i18n/use-t.ts";
 import { MakeReusableModal } from "../make-reusable-modal";
 import { SchemaForm } from "../schema-form";
@@ -74,7 +88,7 @@ function GlobalLoaderBadge({ blockKey }: { blockKey: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-[var(--studio-control-radius,var(--radius))] bg-global-section/14 px-1.5 py-0.5 text-[11px] font-medium text-global-section-fg dark:text-global-section-fg-dark">
           <Globe01 size={11} />
           {t("sectionsEditor.anyOfField.global")}
         </span>
@@ -108,12 +122,13 @@ function CollapsibleLoaderConfig({
   onMakeGlobal?: () => void;
 }) {
   const t = useT();
+  const DetachIcon = useCompactPageLayout() ? Cube01 : LayoutAlt01;
   const contentId = `${path}-loader-config`;
 
   return (
     <div
       className={cn(
-        "rounded-lg border border-border/80 bg-muted/30",
+        "rounded-[var(--studio-surface-radius,var(--radius-lg))] border border-border/80 bg-muted/30",
         nestedBlockRef && "ml-1",
       )}
     >
@@ -151,7 +166,7 @@ function CollapsibleLoaderConfig({
             <DropdownMenuContent align="end" className="w-48">
               {globalBlockKey && onDetach && (
                 <DropdownMenuItem onClick={onDetach}>
-                  <LayoutAlt01 className="h-4 w-4" />
+                  <DetachIcon className="h-4 w-4" />
                   {t("sectionsEditor.anyOfField.detach")}
                 </DropdownMenuItem>
               )}
@@ -191,8 +206,10 @@ export function AnyOfField({
   sandbox,
   previewBaseUrl,
   onRequestAddSection,
+  focused,
 }: FieldProps) {
   const t = useT();
+  const compact = useCompactPageLayout();
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;
@@ -220,6 +237,28 @@ export function AnyOfField({
         r.resolveType.includes("/") &&
         !isEmbeddedUnionResolveType(r.resolveType),
     );
+  /**
+   * A Section slot accepts any section, but its schema names only a handful,
+   * so the catalog is the honest list — the same one "Add section" draws from.
+   * It is long, hence searchable rather than a plain dropdown.
+   */
+  const sectionSlot = isSectionBlockRefField(schema) && !!meta;
+  const sectionOptions = sectionSlot
+    ? (() => {
+        const seen = new Set<string>();
+        const options: { value: string; label: string }[] = [];
+        const push = (value: string, label: string) => {
+          if (!value || seen.has(value)) return;
+          seen.add(value);
+          options.push({ value, label });
+        };
+        for (const ref of refs) push(ref.resolveType, blockRefOptionLabel(ref));
+        for (const entry of extractSectionCatalog(meta, decofile ?? {})) {
+          push(entry.resolveType, entry.title);
+        }
+        return options;
+      })()
+    : [];
 
   // In module-loader mode the breadcrumb path passes through this component.
   // We strip our own crumb from the front before passing to the nested
@@ -374,8 +413,118 @@ export function AnyOfField({
     // item's form takes over the whole panel instead of staying scoped inside
     // the loader card. The breadcrumb "back" pops the crumb, `nestedBreadcrumbPath`
     // empties, and the normal select + card chrome returns.
-    if (isModuleLoaderUnion && nestedProps && nestedBreadcrumbPath.length > 0) {
-      return <div className="min-w-0">{nestedProps}</div>;
+    if (
+      isModuleLoaderUnion &&
+      nestedProps &&
+      (nestedBreadcrumbPath.length > 0 || focused)
+    ) {
+      return (
+        <div className="min-w-0">
+          {/* Which block is bound is the same kind of question as which variant
+              is open, so it is asked in the same place. */}
+          {compact && focused && (
+            <HeaderSlotPortal>
+              {sectionSlot ? (
+                <Combobox
+                  options={sectionOptions}
+                  value={activeRt}
+                  // Combobox clears on re-selecting the current option; a slot
+                  // has nothing to clear to, so keep what is bound.
+                  onChange={(rt) => rt && handleRefChange(rt)}
+                  contentClassName="w-[320px]!"
+                  filter={substringFilter}
+                  searchPlaceholder={t(
+                    "sectionsEditor.anyOfField.searchSections",
+                  )}
+                  emptyMessage={t("sectionsEditor.anyOfField.noSectionsFound")}
+                  renderSearchAction={
+                    onRequestAddSection
+                      ? (close) => (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 shrink-0 text-muted-foreground"
+                                aria-label={t(
+                                  "sectionsEditor.anyOfField.browseSections",
+                                )}
+                                onClick={() => {
+                                  close();
+                                  onRequestAddSection({
+                                    append: (item) => onChange(item),
+                                  });
+                                }}
+                              >
+                                <Expand01 className="size-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              {t("sectionsEditor.anyOfField.browseSections")}
+                            </TooltipContent>
+                          </Tooltip>
+                        )
+                      : undefined
+                  }
+                  renderTrigger={(selected) => (
+                    <button
+                      type="button"
+                      className={HEADER_SELECT_TRIGGER_CLASS}
+                    >
+                      {savedRef ? (
+                        <Globe01 className="size-3.5 shrink-0" />
+                      ) : (
+                        <Cube01 className="size-3.5 shrink-0" />
+                      )}
+                      <span className="max-w-[120px] truncate">
+                        {selected?.label ??
+                          t("sectionsEditor.anyOfField.selectPlaceholder")}
+                      </span>
+                      <ChevronDown className="size-3 shrink-0" />
+                    </button>
+                  )}
+                />
+              ) : (
+                <DropdownMenu>
+                  <HeaderSelectTrigger
+                    icon={
+                      savedRef ? (
+                        <Globe01 className="size-3.5 shrink-0" />
+                      ) : (
+                        <Cube01 className="size-3.5 shrink-0" />
+                      )
+                    }
+                    label={
+                      refs.find((r) => r.resolveType === activeRt)
+                        ? blockRefOptionLabel(
+                            refs.find((r) => r.resolveType === activeRt)!,
+                          )
+                        : t("sectionsEditor.anyOfField.selectPlaceholder")
+                    }
+                  />
+                  <DropdownMenuContent align="end" className="w-52">
+                    <HeaderSelectOptions
+                      heading={label}
+                      options={refs.map((ref) => ({
+                        label: blockRefOptionLabel(ref),
+                      }))}
+                      activeIndex={refs.findIndex(
+                        (r) => r.resolveType === activeRt,
+                      )}
+                      onSelect={(index) => {
+                        const ref = refs[index];
+                        if (ref) handleRefChange(ref.resolveType);
+                      }}
+                    />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </HeaderSlotPortal>
+          )}
+          {nestedProps}
+        </div>
+      );
     }
 
     const isNestedBlockRef = path.includes(".");
@@ -426,6 +575,60 @@ export function AnyOfField({
         t("sectionsEditor.anyOfField.globalBlockSaved", { name: trimmed }),
       );
     };
+
+    // Closed, the field is one row: its own name, a globe or a cube for where
+    // the block lives, and the actions. Which block is bound is asked inside,
+    // so the name is not said twice.
+    if (compact && isModuleLoaderUnion && nestedProps) {
+      return (
+        <>
+          <EditorRowLink
+            icon={
+              savedRef ? (
+                <Globe01 className="size-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <Cube01 className="size-4 shrink-0 text-muted-foreground" />
+              )
+            }
+            label={label}
+            onOpen={() =>
+              onBreadcrumbChange?.([...safeBreadcrumbPath, outerCrumb])
+            }
+            actions={
+              (handleDetach || canMakeGlobal) && (
+                <DropdownMenu>
+                  <EditorRowActionsTrigger
+                    label={t("sectionsEditor.anyOfField.loaderActions")}
+                  />
+                  <DropdownMenuContent align="end" className="w-48">
+                    {savedRef && handleDetach && (
+                      <DropdownMenuItem onClick={handleDetach}>
+                        <Cube01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.detach")}
+                      </DropdownMenuItem>
+                    )}
+                    {canMakeGlobal && (
+                      <DropdownMenuItem onClick={() => setMakeGlobalOpen(true)}>
+                        <Globe01 className="h-4 w-4" />
+                        {t("sectionsEditor.anyOfField.makeGlobal")}
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
+            }
+          />
+          {canMakeGlobal && (
+            <MakeReusableModal
+              open={makeGlobalOpen}
+              onOpenChange={setMakeGlobalOpen}
+              defaultBlockId={suggestBlockId(labelFromResolveType(activeRt))}
+              onSubmit={handleMakeGlobalSubmit}
+            />
+          )}
+        </>
+      );
+    }
 
     return (
       <div className="space-y-3">
@@ -506,7 +709,7 @@ export function AnyOfField({
         type="text"
         value={value != null ? String(value) : ""}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+        className="w-full rounded-[var(--studio-control-radius,var(--radius-md))] border bg-background px-3 py-1.5 text-sm"
         placeholder={schema.description ?? ""}
       />
     </div>

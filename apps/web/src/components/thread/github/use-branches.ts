@@ -19,6 +19,7 @@ import {
 import { KEYS } from "@/lib/query-keys";
 import { callStudioTool } from "@/lib/studio-tools";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
+import { useClockTick } from "@/lib/use-clock-tick";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { groupBranches } from "./group-branches";
 
@@ -151,11 +152,15 @@ export function useBranches({
 
   const rawBranches = (data?.pages ?? []).flatMap((page) => page.branches);
 
+  // Coarse live clock: "recent" is a time window, so it has to keep moving,
+  // but reading it per render would make this hook impure.
+  const now = useClockTick(60_000);
+
   const grouped = groupBranches({
     sandboxMap,
     userId,
     rawBranches,
-    now: Date.now(),
+    now,
   });
 
   // Keeps the derived counts honest about what cmdk actually renders.

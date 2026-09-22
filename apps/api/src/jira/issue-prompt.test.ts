@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { type IssueForPrompt, renderIssueForPrompt } from "./issue-prompt";
+import {
+  type IssueForPrompt,
+  renderIssueForPrompt,
+  renderIssuesForPrompt,
+} from "./issue-prompt";
 
 const base: IssueForPrompt = {
   id: "10012",
@@ -56,5 +60,64 @@ describe("renderIssueForPrompt", () => {
     });
     expect(text).toContain("[… truncated]");
     expect(text.length).toBeLessThan(13_000);
+  });
+
+  /** The comment budget is spent per-comment; landing on exactly zero after
+   *  the LAST comment must not claim comments were omitted when none were. */
+  it("does not claim omitted comments when the last one exhausts the budget", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      comments: [
+        {
+          author: "Ana",
+          created: "2026-09-01T10:00:00Z",
+          body: "x".repeat(6_000),
+        },
+        {
+          author: "Bo",
+          created: "2026-09-01T11:00:00Z",
+          body: "x".repeat(6_000),
+        },
+      ],
+    });
+    expect(text).toContain("**Bo**");
+    expect(text).not.toContain("[… older comments omitted]");
+  });
+
+  it("still reports omitted comments when one is dropped entirely", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      comments: [
+        {
+          author: "Ana",
+          created: "2026-09-01T10:00:00Z",
+          body: "x".repeat(12_000),
+        },
+        { author: "Bo", created: "2026-09-01T11:00:00Z", body: "second" },
+      ],
+    });
+    expect(text).toContain("[… older comments omitted]");
+    expect(text).not.toContain("**Bo**");
+  });
+});
+
+describe("renderIssuesForPrompt", () => {
+  it("digests each issue with its links and says how to read one in full", () => {
+    const out = renderIssuesForPrompt([
+      { ...base, key: "EX-1", summary: "First", status: "Done" },
+      {
+        ...base,
+        key: "EX-2",
+        summary: "Second",
+        links: [{ title: "PR", url: "https://example.com/pr/2" }],
+        description: "a body that must not be here",
+      },
+    ]);
+    expect(out).toContain("# 2 Jira issues");
+    expect(out).toContain("## EX-1: First\nStatus: Done");
+    expect(out).toContain("## EX-2: Second");
+    expect(out).toContain("- [PR](https://example.com/pr/2)");
+    expect(out).not.toContain("a body that must not be here");
+    expect(out).toContain("`JIRA_ISSUE_GET` with a key");
   });
 });

@@ -163,6 +163,11 @@ export const TaskBoardItemSchema = z.object({
   assignedBy: z.string().nullable(),
   // `owner/name` of the repo (site) this task pertains to.
   repo: z.string().nullable(),
+  /** The first-class repository this task names, when its writer knew it —
+   *  preferred over `repo` for binding a run's checkout. Present on every
+   *  `TaskBoardItem`, so — like `retryAttempts` below — it MUST be modeled
+   *  here or Ajv-revalidating MCP clients reject every response with `-32602`. */
+  repositoryId: z.string().nullable(),
   dueDate: z.string().datetime().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),
@@ -235,6 +240,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "merge_conflict_resolution",
   "merge_failed",
   "type_changed",
+  "duplicate_reported",
 ] as const;
 
 export type TaskBoardActivityAction =

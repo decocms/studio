@@ -55,6 +55,20 @@ func decodeBody(r *http.Request, out any) error {
 	if len(raw) > maxRequestBodyBytes {
 		return fmt.Errorf("Request body exceeded %d bytes", maxRequestBodyBytes)
 	}
+	// An empty body decodes as `{}`, leaving `out` at its zero value. This is
+	// daemon parity, not leniency: `local-api`'s `json_body_or_default`
+	// (apps/native/crates/local-api/src/http_util.rs) and `stub-daemon.mjs`'s
+	// `if (raw)` guard both already do it, so the Go daemon was the only one of
+	// the three answering 400 "unexpected end of JSON input" — the literal
+	// json.Unmarshal wording for "". Optional-body callers exist: the web
+	// client's `fetchGitDiff(ref)` posts no body at all when it wants the
+	// working-tree diff, and `GitDiff` already treats every field as optional.
+	// Routes with a REQUIRED field are unaffected: they validate after decoding
+	// (e.g. /git/rebase's empty `base`, /git/discard's empty `filepaths`) and
+	// keep returning their own 400.
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("Failed to parse body: %s", err.Error())
 	}

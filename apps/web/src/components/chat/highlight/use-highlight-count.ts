@@ -41,6 +41,8 @@ export interface HighlightFlags {
   hasApprovals: boolean;
   hasPlans: boolean;
   isWaitingForUserInput: boolean;
+  /** An unanswered `suggest_task` offer is pending on the last message. */
+  hasTaskSuggestion: boolean;
   // Exposed so `TodosHighlight` doesn't re-run the same backward scan over
   // `messages` that this hook already did to compute `hasTodos`.
   todos: Todo[];
@@ -64,6 +66,7 @@ const EMPTY_FLAGS: HighlightFlags = {
   hasApprovals: false,
   hasPlans: false,
   isWaitingForUserInput: false,
+  hasTaskSuggestion: false,
   todos: [],
 };
 
@@ -98,6 +101,11 @@ export function deriveHighlightFlags(
     (p) => p.state !== "output-available",
   ).length;
 
+  const hasTaskSuggestion = looseParts.some(
+    (part) =>
+      part.type === "tool-suggest_task" && part.state === "input-available",
+  );
+
   const pendingPlans = extractPendingPlans(
     assistantParts as Parameters<typeof extractPendingPlans>[0],
   );
@@ -122,7 +130,7 @@ export function deriveHighlightFlags(
   // duplicate warning.
   const isToolCallsWaitingOnClient =
     finishReason === "tool-calls" &&
-    (isWaitingForUserInput || hasApprovals || hasPlans);
+    (isWaitingForUserInput || hasApprovals || hasPlans || hasTaskSuggestion);
   const showWarning =
     !isStreaming &&
     !!finishReason &&
@@ -140,6 +148,7 @@ export function deriveHighlightFlags(
     hasApprovals,
     hasPlans,
     isWaitingForUserInput,
+    hasTaskSuggestion,
     todos,
   };
 }
@@ -183,6 +192,7 @@ export function useHighlightCount(): number {
     Number(flags.showWarning) +
     Number(flags.hasApprovals) +
     Number(flags.hasPlans) +
-    Number(flags.isWaitingForUserInput)
+    Number(flags.isWaitingForUserInput) +
+    Number(flags.hasTaskSuggestion)
   );
 }

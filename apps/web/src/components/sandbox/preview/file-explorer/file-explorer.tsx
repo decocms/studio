@@ -830,6 +830,16 @@ export function FileExplorer({
   }
 
   function closeTab(path: string) {
+    const buf = buffers.get(path);
+    const isPathDirty = Boolean(
+      buf?.loaded && buf.editorValue !== buf.savedContent,
+    );
+    if (
+      isPathDirty &&
+      !window.confirm(t("sandbox.fileExplorer.discardUnsavedChangesConfirm"))
+    ) {
+      return;
+    }
     setOpenTabs((prev) => {
       const next = prev.filter((t) => t !== path);
       if (selectedFile === path) {

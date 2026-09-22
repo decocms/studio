@@ -14,6 +14,8 @@ export interface JiraIssueLink {
 export interface JiraColumnAutomation {
   jiraStatus: string;
   prompt: string | null;
+  /** Runs this rule starts continue the issue's open pull request, if any. */
+  continuePr: boolean;
 }
 
 /**
@@ -229,11 +231,11 @@ export class JiraIntegrationStorage {
   ): Promise<JiraColumnAutomation[]> {
     const rows = await this.db
       .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt"])
+      .select(["jira_status", "prompt", "continue_pr"])
       .where("organization_id", "=", organizationId)
       .orderBy("jira_status", "asc")
       .execute();
-    return rows.map((r) => ({ jiraStatus: r.jira_status, prompt: r.prompt }));
+    return rows.map(automationFromRow);
   }
 
   async getAutomation(
@@ -242,17 +244,18 @@ export class JiraIntegrationStorage {
   ): Promise<JiraColumnAutomation | null> {
     const row = await this.db
       .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt"])
+      .select(["jira_status", "prompt", "continue_pr"])
       .where("organization_id", "=", organizationId)
       .where("jira_status", "=", jiraStatus)
       .executeTakeFirst();
-    return row ? { jiraStatus: row.jira_status, prompt: row.prompt } : null;
+    return row ? automationFromRow(row) : null;
   }
 
   async upsertAutomation(
     organizationId: string,
     jiraStatus: string,
     prompt: string | null,
+    continuePr = false,
   ): Promise<JiraColumnAutomation> {
     await this.db
       .insertInto("org_jira_column_automations")
@@ -260,14 +263,17 @@ export class JiraIntegrationStorage {
         organization_id: organizationId,
         jira_status: jiraStatus,
         prompt,
+        continue_pr: continuePr,
       })
       .onConflict((oc) =>
-        oc
-          .columns(["organization_id", "jira_status"])
-          .doUpdateSet({ prompt, updated_at: new Date() }),
+        oc.columns(["organization_id", "jira_status"]).doUpdateSet({
+          prompt,
+          continue_pr: continuePr,
+          updated_at: new Date(),
+        }),
       )
       .execute();
-    return { jiraStatus, prompt };
+    return { jiraStatus, prompt, continuePr };
   }
 
   /** Deleting IS the off switch. Returns whether there was a rule. */
@@ -282,6 +288,18 @@ export class JiraIntegrationStorage {
       .executeTakeFirst();
     return (result.numDeletedRows ?? 0n) > 0n;
   }
+}
+
+function automationFromRow(row: {
+  jira_status: string;
+  prompt: string | null;
+  continue_pr: boolean;
+}): JiraColumnAutomation {
+  return {
+    jiraStatus: row.jira_status,
+    prompt: row.prompt,
+    continuePr: row.continue_pr,
+  };
 }
 
 function linkFromRow(row: {

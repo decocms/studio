@@ -1,10 +1,11 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import type { ModelCapability } from "@decocms/shared/sdk";
 import type { StudioProvider, ModelInfo, ProviderAdapter } from "../types";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
+import { deriveModalityCapabilities } from "./model-capabilities";
 
 const LLMAPI_BASE_URL = "https://api.llmapi.ai/v1";
 const LLMAPI_ICON_URL =
@@ -69,7 +70,10 @@ export const llmapiAdapter: ProviderAdapter = {
         if (!res.ok) {
           await throwResponseError("LLMAPI listModels", res);
         }
-        const { data }: { data: LlmapiModel[] } = await res.json();
+        const { data } = await parseJsonResponse<{ data: LlmapiModel[] }>(
+          "LLMAPI listModels",
+          res,
+        );
         return data.map((m) => {
           const arch = m.architecture ?? {};
           const canReason =
@@ -81,20 +85,12 @@ export const llmapiAdapter: ProviderAdapter = {
             title: m.name || m.id,
             description: m.description ?? null,
             logo: null,
-            capabilities: [
-              ...new Set([
-                // "image" in input means vision (accepts images), not image
-                // generation — remap so it's distinct from output "image".
-                ...(arch.input_modalities ?? []).map((mod) =>
-                  mod === "image" ? "vision" : mod,
-                ),
-                ...(arch.output_modalities ?? []),
-                ...(m.supported_parameters?.includes("tools")
-                  ? (["tools"] as const)
-                  : []),
-                ...(canReason ? (["reasoning"] as const) : []),
-              ]),
-            ] as ModelCapability[],
+            capabilities: deriveModalityCapabilities(
+              arch.input_modalities ?? [],
+              arch.output_modalities ?? [],
+              m.supported_parameters,
+              canReason ? ["reasoning"] : [],
+            ),
             limits: {
               contextWindow: m.context_length ?? 0,
               maxOutputTokens: null,

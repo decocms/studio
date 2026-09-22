@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   cliAuthCommand,
+  gitConfigPatch,
   MAX_SECONDARY_REPOS,
   parseRepoProbe,
   secondaryRepoCapExceeded,
@@ -91,5 +92,66 @@ describe("cliAuthCommand", () => {
     expect(script).toContain("gh/hosts.yml");
     // The host comes from the remote, so a self-hosted instance works too.
     expect(script).toContain('host=$(printf %s "$origin"');
+  });
+});
+
+describe("gitConfigPatch", () => {
+  const CREDS = [{ host: "github.com", token: "pat_org" }];
+
+  // Regression: the primary patch carried cloneUrl/branch/repoName only. A
+  // sandbox that booted with an empty working directory has no credentials to
+  // "keep current", so the pod ended up with just the clone token and
+  // `flutter pub get` 404'd on every private `git:` dependency.
+  test("the primary checkout carries the org's git credentials", () => {
+    const patch = gitConfigPatch({
+      primary: {
+        cloneUrl: "https://x-access-token:tok@github.com/acme/app.git",
+        branch: "sandbox/thread-t1",
+        repoName: "acme/app",
+      },
+      submoduleCredentials: CREDS,
+      gitUserName: "Deco Bot",
+      gitUserEmail: "bot@example.com",
+    });
+    expect(patch.git.repository).toEqual({
+      cloneUrl: "https://x-access-token:tok@github.com/acme/app.git",
+      branch: "sandbox/thread-t1",
+      repoName: "acme/app",
+      submoduleCredentials: CREDS,
+    });
+  });
+
+  // Empty is a value, not an omission: absent means "keep current" to the
+  // daemon, which would make a revoked PAT outlive its deletion.
+  test("an org with no credentials still sends the key", () => {
+    const patch = gitConfigPatch({
+      primary: {
+        cloneUrl: "https://github.com/acme/app.git",
+        branch: "b",
+        repoName: "acme/app",
+      },
+      submoduleCredentials: [],
+      gitUserName: "Deco Bot",
+      gitUserEmail: "bot@example.com",
+    });
+    expect(patch.git.repository?.submoduleCredentials).toEqual([]);
+  });
+
+  // A secondary must not touch `repository` — that would move the primary
+  // checkout out from under a running dev server.
+  test("a secondary sends only repositories", () => {
+    const patch = gitConfigPatch({
+      secondaries: [
+        {
+          cloneUrl: "https://x-access-token:tok@github.com/acme/lib.git",
+          repoName: "lib",
+        },
+      ],
+      submoduleCredentials: CREDS,
+      gitUserName: "Deco Bot",
+      gitUserEmail: "bot@example.com",
+    });
+    expect(patch.git.repository).toBeUndefined();
+    expect(patch.git.repositories).toHaveLength(1);
   });
 });

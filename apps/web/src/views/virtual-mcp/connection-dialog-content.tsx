@@ -10,8 +10,7 @@ import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { KEYS } from "@/lib/query-keys";
 import { getRegistryItemAppName } from "@/utils/extract-connection-data";
 import { getGitHubAvatarUrl } from "@/utils/github.ts";
-import { useEnabledRegistries } from "@/hooks/use-enabled-registries";
-import { useMergedStoreDiscovery } from "@/hooks/use-merged-store-discovery";
+import { useRegistryCatalog } from "@/hooks/use-registry-catalog";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -169,16 +168,12 @@ export function ConnectionDialogContent({
   );
 
   // Registry / catalog
-  const enabledRegistries = useEnabledRegistries();
-  const mergedDiscovery = useMergedStoreDiscovery(
-    enabledRegistries,
-    deferredSearch,
-  );
+  const catalog = useRegistryCatalog(deferredSearch);
 
   const catalogSentinelRef = useInfiniteScroll(
-    mergedDiscovery.loadMore,
-    mergedDiscovery.hasMore,
-    mergedDiscovery.isLoadingMore,
+    catalog.loadMore,
+    catalog.hasMore,
+    catalog.isLoadingMore,
   );
 
   const connectedSentinelRef = useInfiniteScroll(
@@ -190,13 +185,13 @@ export function ConnectionDialogContent({
   const showCatalog = activeTab === "all" || !!searchLower;
 
   // Catalog items, excluding apps already shown as connected cards.
-  // The client-side search filter is a safety net: `useMergedStoreDiscovery`
+  // The client-side search filter is a safety net: `useRegistryCatalog`
   // uses `keepPreviousData`, so the previous query's results (sorted with
   // verified items first) stay visible while a new search request is in
   // flight. Without this filter, the user sees unrelated items that happened
   // to be in the previous page.
   const catalogItems = showCatalog
-    ? mergedDiscovery.items.filter((item: RegistryItem) => {
+    ? catalog.items.filter((item: RegistryItem) => {
         const appName = getRegistryItemAppName(item);
         if (appName && connectedAppNames.has(appName)) return false;
         if (!searchLower) return true;
@@ -539,10 +534,10 @@ export function ConnectionDialogContent({
           {showCatalog && otherCatalogItems.map(renderCatalogItem)}
 
           {/* Catalog infinite scroll sentinel */}
-          {showCatalog && enabledRegistries.length > 0 && (
+          {showCatalog && (
             <div ref={catalogSentinelRef} className="col-span-full h-1" />
           )}
-          {showCatalog && mergedDiscovery.isLoadingMore && (
+          {showCatalog && catalog.isLoadingMore && (
             <div className="col-span-full flex justify-center py-6">
               <Spinner className="size-6 text-muted-foreground" />
             </div>

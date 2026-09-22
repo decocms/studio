@@ -1,6 +1,5 @@
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
-import { useEnabledRegistries } from "@/hooks/use-enabled-registries";
-import { useMergedStoreDiscovery } from "@/hooks/use-merged-store-discovery";
+import { useRegistryCatalog } from "@/hooks/use-registry-catalog";
 import { useT } from "@/i18n/use-t";
 import { authClient } from "@/lib/auth-client";
 import { useAuthConfig } from "@/providers/auth-config-provider";
@@ -86,9 +85,8 @@ export function CreateConnectionDialog({
   const isMobile = useIsMobile();
   const actions = useConnectionActions();
 
-  const enabledRegistries = useEnabledRegistries();
-  const mergedDiscovery = useMergedStoreDiscovery(enabledRegistries, "");
-  const registryItems = mergedDiscovery.items;
+  const catalog = useRegistryCatalog("");
+  const registryItems = catalog.items;
 
   const form = useForm<ConnectionFormData>({
     resolver: zodResolver(connectionFormSchema),

@@ -71,7 +71,15 @@ const ThreadMetadataSchema = z
     jira_issue_key: z
       .string()
       .optional()
-      .describe("The Jira issue a 'jira' run works on, e.g. EX-12."),
+      .describe(
+        "The Jira issue a 'jira' run works on, e.g. EX-12. Absent on a run started on several issues at once — see jira_issue_keys.",
+      ),
+    jira_issue_keys: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Every Jira issue a 'jira' run may act on. One entry for a run on one issue; several for a run a person started on a batch, whose Jira tools take an issueKey to say which.",
+      ),
   })
   .catchall(z.unknown());
 

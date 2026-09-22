@@ -9,6 +9,7 @@ import { type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { parseIssueKeys } from "@decocms/shared/jira/issue-key";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
@@ -16,7 +17,6 @@ import {
   ArrowUpRight,
   Check,
   ChevronSelectorVertical,
-  GitMerge,
   Play,
   Plus,
   Trash01,
@@ -68,7 +68,6 @@ import {
   useJiraBoards,
   useJiraIntegration,
   useSetJiraAutomation,
-  useMergeJiraPrs,
   useStartJiraRun,
   useUpsertJiraIntegration,
 } from "@/hooks/use-jira-integration";
@@ -345,8 +344,8 @@ function AutomationsRow({ boardId }: { boardId: string }) {
       </p>
     );
   } else {
-    const promptOf = new Map(
-      (automations.data ?? []).map((a) => [a.jiraStatus, a.prompt]),
+    const ruleOf = new Map(
+      (automations.data ?? []).map((a) => [a.jiraStatus, a]),
     );
     body = (
       <div className="flex w-full flex-col gap-3">
@@ -357,8 +356,9 @@ function AutomationsRow({ boardId }: { boardId: string }) {
               columnName={column.name}
               status={status}
               showStatus={status !== column.name || column.statuses.length > 1}
-              hasAutomation={promptOf.has(status)}
-              prompt={promptOf.get(status) ?? null}
+              hasAutomation={ruleOf.has(status)}
+              prompt={ruleOf.get(status)?.prompt ?? null}
+              continuePr={ruleOf.get(status)?.continuePr ?? false}
             />
           )),
         )}
@@ -516,12 +516,14 @@ function StatusAutomationCard({
   showStatus,
   hasAutomation,
   prompt,
+  continuePr,
 }: {
   columnName: string;
   status: string;
   showStatus: boolean;
   hasAutomation: boolean;
   prompt: string | null;
+  continuePr: boolean;
 }) {
   const t = useT();
   const setAutomation = useSetJiraAutomation();
@@ -538,9 +540,9 @@ function StatusAutomationCard({
   }
   const dirty = draft !== (prompt ?? "");
 
-  const save = (next: string | null) =>
+  const save = (next: string | null, nextContinuePr = continuePr) =>
     setAutomation.mutate(
-      { jiraStatus: status, prompt: next },
+      { jiraStatus: status, prompt: next, continuePr: nextContinuePr },
       {
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
@@ -584,6 +586,24 @@ function StatusAutomationCard({
           <p className="text-xs text-muted-foreground">
             {t("settings.jira.promptHelp")}
           </p>
+          {/* Saved on its own, not with the prompt: it is a rule of the
+              column, and the prompt below may be mid-edit. Per rule rather
+              than inferred from the move, so a review column never pins its
+              run to the pull request it is about to judge. */}
+          <label className="flex w-fit cursor-pointer items-start gap-2 text-xs">
+            <Checkbox
+              className="mt-0.5"
+              checked={continuePr}
+              disabled={setAutomation.isPending}
+              onCheckedChange={(v) => save(prompt ?? "", v === true)}
+            />
+            <span className="flex flex-col gap-0.5">
+              {t("settings.jira.continuePr")}
+              <span className="text-muted-foreground">
+                {t("settings.jira.continuePrRuleHelp")}
+              </span>
+            </span>
+          </label>
           {dirty && (
             <div className="flex items-center justify-end gap-2">
               <Button
@@ -647,12 +667,18 @@ function TestRunRow() {
   const start = useStartJiraRun();
   const [issueKeys, setIssueKeys] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [continuePr, setContinuePr] = useState(false);
+  const [together, setTogether] = useState(false);
   const [result, setResult] = useState<{
     started: string[];
     failed: Array<{ issueKey: string; error: string }>;
+    together: boolean;
   } | null>(null);
   const parsed = parseIssueKeys(issueKeys);
   const canRun = parsed.keys.length > 0 && !start.isPending;
+  // One run across several issues cannot pin itself to one issue's branch,
+  // so the two are exclusive; the server refuses the pair too.
+  const batch = together && parsed.keys.length > 1;
 
   const run = () => {
     if (!canRun) return;
@@ -661,12 +687,14 @@ function TestRunRow() {
       {
         issueKey: issueKeys,
         prompt: prompt.trim() === "" ? null : prompt.trim(),
+        ...(batch ? { together: true } : { continuePr }),
       },
       {
         onSuccess: (r) =>
           setResult({
             started: r.started.map((s) => s.issueKey),
             failed: r.failed,
+            together: batch,
           }),
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.testRunFailed"))),
@@ -691,6 +719,26 @@ function TestRunRow() {
           onChange={setPrompt}
           placeholder={t("settings.jira.promptPlaceholder")}
         />
+        {/* Off by default and never inferred: a REVIEW run on an issue that
+            has a pull request must not be told to push to the one it is
+            reviewing. */}
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
+          <Checkbox
+            checked={continuePr && !batch}
+            disabled={batch}
+            onCheckedChange={(v) => setContinuePr(v === true)}
+          />
+          {t("settings.jira.continuePr")}
+        </label>
+        {parsed.keys.length > 1 && (
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-xs">
+            <Checkbox
+              checked={together}
+              onCheckedChange={(v) => setTogether(v === true)}
+            />
+            {t("settings.jira.together")}
+          </label>
+        )}
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {t("settings.jira.testRunHelp")}
@@ -712,97 +760,12 @@ function TestRunRow() {
         <BatchResult
           started={result?.started ?? []}
           failed={result?.failed ?? []}
-          startedLabel={t("settings.jira.testRunStarted")}
+          startedLabel={t(
+            result?.together
+              ? "settings.jira.togetherStarted"
+              : "settings.jira.testRunStarted",
+          )}
         />
-        <Link
-          to="/$org/settings/monitor"
-          params={{ org: org.slug }}
-          search={{ tab: "threads" }}
-          className="flex w-fit items-center gap-1 text-xs text-muted-foreground underline hover:text-foreground"
-        >
-          {t("settings.jira.testRunWatch")}
-          <ArrowUpRight size={12} />
-        </Link>
-      </div>
-    </SettingsCardItem>
-  );
-}
-
-/**
- * Land the pull requests, by hand.
- *
- * Same field, same shape as the run card above — this is the second half of
- * one surface, not a different feature. Sequential on purpose: merging one
- * moves the base under the next, so a batch of pull requests that share a file
- * resolves in order rather than all conflicting at once.
- */
-function MergeRow() {
-  const t = useT();
-  const { org } = useProjectContext();
-  const merge = useMergeJiraPrs();
-  const [issueKeys, setIssueKeys] = useState("");
-  const [started, setStarted] = useState<string[]>([]);
-  const parsed = parseIssueKeys(issueKeys);
-  const canRun = parsed.keys.length > 0 && !merge.isPending;
-
-  const run = () => {
-    if (!canRun) return;
-    setStarted([]);
-    merge.mutate(
-      { issueKey: issueKeys },
-      {
-        onSuccess: (r) => setStarted(r.issueKeys),
-        onError: (err) =>
-          toast.error(errorMessage(err, t("settings.jira.mergeFailed"))),
-      },
-    );
-  };
-
-  return (
-    <SettingsCardItem
-      title={t("settings.jira.mergeLabel")}
-      description={t("settings.jira.mergeDescription")}
-    >
-      <div className="mt-3 flex w-full flex-col gap-3">
-        <IssueKeysField
-          value={issueKeys}
-          onChange={setIssueKeys}
-          disabled={merge.isPending}
-          ariaLabel={t("settings.jira.mergeIssueAriaLabel")}
-        />
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            {t("settings.jira.mergeHelp")}
-          </p>
-          <Button
-            size="sm"
-            className="shrink-0"
-            disabled={!canRun}
-            onClick={run}
-          >
-            <GitMerge size={14} />
-            {merge.isPending
-              ? t("settings.jira.mergeRunning")
-              : t("settings.jira.merge", {
-                  count: String(parsed.keys.length || ""),
-                })}
-          </Button>
-        </div>
-        {/* The batch is durable and asynchronous, so this card cannot show
-            what each pull request did — the outcome is a comment on each
-            issue, which is where the rest of the integration reports. */}
-        {started.length > 0 && (
-          <div className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 text-xs">
-            <p>
-              <Check size={12} className="mr-1 inline text-success" />
-              {t("settings.jira.mergeStarted")}
-              <span className="ml-1 font-mono">{started.join(", ")}</span>
-            </p>
-            <p className="text-muted-foreground">
-              {t("settings.jira.mergeWhereResults")}
-            </p>
-          </div>
-        )}
         <Link
           to="/$org/settings/monitor"
           params={{ org: org.slug }}
@@ -920,7 +883,6 @@ function JiraContent() {
       <BoardRow integration={data} />
       {data.boardId && <AutomationsRow boardId={data.boardId} />}
       <TestRunRow />
-      <MergeRow />
       <EnabledRow integration={data} />
       <WebhookRow integration={data} />
     </SettingsCard>

@@ -41,6 +41,9 @@ const repositoryPageSchema = z.object({
   repositories: z.array(z.object({ id: z.number(), name: z.string() })),
   hasMore: z.boolean(),
   accountVersion: z.string().nullable(),
+  selectedRepositoryIds: z
+    .array(z.number().int().positive().safe())
+    .default([]),
 });
 
 type RepositoryGrant = {
@@ -98,19 +101,21 @@ function RepositoryListSkeleton() {
 
 export function GithubConnectDialog({
   flowId,
+  initialInstallationId,
   returning,
   onClose,
 }: {
   flowId: string;
+  initialInstallationId?: number;
   returning: boolean;
   onClose: () => void;
 }) {
   const t = useT();
   const { org } = useProjectContext();
   const queryClient = useQueryClient();
-  const [selectedInstallation, setSelectedInstallation] = useState<
-    number | null
-  >(null);
+  const [chosenInstallation, setSelectedInstallation] = useState<
+    number | null | undefined
+  >(undefined);
   const capabilities = useGitProviderCapabilities();
   const path = `/api/${encodeURIComponent(org.slug)}/git-providers/github/flows/${encodeURIComponent(flowId)}`;
   const channelName = `github-connect:${org.id}:${flowId}`;
@@ -122,6 +127,15 @@ export function GithubConnectDialog({
     gcTime: 0,
     refetchOnWindowFocus: "always",
   });
+  const selectedInstallation =
+    chosenInstallation !== undefined
+      ? chosenInstallation
+      : flow.data?.installations.some(
+            (installation) =>
+              installation.installationId === initialInstallationId,
+          )
+        ? (initialInstallationId ?? null)
+        : null;
 
   function finish() {
     void queryClient.invalidateQueries({ queryKey: KEYS.gitAccounts(org.id) });
@@ -196,7 +210,7 @@ export function GithubConnectDialog({
     : undefined;
   const connectPath = capabilities.data?.github.connectPath;
   const restartUrl = connectPath
-    ? `${connectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories`)}`
+    ? `${connectPath}?returnTo=${encodeURIComponent(`/${org.slug}/settings/repositories${initialInstallationId ? `?git_installation=${initialInstallationId}` : ""}`)}`
     : undefined;
   const expired = flow.error instanceof FlowError && flow.error.status === 410;
   const busy = connect.isPending || cancel.isPending;
@@ -357,7 +371,10 @@ function RepositoryGrantPicker({
   onBack: () => void;
 }) {
   const t = useT();
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selection, setSelection] = useState<Pick<
+    RepositoryGrant,
+    "repositoryIds" | "accountVersion"
+  > | null>(null);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const repositories = useInfiniteQuery({
@@ -383,6 +400,13 @@ function RepositoryGrantPicker({
     refetchOnWindowFocus: false,
   });
   const first = repositories.data?.pages[0];
+  if (selection === null && first) {
+    setSelection({
+      repositoryIds: first.selectedRepositoryIds,
+      accountVersion: first.accountVersion,
+    });
+  }
+  const selected = selection?.repositoryIds ?? [];
   const choices = [
     ...new Map(
       repositories.data?.pages
@@ -400,6 +424,11 @@ function RepositoryGrantPicker({
           {t("settings.repositories.githubReplaceHint")}
         </p>
       )}
+      {first?.selectedRepositoryIds.length ? (
+        <p className="text-sm text-muted-foreground">
+          {t("settings.repositories.githubPreselectedHint")}
+        </p>
+      ) : null}
       <Input
         aria-label={t("settings.repositories.githubFilterRepos")}
         placeholder={t("settings.repositories.githubFilterRepos")}
@@ -422,10 +451,18 @@ function RepositoryGrantPicker({
                   (!selected.includes(repo.id) && selected.length >= 500)
                 }
                 onCheckedChange={(checked) =>
-                  setSelected((current) =>
-                    checked === true
-                      ? [...current, repo.id]
-                      : current.filter((id) => id !== repo.id),
+                  setSelection((current) =>
+                    current
+                      ? {
+                          ...current,
+                          repositoryIds:
+                            checked === true
+                              ? [...current.repositoryIds, repo.id]
+                              : current.repositoryIds.filter(
+                                  (id) => id !== repo.id,
+                                ),
+                        }
+                      : current,
                   )
                 }
               />
@@ -481,14 +518,15 @@ function RepositoryGrantPicker({
             changed ||
             !first ||
             repositories.isError ||
-            selected.length === 0
+            selected.length === 0 ||
+            selected.length > 500
           }
           onClick={() => {
-            if (first)
+            if (selection)
               onConnect({
                 installationId,
                 repositoryIds: selected,
-                accountVersion: first.accountVersion,
+                accountVersion: selection.accountVersion,
               });
           }}
         >

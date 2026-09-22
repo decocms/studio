@@ -1,3 +1,4 @@
+import { arrayItemDisplayValue } from "./array-item-hidden";
 import { isEmptyFieldValue } from "./fields/required-field-context";
 import {
   resolveSchema,
@@ -10,6 +11,29 @@ import { unwrapSection } from "./unwrap-section";
 
 /** Internal deco props the form never renders — see schema-form's HIDDEN_PROPS. */
 const HIDDEN_PROPS = new Set(["__resolveType", "@type"]);
+
+/**
+ * The value to validate for an array item: a hidden item unwrapped to its inner
+ * value (the form does the same via `arrayItemDisplayValue`). Returns
+ * `SKIP_ARRAY_ITEM` for anything still carrying a `__resolveType` — a
+ * block/multivariate wrapper whose shape can't be checked against the plain
+ * item schema and would otherwise read as an empty required prop.
+ */
+const SKIP_ARRAY_ITEM = Symbol("skip-array-item");
+function arrayItemValueToValidate(
+  item: unknown,
+): unknown | typeof SKIP_ARRAY_ITEM {
+  const display = arrayItemDisplayValue(item);
+  if (
+    display != null &&
+    typeof display === "object" &&
+    !Array.isArray(display) &&
+    typeof (display as Record<string, unknown>).__resolveType === "string"
+  ) {
+    return SKIP_ARRAY_ITEM;
+  }
+  return display;
+}
 
 /** Matches schema-form's structural descent cap; a section tree is far shallower. */
 const MAX_DEPTH = 32;
@@ -52,9 +76,13 @@ export function hasMissingRequiredField(
     if (
       childSchema.items?.properties &&
       Array.isArray(childValue) &&
-      childValue.some((item) =>
-        hasMissingRequiredField(childSchema.items, item, depth + 1),
-      )
+      childValue.some((item) => {
+        const itemValue = arrayItemValueToValidate(item);
+        return (
+          itemValue !== SKIP_ARRAY_ITEM &&
+          hasMissingRequiredField(childSchema.items, itemValue, depth + 1)
+        );
+      })
     ) {
       return true;
     }

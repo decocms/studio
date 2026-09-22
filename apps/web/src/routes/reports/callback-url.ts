@@ -14,7 +14,7 @@
  *  `getOrigin(url)` string-equals the server's `baseUrl`, which silently
  *  breaks on a trailing slash or a preview host. */
 const RELATIVE_CALLBACK_RE =
-  /^\/(?!\/|\\|%2f|%5c)[\w\-.\+/@]*(?:\?[\w\-.\+/=&%@]*)?$/;
+  /^\/(?!\/|\\|%2f|%5c)[\w\-.+/@]*(?:\?[\w\-.+/=&%@]*)?$/;
 
 export function callbackUrl(domain: string): string {
   const path = `/report/${encodeURIComponent(domain)}`;

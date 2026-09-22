@@ -89,6 +89,57 @@ describe("formatMatcher", () => {
       expect(result).toContain("Until");
     });
 
+    /** These use local-time literals (no trailing Z) so the day-boundary check
+     *  reads the same instants a reader's timezone would, whatever CI runs in. */
+    test("a whole-day window drops the midnight boundaries", () => {
+      expect(
+        formatMatcher({
+          __resolveType: "website/matchers/date.ts",
+          start: "2026-07-24T00:00:00",
+          end: "2026-08-09T23:59:00",
+        }),
+      ).toBe("Jul 24 → Aug 9, 2026");
+    });
+
+    test("a whole-day window spanning years says both", () => {
+      expect(
+        formatMatcher({
+          __resolveType: "website/matchers/date.ts",
+          start: "2025-12-20T00:00:00",
+          end: "2026-01-05T23:59:00",
+        }),
+      ).toBe("Dec 20, 2025 → Jan 5, 2026");
+    });
+
+    test("open-ended ranges read through the dictionary", () => {
+      // ICU owns the date/time separator ("at" in some data, ", " in other).
+      const from = formatMatcher({
+        __resolveType: "website/matchers/date.ts",
+        start: "2026-06-15T10:00:00",
+      });
+      expect(from.startsWith("From ")).toBe(true);
+      expect(from).toContain("Jun 15, 2026");
+      expect(from).toContain("10:00 AM");
+
+      const until = formatMatcher({
+        __resolveType: "website/matchers/date.ts",
+        end: "2026-06-15T10:00:00",
+      });
+      expect(until.startsWith("Until ")).toBe(true);
+      expect(until).toContain("Jun 15, 2026");
+      expect(until).toContain("10:00 AM");
+    });
+
+    test("a window with a real time of day keeps it", () => {
+      const result = formatMatcher({
+        __resolveType: "website/matchers/date.ts",
+        start: "2026-07-24T15:30:00",
+        end: "2026-07-24T18:00:00",
+      });
+      expect(result).toContain("3:30 PM");
+      expect(result).toContain("6:00 PM");
+    });
+
     test("falls back to label when no valid dates", () => {
       const result = formatMatcher({
         __resolveType: "website/matchers/date.ts",
@@ -249,6 +300,65 @@ describe("formatMatcher", () => {
         op: "XOR",
       });
       expect(result).toBe("Hidden AND Hidden");
+    });
+
+    test("parenthesises a nested multi whose operator differs", () => {
+      // Without the parentheses this flattens to "Mobile OR Desktop AND 50% of
+      // sessions", which ordinary precedence reads as a different rule.
+      const result = formatMatcher({
+        __resolveType: "website/matchers/multi.ts",
+        op: "AND",
+        matchers: [
+          {
+            __resolveType: "website/matchers/multi.ts",
+            op: "OR",
+            matchers: [
+              { __resolveType: "website/matchers/device.ts", mobile: true },
+              { __resolveType: "website/matchers/device.ts", desktop: true },
+            ],
+          },
+          { __resolveType: "website/matchers/random.ts", traffic: 0.5 },
+        ],
+      });
+      expect(result).toBe("(Mobile OR Desktop) AND 50% of sessions");
+    });
+
+    test("leaves a nested multi with the same operator unparenthesised", () => {
+      const result = formatMatcher({
+        __resolveType: "website/matchers/multi.ts",
+        op: "AND",
+        matchers: [
+          {
+            __resolveType: "website/matchers/multi.ts",
+            op: "AND",
+            matchers: [
+              { __resolveType: "website/matchers/device.ts", mobile: true },
+              { __resolveType: "website/matchers/never.ts" },
+            ],
+          },
+          { __resolveType: "website/matchers/device.ts", desktop: true },
+        ],
+      });
+      expect(result).toBe("Mobile AND Hidden AND Desktop");
+    });
+
+    test("leaves a single-child nested multi unparenthesised", () => {
+      // One child prints no operator of its own, so there is nothing to group.
+      const result = formatMatcher({
+        __resolveType: "website/matchers/multi.ts",
+        op: "AND",
+        matchers: [
+          {
+            __resolveType: "$live/matchers/MatchMulti.ts",
+            op: "OR",
+            matchers: [
+              { __resolveType: "website/matchers/device.ts", mobile: true },
+            ],
+          },
+          { __resolveType: "website/matchers/device.ts", desktop: true },
+        ],
+      });
+      expect(result).toBe("Mobile AND Desktop");
     });
   });
 

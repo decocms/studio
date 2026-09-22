@@ -1,29 +1,37 @@
 import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
+import { createLink } from "@tanstack/react-router";
 import { ChevronRight, DotsHorizontal } from "@untitledui/icons";
-import { Fragment } from "react";
-import { Panel } from "@/components/panel";
+import { useSyncExternalStore, type ComponentPropsWithRef } from "react";
 import { useT } from "@/i18n/use-t";
+import { useElementWidth } from "@/hooks/use-element-width";
+import { useCompactPageLayout } from "@/hooks/use-preferences";
+import {
+  BreadcrumbContribution,
+  BreadcrumbProvider,
+  useBreadcrumbStore,
+} from "./breadcrumb-context";
+import {
+  CLASSIC_MAX_UNCOLLAPSED_ITEMS,
+  COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS,
+  collapseBreadcrumbs,
+  resolveBreadcrumbs,
+  type BreadcrumbExtension,
+  type BreadcrumbItem,
+} from "./breadcrumb-model";
 
-interface BreadcrumbItem {
-  key: string;
-  label: string;
-  onClick: () => void;
-}
-
-function Separator() {
-  return (
-    <ChevronRight
-      aria-hidden="true"
-      className="size-3 shrink-0 text-muted-foreground/60"
-    />
-  );
-}
+// The trail's final position, rather than a router prefix match, defines current.
+const BreadcrumbLink = createLink(function BreadcrumbAnchor(
+  props: ComponentPropsWithRef<"a">,
+) {
+  return <a {...props} aria-current={undefined} />;
+});
 
 function BreadcrumbMenu({ items }: { items: readonly BreadcrumbItem[] }) {
   const t = useT();
@@ -40,64 +48,169 @@ function BreadcrumbMenu({ items }: { items: readonly BreadcrumbItem[] }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {items.map((item) => (
-          <DropdownMenuItem key={item.key} onSelect={item.onClick}>
-            <span className="max-w-64 truncate" title={item.label}>
+        {items.map((item) => {
+          const label = (
+            <span
+              className="max-w-64 truncate"
+              title={typeof item.label === "string" ? item.label : undefined}
+            >
               {item.label}
             </span>
-          </DropdownMenuItem>
-        ))}
+          );
+          return (
+            <DropdownMenuItem
+              key={item.key}
+              asChild={!!item.link && !item.onSelect}
+              onSelect={item.onSelect}
+              disabled={!item.onSelect && !item.link}
+            >
+              {item.link && !item.onSelect ? (
+                <BreadcrumbLink {...item.link}>{label}</BreadcrumbLink>
+              ) : (
+                label
+              )}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/** Feature-owned ancestors extend the route's trail before Page.Title. */
-export function PageBreadcrumbs({
+function BreadcrumbSegment({
+  item,
+  current,
+}: {
+  item: BreadcrumbItem;
+  current: boolean;
+}) {
+  const title = typeof item.label === "string" ? item.label : undefined;
+  if (current) {
+    return (
+      <h1
+        data-slot="page-title"
+        aria-current="page"
+        title={title}
+        className="truncate text-sm font-medium text-foreground"
+      >
+        {item.label}
+      </h1>
+    );
+  }
+  const className =
+    "block max-w-40 truncate rounded-lg hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  if (item.onSelect) {
+    return (
+      <button
+        type="button"
+        onClick={item.onSelect}
+        title={title}
+        className={className}
+      >
+        {item.label}
+      </button>
+    );
+  }
+  if (item.link) {
+    return (
+      <BreadcrumbLink {...item.link} title={title} className={className}>
+        {item.label}
+      </BreadcrumbLink>
+    );
+  }
+  return (
+    <span title={title} className="block max-w-40 truncate">
+      {item.label}
+    </span>
+  );
+}
+
+function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
+  const t = useT();
+  // Named for the preference, because the second argument below is the other
+  // kind of compact: a container too narrow for a path, whatever the layout.
+  const compactLayout = useCompactPageLayout();
+  const [width, ref] = useElementWidth();
+  const entries = collapseBreadcrumbs(
+    items,
+    width >= 0 && width < 320,
+    compactLayout
+      ? COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS
+      : CLASSIC_MAX_UNCOLLAPSED_ITEMS,
+  );
+  return (
+    <nav
+      ref={ref}
+      aria-label={t("page.breadcrumbs")}
+      className="min-w-0 flex-1"
+    >
+      <ol
+        data-slot="page-breadcrumbs"
+        className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground"
+      >
+        {entries.map((entry, index) => (
+          <li
+            key={entry.type === "item" ? `item:${entry.item.key}` : "menu"}
+            className={cn(
+              "flex min-w-0 items-center gap-2",
+              index > 0 && "min-w-5",
+              entry.type === "item"
+                ? "last:min-w-16 last:flex-[1_1_auto]"
+                : "shrink-0",
+            )}
+          >
+            {index > 0 && (
+              <ChevronRight
+                aria-hidden="true"
+                className="size-3 shrink-0 text-muted-foreground/60"
+              />
+            )}
+            {entry.type === "item" ? (
+              <BreadcrumbSegment
+                item={entry.item}
+                current={index === entries.length - 1}
+              />
+            ) : (
+              <BreadcrumbMenu items={entry.items} />
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+/** One renderer owns the complete path, including the only current segment. */
+export function PageHeaderBreadcrumbs({
   items,
 }: {
   items: readonly BreadcrumbItem[];
 }) {
-  if (items.length === 0) return null;
-  const visibleItems = items.filter(
-    (_, index) => index === 0 || index === items.length - 1,
+  const store = useBreadcrumbStore();
+  if (!store) throw new Error("Page.Header requires Page.Breadcrumbs.Provider");
+  const extensions = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
   );
-  const middleItems = items.slice(1, -1);
-  const content = (
-    <div
-      data-slot="page-breadcrumbs"
-      className="flex min-w-0 shrink items-center gap-2 text-sm text-muted-foreground"
-    >
-      <div className="flex items-center gap-2 @min-3xl/panel-header:hidden">
-        <BreadcrumbMenu items={items} />
-        <Separator />
-      </div>
-      <div className="hidden min-w-0 items-center gap-2 @min-3xl/panel-header:flex">
-        {visibleItems.map((item, index) => (
-          <Fragment key={item.key}>
-            {index === 1 && middleItems.length > 0 && (
-              <>
-                <BreadcrumbMenu items={middleItems} />
-                <Separator />
-              </>
-            )}
-            <button
-              type="button"
-              onClick={item.onClick}
-              title={item.label}
-              className="max-w-32 truncate rounded-lg hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {item.label}
-            </button>
-            <Separator />
-          </Fragment>
-        ))}
-      </div>
+  return <BreadcrumbTrail items={resolveBreadcrumbs(items, extensions)} />;
+}
+
+function PageBreadcrumbsRoot(extension: BreadcrumbExtension) {
+  const store = useBreadcrumbStore();
+  return store ? (
+    <BreadcrumbContribution {...extension} />
+  ) : (
+    // No store means nobody is collecting contributions, so this renders in
+    // place. Wrap it: the nav is flex-1 for the page header's horizontal row,
+    // and a contributor whose own layout is a flex column would otherwise have
+    // it stretch to fill the panel.
+    <div className="min-w-0 shrink-0 border-b px-3 py-2">
+      <BreadcrumbTrail items={extension.items ?? []} />
     </div>
   );
-  return (
-    <Panel.Topbar.Breadcrumbs.Portal fallback={content}>
-      {content}
-    </Panel.Topbar.Breadcrumbs.Portal>
-  );
 }
+
+export const PageBreadcrumbs = Object.assign(PageBreadcrumbsRoot, {
+  Provider: BreadcrumbProvider,
+});

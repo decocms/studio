@@ -1,3 +1,6 @@
+import * as migration221removeprivateregistry from "./221-remove-private-registry";
+import * as migration222orggitcredentials from "./222-org-git-credentials";
+import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
 import * as migration216githubcliauth from "./216-github-cli-auth";
@@ -7,6 +10,8 @@ import * as migration212codingagentmcpexcluded from "./212-coding-agent-mcp-excl
 import * as migration213bitbucketgitprovider from "./213-bitbucket-git-provider";
 import * as migration217experiments from "./217-experiments";
 import * as migration218threadmessagepartserroridx from "./218-thread-message-parts-error-idx";
+import * as migration219taskboardduplicatereportedactivity from "./219-task-board-duplicate-reported-activity";
+import * as migration220jiraautomationcontinuepr from "./220-jira-automation-continue-pr";
 import * as migration209githubinstallationauthorization from "./209-github-installation-authorization";
 import * as migration208githubconnectflows from "./208-github-connect-flows";
 import * as migration207taskboardprsrepoidx from "./207-task-board-prs-repo-idx";
@@ -472,6 +477,12 @@ const migrations: Record<string, Migration> = {
   "216-github-cli-auth": migration216githubcliauth,
   "217-experiments": migration217experiments,
   "218-thread-message-parts-error-idx": migration218threadmessagepartserroridx,
+  "219-task-board-duplicate-reported-activity":
+    migration219taskboardduplicatereportedactivity,
+  "220-jira-automation-continue-pr": migration220jiraautomationcontinuepr,
+  "221-remove-private-registry": migration221removeprivateregistry,
+  "222-org-git-credentials": migration222orggitcredentials,
+  "223-drop-org-main-agent-id": migration223droporgmainagentid,
 };
 
 export default migrations;

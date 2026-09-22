@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterAll, mock } from "bun:test";
 import { resolveOriginTokenEndpoint } from "./resolve-token-endpoint";
 
 const originalFetch = globalThis.fetch;
@@ -8,9 +8,16 @@ const installFetch = (responder: () => Response | Promise<Response>): void => {
     await responder()) as unknown as typeof globalThis.fetch;
 };
 
+const mockDnsLookup = (address: string): void => {
+  mock.module("node:dns/promises", () => ({
+    lookup: async () => [{ address, family: 4 }],
+  }));
+};
+
 describe("resolveOriginTokenEndpoint", () => {
   beforeEach(() => {
     globalThis.fetch = originalFetch;
+    mockDnsLookup("93.184.216.34");
   });
 
   afterAll(() => {
@@ -51,6 +58,24 @@ describe("resolveOriginTokenEndpoint", () => {
       () =>
         new Response(
           JSON.stringify({ token_endpoint: "http://169.254.169.254/token" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+
+    const result = await resolveOriginTokenEndpoint("https://mcp.example.com");
+    expect(result).toBeNull();
+  });
+
+  it("rejects a token_endpoint whose domain resolves to a private address", async () => {
+    mockDnsLookup("169.254.169.254");
+
+    installFetch(
+      () =>
+        new Response(
+          JSON.stringify({ token_endpoint: "https://idp.evil.example/token" }),
           {
             status: 200,
             headers: { "Content-Type": "application/json" },

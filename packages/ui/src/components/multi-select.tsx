@@ -18,6 +18,13 @@ import {
 } from "./command.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 export interface Option {
   label: string;
   value: string;
@@ -43,7 +50,7 @@ interface MultiSelectProps {
 export function MultiSelect({
   options,
   onValueChange,
-  defaultValue = [],
+  defaultValue = EMPTY_ARRAY,
   placeholder = "Select items",
   variant = "default",
   animation = 0,
@@ -58,12 +65,18 @@ export function MultiSelect({
     React.useState<string[]>(defaultValue);
   const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
 
+  // Vendored shadcn shape. A render-time prev-guard would be the textbook fix,
+  // but it also changes when a local selection survives a parent re-render —
+  // a behavioural change to a published component that does not belong in a
+  // lint sweep.
+  // oxlint-disable react/set-state-in-effect
   // oxlint-disable-next-line ban-use-effect/ban-use-effect
   React.useEffect(() => {
     if (JSON.stringify(selectedValues) !== JSON.stringify(defaultValue)) {
       setSelectedValues(defaultValue);
     }
   }, [defaultValue, selectedValues]);
+  // oxlint-enable react/set-state-in-effect
 
   const handleInputKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Enter") {

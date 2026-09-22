@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { convertToModelMessages, type UIMessage } from "ai";
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamResult,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
 } from "@ai-sdk/provider";
 import {
   joinThoughtSignature,
@@ -15,8 +15,8 @@ import {
 const SIG = "EvACCu0CAQw51sdR" + "Z".repeat(4000); // multi-KB, like a real signature
 
 function streamOf(
-  parts: LanguageModelV3StreamPart[],
-): ReadableStream<LanguageModelV3StreamPart> {
+  parts: LanguageModelV4StreamPart[],
+): ReadableStream<LanguageModelV4StreamPart> {
   return new ReadableStream({
     start(controller) {
       for (const p of parts) controller.enqueue(p);
@@ -26,9 +26,9 @@ function streamOf(
 }
 
 async function drain(
-  stream: ReadableStream<LanguageModelV3StreamPart>,
-): Promise<LanguageModelV3StreamPart[]> {
-  const out: LanguageModelV3StreamPart[] = [];
+  stream: ReadableStream<LanguageModelV4StreamPart>,
+): Promise<LanguageModelV4StreamPart[]> {
+  const out: LanguageModelV4StreamPart[] = [];
   const reader = stream.getReader();
   for (;;) {
     const { done, value } = await reader.read();
@@ -91,10 +91,10 @@ describe("thoughtSignatureMiddleware — inbound strip (wrapStream)", () => {
               input: '{"q":1}',
             },
           ]),
-        }) as LanguageModelV3StreamResult,
+        }) as LanguageModelV4StreamResult,
       // biome-ignore lint/suspicious/noExplicitAny: unused middleware arg
       doGenerate: (async () => ({})) as any,
-      params: {} as LanguageModelV3CallOptions,
+      params: {} as LanguageModelV4CallOptions,
       // biome-ignore lint/suspicious/noExplicitAny: unused middleware arg
       model: {} as any,
     });
@@ -125,10 +125,10 @@ describe("thoughtSignatureMiddleware — inbound strip (wrapStream)", () => {
               input: "{}",
             },
           ]),
-        }) as LanguageModelV3StreamResult,
+        }) as LanguageModelV4StreamResult,
       // biome-ignore lint/suspicious/noExplicitAny: unused middleware arg
       doGenerate: (async () => ({})) as any,
-      params: {} as LanguageModelV3CallOptions,
+      params: {} as LanguageModelV4CallOptions,
       // biome-ignore lint/suspicious/noExplicitAny: unused middleware arg
       model: {} as any,
     });
@@ -157,10 +157,10 @@ describe("thoughtSignatureMiddleware — inbound strip (wrapGenerate)", () => {
           finishReason: "tool-calls",
           usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
           warnings: [],
-        }) as unknown as LanguageModelV3GenerateResult,
+        }) as unknown as LanguageModelV4GenerateResult,
       // biome-ignore lint/suspicious/noExplicitAny: unused middleware arg
       doStream: (async () => ({})) as any,
-      params: {} as LanguageModelV3CallOptions,
+      params: {} as LanguageModelV4CallOptions,
       // biome-ignore lint/suspicious/noExplicitAny: unused middleware arg
       model: {} as any,
     });
@@ -202,7 +202,7 @@ describe("thoughtSignatureMiddleware — outbound reembed (transformParams)", ()
           ],
         },
       ],
-    } as unknown as LanguageModelV3CallOptions;
+    } as unknown as LanguageModelV4CallOptions;
 
     const out = await mw.transformParams!({
       type: "stream",
@@ -234,7 +234,7 @@ describe("thoughtSignatureMiddleware — outbound reembed (transformParams)", ()
           ],
         },
       ],
-    } as unknown as LanguageModelV3CallOptions;
+    } as unknown as LanguageModelV4CallOptions;
     const out = await mw.transformParams!({
       type: "stream",
       params,

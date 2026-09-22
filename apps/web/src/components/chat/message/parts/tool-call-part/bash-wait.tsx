@@ -106,12 +106,15 @@ export function BashWaitSummary({
   durationMs: number;
   anchorMs: number | null;
 }) {
-  useClockTick(1000);
+  const t = useT();
+  const now = useClockTick(1000);
   const startedAt = useCallStartedAt(toolCallId, anchorMs);
-  const remaining = startedAt + durationMs - Date.now();
+  const remaining = startedAt + durationMs - now;
   return (
     <span className="tabular-nums">
-      {remaining > 0 ? `Waiting ${formatDuration(remaining)}` : "Wrapping up…"}
+      {remaining > 0
+        ? t("chat.generic.waitingFor", { duration: formatDuration(remaining) })
+        : t("chat.generic.wrappingUp")}
     </span>
   );
 }
@@ -142,9 +145,9 @@ export function ToolElapsedSummary({
   anchorMs: number | null;
 }) {
   const t = useT();
-  useClockTick(1000);
+  const now = useClockTick(1000);
   const startedAt = useCallStartedAt(toolCallId, anchorMs);
-  const elapsed = Date.now() - startedAt;
+  const elapsed = now - startedAt;
   if (elapsed < ELAPSED_VISIBLE_AFTER_MS) return t("chat.generic.preparing");
   return (
     <span className="tabular-nums">

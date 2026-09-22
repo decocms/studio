@@ -3,6 +3,7 @@ import {
   canPublishDirectly,
   combinePublishDiffs,
   DEFAULT_PUBLISH_POLICY,
+  fetchGitDiff,
   fetchGitStatus,
   hasGitLocalWork,
   hasLocalWorkToPush,
@@ -693,5 +694,52 @@ describe("fetchGitStatus with a malformed response body", () => {
     expect(isSandboxUnreachable(error)).toBe(false);
     expect(error).toHaveProperty("status", 502);
     expect(error.message).toBe("Request failed (502)");
+  });
+});
+
+describe("fetchGitDiff request body", () => {
+  const originalFetch = globalThis.fetch;
+  const ref = {
+    orgSlug: "org",
+    virtualMcpId: "vm",
+    branch: "feat",
+    threadId: null,
+  };
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function captureRequest() {
+    const sent: { body: unknown; contentType: string | null } = {
+      body: undefined,
+      contentType: null,
+    };
+    globalThis.fetch = ((_url: string, init: RequestInit) => {
+      sent.body = init.body;
+      sent.contentType = new Headers(init.headers).get("content-type");
+      return Promise.resolve(Response.json({ diffs: {} }));
+    }) as unknown as typeof fetch;
+    return sent;
+  }
+
+  // The working-tree diff passes no options. Sending NO body made the Go daemon
+  // 400 with json.Unmarshal's "unexpected end of JSON input", which took the
+  // publish dialog down for every sandbox with uncommitted work.
+  test("sends `{}` and a content-type when no options are given", async () => {
+    const sent = captureRequest();
+
+    await fetchGitDiff(ref);
+
+    expect(sent.body).toBe("{}");
+    expect(sent.contentType).toBe("application/json");
+  });
+
+  test("still sends only the options that were provided", async () => {
+    const sent = captureRequest();
+
+    await fetchGitDiff(ref, { base: "main" });
+
+    expect(sent.body).toBe(JSON.stringify({ base: "main" }));
   });
 });

@@ -327,7 +327,8 @@ export async function readCappedBody(
       if (value.byteLength >= remaining) {
         chunks.push(value.subarray(0, remaining));
         read += remaining;
-        truncated = value.byteLength > remaining;
+        // A chunk landing exactly on the cap can't tell "body ended" from "more follows".
+        truncated = value.byteLength > remaining || !(await reader.read()).done;
         break;
       }
       chunks.push(value);

@@ -27,6 +27,7 @@ function card(
     organizationId: "preview",
     title,
     description: null,
+    repositoryId: null,
     status,
     priority,
     type,

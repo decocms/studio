@@ -15,13 +15,16 @@ export function remainingHoldMs(
 export function useMinimumDuration(active: boolean, minMs: number): boolean {
   const [held, setHeld] = useState(active);
   /** Start of the current run; null while released, so re-activating extends it. */
-  const startedAtRef = useRef<number | null>(active ? Date.now() : null);
+  const startedAtRef = useRef<number | null>(null);
+
+  // Engaging is a pure function of `active`, so it is a render-time
+  // adjustment; only the timed release below needs an effect.
+  if (active && !held) setHeld(true);
 
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- timer-based release has no render-time expression
   useEffect(() => {
     if (active) {
       startedAtRef.current ??= Date.now();
-      setHeld(true);
       return;
     }
     if (!held) return;

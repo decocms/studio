@@ -151,9 +151,9 @@ const SLOW_AFTER_MS = 20_000;
  */
 export function ThinkingState({ startedAt }: { startedAt: number | null }) {
   const t = useT();
-  useClockTick(1000);
+  const now = useClockTick(1000);
   const stream = useOptionalChatStream();
-  const elapsedMs = startedAt !== null ? Date.now() - startedAt : 0;
+  const elapsedMs = startedAt !== null ? now - startedAt : 0;
   const isSlow = elapsedMs >= SLOW_AFTER_MS;
 
   return (

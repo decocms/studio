@@ -37,12 +37,6 @@ export function parentOf(path: string): string {
   return i === -1 ? "" : path.slice(0, i);
 }
 
-/** Last path segment ("" for root). */
-export function basenameOf(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i === -1 ? path : path.slice(i + 1);
-}
-
 /**
  * Ancestor directories of a path, top-down, excluding the root ("") and the
  * path itself. `a/b/c.txt` → `["a", "a/b"]`.

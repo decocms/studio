@@ -45,6 +45,7 @@ import {
 } from "@/hooks/use-git-providers";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
+import { errorMessage } from "@/lib/error-message";
 
 /** The providers that accept a pasted access token (GitHub connects through its App). */
 type TokenProvider = "gitlab" | "bitbucket";
@@ -178,10 +179,6 @@ function tokenPageUrl(
   return project
     ? `https://${host}/${project}/-/settings/access_tokens${query}`
     : `https://${host}/-/user_settings/personal_access_tokens${query}`;
-}
-
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
 }
 
 export function GitAccountConnect({

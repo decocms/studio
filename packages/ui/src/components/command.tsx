@@ -86,10 +86,13 @@ type CommandSize = "default" | "sm";
 function CommandInput({
   className,
   size = "default",
+  action,
   ...props
 }: Omit<React.ComponentProps<typeof CommandPrimitive.Input>, "size"> & {
   /** Shadows the HTML `size` attribute, which a search input has no use for. */
   size?: CommandSize;
+  /** Trailing control on the search row, e.g. a way out to a fuller picker. */
+  action?: React.ReactNode;
 }) {
   const height = size === "sm" ? "h-9" : "h-10";
   return (
@@ -107,6 +110,7 @@ function CommandInput({
         )}
         {...props}
       />
+      {action}
     </div>
   );
 }

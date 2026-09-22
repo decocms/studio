@@ -77,8 +77,8 @@ describe("planStateCache bounds", () => {
     creditsUsd: null,
   };
   const mk = (n: number, at = Date.now()) => {
-    const c = new Map<string, { state: typeof state; at: number }>();
-    for (let i = 0; i < n; i++) c.set(`org_${i}`, { state, at });
+    const c = new Map<string, { value: typeof state; at: number }>();
+    for (let i = 0; i < n; i++) c.set(`org_${i}`, { value: state, at });
     return c;
   };
 

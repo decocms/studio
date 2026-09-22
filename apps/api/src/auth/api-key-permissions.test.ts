@@ -58,4 +58,28 @@ describe("checkApiKeyPermission", () => {
       ),
     ).toBe(false);
   });
+
+  it("falls back to a `*` resource even when a narrower per-resource grant exists", () => {
+    expect(
+      checkApiKeyPermission(
+        { conn_1: ["READ"], "*": ["*"] },
+        { conn_1: ["WRITE"] },
+      ),
+    ).toBe(true);
+  });
+
+  it("unions a non-wildcard `*` resource's tools with the per-resource grant", () => {
+    expect(
+      checkApiKeyPermission(
+        { conn_1: ["READ"], "*": ["WRITE"] },
+        { conn_1: ["READ", "WRITE"] },
+      ),
+    ).toBe(true);
+    expect(
+      checkApiKeyPermission(
+        { conn_1: ["READ"], "*": ["WRITE"] },
+        { conn_1: ["DELETE"] },
+      ),
+    ).toBe(false);
+  });
 });

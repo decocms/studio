@@ -23,3 +23,7 @@ export function isOrgArchived(
     return false;
   }
 }
+
+/** Thrown when a request explicitly targets a soft-deleted org; the web shell
+ *  matches on it to show the archived screen. */
+export const ORG_ARCHIVED_ERROR = "Organization is archived";

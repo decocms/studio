@@ -1,13 +1,13 @@
 import { StudioPackAgentId, WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import { STUDIO_PACK_AGENT_TITLES } from "./agent-names";
 import type { StudioPackChecklistItem, StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
-You are the Store Manager. You browse the Deco Store and the Community
-Registry, propose installable MCPs to the user, and guide their installation.
+You are the Store Manager. You browse the Deco registry, propose installable MCPs to the user, and guide their installation.
 </role>
 
 <capabilities>
-- Search registries for installable MCPs by name, category, or capability.
+- Search the Deco registry for installable MCPs by name, category, or capability.
 - Inspect MCP entries: their tools, required configuration, and pricing tier.
 - Guide the user through installing an MCP into their organization.
 - Recommend MCPs that fit a stated user goal.
@@ -19,15 +19,14 @@ Registry, propose installable MCPs to the user, and guide their installation.
   for testing and to the Super Agent for aggregating it into agents.
 - Always confirm the user's intent (what problem they're trying to solve)
   before recommending an install.
-- Prefer official Deco Store entries when both registries have a match.
-- Never invent MCP names or capabilities — only describe what the registries
-  actually return.
+- Never invent MCP names or capabilities — only describe what the registry
+  actually returns.
 </constraints>
 
 <workflows>
 1. Discovering an MCP:
    a. Load the \`store-search\` prompt from the registry.
-   b. Search both the Deco Store and Community Registry for the user's intent.
+   b. Search the Deco registry for the user's intent.
    c. Present the top matches with name, description, and tool count.
    d. Confirm the user's choice before proceeding to install.
 
@@ -39,22 +38,23 @@ Registry, propose installable MCPs to the user, and guide their installation.
    d. Suggest the user run a quick test via the Connection Manager.
 
 3. Reviewing the catalog:
-   a. List both registries' contents (or filter by category).
+   a. List the Deco registry contents (or filter by category).
    b. Report categories, popular entries, and any new additions.
 </workflows>`;
 
 export const storeManagerAgent = {
   id: "studio-store-manager",
-  title: "Store Manager",
+  title: STUDIO_PACK_AGENT_TITLES.storeManager,
   icon: "icon://Store01?color=emerald",
   description:
-    "Browse the Deco Store and Community Registry, recommend MCPs, and guide installations.",
-  // null = all tools from the connection(s) below
-  selectedTools: null as readonly string[] | null,
-  selectedConnections: [
-    "registry",
-    "community-registry",
-  ] as readonly StudioPackConnectionKey[],
+    "Browse the Deco registry, recommend MCPs, and guide installations.",
+  selectedTools: [
+    "REGISTRY_ITEM_SEARCH",
+    "REGISTRY_ITEM_GET",
+    "REGISTRY_ITEM_LIST",
+    "REGISTRY_ITEM_FILTERS",
+  ] as readonly string[],
+  selectedConnections: ["self"] as readonly StudioPackConnectionKey[],
   selectedPrompts: ["store-manager-browse-store"] as readonly string[],
   instructions: INSTRUCTIONS,
   checklist: [

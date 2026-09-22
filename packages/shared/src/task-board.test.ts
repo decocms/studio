@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   allReviewersApproved,
+  canRunReviewerManually,
   enabledReviewerKinds,
   isReviewerThreadTitle,
   outstandingReviewFeedback,
@@ -303,5 +304,53 @@ describe("outstandingReviewFeedback", () => {
     expect(
       outstandingReviewFeedback([changes("2026-01-01T01:00:00.000Z", null)]),
     ).toBeNull();
+  });
+});
+
+describe("canRunReviewerManually", () => {
+  const base = {
+    reviewerEnabled: false,
+    hasPullRequest: true,
+    threadTitles: ["Fix the header"],
+  };
+
+  it("offers the button when review is off and a PR is waiting", () => {
+    expect(canRunReviewerManually(base)).toBe(true);
+  });
+
+  it("stays hidden when the org already runs the reviewer", () => {
+    expect(canRunReviewerManually({ ...base, reviewerEnabled: true })).toBe(
+      false,
+    );
+  });
+
+  it("stays hidden with no pull request to review", () => {
+    expect(canRunReviewerManually({ ...base, hasPullRequest: false })).toBe(
+      false,
+    );
+  });
+
+  it("stays hidden once a reviewer thread exists", () => {
+    expect(
+      canRunReviewerManually({
+        ...base,
+        threadTitles: ["Fix the header", "Reviewer: Fix the header"],
+      }),
+    ).toBe(false);
+  });
+
+  it("counts a legacy reviewer thread as a review", () => {
+    expect(
+      canRunReviewerManually({
+        ...base,
+        threadTitles: ["Code Reviewer: Fix the header"],
+      }),
+    ).toBe(false);
+  });
+
+  it("ignores an unnamed thread", () => {
+    expect(canRunReviewerManually({ ...base, threadTitles: [null] })).toBe(
+      true,
+    );
   });
 });

@@ -31,6 +31,7 @@ import {
   RepoWriteConflict,
   type TreeEntry,
 } from "../content";
+import { encodeRepoFilePath } from "../insights";
 
 /**
  * A tree entry with the `mode` GitHub reports for it. The neutral `TreeEntry`
@@ -548,9 +549,14 @@ export class GithubContentClient implements RepoContentClient {
   ): Promise<{ sha: string; committedAt: string } | null> {
     const { status, json } = await this.call<{
       commit?: { sha: string; commit: { committer: { date: string } } };
-    }>("GET", `${this.repoBase}/branches/${encodeRefPath(branch)}`, undefined, {
-      allow: [404],
-    });
+    }>(
+      "GET",
+      `${this.repoBase}/branches/${encodeRepoFilePath(branch)}`,
+      undefined,
+      {
+        allow: [404],
+      },
+    );
     if (status === 404 || !json?.commit) return null;
     return {
       sha: json.commit.sha,
@@ -652,7 +658,7 @@ export class GithubContentClient implements RepoContentClient {
    * pipeline fails over to per-blob fetches.
    */
   async getArchive(ref: string): Promise<ReadableStream<Uint8Array> | null> {
-    const path = `${this.repoBase}/tarball/${encodeRefPath(ref)}`;
+    const path = `${this.repoBase}/tarball/${encodeRepoFilePath(ref)}`;
     const res = await fetch(`${this.apiBaseUrl}${path}`, {
       headers: {
         "User-Agent": "studio-decofile",
@@ -735,7 +741,7 @@ export class GithubContentClient implements RepoContentClient {
       sha?: string;
     }>(
       "GET",
-      `${this.repoBase}/contents/${encodeRefPath(path)}?ref=${encodeURIComponent(ref)}`,
+      `${this.repoBase}/contents/${encodeRepoFilePath(path)}?ref=${encodeURIComponent(ref)}`,
       undefined,
       { allow: [404] },
     );
@@ -867,7 +873,7 @@ export class GithubContentClient implements RepoContentClient {
   ): Promise<void> {
     await this.call(
       "PATCH",
-      `${this.repoBase}/git/refs/heads/${encodeRefPath(branch)}`,
+      `${this.repoBase}/git/refs/heads/${encodeRepoFilePath(branch)}`,
       { sha, force },
     );
   }
@@ -939,7 +945,7 @@ export class GithubContentClient implements RepoContentClient {
   ): Promise<{ aheadBy: number; behindBy: number }> {
     const { json } = await this.call<{ ahead_by: number; behind_by: number }>(
       "GET",
-      `${this.repoBase}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
+      `${this.repoBase}/compare/${encodeRepoFilePath(base)}...${encodeRepoFilePath(head)}`,
     );
     return { aheadBy: json.ahead_by, behindBy: json.behind_by };
   }
@@ -972,7 +978,7 @@ export class GithubContentClient implements RepoContentClient {
       commits?: Array<{ commit?: { message?: string } }>;
     }>(
       "GET",
-      `${this.repoBase}/compare/${encodeRefPath(base)}...${encodeRefPath(head)}`,
+      `${this.repoBase}/compare/${encodeRepoFilePath(base)}...${encodeRepoFilePath(head)}`,
     );
     return {
       aheadBy: json.ahead_by,
@@ -1020,9 +1026,4 @@ export function mapGithubPull(json: GithubPullJson): ChangeRequestInfo {
     title: json.title ?? "",
     state,
   };
-}
-
-/** Encode a branch name for a ref path segment, preserving `/` separators. */
-function encodeRefPath(branch: string): string {
-  return branch.split("/").map(encodeURIComponent).join("/");
 }

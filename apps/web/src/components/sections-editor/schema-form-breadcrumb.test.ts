@@ -7,8 +7,8 @@ import {
   consumedBreadcrumbPrefix,
   type Crumb,
   crumbLabel,
-  headerBackTargetIndex,
   fieldDisplayLabel,
+  headerBackTargetIndex,
   isArrayDrillDownField,
   normalizeBreadcrumbLabel,
   prependCrumbIfAbsent,
@@ -33,20 +33,6 @@ describe("normalizeBreadcrumbLabel", () => {
   });
 });
 
-describe("breadcrumbsForHeaderClick", () => {
-  test("maps header index to breadcrumb trail", () => {
-    const breadcrumbs = ["Global Sections", "Analytics"];
-    expect(breadcrumbsForHeaderClick(breadcrumbs, 0)).toEqual([]);
-    expect(breadcrumbsForHeaderClick(breadcrumbs, 1)).toEqual([
-      "Global Sections",
-    ]);
-    expect(breadcrumbsForHeaderClick(breadcrumbs, 2)).toEqual([
-      "Global Sections",
-      "Analytics",
-    ]);
-  });
-});
-
 describe("headerBackTargetIndex", () => {
   test("targets the parent of the last crumb by default", () => {
     // [page, section] → back exits the section (index 0).
@@ -59,12 +45,33 @@ describe("headerBackTargetIndex", () => {
     );
   });
 
-  test("exits the section from a multivariate section top", () => {
-    // [page, section, variant] would resolve to index 1 (the redundant section
-    // crumb, a no-op). Back must exit the section instead.
+  test("exits the section from a classic multivariate section top", () => {
+    // Classic spends [page, section, variant] on one destination, so index 1
+    // is the redundant section crumb and a no-op. Back must exit instead.
     expect(headerBackTargetIndex(3, { isMultivariateSectionTop: true })).toBe(
       0,
     );
+  });
+
+  test("compact merges those crumbs, so the flag never applies there", () => {
+    // [page, "Section · Variant"] → back exits the section, no special case.
+    expect(headerBackTargetIndex(2, { isMultivariateSectionTop: false })).toBe(
+      0,
+    );
+  });
+});
+
+describe("breadcrumbsForHeaderClick", () => {
+  test("maps header index to breadcrumb trail", () => {
+    const breadcrumbs = ["Global Sections", "Analytics"];
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 0)).toEqual([]);
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 1)).toEqual([
+      "Global Sections",
+    ]);
+    expect(breadcrumbsForHeaderClick(breadcrumbs, 2)).toEqual([
+      "Global Sections",
+      "Analytics",
+    ]);
   });
 });
 

@@ -1,8 +1,10 @@
+import { Fragment } from "react";
 import { createContext, use, useRef, type ReactNode } from "react";
 import { useNavigate, type ErrorComponentProps } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Panel } from "@/components/panel";
+import { Page } from "@/components/page";
 import { SidebarThreadButtonPortal } from "@/components/sidebar/thread-button";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
@@ -254,63 +256,68 @@ function ChatLayoutContent({
   const compact = useCompactPageLayout();
   if (layout.isMobile && layout.mobileSurface !== "main") return null;
 
+  const BreadcrumbScope = compact ? Page.Breadcrumbs.Provider : Fragment;
   const panel = (
     <Panel
       data-testid="main-panel"
       variant={layout.isMobile ? "plain" : "card"}
     >
-      {compact ? (
-        <RoutePageHeader
-          navigation={layout.contentNavigation}
-          actions={
-            <>
-              {layout.contentActions}
-              {actions}
-            </>
-          }
-        />
-      ) : (
-        <>
-          {!layout.isMobile && layout.contentOpen && (
-            <Panel.Topbar>
-              <Panel.Topbar.Left className="gap-0.5">
-                <PanelCollapseToggle
-                  side="left"
-                  open={layout.threadOpen}
-                  onToggle={layout.toggleThread}
-                />
-                {layout.contentNavigation}
-                <Panel.Topbar.Left.Target />
-              </Panel.Topbar.Left>
-              <Panel.Topbar.Center>
-                <div className="flex min-w-0 items-center @max-sm/panel-header:hidden">
-                  <Panel.Topbar.Center.Target />
-                </div>
-              </Panel.Topbar.Center>
-              <Panel.Topbar.Right>
-                <Panel.Topbar.Right.Target />
+      <BreadcrumbScope>
+        {compact ? (
+          <RoutePageHeader
+            navigation={layout.contentNavigation}
+            actions={
+              <>
                 {layout.contentActions}
                 {actions}
-                <PanelCollapseToggle
-                  side="right"
-                  open={layout.contentOpen}
-                  onToggle={layout.toggleContent}
-                />
-              </Panel.Topbar.Right>
-            </Panel.Topbar>
-          )}
-        </>
-      )}
-      <Panel.Content>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ErrorBoundary key={layout.contentKey}>
-            <MainPanelBoundary>
-              <ContentBody routeId={layout.contentKey}>{children}</ContentBody>
-            </MainPanelBoundary>
-          </ErrorBoundary>
-        </div>
-        {drawer}
-      </Panel.Content>
+              </>
+            }
+          />
+        ) : (
+          <>
+            {!layout.isMobile && layout.contentOpen && (
+              <Panel.Topbar>
+                <Panel.Topbar.Left className="gap-0.5">
+                  <PanelCollapseToggle
+                    side="left"
+                    open={layout.threadOpen}
+                    onToggle={layout.toggleThread}
+                  />
+                  {layout.contentNavigation}
+                  <Panel.Topbar.Left.Target />
+                </Panel.Topbar.Left>
+                <Panel.Topbar.Center>
+                  <div className="flex min-w-0 items-center @max-sm/panel-header:hidden">
+                    <Panel.Topbar.Center.Target />
+                  </div>
+                </Panel.Topbar.Center>
+                <Panel.Topbar.Right>
+                  <Panel.Topbar.Right.Target />
+                  {layout.contentActions}
+                  {actions}
+                  <PanelCollapseToggle
+                    side="right"
+                    open={layout.contentOpen}
+                    onToggle={layout.toggleContent}
+                  />
+                </Panel.Topbar.Right>
+              </Panel.Topbar>
+            )}
+          </>
+        )}
+        <Panel.Content>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ErrorBoundary key={layout.contentKey}>
+              <MainPanelBoundary>
+                <ContentBody routeId={layout.contentKey}>
+                  {children}
+                </ContentBody>
+              </MainPanelBoundary>
+            </ErrorBoundary>
+          </div>
+          {drawer}
+        </Panel.Content>
+      </BreadcrumbScope>
     </Panel>
   );
 

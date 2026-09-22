@@ -22,6 +22,13 @@ import {
 import { globalSectionLabel } from "./page-list";
 import { formatMatcher } from "./format-matcher";
 
+/**
+ * A default of `[]` is a NEW array on every render, so anything derived from
+ * it re-renders even when nothing changed. `never[]` is assignable to any
+ * `T[]`, so one frozen constant serves every optional list prop in this file.
+ */
+const EMPTY_ARRAY: never[] = [];
+
 export interface MatcherEntry {
   resolveType: string;
   title: string;
@@ -136,7 +143,7 @@ export function MatcherPicker({
   currentLabel,
   currentGlobalKey,
   matchers,
-  globals = [],
+  globals = EMPTY_ARRAY,
   onSelect,
   onSelectGlobal,
 }: {
@@ -175,7 +182,7 @@ export function MatcherPicker({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-10 w-full items-center gap-2 classic:rounded-md compact:rounded-lg border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40 cursor-pointer"
+        className="flex h-10 w-full items-center gap-2 rounded-[var(--studio-control-radius,var(--radius-md))] border border-input bg-transparent px-3 text-left text-sm shadow-xs transition-colors hover:bg-accent/40 cursor-pointer"
       >
         {CurrentIcon && (
           <CurrentIcon className="h-4 w-4 shrink-0 text-muted-foreground" />

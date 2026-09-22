@@ -499,8 +499,12 @@ describe("natsChunkSource", () => {
   });
 
   test("errors when no output is produced before the idle timeout", async () => {
+    // Never yielding IS the fixture: it stands in for a dead producer, so
+    // only the consumer's idle timeout can end this test. A plain function
+    // would not satisfy AsyncIterable.
+    // oxlint-disable-next-line eslint/require-yield
     async function* silent(): AsyncIterable<RawMsg> {
-      await new Promise(() => {}); // never yields
+      await new Promise(() => {});
     }
     const src = natsChunkSource({ messages: silent(), idleTimeoutMs: 10 });
     await expect(readAll(src)).rejects.toThrow(

@@ -21,6 +21,7 @@ import { fetchPrHeadRef } from "./prs-get";
 import { readPrStateThrottled } from "./dbos-github-read";
 import {
   buildClaudeCodeTaskPrompt,
+  otherPullRequestsLead,
   resolveTaskRepoChoice,
 } from "./claude-code-task-run";
 
@@ -57,6 +58,19 @@ export async function reactToSuperAgentDelegation(
  * a single text message, smart tier, no tool allowlist. Iterate on the prompt,
  * model, and metadata from here.
  */
+/**
+ * The pull request a re-run continues. `others` are the issue's open pull
+ * requests in its OTHER repositories — a change that spans two storefronts
+ * has one in each. The sandbox is pinned to `head` only, so the prompt names
+ * the others with their branches for the run to check out after cloning.
+ */
+export interface ContinuedPullRequest {
+  number: number;
+  url: string;
+  head?: string;
+  others?: Array<{ number: number; url: string; head: string; repo: string }>;
+}
+
 /** Options that steer the Super Agent prompt for a re-run on an existing PR. */
 export type SuperAgentPromptOpts = {
   /** What the board's rule for this column says to do. Replaces the default
@@ -66,8 +80,14 @@ export type SuperAgentPromptOpts = {
   /** A reviewer's change request — leads the re-run prompt. */
   feedback?: string;
   /** The PR already under review, so the re-run updates it in place instead
-   *  of opening a second PR. */
-  pr?: { number: number; url: string };
+   *  of opening a second PR.
+   *
+   *  `head` lets a caller that resolved the branch ITSELF supply it — the Jira
+   *  path does, because `resolveRerunBranch` reads the BOARD's linked pull
+   *  requests and a Jira anchor deliberately has none. Without it the prompt
+   *  would name a pull request the sandbox is not booted on, which is the
+   *  combination that produced duplicates. */
+  pr?: ContinuedPullRequest;
   /** This re-run exists to resolve a merge conflict on `pr` (not reviewer
    *  feedback): the lead instructs a checkout + base merge + push. Requires
    *  `pr` — without it the conflict lead is skipped (a conflict instruction
@@ -80,11 +100,12 @@ export type SuperAgentPromptOpts = {
   /** A human asked for this run (`TASK_BOARD_ITEM_RERUN`), so the per-task run
    *  cap — which bounds automatic re-dispatch — does not apply to it. */
   userInitiated?: boolean;
-  /** The run works on something outside the board — a Jira issue — and the
-   *  card is only its anchor. `body` replaces the card's description in the
-   *  prompt, `title` names the thread, and the thread is stamped so its tools
-   *  and the monitoring filter can tell it apart. */
-  source?: { kind: "jira"; issueKey: string; title: string; body: string };
+  /** The run works on something outside the board — one Jira issue, or a
+   *  batch of them — and the card is only its anchor. `body` replaces the
+   *  card's description in the prompt, `title` names the thread, and the
+   *  thread is stamped with `issueKeys` so its Jira tools know which issues
+   *  it may act on and the monitoring filter can tell it apart. */
+  source?: { kind: "jira"; issueKeys: string[]; title: string; body: string };
 };
 
 /**
@@ -153,6 +174,7 @@ export function buildSuperAgentTaskPrompt(
           ? [
               `This task already has an open pull request #${opts.pr.number} (${opts.pr.url}), and you are already on its branch.`,
               `Continue that work: commit and push to update the SAME pull request — do NOT open a new one or start a new branch. If you find it already does everything the task asks, say so and stop rather than changing it.`,
+              ...otherPullRequestsLead(opts.pr),
               "",
             ].join("\n")
           : "",
@@ -162,7 +184,7 @@ export function buildSuperAgentTaskPrompt(
     ...(opts?.source?.kind === "jira"
       ? [
           "How this environment works:",
-          "- No repository is loaded yet. Use the `load_repo` tool to load the one this issue is about.",
+          `- No repository is loaded yet. Use the \`load_repo\` tool to load the one ${opts.source.issueKeys.length > 1 ? "these issues are" : "this issue is"} about.`,
           "- No dev server is running and dependencies are NOT installed — this sandbox is a checkout. Don't hunt for a port.",
         ]
       : [
@@ -306,10 +328,12 @@ export async function enqueueSuperAgentForTask(
     const reusesPrBranch = getSettings().taskBoardRerunReusesPrBranch;
     const pr =
       opts?.pr ?? (reusesPrBranch ? await openPrForTask(ctx, task) : undefined);
+    // A caller-supplied head (Jira's continuePr) always wins over the flag.
     const pinnedRef =
-      reusesPrBranch && pr
+      opts?.pr?.head ??
+      (reusesPrBranch && pr
         ? await resolveRerunBranch(ctx, task, pr.number)
-        : null;
+        : null);
     // The prompt must name the same PR the sandbox booted on. Only widened when
     // the flag is on: naming a PR the run is NOT pinned to is the combination
     // that produced the duplicates.
@@ -352,7 +376,15 @@ export async function enqueueSuperAgentForTask(
       : task;
     const title = opts?.source?.title ?? `Super Agent: ${task.title}`;
     const runMetadata = opts?.source
-      ? { source: opts.source.kind, jira_issue_key: opts.source.issueKey }
+      ? {
+          source: opts.source.kind,
+          jira_issue_keys: opts.source.issueKeys,
+          // The single key stays for a run on one issue, which is what every
+          // reader before batches existed looks for.
+          ...(opts.source.issueKeys.length === 1
+            ? { jira_issue_key: opts.source.issueKeys[0] }
+            : {}),
+        }
       : undefined;
 
     // Set here, not per caller, so the automatic hand-back and the manual

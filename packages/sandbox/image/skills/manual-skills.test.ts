@@ -18,7 +18,12 @@ const SKILLS_DIR = import.meta.dir;
 
 /** Skills that exist to be INSERTED into a prompt by a person, never
  *  discovered by a model. */
-const MANUAL_ONLY = ["jira-execute", "jira-review"];
+const MANUAL_ONLY = [
+  "jira-execute",
+  "jira-review",
+  "jira-merge",
+  "jira-validate-production",
+];
 
 function meta(dir: string) {
   return parseSkillMd(readFileSync(join(SKILLS_DIR, dir, "SKILL.md"), "utf8"));

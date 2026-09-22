@@ -210,7 +210,8 @@ describe("PartRowBuilder", () => {
     });
 
     const rows = builder.emitError("error_msg", "x".repeat(2_000_000));
-    const text = (rows[0]?.payload as { text: string }).text;
+    const payload = rows[0]?.payload as { text: string };
+    const text = payload.text;
 
     expect(text.length).toBeLessThan(8_200);
     expect(text).toEndWith("… [truncated 1992000 characters]");

@@ -45,13 +45,6 @@ const SELECTED_ITEMS_MAX = 500;
  *  hundreds of MCPs. */
 const CONNECTIONS_MAX = 200;
 
-/** Cap on how many plugin IDs `metadata.enabled_plugins` can carry on write —
- *  same rationale as the sibling cap on organization_settings.enabled_plugins
- *  (apps/api/src/tools/organization/settings-update.ts): the plugin registry
- *  is a small, finite set, so an unbounded array here is attacker-controlled
- *  payload size, not a real agent config. */
-const ENABLED_PLUGINS_MAX = 200;
-
 /** Cap on how many sub-agent IDs this agent can delegate to. */
 const SUBAGENTS_MAX = 200;
 
@@ -70,14 +63,12 @@ const TABS_MAX = 20;
 /** Cap on knowledge files attached to an agent. */
 const KNOWLEDGE_MAX = 100;
 
-/** Cap on releases (named branches) per agent. */
-const RELEASES_MAX = 50;
+/** Cap on releases (named branches) per agent. Exported so the UI can gate
+ * creation at the cap instead of letting the write 400 on the server. */
+export const RELEASES_MAX = 50;
 
 /** Cap on runtime env vars injected per sandbox. */
 const RUNTIME_ENV_MAX = 100;
-
-/** Cap on git submodule credentials per sandbox. */
-const SUBMODULE_CREDENTIALS_MAX = 50;
 
 /** Cap on a single literal env var's value length — an unbounded string here
  *  is attacker-controlled payload size on a mutation input (posted verbatim
@@ -426,37 +417,6 @@ const RuntimeEnvEntrySchema = z.discriminatedUnion("kind", [
 export type RuntimeEnvEntry = z.infer<typeof RuntimeEnvEntrySchema>;
 
 /**
- * One git submodule credential on a virtual MCP. Submodules live in other
- * repositories/orgs that the main clone's per-repo GitHub App token cannot
- * reach, so the user supplies a PAT (stored as a vault secret) keyed by the
- * submodule's host. Studio resolves `secretId` against the credential vault on
- * every SANDBOX_START and posts the token to the daemon on a git-only channel
- * (never the env bag) so `git submodule update` can authenticate. `host` is the
- * bare hostname (e.g. "github.com"); the daemon rewrites `git@<host>:` SSH
- * submodule URLs to HTTPS so the token applies.
- */
-/**
- * A bare submodule hostname with an optional port (e.g. "github.com",
- * "gitlab.example.com:8443"). Single source of truth for the shape: the schema
- * below enforces it, and both the sandbox UI and daemon import it.
- */
-export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
-
-const SubmoduleCredentialSchema = z.object({
-  host: z
-    .string()
-    .min(1)
-    .regex(SUBMODULE_HOST_RE)
-    .describe("Submodule host, e.g. 'github.com' (bare hostname, no scheme)."),
-  secretId: z
-    .string()
-    .min(1)
-    .describe("Vault secret id holding the PAT used to fetch this host."),
-});
-
-export type SubmoduleCredential = z.infer<typeof SubmoduleCredentialSchema>;
-
-/**
  * User-pinned runtime configuration stored under `metadata.runtime`. Empty
  * fields fall back to autodetect on the next SANDBOX_START.
  */
@@ -489,14 +449,6 @@ const RuntimeMetadataSchema = z.object({
     .optional()
     .describe(
       "Env vars injected on every SANDBOX_START. Literal entries inline their value; secret entries store a secretId that Studio resolves via the credential vault before posting /_sandbox/config.",
-    ),
-  submoduleCredentials: z
-    .array(SubmoduleCredentialSchema)
-    .max(SUBMODULE_CREDENTIALS_MAX)
-    .nullable()
-    .optional()
-    .describe(
-      "Git submodule credentials injected on every SANDBOX_START. Each entry maps a host to a vault secret (PAT) that Studio resolves before posting /_sandbox/config; the daemon uses it to authenticate `git submodule update` for submodules on that host.",
     ),
 });
 
@@ -846,12 +798,6 @@ const VirtualMcpMetadataFields = {
     .nullable()
     .optional()
     .describe("Instructions also used as system prompt"),
-  enabled_plugins: z
-    .array(z.string())
-    .max(ENABLED_PLUGINS_MAX)
-    .nullable()
-    .optional()
-    .describe("List of enabled plugin IDs"),
   subAgents: z
     .array(z.string())
     .max(SUBAGENTS_MAX)
@@ -1008,14 +954,6 @@ export const VirtualMCPCreateDataSchema = z.object({
   pinned: z.boolean().optional().default(false).describe("Pin to sidebar"),
   metadata: z
     .object(VirtualMcpMetadataFields)
-    .extend({
-      enabled_plugins: z
-        .array(z.string())
-        .max(ENABLED_PLUGINS_MAX)
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-    })
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {
@@ -1062,14 +1000,6 @@ export const VirtualMCPUpdateDataSchema = z.object({
   pinned: z.boolean().optional().describe("Pin/unpin from sidebar"),
   metadata: z
     .object(VirtualMcpMetadataFields)
-    .extend({
-      enabled_plugins: z
-        .array(z.string())
-        .max(ENABLED_PLUGINS_MAX)
-        .nullable()
-        .optional()
-        .describe("List of enabled plugin IDs"),
-    })
     .loose()
     .superRefine((metadata, ctx) => {
       if ("sandboxMap" in metadata) {

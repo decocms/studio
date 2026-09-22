@@ -1,5 +1,8 @@
 import { StudioPackAgentId } from "@decocms/shared/sdk";
-import { STUDIO_PACK_AGENT_NAMES } from "./agent-names";
+import {
+  STUDIO_PACK_AGENT_NAMES,
+  STUDIO_PACK_AGENT_TITLES,
+} from "./agent-names";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -64,7 +67,7 @@ You are the Automation Manager. You create, configure, and manage automations â€
 
 export const automationManagerAgent = {
   id: "studio-automation-manager",
-  title: "Automation Manager",
+  title: STUDIO_PACK_AGENT_TITLES.automationManager,
   icon: "icon://Zap?color=amber",
   description: "Create, configure, and run automations with triggers",
   selectedTools: [

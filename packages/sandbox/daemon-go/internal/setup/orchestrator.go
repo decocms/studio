@@ -154,8 +154,26 @@ func (o *Orchestrator) clearCrashError() {
 }
 
 func (o *Orchestrator) Handle(t config.Transition) {
+	// EVERY transition, before the kind is even looked at. `Classify` returns the
+	// FIRST kind that matches and the credential checks are last, so credentials
+	// arriving alongside a port/pm/runtime/repos/env change are labelled that
+	// instead — and only bootstrap and branch-change reach `gitSetup`, where this
+	// otherwise runs. A warm-pool pod adopted by a claim is exactly that case: the
+	// claim's config differs from the pool template's on the workload, so the PAT
+	// riding the same payload was stored and never written to disk, leaving the
+	// pod on the clone token, which by definition cannot reach a private
+	// dependency in another repository.
+	//
+	// Idempotent (clear-then-write), so paying it on every transition costs two
+	// file writes and buys independence from Classify's ordering.
+	o.installGitCredentials(o.deps.Store.Read())
 	if t.Kind == config.KindGitCredentialRefresh {
-		o.syncGitRemoteCredentials(t.CloneUrl)
+		if t.CloneUrl != "" {
+			o.syncGitRemoteCredentials(t.CloneUrl)
+		}
+		// Nothing else to do: the install above IS the fix for a credential
+		// edited in the UI on a pod that is already serving, and a dropped one
+		// has to stop working here rather than at the next boot.
 		return
 	}
 	// A fresh claim/reclaim or branch switch is an explicit "start over" — clear
@@ -888,6 +906,7 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 	if err := gitx.InstallSandboxHooks(o.deps.RepoDir); err != nil {
 		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: could not install sandbox git hooks: %s\r\n", err.Error()))
 	}
+	o.installGitCredentials(cfg)
 	branch := cfg.Branch()
 	if branch != "" && !config.IsSyntheticBranch(branch) {
 		o.chunk(fmt.Sprintf("[orchestrator] checking out branch: %s\r\n", branch))
@@ -896,6 +915,46 @@ func (o *Orchestrator) gitSetup(cfg *config.Enriched) {
 		}
 	}
 	o.refreshBranchHead()
+}
+
+// installGitCredentials puts the configured per-host tokens where every git in
+// the pod reads them, BEFORE install runs — which is the whole point: a private
+// `git:` dependency is fetched by `flutter pub get` / `go mod download` / npm,
+// each spawning its own git with nothing but the ambient config.
+//
+// Called from two places on purpose: here, so the files are in place before
+// install runs, and from Handle, so a credential edited on a pod that is already
+// serving applies without a boot. Idempotent (clear-then-write), so the overlap
+// costs two file writes.
+//
+// Best-effort: a failure costs private dependencies, not the sandbox.
+func (o *Orchestrator) installGitCredentials(cfg *config.Enriched) {
+	// LogsDir IS the daemon's scratch dir (appRoot/tmp) — the same one the
+	// submodule fetch parks its file in, and nowhere near the working tree or
+	// the partly-synced $HOME. Home is passed only so the generated config can
+	// INCLUDE the user's own `~/.gitconfig` rather than replace it.
+	home, _ := os.UserHomeDir()
+	installed, err := InstallGitCredentials(o.deps.LogsDir, home, cfg.CloneUrl(), cfg.SubmoduleCredentials())
+	for _, host := range installed.InvalidHosts {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: skipping git credential with invalid host %q\r\n", host))
+	}
+	if err != nil {
+		o.chunk(fmt.Sprintf("\r\n[orchestrator] warning: git credentials setup failed: %s\r\n", err.Error()))
+		return
+	}
+	if len(installed.Hosts) > 0 {
+		o.chunk(fmt.Sprintf("[orchestrator] git credentials configured for: %s\r\n", strings.Join(installed.Hosts, ", ")))
+		return
+	}
+	// Say it plainly. "Some credential is installed" and "the configured PAT is
+	// installed" look identical from inside the pod, and telling them apart cost
+	// five round trips once already.
+	if installed.Fallback != "" {
+		o.chunk(fmt.Sprintf(
+			"[orchestrator] no git credentials configured — falling back to the clone token for %s; a private dependency in another repository will 404\r\n",
+			installed.Fallback,
+		))
+	}
 }
 
 func (o *Orchestrator) checkoutBranch(branch string) error {

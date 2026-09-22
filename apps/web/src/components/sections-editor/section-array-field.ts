@@ -33,6 +33,17 @@ function itemsLookLikeSections(items: SchemaProperty): boolean {
   return false;
 }
 
+/**
+ * True when a single (non-array) field is a `Section` slot — deco's generic
+ * Section type, which accepts any section module or saved section block. The
+ * schema names only a handful of those, so such a field is picked from the
+ * section catalog rather than from its own branches.
+ */
+export function isSectionBlockRefField(schema: SchemaProperty): boolean {
+  if (schema.type !== "block-ref" || !schema.anyOfRefs?.length) return false;
+  return schema.anyOfRefs.some((ref) => sectionRefResolveType(ref.resolveType));
+}
+
 /** True when an array field holds page/global section entries. */
 export function isSectionArrayField(
   schema: SchemaProperty,

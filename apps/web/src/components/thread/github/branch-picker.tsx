@@ -51,8 +51,9 @@ import {
   Trash01,
 } from "@untitledui/icons";
 import { generateBranchName } from "@decocms/shared/branch-name";
-import type { Release } from "@decocms/shared/sdk/types";
+import { RELEASES_MAX, type Release } from "@decocms/shared/sdk/types";
 import type { SandboxMap } from "@/sdk";
+import { useMembersQuery } from "@/hooks/use-members";
 import { useT } from "@/i18n/use-t.ts";
 import { toast } from "sonner";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";
@@ -130,6 +131,21 @@ export function BranchPicker({
   const selectedRowRef = useRef<HTMLDivElement>(null);
   const { releases, createRelease, renameRelease, deleteRelease } =
     useReleases(virtualMcpId);
+  // Non-suspense + deferred to `open`: the trigger renders before members load.
+  const { data: membersData } = useMembersQuery({ enabled: open });
+  const creatorName = (id: string | undefined): string | undefined =>
+    id
+      ? (membersData?.data?.members?.find(
+          (m: { userId: string; user?: { name?: string | null } }) =>
+            m.userId === id,
+        )?.user?.name ?? undefined)
+      : undefined;
+
+  // At RELEASES_MAX the server rejects another create, so gate it in the UI.
+  const atReleaseCap = releases.length >= RELEASES_MAX;
+  const capReachedMessage = t("thread.branchPicker.capReached", {
+    max: RELEASES_MAX,
+  });
 
   const isBase = !!value && value === baseBranch;
   const current = releases.find((r) => r.branch === value);
@@ -159,10 +175,15 @@ export function BranchPicker({
   // Advanced: adopt an existing branch/PR head as a named draft, then switch.
   const adoptBranch = (branch: string, name: string) => {
     if (!releases.some((r) => r.branch === branch)) {
+      if (atReleaseCap) {
+        toast.error(capReachedMessage);
+        return;
+      }
       createRelease({
         branch,
         name: name.trim() || branch,
         color: nextReleaseColor(releases.length),
+        createdBy: userId,
         createdAt: new Date().toISOString(),
       }).catch(reportReleaseError);
     }
@@ -172,6 +193,10 @@ export function BranchPicker({
   };
 
   const create = () => {
+    if (atReleaseCap) {
+      toast.error(capReachedMessage);
+      return;
+    }
     const branch = generateBranchName(userLabel);
     createRelease({
       branch,
@@ -180,6 +205,7 @@ export function BranchPicker({
         t("thread.branchPicker.defaultVersionName"),
       ),
       color: nextReleaseColor(releases.length),
+      createdBy: userId,
       createdAt: new Date().toISOString(),
     }).catch(reportReleaseError);
     (onCreateBranch ?? onChange)(branch);
@@ -208,10 +234,17 @@ export function BranchPicker({
   const saveUnlistedName = () => {
     const next = editName.trim();
     if (next && value) {
+      if (atReleaseCap) {
+        toast.error(capReachedMessage);
+        setEditing(null);
+        setEditName("");
+        return;
+      }
       createRelease({
         branch: value,
         name: next,
         color: nextReleaseColor(releases.length),
+        createdBy: userId,
         createdAt: new Date().toISOString(),
       }).catch(reportReleaseError);
     }
@@ -365,6 +398,7 @@ export function BranchPicker({
                     rowRef={r.branch === value ? selectedRowRef : undefined}
                     dot={releaseDotClass(r.color)}
                     label={r.name}
+                    creator={creatorName(r.createdBy)}
                     branch={r.branch}
                     selected={r.branch === value}
                     onSelect={() => pick(r.branch)}
@@ -380,11 +414,17 @@ export function BranchPicker({
             <button
               type="button"
               onClick={() => void create()}
-              className="flex w-full items-center gap-2 classic:rounded-md compact:rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+              disabled={atReleaseCap}
+              className="flex w-full items-center gap-2 classic:rounded-md compact:rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             >
               <Plus className="h-4 w-4 shrink-0" />
               {t("thread.branchPicker.newVersion")}
             </button>
+            {atReleaseCap && (
+              <p className="px-2 pb-1 pt-0.5 text-xs text-warning">
+                {capReachedMessage}
+              </p>
+            )}
             <button
               type="button"
               onClick={() => setAdvanced(true)}
@@ -482,6 +522,7 @@ function ReleaseRow({
   rowRef,
   dot,
   label,
+  creator,
   branch,
   selected,
   onSelect,
@@ -491,6 +532,8 @@ function ReleaseRow({
   rowRef?: Ref<HTMLDivElement>;
   dot: string;
   label: string;
+  /** Display name of who created the draft, shown after the label. */
+  creator?: string;
   branch: string;
   selected: boolean;
   onSelect: () => void;
@@ -515,7 +558,14 @@ function ReleaseRow({
             className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-sm"
           >
             <span className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />
-            <span className="flex-1 truncate">{label}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {label}
+              {creator && (
+                <span className="ml-1.5 text-xs font-normal text-muted-foreground/70">
+                  {creator}
+                </span>
+              )}
+            </span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="font-mono text-xs">

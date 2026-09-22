@@ -165,7 +165,11 @@ function MCPAppFrame({
       <iframe
         ref={iframeRef}
         srcDoc={html}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+        // `allow-same-origin` is deliberately absent: this frame renders HTML
+        // from a third-party MCP server via `srcDoc`, which inherits OUR origin.
+        // With scripts enabled that would be a full sandbox escape — the app
+        // bridge uses postMessage, which needs no same-origin.
+        sandbox="allow-scripts allow-forms allow-popups allow-downloads"
         className={cn("w-full h-full border-0", isLoading && "invisible")}
         title={`MCP App: ${toolName ?? uri}`}
       />

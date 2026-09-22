@@ -101,9 +101,12 @@ export default function TaskBoardAnalyticsRoute() {
   const [days, setDays] = useState<number>(30);
   const [org, setOrg] = useState<string>(orgSlug);
   const [tab, setTab] = useState<AnalyticsTool>("TASK_BOARD_DELIVERY");
+  // Frozen at mount so the range only moves when `days` does — a per-render
+  // clock read would change the query key on every render.
+  const [mountedAt] = useState(() => Date.now());
 
-  const to = new Date().toISOString();
-  const from = new Date(Date.now() - days * 86400_000).toISOString();
+  const to = new Date(mountedAt).toISOString();
+  const from = new Date(mountedAt - days * 86400_000).toISOString();
 
   const isAdmin = admin.data?.isTaskBoardAdmin ?? false;
   const orgOptions = [

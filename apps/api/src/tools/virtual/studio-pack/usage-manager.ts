@@ -1,5 +1,8 @@
 import { StudioPackAgentId } from "@decocms/shared/sdk";
-import { STUDIO_PACK_AGENT_NAMES } from "./agent-names";
+import {
+  STUDIO_PACK_AGENT_NAMES,
+  STUDIO_PACK_AGENT_TITLES,
+} from "./agent-names";
 import type { StudioPackConnectionKey } from "./types";
 
 const INSTRUCTIONS = `<role>
@@ -57,7 +60,7 @@ You are the Usage Manager. You analyze how this workspace is actually used — w
 
 export const usageManagerAgent = {
   id: "studio-usage-manager",
-  title: "Usage Manager",
+  title: STUDIO_PACK_AGENT_TITLES.usageManager,
   icon: "icon://BarChart10?color=blue",
   description: "Analyze usage, costs, and clean up idle agents and connections",
   selectedTools: [

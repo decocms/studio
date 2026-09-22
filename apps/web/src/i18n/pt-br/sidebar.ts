@@ -20,6 +20,9 @@ export const sidebar = {
   "sidebar.navDestinations.reports": "Relatórios",
   "sidebar.navDestinations.settings": "Configurações",
   "sidebar.navDestinations.tasks": "Board",
+  "sidebar.myThreadsSection.noChatsYet": "Nenhum chat ainda",
+  "sidebar.myThreadsSection.noChatsMatchFilters":
+    "Nenhum chat corresponde aos seus filtros",
   "sidebar.projectNav.automations": "Automações",
   "sidebar.projectNav.siteEditor": "Editor do site",
   "sidebar.projects.heading": "Projetos",

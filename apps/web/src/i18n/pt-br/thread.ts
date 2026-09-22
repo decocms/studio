@@ -20,6 +20,8 @@ export const thread = {
   "thread.branchPicker.live": "Produção",
   "thread.branchPicker.moreActions": "Mais ações",
   "thread.branchPicker.newVersion": "Novo Draft",
+  "thread.branchPicker.capReached":
+    "Limite de {max} versões atingido. Exclua uma versão para criar outra.",
   "thread.branchPicker.rename": "Renomear",
   "thread.branchPicker.save": "Salvar",
   "thread.branchPicker.saveError":

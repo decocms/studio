@@ -6,6 +6,7 @@ import {
   delegableRepositories,
   FlowAccessCache,
   pageChoices,
+  preselectedRepositoryIds,
   provesNothingDelegable,
   remainingPages,
   type RepositoryChoice,
@@ -128,6 +129,41 @@ describe("coversSelection", () => {
     expect(coversSelection(all, [1, 3])).toBe(true);
     expect(coversSelection(all, [1, 4])).toBe(false);
     expect(coversSelection([], [])).toBe(true);
+  });
+});
+
+describe("preselectedRepositoryIds", () => {
+  test("keeps only delegable IDs from an explicit grant, without restoring removed linked repositories", () => {
+    const linked = [{ externalId: "2", path: "acme/repo-2" }];
+    expect(preselectedRepositoryIds(choices(3), [1, 9], linked)).toEqual([1]);
+    expect(preselectedRepositoryIds(choices(3), [], linked)).toEqual([]);
+  });
+
+  test("matches historical links by stable ID, falling back to case-insensitive paths only without an ID", () => {
+    expect(
+      preselectedRepositoryIds(choices(4), null, [
+        { externalId: "1", path: "acme/old-name" },
+        { externalId: null, path: "ACME/REPO-2" },
+        { externalId: "99", path: "acme/repo-3" },
+        { externalId: null, path: "other/repo-4" },
+      ]),
+    ).toEqual([1, 2]);
+  });
+
+  test("does not select anything for a new account", () => {
+    expect(preselectedRepositoryIds(choices(3), null, [])).toEqual([]);
+  });
+
+  test("preserves selections beyond the first page and does not silently truncate large historical grants", () => {
+    const all = choices(501);
+    expect(preselectedRepositoryIds(all, [1, 101], [])).toEqual([1, 101]);
+    expect(
+      preselectedRepositoryIds(
+        all,
+        null,
+        all.map((repo) => ({ externalId: String(repo.id), path: repo.name })),
+      ),
+    ).toHaveLength(501);
   });
 });
 

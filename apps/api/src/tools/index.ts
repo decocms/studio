@@ -79,6 +79,7 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_ITEM_PRS_GET,
   TaskBoardTools.TASK_BOARD_PREVIEW_PROBE,
   TaskBoardTools.TASK_BOARD_ITEM_RERUN,
+  TaskBoardTools.TASK_BOARD_RUN_REVIEWER,
   TaskBoardTools.TASK_BOARD_RESOLVE_CONFLICT,
   TaskBoardTools.TASK_BOARD_REVIEW_DECISION,
   TaskBoardTools.TASK_BOARD_PROMOTE_TO_PRODUCTION,
@@ -207,9 +208,6 @@ export const CORE_TOOLS = [
   AutomationTools.AUTOMATION_RUN,
   AutomationTools.AUTOMATION_RUN_STATS,
 
-  // Virtual MCP plugin config tools
-  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_GET,
-  VirtualMCPTools.VIRTUAL_MCP_PLUGIN_CONFIG_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_PINNED_VIEWS_UPDATE,
   VirtualMCPTools.VIRTUAL_MCP_LAST_USED_LIST,
 
@@ -266,7 +264,6 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_AUTOMATION_UPSERT,
   JiraTools.JIRA_AUTOMATION_DELETE,
   JiraTools.JIRA_RUN_START,
-  JiraTools.JIRA_PR_MERGE,
   // Served only on a Jira-triggered run's MCP endpoint (task-run-context.ts)
   JiraTools.JIRA_ISSUE_GET,
   JiraTools.JIRA_COMMENT_ADD,

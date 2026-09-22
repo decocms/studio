@@ -1,4 +1,4 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import type { ModelCapability } from "@decocms/shared/sdk";
 import {
   isInteractionsOnlyModel,
@@ -7,6 +7,7 @@ import {
 } from "./gemini-interactions";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
 import type { StudioProvider, ProviderAdapter, ModelInfo } from "../types";
@@ -72,7 +73,7 @@ export const googleAdapter: ProviderAdapter = {
   supportedMethods: ["api-key"],
 
   create(apiKey): StudioProvider {
-    const aiSdk = createGoogleGenerativeAI({ apiKey });
+    const aiSdk = createGoogle({ apiKey });
 
     return {
       info: this.info,
@@ -114,8 +115,10 @@ export const googleAdapter: ProviderAdapter = {
           if (!res.ok) {
             await throwResponseError("Google listModels", res);
           }
-          const data: { models: GoogleModel[]; nextPageToken?: string } =
-            await res.json();
+          const data = await parseJsonResponse<{
+            models: GoogleModel[];
+            nextPageToken?: string;
+          }>("Google listModels", res);
           models.push(...data.models);
           pageToken = data.nextPageToken;
         } while (pageToken);
@@ -123,21 +126,29 @@ export const googleAdapter: ProviderAdapter = {
           .filter((m: GoogleModel) => m.lifecycleState !== "DEPRECATED")
           .map((m: GoogleModel) => {
             const id = m.name.replace("models/", "");
-            return {
-              modelId: id,
-              providerId: "google" as const,
-              title: m.displayName,
-              description: m.description,
-              logo: null,
-              capabilities: deriveCapabilities(m),
-              limits: {
-                contextWindow: m.inputTokenLimit,
-                maxOutputTokens: m.outputTokenLimit,
-              },
-              costs: null,
-              ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
-            };
-          });
+            return { m, id, capabilities: deriveCapabilities(m) };
+          })
+          .filter(
+            // Excludes embedding/AQA/tuning-only base models Google also lists.
+            ({ m, id, capabilities }) =>
+              capabilities.length > 0 ||
+              m.supportedGenerationMethods.includes("generateContent") ||
+              isInteractionsOnlyModel(id),
+          )
+          .map(({ m, id, capabilities }) => ({
+            modelId: id,
+            providerId: "google" as const,
+            title: m.displayName,
+            description: m.description,
+            logo: null,
+            capabilities,
+            limits: {
+              contextWindow: m.inputTokenLimit,
+              maxOutputTokens: m.outputTokenLimit,
+            },
+            costs: null,
+            ...(isInteractionsOnlyModel(id) && { asyncResearch: true }),
+          }));
       },
     };
   },

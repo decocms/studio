@@ -1,6 +1,6 @@
 /**
  * Comments on a task — threads inside the activity feed, with one level of
- * replies and an inline reply composer per thread.
+ * replies. The new layout uses one composer; classic keeps inline replies.
  *
  * Presentation only: the data and the mutations come from
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
@@ -18,24 +18,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@decocms/ui/components/dropdown-menu.tsx";
-import {
-  ArrowUp,
-  Check,
-  ChevronSelectorVertical,
-  DotsHorizontal,
-  MessageCheckCircle,
-  Trash03,
-  X,
-} from "@untitledui/icons";
+import { ArrowUp, DotsHorizontal, Trash03 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
+import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
+import { MemoizedMarkdown } from "@/components/chat/markdown";
 import { formatTimeAgo } from "@/lib/format-time";
-import { useT, type TFunction } from "@/i18n/use-t.ts";
+import { TaskMessage } from "./task-message";
+import { useT } from "@/i18n/use-t.ts";
 import {
   MentionInput,
   type MentionInputHandle,
@@ -47,6 +40,7 @@ export type CommentAuthor = {
   image?: string | null;
   /** The Super Agent signs with its glyph instead of an avatar. */
   isAgent?: boolean;
+  isReviewer?: boolean;
 };
 
 /** A comment as the feed renders it. `replies` is only ever one level deep,
@@ -56,77 +50,42 @@ export type TaskComment = {
   author: CommentAuthor;
   body: string;
   createdAt: string;
+  onOpenThread?: () => void;
   replies: TaskComment[];
-  /** Thread roots only — a thread is settled or open as a whole. */
+  /** Stored state is retained for compatibility, but does not hide comments. */
   resolved?: boolean;
 };
 
 /**
- * A comment thread: the root comment, its replies, and a reply composer.
- *
- * A resolved thread collapses to a one-line summary — the conversation is
- * settled, so it should stop taking up the feed, while staying one click from
- * being read again.
+ * A comment thread: the root comment and its existing replies.
  */
 export function CommentThreadCard({
   thread,
   me,
+  conversation = true,
   onReply,
   onDelete,
-  onToggleResolved,
 }: {
   thread: TaskComment;
   me: CommentAuthor;
-  onReply: (body: string) => void;
+  conversation?: boolean;
+  onReply?: (body: string) => void;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
-  onToggleResolved: () => void;
 }) {
-  const t = useT();
-  const [expanded, setExpanded] = useState(false);
-
-  if (thread.resolved && !expanded) {
-    return (
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="flex w-full items-center gap-2.5 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-muted/60"
-      >
-        <MessageCheckCircle
-          size={16}
-          className="shrink-0 text-muted-foreground"
-        />
-        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-          {resolvedSummary(thread, t)}
-        </span>
-        <ChevronSelectorVertical
-          size={16}
-          className="shrink-0 text-muted-foreground"
-        />
-      </button>
-    );
-  }
-
   return (
-    <div className="flex flex-col rounded-xl bg-card card-shadow">
-      {thread.resolved && (
-        <>
-          <button
-            type="button"
-            onClick={() => setExpanded(false)}
-            className="flex items-center justify-between gap-2 rounded-t-xl bg-muted/40 px-4 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {t("taskBoard.taskDialog.commentCollapseThread")}
-            <X size={14} aria-hidden />
-          </button>
-          <Divider />
-        </>
+    <div
+      className={cn(
+        "flex flex-col",
+        conversation
+          ? "border-b border-border/50 pb-4"
+          : "rounded-xl bg-card card-shadow",
       )}
+    >
       <CommentEntry
+        conversation={conversation}
         comment={thread}
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
-        resolved={thread.resolved}
-        onToggleResolved={onToggleResolved}
       />
       {thread.replies.map((reply, i) => (
         <Fragment key={reply.id}>
@@ -134,6 +93,7 @@ export function CommentThreadCard({
               replies reads as one exchange under the root comment. */}
           <Divider inset={i > 0} />
           <CommentEntry
+            conversation={conversation}
             comment={reply}
             onDelete={
               canDelete(reply, me) ? () => onDelete(reply.id) : undefined
@@ -142,13 +102,12 @@ export function CommentThreadCard({
           />
         </Fragment>
       ))}
-      <Divider />
-      <CommentComposer
-        variant="reply"
-        placeholder={t("taskBoard.taskDialog.commentReplyPlaceholder")}
-        author={me}
-        onSubmit={onReply}
-      />
+      {!conversation && onReply && (
+        <>
+          <Divider />
+          <CommentComposer replyAuthor={me} onSubmit={onReply} />
+        </>
+      )}
     </div>
   );
 }
@@ -157,46 +116,6 @@ export function CommentThreadCard({
  *  for you, not another person whose comment you shouldn't be able to erase. */
 function canDelete(comment: TaskComment, me: CommentAuthor): boolean {
   return comment.author.id === me.id || comment.author.isAgent === true;
-}
-
-/** Authors of a thread, in the order they first spoke. */
-const AUTHOR_LIST_FMT = new Intl.ListFormat(undefined, {
-  style: "long",
-  type: "conjunction",
-});
-
-/** "3 resolved comments from valls and Super Agent". */
-function resolvedSummary(thread: TaskComment, t: TFunction): string {
-  const comments = [thread, ...thread.replies];
-  const names = AUTHOR_LIST_FMT.format([
-    ...new Set(comments.map((c) => c.author.name)),
-  ]);
-  return comments.length === 1
-    ? t("taskBoard.taskDialog.commentResolvedSummaryOne", { names })
-    : t("taskBoard.taskDialog.commentResolvedSummaryMany", {
-        count: comments.length,
-        names,
-      });
-}
-
-/** The bottom composer that starts a new thread on the task. */
-export function NewCommentComposer({
-  me,
-  onSubmit,
-}: {
-  me: CommentAuthor;
-  onSubmit: (body: string) => void;
-}) {
-  const t = useT();
-
-  return (
-    <CommentComposer
-      variant="root"
-      placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
-      author={me}
-      onSubmit={onSubmit}
-    />
-  );
 }
 
 /**
@@ -214,50 +133,56 @@ function Divider({ inset }: { inset?: boolean }) {
  * reads as a conversation under the root comment, not as three equal posts.
  */
 function CommentEntry({
+  conversation,
   comment,
   isReply,
-  resolved,
   onDelete,
-  onToggleResolved,
 }: {
   comment: TaskComment;
+  conversation: boolean;
   isReply?: boolean;
-  resolved?: boolean;
   /** Omitted for a comment that isn't the current user's — the server
    *  rejects deleting someone else's comment, so don't offer it. */
   onDelete?: () => void;
-  /** Thread roots only — resolving settles the whole conversation. */
-  onToggleResolved?: () => void;
 }) {
+  if (!conversation) {
+    return (
+      <div className="group flex flex-col gap-1.5 p-4">
+        <div className="flex items-center gap-2">
+          <AuthorGlyph author={comment.author} />
+          <span className="text-sm font-medium text-foreground">
+            {comment.author.name}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {formatTimeAgo(new Date(comment.createdAt))}
+          </span>
+          {onDelete && <CommentActionsMenu onDelete={onDelete} />}
+        </div>
+        <div
+          className={cn(
+            // One size per comment; the shared markdown pins its own 14px.
+            "text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
+            // Avatar (24px) + gap (8px), so a reply's text starts at the name.
+            isReply && "pl-8",
+          )}
+        >
+          <MemoizedMarkdown id={comment.id} text={comment.body} />
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="group flex flex-col gap-1.5 p-4">
-      <div className="flex items-center gap-2">
-        <AuthorGlyph author={comment.author} />
-        <span className="text-sm font-medium text-foreground">
-          {comment.author.name}
-        </span>
-        <span className="text-sm text-muted-foreground">
-          {formatTimeAgo(new Date(comment.createdAt))}
-        </span>
-        {(onDelete || onToggleResolved) && (
-          <CommentActionsMenu
-            resolved={resolved}
-            onDelete={onDelete}
-            onToggleResolved={onToggleResolved}
-          />
-        )}
-      </div>
-      <div
-        className={cn(
-          // One size per comment; the shared markdown pins its own 14px.
-          "text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
-          // Avatar (24px) + gap (8px), so a reply's text starts at the name.
-          isReply && "pl-8",
-        )}
-      >
-        <MemoizedMarkdown id={comment.id} text={comment.body} />
-      </div>
-    </div>
+    <TaskMessage
+      id={comment.id}
+      commentId={comment.id}
+      author={comment.author.name}
+      avatar={<AuthorGlyph author={comment.author} />}
+      createdAt={comment.createdAt}
+      body={comment.body}
+      isReply={isReply}
+      onOpenThread={comment.onOpenThread}
+      actions={onDelete && <CommentActionsMenu onDelete={onDelete} />}
+    />
   );
 }
 
@@ -266,15 +191,7 @@ function CommentEntry({
  * is focused, so a quiet thread stays quiet — but pinned open while the menu
  * is, or it would vanish from under the pointer.
  */
-function CommentActionsMenu({
-  resolved,
-  onDelete,
-  onToggleResolved,
-}: {
-  resolved?: boolean;
-  onDelete?: () => void;
-  onToggleResolved?: () => void;
-}) {
+function CommentActionsMenu({ onDelete }: { onDelete?: () => void }) {
   const t = useT();
 
   return (
@@ -289,17 +206,6 @@ function CommentActionsMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {onToggleResolved && (
-          <>
-            <DropdownMenuItem onSelect={onToggleResolved}>
-              <Check size={16} />
-              {resolved
-                ? t("taskBoard.taskDialog.commentUnresolveThread")
-                : t("taskBoard.taskDialog.commentResolveThread")}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
         {onDelete && (
           <DropdownMenuItem variant="destructive" onSelect={onDelete}>
             <Trash03 size={16} />
@@ -312,6 +218,7 @@ function CommentActionsMenu({
 }
 
 function AuthorGlyph({ author }: { author: CommentAuthor }) {
+  if (author.isReviewer) return <ReviewerIcon size={24} />;
   if (author.isAgent) return <SuperAgentIcon size={24} />;
   return (
     <Avatar
@@ -324,18 +231,20 @@ function AuthorGlyph({ author }: { author: CommentAuthor }) {
 }
 
 /**
- * Composer for a comment or a reply. Enter sends, Shift+Enter breaks the line.
+ * Task conversation composer. Enter sends, Shift+Enter breaks the line.
  */
+type SubmitComment = (body: string) => void | boolean | Promise<void | boolean>;
+
+export function NewCommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
+  return <CommentComposer onSubmit={onSubmit} />;
+}
+
 function CommentComposer({
-  variant,
-  placeholder,
-  author,
   onSubmit,
+  replyAuthor,
 }: {
-  variant: "root" | "reply";
-  placeholder: string;
-  author: CommentAuthor;
-  onSubmit: (body: string) => void;
+  onSubmit: SubmitComment;
+  replyAuthor?: CommentAuthor;
 }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
@@ -346,12 +255,16 @@ function CommentComposer({
   const textarea = (
     <MentionInput
       ref={ref}
-      placeholder={placeholder}
+      placeholder={t(
+        replyAuthor
+          ? "taskBoard.taskDialog.commentReplyPlaceholder"
+          : "taskBoard.taskDialog.commentPlaceholder",
+      )}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
       className={cn(
         "w-full [&_.tiptap]:outline-none",
-        variant === "root" && "min-h-10",
+        !replyAuthor && "min-h-10",
       )}
     />
   );
@@ -371,37 +284,35 @@ function CommentComposer({
   );
 
   // The whole composer is the click target, not just the one-line input inside
-  // it: the empty space below "Leave a comment..." and the gap either side of
-  // "Leave a reply..." read as part of the field, so clicking them should put
+  // it: the empty space below "Leave a comment..." reads as part of the field,
+  // so clicking it should put
   // the caret there. A click that lands on the send button hits the button
   // first and bubbles here after, which only re-focuses the (now empty)
   // composer.
   const focusInput = () => ref.current?.focus();
 
-  if (variant === "root") {
+  if (replyAuthor)
     return (
       <div
-        data-testid="new-comment-composer"
+        data-testid="reply-composer"
         onClick={focusInput}
-        className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
+        className="relative flex cursor-text items-start gap-2 p-3"
       >
-        {textarea}
-        <div className="flex items-center justify-end">{actions}</div>
+        <span className="mt-0.5 shrink-0">
+          <AuthorGlyph author={replyAuthor} />
+        </span>
+        <div className="min-w-0 flex-1 pt-0.5">{textarea}</div>
+        {actions}
       </div>
     );
-  }
-
   return (
     <div
-      data-testid="reply-composer"
+      data-testid="new-comment-composer"
       onClick={focusInput}
-      className="relative flex cursor-text items-start gap-2 p-3"
+      className="relative flex cursor-text flex-col gap-1 rounded-xl bg-card p-3 card-shadow"
     >
-      <span className="mt-0.5 shrink-0">
-        <AuthorGlyph author={author} />
-      </span>
-      <div className="min-w-0 flex-1 pt-0.5">{textarea}</div>
-      {actions}
+      {textarea}
+      <div className="flex items-center justify-end">{actions}</div>
     </div>
   );
 }

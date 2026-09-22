@@ -32,6 +32,8 @@
  * `ban-e2e-app-imports.js`.
  */
 
+import { resolveRelative } from "./resolve-relative.js";
+
 const LAYER = "git-providers";
 const PROVIDERS = ["github", "gitlab", "bitbucket"];
 
@@ -55,18 +57,6 @@ function inLayer(filename) {
 
 function isAllowed(filename) {
   return ALLOWLIST.some((allowed) => filename.endsWith(allowed));
-}
-
-// Resolve `../` / `./` segments of a relative spec against the importing file.
-function resolveRelative(fromFile, spec) {
-  const parts = fromFile.split("/");
-  parts.pop(); // drop the filename → containing directory
-  for (const seg of spec.split("/")) {
-    if (seg === "" || seg === ".") continue;
-    if (seg === "..") parts.pop();
-    else parts.push(seg);
-  }
-  return parts.join("/");
 }
 
 /**

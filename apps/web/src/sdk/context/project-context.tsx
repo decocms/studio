@@ -70,7 +70,6 @@ export interface ProjectData {
   /** Project description */
   description?: string | null;
   /** Enabled plugins */
-  enabledPlugins?: string[] | null;
   /** UI customization */
   ui?: ProjectUI | null;
 }

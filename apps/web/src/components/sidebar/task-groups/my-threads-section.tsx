@@ -5,6 +5,7 @@ import { groupThreadsByStatus } from "./group-threads";
 import { StatusGroup } from "./task-group";
 import { ShowMoreButton } from "./show-more-button";
 import type { SidebarFilters } from "./next-page-offset";
+import { useT } from "@/i18n/use-t.ts";
 
 /**
  * The current user's threads, all agents mixed. Two renderings toggled by the
@@ -39,12 +40,15 @@ export function MyThreadsSection({
   onLoadMore: () => void;
   filtersActive?: boolean;
 }) {
+  const t = useT();
   if (threads.length === 0 && !hasMore && !isFetchingMore) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 px-4 py-12 text-center text-muted-foreground">
         <Inbox01 className="size-6 opacity-60" />
         <p className="text-sm">
-          {filtersActive ? "No chats match your filters" : "No chats yet"}
+          {filtersActive
+            ? t("sidebar.myThreadsSection.noChatsMatchFilters")
+            : t("sidebar.myThreadsSection.noChatsYet")}
         </p>
       </div>
     );

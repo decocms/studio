@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/experimental-ct-react";
+import type { Page } from "@playwright/test";
+import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
 import {
@@ -191,4 +193,83 @@ test("add a boolean item appends the default false", async ({ mount }) => {
   await component.getByRole("button", { name: "Add item" }).click();
 
   await expect.poll(() => readFormValue(component)).toEqual({ flags: [false] });
+});
+
+/**
+ * The add control is the list's last row in the compact layout, so it has to be
+ * as tall as the rows it follows — including the taller rows that carry a
+ * thumbnail. In classic it is still a block below the list, whose height does
+ * not match, so this test fails if the preference below stops taking effect.
+ */
+async function enableCompactLayout(page: Page) {
+  await page.evaluate((key) => {
+    localStorage.setItem(key, JSON.stringify({ compactPageLayout: true }));
+  }, LOCALSTORAGE_KEYS.preferences());
+}
+
+const BANNERS_WITH_THUMBNAILS = {
+  banners: {
+    type: "array",
+    title: "Banners",
+    items: {
+      type: "object",
+      properties: {
+        image: { type: "string", format: "image-uri" },
+        alt: { type: "string" },
+      },
+    },
+  },
+};
+
+test("compact: the add row matches a thumbnail row's height", async ({
+  mount,
+  page,
+}) => {
+  await enableCompactLayout(page);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={sectionWithProps(BANNERS_WITH_THUMBNAILS)}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{
+        banners: [{ image: "https://example.com/a.png", alt: "One" }],
+      }}
+    />,
+  );
+
+  const itemRow = component.locator('[role="button"][title]').first();
+  // Attached, not visible: the fixture's src never loads, so it has no width.
+  await expect(itemRow.locator("img")).toHaveCount(1);
+
+  const item = await itemRow.boundingBox();
+  const add = await component
+    .getByRole("button", { name: "Add item" })
+    .boundingBox();
+
+  expect(add?.height).toBe(item?.height);
+});
+
+test("compact: the add row matches a plain row's height", async ({
+  mount,
+  page,
+}) => {
+  await enableCompactLayout(page);
+  const component = await mount(
+    <SchemaFormHarness
+      meta={sectionWithProps({
+        tags: { type: "array", title: "Tags", items: { type: "string" } },
+      })}
+      resolveType={TEST_RESOLVE_TYPE}
+      initialValue={{ tags: ["one"] }}
+    />,
+  );
+
+  const item = await component
+    .locator('[role="button"][title]')
+    .first()
+    .boundingBox();
+  const add = await component
+    .getByRole("button", { name: "Add item" })
+    .boundingBox();
+
+  expect(add?.height).toBe(item?.height);
 });

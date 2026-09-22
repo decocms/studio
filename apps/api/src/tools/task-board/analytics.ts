@@ -148,7 +148,10 @@ export async function resolveScope(
     targetOrgId: target.id,
     tool: toolName,
   });
-  return { query: { ...range, orgIds: [target.id] }, org: target.slug };
+  return {
+    query: { ...range, orgIds: [target.id] },
+    org: target.slug || target.id,
+  };
 }
 
 /** One line for the model; the page still gets the full structuredContent. */

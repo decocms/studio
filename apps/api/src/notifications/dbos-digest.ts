@@ -229,7 +229,12 @@ async function mailBatch(rows: PendingRow[], label: string): Promise<void> {
   );
   const mine = rows.filter((row) => claimed.has(row.id));
   if (mine.length === 0) return;
-  await DBOS.runStep(() => sendOne(mine), { name: `sendDigest:${label}` });
+  // Already claimed above, so this step's own retries are the row's only chance.
+  await DBOS.runStep(() => sendOne(mine), {
+    name: `sendDigest:${label}`,
+    retriesAllowed: true,
+    maxAttempts: 3,
+  });
 }
 
 /**

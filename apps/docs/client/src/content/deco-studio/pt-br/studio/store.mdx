@@ -1,41 +1,13 @@
 ---
-title: Store
-description: Escolha quais registries alimentam seu catálogo de connections
+title: Catálogo de MCPs
+description: Encontre MCPs no registry da Deco
 icon: Store
 ---
 
-import Callout from "../../../../components/ui/Callout.astro";
+A página de [Connections](/pt-br/studio/connections) lista os MCPs do registry da Deco. Pesquise no catálogo, escolha um MCP e conecte-o à sua organização.
 
-## O que é a Store?
+O catálogo vem do [registry.json no decocms/mcps](https://github.com/decocms/mcps/blob/main/registry.json). Descrições, URLs, ícones e a lista de MCPs são alterados nesse arquivo por pull request.
 
-A **Store** é onde você escolhe quais **registries** populam seu catálogo de [Connections](/pt-br/studio/connections). Um registry é uma fonte de MCP servers; o catálogo que você vê na página de Connections é a união de todos os registries que você habilitou.
+O Studio mantém o arquivo em cache por cinco minutos. Se a atualização falhar, pode usar a última versão válida por até uma hora. Os itens do catálogo não ficam no banco de dados do Studio.
 
-Você encontra a Store em **Settings → Store**.
-
-<Callout type="info">
-  A Store não é onde você instala uma connection — isso acontece na página de **Connections**. A Store apenas controla quais MCPs aparecem lá.
-</Callout>
-
-## Tipos de registry
-
-### Deco Store
-
-O registry oficial e curado. Sempre disponível. Integrações verificadas e testadas para compatibilidade com o deco Studio. Esta é a fonte para a maioria das integrações comuns.
-
-### Community
-
-Um catálogo mais amplo, vindo da comunidade (o MCP Registry). Útil quando a Deco Store não tem o que você precisa. Qualidade e manutenção variam.
-
-### Private registries
-
-Sua organização pode conectar seu próprio MCP registry privado — útil para ferramentas proprietárias ou serviços internos que não devem ser compartilhados externamente. Clique em **Add registry** para conectar um.
-
-## Habilitando e desabilitando registries
-
-Cada registry tem um switch. Desligue um e seus MCPs param de aparecer no seu catálogo de Connections. As connections existentes que você já instalou daquele registry continuam funcionando — apenas o catálogo é afetado.
-
----
-
-## Próximo
-
-Depois de habilitar os registries que quiser, vá para [**Settings → Connections**](/pt-br/studio/connections) para navegar e instalar MCPs a partir deles.
+As conexões instaladas mantêm suas configurações e credenciais no Studio. Também é possível adicionar uma conexão personalizada pela página de Connections.

@@ -10,7 +10,6 @@ import { sectionsEditor } from "./sections-editor.ts";
 import { routes } from "./routes.ts";
 import { reports } from "./reports.ts";
 import { releaseChannel } from "./release-channel.ts";
-import { registry } from "./registry.ts";
 import { orgs } from "./orgs.ts";
 import { monitoring } from "./monitoring.ts";
 import { mainPanelTabs } from "./main-panel-tabs.ts";
@@ -59,7 +58,6 @@ export const en = {
   ...routes,
   ...reports,
   ...releaseChannel,
-  ...registry,
   ...orgs,
   ...monitoring,
   ...mainPanelTabs,

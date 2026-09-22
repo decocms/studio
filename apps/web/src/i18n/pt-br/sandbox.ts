@@ -224,6 +224,8 @@ export const sandbox = {
     "Mova este valor para o cofre criptografado. A variável de ambiente referenciará o segredo por id — seu valor nunca sai do servidor.",
   "sandbox.envVarsField.saveValueAsSecretTitle": "Salvar valor como segredo",
   "sandbox.envVarsField.saving": "Salvando…",
+  "sandbox.envVarsField.secretAriaLabel":
+    "Segredo da variável de ambiente {index}",
   "sandbox.envVarsField.scopeLabel": "Escopo",
   "sandbox.envVarsField.scopeOrganization":
     "Organização — visível para todos os membros",
@@ -236,6 +238,8 @@ export const sandbox = {
   "sandbox.envVarsField.valuePlaceholder": "valor",
   "sandbox.fileExplorer.askTheAiPlaceholder": "Pergunte à IA...",
   "sandbox.fileExplorer.deleteFailed": "Falha ao deletar",
+  "sandbox.fileExplorer.discardUnsavedChangesConfirm":
+    "Este arquivo tem alterações não salvas. Fechar mesmo assim?",
   "sandbox.fileExplorer.failedToCopyText": "Falha ao copiar {label}",
   "sandbox.fileExplorer.failedToLoadFolder": "Falha ao carregar pasta",
   "sandbox.fileExplorer.failedToOpenFile": "Falha ao abrir arquivo",
@@ -384,6 +388,7 @@ export const sandbox = {
   "sandbox.itemActions.rename": "Renomear",
   "sandbox.itemActions.viewJson": "Visualizar JSON",
   "sandbox.itemRow.selectItem": "Selecionar {title}",
+  "sandbox.itemRow.variantCount": "{count} variantes",
   "sandbox.listBlocks.addCard": "Adicionar card",
   "sandbox.listBlocks.addItem": "Adicionar item",
   "sandbox.listBlocks.addStat": "Adicionar estatística",
@@ -696,6 +701,7 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.valueForParam": "Valor de {label}",
+  "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
   "sandbox.productBlocks.addProductsButton": "Adicionar produtos",
@@ -821,14 +827,11 @@ export const sandbox = {
     "O repositório GitHub conectado para este projeto. Gerencie em Conexões.",
   "sandbox.runnableBlockEditor.availableModeDescription":
     "{typeLabel} — edições permanecem locais até que você salve como um {singular} global. Execute para invocar contra a visualização em tempo real.",
-  "sandbox.runnableBlockEditor.backToList": "Voltar para a lista",
   "sandbox.runnableBlockEditor.closeJsonEditor": "Fechar editor JSON",
   "sandbox.runnableBlockEditor.closeResult": "Fechar resultado",
   "sandbox.runnableBlockEditor.collapse": "Recolher",
   "sandbox.runnableBlockEditor.collapseResult": "Recolher resultado",
   "sandbox.runnableBlockEditor.editAsJson": "Editar como JSON",
-  "sandbox.runnableBlockEditor.editingBreadcrumb":
-    "Trilha de navegação de edição",
   "sandbox.runnableBlockEditor.expand": "Expandir",
   "sandbox.runnableBlockEditor.expandResult": "Expandir resultado",
   "sandbox.runnableBlockEditor.failedToRun": "Falha ao executar {singular}",
@@ -886,8 +889,6 @@ export const sandbox = {
   "sandbox.saveStatus.saved": "Salvo",
   "sandbox.saveStatus.saving": "Salvando…",
   "sandbox.savedSectionEditor.editAsJson": "Editar como JSON",
-  "sandbox.savedSectionEditor.editingBreadcrumb":
-    "Trilha de navegação de edição",
   "sandbox.savedSectionEditor.globalSectionDescription":
     "Seção global — alterações são salvas automaticamente e aplicadas em todos os locais onde é usada.",
   "sandbox.savedSectionEditor.invalidJsonError":
@@ -917,51 +918,6 @@ export const sandbox = {
   "sandbox.stateCard.resumeToContinue": "Retome para continuar.",
   "sandbox.stateCard.retry": "Tentar Novamente",
   "sandbox.stateCard.suspendedHeadline": "O sandbox está pausado",
-  "sandbox.submoduleCredentialsField.addSubmoduleCredential":
-    "Adicionar credencial de submódulo",
-  "sandbox.submoduleCredentialsField.cancel": "Cancelar",
-  "sandbox.submoduleCredentialsField.createNewSecret": "Criar novo segredo",
-  "sandbox.submoduleCredentialsField.createNewSecretAriaLabel":
-    "Criar novo segredo",
-  "sandbox.submoduleCredentialsField.createNewSecretDescription":
-    "Armazenado criptografado no cofre de credenciais. A credencial de submódulo fará referência ao novo segredo pelo id — seu valor nunca sai do servidor.",
-  "sandbox.submoduleCredentialsField.createNewSecretTitle":
-    "Criar novo segredo",
-  "sandbox.submoduleCredentialsField.description":
-    "Tokens de acesso pessoal para clonar submódulos git privados hospedados em outros repositórios. Referencie um segredo de org/usuário por host; URLs SSH de submódulo são reescritas para HTTPS para que o token se aplique.",
-  "sandbox.submoduleCredentialsField.descriptionLabel": "Descrição (opcional)",
-  "sandbox.submoduleCredentialsField.descriptionPlaceholder":
-    "Para que este token é usado?",
-  "sandbox.submoduleCredentialsField.failedToLoadSecrets":
-    "Falha ao carregar segredos",
-  "sandbox.submoduleCredentialsField.failedToSaveSecret": "Falha ao salvar",
-  "sandbox.submoduleCredentialsField.hostAriaLabel":
-    "Host da credencial de submódulo {index}",
-  "sandbox.submoduleCredentialsField.hostInvalidMessage":
-    "Nome de host simples, ex.: github.com (sem esquema ou caminho).",
-  "sandbox.submoduleCredentialsField.hostPlaceholder": "github.com",
-  "sandbox.submoduleCredentialsField.nameLabel": "Nome",
-  "sandbox.submoduleCredentialsField.namePlaceholder": "GITHUB_SUBMODULE_PAT",
-  "sandbox.submoduleCredentialsField.nameHelperText":
-    "Letras, dígitos, underscore, ponto, hífen.",
-  "sandbox.submoduleCredentialsField.noSecretsYet":
-    'Nenhum segredo ainda. Use o "+" para criar um.',
-  "sandbox.submoduleCredentialsField.pickSecretPlaceholder":
-    "Escolha um segredo…",
-  "sandbox.submoduleCredentialsField.remove": "Remover",
-  "sandbox.submoduleCredentialsField.removeAriaLabel":
-    "Remover credencial de submódulo",
-  "sandbox.submoduleCredentialsField.saveSecret": "Salvar segredo",
-  "sandbox.submoduleCredentialsField.saving": "Salvando…",
-  "sandbox.submoduleCredentialsField.scopeLabel": "Escopo",
-  "sandbox.submoduleCredentialsField.scopeOrganization":
-    "Organização — visível para todos os membros",
-  "sandbox.submoduleCredentialsField.scopePrivate":
-    "Privado — visível apenas para mim",
-  "sandbox.submoduleCredentialsField.secretSaved": 'Segredo "{name}" salvo',
-  "sandbox.submoduleCredentialsField.title": "Credenciais de submódulo",
-  "sandbox.submoduleCredentialsField.tokenLabel": "Token de acesso pessoal",
-  "sandbox.submoduleCredentialsField.tokenPlaceholder": "ghp_…",
   "sandbox.tableBlock.addColumn": "Adicionar coluna",
   "sandbox.tableBlock.addRow": "Adicionar linha",
   "sandbox.tableBlock.headerPlaceholder": "Cabeçalho {n}",
