@@ -81,15 +81,37 @@ function stripTags(html: string): string {
   return decodeEntities(text).replace(/\s+/g, " ").trim();
 }
 
-/** Comments and script/style bodies, removed together so neither can hide in
- *  the other and neither can reassemble after the other is cut. */
-function stripHostileMarkup(html: string): string {
+/** Every HTML comment, repeating until none reappear: cutting the inner match
+ *  of `<!--<!-- -->` would otherwise leave a `<!--` behind. */
+function stripComments(html: string): string {
   let out = html;
   let previous: string;
   do {
     previous = out;
     out = out.replace(/<!--[\s\S]*?-->/g, "");
+  } while (out !== previous);
+  return out;
+}
+
+/** The same, for script and style bodies. */
+function stripScriptAndStyle(html: string): string {
+  let out = html;
+  let previous: string;
+  do {
+    previous = out;
     out = out.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "");
+  } while (out !== previous);
+  return out;
+}
+
+/** Both, together: cutting a script body can complete a comment that was not
+ *  one before, so the pair repeats until neither finds anything left. */
+function stripHostileMarkup(html: string): string {
+  let out = html;
+  let previous: string;
+  do {
+    previous = out;
+    out = stripScriptAndStyle(stripComments(out));
   } while (out !== previous);
   return out;
 }

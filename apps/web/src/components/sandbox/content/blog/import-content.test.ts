@@ -152,6 +152,14 @@ describe("parseImportedContent — untrusted markup", () => {
     ).toEqual(["y"]);
   });
 
+  test("cutting one kind of markup can complete the other, and both still go", () => {
+    // Removing the script body is what turns `<!-` + `-- x -->` into a comment.
+    expect(htmlOf("<!-<script>y</script>-- x --><p>ok</p>")).toEqual(["ok"]);
+    expect(htmlOf("<scr<!--x-->ipt>alert(1)</script><p>ok</p>")).toEqual([
+      "ok",
+    ]);
+  });
+
   test("a paragraph keeps inline formatting and loses everything else", () => {
     // The site renders this as HTML, so an event handler here is stored XSS.
     expect(htmlOf("<p>hi <img src=x onerror=alert(1)> there</p>")).toEqual([
