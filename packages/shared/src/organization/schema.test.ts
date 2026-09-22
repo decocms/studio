@@ -5,6 +5,7 @@ import {
   DEFAULT_ON_FLAGS,
   ModelSlotSchema,
   orgFlagEnabled,
+  SubmoduleCredentialSchema,
 } from "./schema";
 
 function baseBrandContext(overrides: Record<string, unknown> = {}) {
@@ -173,6 +174,34 @@ describe("ModelSlotSchema", () => {
         keyId: "k",
         modelId: "m",
         title: longString,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("SubmoduleCredentialSchema", () => {
+  it("accepts a normal host/secretId pair", () => {
+    expect(
+      SubmoduleCredentialSchema.safeParse({
+        host: "github.com",
+        secretId: "sec_1",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an oversized host or secretId", () => {
+    // Regression: these two were left unbounded, unlike every sibling settings string field.
+    const longString = "x".repeat(501);
+    expect(
+      SubmoduleCredentialSchema.safeParse({
+        host: longString.replace(/x/g, "a"),
+        secretId: "sec_1",
+      }).success,
+    ).toBe(false);
+    expect(
+      SubmoduleCredentialSchema.safeParse({
+        host: "github.com",
+        secretId: longString,
       }).success,
     ).toBe(false);
   });

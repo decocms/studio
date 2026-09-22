@@ -110,11 +110,13 @@ export const SubmoduleCredentialSchema = z.object({
   host: z
     .string()
     .min(1)
+    .max(MAX_SETTINGS_STRING_LENGTH)
     .regex(SUBMODULE_HOST_RE)
     .describe("Git host, e.g. 'github.com' (bare hostname, no scheme)."),
   secretId: z
     .string()
     .min(1)
+    .max(MAX_SETTINGS_STRING_LENGTH)
     .describe(
       "Vault secret id holding the PAT used to authenticate this host.",
     ),
