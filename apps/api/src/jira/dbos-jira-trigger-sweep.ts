@@ -21,8 +21,11 @@ import { transitionsFromChangelog, triggerRunForTransition } from "./trigger";
 /** Every ten minutes at :07 — off the other sweeps' ticks. */
 const SWEEP_CRONTAB = "7-59/10 * * * *";
 
-/** Wider than the tick so two consecutive sweeps overlap; the claim dedupes. */
-const LOOKBACK_MINUTES = 15;
+/** Three ticks and a margin, so one skipped tick (a deploy, a pod restart)
+ *  is covered by the next instead of losing its transitions. Without a
+ *  webhook this sweep is the only trigger. The per-transition claim dedupes
+ *  the overlap. */
+const LOOKBACK_MINUTES = 35;
 
 /** Pages of 100 issues per integration per tick. Past this the tenant has a
  *  problem this sweep should not paper over. */
