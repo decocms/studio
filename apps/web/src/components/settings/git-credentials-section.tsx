@@ -102,7 +102,8 @@ function GitCredentialsEditor() {
   const [draft, setDraft] = useState<SubmoduleCredential[] | null>(null);
   const rows = draft ?? saved;
 
-  const secrets = useSecrets();
+  // Org-scoped only: a `user`-scoped secret resolves for its creator alone.
+  const secrets = useSecrets().filter((s) => s.scope === "organization");
   const secretById = new Map<string, SecretInfo>();
   for (const s of secrets) secretById.set(s.id, s);
 
@@ -322,7 +323,7 @@ interface CreateSecretDialogProps {
 function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
   const t = useT();
   const [name, setName] = useState("");
-  const [scope, setScope] = useState<SecretScopeKind>("organization");
+  const scope: SecretScopeKind = "organization";
   const [value, setValue] = useState("");
   const [description, setDescription] = useState("");
   const createSecret = useCreateSecret();
@@ -373,27 +374,6 @@ function CreateSecretDialog({ onClose, onSaved }: CreateSecretDialogProps) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="git-credential-secret-scope">
-              {t("settings.gitCredentials.scopeLabel")}
-            </Label>
-            <Select
-              value={scope}
-              onValueChange={(v) => setScope(v as SecretScopeKind)}
-            >
-              <SelectTrigger id="git-credential-secret-scope">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="organization">
-                  {t("settings.gitCredentials.scopeOrganization")}
-                </SelectItem>
-                <SelectItem value="user">
-                  {t("settings.gitCredentials.scopePrivate")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <div className="space-y-1.5">
             <Label htmlFor="git-credential-secret-name">
               {t("settings.gitCredentials.nameLabel")}

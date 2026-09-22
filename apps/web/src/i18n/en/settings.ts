@@ -1149,10 +1149,6 @@ export const settings = {
   "settings.gitCredentials.removeAriaLabel": "Remove git credential",
   "settings.gitCredentials.saveSecret": "Save secret",
   "settings.gitCredentials.saving": "Saving…",
-  "settings.gitCredentials.scopeLabel": "Scope",
-  "settings.gitCredentials.scopeOrganization":
-    "Organization — visible to all members",
-  "settings.gitCredentials.scopePrivate": "Private — only visible to me",
   "settings.gitCredentials.secretSaved": 'Saved secret "{name}"',
   "settings.gitCredentials.tokenExposureWarning":
     "The token is installed in the sandbox's git config for the session, so commands and agents running there can use it. Scope it to the repositories it needs.",
