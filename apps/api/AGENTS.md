@@ -47,11 +47,6 @@ Read GitHub trees through the blob cache and `mapBounded`. Keep memoization
 outside retries and use `isRateLimitError` to exclude rate-limit errors from
 retries; another burst makes a 429 worse.
 
-The event-bus worker runs when its composed notify strategies signal it.
-NATS provides immediate wakeups and the polling strategy picks up scheduled
-deliveries and missed notifications. Preserve both when changing delivery.
-Schemas and implementation own tool lists, response shapes, and retry defaults.
-
 ## Storage and runtime
 
 Use the storage adapters under `src/storage/`. Database schema changes use

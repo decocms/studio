@@ -145,7 +145,7 @@ function instrumentPool(pool: Pool): Pool {
 
 /**
  * PostgreSQL database connection.
- * Includes the Pool for reuse (e.g., LISTEN/NOTIFY in EventBus).
+ * Includes the underlying Pool for callers that need a dedicated connection.
  */
 export interface StudioDatabase {
   type: "postgres";

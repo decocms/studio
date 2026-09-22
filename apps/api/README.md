@@ -115,7 +115,7 @@ Key paths:
 | `src/tools/` | Built-in MCP management tools grouped by domain |
 | `src/database/` and `src/storage/` | Database setup, Kysely adapters, and domain persistence |
 | `src/dbos/` and `src/dispatch-queue/` | Durable workflows and queue coordination |
-| `src/event-bus/` and `src/nats/` | Event delivery and NATS integration |
+| `src/event-bus/` and `src/nats/` | SSE fan-out and shared NATS infrastructure |
 | `src/encryption/` and `src/vault/` | Credential encryption and secure token access |
 | `src/sandbox/` | Hosted agent-sandbox lifecycle and preview routing |
 | `src/observability/` and `src/monitoring/` | Telemetry export and monitoring queries |

@@ -261,10 +261,11 @@ runs on the first saved configuration and also receives the agent-provisioning
 helper. Handlers must be idempotent because network or deployment failures can
 interrupt work around these callbacks.
 
-`events.handlers` declares CloudEvent subscriptions by binding key or `SELF`.
+`events.handlers` declares CloudEvent handlers by binding key or `SELF`.
 The runtime exposes the corresponding `ON_EVENTS` tool and supports both batch
-results and per-event results. Event handlers own their idempotency because the
-Studio event bus provides at-least-once delivery.
+results and per-event results. This subscriber contract does not provide a
+publisher or delivery queue. Callers own delivery and retries; handlers must
+handle repeated events idempotently.
 
 When `oauth` is configured, the runtime serves protected-resource metadata,
 authorization-server metadata, authorization, callback, token, and dynamic client

@@ -62,7 +62,7 @@ This is **not** a license to test route handlers with a mocked DB. Real DB, sing
 
 - **Real Postgres, real NATS, real Better Auth, real HTTP, real browser.**
 - The only acceptable "mock" is at the *infrastructure edge* — e.g., a flaky test MCP server you bring up as a real process, not a mocked client inside the app.
-- **What belongs here:** anything that crosses the auth, HTTP-route, MCP, NATS, event-bus, or UI boundary; any flow whose bugs are wiring bugs (a handler orchestrating real storage + SSE under real concurrency); anything that would otherwise force you to mock your own code to test it.
+- **What belongs here:** anything that crosses the auth, HTTP-route, MCP, NATS, or UI boundary; any flow whose bugs are wiring bugs (a handler orchestrating real storage + SSE under real concurrency); anything that would otherwise force you to mock your own code to test it.
 - **Where:** `packages/e2e/tests/*.spec.ts`.
 
 ## Writing an e2e spec
@@ -110,7 +110,7 @@ Decision tree:
 
 1. Is the feature **pure logic** (parser, hash, Zod schema, pure transform, pure state transition)? → Co-located **unit** test, no mocks.
 2. Is the unit under test **a storage adapter**, and does its correctness live in the SQL it emits? → Co-located **`*.integration.test.ts`**, real Postgres, no mocks.
-3. Does the feature **cross auth, an HTTP route, the MCP boundary, NATS, the event bus, or the UI** — or would testing it otherwise force you to mock your own code? → **Playwright** spec.
+3. Does the feature **cross auth, an HTTP route, the MCP boundary, NATS or the UI** — or would testing it otherwise force you to mock your own code? → **Playwright** spec.
 4. Did you just reach for a mock of something you own to make a test compile? → You're in the bad zone. Go back to 2 or 3.
 
 ## Specialized suites (don't write these casually)

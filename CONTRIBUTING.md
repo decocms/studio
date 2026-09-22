@@ -87,7 +87,7 @@ Before writing or changing tests, read [TESTING.md](TESTING.md).
 ## Commits
 
 - **Conventional commits**: `type(scope): message` (e.g.
-  `fix(event-bus): handle retry-after flow`). Chores: `[chore]: ...`.
+  `fix(notifications): prevent duplicate digest emails`). Chores: `[chore]: ...`.
 
 ## License
 
