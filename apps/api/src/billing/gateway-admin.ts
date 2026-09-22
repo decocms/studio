@@ -40,8 +40,9 @@ async function postGatewayAdmin(
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
   });
+  // Drain the body on every path — otherwise the connection isn't released back to the pool.
+  const text = await res.text().catch(() => "");
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
     // A 4xx from a gateway that ANSWERED is a decision, not an outage: an
     // unknown plan id, a malformed body, a rejected token. The gateway's plans
     // route returns 400 for every one of them. Retrying a decision changes
