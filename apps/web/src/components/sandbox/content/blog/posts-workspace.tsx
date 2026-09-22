@@ -421,19 +421,11 @@ export function PostsWorkspace({
           )}
           <Dialog open={askOpen} onOpenChange={setAskOpen}>
             <DialogTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={isGenerating || !hasAi}
-                title={
-                  hasAi
-                    ? t("sandbox.postBoard.generateIdeasHint")
-                    : t("sandbox.autonomous.noAiProvider")
-                }
-              >
+              {/* Off until idea generation is good enough; trigger stays wired. */}
+              <Button type="button" variant="outline" size="sm" disabled>
                 <Stars02 size={14} />
                 {t("sandbox.postBoard.generateIdeas")}
+                <Badge variant="secondary">{t("common.soon")}</Badge>
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">

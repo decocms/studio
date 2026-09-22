@@ -87,9 +87,8 @@ export const sandbox = {
   "sandbox.blogContext.categoriesHint":
     "The topics your posts are filed under. Add one, then open it to edit.",
   "sandbox.blogContext.removeEntry": "Remove",
-  "sandbox.blogContext.soonDescription":
-    "We are still shaping how the blog's brand context, formats and pillars are written. You will be able to edit them here shortly.",
-  "sandbox.blogContext.soonTitle": "Brand context is coming soon",
+  "sandbox.blogContext.soonDescription": "And a whole lot more…",
+  "sandbox.blogContext.soonTitle": "Your brand context lands soon!",
   "sandbox.blogContext.subtitle":
     "The brand context your blog is written from — voice, formats and the pillars it keeps returning to.",
   "sandbox.blogContext.tabAuthors": "Authors",
@@ -514,8 +513,6 @@ export const sandbox = {
   "sandbox.postBoard.expand": "Expand to full page",
   "sandbox.postBoard.expandLane": "Expand {lane}",
   "sandbox.postBoard.generateIdeas": "Generate ideas",
-  "sandbox.postBoard.generateIdeasHint":
-    "Propose post ideas from your context.",
   "sandbox.postBoard.generatingLabel": "Generating…",
   "sandbox.postBoard.groupBy": "Group by",
   "sandbox.postBoard.groupFormat": "Format",

@@ -90,9 +90,8 @@ export const sandbox = {
   "sandbox.blogContext.categoriesHint":
     "Os temas sob os quais seus posts são classificados. Adicione um e abra para editar.",
   "sandbox.blogContext.removeEntry": "Remover",
-  "sandbox.blogContext.soonDescription":
-    "Ainda estamos fechando como o contexto de marca, os formatos e os pilares do blog são escritos. Em breve dá pra editar tudo por aqui.",
-  "sandbox.blogContext.soonTitle": "O contexto de marca chega em breve",
+  "sandbox.blogContext.soonDescription": "E muito mais…",
+  "sandbox.blogContext.soonTitle": "O contexto da sua marca chega em breve!",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
   "sandbox.blogContext.tabAuthors": "Autores",
@@ -525,8 +524,6 @@ export const sandbox = {
   "sandbox.postBoard.expand": "Expandir para página inteira",
   "sandbox.postBoard.expandLane": "Expandir {lane}",
   "sandbox.postBoard.generateIdeas": "Gerar ideias",
-  "sandbox.postBoard.generateIdeasHint":
-    "Propor ideias de post a partir do seu contexto.",
   "sandbox.postBoard.generatingLabel": "Gerando…",
   "sandbox.postBoard.groupBy": "Agrupar por",
   "sandbox.postBoard.groupFormat": "Formato",

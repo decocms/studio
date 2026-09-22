@@ -39,7 +39,7 @@ export function SoonOverlay({
             <Clock />
             {t("common.soon")}
           </Badge>
-          <p className="text-sm font-medium text-foreground">{title}</p>
+          <p className="text-base font-semibold text-foreground">{title}</p>
           {description && (
             <p className="text-sm text-muted-foreground">{description}</p>
           )}
