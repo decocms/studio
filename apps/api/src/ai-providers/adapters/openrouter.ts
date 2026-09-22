@@ -14,6 +14,19 @@ import type {
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
 
+/**
+ * Parse a 2xx response body as JSON, degrading a malformed body into a
+ * labeled error instead of a bare SyntaxError with no request context.
+ */
+async function parseJsonResponse<T>(label: string, res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} returned malformed JSON: ${text.slice(0, 200)}`);
+  }
+}
+
 function fetchModelsWithRetry(
   headers: Record<string, string>,
   decisions = false,
@@ -94,7 +107,10 @@ export const openrouterAdapter: ProviderAdapter = {
     if (!res.ok) {
       await throwResponseError("OpenRouter OAuth exchange", res);
     }
-    const data = await res.json();
+    const data = await parseJsonResponse<{ key?: string; user_id?: string }>(
+      "OpenRouter OAuth exchange",
+      res,
+    );
     if (typeof data.key !== "string" || !data.key) {
       throw new Error(
         "OpenRouter OAuth exchange returned a malformed response (missing key)",
@@ -119,7 +135,9 @@ export const openrouterAdapter: ProviderAdapter = {
           const res = await fetchModelsWithRetry(headers, true);
           if (!res.ok)
             await throwResponseError("OpenRouter decision models", res);
-          const { data }: { data: OpenRouterAPIModel[] } = await res.json();
+          const { data } = await parseJsonResponse<{
+            data: OpenRouterAPIModel[];
+          }>("OpenRouter decision models", res);
           return data
             .filter((model) =>
               model.architecture.output_modalities.includes("decisions"),
@@ -132,7 +150,9 @@ export const openrouterAdapter: ProviderAdapter = {
         // v1 is the authoritative source — has supported_parameters, canonical slugs, etc.
         const res = await fetchModelsWithRetry(headers);
         if (!res.ok) await throwResponseError("OpenRouter listModels", res);
-        const { data }: { data: OpenRouterAPIModel[] } = await res.json();
+        const { data } = await parseJsonResponse<{
+          data: OpenRouterAPIModel[];
+        }>("OpenRouter listModels", res);
         return data.map(mapV1Model);
       },
     };
