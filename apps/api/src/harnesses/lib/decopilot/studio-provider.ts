@@ -146,7 +146,12 @@ function withCreditFallback(
         return await doStream();
       } catch (err) {
         if (!isCreditError(err)) throw err;
-        return free.doStream(params);
+        try {
+          return await free.doStream(params);
+        } catch {
+          // Surface the original credit error, not the free retry's failure.
+          throw err;
+        }
       }
     },
     wrapGenerate: async ({ doGenerate, params }) => {
@@ -154,7 +159,11 @@ function withCreditFallback(
         return await doGenerate();
       } catch (err) {
         if (!isCreditError(err)) throw err;
-        return free.doGenerate(params);
+        try {
+          return await free.doGenerate(params);
+        } catch {
+          throw err;
+        }
       }
     },
   };
