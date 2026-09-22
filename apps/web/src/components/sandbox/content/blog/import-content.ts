@@ -48,21 +48,105 @@ export function parseImportedContent(input: string): ParsedImport {
 
 // ------------------ HTML ------------------------------------------------------
 
+/**
+ * `&amp;` is decoded LAST on purpose. Decoding it first turns `&amp;lt;` into
+ * `&lt;`, which the next pass turns into `<` — handing back the very character
+ * the author's escaping denied.
+ */
 function decodeEntities(text: string): string {
   return text
     .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
-    .replace(/&#0?39;|&apos;/gi, "'");
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, "&");
+}
+
+/**
+ * Apply `re` until the text stops changing. A single pass is not a sanitizer:
+ * removing the inner match of `<scr<x>ipt>` leaves `<script>` behind.
+ */
+function stripUntilStable(input: string, apply: (s: string) => string): string {
+  let out = input;
+  let previous: string;
+  do {
+    previous = out;
+    out = apply(out);
+  } while (out !== previous);
+  return out;
 }
 
 /** Strip tags to plain text — for headings, list items and quotes. */
 function stripTags(html: string): string {
-  return decodeEntities(html.replace(/<[^>]+>/g, ""))
+  return decodeEntities(
+    stripUntilStable(html, (s) => s.replace(/<[^>]+>/g, "")),
+  )
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** Comments and script/style bodies, removed together so neither can hide in
+ *  the other and neither can reassemble after the other is cut. */
+function stripHostileMarkup(html: string): string {
+  return stripUntilStable(html, (s) =>
+    s
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ""),
+  );
+}
+
+/** Inline tags a paragraph may keep. Anything else loses its markup. */
+const ALLOWED_INLINE = /^(a|b|strong|i|em|u|s|code|br|span|sub|sup)$/;
+
+/**
+ * A URL safe to put in an `href`/`src`. Relative URLs carry no scheme and are
+ * fine; an absolute one has to name a scheme that cannot execute, which rules
+ * out `javascript:` and `data:`.
+ */
+function isSafeUrl(url: string): boolean {
+  // A browser drops control characters before resolving a URL, so `java<TAB>script:`
+  // navigates. Drop them the same way, then judge the scheme on what is left.
+  let bare = "";
+  for (const char of url) if (char.charCodeAt(0) > 0x1f) bare += char;
+  bare = bare.trim();
+  return (
+    !/^[a-z][a-z0-9+.-]*:/i.test(bare) || /^(https?|mailto|tel):/i.test(bare)
+  );
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Imported HTML is untrusted and the site renders a paragraph's `html` as HTML,
+ * so a paragraph keeps only inline formatting: every other tag loses its markup
+ * and every attribute is dropped but a vetted `href`. Without this an imported
+ * `<img onerror>` would be stored XSS on the customer's published blog.
+ */
+function sanitizeInlineHtml(html: string): string {
+  return stripUntilStable(stripHostileMarkup(html), (s) =>
+    s.replace(
+      /<\/?([a-z][a-z0-9]*)\b([^>]*)>/gi,
+      (whole, rawName: string, rawAttrs: string) => {
+        const name = rawName.toLowerCase();
+        if (!ALLOWED_INLINE.test(name)) return "";
+        if (whole.startsWith("</")) return `</${name}>`;
+        if (name !== "a") return `<${name}>`;
+        const href = decodeEntities(
+          rawAttrs.match(/href\s*=\s*"([^"]*)"/i)?.[1] ?? "",
+        );
+        return isSafeUrl(href) && href
+          ? `<a href="${escapeAttr(href)}">`
+          : "<a>";
+      },
+    ),
+  );
 }
 
 function attr(tag: string, name: string): string {
@@ -80,9 +164,7 @@ const BLOCK_RE =
   /<(h[1-6]|p|ul|ol|blockquote|figure)\b[^>]*>([\s\S]*?)<\/\1\s*>|<hr\b[^>]*\/?>|<img\b[^>]*>/gi;
 
 function htmlToSections(html: string): ParsedImport {
-  const clean = html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "");
+  const clean = stripHostileMarkup(html);
 
   let title = "";
   const sections: ImportedSection[] = [];
@@ -95,7 +177,7 @@ function htmlToSections(html: string): ParsedImport {
     if (!tag) {
       if (/^<img/i.test(whole)) {
         const url = attr(whole, "src");
-        if (url) {
+        if (url && isSafeUrl(url)) {
           sections.push({
             kind: "image",
             url,
@@ -118,7 +200,7 @@ function htmlToSections(html: string): ParsedImport {
       }
       sections.push({ kind: "heading", text, level: tag.slice(1) });
     } else if (tag === "p") {
-      const html = inner.trim();
+      const html = sanitizeInlineHtml(inner.trim());
       if (stripTags(html)) sections.push({ kind: "paragraph", html });
     } else if (tag === "ul" || tag === "ol") {
       const items = [...inner.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li\s*>/gi)]
@@ -137,7 +219,7 @@ function htmlToSections(html: string): ParsedImport {
         inner.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption\s*>/i)?.[1] ??
           "",
       );
-      if (url) {
+      if (url && isSafeUrl(url)) {
         sections.push({
           kind: "image",
           url,
@@ -175,7 +257,7 @@ function markdownToSections(md: string): ParsedImport {
     if (para.length) {
       sections.push({
         kind: "paragraph",
-        html: inlineMarkdown(para.join(" ")),
+        html: sanitizeInlineHtml(inlineMarkdown(para.join(" "))),
       });
       para = [];
     }

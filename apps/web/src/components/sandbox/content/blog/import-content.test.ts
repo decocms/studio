@@ -129,6 +129,73 @@ describe("parseImportedContent — Markdown", () => {
   });
 });
 
+describe("parseImportedContent — untrusted markup", () => {
+  const htmlOf = (input: string) =>
+    parseImportedContent(input).sections.map((s) =>
+      s.kind === "paragraph" ? s.html : s.kind,
+    );
+
+  test("an escaped tag stays escaped instead of being unescaped twice", () => {
+    expect(
+      htmlOf("<p>&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;</p>"),
+    ).toEqual(["&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;"]);
+  });
+
+  test("a tag that only reassembles after an inner cut is still removed", () => {
+    expect(htmlOf("<p>a</p><scr<x>ipt>alert(1)</script>")).toEqual(["a"]);
+  });
+
+  test("nested comments and nested script bodies are removed whole", () => {
+    expect(htmlOf("<!--<!-- --><p>x</p>")).toEqual(["x"]);
+    expect(
+      htmlOf("<script><script>alert(1)</script></script><p>y</p>"),
+    ).toEqual(["y"]);
+  });
+
+  test("a paragraph keeps inline formatting and loses everything else", () => {
+    // The site renders this as HTML, so an event handler here is stored XSS.
+    expect(htmlOf("<p>hi <img src=x onerror=alert(1)> there</p>")).toEqual([
+      "hi  there",
+    ]);
+  });
+
+  test("a link to a script URL survives as a link with nowhere to go", () => {
+    expect(htmlOf('<p><a href="javascript:alert(1)">click</a></p>')).toEqual([
+      "<a>click</a>",
+    ]);
+    expect(htmlOf("Veja [click](javascript:alert(1))")).toEqual([
+      "Veja <a>click</a>)",
+    ]);
+  });
+
+  test("a scheme smuggled as a character reference cannot re-form", () => {
+    // `&` is always re-escaped, so `java&#09;script:` stays inert text in the
+    // href instead of decoding back into a tab and a live scheme.
+    expect(htmlOf('<p><a href="java&#09;script:alert(1)">x</a></p>')).toEqual([
+      '<a href="java&amp;#09;script:alert(1)">x</a>',
+    ]);
+    expect(htmlOf('<p><a href="java\nscript:alert(1)">x</a></p>')).toEqual([
+      "<a>x</a>",
+    ]);
+  });
+
+  test("an image whose src is a script URL is dropped, not imported", () => {
+    expect(
+      parseImportedContent('<img src="javascript:alert(1)">').sections,
+    ).toEqual([]);
+  });
+
+  test("ordinary links, emphasis and ampersands are untouched", () => {
+    expect(
+      htmlOf(
+        '<p>Veja <a href="/couro">couro</a> e <strong>x</strong>. A &amp; B</p>',
+      ),
+    ).toEqual([
+      'Veja <a href="/couro">couro</a> e <strong>x</strong>. A &amp; B',
+    ]);
+  });
+});
+
 describe("sectionsToBlocks", () => {
   const resolveTypes = {
     Heading: "blog/sections/blocks/Heading.tsx",
