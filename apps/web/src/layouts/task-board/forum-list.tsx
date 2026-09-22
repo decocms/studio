@@ -109,10 +109,10 @@ export function ForumList({
 
   return (
     <div
-      className="min-h-0 flex-1 overflow-y-auto px-4 pb-16 sm:px-8"
+      className="min-h-0 flex-1 overflow-y-auto pb-16"
       data-testid="task-forum"
     >
-      <div className="mx-auto w-full max-w-[1680px]">
+      <div className="w-full">
         {updates && (
           <div className="flex justify-center py-3">
             <Button
@@ -161,7 +161,7 @@ export function ForumList({
                 onClick={() => onOpen(item)}
                 data-testid="task-forum-row"
                 className={cn(
-                  "flex w-full items-center gap-3 border-t border-border px-3 py-5 text-left transition-colors hover:bg-muted/40 sm:gap-5 sm:px-4",
+                  "flex w-full items-center gap-3 border-t border-border px-3 py-5 text-left transition-colors hover:bg-muted/40",
                   row.mentionCount > 0 && "bg-accent/30",
                 )}
               >
