@@ -80,6 +80,31 @@ export const ORGANIZATION_MEMBER_UPDATE_ROLE = defineTool({
       );
     }
 
+    // Never demote the org's last owner — it would permanently lock out ownership.
+    if (!input.role.includes("owner")) {
+      const target = await ctx.db
+        .selectFrom("member")
+        .select(["role"])
+        .where("id", "=", input.memberId)
+        .where("organizationId", "=", organizationId)
+        .executeTakeFirst();
+      if (target?.role.split(",").includes("owner")) {
+        const orgMembers = await ctx.db
+          .selectFrom("member")
+          .select(["role"])
+          .where("organizationId", "=", organizationId)
+          .execute();
+        const ownerCount = orgMembers.filter((m) =>
+          m.role.split(",").includes("owner"),
+        ).length;
+        if (ownerCount <= 1) {
+          throw new Error(
+            "Cannot remove the organization's last owner. Assign another owner first.",
+          );
+        }
+      }
+    }
+
     // Update member role via bound auth client
     const result = await ctx.boundAuth.organization.updateMemberRole({
       organizationId,
