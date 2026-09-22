@@ -145,7 +145,8 @@ describe("getArrayItemLabel", () => {
       end: "2026-08-31T23:59:00Z",
     };
     const label = getArrayItemLabel(item, 0, undefined);
-    expect(label).toContain("→");
+    expect(label).toStartWith("From ");
+    expect(label).toContain(" to ");
     expect(label).not.toBe("Date");
   });
 

@@ -101,7 +101,10 @@ function formatDateRange(rule: Record<string, unknown>): string | null {
       : formatters.dateTime.format(d);
 
   if (startDate && endDate) {
-    return `${fmt(startDate, wholeDay && sameYear)} → ${fmt(endDate, false)}`;
+    return translate("sectionsEditor.formatMatcher.dateRange", {
+      start: fmt(startDate, wholeDay && sameYear),
+      end: fmt(endDate, false),
+    });
   }
   if (startDate) {
     return translate("sectionsEditor.formatMatcher.fromDate", {

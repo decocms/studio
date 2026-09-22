@@ -45,6 +45,7 @@ export const sectionsEditor = {
   "sectionsEditor.dynamicOptionsField.useValue": 'Use "{value}"',
   "sectionsEditor.enumField.selectPlaceholder": "Select...",
   "sectionsEditor.enumField.clearOption": "None",
+  "sectionsEditor.formatMatcher.dateRange": "From {start} to {end}",
   "sectionsEditor.formatMatcher.fromDate": "Starts on {date}",
   "sectionsEditor.formatMatcher.untilDate": "Ends on {date}",
   "sectionsEditor.field.missingRequired": "Missing a required field",
