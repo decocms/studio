@@ -61,6 +61,18 @@ function turnBudgetInstruction(maxTurns: number): string {
 }
 
 /**
+ * The runner exits when the turn ends, so a tool that reports back LATER never
+ * reaches the model: a run that armed one and stopped to wait was recorded as
+ * completed with nothing done.
+ */
+const DEFERRED_RESULT_TOOLS = ["Monitor", "ScheduleWakeup"];
+
+const WAIT_IN_TURN_INSTRUCTION =
+  "This run ends when your turn ends. Nothing you start in the background can " +
+  "report back afterwards, so wait for every command you start, in the " +
+  "foreground, before you finish.";
+
+/**
  * One frame of a turn's output. `error` accompanies whatever the turn managed
  * to produce and only ever appears on the last frame.
  */
@@ -230,6 +242,7 @@ export function buildOptions(args: {
   const instructionsWithSkills = [
     instructions,
     skillsInstruction(),
+    WAIT_IN_TURN_INSTRUCTION,
     maxTurns === undefined ? undefined : turnBudgetInstruction(maxTurns),
   ]
     .filter(Boolean)
@@ -276,9 +289,12 @@ export function buildOptions(args: {
     // Per-dispatch tool subtraction (a reviewer run is read-only; the Super
     // Agent's is not). `disallowedTools` is enforced by the harness itself, so
     // it holds under `bypassPermissions`.
-    ...(input.agent.disallowedTools?.length
-      ? { disallowedTools: input.agent.disallowedTools }
-      : {}),
+    disallowedTools: [
+      ...new Set([
+        ...DEFERRED_RESULT_TOOLS,
+        ...(input.agent.disallowedTools ?? []),
+      ]),
+    ],
     // Resume keeps the thread's history in the SDK's own transcript instead of
     // replaying it as prompt text. `sessionId` seeds a new one at the same id
     // so the next turn can resume it.

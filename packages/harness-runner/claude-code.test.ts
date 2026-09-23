@@ -211,11 +211,22 @@ describe("buildOptions", () => {
   });
 
   test("subtracts the dispatch's disallowed tools — that's what makes a reviewer read-only", () => {
-    expect(options().disallowedTools).toBeUndefined();
     expect(
       options({ agent: { id: "a", disallowedTools: ["Write", "Edit"] } })
         .disallowedTools,
-    ).toEqual(["Write", "Edit"]);
+    ).toEqual(["Monitor", "ScheduleWakeup", "Write", "Edit"]);
+  });
+
+  test("never offers a tool whose result arrives after the turn ends", () => {
+    // A run armed a Monitor, ended its turn to wait, and was recorded as
+    // completed: the runner had already exited when the event would have fired.
+    expect(options().disallowedTools).toEqual(["Monitor", "ScheduleWakeup"]);
+    expect(
+      options({ agent: { id: "a", disallowedTools: ["Monitor"] } })
+        .disallowedTools,
+    ).toEqual(["Monitor", "ScheduleWakeup"]);
+    const { append } = options().systemPrompt as { append: string };
+    expect(append).toContain("This run ends when your turn ends");
   });
 
   test("points skill authoring at the org-fs mount, instructions or not", () => {
