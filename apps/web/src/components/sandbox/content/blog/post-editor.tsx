@@ -461,7 +461,6 @@ function PostSettings({
           schema={{
             type: "integer",
             title: t("sandbox.postEditor.readTimeLabel"),
-            description: t("sandbox.postEditor.readTimeDescription"),
           }}
           value={typeof post.readTime === "number" ? post.readTime : undefined}
           onChange={(v) => onChange("readTime", v)}

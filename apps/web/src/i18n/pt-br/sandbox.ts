@@ -627,8 +627,6 @@ export const sandbox = {
   "sandbox.postEditor.noContentYet":
     "Este post ainda não tem conteúdo. Use ⊕ para adicionar seu primeiro bloco.",
   "sandbox.postEditor.postTitlePlaceholder": "Título do post",
-  "sandbox.postEditor.readTimeDescription":
-    "Minutos estimados de leitura, exibidos pelo site. Deixe vazio para não mostrar nenhum.",
   "sandbox.postEditor.readTimeLabel": "Tempo de leitura (minutos)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Defina o slug do post (e sua categoria) mais o pageSlug do aplicativo de blog para visualizar",
