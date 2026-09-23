@@ -96,7 +96,7 @@ a headless emulator, installs the app and launches its real `main()` — native
 plugins included, so Firebase, push and the rest behave as on a phone.
 
 ```bash
-qa-android start                 # boot + build + install + launch; first run takes minutes
+qa-android start                 # boot + build + install + launch; exit 2 = still going, then `qa-android wait`
 qa-android ui                    # what's on screen: "x,y [clickable]<TAB>label" per element
 qa-android shot org/output/qa/01.png
 qa-android tap 640 1480          # an x,y from `ui`, or read off the screenshot
@@ -111,9 +111,11 @@ qa-android stop
 Then `Read` the PNGs. A screenshot you never opened is not verification.
 
 **Run `qa-android start` in the foreground**, with the Bash tool's longest
-timeout (600000 ms). If it times out, run it again: the booted emulator and
-Gradle's caches are reused. Never background it and end your turn waiting for
-a notification — in an autonomous run, ending the turn ends the run.
+timeout (600000 ms). It returns within about nine minutes: exit 0 means the app
+is up, 1 that it failed (the reason is printed), and 2 that the build is still
+going — run `qa-android wait` to keep waiting, as many times as it takes. Never
+background it and end your turn waiting for a notification — in an autonomous
+run, ending the turn ends the run.
 
 **Find things with `ui`, then tap them.** It lists every element Android's
 accessibility layer sees — for a Flutter app, its Semantics tree: text,
