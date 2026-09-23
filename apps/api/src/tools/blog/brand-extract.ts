@@ -1,4 +1,5 @@
 import { generateText } from "ai";
+import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import { retryGenerateObject } from "./generate-object";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
@@ -29,8 +30,8 @@ Three rules that override everything else:
 2. Every field must rest on prose you actually read here. Fidelity to how THIS brand writes beats how a brand in its category usually writes.
 3. No evidence means empty — an empty string or an empty array. A plausible-sounding guess is worse than a blank field, because someone will read it as fact and every post generated afterwards inherits it. A human reviews this afterwards and can fill a blank; they cannot un-read a confident invention.`;
 
-/** Caps on what a client may send — the request body is a trust boundary. */
-const MAX_BLOCKS = 60;
+/** Caps on what a client may send — the request body is a trust boundary.
+ *  The count is shared with the client's sampler so the two cannot drift. */
 const MAX_BLOCK_CHARS = 12_000;
 
 const COMPETITOR_SYSTEM = `You turn a web-research summary into a list of a brand's competitors.
@@ -123,7 +124,7 @@ export const BLOG_BRAND_EXTRACT = defineTool({
         }),
       )
       .min(1)
-      .max(MAX_BLOCKS)
+      .max(BRAND_EVIDENCE_MAX_BLOCKS)
       .describe(
         "Blocks to read, most telling first — existing blogposts, then categories, then pages.",
       ),

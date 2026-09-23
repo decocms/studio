@@ -47,6 +47,7 @@ import {
   uniquePostSlug,
   unknownCitations,
 } from "./blog-data";
+import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 
 /** Build a decofile keyed by post block id, from `{ slug → payload }`. */
@@ -1100,6 +1101,26 @@ describe("selectBrandEvidenceBlocks", () => {
         (b) => b.key,
       ),
     ).toEqual(["pages/sobre", "pages/plp"]);
+  });
+
+  test("never sends more blocks than BLOG_BRAND_EXTRACT accepts", () => {
+    // Short prose stays far under the character budget, so the count is the
+    // only thing that stops this — and the tool's schema rejects the call
+    // outright if it arrives over the cap.
+    const pageKeys = Array.from({ length: 300 }, (_, i) => `pages/p${i}`);
+    const decofile = Object.fromEntries(
+      pageKeys.map((key, i) => [
+        key,
+        { path: `/p${i}`, sections: [{ text: `uma frase curta ${i}` }] },
+      ]),
+    );
+
+    const selected = selectBrandEvidenceBlocks(decofile, pageKeys);
+
+    expect(selected.length).toBe(BRAND_EVIDENCE_MAX_BLOCKS);
+    expect(
+      selected.reduce((total, block) => total + block.content.length, 0),
+    ).toBeLessThan(60_000);
   });
 
   test("ranks posts before categories before pages", () => {

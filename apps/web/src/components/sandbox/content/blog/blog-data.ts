@@ -12,6 +12,7 @@
  * reproduces that encoding.
  */
 import type { StudioToolIO } from "@decocms/shared/tools/tool-io";
+import { BRAND_EVIDENCE_MAX_BLOCKS } from "@decocms/shared/blog-brand-evidence";
 import type { LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { resolveBlockSchemaMetadata } from "@/components/sections-editor/resolve-schema";
 
@@ -1233,6 +1234,7 @@ export function selectBrandEvidenceBlocks(
   let remaining = BRAND_EVIDENCE_MAX_CHARS;
 
   for (const key of ordered) {
+    if (selected.length >= BRAND_EVIDENCE_MAX_BLOCKS) break;
     if (seen.has(key)) continue;
     if (!decofile[key]) continue;
     seen.add(key);
