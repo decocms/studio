@@ -6,10 +6,7 @@
  */
 
 import { ChatLayout } from "@/components/chat-layout";
-import {
-  SectionView,
-  threadHref,
-} from "@/layouts/task-board/analytics-sections";
+import { SectionView } from "@/layouts/task-board/analytics-sections";
 import {
   useLiveThreads,
   useThreadAnalyticsOrgs,
@@ -42,8 +39,23 @@ import {
   TabsList,
   TabsTrigger,
 } from "@decocms/ui/components/tabs.tsx";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@decocms/ui/components/sheet.tsx";
+import { ThreadSheetBody } from "@/components/thread/thread-sheet-body.tsx";
+import {
+  ProjectContextProvider,
+  SELF_MCP_ALIAS_ID,
+  useConnections,
+  useMCPClient,
+  useProjectContext,
+  useVirtualMCPs,
+} from "@/sdk";
 import { useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 const RANGE_DAYS = [1, 7, 30, 90] as const;
 const STATUSES = [
@@ -104,7 +116,13 @@ function Counter({ label, value }: { label: string; value: number }) {
   );
 }
 
-function LiveRow({ thread }: { thread: LiveThread }) {
+function LiveRow({
+  thread,
+  onOpen,
+}: {
+  thread: LiveThread;
+  onOpen: (thread: LiveThread) => void;
+}) {
   const t = useT();
   const status = thread.status as keyof typeof STATUS_KEYS;
   return (
@@ -114,14 +132,13 @@ function LiveRow({ thread }: { thread: LiveThread }) {
       </TableCell>
       <TableCell className="text-sm">{thread.orgSlug}</TableCell>
       <TableCell className="max-w-sm text-sm">
-        <a
-          href={threadHref(thread.orgSlug, thread.id)}
-          target="_blank"
-          rel="noreferrer"
-          className="block truncate text-foreground underline-offset-2 hover:underline"
+        <button
+          type="button"
+          onClick={() => onOpen(thread)}
+          className="block max-w-full truncate text-left text-foreground underline-offset-2 hover:underline"
         >
           {thread.title || t("thread.analytics.untitled")}
-        </a>
+        </button>
         {thread.status === "failed" &&
           (thread.lastError || thread.failureReason) && (
             <div className="truncate text-xs text-destructive">
@@ -162,6 +179,7 @@ function LivePanel({ org }: { org: string }) {
     limit: 150,
   };
   const { data, isLoading, error } = useLiveThreads(input, true);
+  const [open, setOpen] = useState<LiveThread | null>(null);
 
   return (
     <div className="flex flex-col gap-6 py-6">
@@ -242,7 +260,7 @@ function LivePanel({ org }: { org: string }) {
                 </TableHeader>
                 <TableBody>
                   {data.threads.map((thread) => (
-                    <LiveRow key={thread.id} thread={thread} />
+                    <LiveRow key={thread.id} thread={thread} onOpen={setOpen} />
                   ))}
                 </TableBody>
               </Table>
@@ -250,7 +268,77 @@ function LivePanel({ org }: { org: string }) {
           )}
         </>
       ) : null}
+      <LiveThreadSheet thread={open} onClose={() => setOpen(null)} />
     </div>
+  );
+}
+
+/** The thread's own org must back every read inside the sheet: its tool parts
+ *  and message fetch all address `useProjectContext().org`. */
+function LiveThreadSheetContent({ thread }: { thread: LiveThread }) {
+  const { org, locator } = useProjectContext();
+  const client = useMCPClient({
+    connectionId: SELF_MCP_ALIAS_ID,
+    orgId: org.id,
+    orgSlug: org.slug,
+  });
+  const connections = useConnections();
+  const virtualMcps = useVirtualMCPs();
+  return (
+    <ThreadSheetBody
+      thread={{
+        id: thread.id,
+        title: thread.title,
+        status: thread.status,
+        created_at: thread.createdAt,
+      }}
+      client={client}
+      locator={locator}
+      connections={connections}
+      virtualMcps={virtualMcps}
+      members={undefined}
+      meta={false}
+    />
+  );
+}
+
+function LiveThreadSheet({
+  thread,
+  onClose,
+}: {
+  thread: LiveThread | null;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const { project } = useProjectContext();
+  return (
+    <Sheet open={!!thread} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent className="flex flex-col gap-0 p-0 sm:max-w-2xl">
+        {thread && (
+          <ProjectContextProvider
+            org={{
+              id: thread.orgId,
+              name: thread.orgSlug,
+              slug: thread.orgSlug,
+              logo: null,
+            }}
+            project={project}
+          >
+            <Suspense
+              fallback={
+                <SheetHeader className="shrink-0 border-b border-border px-5 pb-5 pt-6 md:px-6">
+                  <SheetTitle className="truncate text-sm leading-snug">
+                    {thread.title || t("thread.analytics.untitled")}
+                  </SheetTitle>
+                </SheetHeader>
+              }
+            >
+              <LiveThreadSheetContent thread={thread} />
+            </Suspense>
+          </ProjectContextProvider>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
