@@ -11,6 +11,15 @@ on:
       - "packages/harness-runner/**"
   workflow_dispatch:
 
+# One release at a time, in push order. A merge and the bot's version bump
+# push back to back, and each run ends by bumping deco-apps-cd: run in
+# parallel, whichever finishes last wins, so an older version can overwrite a
+# newer one. A newer push replaces a queued older one, which is the version
+# that should win anyway.
+concurrency:
+  group: release-studio-sandbox
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   # One image, one daemon (Go). The `studio-sandbox` name is frozen at its last
