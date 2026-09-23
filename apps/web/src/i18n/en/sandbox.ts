@@ -538,6 +538,8 @@ export const sandbox = {
     "This post is missing required fields — open it to finish before scheduling.",
   "sandbox.postBoard.moveFailed": "Could not move this post",
   "sandbox.postBoard.moveInFlight": "Still moving this post…",
+  "sandbox.postBoard.moveNoBlogApp":
+    "This site doesn't run the deco blog app, so nothing here can put a post live.",
   "sandbox.postBoard.moveNotATarget":
     "Generating is set by the generation run, not by hand.",
   "sandbox.postBoard.moveUnsupported":
@@ -585,9 +587,8 @@ export const sandbox = {
     "Dashed posts aren't scheduled — they sit on their display date, and nothing will publish them.",
   "sandbox.postCalendar.undatedEmpty": "Every post has a date.",
   "sandbox.postCalendar.unsupportedRuntimeDescription":
-    "This site doesn't run the deco blog app, so nothing here can publish a post on a schedule. The calendar below is read-only.",
-  "sandbox.postCalendar.unsupportedRuntimeTitle":
-    "TanStack sites aren't supported yet",
+    "This site doesn't install the deco blog app, so nothing here can publish a post on a schedule. The calendar below is read-only.",
+  "sandbox.postCalendar.unsupportedRuntimeTitle": "No blog app on this site",
   "sandbox.postCalendar.undatedLabel": "No date · {count}",
   "sandbox.postEditor.addPropLabel": "Add prop",
   "sandbox.postEditor.authorsLabel": "Authors",

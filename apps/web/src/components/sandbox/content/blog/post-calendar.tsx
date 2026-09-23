@@ -29,9 +29,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
-  APPS_SCHEDULING_VERSION,
-  APPS_UPDATE_COMMAND,
   type BlogSupport,
+  postStatusUnsupported,
   supportsScheduling,
 } from "./blog-capabilities";
 import {
@@ -60,10 +59,14 @@ const UNSCHEDULED_CHIP =
 /**
  * Sits over the blurred grid when the site can't back scheduling. Never a CTA
  * — the fix is a command in the repo, not a button here.
+ *
+ * Asks the gate the board and editor ask, so it cannot claim a version they
+ * disagree with. No command means no blog app at all — nothing to update.
  */
 function SupportOverlay({ support }: { support: BlogSupport }) {
   const t = useT();
-  const runtimeUnsupported = support.kind === "unsupported-runtime";
+  const gate = postStatusUnsupported(support, "scheduled");
+  if (!gate) return null;
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-background/30 p-6">
       <Alert
@@ -74,21 +77,21 @@ function SupportOverlay({ support }: { support: BlogSupport }) {
         <div>
           <AlertTitle>
             {t(
-              runtimeUnsupported
-                ? "sandbox.postCalendar.unsupportedRuntimeTitle"
-                : "sandbox.postCalendar.outdatedAppsTitle",
+              gate.command
+                ? "sandbox.postCalendar.outdatedAppsTitle"
+                : "sandbox.postCalendar.unsupportedRuntimeTitle",
             )}
           </AlertTitle>
           <AlertDescription>
-            {runtimeUnsupported
-              ? t("sandbox.postCalendar.unsupportedRuntimeDescription")
-              : t("sandbox.postCalendar.outdatedAppsDescription", {
-                  required: APPS_SCHEDULING_VERSION,
-                })}
+            {gate.command
+              ? t("sandbox.postCalendar.outdatedAppsDescription", {
+                  required: gate.required,
+                })
+              : t("sandbox.postCalendar.unsupportedRuntimeDescription")}
           </AlertDescription>
-          {!runtimeUnsupported && (
+          {gate.command && (
             <code className="mt-2 block rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
-              {APPS_UPDATE_COMMAND}
+              {gate.command}
             </code>
           )}
         </div>

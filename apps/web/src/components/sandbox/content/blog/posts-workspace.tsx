@@ -55,11 +55,7 @@ import {
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { GeneratePostDialog, type IdeaSeed } from "./generate-post-dialog";
 import { useGeneratePost } from "./use-generate-post";
-import {
-  APPS_UPDATE_COMMAND,
-  type BlogSupport,
-  postStatusUnsupported,
-} from "./blog-capabilities";
+import { type BlogSupport, postStatusUnsupported } from "./blog-capabilities";
 import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
 import {
   BRAND_BLOCK_KEY,
@@ -726,10 +722,12 @@ export function PostsWorkspace({
                 }}
                 title={
                   unsupported
-                    ? t("sandbox.postBoard.moveUnsupported", {
-                        required: unsupported.required,
-                        command: APPS_UPDATE_COMMAND,
-                      })
+                    ? unsupported.command
+                      ? t("sandbox.postBoard.moveUnsupported", {
+                          required: unsupported.required,
+                          command: unsupported.command,
+                        })
+                      : t("sandbox.postBoard.moveNoBlogApp")
                     : undefined
                 }
                 className={cn(

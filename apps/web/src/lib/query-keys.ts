@@ -790,6 +790,9 @@ export const KEYS = {
   // The repo's committed `deno.json`, read for its pinned deco-apps version.
   denoJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
     ["deno-json", orgSlug, virtualMcpId, branch] as const,
+  // The repo's committed `package.json`, read for its pinned blog-app version.
+  packageJson: (orgSlug: string, virtualMcpId: string, branch: string) =>
+    ["package-json", orgSlug, virtualMcpId, branch] as const,
   sandboxInvoke: (sandboxKey: string, loaderKey: string) =>
     ["sandbox-invoke", sandboxKey, loaderKey] as const,
   // `threadId` is part of the key because it is part of the URL: two sessions

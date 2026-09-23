@@ -549,6 +549,8 @@ export const sandbox = {
     "Este post está sem campos obrigatórios — abra-o para concluir antes de agendar.",
   "sandbox.postBoard.moveFailed": "Não foi possível mover este post",
   "sandbox.postBoard.moveInFlight": "Ainda movendo este post…",
+  "sandbox.postBoard.moveNoBlogApp":
+    "Este site não roda o app de blog do deco, então nada aqui consegue colocar um post no ar.",
   "sandbox.postBoard.moveNotATarget":
     "Gerando é definido pela geração, não à mão.",
   "sandbox.postBoard.moveUnsupported":
@@ -598,9 +600,8 @@ export const sandbox = {
     "Posts tracejados não estão agendados — estão na data de exibição deles, e nada vai publicá-los.",
   "sandbox.postCalendar.undatedEmpty": "Todos os posts têm data.",
   "sandbox.postCalendar.unsupportedRuntimeDescription":
-    "Este site não roda o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
-  "sandbox.postCalendar.unsupportedRuntimeTitle":
-    "Ainda não suportamos sites TanStack",
+    "Este site não instala o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
+  "sandbox.postCalendar.unsupportedRuntimeTitle": "Sem app de blog neste site",
   "sandbox.postCalendar.undatedLabel": "Sem data · {count}",
   "sandbox.postEditor.addPropLabel": "Adicionar propriedade",
   "sandbox.postEditor.authorsLabel": "Autores",

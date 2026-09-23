@@ -17,12 +17,12 @@ interface UseBlogSupportParams {
 }
 
 /**
- * What the blog CMS may offer for this project: the detected runtime plus the
- * deco-apps version this branch pins, read from the committed `deno.json` and
- * falling back to the schema already in hand.
+ * What the blog CMS may offer here: the detected runtime plus the blog-app
+ * version this branch pins — `deno.json` on Deno (falling back to the schema in
+ * hand), `package.json` elsewhere.
  *
- * Resolves to `unsupported-runtime` on a non-Deno or undetected runtime, so the
- * UI never offers scheduling it can't back.
+ * Fails closed to `unsupported-runtime`, so the UI never offers scheduling it
+ * can't back.
  */
 export function useBlogSupport(params: UseBlogSupportParams): BlogSupport {
   const packageManager =
@@ -30,21 +30,33 @@ export function useBlogSupport(params: UseBlogSupportParams): BlogSupport {
   const packagePath = usePackagePath(params.virtualMcpId);
   // Read from the same session as every other committed read (see useSaveBlock).
   const threadId = useOptionalChatTask()?.taskId ?? null;
+  const readJson = async (file: string) => {
+    const read = await readCommittedJson<unknown>(
+      { ...params, threadId },
+      decoRepoPath(packagePath, file),
+    );
+    return read.kind === "data" ? read.data : null;
+  };
   const { data: denoJson } = useQuery({
     queryKey: KEYS.denoJson(params.orgSlug, params.virtualMcpId, params.branch),
-    queryFn: async () => {
-      const read = await readCommittedJson<unknown>(
-        { ...params, threadId },
-        decoRepoPath(packagePath, "deno.json"),
-      );
-      return read.kind === "data" ? read.data : null;
-    },
+    queryFn: () => readJson("deno.json"),
     enabled: packageManager === "deno",
+    staleTime: 300_000,
+  });
+  const { data: packageJson } = useQuery({
+    queryKey: KEYS.packageJson(
+      params.orgSlug,
+      params.virtualMcpId,
+      params.branch,
+    ),
+    queryFn: () => readJson("package.json"),
+    enabled: packageManager !== null && packageManager !== "deno",
     staleTime: 300_000,
   });
   return blogSupport({
     packageManager,
     denoJson: denoJson ?? null,
+    packageJson: packageJson ?? null,
     meta: params.meta,
   });
 }

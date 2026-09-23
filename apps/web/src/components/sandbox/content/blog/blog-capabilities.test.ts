@@ -2,14 +2,18 @@ import { describe, expect, it } from "bun:test";
 import {
   APPS_SCHEDULING_VERSION,
   APPS_STATUS_VERSION,
+  BLOG_PACKAGE_VERSION,
   appsVersionFromDenoJson,
   appsVersionFromMeta,
+  blogPackageRange,
   blogSupport,
+  blogUpdateCommand,
   compareSemver,
   parseSemver,
   postStatusUnsupported,
   supportsPublishToggle,
   supportsScheduling,
+  versionFromRange,
 } from "./blog-capabilities";
 
 /**
@@ -180,29 +184,110 @@ describe("appsVersionFromMeta", () => {
   });
 });
 
+describe("blogPackageRange", () => {
+  it("reads the pin a real TanStack site commits", () => {
+    expect(
+      blogPackageRange({
+        dependencies: {
+          "@decocms/apps-blog": "7.64.3",
+          "@decocms/blocks": "7.64.3",
+        },
+      }),
+    ).toBe("7.64.3");
+  });
+
+  it("reads a dev dependency too", () => {
+    expect(
+      blogPackageRange({
+        devDependencies: { "@decocms/apps-blog": "^7.53.0" },
+      }),
+    ).toBe("^7.53.0");
+  });
+
+  it("returns null when the site installs no blog app", () => {
+    expect(blogPackageRange({ dependencies: { react: "19.0.0" } })).toBeNull();
+    expect(blogPackageRange(null)).toBeNull();
+    expect(blogPackageRange({})).toBeNull();
+    expect(blogPackageRange({ dependencies: "nope" })).toBeNull();
+    expect(
+      blogPackageRange({ dependencies: { "@decocms/apps-blog": 42 } }),
+    ).toBeNull();
+  });
+});
+
+describe("versionFromRange", () => {
+  it("reads an exact pin and the caret/tilde ranges", () => {
+    expect(versionFromRange("7.64.3")).toBe("7.64.3");
+    expect(versionFromRange("^7.53.0")).toBe("7.53.0");
+    expect(versionFromRange("~7.53.1")).toBe("7.53.1");
+    expect(versionFromRange(" v7.53.0 ")).toBe("7.53.0");
+  });
+
+  it("returns null for a range that names no floor", () => {
+    expect(versionFromRange("latest")).toBeNull();
+    expect(versionFromRange("*")).toBeNull();
+    expect(versionFromRange("workspace:*")).toBeNull();
+    expect(versionFromRange(">=7.53.0")).toBeNull();
+    expect(versionFromRange("github:decocms/blocks")).toBeNull();
+  });
+});
+
+describe("blogUpdateCommand", () => {
+  it("uses the repo's own task on Deno", () => {
+    expect(blogUpdateCommand("deno")).toBe("deno task update");
+  });
+
+  it("moves the whole @decocms scope with the site's package manager", () => {
+    expect(blogUpdateCommand("bun")).toContain("bun install");
+    expect(blogUpdateCommand("bun")).toContain("@decocms/*");
+    expect(blogUpdateCommand("pnpm")).toContain("pnpm install");
+  });
+});
+
 describe("blogSupport", () => {
   /** Deno with both sources agreeing — the ordinary case. */
   const deno = (version: string) => ({
     packageManager: "deno",
     denoJson: denoJson(version),
+    packageJson: null,
     meta: meta(version),
   });
 
-  it("reports a non-Deno runtime as unsupported", () => {
-    expect(
-      blogSupport({ ...deno(APPS_SCHEDULING_VERSION), packageManager: "bun" }),
-    ).toEqual({ kind: "unsupported-runtime" });
+  /** A TanStack site pinning the blog app, as `deco-sites/*-tanstack` do. */
+  const node = (version: string | null) => ({
+    packageManager: "bun",
+    denoJson: null,
+    packageJson: {
+      dependencies: version ? { "@decocms/apps-blog": version } : {},
+    },
+    meta: null,
   });
 
   it("reports an undetected runtime as unsupported, not as Deno", () => {
     expect(
-      blogSupport({ packageManager: null, denoJson: null, meta: null }),
+      blogSupport({
+        packageManager: null,
+        denoJson: null,
+        packageJson: null,
+        meta: null,
+      }),
+    ).toEqual({ kind: "unsupported-runtime" });
+  });
+
+  it("reports a site that installs no blog app as unsupported", () => {
+    expect(blogSupport(node(null))).toEqual({ kind: "unsupported-runtime" });
+  });
+
+  it("does not read a Deno apps pin for a Node-family site", () => {
+    expect(
+      blogSupport({ ...deno(APPS_SCHEDULING_VERSION), packageManager: "bun" }),
     ).toEqual({ kind: "unsupported-runtime" });
   });
 
   it("reports a pin below the status version as outdated", () => {
     expect(blogSupport(deno("0.160.9"))).toEqual({
       kind: "outdated",
+      packageManager: "deno",
       version: "0.160.9",
     });
   });
@@ -210,6 +295,7 @@ describe("blogSupport", () => {
   it("reports the status version as publish-only", () => {
     expect(blogSupport(deno(APPS_STATUS_VERSION))).toEqual({
       kind: "publish-only",
+      packageManager: "deno",
       version: APPS_STATUS_VERSION,
     });
   });
@@ -217,6 +303,7 @@ describe("blogSupport", () => {
   it("keeps a patch above the status version publish-only", () => {
     expect(blogSupport(deno("0.161.7"))).toEqual({
       kind: "publish-only",
+      packageManager: "deno",
       version: "0.161.7",
     });
   });
@@ -232,11 +319,43 @@ describe("blogSupport", () => {
     });
   });
 
+  it("reports the blog package version and above as full on a TanStack site", () => {
+    expect(blogSupport(node(BLOG_PACKAGE_VERSION))).toEqual({
+      kind: "full",
+      version: BLOG_PACKAGE_VERSION,
+    });
+    expect(blogSupport(node("7.64.3"))).toEqual({
+      kind: "full",
+      version: "7.64.3",
+    });
+    expect(blogSupport(node("8.0.0"))).toEqual({
+      kind: "full",
+      version: "8.0.0",
+    });
+  });
+
+  it("never lands a TanStack site on publish-only — one release brought both", () => {
+    expect(blogSupport(node("7.52.1"))).toEqual({
+      kind: "outdated",
+      packageManager: "bun",
+      version: "7.52.1",
+    });
+  });
+
+  it("fails closed on a blog pin it cannot read", () => {
+    expect(blogSupport(node("workspace:*"))).toEqual({
+      kind: "outdated",
+      packageManager: "bun",
+      version: null,
+    });
+  });
+
   it("prefers this branch's deno.json over a meta served by production", () => {
     expect(
       blogSupport({
         packageManager: "deno",
         denoJson: denoJson(APPS_SCHEDULING_VERSION),
+        packageJson: null,
         meta: meta(APPS_STATUS_VERSION),
       }),
     ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
@@ -247,6 +366,7 @@ describe("blogSupport", () => {
       blogSupport({
         packageManager: "deno",
         denoJson: null,
+        packageJson: null,
         meta: meta(APPS_SCHEDULING_VERSION),
       }),
     ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
@@ -261,6 +381,7 @@ describe("blogSupport", () => {
             "apps/": "https://cdn.jsdelivr.net/gh/deco-cx/apps@main/",
           },
         },
+        packageJson: null,
         meta: meta(APPS_SCHEDULING_VERSION),
       }),
     ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
@@ -268,8 +389,13 @@ describe("blogSupport", () => {
 
   it("fails closed when neither source answers", () => {
     expect(
-      blogSupport({ packageManager: "deno", denoJson: null, meta: null }),
-    ).toEqual({ kind: "outdated", version: null });
+      blogSupport({
+        packageManager: "deno",
+        denoJson: null,
+        packageJson: null,
+        meta: null,
+      }),
+    ).toEqual({ kind: "outdated", packageManager: "deno", version: null });
     expect(
       blogSupport({
         packageManager: "deno",
@@ -278,9 +404,10 @@ describe("blogSupport", () => {
             "apps/": "https://cdn.jsdelivr.net/gh/deco-cx/apps@main/",
           },
         },
+        packageJson: null,
         meta: { schema: { definitions: { a: { title: "MyOwnSection" } } } },
       }),
-    ).toEqual({ kind: "outdated", version: null });
+    ).toEqual({ kind: "outdated", packageManager: "deno", version: null });
   });
 });
 
@@ -293,12 +420,20 @@ describe("supportsPublishToggle / supportsScheduling", () => {
         sched: false,
       },
       {
-        support: { kind: "outdated", version: null } as const,
+        support: {
+          kind: "outdated",
+          packageManager: "deno",
+          version: null,
+        } as const,
         pub: false,
         sched: false,
       },
       {
-        support: { kind: "publish-only", version: "0.161.0" } as const,
+        support: {
+          kind: "publish-only",
+          packageManager: "deno",
+          version: "0.161.0",
+        } as const,
         pub: true,
         sched: false,
       },
@@ -316,10 +451,23 @@ describe("supportsPublishToggle / supportsScheduling", () => {
 });
 
 describe("postStatusUnsupported", () => {
-  const outdated = { kind: "outdated", version: "0.160.0" } as const;
-  const publishOnly = { kind: "publish-only", version: "0.161.0" } as const;
+  const outdated = {
+    kind: "outdated",
+    packageManager: "deno",
+    version: "0.160.0",
+  } as const;
+  const publishOnly = {
+    kind: "publish-only",
+    packageManager: "deno",
+    version: "0.161.0",
+  } as const;
   const full = { kind: "full", version: "0.162.0" } as const;
   const noRuntime = { kind: "unsupported-runtime" } as const;
+  const nodeOutdated = {
+    kind: "outdated",
+    packageManager: "bun",
+    version: "7.52.1",
+  } as const;
 
   it("never gates a non-live state — those blocks the site does not resolve", () => {
     for (const support of [noRuntime, outdated, publishOnly, full]) {
@@ -338,6 +486,7 @@ describe("postStatusUnsupported", () => {
     expect(postStatusUnsupported(publishOnly, "scheduled")).toEqual({
       required: APPS_SCHEDULING_VERSION,
       version: "0.161.0",
+      command: blogUpdateCommand("deno"),
     });
     expect(postStatusUnsupported(full, "scheduled")).toBeNull();
   });
@@ -346,11 +495,26 @@ describe("postStatusUnsupported", () => {
     expect(postStatusUnsupported(outdated, "published")).toEqual({
       required: APPS_STATUS_VERSION,
       version: "0.160.0",
+      command: blogUpdateCommand("deno"),
     });
     expect(postStatusUnsupported(publishOnly, "published")).toBeNull();
   });
 
-  it("reports a null version on a site that is not Deno at all", () => {
-    expect(postStatusUnsupported(noRuntime, "published")?.version).toBeNull();
+  it("asks a TanStack site for the blog package version, with its own command", () => {
+    for (const status of ["scheduled", "published"] as const) {
+      expect(postStatusUnsupported(nodeOutdated, status)).toEqual({
+        required: BLOG_PACKAGE_VERSION,
+        version: "7.52.1",
+        command: blogUpdateCommand("bun"),
+      });
+    }
+  });
+
+  it("offers no command on a site that installs no blog app", () => {
+    expect(postStatusUnsupported(noRuntime, "published")).toEqual({
+      required: BLOG_PACKAGE_VERSION,
+      version: null,
+      command: null,
+    });
   });
 });
