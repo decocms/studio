@@ -18,7 +18,9 @@ interface MonacoCodeEditorProps {
   ) => void;
   readOnly?: boolean;
   height?: string | number;
-  language?: "typescript" | "json" | "shell";
+  language?: "typescript" | "json" | "shell" | "html" | "markdown";
+  /** Focus the editor once it mounts — for a dialog whose whole job is a paste. */
+  autoFocus?: boolean;
   // Suppresses TS error squiggles. Useful when displaying snippets
   // (e.g. top-level `await`) that aren't valid programs on their own.
   disableDiagnostics?: boolean;
@@ -111,6 +113,7 @@ function InternalMonacoEditor({
   height = 300,
   language = "typescript",
   disableDiagnostics = false,
+  autoFocus = false,
   mountKey = 0,
 }: InternalEditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
@@ -164,7 +167,9 @@ function InternalMonacoEditor({
       return;
     }
 
-    // For TypeScript, use Prettier
+    // Prettier is loaded with the TS/estree plugins only.
+    if (currentLanguage !== "typescript") return;
+
     try {
       const { format, plugins } = await loadPrettier();
 
@@ -187,6 +192,7 @@ function InternalMonacoEditor({
 
   const handleEditorDidMount: OnMount = async (editor, monaco) => {
     editorRef.current = editor;
+    if (autoFocus) editor.focus();
 
     // Configure TypeScript AFTER mount (beforeMount was causing value not to display)
     if (language === "typescript") {

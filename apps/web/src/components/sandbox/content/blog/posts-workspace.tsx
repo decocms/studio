@@ -36,12 +36,12 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Checkbox } from "@decocms/ui/components/checkbox.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
 import { useLocalStorage } from "@/hooks/use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
-import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useStudioTools } from "@/lib/studio-tools";
 import { useHostedAiProviderKeys } from "@/hooks/collections/use-ai-providers";
 import { useSaveBlock } from "@/components/sections-editor/use-save-block";
@@ -72,6 +72,7 @@ import {
   getBlogPayload,
   type IdeaEntry,
   listAllPostsWithMeta,
+  listBlogPayloads,
   newIdeaKey,
   newPostId,
   normalizeBrandRules,
@@ -86,14 +87,19 @@ import {
 } from "./blog-data";
 import {
   buildImportedPostPayload,
+  looksLikeHtml,
   parseImportedContent,
   sectionsToBlocks,
 } from "./import-content";
+import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { PickList, str } from "./blocks/primitives";
+import {
+  PostFilterBar,
+  PostSelectionToolbar,
+  type PostSort,
+} from "./post-toolbar";
 
 export type PostsView = "board" | "list";
-export type PostsGroupBy = "status" | "format" | "pillar";
-
 const STATUS_VARIANT: Record<
   PostStatus,
   "secondary" | "warning" | "success" | "outline"
@@ -130,10 +136,8 @@ export function PostsWorkspace({
   branch,
   decofile,
   view,
-  groupBy,
   selectedKey,
   onViewChange,
-  onGroupByChange,
   onOpen,
   onClose,
   move,
@@ -146,11 +150,9 @@ export function PostsWorkspace({
   branch: string;
   decofile: Record<string, unknown>;
   view: PostsView;
-  groupBy: PostsGroupBy;
   /** The open post — a highlighted row in list mode, an open drawer in board mode. */
   selectedKey?: string | null;
   onViewChange: (view: PostsView) => void;
-  onGroupByChange: (groupBy: PostsGroupBy) => void;
   onOpen: (key: string) => void;
   /** Close the board's post drawer. */
   onClose?: () => void;
@@ -233,6 +235,87 @@ export function PostsWorkspace({
     if (await move.apply(post.key, "archived")) {
       toast.success(t("sandbox.postBoard.archived"));
     }
+  };
+
+  // -- List view: filter, sort, selection -------------------------------------
+
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [authorFilter, setAuthorFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<PostStatus | null>(null);
+  const [sort, setSort] = useState<PostSort>("date-desc");
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+
+  /** Counts describe the whole blog, not the current filter — a option showing
+   *  0 is the answer to "is there anything under this?", so it must not vanish. */
+  const statusCounts = posts.reduce<Partial<Record<PostStatus, number>>>(
+    (counts, post) => {
+      counts[post.status] = (counts[post.status] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  const countBy = (pick: (post: PostMeta) => string[]) => {
+    const counts = new Map<string, number>();
+    for (const post of posts) {
+      for (const value of pick(post)) {
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+      }
+    }
+    return counts;
+  };
+  const categoryCounts = countBy((post) => post.categorySlugs);
+  const authorCounts = countBy((post) => post.authorEmails);
+  const categoryOptions = listBlogPayloads(decofile, "categories").map(
+    ({ payload }) => ({
+      slug: str(payload.slug),
+      name: str(payload.name) || str(payload.slug),
+      count: categoryCounts.get(str(payload.slug)) ?? 0,
+    }),
+  );
+  const authorOptions = listBlogPayloads(decofile, "authors").map(
+    ({ payload }) => ({
+      email: str(payload.email),
+      name: str(payload.name) || str(payload.email),
+      count: authorCounts.get(str(payload.email)) ?? 0,
+    }),
+  );
+
+  const listedPosts = posts
+    .filter((p) => !categoryFilter || p.categorySlugs.includes(categoryFilter))
+    .filter((p) => !authorFilter || p.authorEmails.includes(authorFilter))
+    .filter((p) => !statusFilter || p.status === statusFilter)
+    .sort((a, b) => {
+      if (sort === "az") return a.title.localeCompare(b.title);
+      if (sort === "za") return b.title.localeCompare(a.title);
+      // ISO dates sort lexically; a post with no date sinks to the bottom.
+      const cmp = (a.scheduledDatetime || a.date).localeCompare(
+        b.scheduledDatetime || b.date,
+      );
+      return sort === "date-asc" ? cmp : -cmp;
+    });
+
+  const selectionActive = selectedKeys.size > 0;
+  const toggleSelect = (key: string) =>
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const toggleSelectAll = () =>
+    setSelectedKeys((prev) =>
+      listedPosts.every((p) => prev.has(p.key))
+        ? new Set()
+        : new Set(listedPosts.map((p) => p.key)),
+    );
+
+  /** Sequential on purpose: concurrent decofile writes overwrite each other. */
+  const archiveSelected = async () => {
+    let archived = 0;
+    for (const key of selectedKeys) {
+      if (await move.apply(key, "archived")) archived += 1;
+    }
+    setSelectedKeys(new Set());
+    if (archived > 0) toast.success(t("sandbox.postBoard.archived"));
   };
 
   /**
@@ -384,29 +467,6 @@ export function PostsWorkspace({
               label={t("sandbox.postBoard.viewList")}
             />
           </div>
-          {view === "list" && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span>{t("sandbox.postBoard.groupBy")}</span>
-              <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
-                {(
-                  [
-                    ["status", "sandbox.postBoard.groupStatus"],
-                    ["format", "sandbox.postBoard.groupFormat"],
-                    ["pillar", "sandbox.postBoard.groupPillar"],
-                  ] as const satisfies ReadonlyArray<
-                    [PostsGroupBy, TranslationKey]
-                  >
-                ).map(([value, label]) => (
-                  <ToggleButton
-                    key={value}
-                    active={groupBy === value}
-                    onClick={() => onGroupByChange(value)}
-                    label={t(label)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-2">
           {isGenerating && (
@@ -570,15 +630,19 @@ export function PostsWorkspace({
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
-                {/* [field-sizing:fixed] + a pinned height: a large paste scrolls
-                    inside the box instead of growing the dialog off-screen. */}
-                <Textarea
-                  value={importText}
-                  autoFocus
-                  onChange={(e) => setImportText(e.target.value)}
-                  placeholder={t("sandbox.postBoard.importPlaceholder")}
-                  className="h-72 resize-none overflow-y-auto font-mono text-xs [field-sizing:fixed]"
-                />
+                {/* A code editor, not a textarea: the paste is a whole HTML
+                    document, and `field-sizing-content` grew the box to the
+                    width of its longest line, painting out over the dialog.
+                    This one wraps, highlights, and owns its own scrolling. */}
+                <div className="h-72 overflow-hidden rounded-[var(--studio-control-radius,var(--radius-xl))] border bg-[var(--studio-input-background)]">
+                  <MonacoCodeEditor
+                    code={importText}
+                    language={looksLikeHtml(importText) ? "html" : "markdown"}
+                    height="100%"
+                    autoFocus
+                    onChange={(value) => setImportText(value ?? "")}
+                  />
+                </div>
                 <input
                   ref={fileInput}
                   type="file"
@@ -744,16 +808,45 @@ export function PostsWorkspace({
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="w-80 shrink-0 overflow-y-auto border-r">
-            <PostList
-              posts={posts}
-              groupBy={groupBy}
-              payloadOf={payloadOf}
-              selectedKey={detailKey}
-              onOpen={onOpen}
-              isMoving={move.isMoving}
-              onArchive={(post) => void archivePost(post)}
-            />
+          <div className="flex w-80 shrink-0 flex-col border-r">
+            {selectionActive ? (
+              <PostSelectionToolbar
+                count={selectedKeys.size}
+                allSelected={
+                  listedPosts.length > 0 &&
+                  listedPosts.every((p) => selectedKeys.has(p.key))
+                }
+                onToggleSelectAll={toggleSelectAll}
+                onArchive={() => void archiveSelected()}
+                onExit={() => setSelectedKeys(new Set())}
+              />
+            ) : (
+              <PostFilterBar
+                categories={categoryOptions}
+                authors={authorOptions}
+                statusCounts={statusCounts}
+                categoryFilter={categoryFilter}
+                authorFilter={authorFilter}
+                statusFilter={statusFilter}
+                sort={sort}
+                onCategoryFilterChange={setCategoryFilter}
+                onAuthorFilterChange={setAuthorFilter}
+                onStatusFilterChange={setStatusFilter}
+                onSortChange={setSort}
+              />
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <PostList
+                posts={listedPosts}
+                selectedKey={detailKey}
+                selectionActive={selectionActive}
+                selectedKeys={selectedKeys}
+                onToggleSelect={toggleSelect}
+                onOpen={onOpen}
+                isMoving={move.isMoving}
+                onArchive={(post) => void archivePost(post)}
+              />
+            </div>
           </div>
           <div className="min-w-0 flex-1 overflow-hidden">
             {detailKey && renderDetail ? (
@@ -859,137 +952,63 @@ function ToggleButton({
   );
 }
 
-/** A post's group key + display label under the current grouping. */
-function groupOf(
-  post: PostMeta,
-  payload: Record<string, unknown>,
-  groupBy: PostsGroupBy,
-  t: ReturnType<typeof useT>,
-): { key: string; label: string } {
-  if (groupBy === "status") {
-    return { key: post.status, label: t(POST_STATUS_LABEL[post.status]) };
-  }
-  const plan = planningMeta(payload);
-  if (groupBy === "format") {
-    const name = plan.format?.name?.trim();
-    return name
-      ? { key: name, label: name }
-      : { key: "", label: t("sandbox.postBoard.noFormat") };
-  }
-  const name = plan.pillarTitle?.trim();
-  return name
-    ? { key: name, label: name }
-    : { key: "", label: t("sandbox.postBoard.noPillar") };
-}
-
 function PostList({
   posts,
-  groupBy,
-  payloadOf,
   selectedKey,
+  selectionActive,
+  selectedKeys,
+  onToggleSelect,
   onOpen,
   isMoving,
   onArchive,
 }: {
+  /** Already filtered and sorted by the toolbar — rendered in order. */
   posts: PostMeta[];
-  groupBy: PostsGroupBy;
-  payloadOf: (key: string) => Record<string, unknown>;
   selectedKey?: string | null;
+  selectionActive: boolean;
+  selectedKeys: Set<string>;
+  onToggleSelect: (key: string) => void;
   onOpen: (key: string) => void;
   isMoving: (key: string) => boolean;
   onArchive: (post: PostMeta) => void;
 }) {
-  const t = useT();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-
-  // Preserve the lifecycle order when grouping by status; otherwise sort labels.
-  const groups: Array<{ key: string; label: string; posts: PostMeta[] }> = [];
-  const index = new Map<string, number>();
-  const ordered =
-    groupBy === "status"
-      ? [...posts].sort((a, b) => {
-          const byStatus =
-            POST_STATUSES.indexOf(a.status) - POST_STATUSES.indexOf(b.status);
-          if (byStatus !== 0) return byStatus;
-          // Within the scheduled/published groups, newest first.
-          return isDatedStatus(a.status) ? byDateDesc(a, b) : 0;
-        })
-      : [...posts].sort((a, b) => a.title.localeCompare(b.title));
-  for (const post of ordered) {
-    const g = groupOf(post, payloadOf(post.key), groupBy, t);
-    const at = index.get(g.key);
-    if (at === undefined) {
-      index.set(g.key, groups.length);
-      groups.push({ key: g.key, label: g.label, posts: [post] });
-    } else {
-      groups[at]?.posts.push(post);
-    }
-  }
-
   return (
-    <div className="space-y-4 px-3 py-3">
-      {groups.map((group) => {
-        const isCollapsed = collapsed.has(group.key);
-        return (
-          <div key={group.key}>
-            <button
-              type="button"
-              onClick={() =>
-                setCollapsed((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(group.key)) next.delete(group.key);
-                  else next.add(group.key);
-                  return next;
-                })
-              }
-              className="mb-1.5 flex w-full items-center gap-1.5 text-left text-xs font-medium text-muted-foreground"
-            >
-              {isCollapsed ? (
-                <ChevronRight size={13} className="shrink-0" />
-              ) : (
-                <ChevronDown size={13} className="shrink-0" />
-              )}
-              <span className="truncate">{group.label}</span>
-              <span className="tabular-nums">· {group.posts.length}</span>
-            </button>
-            {!isCollapsed && (
-              <ul className="divide-y overflow-hidden rounded-lg border">
-                {group.posts.map((post) => (
-                  <PostRow
-                    key={post.key}
-                    post={post}
-                    selected={post.key === selectedKey}
-                    showStatus={groupBy !== "status"}
-                    moving={isMoving(post.key)}
-                    onOpen={() => onOpen(post.key)}
-                    onArchive={
-                      post.status === "archived"
-                        ? undefined
-                        : () => onArchive(post)
-                    }
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <ul className="divide-y">
+      {posts.map((post) => (
+        <PostRow
+          key={post.key}
+          post={post}
+          selected={post.key === selectedKey}
+          selectionActive={selectionActive}
+          checked={selectedKeys.has(post.key)}
+          onToggleSelect={() => onToggleSelect(post.key)}
+          moving={isMoving(post.key)}
+          onOpen={() => onOpen(post.key)}
+          onArchive={
+            post.status === "archived" ? undefined : () => onArchive(post)
+          }
+        />
+      ))}
+    </ul>
   );
 }
 
 function PostRow({
   post,
   selected,
-  showStatus,
+  selectionActive,
+  checked,
+  onToggleSelect,
   moving,
   onOpen,
   onArchive,
 }: {
   post: PostMeta;
   selected: boolean;
-  /** Show the status badge — redundant when the list is already grouped by status. */
-  showStatus: boolean;
+  /** Any post is selected, so a row click picks instead of opening. */
+  selectionActive: boolean;
+  checked: boolean;
+  onToggleSelect: () => void;
   /** A move for this post is in flight — freeze the delete action. */
   moving: boolean;
   onOpen: () => void;
@@ -1000,10 +1019,24 @@ function PostRow({
   const hasIssues =
     post.status === "awaiting_review" && post.missing.length > 0;
   const hasDate = post.status === "scheduled" || post.status === "published";
-  const showMeta = showStatus || hasIssues || hasDate;
   return (
     <li className="group/row relative">
-      {onArchive && (
+      {/* Revealed on hover until something is picked, then always shown. */}
+      <span
+        className={cn(
+          "absolute left-3 top-3 z-10 transition-opacity",
+          selectionActive || checked
+            ? "opacity-100"
+            : "opacity-0 focus-within:opacity-100 group-hover/row:opacity-100",
+        )}
+      >
+        <Checkbox
+          checked={checked}
+          onCheckedChange={() => onToggleSelect()}
+          aria-label={post.title || t("sandbox.postBoard.untitled")}
+        />
+      </span>
+      {onArchive && !selectionActive && (
         <ArchiveButton
           onArchive={onArchive}
           disabled={moving}
@@ -1012,10 +1045,10 @@ function PostRow({
       )}
       <button
         type="button"
-        onClick={onOpen}
+        onClick={() => (selectionActive ? onToggleSelect() : onOpen())}
         aria-current={selected}
         className={cn(
-          "flex w-full cursor-pointer flex-col gap-1.5 px-3 py-2.5 text-left text-sm transition-colors",
+          "flex w-full cursor-pointer flex-col gap-1.5 py-2.5 pl-10 pr-3 text-left text-sm transition-colors",
           selected
             ? "bg-accent text-accent-foreground"
             : "bg-card hover:bg-muted/50",
@@ -1024,27 +1057,23 @@ function PostRow({
         <span className="min-w-0 truncate pr-6 font-medium">
           {post.title || t("sandbox.postBoard.untitled")}
         </span>
-        {showMeta && (
-          <div className="flex items-center gap-2">
-            {showStatus && (
-              <Badge variant={STATUS_VARIANT[post.status]} className="shrink-0">
-                {t(POST_STATUS_LABEL[post.status])}
-              </Badge>
-            )}
-            {hasIssues && (
-              <span className="inline-flex items-center gap-1 text-xs text-warning">
-                <AlertCircle size={12} />
-                {post.missing.length}
-              </span>
-            )}
-            {hasDate && (
-              <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
-                <CalendarDate size={12} />
-                {(post.scheduledDatetime || post.date || "").slice(0, 10)}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <Badge variant={STATUS_VARIANT[post.status]} className="shrink-0">
+            {t(POST_STATUS_LABEL[post.status])}
+          </Badge>
+          {hasIssues && (
+            <span className="inline-flex items-center gap-1 text-xs text-warning">
+              <AlertCircle size={12} />
+              {post.missing.length}
+            </span>
+          )}
+          {hasDate && (
+            <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+              <CalendarDate size={12} />
+              {(post.scheduledDatetime || post.date || "").slice(0, 10)}
+            </span>
+          )}
+        </div>
       </button>
     </li>
   );

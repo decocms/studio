@@ -114,11 +114,7 @@ import {
 } from "./blog/post-calendar-data";
 import { useBlogSupport } from "./blog/use-blog-support";
 import { usePostStatusMove } from "./blog/use-post-status-move";
-import {
-  PostsWorkspace,
-  type PostsGroupBy,
-  type PostsView,
-} from "./blog/posts-workspace";
+import { PostsWorkspace, type PostsView } from "./blog/posts-workspace";
 import { PageJsonDialog } from "@/components/sections-editor/page-json-dialog";
 import { RunnableBlocksBrowser } from "./runnable-blocks-browser";
 import { countAvailableRunnables } from "./runnable-catalog";
@@ -393,7 +389,6 @@ function ContentBrowserReady({
   const [searchQuery, setSearchQuery] = useState("");
   // Posts workspace view + grouping — lifted so they survive opening a post.
   const [postsView, setPostsView] = useState<PostsView>("board");
-  const [postsGroupBy, setPostsGroupBy] = useState<PostsGroupBy>("status");
   const selectItem = (next: Selection) => {
     setSelection(next);
     setOpenPageSeoKey(null);
@@ -1153,7 +1148,6 @@ function ContentBrowserReady({
                 branch={branch}
                 decofile={decofile}
                 view={postsView}
-                groupBy={postsGroupBy}
                 selectedKey={
                   selection?.collection === "posts" ? selection.key : null
                 }
@@ -1161,7 +1155,6 @@ function ContentBrowserReady({
                   setPostsView(next);
                   setSelection(null);
                 }}
-                onGroupByChange={setPostsGroupBy}
                 onClose={() => setSelection(null)}
                 onOpen={(key) => {
                   setSelection({ collection: "posts", key });
