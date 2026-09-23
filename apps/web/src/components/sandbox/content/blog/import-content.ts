@@ -143,33 +143,53 @@ function escapeAttr(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** One complete tag, anchored: `<name attrs>` or `</name>`. */
+const TAG_AT_START = /^<\/?([a-z][a-z0-9]*)\b([^>]*)>/i;
+
+/** Rewrite one matched tag into the only forms a paragraph may contain. */
+function renderInlineTag(whole: string, rawName: string, rawAttrs: string) {
+  const name = rawName.toLowerCase();
+  if (!ALLOWED_INLINE.test(name)) return "";
+  if (whole.startsWith("</")) return `</${name}>`;
+  if (name !== "a") return `<${name}>`;
+  const href = decodeEntities(
+    rawAttrs.match(/href\s*=\s*"([^"]*)"/i)?.[1] ?? "",
+  );
+  return isSafeUrl(href) && href ? `<a href="${escapeAttr(href)}">` : "<a>";
+}
+
 /**
  * Imported HTML is untrusted and the site renders a paragraph's `html` as HTML,
  * so a paragraph keeps only inline formatting: every other tag loses its markup
  * and every attribute is dropped but a vetted `href`. Without this an imported
  * `<img onerror>` would be stored XSS on the customer's published blog.
+ *
+ * Tokenized left to right rather than pattern-replaced, because a replace only
+ * sees COMPLETE tags: `<img onerror=...` with no `>` matched nothing and passed
+ * through untouched, and the browser would close it with the next `>` on the
+ * page. Here every `<` either opens a complete allowed tag or becomes text.
+ * Consuming forward also makes reassembly impossible, so no repeat pass.
  */
 function sanitizeInlineHtml(html: string): string {
-  let out = stripHostileMarkup(html);
-  let previous: string;
-  do {
-    previous = out;
-    out = out.replace(
-      /<\/?([a-z][a-z0-9]*)\b([^>]*)>/gi,
-      (whole, rawName: string, rawAttrs: string) => {
-        const name = rawName.toLowerCase();
-        if (!ALLOWED_INLINE.test(name)) return "";
-        if (whole.startsWith("</")) return `</${name}>`;
-        if (name !== "a") return `<${name}>`;
-        const href = decodeEntities(
-          rawAttrs.match(/href\s*=\s*"([^"]*)"/i)?.[1] ?? "",
-        );
-        return isSafeUrl(href) && href
-          ? `<a href="${escapeAttr(href)}">`
-          : "<a>";
-      },
-    );
-  } while (out !== previous);
+  const source = stripHostileMarkup(html);
+  let out = "";
+  let index = 0;
+  while (index < source.length) {
+    const next = source.indexOf("<", index);
+    if (next === -1) {
+      out += source.slice(index);
+      break;
+    }
+    out += source.slice(index, next);
+    const tag = TAG_AT_START.exec(source.slice(next));
+    if (!tag) {
+      out += "&lt;";
+      index = next + 1;
+      continue;
+    }
+    out += renderInlineTag(tag[0], tag[1] ?? "", tag[2] ?? "");
+    index = next + tag[0].length;
+  }
   return out;
 }
 

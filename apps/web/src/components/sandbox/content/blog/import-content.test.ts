@@ -167,6 +167,24 @@ describe("parseImportedContent — untrusted markup", () => {
     ]);
   });
 
+  test("an unterminated tag becomes text, so it cannot borrow the page's next >", () => {
+    // A replace only sees complete tags; this one has no `>` of its own and the
+    // browser would close it with the next `>` in the document.
+    expect(htmlOf('<p>hello <img src=x onerror="alert(1)" </p>')).toEqual([
+      'hello &lt;img src=x onerror="alert(1)"',
+    ]);
+    expect(htmlOf('<p>x <a href="javascript:alert(1)" </p>')).toEqual([
+      'x &lt;a href="javascript:alert(1)"',
+    ]);
+  });
+
+  test("a bare < in prose is escaped rather than left to start a tag", () => {
+    expect(htmlOf("<p>a < b</p>")).toEqual(["a &lt; b"]);
+    expect(htmlOf('<p><<a>a href="javascript:alert(1)">x</p>')).toEqual([
+      '&lt;<a>a href="javascript:alert(1)">x',
+    ]);
+  });
+
   test("a link to a script URL survives as a link with nowhere to go", () => {
     expect(htmlOf('<p><a href="javascript:alert(1)">click</a></p>')).toEqual([
       "<a>click</a>",
