@@ -646,6 +646,10 @@ goldenUploader:
   # on nodes that ran one.
   nodeSelector: {}
   tolerations: []
+  # For an image variant on its own NodePool (android): a nodeSelector cannot
+  # say "either pool", node affinity can. Set nodeSelector to what both pools
+  # share and list both pools' taints in tolerations.
+  affinity: {}
 
 # ── sentinel token ─────────────────────────────────────────────────────
 sentinel:

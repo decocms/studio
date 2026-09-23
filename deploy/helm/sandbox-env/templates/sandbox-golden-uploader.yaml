@@ -53,6 +53,10 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.goldenUploader.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       # Same uid as the sandbox, so it can read goldens the sandbox wrote. It
       # does not need root: the hostPath is already handed to 1000 by the
       # sandbox pod's chown init container.

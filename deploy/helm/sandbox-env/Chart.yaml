@@ -9,6 +9,8 @@ description: |
   releases coexist in the shared `agent-sandbox-system` namespace.
   Requires the sandbox-operator chart to already be installed.
 type: application
+# 0.20.0: `goldenUploader.affinity`, so the uploader can run on an image
+# variant's NodePool too — the android Gradle caches it forwards live there.
 # 0.19.0: `imageVariants.<name>.volumeSizes`, merged over `volumeSizes`. The
 # android emulator's AVD lives in `home`, and the 5Gi default evicted every pod
 # that booted it.
@@ -172,7 +174,7 @@ type: application
 # 0.8.0: org-fs sidecar (orgFs.*) — privileged rclone mounter + main-container
 # mounts. NOTE: the publish workflow skips existing versions, so this MUST
 # stay ahead of the latest published chart (0.7.5 at time of writing).
-version: 0.19.3
+version: 0.20.0
 # appVersion tracks the studio-sandbox image version (image.tag default).
 appVersion: "1.70.4"
 kubeVersion: ">=1.30.0-0"

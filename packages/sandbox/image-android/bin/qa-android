@@ -187,9 +187,12 @@ EOF
 share_gradle_cache() {
   [ -n "$CACHE" ] || return 0
   local url key g d
+  g="${GRADLE_USER_HOME:-$HOME/.gradle}"
+  # The daemon links these itself after seeding the node's cache from the
+  # shared store (setup/androidgradle.go); linking first would bypass that.
+  for _ in $(seq 1 180); do [ -e "$g/.studio-cache-restoring" ] || break; sleep 1; done
   url=$(git remote get-url origin 2>/dev/null) || return 0
   key=$(printf '%s' "$url" | sed -E 's#//[^@/]*@#//#' | sha256sum | cut -c1-16)
-  g="${GRADLE_USER_HOME:-$HOME/.gradle}"
   mkdir -p "$g"
   for d in caches wrapper; do
     mkdir -p "$CACHE/gradle/$key/$d"

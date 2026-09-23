@@ -24,7 +24,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -83,6 +82,7 @@ func UploadNodeGoldens(opts UploaderOpts) UploaderStats {
 	if opts.CacheRoot == "" || opts.RemoteRoot == "" {
 		return stats
 	}
+	uploadAndroidGradle(opts, time.Now(), &stats)
 	root := filepath.Join(opts.CacheRoot, "golden")
 	repos, err := os.ReadDir(root)
 	if err != nil {
@@ -163,39 +163,14 @@ func splitGoldenLockDir(name string) (pm, lockHash string, ok bool) {
 	return "", "", false
 }
 
-// uploadGolden compresses one node-local golden straight into its shared key.
-//
-// Written to the final key rather than a temp name plus rename: the shared store
-// is a blob store, which has no rename and does not need one — an object becomes
-// visible only when its upload completes, so a killed uploader leaves no
-// readable object. Then read back, because a corrupt object would be permanent:
-// every later sweep would skip it as "already present" and every node would keep
-// missing with nothing to repair it.
+// uploadGolden compresses one node-local golden into its shared key, minus the
+// runtime caches that must not travel.
 func uploadGolden(goldenNodeModules, archive string, opts UploaderOpts) bool {
-	// Best-effort: on a blob store creating the prefix is a no-op, and writing
-	// the key is what creates it.
-	os.MkdirAll(filepath.Dir(archive), 0o755)
-
-	installRoot := filepath.Dir(goldenNodeModules)
-	tarArgs := []string{"-cf", "-", "-C", installRoot}
+	excludes := make([]string, 0, len(runtimeCacheDirs))
 	for _, d := range runtimeCacheDirs {
-		tarArgs = append(tarArgs, "--exclude=node_modules/"+d)
+		excludes = append(excludes, "node_modules/"+d)
 	}
-	tarArgs = append(tarArgs, "node_modules")
-
-	zstdArgs := append(append([]string{}, zstdPublishArgs...), "-q", "-o", archive)
-	if r := runPiped(exec.Command("tar", tarArgs...), exec.Command("zstd", zstdArgs...)); r.code != 0 {
-		opts.log(fmt.Sprintf("[golden-uploader] compress failed for %s (exit %d: %s)", archive, r.code, r.stderr))
-		os.Remove(archive)
-		return false
-	}
-	if check := runPiped(exec.Command("zstd", "-dc", archive), exec.Command("tar", "-tf", "-")); check.code != 0 {
-		opts.log(fmt.Sprintf("[golden-uploader] discarded %s — failed read-back (%s)", archive, check.stderr))
-		os.Remove(archive)
-		return false
-	}
-	opts.log("[golden-uploader] published " + archive)
-	return true
+	return uploadTree(filepath.Dir(goldenNodeModules), []string{"node_modules"}, excludes, archive, opts)
 }
 
 // RunUploader sweeps on an interval until ctx-like cancellation via stop.

@@ -476,7 +476,36 @@ func (o *Orchestrator) stepCloneInner() bool {
 	// checkout captured, and installState fingerprints against this field.
 	o.refreshBranchHead()
 	o.deps.BranchStatus.Refresh()
+	o.prepareAndroidGradle(cfg)
 	return true
+}
+
+// Off the boot path: a restore extracts up to a few GB, and `qa-android start`
+// waits on the marker PrepareAndroidGradle holds rather than on the checkout.
+func (o *Orchestrator) prepareAndroidGradle(cfg *config.Enriched) {
+	if os.Getenv("STUDIO_SANDBOX_ANDROID_EMULATOR") == "" {
+		return
+	}
+	gradleHome := os.Getenv("GRADLE_USER_HOME")
+	if gradleHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return
+		}
+		gradleHome = filepath.Join(home, ".gradle")
+	}
+	p := AndroidGradleParams{
+		CacheRoot:  os.Getenv("DEPS_CACHE_ROOT"),
+		GradleHome: gradleHome,
+		OrgId:      cfg.OrgId,
+		CloneUrl:   resolveCloneUrl(cfg, o.deps.RepoDir),
+		Env:        os.Getenv("SANDBOX_ENV"),
+		Log:        func(m string) { o.chunk(m + "\r\n") },
+	}
+	go func() {
+		defer func() { recover() }()
+		PrepareAndroidGradle(p)
+	}()
 }
 
 // secondaryCloneConcurrency bounds the parallel git processes. The pod has 1-2
