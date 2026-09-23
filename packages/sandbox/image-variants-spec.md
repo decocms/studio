@@ -93,13 +93,12 @@ Change from #7461:
 
 ### Base image
 
-Flutter content in `packages/sandbox/image/Dockerfile` (SDK clone, precache,
-pub-cache) moves to the variant once the variant is live. The base gets
+Flutter lives only in the Android variant: the SDK clone, precache and
+pub-cache moved out of `packages/sandbox/image/Dockerfile`, so the base is
 lighter for everyone and Flutter has one home, where its version can follow
-the customer. `skills/flutter-app/SKILL.md` moves with it.
-
-Sequencing: base keeps the SDK until the variant has served real runs for one
-release; then one PR removes it.
+the customer. `skills/flutter-app/SKILL.md` stays in the base's skill folder:
+the `core` public set syncs from there into every org, and on the default
+image it is what tells the agent to ask for the Android image.
 
 ### Sandbox control plane
 
@@ -236,8 +235,8 @@ on the gap later if it bites.
 
 ## Flutter version
 
-The base already pins `FLUTTER_VERSION=3.41.2` and documents that the pin
-drifts. The variant inherits the problem. Two options, pick one:
+The Android image pins `FLUTTER_VERSION=3.41.2` and documents that the pin
+drifts. Two options, pick one:
 
 1. **Human loop.** Customer bumps, we bump `sandbox-images/android/Dockerfile`.
    Adequate for one customer.
@@ -294,8 +293,8 @@ tools, REST mirror, console, review).
    KVM node and that `qa-android` drives the app under the pod's constraints.
    Then prod.
 6. studio release workflow: add the `sandbox-base-released` dispatch.
-7. After one release of real runs on the variant: remove Flutter from the
-   base image.
+7. Remove Flutter from the base image. Done ahead of the variant serving real
+   runs, so until it is enabled a Flutter repo gets no SDK at all.
 
 ## Later
 

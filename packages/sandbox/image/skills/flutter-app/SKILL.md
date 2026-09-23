@@ -9,24 +9,20 @@ A Flutter repo breaks an assumption the rest of the sandbox is built on: its
 pull requests have no deploy `previewUrl`, so the usual "open the preview and
 look at it" does not apply — and neither does giving up.
 
-What you have: the Flutter SDK at `/opt/flutter` (already on `PATH`), and one
-of two ways to look at the UI, depending on the sandbox image.
-
 ## First: check which sandbox image you are on
 
-If `qa-android` is on your `PATH` (equivalently, `$STUDIO_SANDBOX_ANDROID_EMULATOR`
-is set), this repo opted into the **Android sandbox image**: there is an Android
-emulator, and you can run the app for real — see [Running the app on the
-emulator](#running-the-app-on-the-emulator-qa-android). Reach for that first;
-it is strictly better than the web build.
+The Flutter SDK ships only in the **Android sandbox image**. If `qa-android`
+is on your `PATH` (equivalently, `$STUDIO_SANDBOX_ANDROID_EMULATOR` is set),
+you are on it: the SDK is at `/opt/flutter` (already on `PATH`), and there is
+an Android emulator to run the app for real — see [Running the app on the
+emulator](#running-the-app-on-the-emulator-qa-android).
 
-Otherwise you are on the default image and the web build below is your only
-way to see a UI. If the web build then fails for a reason you cannot fix (a
-dependency that does not compile to JS — see [When the web build
-fails](#when-the-web-build-fails)), or the app cannot start without native
-plugins (Firebase, push, attribution SDKs), say so in your report **and say
-that the repo can be switched to the Android emulator image in Settings →
-Repositories**. That is the fix; do not spend the run working around it.
+Otherwise you are on the default image, which has **no Flutter SDK**: no
+`flutter analyze`, no `flutter test`, no way to see the UI. Do not try to
+install the SDK into the sandbox. Do what reading the code can do, then say
+in your report that you could not build or run the app **and that the repo
+must be switched to the Android emulator image in Settings → Repositories**.
+That is the fix; do not spend the run working around it.
 
 ## Check the version pin first
 
@@ -136,8 +132,9 @@ real payment or an SMS code, are the ones to name as not exercised.
 
 ## Looking at the UI (web build)
 
-On the default image this is the only option; on the Android image prefer
-`qa-android` above.
+A fallback for when `qa-android start` fails for a reason outside the change
+(a Gradle error naming a missing SDK package, say — report that too). Prefer
+`qa-android` whenever it works: the web build cannot run native plugins.
 
 ```bash
 flutter build web --release        # ~30s for a small app, minutes for a real one
@@ -239,10 +236,9 @@ than working around:
   is under `.pub-cache`, it is a transitive dependency and it is **not yours to
   fix**. Neither is it worth retrying: `--release`, `--profile`, `--wasm` and
   `run -d web-server` all go through those same two compilers, so if one fails
-  this way they all do. Stop, and report that the repo needs the Android
-  emulator image (Settings → Repositories), which has no such limit.
+  this way they all do. Stop, and use `qa-android`, which has no such limit.
 
-If the app genuinely cannot reach web, fall back to the checks above plus
+If neither `qa-android` nor the web build works, fall back to the checks above plus
 reading the code end to end — and **say what you could not see**, rather than
 approving on the assumption it is fine.
 
@@ -252,6 +248,6 @@ approving on the assumption it is fine.
 device, which sounds like the answer and is not: `flutter_test` draws with a
 placeholder font, so every glyph comes out a black box. Goldens are a
 **layout-regression diff between two runs**, not something you or a human can
-look at and judge. Use the web build to SEE the UI. Use goldens only if the
+look at and judge. Use `qa-android` to SEE the UI. Use goldens only if the
 repo already has them, or to prove a layout did not shift — and if you add
 them, `golden_toolkit`'s `loadAppFonts()` is what makes the text legible.

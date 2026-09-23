@@ -11,8 +11,8 @@
 #
 # Image: the default image, and one per entry in values.yaml `imageVariants`.
 # A variant carries a heavier toolchain than every sandbox should pull — the
-# `flutter` one adds ~1.3GB of Linux-desktop packages so an agent can run a
-# Flutter app and screenshot it. Both sizes are rendered for every variant, so
+# `android` one adds the Android SDK and an emulator so an agent can run a
+# mobile app and screenshot it. Both sizes are rendered for every variant, so
 # a variant is present in both or neither: Studio degrades a missing derived
 # template to the BASE one in a single step, and a half-rendered variant would
 # make that fallback lose the image and the memory ceiling at once.

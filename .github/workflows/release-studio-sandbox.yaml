@@ -123,29 +123,6 @@ jobs:
           # the runner's preinstalled binfmt, same as orgfs-sidecar.
           platforms: linux/amd64,linux/arm64
 
-      # readOnlyRootFilesystem is the one condition `docker build` cannot
-      # exercise, and it is how every sandbox actually runs
-      # (deploy/helm/sandbox-env). Flutter shipped unusable under it once
-      # already, so assert the whole analyze path here rather than in a pod.
-      - name: Smoke-test Flutter on a read-only rootfs
-        if: steps.tag-check.outputs.exists != 'true'
-        env:
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
-        run: |
-          set -euo pipefail
-          docker run --rm --read-only \
-            --tmpfs /tmp:rw,size=2g \
-            --tmpfs /home/sandbox:rw,size=4g,uid=1000,gid=1000 \
-            --user 1000:1000 -e HOME=/home/sandbox \
-            "${IMAGE}" bash -lc '
-              set -e
-              flutter --version
-              cd /home/sandbox
-              flutter create demo
-              cd demo
-              flutter analyze
-            '
-
       - name: Install cosign
         if: steps.tag-check.outputs.exists != 'true'
         uses: sigstore/cosign-installer@v3

@@ -5,9 +5,9 @@
 #     --build-arg BASE_TAG=<studio-sandbox-go tag> \
 #     -f packages/sandbox/image-android/Dockerfile packages/sandbox/image-android
 #
-# Derived, not forked: the base already carries the Flutter SDK, the daemon and
-# the skills, so everything below is additive and this image can never drift
-# from the daemon it runs.
+# Derived, not forked: the base carries the daemon and the skills, so this image
+# can never drift from the daemon it runs. The Flutter SDK lives only here; the
+# default image has no use for it without a way to run the app.
 #
 # Why an emulator and not `flutter build web` / the Linux desktop target: a
 # mobile app's startup path is full of plugins that exist only on Android and
@@ -61,25 +61,65 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
   # sdkmanager extracts binaries owner-only (0744); the sandbox user runs them.
   && chmod -R a+rX ${ANDROID_HOME}
 
-COPY bin/qa-android /usr/local/bin/qa-android
-# The base image's engine.stamp/realm/lockfile are symlinks into /tmp, and a
-# root layer there left the targets root-owned; `sandbox` cannot overwrite them
-# in sticky /tmp. Pods mount a fresh /tmp, so only this build trips on it.
-RUN chmod 0755 /usr/local/bin/qa-android \
-  && rm -f /tmp/flutter-engine.stamp /tmp/flutter-engine.realm /tmp/flutter-lockfile
-
-USER sandbox
-# /opt/flutter belongs to `sandbox` in the base image, so the Android engine
-# artifacts land without a chown that would duplicate the whole SDK layer.
-# Every Android build compiles Flutter's Gradle plugin as an included build in
-# place, writing .gradle/, build/ and .kotlin/ inside the read-only SDK. Point
-# them into /tmp, as the base image does for engine.stamp; qa-android creates
-# the targets before it builds.
-RUN flutter precache --android --no-ios --no-web --no-linux \
+# Flutter SDK. `--web` keeps `flutter build web` + `qa-screenshot --flutter`
+# as a fallback for when the Android build fails for reasons outside the change.
+#
+# ⚠️ The version is a pin that DRIFTS: `flutter analyze` disagrees with itself
+# across releases, so a repo whose CI pins another version gets findings its
+# own gate would not produce. The skill makes the agent check the repo's pin
+# against this and say so; bump here when that stops matching reality.
+ARG FLUTTER_VERSION=3.41.2
+#
+# FLUTTER_SUPPRESS_ANALYTICS rather than `flutter --disable-analytics`: that
+# command writes a per-user config file, and this layer runs as root while
+# every run is the `sandbox` user.
+#
+# PUB_CACHE is set for THIS layer only (reset below): pub bakes absolute cache
+# paths into flutter_tools' package_config.json and its snapshot, and the
+# default /root/.pub-cache is 0700 — unreadable by the `sandbox` user, so the
+# tool re-resolved its own deps on each invocation and died writing to the
+# read-only SDK.
+ENV FLUTTER_ROOT=/opt/flutter \
+    FLUTTER_SUPPRESS_ANALYTICS=true \
+    PUB_CACHE=/opt/pub-cache \
+    PATH=/opt/flutter/bin:$PATH
+# ponytail: the rm covers bases published before Flutter left them; a no-op after.
+RUN rm -rf /opt/flutter /opt/pub-cache \
+  && git clone --depth 1 -b "${FLUTTER_VERSION}" \
+      https://github.com/flutter/flutter.git /opt/flutter \
+  # git refuses to operate in a tree owned by another uid.
+  && git config --system --add safe.directory /opt/flutter \
+  && flutter precache --universal --web --android --no-ios --no-linux \
+  # `bin/flutter` rewrites these three on EVERY invocation, under `set -e`, so
+  # on the read-only rootfs every flutter command aborted before it started.
+  # They are per-invocation state; point them at /tmp.
+  && for f in engine.stamp engine.realm lockfile; do \
+       rm -f "/opt/flutter/bin/cache/$f" \
+       && ln -s "/tmp/flutter-$f" "/opt/flutter/bin/cache/$f"; \
+     done \
+  # Every Android build compiles Flutter's Gradle plugin as an included build in
+  # place, writing .gradle/, build/ and .kotlin/ inside the SDK. Same fix;
+  # qa-android creates the targets before it builds.
   && cd /opt/flutter/packages/flutter_tools/gradle \
   && rm -rf .gradle build .kotlin \
   && ln -s /tmp/flutter-gradle/dot-gradle .gradle \
   && ln -s /tmp/flutter-gradle/build build \
-  && ln -s /tmp/flutter-gradle/kotlin .kotlin
+  && ln -s /tmp/flutter-gradle/kotlin .kotlin \
+  && chown -R sandbox:sandbox /opt/flutter \
+  && chmod -R a+rX /opt/pub-cache \
+  # Debian's /etc/profile resets PATH, so `bash -lc flutter` needs these.
+  && ln -sf /opt/flutter/bin/flutter /usr/local/bin/flutter \
+  && ln -sf /opt/flutter/bin/dart /usr/local/bin/dart \
+  && flutter --version \
+  # That root run left the /tmp stamp targets root-owned, and `sandbox` cannot
+  # overwrite them in sticky /tmp. Pods mount a fresh /tmp; this build does not.
+  && rm -f /tmp/flutter-engine.stamp /tmp/flutter-engine.realm /tmp/flutter-lockfile
+# A run's own `flutter pub get` must write somewhere writable; /opt/pub-cache is
+# read-only baked SDK state. /home/sandbox is the per-pod ephemeral volume.
+ENV PUB_CACHE=/home/sandbox/.pub-cache
 
+COPY bin/qa-android /usr/local/bin/qa-android
+RUN chmod 0755 /usr/local/bin/qa-android
+
+USER sandbox
 ENV STUDIO_SANDBOX_ANDROID_EMULATOR=1
