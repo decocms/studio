@@ -588,6 +588,9 @@ export const sandbox = {
   "sandbox.postCalendar.unscheduledHint":
     "Dashed posts aren't scheduled — they sit on their display date, and nothing will publish them.",
   "sandbox.postCalendar.undatedEmpty": "Every post has a date.",
+  "sandbox.postCalendar.unknownAppDescription":
+    "The calendar stays read-only until the repo's manifests can be read — the sandbox may still be starting.",
+  "sandbox.postCalendar.unknownAppTitle": "Still reading this site's blog app",
   "sandbox.postCalendar.unsupportedRuntimeDescription":
     "This site doesn't install the deco blog app, so nothing here can publish a post on a schedule. The calendar below is read-only.",
   "sandbox.postCalendar.unsupportedRuntimeTitle": "No blog app on this site",

@@ -601,6 +601,10 @@ export const sandbox = {
   "sandbox.postCalendar.unscheduledHint":
     "Posts tracejados não estão agendados — estão na data de exibição deles, e nada vai publicá-los.",
   "sandbox.postCalendar.undatedEmpty": "Todos os posts têm data.",
+  "sandbox.postCalendar.unknownAppDescription":
+    "O calendário fica somente leitura até dar para ler os manifestos do repo — o sandbox pode ainda estar subindo.",
+  "sandbox.postCalendar.unknownAppTitle":
+    "Ainda lendo o app de blog deste site",
   "sandbox.postCalendar.unsupportedRuntimeDescription":
     "Este site não instala o app de blog do deco, então nada aqui consegue publicar um post na data agendada. O calendário abaixo é somente leitura.",
   "sandbox.postCalendar.unsupportedRuntimeTitle": "Sem app de blog neste site",

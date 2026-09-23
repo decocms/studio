@@ -60,15 +60,19 @@ const UNSCHEDULED_CHIP =
  * Sits over the blurred grid when the site can't back scheduling. Never a CTA
  * — the fix is a command in the repo, not a button here.
  *
- * Asks the gate the board and editor ask, so it cannot claim a version they
- * disagree with. It stays silent while the manifests are still being read:
- * a site we haven't looked at yet has done nothing wrong.
+ * Always says something: the grid behind it is blurred and inert, so a silent
+ * overlay is a dead calendar with no reason given. "Still reading" is a reason.
  */
 function SupportOverlay({ support }: { support: BlogSupport }) {
   const t = useT();
   const gate = postStatusUnsupported(support, "scheduled");
-  if (!gate || gate.reason === "unknown") return null;
-  const outdated = gate.reason === "outdated";
+  if (!gate) return null;
+  const title =
+    gate.reason === "outdated"
+      ? "sandbox.postCalendar.outdatedAppsTitle"
+      : gate.reason === "no-app"
+        ? "sandbox.postCalendar.unsupportedRuntimeTitle"
+        : "sandbox.postCalendar.unknownAppTitle";
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-background/30 p-6">
       <Alert
@@ -77,19 +81,15 @@ function SupportOverlay({ support }: { support: BlogSupport }) {
       >
         <AlertCircle />
         <div>
-          <AlertTitle>
-            {t(
-              outdated
-                ? "sandbox.postCalendar.outdatedAppsTitle"
-                : "sandbox.postCalendar.unsupportedRuntimeTitle",
-            )}
-          </AlertTitle>
+          <AlertTitle>{t(title)}</AlertTitle>
           <AlertDescription>
             {gate.reason === "outdated"
               ? t("sandbox.postCalendar.outdatedAppsDescription", {
                   required: gate.required,
                 })
-              : t("sandbox.postCalendar.unsupportedRuntimeDescription")}
+              : gate.reason === "no-app"
+                ? t("sandbox.postCalendar.unsupportedRuntimeDescription")
+                : t("sandbox.postCalendar.unknownAppDescription")}
           </AlertDescription>
           {gate.reason === "outdated" && (
             <code className="mt-2 block rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
