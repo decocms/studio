@@ -9,6 +9,7 @@ import {
   blogSupport,
   blogUpdateCommand,
   compareSemver,
+  metaDescribesScheduling,
   parseSemver,
   postStatusUnsupported,
   supportsPublishToggle,
@@ -42,6 +43,31 @@ function meta(version: string): unknown {
         blank: {},
         apps: {
           title: `https://cdn.jsdelivr.net/gh/deco-cx/apps@${version}/blog/loaders/BlogPostPage.ts@Props`,
+        },
+      },
+    },
+  };
+}
+
+/**
+ * A `/live/_meta` whose section props inline `BlogPost`, which is how both
+ * runtimes serve it — shape trimmed from zeenow-tanstack.deco.site and
+ * content-hub.deco.site, where `scheduledDatetime` sits four levels deep.
+ */
+function metaWithBlogSchema(scheduling: boolean): unknown {
+  const post: Record<string, unknown> = {
+    slug: { type: "string" },
+    status: { type: "string", enum: ["draft", "published"] },
+  };
+  if (scheduling) post.scheduledDatetime = { type: "string" };
+  return {
+    schema: {
+      definitions: {
+        "site/sections/Blog/BlogPostBlocks.tsx@Props": {
+          type: "object",
+          properties: {
+            post: { type: "object", properties: post },
+          },
         },
       },
     },
@@ -244,6 +270,45 @@ describe("blogUpdateCommand", () => {
   });
 });
 
+describe("metaDescribesScheduling", () => {
+  it("finds the inlined BlogPost a real site serves", () => {
+    expect(metaDescribesScheduling(metaWithBlogSchema(true))).toBe(true);
+  });
+
+  it("is false for an app whose BlogPost has no go-live instant", () => {
+    expect(metaDescribesScheduling(metaWithBlogSchema(false))).toBe(false);
+  });
+
+  it("walks past arrays and unrelated nodes", () => {
+    expect(
+      metaDescribesScheduling({
+        schema: {
+          definitions: {
+            a: { anyOf: [{ properties: { scheduledDatetime: {} } }] },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores a `scheduledDatetime` that isn't a schema property", () => {
+    expect(
+      metaDescribesScheduling({
+        schema: { definitions: { a: { title: "scheduledDatetime" } } },
+      }),
+    ).toBe(false);
+  });
+
+  it("survives a missing or malformed meta", () => {
+    expect(metaDescribesScheduling(null)).toBe(false);
+    expect(metaDescribesScheduling(undefined)).toBe(false);
+    expect(metaDescribesScheduling({})).toBe(false);
+    expect(metaDescribesScheduling({ schema: { definitions: "nope" } })).toBe(
+      false,
+    );
+  });
+});
+
 describe("blogSupport", () => {
   const data = (value: unknown) => ({ kind: "data", data: value }) as const;
   const absent = { kind: "absent" } as const;
@@ -275,6 +340,28 @@ describe("blogSupport", () => {
 
   it("reports a site that installs no blog app as unsupported", () => {
     expect(blogSupport(node(null))).toEqual({ kind: "unsupported-runtime" });
+  });
+
+  it("takes the served schema as proof when no manifest is readable", () => {
+    expect(
+      blogSupport({
+        denoJson: unavailable,
+        packageJson: unavailable,
+        meta: metaWithBlogSchema(true),
+      }),
+    ).toEqual({ kind: "full", version: null });
+  });
+
+  it("keeps the branch's own pin above the schema production serves", () => {
+    expect(
+      blogSupport({
+        denoJson: absent,
+        packageJson: data({
+          dependencies: { "@decocms/apps-blog": "7.52.1" },
+        }),
+        meta: metaWithBlogSchema(true),
+      }),
+    ).toEqual({ kind: "outdated", packageManager: "npm", version: "7.52.1" });
   });
 
   it("says unknown, not unsupported, while a manifest is unread", () => {

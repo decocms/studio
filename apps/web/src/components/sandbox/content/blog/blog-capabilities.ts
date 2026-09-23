@@ -42,8 +42,8 @@ export type BlogSupport =
   | { kind: "outdated"; packageManager: PackageManager; version: string | null }
   /** `status` support, but no scheduling. Only Deno pins land here. */
   | { kind: "publish-only"; packageManager: PackageManager; version: string }
-  /** Scheduling support. */
-  | { kind: "full"; version: string };
+  /** Scheduling support. `version` is null when the schema proved it. */
+  | { kind: "full"; version: string | null };
 
 /** `[major, minor, patch]`, or null when `value` isn't a plain semver. */
 export function parseSemver(value: string): [number, number, number] | null {
@@ -103,6 +103,44 @@ export function appsVersionFromMeta(meta: unknown): string | null {
     if (version) return version;
   }
   return null;
+}
+
+/**
+ * Whether the schema the site serves already describes a go-live instant.
+ *
+ * The blog app inlines `BlogPost` into the props of every section that takes
+ * one, so a single `scheduledDatetime` anywhere in the definitions proves the
+ * running app understands it — whichever distribution shipped it, and without
+ * a sandbox. That is the only version source a Fast Preview has.
+ *
+ * Positive evidence only. Absence proves nothing: a site may just have no blog
+ * section, so a "no" here falls through to the manifests.
+ */
+export function metaDescribesScheduling(meta: unknown): boolean {
+  return describesProperty(
+    (meta as { schema?: { definitions?: unknown } } | null | undefined)?.schema
+      ?.definitions,
+    "scheduledDatetime",
+  );
+}
+
+/** Depth-first hunt for a JSON Schema `properties` map carrying `name`. */
+function describesProperty(node: unknown, name: string): boolean {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) {
+    return node.some((child) => describesProperty(child, name));
+  }
+  const properties = (node as { properties?: unknown }).properties;
+  if (
+    properties &&
+    typeof properties === "object" &&
+    name in (properties as Record<string, unknown>)
+  ) {
+    return true;
+  }
+  return Object.values(node as Record<string, unknown>).some((child) =>
+    describesProperty(child, name),
+  );
 }
 
 /**
@@ -169,9 +207,10 @@ function classify(
 /**
  * Resolve what the blog CMS may offer, from the manifests the repo commits.
  * A committed `deno.json` (or a `meta` carrying apps refs) means the Deno
- * distribution; otherwise `package.json` answers. A read that failed is not a
- * repo without a blog app, so it resolves to `unknown` rather than accusing
- * the site of installing nothing.
+ * distribution; otherwise `package.json` answers, and with no manifest at all
+ * the served schema still proves what the app supports. A read that failed is
+ * not a repo without a blog app, so it resolves to `unknown` rather than
+ * accusing the site of installing nothing.
  *
  * `deno.json` wins over `meta` because it is this branch's pin: right after a
  * `deno task update` the branch is already on the newer apps while a `meta`
@@ -199,6 +238,10 @@ export function blogSupport(input: {
       versionFromRange(range),
     );
   }
+  // No manifest — a Fast Preview, or a sandbox that isn't up. The running
+  // site's own schema still answers what its blog app can do.
+  if (metaDescribesScheduling(input.meta))
+    return { kind: "full", version: null };
   const unread =
     input.denoJson.kind === "unavailable" ||
     input.packageJson.kind === "unavailable";
