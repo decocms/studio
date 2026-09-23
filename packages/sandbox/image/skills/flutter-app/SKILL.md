@@ -109,6 +109,9 @@ qa-android stop
 ```
 
 Then `Read` the PNGs. A screenshot you never opened is not verification.
+To show them to a person, embed each as a markdown image in your comment —
+`![home](org/output/qa/01.png)` renders on the task; a bare path or a code
+span does not.
 
 **Run `qa-android start` in the foreground**, with the Bash tool's longest
 timeout (600000 ms). It returns within about nine minutes: exit 0 means the app
