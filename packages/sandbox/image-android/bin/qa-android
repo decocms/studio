@@ -163,15 +163,15 @@ exclude_build_output() {
 }
 
 # User-home gradle.properties overrides the project's. Flutter's template asks
-# for -Xmx8G plus a separate Kotlin daemon, which with the emulator alongside
-# overruns the pod's memory.
+# for -Xmx8G plus a separate Kotlin daemon; one in-process compiler in a 6g heap
+# fits the pod with room to spare, since `start` never builds with the emulator
+# up. Workers default to the pod's CPUs.
 cap_gradle() {
   local f="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
   [ -f "$f" ] && return 0
   mkdir -p "$(dirname "$f")"
   cat > "$f" <<'EOF'
-org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC
-org.gradle.workers.max=2
+org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC
 org.gradle.daemon.idletimeout=600000
 org.gradle.caching=true
 kotlin.compiler.execution.strategy=in-process
