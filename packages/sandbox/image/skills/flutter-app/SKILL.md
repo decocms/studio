@@ -96,7 +96,7 @@ a headless emulator, installs the app and launches its real `main()` — native
 plugins included, so Firebase, push and the rest behave as on a phone.
 
 ```bash
-qa-android start                 # boot + build + install + launch; exit 2 = still going, then `qa-android wait`
+qa-android start                 # build + boot + install + launch; exit 2 = still going, then `qa-android wait`
 qa-android ui                    # what's on screen: "x,y [clickable]<TAB>label" per element
 qa-android shot org/output/qa/01.png
 qa-android tap 640 1480          # an x,y from `ui`, or read off the screenshot
@@ -126,9 +126,13 @@ point read off a PNG works too. An icon-only button with no tooltip or
 semantic label will not appear in `ui`; use the screenshot for those.
 
 **The first `start` is slow** — Gradle downloads its dependencies and compiles
-the app, several minutes for a real one. Later `start`s reuse the booted
-emulator and the Gradle cache. Do not stop and restart to "refresh": `start`
-again rebuilds and relaunches on the running emulator.
+the app, several minutes for a real one. Later `start`s reuse the Gradle cache
+and resume the emulator from a snapshot. Do not stop and restart to "refresh":
+`start` again rebuilds and relaunches.
+
+**Run nothing heavy alongside `qa-android`.** No `flutter build web`,
+`flutter test` or other `flutter build` while `start` runs or the emulator is
+up — `qa-android stop` first. Try `qa-android` before the web build, not after.
 
 **If `start` says `/dev/kvm` is not available**, the sandbox landed on a node
 without KVM. That is an infrastructure problem, not yours — report it.

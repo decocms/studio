@@ -7,9 +7,9 @@
 #   qa-android type "text"                qa-android key BACK|ENTER|HOME|...
 #   qa-android logs [n]                   qa-android stop
 #
-# `start` boots a headless emulator (KVM required) and, meanwhile, builds the
-# app from the current directory, then `flutter run`s it onto the emulator:
-# install, launch, and a live log of the app's output. Everything after that is
+# `start` builds the app from the current directory, then boots a headless
+# emulator (KVM required) and `flutter run`s the build onto it: install,
+# launch, and a live log of the app's output. Everything after that is
 # adb. The work runs detached, and `start` waits for it for at most
 # QA_ANDROID_WAIT seconds (default 540, under an agent's 10-minute tool limit):
 # exit 0 means the app is up, 1 that it failed, 2 that it is still going and
@@ -221,22 +221,25 @@ run_start() {
   cap_gradle
   share_gradle_cache
   stop_app
-  ( trap - EXIT; prepare_emulator ) > "$STATE/emulator-prep.log" 2>&1 &
-  local emu=$!
+  kill_emulator
   # Build first, verbosely: without -v, flutter reduces any Gradle failure to
-  # "assembleDebug failed". The run that follows reuses this build.
-  echo "qa-android: building while the emulator boots — a first Gradle build takes minutes"
+  # "assembleDebug failed".
+  echo "qa-android: building — a first Gradle build takes minutes"
   mkdir -p /tmp/flutter-gradle/dot-gradle /tmp/flutter-gradle/build /tmp/flutter-gradle/kotlin
   flutter build apk --debug --target-platform android-x64 -v ${target:+-t "$target"} >"$STATE/build.log" 2>&1 \
     || die "the Android build failed (full log: $STATE/build.log):
 $(gradle_error "$STATE/build.log")"
   echo "qa-android: built"
-  wait "$emu" || die "$(tail -40 "$STATE/emulator-prep.log")"
-  cat "$STATE/emulator-prep.log"
+  # The Gradle daemon and the emulator each take ~5G and together overrun the
+  # pod's memory, so they never run at once: `flutter run` installs this APK
+  # instead of calling Gradle again.
+  (cd android && ./gradlew --stop) >/dev/null 2>&1 || true
+  prepare_emulator
   : > "$STATE/app.log"
-  # `flutter run` rather than build + install: it streams the app's own output,
+  # `flutter run` rather than adb install: it streams the app's own output,
   # which is where a crash on startup shows up.
   setsid flutter run -d "$SERIAL" ${target:+-t "$target"} \
+    --use-application-binary build/app/outputs/flutter-apk/app-debug.apk \
     >>"$STATE/app.log" 2>&1 < /dev/null &
   echo $! > "$STATE/app.pid"
   echo "qa-android: installing and launching; tail $STATE/app.log"
