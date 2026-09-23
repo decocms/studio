@@ -65,6 +65,7 @@ image:
 #   tolerations        for an image that needs hardware the default pool lacks.
 #   resources          deep-merged over `resources` (and `mediumResources` for
 #                      the -medium template).
+#   volumeSizes        merged over `volumeSizes`.
 #   warmPoolSize /     its own SandboxWarmPools (requires warmPool.enabled).
 #   warmPoolMediumSize Default 0, which costs nothing: an empty pool is served
 #                      by a cold pod from the claim's own template.
@@ -80,6 +81,7 @@ image:
 # (terraform-eks-cluster: the `sandbox-android` NodePool) and request the KVM
 # device from the device plugin that runs there. The memory is the emulator's
 # 4Gi plus a Gradle build; the disk is its data partition plus Gradle's caches.
+# The AVD (6G data partition), ~/.gradle and the pub cache all live in `home`.
 imageVariants: {}
 # imageVariants:
 #   android:
@@ -98,8 +100,11 @@ imageVariants: {}
 #       limits:
 #         cpu: "4"
 #         memory: 12Gi
-#         ephemeral-storage: 30Gi
+#         ephemeral-storage: 40Gi
 #         decocms.com/kvm: "1"
+#     volumeSizes:
+#       home: 24Gi
+#       workdir: 8Gi
 #     warmPoolSize: 0
 #     warmPoolMediumSize: 0
 

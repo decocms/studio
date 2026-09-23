@@ -30,6 +30,7 @@
        pool lacks (android: /dev/kvm, only on nested-virtualization nodes). */}}
 {{- $variant := dict }}
 {{- if .imageVariant }}{{- $variant = index .Values.imageVariants .imageVariant }}{{- end }}
+{{- $volumeSizes := mergeOverwrite (deepCopy (.Values.volumeSizes | default dict)) ($variant.volumeSizes | default dict) }}
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
@@ -423,14 +424,14 @@ spec:
         # edit.
         - name: workdir
           emptyDir:
-            sizeLimit: {{ .Values.volumeSizes.workdir | default "4Gi" }}
+            sizeLimit: {{ $volumeSizes.workdir | default "4Gi" }}
         - name: tmp
           emptyDir:
-            sizeLimit: {{ .Values.volumeSizes.tmp | default "4Gi" }}
+            sizeLimit: {{ $volumeSizes.tmp | default "4Gi" }}
         {{- end }}
         - name: home
           emptyDir:
-            sizeLimit: {{ .Values.volumeSizes.home | default "5Gi" }}
+            sizeLimit: {{ $volumeSizes.home | default "5Gi" }}
         {{- if .Values.commitSigning.privateKey }}
         # 0440: root-owned by the kubelet, group-readable by fsGroup 1000. The
         # daemon copies it to a 0600 file of its own before git uses it.
