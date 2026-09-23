@@ -17,7 +17,6 @@ import {
   type SandboxClaim,
   type SandboxResource,
   waitForSandboxClaimGone,
-  waitForSandboxReady,
 } from "./client";
 
 // ---- Minimal KubeConfig stub -----------------------------------------------
@@ -78,30 +77,6 @@ function jsonResponse(status: number, body: unknown): Response {
     status,
     headers: { "content-type": "application/json" },
   });
-}
-
-/** Build a response whose body is a push-driven ND-JSON stream. */
-function ndJsonResponse(status: number): {
-  resp: Response;
-  push: (obj: unknown) => void;
-  close: () => void;
-} {
-  let controller!: ReadableStreamDefaultController<Uint8Array>;
-  const stream = new ReadableStream<Uint8Array>({
-    start: (c) => {
-      controller = c;
-    },
-  });
-  const encoder = new TextEncoder();
-  return {
-    resp: new Response(stream, {
-      status,
-      headers: { "content-type": "application/json" },
-    }),
-    push: (obj) =>
-      controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`)),
-    close: () => controller.close(),
-  };
 }
 
 // ---- Fixtures ---------------------------------------------------------------
@@ -526,131 +501,6 @@ describe("applyHttpRoute", () => {
       });
     await expect(applyHttpRoute(makeKc(), NS, route)).rejects.toThrow(
       /Failed to apply HTTPRoute: solar-vale/,
-    );
-  });
-});
-
-describe("waitForSandboxReady", () => {
-  it("resolves with sandboxName + podName once Ready=True is observed", async () => {
-    const stream = ndJsonResponse(200);
-    fetchImpl = async () => stream.resp;
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 60);
-    stream.push({
-      type: "MODIFIED",
-      object: {
-        metadata: {
-          name: "claim-xyz",
-          annotations: { [K8S_CONSTANTS.POD_NAME_ANNOTATION]: "pod-42" },
-        },
-        status: { conditions: [{ type: "Ready", status: "True" }] },
-      },
-    });
-    await expect(p).resolves.toEqual({
-      sandboxName: "claim-xyz",
-      podName: "pod-42",
-    });
-    const url = fetchCalls[0]!.url;
-    expect(url).toContain("?watch=true");
-    expect(url).toContain("fieldSelector=");
-  });
-
-  it("falls back to sandboxName when pod-name annotation is absent", async () => {
-    const stream = ndJsonResponse(200);
-    fetchImpl = async () => stream.resp;
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 60);
-    stream.push({
-      type: "MODIFIED",
-      object: {
-        metadata: { name: "claim-xyz" },
-        status: { conditions: [{ type: "Ready", status: "True" }] },
-      },
-    });
-    await expect(p).resolves.toEqual({
-      sandboxName: "claim-xyz",
-      podName: "claim-xyz",
-    });
-  });
-
-  it("ignores non-Ready conditions and keeps watching", async () => {
-    const stream = ndJsonResponse(200);
-    fetchImpl = async () => stream.resp;
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 60);
-    // Emit a non-Ready condition — should not settle.
-    stream.push({
-      type: "MODIFIED",
-      object: {
-        metadata: { name: "claim-xyz" },
-        status: { conditions: [{ type: "Progressing", status: "True" }] },
-      },
-    });
-    const sentinel = Symbol("still-pending");
-    const winner = await Promise.race([
-      p,
-      new Promise((r) => setTimeout(() => r(sentinel), 10)),
-    ]);
-    expect(winner).toBe(sentinel);
-
-    stream.push({
-      type: "MODIFIED",
-      object: {
-        metadata: { name: "claim-xyz" },
-        status: { conditions: [{ type: "Ready", status: "True" }] },
-      },
-    });
-    await expect(p).resolves.toEqual({
-      sandboxName: "claim-xyz",
-      podName: "claim-xyz",
-    });
-  });
-
-  it("rejects with SandboxTimeoutError after the deadline", async () => {
-    // Server accepts the connection but never emits — simulate a watch that
-    // just hangs. 0-second timeout fires on the next tick.
-    const stream = ndJsonResponse(200);
-    fetchImpl = async () => stream.resp;
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 0);
-    await expect(p).rejects.toThrow(/did not become ready within 0 seconds/);
-  });
-
-  it("rejects if the watch handshake itself fails", async () => {
-    fetchImpl = async () => {
-      throw new Error("kube-apiserver unreachable");
-    };
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 60);
-    await expect(p).rejects.toThrow(
-      /Failed to start watch for sandbox readiness/,
-    );
-  });
-
-  it("rejects when the Sandbox object has no metadata.name", async () => {
-    const stream = ndJsonResponse(200);
-    fetchImpl = async () => stream.resp;
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 60);
-    stream.push({
-      type: "MODIFIED",
-      object: {
-        // no metadata.name
-        status: { conditions: [{ type: "Ready", status: "True" }] },
-      },
-    });
-    await expect(p).rejects.toThrow(/Sandbox metadata or name is missing/);
-  });
-
-  it("rejects on ERROR frames from the watch stream", async () => {
-    const stream = ndJsonResponse(200);
-    fetchImpl = async () => stream.resp;
-    const p = waitForSandboxReady(makeKc(), NS, "claim-xyz", 60);
-    stream.push({
-      type: "ERROR",
-      object: {
-        kind: "Status",
-        status: "Failure",
-        reason: "Expired",
-        message: "watch channel expired",
-      },
-    });
-    await expect(p).rejects.toThrow(
-      /Watch stream error while waiting for sandbox: watch channel expired/,
     );
   });
 });

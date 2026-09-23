@@ -109,10 +109,9 @@ export interface SandboxResource {
     finalizers?: string[];
   };
   /**
-   * Present when this came back from `getSandboxClaim` (CRD has a spec);
-   * absent from Sandbox-kind resources because `waitForSandboxReady` only
-   * projects out metadata/status. `adopt()` reads `spec.env` to recover the
-   * per-claim DAEMON_TOKEN it originally injected.
+   * Present when this came back from `getSandboxClaim` (CRD has a spec).
+   * `adopt()` and `join()` read `spec.env` to recover the per-claim
+   * DAEMON_TOKEN it originally injected.
    */
   spec?: {
     sandboxTemplateRef?: { name?: string };
@@ -139,11 +138,6 @@ export interface SandboxResource {
     };
   };
 }
-
-type WatchEvent = {
-  type: "ADDED" | "MODIFIED" | "DELETED" | "BOOKMARK" | "ERROR";
-  object: SandboxResource | V1Status;
-};
 
 // ---- Transport --------------------------------------------------------------
 
@@ -953,145 +947,6 @@ export async function ensureServicePort(
       error,
     );
   }
-}
-
-export interface WaitForSandboxReadyResult {
-  sandboxName: string;
-  podName: string;
-}
-
-/**
- * Resolves on the first `Ready=True` condition on the Sandbox matching
- * `claimName`; rejects on stream error, missing name metadata, or timeout.
- * The watch is aborted exactly once via `settle()`; callers get deterministic
- * teardown regardless of which branch fires first.
- */
-export function waitForSandboxReady(
-  kc: KubeConfig,
-  namespace: string,
-  claimName: string,
-  timeoutSeconds = 180,
-): Promise<WaitForSandboxReadyResult> {
-  const path = `/apis/${K8S_CONSTANTS.SANDBOX_API_GROUP}/${K8S_CONSTANTS.SANDBOX_API_VERSION}/namespaces/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.SANDBOX_PLURAL}?watch=true&fieldSelector=${encodeURIComponent(`metadata.name=${claimName}`)}`;
-
-  const { resolve, reject, promise } =
-    Promise.withResolvers<WaitForSandboxReadyResult>();
-
-  const controller = new AbortController();
-  let settled = false;
-  const timeoutHandle = setTimeout(() => {
-    if (settled) return;
-    settled = true;
-    controller.abort();
-    reject(
-      new SandboxTimeoutError(
-        `Sandbox did not become ready within ${timeoutSeconds} seconds`,
-      ),
-    );
-  }, timeoutSeconds * 1000);
-
-  const settleWith = (fn: () => void) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timeoutHandle);
-    controller.abort();
-    fn();
-  };
-
-  (async () => {
-    let resp: Response;
-    try {
-      resp = await kubeFetch(kc, {
-        method: "GET",
-        path,
-        signal: controller.signal,
-        headers: { accept: "application/json" },
-        stream: true,
-      });
-    } catch (err) {
-      settleWith(() =>
-        reject(
-          new SandboxError("Failed to start watch for sandbox readiness", err),
-        ),
-      );
-      return;
-    }
-
-    if (!resp.ok || !resp.body) {
-      const body = await readStatusBody(resp).catch(() => null);
-      settleWith(() =>
-        reject(
-          new SandboxError(
-            `Watch handshake failed (${resp.status}): ${body?.message ?? resp.statusText}`,
-          ),
-        ),
-      );
-      return;
-    }
-
-    try {
-      for await (const event of readNdJson<WatchEvent>(resp.body)) {
-        if (settled) return;
-        // Bookmark/ERROR/DELETED are never a "ready" signal. ERROR carries a
-        // V1Status payload rather than a SandboxResource; treating it as a
-        // fatal stream error mirrors client-go's behaviour.
-        if (event.type === "ERROR") {
-          const status = event.object as V1Status;
-          settleWith(() =>
-            reject(
-              new SandboxError(
-                `Watch stream error while waiting for sandbox: ${status.message ?? "unknown"}`,
-              ),
-            ),
-          );
-          return;
-        }
-        if (event.type !== "ADDED" && event.type !== "MODIFIED") continue;
-
-        const sandbox = event.object as SandboxResource;
-        const ready = sandbox.status?.conditions?.find(
-          (c) => c.type === "Ready" && c.status === "True",
-        );
-        if (!ready) continue;
-
-        const sandboxName = sandbox.metadata?.name;
-        if (!sandboxName) {
-          settleWith(() =>
-            reject(new SandboxError("Sandbox metadata or name is missing")),
-          );
-          return;
-        }
-        const podName =
-          sandbox.metadata?.annotations?.[K8S_CONSTANTS.POD_NAME_ANNOTATION] ??
-          sandboxName;
-        settleWith(() => resolve({ sandboxName, podName }));
-        return;
-      }
-      // Stream ended before Ready observed — treat as transient failure so the
-      // caller can retry rather than wait out the timeout.
-      settleWith(() =>
-        reject(
-          new SandboxError("Watch stream closed before sandbox became ready"),
-        ),
-      );
-    } catch (err) {
-      if (settled) return;
-      // AbortError during in-flight stream is the timeout path above; don't
-      // double-reject.
-      if (
-        err instanceof Error &&
-        (err.name === "AbortError" || controller.signal.aborted)
-      )
-        return;
-      settleWith(() =>
-        reject(
-          new SandboxError("Watch stream error while waiting for sandbox", err),
-        ),
-      );
-    }
-  })();
-
-  return promise;
 }
 
 /**

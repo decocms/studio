@@ -39,7 +39,7 @@
 
 import { type KubeConfig } from "@kubernetes/client-node";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
-import { K8S_CONSTANTS } from "./constants";
+import { K8S_CONSTANTS, SandboxError, SandboxTimeoutError } from "./constants";
 import { kubeFetch, readNdJson } from "./client";
 import type { SandboxResource } from "./client";
 import type { ClaimPhase } from "./lifecycle-types";
@@ -307,6 +307,46 @@ export async function* watchClaimLifecycle(
     // are logged inside the watches.
     await watches.catch(() => {});
   }
+}
+
+/**
+ * A claim whose phase has not moved for this long is stuck. It bounds the wait
+ * on progress instead of on elapsed time: a cold start onto a new node that
+ * then pulls a multi-GB image (the Android variant: 53s + 3m08s in prod) keeps
+ * advancing the whole way, and cutting it off only restarts it elsewhere.
+ */
+const DEFAULT_STALL_MS = 10 * 60 * 1000;
+
+/**
+ * Resolves when the claim is Ready. Rejects on a terminal `failed` phase, or
+ * when no new phase arrives within `stallMs`.
+ */
+export async function waitForClaimReady(
+  watch: (signal: AbortSignal) => AsyncIterable<ClaimPhase>,
+  stallMs = DEFAULT_STALL_MS,
+): Promise<void> {
+  const controller = new AbortController();
+  let current: ClaimPhase["kind"] = "claiming";
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), stallMs);
+  };
+  try {
+    arm();
+    for await (const phase of watch(controller.signal)) {
+      if (phase.kind === "ready") return;
+      if (phase.kind === "failed") throw new SandboxError(phase.message);
+      current = phase.kind;
+      arm();
+    }
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+  throw new SandboxTimeoutError(
+    `Sandbox did not become ready: no progress for ${Math.round(stallMs / 1000)}s while ${current}`,
+  );
 }
 
 // ---- Phase reducer ----------------------------------------------------------

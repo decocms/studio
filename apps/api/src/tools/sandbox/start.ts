@@ -732,8 +732,8 @@ async function provisionSandbox(params: StartParams): Promise<{
   }
 
   // Ask before claiming: a sandbox the cluster cannot place sits `Pending`
-  // (`FailedScheduling: Insufficient memory`) until the 180s readiness timeout
-  // fails the run. On a node with room for 4, an 8-card auto-fix produced 4
+  // (`FailedScheduling: Insufficient memory`) until the readiness wait's
+  // scheduling timeout fails the run. On a node with room for 4, an 8-card auto-fix produced 4
   // failures that way, and each retry re-entered the same full node. Waiting
   // here turns over-admission into a queue. Bounded well under the readiness
   // timeout this call already tolerates, so it adds no new liveness risk; past
@@ -932,12 +932,9 @@ async function persistDetectedRuntime(
   });
 }
 
-/** How long `ensureSandbox` waits for the cluster to have room. Deliberately
- *  under `waitForSandboxReady`'s own 180s: this call's callers already tolerate
- *  that much, so staying inside it means the wait can't trip a liveness window
- *  that the readiness wait wouldn't have tripped anyway. A cluster still full
- *  after this needs nodes, not patience — the run fails and the task-board
- *  retry re-dispatches it with backoff. */
+/** How long `ensureSandbox` waits for the cluster to have room. A cluster
+ *  still full after this needs nodes, not patience — the run fails and the
+ *  task-board retry re-dispatches it with backoff. */
 const CAPACITY_WAIT_MS = 150_000;
 /** Re-ask this often. The provider caches its answer (3s), so this is the poll
  *  rate that matters. */

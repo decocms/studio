@@ -11,12 +11,6 @@ export const K8S_CONSTANTS = {
   CLAIM_PLURAL: "sandboxclaims",
   TEMPLATE_PLURAL: "sandboxtemplates",
 
-  SANDBOX_API_GROUP: "agents.x-k8s.io",
-  SANDBOX_API_VERSION: "v1alpha1",
-  SANDBOX_PLURAL: "sandboxes",
-
-  POD_NAME_ANNOTATION: "agents.x-k8s.io/pod-name",
-
   /** The agent container in every sandbox pod; siblings are the org-fs sidecar and init containers. */
   MAIN_CONTAINER_NAME: "sandbox",
 } as const;

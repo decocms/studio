@@ -83,7 +83,6 @@ import {
   patchSandboxClaimShutdown,
   waitForClaimAdoptedSandbox,
   waitForSandboxClaimGone,
-  waitForSandboxReady,
   type HttpRoute,
   type SandboxClaim,
   type SandboxResource,
@@ -93,7 +92,11 @@ import {
   SandboxAlreadyExistsError,
   SandboxError,
 } from "./constants";
-import { watchClaimDeletions, watchClaimLifecycle } from "./lifecycle-watcher";
+import {
+  waitForClaimReady,
+  watchClaimDeletions,
+  watchClaimLifecycle,
+} from "./lifecycle-watcher";
 import {
   claimWarmPoolName,
   resolveClaimTemplateName,
@@ -705,7 +708,7 @@ export class AgentSandboxProvider {
    * answer is "nothing is currently unschedulable", read from the scheduler's
    * own verdict rather than forecast from node capacity. The admission gate
    * parks on `false` instead of claiming a sandbox that would sit `Pending`
-   * until the 180s readiness timeout fails the run.
+   * until the readiness wait's scheduling timeout fails the run.
    */
   hasSchedulableCapacity(): Promise<boolean> {
     this.capacityProbe ??= createCapacityProbe(this.kubeConfig, this.namespace);
@@ -1168,6 +1171,40 @@ export class AgentSandboxProvider {
             `[${LOG_LABEL}] wait for terminating claim ${handle} failed: ${err instanceof Error ? err.message : String(err)}`,
           );
         });
+      } else if (!isSandboxReady(existing)) {
+        // Left mid-start by an ensure that never finished — a Studio restart
+        // releases the lock with it. Deleting it would restart the node launch
+        // and image pull elsewhere, so finish binding it. `bind` deletes it if
+        // it turns out to be stuck, and it is provisioned fresh below.
+        const joined = await this.join(id, handle, opts, existing).catch(
+          (err) => {
+            console.warn(
+              `[${LOG_LABEL}] join of starting claim ${handle} failed, recreating: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return null;
+          },
+        );
+        if (joined) {
+          return this.finish(
+            joined,
+            ops,
+            /* persistNow */ true,
+            /* patchTtl */ true,
+            "adopt",
+          );
+        }
+        await deleteSandboxClaim(this.kubeConfig, this.namespace, handle).catch(
+          () => {},
+        );
+        await waitForSandboxClaimGone(
+          this.kubeConfig,
+          this.namespace,
+          handle,
+        ).catch((err) => {
+          console.warn(
+            `[${LOG_LABEL}] wait for deleted claim ${handle} failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
       } else {
         const adopted = await this.adopt(id, handle, existing).catch((err) => {
           console.warn(
@@ -1395,19 +1432,7 @@ export class AgentSandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
-    // Resolved BEFORE the template, because a tenant-pool claim must name the
-    // template that pool's pods were built from — the operator binds warm pods
-    // by template hash and a mismatch silently yields a cold pod.
-    // Tenant pools are built from the DEFAULT image's template, so a repo
-    // that asked for another image cannot be served from one: the pod would
-    // be pre-warmed with the wrong toolchain. Such a claim starts cold.
-    const pool =
-      !opts.sandboxImage || opts.sandboxImage === "default"
-        ? resolveTenantPool(this.tenantPools, {
-            orgId: opts.tenant?.orgId,
-            cloneUrl: opts.repo?.cloneUrl,
-          })
-        : null;
+    const pool = this.claimTenantPool(opts);
     const claim = this.buildClaim(
       handle,
       opts,
@@ -1432,10 +1457,49 @@ export class AgentSandboxProvider {
         throw err;
       }
     }
+    return this.bind(id, handle, opts, pool, { token, daemonBootId, workdir });
+  }
+
+  /**
+   * Resolved BEFORE the template, because a tenant-pool claim must name the
+   * template that pool's pods were built from — the operator binds warm pods
+   * by template hash and a mismatch silently yields a cold pod.
+   * Tenant pools are built from the DEFAULT image's template, so a repo
+   * that asked for another image cannot be served from one: the pod would
+   * be pre-warmed with the wrong toolchain. Such a claim starts cold.
+   */
+  private claimTenantPool(opts: EnsureOptions): TenantPool | null {
+    return !opts.sandboxImage || opts.sandboxImage === "default"
+      ? resolveTenantPool(this.tenantPools, {
+          orgId: opts.tenant?.orgId,
+          cloneUrl: opts.repo?.cloneUrl,
+        })
+      : null;
+  }
+
+  /**
+   * Waits for an existing claim to come up, then routes, forwards and
+   * configures its daemon. Deletes the claim if any of that fails.
+   */
+  private async bind(
+    id: SandboxId,
+    handle: string,
+    opts: EnsureOptions,
+    pool: TenantPool | null,
+    {
+      token,
+      daemonBootId,
+      workdir,
+    }: {
+      token: string;
+      daemonBootId: string;
+      workdir: string;
+    },
+  ): Promise<K8sRecord> {
     // Two-step bind resolution. The operator's reconciler picks an adopted
     // Sandbox first (warm-pool pod or, on cold-start, a freshly-rendered
     // one) and writes its name into `claim.status.sandbox.name`. We wait
-    // for that field, then watch the named Sandbox for Ready.
+    // for that field, then for the claim's own Ready condition.
     //
     // Cold-only would let us watch by `metadata.name=<handle>` directly
     // (operator names cold Sandboxes after the claim), but warm-pool
@@ -1448,16 +1512,13 @@ export class AgentSandboxProvider {
     // workload). `claim.status.sandbox.name` is the only signal that
     // points at the right one across both shapes.
     //
-    // Either bind step can time out — `waitForClaimAdoptedSandbox` if the
-    // operator never writes status.sandbox.name (controller crashed,
-    // overloaded warm pool exhaustion, etc.), `waitForSandboxReady` if
-    // the bound pod never reaches Ready (image pull stall, scheduling
-    // failure, kubelet pressure). On either failure we have to delete
-    // the orphan claim — leaving it would leak a pod and, worse, the
-    // caller's next `ensure()` would adopt-or-recreate against a stuck
-    // half-bound claim. Probe results: 3 concurrent ensure() against a
-    // size-1 warm pool tripped the 180s readiness timeout on one claim
-    // under kind resource pressure, leaving the SandboxClaim behind.
+    // Either step can fail: `waitForClaimAdoptedSandbox` if the operator
+    // never writes status.sandbox.name, `waitForClaimReady` if the pod reports
+    // a terminal failure (image pull, crash loop, unschedulable) or stops
+    // making progress. Elapsed time alone never fails a claim that is still
+    // starting — deleting one that is mid-pull only restarts it on another
+    // node. A stuck claim IS deleted: leaving it would leak a pod, and the
+    // caller's next `ensure()` would adopt-or-recreate against it.
     let adoptedSandboxName: string;
     try {
       adoptedSandboxName = await waitForClaimAdoptedSandbox(
@@ -1465,10 +1526,8 @@ export class AgentSandboxProvider {
         this.namespace,
         handle,
       );
-      await waitForSandboxReady(
-        this.kubeConfig,
-        this.namespace,
-        adoptedSandboxName,
+      await waitForClaimReady((signal) =>
+        this.watchClaimLifecycle(handle, signal),
       );
     } catch (err) {
       await deleteSandboxClaim(this.kubeConfig, this.namespace, handle).catch(
@@ -2305,6 +2364,34 @@ export class AgentSandboxProvider {
     };
   }
 
+  /**
+   * Binds a claim another ensure created but never finished. A warm-pool pod
+   * still holds the sentinel until bind rotates it, so a fresh token works; a
+   * cold pod's daemon accepts only the token and boot id in the claim's env.
+   */
+  private join(
+    id: SandboxId,
+    handle: string,
+    opts: EnsureOptions,
+    claim: SandboxResource,
+  ): Promise<K8sRecord> {
+    const warm = this.sentinelToken !== null;
+    const token = warm
+      ? this.tokenGenerator()
+      : readClaimEnv(claim, "DAEMON_TOKEN");
+    const daemonBootId = warm
+      ? randomUUID()
+      : readClaimEnv(claim, "DAEMON_BOOT_ID");
+    if (!token || !daemonBootId) {
+      throw new SandboxError(`claim ${handle} carries no daemon token`);
+    }
+    return this.bind(id, handle, opts, this.claimTenantPool(opts), {
+      token,
+      daemonBootId,
+      workdir: DEFAULT_WORKDIR,
+    });
+  }
+
   private async adopt(
     id: SandboxId,
     handle: string,
@@ -2319,7 +2406,7 @@ export class AgentSandboxProvider {
     // to delete + reprovision; the pool releases the pod, the operator
     // allocates a fresh one, and studio rotates a new token onto it.
     if (this.sentinelToken !== null) return null;
-    const token = readClaimDaemonToken(claim);
+    const token = readClaimEnv(claim, "DAEMON_TOKEN");
     if (!token) return null;
 
     const live = await this.openAndProbeDaemon(adoptedSandboxName, handle);
@@ -2892,11 +2979,11 @@ function isSandboxReady(resource: SandboxResource): boolean {
   );
 }
 
-function readClaimDaemonToken(claim: SandboxResource): string | null {
+function readClaimEnv(claim: SandboxResource, name: string): string | null {
   const env = claim.spec?.env;
   if (!env) return null;
   for (const entry of env) {
-    if (entry.name === "DAEMON_TOKEN" && entry.value) return entry.value;
+    if (entry.name === name && entry.value) return entry.value;
   }
   return null;
 }

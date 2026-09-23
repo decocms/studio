@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { derivePhase } from "./lifecycle-watcher";
+import { derivePhase, waitForClaimReady } from "./lifecycle-watcher";
 import type { ClaimPhase } from "./lifecycle-types";
 
 type State = Parameters<typeof derivePhase>[0];
@@ -268,5 +268,52 @@ describe("watchClaimLifecycle progression (sequenced by reducer)", () => {
       "warming-daemon",
       "ready",
     ]);
+  });
+});
+
+describe("waitForClaimReady", () => {
+  // Yields each phase after `gapMs`, then hangs until aborted — the watcher
+  // only ends on a terminal phase or abort.
+  const phases = (gapMs: number, ...seq: ClaimPhase[]) =>
+    async function* (signal: AbortSignal) {
+      for (const phase of seq) {
+        await Bun.sleep(gapMs);
+        if (signal.aborted) return;
+        yield phase;
+      }
+      await new Promise((r) => signal.addEventListener("abort", r));
+    };
+
+  it("waits past the stall budget as long as phases keep arriving", async () => {
+    await waitForClaimReady(
+      phases(
+        30,
+        { kind: "waiting-for-capacity", since: 0 },
+        { kind: "pulling-image", since: 0 },
+        { kind: "starting-container", since: 0 },
+        { kind: "warming-daemon", since: 0 },
+        { kind: "ready" },
+      ),
+      50,
+    );
+  });
+
+  it("fails when the phase stops moving", async () => {
+    await expect(
+      waitForClaimReady(phases(5, { kind: "pulling-image", since: 0 }), 50),
+    ).rejects.toThrow(/no progress for .* while pulling-image/);
+  });
+
+  it("fails right away on a terminal failure", async () => {
+    await expect(
+      waitForClaimReady(
+        phases(5, {
+          kind: "failed",
+          reason: "image-pull-backoff",
+          message: "image failed to download",
+        }),
+        10_000,
+      ),
+    ).rejects.toThrow("image failed to download");
   });
 });
