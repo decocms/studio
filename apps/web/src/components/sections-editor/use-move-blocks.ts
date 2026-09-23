@@ -6,6 +6,7 @@ import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
   decofileWriteMutationKey,
+  decofileWriteScope,
   patchDecofile,
   setDecofileDraft,
   throwResponseError,
@@ -56,6 +57,7 @@ export function useMoveBlocks({
 
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
+    scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ writes, deletes }: BlockMove) => {
       if (fastPreviewActive) {
         // One PATCH, one commit — the server applies set and delete together.

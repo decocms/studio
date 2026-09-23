@@ -9,6 +9,7 @@ import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
   decofileWriteMutationKey,
+  decofileWriteScope,
   patchDecofile,
   setDecofileDraft,
   throwResponseError,
@@ -56,9 +57,7 @@ export function useSaveBlock({
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     // Serialize a branch's writes so overlapping autosaves can't land an older payload last, dropping a newer edit.
-    scope: {
-      id: decofileWriteMutationKey(orgSlug, virtualMcpId, branch).join(":"),
-    },
+    scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({
       blockKey,
       data,

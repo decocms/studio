@@ -6,6 +6,7 @@ import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
   decofileWriteMutationKey,
+  decofileWriteScope,
   patchDecofile,
   setDecofileDraft,
   throwResponseError,
@@ -40,6 +41,7 @@ export function useDeleteBlock({
 
   return useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
+    scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
     mutationFn: async ({ blockKey }: { blockKey: string }) => {
       if (fastPreviewActive) {
         const draft = await patchDecofile(

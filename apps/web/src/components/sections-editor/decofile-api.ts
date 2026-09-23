@@ -57,6 +57,23 @@ export function decofileWriteMutationKey(
   return ["decofile-write", orgSlug, virtualMcpId, branch] as const;
 }
 
+/**
+ * Serialization scope for those writes. TanStack runs mutations sharing a
+ * `scope.id` one at a time; `mutationKey` alone only identifies them. Every
+ * hook that WRITES the decofile must pass this, or it races the others — an
+ * autosave landing after a delete resurrects the block that was just removed.
+ * Observers (`useIsMutating`) need the key only.
+ */
+export function decofileWriteScope(
+  orgSlug: string,
+  virtualMcpId: string,
+  branch: string,
+) {
+  return {
+    id: decofileWriteMutationKey(orgSlug, virtualMcpId, branch).join(":"),
+  };
+}
+
 function decofileApiUrl(params: DecofileScopeParams): string {
   return `/api/${params.orgSlug}/decofile/${encodeURIComponent(params.virtualMcpId)}/${encodeURIComponent(params.branch)}`;
 }
