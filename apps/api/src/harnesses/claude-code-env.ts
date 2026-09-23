@@ -59,12 +59,12 @@ const CLAUDE_CODE_MODEL: Record<
   Record<ClaudeCodeModelClass, string>
 > = {
   anthropic: {
-    default: "claude-opus-5",
+    default: "claude-opus-5-5",
     reviewer: "claude-sonnet-5",
     conflict: "claude-sonnet-5",
   },
   openrouter: {
-    default: "anthropic/claude-opus-5",
+    default: "anthropic/claude-opus-5.5",
     reviewer: "anthropic/claude-sonnet-5",
     conflict: "anthropic/claude-sonnet-5",
   },

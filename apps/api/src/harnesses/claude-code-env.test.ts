@@ -19,7 +19,7 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId: "anthropic", apiKey: "sk-a" }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "claude-opus-5",
+      CLAUDE_CODE_MODEL: "claude-opus-5-5",
       ANTHROPIC_API_KEY: "sk-a",
       ANTHROPIC_AUTH_TOKEN: null,
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -42,7 +42,7 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
+      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5.5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "or-1",
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -79,7 +79,7 @@ describe("claudeCodeEnvFromCredential", () => {
       claudeCodeEnvFromCredential({ providerId: "deco", apiKey: "deco-1" }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5",
+      CLAUDE_CODE_MODEL: "anthropic/claude-opus-5.5",
       ANTHROPIC_API_KEY: "",
       ANTHROPIC_AUTH_TOKEN: "deco-1",
       CLAUDE_CODE_OAUTH_TOKEN: null,
@@ -95,7 +95,7 @@ describe("claudeCodeEnvFromCredential", () => {
       }),
     ).toEqual({
       ...BUDGET,
-      CLAUDE_CODE_MODEL: "claude-opus-5",
+      CLAUDE_CODE_MODEL: "claude-opus-5-5",
       CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-1",
       // Both cleared: either one left behind outranks the OAuth token and the
       // run would silently bill the org's API credit instead of the plan.
@@ -211,7 +211,7 @@ describe("claudeCodeEnvFromCredential", () => {
     expect(
       claudeCodeEnvFromCredential({ providerId: "openrouter", apiKey: "or-1" })
         .CLAUDE_CODE_MODEL,
-    ).toBe("anthropic/claude-opus-5");
+    ).toBe("anthropic/claude-opus-5.5");
   });
 
   test("modelClassFromMetadata only trusts the exact class values", () => {
