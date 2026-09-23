@@ -15,7 +15,7 @@ import { useTaskBoardAdminOrgs } from "@/hooks/use-task-board-analytics";
 import { useT } from "@/i18n/use-t";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Combobox } from "@decocms/ui/components/combobox.tsx";
-import { BarChartSquare02 } from "@untitledui/icons";
+import { BarChartSquare02, MessageChatSquare } from "@untitledui/icons";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useBoardOrgSlug } from "./board-org";
 
@@ -71,6 +71,12 @@ export function TaskBoardAdminControls() {
         <Link to="/$org/taskboard-analytics" params={{ org: pathOrg }}>
           <BarChartSquare02 size={16} />
           {t("taskBoard.analytics.openAnalytics")}
+        </Link>
+      </Button>
+      <Button size="sm" variant="outline" asChild>
+        <Link to="/$org/thread-analytics" params={{ org: pathOrg }}>
+          <MessageChatSquare size={16} />
+          {t("thread.analytics.open")}
         </Link>
       </Button>
     </>

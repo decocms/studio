@@ -304,6 +304,10 @@ const ALL_TOOL_NAMES = [
   "TASK_BOARD_QUALITY",
   "TASK_BOARD_ERRORS",
   "TASK_BOARD_TENANTS",
+  "THREAD_ANALYTICS_ORG_LIST",
+  "THREAD_ANALYTICS_LIVE",
+  "THREAD_ANALYTICS_USAGE",
+  "THREAD_ANALYTICS_ERRORS",
   "TASK_ADD_REPO",
   "NOTIFICATION_LIST",
   "NOTIFICATION_MARK_READ",
@@ -1487,6 +1491,30 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Task Board",
   },
   {
+    name: "THREAD_ANALYTICS_ORG_LIST",
+    description:
+      "Whether the caller may read every org's threads, and the orgs that have any",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_ANALYTICS_LIVE",
+    description:
+      "Recently active threads across orgs with status, owner and spend (admin orgs)",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_ANALYTICS_USAGE",
+    description:
+      "Token and USD usage by org, user, agent and kind; top spenders (admin orgs)",
+    category: "Threads",
+  },
+  {
+    name: "THREAD_ANALYTICS_ERRORS",
+    description:
+      "Failed threads, error feed and error signatures across orgs (admin orgs)",
+    category: "Threads",
+  },
+  {
     name: "TASK_ADD_REPO",
     description:
       "Clone an organization repository into the sandbox of the task run calling it",
@@ -1640,6 +1668,10 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "TASK_BOARD_QUALITY",
       "TASK_BOARD_ERRORS",
       "TASK_BOARD_TENANTS",
+      "THREAD_ANALYTICS_ORG_LIST",
+      "THREAD_ANALYTICS_LIVE",
+      "THREAD_ANALYTICS_USAGE",
+      "THREAD_ANALYTICS_ERRORS",
       "NOTIFICATION_LIST",
       "NOTIFICATION_MARK_READ",
       "NOTIFICATION_SUBSCRIPTION_SET",

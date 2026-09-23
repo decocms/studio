@@ -814,6 +814,24 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
         .filter(Boolean)
     : null;
 
+  // `?scope=all`: every org's events, for admin-org members only.
+  const allOrgs = c.req.query("scope") === "all";
+  if (
+    allOrgs &&
+    (!isAdminOrgId(orgId) || !(await isTaskBoardAdminCtx(studioContext)))
+  ) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const listenerKey = allOrgs ? ALL_ORGS : orgId;
+  if (allOrgs) {
+    auditTaskBoardAdminAction({
+      action: "watch_all_orgs",
+      actorUserId: userId,
+      actorOrgId: orgId,
+      targetOrgId: "all",
+    });
+  }
+
   const listenerId = crypto.randomUUID();
 
   return streamSSE(c, async (stream) => {
@@ -831,20 +849,22 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // Register listener with the SSE hub
     const registered = sseHub.add({
       id: listenerId,
-      organizationId: orgId,
+      organizationId: listenerKey,
       typePatterns: typePatterns?.length ? typePatterns : null,
-      push: (event: SSEEvent) => {
+      push: (event: SSEEvent, eventOrgId: string) => {
         // Write to the SSE stream — fire-and-forget
         stream
           .writeSSE({
             id: event.id,
             event: event.type,
-            data: JSON.stringify(event),
+            data: JSON.stringify(
+              allOrgs ? { ...event, organizationId: eventOrgId } : event,
+            ),
           })
           .catch(() => {
             // Stream broken — remove immediately so no further events are
             // attempted. onAbort handles interval cleanup.
-            sseHub.remove(orgId, listenerId);
+            sseHub.remove(listenerKey, listenerId);
           });
       },
     });
@@ -871,7 +891,7 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     await new Promise<void>((resolve) => {
       stream.onAbort(() => {
         clearInterval(keepaliveInterval);
-        sseHub.remove(orgId, listenerId);
+        sseHub.remove(listenerKey, listenerId);
         resolve();
       });
     });
@@ -894,7 +914,12 @@ import {
 import { Env } from "./hono-env";
 import { devLogger } from "./utils/dev-logger";
 import { streamSSE } from "hono/streaming";
-import { type SSEEvent, sseHub } from "../event-bus";
+import { ALL_ORGS, type SSEEvent, sseHub } from "../event-bus";
+import {
+  auditTaskBoardAdminAction,
+  isAdminOrgId,
+  isTaskBoardAdminCtx,
+} from "@/core/task-board-admin";
 import {
   BACKGROUND_TOOLS_PARTITION_CONCURRENCY,
   BACKGROUND_TOOLS_QUEUE,

@@ -73,6 +73,16 @@ export const KEYS = {
     to: string,
   ) => [locator, "task-board-analytics", tool, org, from, to] as const,
 
+  // Admin thread analytics; `tick` bumps on each pushed thread status change.
+  threadAnalyticsOrgs: (pathOrgSlug: string) =>
+    [pathOrgSlug, "thread-analytics-orgs"] as const,
+  threadAnalytics: (
+    pathOrgSlug: string,
+    tool: string,
+    params: object,
+    tick: number,
+  ) => [pathOrgSlug, "thread-analytics", tool, params, tick] as const,
+
   // The current user's unread notifications in this org
   notifications: (locator: ProjectLocator) =>
     [locator, "notifications"] as const,

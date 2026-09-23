@@ -1040,6 +1040,21 @@ const taskBoardAnalyticsRoute = createRoute({
   ),
 });
 
+/** Every org's chats and automations, live, with usage and errors. Admin orgs only. */
+const threadAnalyticsRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => threadSessionRoute,
+  path: "/thread-analytics",
+  staticData: {
+    defaultMain: "board",
+    mainView: "board",
+  },
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/thread-analytics.tsx"),
+  ),
+});
+
 /** The org's Reports report. Org-wide, so no project segment. */
 const reportsRoute = createRoute({
   pendingComponent: ChatLayoutPending,
@@ -1525,6 +1540,7 @@ const threadSessionWithChildren = threadSessionRoute.addChildren([
   legacyAgentsDeepRoute,
   tasksRoute,
   taskBoardAnalyticsRoute,
+  threadAnalyticsRoute,
   reportsRoute,
   libraryRoute,
   discoverRoute,

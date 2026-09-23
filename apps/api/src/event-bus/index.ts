@@ -16,7 +16,7 @@ import type { NatsConnectionProvider } from "../nats/connection";
 import { NatsSSEBroadcast } from "./nats-sse-broadcast";
 import { sseHub } from "./sse-hub";
 
-export { sseHub, type SSEEvent } from "./sse-hub";
+export { ALL_ORGS, sseHub, type SSEEvent } from "./sse-hub";
 
 async function startWithRetry(
   label: string,

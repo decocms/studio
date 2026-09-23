@@ -47,11 +47,11 @@ export interface AnalyticsQuery {
 }
 
 /** Grafana's `${org:sqlstring}`. `null` is the "All" selection. */
-const orgIn = (orgIds: string[] | null, col: string) =>
+export const orgIn = (orgIds: string[] | null, col: string) =>
   orgIds === null ? sql`true` : sql`${sql.raw(col)} = any(${orgIds}::text[])`;
 
 /** Grafana's `$__timeFilter(col)`. */
-const inRange = (col: string, q: AnalyticsQuery) =>
+export const inRange = (col: string, q: AnalyticsQuery) =>
   sql`${sql.raw(col)} between ${q.from}::timestamptz and ${q.to}::timestamptz`;
 
 /**
@@ -121,10 +121,10 @@ const reworkCte = sql`
 `;
 
 /** pg hands back numeric and bigint as strings. */
-const num = (v: unknown): number | null =>
+export const num = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v);
 
-const iso = (v: unknown): string =>
+export const iso = (v: unknown): string =>
   v instanceof Date ? v.toISOString() : String(v ?? "");
 
 const cell = (v: unknown): string | number | null => {
@@ -138,9 +138,9 @@ const cell = (v: unknown): string | number | null => {
   return String(v);
 };
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 
-const table = (
+export const table = (
   title: string,
   columns: string[],
   rows: Row[],

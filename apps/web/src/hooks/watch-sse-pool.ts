@@ -4,7 +4,7 @@
  * `filterEventTypes` view of its own.
  */
 
-import { ALL_DECOPILOT_EVENT_TYPES } from "@/sdk";
+import { ALL_DECOPILOT_EVENT_TYPES, DECOPILOT_EVENTS } from "@/sdk";
 import {
   TASK_BOARD_ITEM_DELETED_EVENT,
   TASK_BOARD_ITEM_PRS_UPDATED_EVENT,
@@ -69,3 +69,18 @@ export const notificationWatchView: SSESubscription = filterEventTypes(
   watchSSE,
   [NOTIFICATION_CREATED_EVENT],
 );
+
+/**
+ * Every org's thread status changes — the admin threads view. Its own
+ * connection (`?scope=all`), not a view of the shared one: the server only
+ * grants it inside an admin org, and it must not widen every other consumer.
+ */
+export const allOrgsThreadStatusWatch: SSESubscription = createSSESubscription({
+  buildUrl: (orgSlug) =>
+    `/api/${encodeURIComponent(orgSlug)}/watch?scope=all&types=${DECOPILOT_EVENTS.THREAD_STATUS}`,
+  eventTypes: [DECOPILOT_EVENTS.THREAD_STATUS],
+});
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => allOrgsThreadStatusWatch.dispose());
+}

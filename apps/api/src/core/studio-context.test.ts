@@ -46,6 +46,7 @@ const createMockContext = (
     columnAutomations: null as never,
     taskBoardPrompts: null as never,
     taskBoardAnalytics: null as never,
+    threadAnalytics: null as never,
     notifications: null as never,
     orgFsEntries: null as never,
     oauthPkceStates: null as never,

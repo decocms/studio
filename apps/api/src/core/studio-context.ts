@@ -325,6 +325,7 @@ import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import { ColumnAutomationStorage } from "@/storage/task-board-column-automations";
 import { TaskBoardPromptStorage } from "@/storage/task-board-prompts";
 import type { TaskBoardAnalyticsStorage } from "@/storage/task-board-analytics";
+import type { ThreadAnalyticsStorage } from "@/storage/thread-analytics";
 import type { TaskBoardStorage } from "@/storage/task-board";
 import type { NotificationStorage } from "@/storage/notifications";
 import type { OrgFsEntryStorage } from "@/storage/org-fs";
@@ -379,6 +380,7 @@ export interface StudioStorage {
   columnAutomations: ColumnAutomationStorage;
   taskBoardPrompts: TaskBoardPromptStorage;
   taskBoardAnalytics: TaskBoardAnalyticsStorage;
+  threadAnalytics: ThreadAnalyticsStorage;
   notifications: NotificationStorage;
   orgFsEntries: OrgFsEntryStorage;
   oauthPkceStates: OAuthPkceStateStorage;

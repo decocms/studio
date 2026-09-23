@@ -41,8 +41,15 @@ export interface SSEListener {
   /** Optional event type patterns to filter (supports wildcard suffix, e.g. "workflow.*") */
   typePatterns: string[] | null;
   /** Callback to push an event to the SSE stream */
-  push: (event: SSEEvent) => void;
+  push: (event: SSEEvent, organizationId: string) => void;
 }
+
+/**
+ * Listener key that receives every org's events — the admin threads view.
+ * Every pod already gets every org's events over NATS, so this is one extra
+ * map lookup per event, not extra traffic. Org ids are never `*`.
+ */
+export const ALL_ORGS = "*";
 
 export interface SSEEvent {
   id: string;
@@ -191,7 +198,12 @@ class SSEHub {
    * This is the actual fan-out to HTTP streams on this process.
    */
   private localEmit(organizationId: string, event: SSEEvent): void {
-    const orgListeners = this.listeners.get(organizationId);
+    this.deliver(organizationId, organizationId, event);
+    this.deliver(ALL_ORGS, organizationId, event);
+  }
+
+  private deliver(key: string, organizationId: string, event: SSEEvent): void {
+    const orgListeners = this.listeners.get(key);
     if (!orgListeners || orgListeners.size === 0) return;
 
     for (const listener of orgListeners.values()) {
@@ -203,9 +215,9 @@ class SSEHub {
       }
 
       try {
-        listener.push(event);
+        listener.push(event, organizationId);
       } catch {
-        this.remove(organizationId, listener.id);
+        this.remove(key, listener.id);
       }
     }
   }

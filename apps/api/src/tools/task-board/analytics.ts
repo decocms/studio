@@ -174,7 +174,7 @@ function summarize(result: AnalyticsOutput): string {
     .join(" — ");
 }
 
-function defineAnalyticsTool<TName extends string>(
+export function defineAnalyticsTool<TName extends string>(
   name: TName,
   title: string,
   description: string,

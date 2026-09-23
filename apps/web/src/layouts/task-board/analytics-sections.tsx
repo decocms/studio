@@ -158,11 +158,21 @@ function SeriesCard({
   );
 }
 
+/** `/$org/$taskId` is the forever-supported way into any org's thread. */
+export function threadHref(org: string, threadId: string): string {
+  return `/${encodeURIComponent(org)}/${encodeURIComponent(threadId)}`;
+}
+
 function TableCard({
   section,
+  threadLinks,
 }: {
   section: Extract<AnalyticsSection, { kind: "table" }>;
+  threadLinks?: boolean;
 }) {
+  const orgCol = section.columns.indexOf("Org");
+  const threadCol =
+    threadLinks && orgCol >= 0 ? section.columns.indexOf("Thread") : -1;
   if (section.rows.length === 0) {
     return (
       <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
@@ -190,7 +200,20 @@ function TableCard({
                   key={section.columns[j] ?? String(j)}
                   className="max-w-md truncate text-sm tabular-nums"
                 >
-                  {value === null ? "—" : String(value)}
+                  {value === null ? (
+                    "—"
+                  ) : j === threadCol ? (
+                    <a
+                      href={threadHref(String(row[orgCol]), String(value))}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      {String(value)}
+                    </a>
+                  ) : (
+                    String(value)
+                  )}
                 </TableCell>
               ))}
             </TableRow>
@@ -201,13 +224,22 @@ function TableCard({
   );
 }
 
-export function SectionView({ section }: { section: AnalyticsSection }) {
+export function SectionView({
+  section,
+  threadLinks,
+}: {
+  section: AnalyticsSection;
+  /** Render a "Thread" column as a link into its row's "Org". */
+  threadLinks?: boolean;
+}) {
   return (
     <section className="flex flex-col gap-3">
       <h3 className="text-sm font-medium text-foreground">{section.title}</h3>
       {section.kind === "stat" && <StatCard section={section} />}
       {section.kind === "series" && <SeriesCard section={section} />}
-      {section.kind === "table" && <TableCard section={section} />}
+      {section.kind === "table" && (
+        <TableCard section={section} threadLinks={threadLinks} />
+      )}
     </section>
   );
 }

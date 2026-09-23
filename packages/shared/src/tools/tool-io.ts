@@ -4799,6 +4799,117 @@ export interface StudioToolIO {
       hasMore?: boolean | undefined;
     };
   };
+  THREAD_ANALYTICS_ORG_LIST: {
+    input: { [x: string]: never };
+    output: {
+      isAdmin: boolean;
+      orgs: { id: string; slug: string; name: string }[];
+    };
+  };
+  THREAD_ANALYTICS_LIVE: {
+    input: {
+      org?: string | undefined;
+      status?:
+        | "in_progress"
+        | "requires_action"
+        | "failed"
+        | "completed"
+        | undefined;
+      kind?: "automation" | "chat" | "task" | undefined;
+      limit?: number | undefined;
+    };
+    output: {
+      org: string;
+      counts: { running: number; waiting: number; failedLastHour: number };
+      threads: {
+        id: string;
+        orgId: string;
+        orgSlug: string;
+        title: string;
+        status: string;
+        kind: "automation" | "chat" | "task";
+        failureKind: string | null;
+        failureReason: string | null;
+        lastError: string | null;
+        harnessId: string | null;
+        agent: string;
+        userName: string | null;
+        userEmail: string | null;
+        createdAt: string;
+        updatedAt: string;
+        usd: number | null;
+        tokens: number | null;
+      }[];
+    };
+  };
+  THREAD_ANALYTICS_USAGE: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
+  THREAD_ANALYTICS_ERRORS: {
+    input: {
+      org?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    };
+    output: {
+      range: { from: string; to: string };
+      org: string;
+      sections: (
+        | {
+            kind: "stat";
+            title: string;
+            values: {
+              label: string;
+              value: number | null;
+              unit?: string | undefined;
+            }[];
+          }
+        | {
+            kind: "series";
+            title: string;
+            points: Record<string, string | number | null>[];
+            unit?: string | undefined;
+          }
+        | {
+            kind: "table";
+            title: string;
+            columns: string[];
+            rows: (string | number | null)[][];
+          }
+      )[];
+    };
+  };
   TAGS_LIST: {
     input: { [x: string]: never };
     output: {
@@ -7170,7 +7281,7 @@ export interface StudioToolIO {
     input: {
       query: string;
       limit?: number | undefined;
-      types?: ("connection" | "thread" | "task")[] | undefined;
+      types?: ("connection" | "task" | "thread")[] | undefined;
     };
     output: {
       items: (
