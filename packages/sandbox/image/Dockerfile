@@ -193,7 +193,7 @@ RUN arch="$(dpkg --print-architecture)" \
 # optionalDependencies, so npm resolves the right arch on each leg of the
 # multi-arch build. It is deliberately NOT a dependency of the harness-runner
 # workspace — that would put 270MB into every developer's `bun install`.
-ARG CLAUDE_CODE_CLI_VERSION=2.1.220
+ARG CLAUDE_CODE_CLI_VERSION=2.1.280
 COPY --chown=sandbox:sandbox dist/harness-runner.tgz /opt/sandbox-daemon/harness-runner.tgz
 RUN npm install -g /opt/sandbox-daemon/harness-runner.tgz \
   && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_CLI_VERSION}" \
