@@ -264,6 +264,11 @@ const onboardingSearch = z.lazy(() =>
   z.object({
     org: z.string().optional(),
     siteUrl: z.string().optional(),
+    /** The check id a report's "Corrigir automaticamente" came from
+     *  (e.g. `PERF-001`). Declared so TanStack keeps it instead of dropping it
+     *  as an unknown param — the engine's report links here per finding, and
+     *  without it we cannot tell which finding drives a connect. */
+    fix: z.string().optional(),
   }),
 );
 
@@ -319,6 +324,10 @@ const reportRoute = createRoute({
     z.object({
       // Reviewer preview password — bypasses the engine's publish gate only.
       key: z.string().optional(),
+      /** Same `fix` as the onboarding route. Older report pages link a finding
+       *  HERE; accepting it keeps those links from losing the check id on the
+       *  way through. */
+      fix: z.string().optional(),
     }),
   ),
 });
