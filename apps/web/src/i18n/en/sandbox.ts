@@ -538,6 +538,8 @@ export const sandbox = {
     "This post is missing required fields — open it to finish before scheduling.",
   "sandbox.postBoard.moveFailed": "Could not move this post",
   "sandbox.postBoard.moveInFlight": "Still moving this post…",
+  "sandbox.postBoard.moveUnknownApp":
+    "Still reading this site's blog app version.",
   "sandbox.postBoard.moveNoBlogApp":
     "This site doesn't run the deco blog app, so nothing here can put a post live.",
   "sandbox.postBoard.moveNotATarget":

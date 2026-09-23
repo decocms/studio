@@ -549,6 +549,8 @@ export const sandbox = {
     "Este post está sem campos obrigatórios — abra-o para concluir antes de agendar.",
   "sandbox.postBoard.moveFailed": "Não foi possível mover este post",
   "sandbox.postBoard.moveInFlight": "Ainda movendo este post…",
+  "sandbox.postBoard.moveUnknownApp":
+    "Ainda lendo a versão do app de blog deste site.",
   "sandbox.postBoard.moveNoBlogApp":
     "Este site não roda o app de blog do deco, então nada aqui consegue colocar um post no ar.",
   "sandbox.postBoard.moveNotATarget":

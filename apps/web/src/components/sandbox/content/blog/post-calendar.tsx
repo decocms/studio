@@ -61,12 +61,14 @@ const UNSCHEDULED_CHIP =
  * — the fix is a command in the repo, not a button here.
  *
  * Asks the gate the board and editor ask, so it cannot claim a version they
- * disagree with. No command means no blog app at all — nothing to update.
+ * disagree with. It stays silent while the manifests are still being read:
+ * a site we haven't looked at yet has done nothing wrong.
  */
 function SupportOverlay({ support }: { support: BlogSupport }) {
   const t = useT();
   const gate = postStatusUnsupported(support, "scheduled");
-  if (!gate) return null;
+  if (!gate || gate.reason === "unknown") return null;
+  const outdated = gate.reason === "outdated";
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-background/30 p-6">
       <Alert
@@ -77,19 +79,19 @@ function SupportOverlay({ support }: { support: BlogSupport }) {
         <div>
           <AlertTitle>
             {t(
-              gate.command
+              outdated
                 ? "sandbox.postCalendar.outdatedAppsTitle"
                 : "sandbox.postCalendar.unsupportedRuntimeTitle",
             )}
           </AlertTitle>
           <AlertDescription>
-            {gate.command
+            {gate.reason === "outdated"
               ? t("sandbox.postCalendar.outdatedAppsDescription", {
                   required: gate.required,
                 })
               : t("sandbox.postCalendar.unsupportedRuntimeDescription")}
           </AlertDescription>
-          {gate.command && (
+          {gate.reason === "outdated" && (
             <code className="mt-2 block rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
               {gate.command}
             </code>

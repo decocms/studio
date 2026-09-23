@@ -245,42 +245,54 @@ describe("blogUpdateCommand", () => {
 });
 
 describe("blogSupport", () => {
+  const data = (value: unknown) => ({ kind: "data", data: value }) as const;
+  const absent = { kind: "absent" } as const;
+  const unavailable = { kind: "unavailable" } as const;
+
   /** Deno with both sources agreeing — the ordinary case. */
   const deno = (version: string) => ({
-    packageManager: "deno",
-    denoJson: denoJson(version),
-    packageJson: null,
+    denoJson: data(denoJson(version)),
+    packageJson: absent,
     meta: meta(version),
   });
 
   /** A TanStack site pinning the blog app, as `deco-sites/*-tanstack` do. */
   const node = (version: string | null) => ({
-    packageManager: "bun",
-    denoJson: null,
-    packageJson: {
+    denoJson: absent,
+    packageJson: data({
+      packageManager: "bun@1.3.5",
       dependencies: version ? { "@decocms/apps-blog": version } : {},
-    },
+    }),
     meta: null,
   });
 
-  it("reports an undetected runtime as unsupported, not as Deno", () => {
-    expect(
-      blogSupport({
-        packageManager: null,
-        denoJson: null,
-        packageJson: null,
-        meta: null,
-      }),
-    ).toEqual({ kind: "unsupported-runtime" });
+  it("reads the repo, not the runtime picker — a fresh import has none", () => {
+    expect(blogSupport(node("7.64.3"))).toEqual({
+      kind: "full",
+      version: "7.64.3",
+    });
   });
 
   it("reports a site that installs no blog app as unsupported", () => {
     expect(blogSupport(node(null))).toEqual({ kind: "unsupported-runtime" });
   });
 
-  it("does not read a Deno apps pin for a Node-family site", () => {
+  it("says unknown, not unsupported, while a manifest is unread", () => {
     expect(
-      blogSupport({ ...deno(APPS_SCHEDULING_VERSION), packageManager: "bun" }),
+      blogSupport({
+        denoJson: unavailable,
+        packageJson: unavailable,
+        meta: null,
+      }),
+    ).toEqual({ kind: "unknown" });
+    expect(
+      blogSupport({ denoJson: absent, packageJson: unavailable, meta: null }),
+    ).toEqual({ kind: "unknown" });
+  });
+
+  it("reports a repo committing neither manifest as unsupported", () => {
+    expect(
+      blogSupport({ denoJson: absent, packageJson: absent, meta: null }),
     ).toEqual({ kind: "unsupported-runtime" });
   });
 
@@ -324,10 +336,6 @@ describe("blogSupport", () => {
       kind: "full",
       version: BLOG_PACKAGE_VERSION,
     });
-    expect(blogSupport(node("7.64.3"))).toEqual({
-      kind: "full",
-      version: "7.64.3",
-    });
     expect(blogSupport(node("8.0.0"))).toEqual({
       kind: "full",
       version: "8.0.0",
@@ -342,6 +350,16 @@ describe("blogSupport", () => {
     });
   });
 
+  it("takes the update command's package manager from package.json", () => {
+    expect(
+      blogSupport({
+        denoJson: absent,
+        packageJson: data({ dependencies: { "@decocms/apps-blog": "7.0.0" } }),
+        meta: null,
+      }),
+    ).toEqual({ kind: "outdated", packageManager: "npm", version: "7.0.0" });
+  });
+
   it("fails closed on a blog pin it cannot read", () => {
     expect(blogSupport(node("workspace:*"))).toEqual({
       kind: "outdated",
@@ -350,12 +368,21 @@ describe("blogSupport", () => {
     });
   });
 
+  it("lets a committed deno.json win over a package.json beside it", () => {
+    expect(
+      blogSupport({
+        denoJson: data(denoJson(APPS_SCHEDULING_VERSION)),
+        packageJson: data({ dependencies: { "@decocms/apps-blog": "7.0.0" } }),
+        meta: null,
+      }),
+    ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
+  });
+
   it("prefers this branch's deno.json over a meta served by production", () => {
     expect(
       blogSupport({
-        packageManager: "deno",
-        denoJson: denoJson(APPS_SCHEDULING_VERSION),
-        packageJson: null,
+        denoJson: data(denoJson(APPS_SCHEDULING_VERSION)),
+        packageJson: absent,
         meta: meta(APPS_STATUS_VERSION),
       }),
     ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
@@ -364,9 +391,8 @@ describe("blogSupport", () => {
   it("falls back to meta when the daemon couldn't read deno.json", () => {
     expect(
       blogSupport({
-        packageManager: "deno",
-        denoJson: null,
-        packageJson: null,
+        denoJson: unavailable,
+        packageJson: unavailable,
         meta: meta(APPS_SCHEDULING_VERSION),
       }),
     ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
@@ -375,36 +401,33 @@ describe("blogSupport", () => {
   it("falls back to meta when deno.json carries a branch pin", () => {
     expect(
       blogSupport({
-        packageManager: "deno",
-        denoJson: {
+        denoJson: data({
           imports: {
             "apps/": "https://cdn.jsdelivr.net/gh/deco-cx/apps@main/",
           },
-        },
-        packageJson: null,
+        }),
+        packageJson: absent,
         meta: meta(APPS_SCHEDULING_VERSION),
       }),
     ).toEqual({ kind: "full", version: APPS_SCHEDULING_VERSION });
   });
 
-  it("fails closed when neither source answers", () => {
+  it("fails closed when neither source answers for a Deno repo", () => {
     expect(
       blogSupport({
-        packageManager: "deno",
-        denoJson: null,
-        packageJson: null,
+        denoJson: data({ imports: {} }),
+        packageJson: absent,
         meta: null,
       }),
     ).toEqual({ kind: "outdated", packageManager: "deno", version: null });
     expect(
       blogSupport({
-        packageManager: "deno",
-        denoJson: {
+        denoJson: data({
           imports: {
             "apps/": "https://cdn.jsdelivr.net/gh/deco-cx/apps@main/",
           },
-        },
-        packageJson: null,
+        }),
+        packageJson: absent,
         meta: { schema: { definitions: { a: { title: "MyOwnSection" } } } },
       }),
     ).toEqual({ kind: "outdated", packageManager: "deno", version: null });
@@ -462,7 +485,8 @@ describe("postStatusUnsupported", () => {
     version: "0.161.0",
   } as const;
   const full = { kind: "full", version: "0.162.0" } as const;
-  const noRuntime = { kind: "unsupported-runtime" } as const;
+  const noApp = { kind: "unsupported-runtime" } as const;
+  const unknown = { kind: "unknown" } as const;
   const nodeOutdated = {
     kind: "outdated",
     packageManager: "bun",
@@ -470,7 +494,7 @@ describe("postStatusUnsupported", () => {
   } as const;
 
   it("never gates a non-live state — those blocks the site does not resolve", () => {
-    for (const support of [noRuntime, outdated, publishOnly, full]) {
+    for (const support of [unknown, noApp, outdated, publishOnly, full]) {
       for (const status of [
         "draft",
         "generating",
@@ -484,6 +508,7 @@ describe("postStatusUnsupported", () => {
 
   it("gates scheduled until the app can hold a go-live instant", () => {
     expect(postStatusUnsupported(publishOnly, "scheduled")).toEqual({
+      reason: "outdated",
       required: APPS_SCHEDULING_VERSION,
       version: "0.161.0",
       command: blogUpdateCommand("deno"),
@@ -493,6 +518,7 @@ describe("postStatusUnsupported", () => {
 
   it("gates published until the app can read status at all", () => {
     expect(postStatusUnsupported(outdated, "published")).toEqual({
+      reason: "outdated",
       required: APPS_STATUS_VERSION,
       version: "0.160.0",
       command: blogUpdateCommand("deno"),
@@ -503,6 +529,7 @@ describe("postStatusUnsupported", () => {
   it("asks a TanStack site for the blog package version, with its own command", () => {
     for (const status of ["scheduled", "published"] as const) {
       expect(postStatusUnsupported(nodeOutdated, status)).toEqual({
+        reason: "outdated",
         required: BLOG_PACKAGE_VERSION,
         version: "7.52.1",
         command: blogUpdateCommand("bun"),
@@ -510,11 +537,12 @@ describe("postStatusUnsupported", () => {
     }
   });
 
-  it("offers no command on a site that installs no blog app", () => {
-    expect(postStatusUnsupported(noRuntime, "published")).toEqual({
-      required: BLOG_PACKAGE_VERSION,
-      version: null,
-      command: null,
+  it("separates a site with no blog app from one not read yet", () => {
+    expect(postStatusUnsupported(noApp, "published")).toEqual({
+      reason: "no-app",
+    });
+    expect(postStatusUnsupported(unknown, "published")).toEqual({
+      reason: "unknown",
     });
   });
 });

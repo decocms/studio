@@ -1,5 +1,5 @@
 /**
- * What the site's runtime and pinned blog-app version allow in the blog CMS.
+ * Which blog app this repo installs, and what its version allows in the CMS.
  *
  * The CMS writes `status`/`scheduledDatetime` into the decofile, but only the
  * blog app decides what to do with them — so a Studio that offers scheduling
@@ -8,8 +8,13 @@
  *
  * Deno sites resolve `deco-cx/apps`; Node-family ones install
  * `@decocms/apps-blog`. Two distributions, two version lines, two thresholds.
+ *
+ * The committed manifests decide which one answers — not the project's
+ * `metadata.runtime.selected`, which is a picker value an import may never
+ * have written (`{"env": []}` is what a fresh one looks like).
  */
 import type { PackageManager } from "@decocms/shared/runtime-defaults";
+import type { CommittedRead } from "@/components/sections-editor/read-committed-file";
 import type { PostStatus } from "./blog-data";
 
 /** Apps version that introduced the post `status` filter. */
@@ -29,7 +34,9 @@ export const BLOG_PACKAGE_VERSION = "7.53.0";
 const BLOG_PACKAGE = "@decocms/apps-blog";
 
 export type BlogSupport =
-  /** No blog app here: not a Deno site, and no {@link BLOG_PACKAGE} installed. */
+  /** No manifest answered yet — still reading, or the daemon is down. */
+  | { kind: "unknown" }
+  /** No blog app here: no `deco-cx/apps` pin, no {@link BLOG_PACKAGE}. */
   | { kind: "unsupported-runtime" }
   /** Installed, but the pin predates `status` (or can't be read). */
   | { kind: "outdated"; packageManager: PackageManager; version: string | null }
@@ -126,16 +133,16 @@ export function versionFromRange(range: string): string | null {
   return match ? match[1]! : null;
 }
 
-/** Node, Bun and friends all install the blog app from npm. */
-function isNodeFamily(
-  packageManager: string | null | undefined,
-): packageManager is PackageManager {
-  return (
-    packageManager === "npm" ||
-    packageManager === "pnpm" ||
-    packageManager === "yarn" ||
-    packageManager === "bun"
-  );
+/**
+ * The package manager `package.json` declares in its `packageManager` field
+ * (`"bun@1.3.5"`), for naming the update command. npm is the fallback: it is
+ * the one every Node-family site can run.
+ */
+function packageManagerOf(packageJson: unknown): PackageManager {
+  const field = (packageJson as { packageManager?: unknown } | null)
+    ?.packageManager;
+  const name = typeof field === "string" ? field.split("@")[0]?.trim() : null;
+  return name === "pnpm" || name === "yarn" || name === "bun" ? name : "npm";
 }
 
 /** `[status, scheduling]` thresholds for the distribution this site installs. */
@@ -160,9 +167,11 @@ function classify(
 }
 
 /**
- * Resolve what the blog CMS may offer. `packageManager`
- * (`metadata.runtime.selected`) decides which manifest holds the pin:
- * `deno.json` on Deno, `package.json` elsewhere, nothing when undetected.
+ * Resolve what the blog CMS may offer, from the manifests the repo commits.
+ * A committed `deno.json` (or a `meta` carrying apps refs) means the Deno
+ * distribution; otherwise `package.json` answers. A read that failed is not a
+ * repo without a blog app, so it resolves to `unknown` rather than accusing
+ * the site of installing nothing.
  *
  * `deno.json` wins over `meta` because it is this branch's pin: right after a
  * `deno task update` the branch is already on the newer apps while a `meta`
@@ -170,23 +179,30 @@ function classify(
  * when the daemon can't answer (sandbox down, sandbox-less Fast Preview).
  */
 export function blogSupport(input: {
-  packageManager: string | null | undefined;
-  denoJson: unknown;
-  packageJson: unknown;
+  denoJson: CommittedRead<unknown>;
+  packageJson: CommittedRead<unknown>;
   meta: unknown;
 }): BlogSupport {
-  if (input.packageManager === "deno") {
+  const metaVersion = appsVersionFromMeta(input.meta);
+  if (input.denoJson.kind === "data" || metaVersion) {
+    const pinned =
+      input.denoJson.kind === "data"
+        ? appsVersionFromDenoJson(input.denoJson.data)
+        : null;
+    return classify("deno", pinned ?? metaVersion);
+  }
+  if (input.packageJson.kind === "data") {
+    const range = blogPackageRange(input.packageJson.data);
+    if (range === null) return { kind: "unsupported-runtime" };
     return classify(
-      "deno",
-      appsVersionFromDenoJson(input.denoJson) ??
-        appsVersionFromMeta(input.meta),
+      packageManagerOf(input.packageJson.data),
+      versionFromRange(range),
     );
   }
-  if (!isNodeFamily(input.packageManager))
-    return { kind: "unsupported-runtime" };
-  const range = blogPackageRange(input.packageJson);
-  if (range === null) return { kind: "unsupported-runtime" };
-  return classify(input.packageManager, versionFromRange(range));
+  const unread =
+    input.denoJson.kind === "unavailable" ||
+    input.packageJson.kind === "unavailable";
+  return unread ? { kind: "unknown" } : { kind: "unsupported-runtime" };
 }
 
 /**
@@ -211,14 +227,18 @@ export function supportsScheduling(support: BlogSupport): boolean {
 }
 
 /** Why this site can't hold a post in `next`, or null when it can. */
-export interface StatusUnsupported {
-  /** Version the site's blog app has to reach. */
-  required: string;
-  /** Version this site is on, or null when unreadable / no blog app. */
-  version: string | null;
-  /** How to get there, or null when there is no blog app to update. */
-  command: string | null;
-}
+export type StatusUnsupported =
+  /** No manifest read yet, so no claim about this site can be made. */
+  | { reason: "unknown" }
+  /** The repo installs no blog app — no version bump fixes that. */
+  | { reason: "no-app" }
+  /** There is an app, and it has to reach `required`. */
+  | {
+      reason: "outdated";
+      required: string;
+      version: string | null;
+      command: string;
+    };
 
 /**
  * Whether a post may be moved into `next` on this site.
@@ -239,11 +259,11 @@ export function postStatusUnsupported(
   if (support.kind === "full") return null;
   if (next !== "scheduled" && next !== "published") return null;
   if (next === "published" && supportsPublishToggle(support)) return null;
-  if (support.kind === "unsupported-runtime") {
-    return { required: BLOG_PACKAGE_VERSION, version: null, command: null };
-  }
+  if (support.kind === "unknown") return { reason: "unknown" };
+  if (support.kind === "unsupported-runtime") return { reason: "no-app" };
   const [status, scheduling] = thresholds(support.packageManager);
   return {
+    reason: "outdated",
     required: next === "scheduled" ? scheduling : status,
     version: support.version,
     command: blogUpdateCommand(support.packageManager),
