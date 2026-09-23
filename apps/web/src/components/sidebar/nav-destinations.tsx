@@ -15,6 +15,7 @@ import {
   Folder,
   Home02,
   Lock01,
+  MessageChatSquare,
 } from "@untitledui/icons";
 import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
 import { SidebarNavRow } from "./nav-row";
@@ -22,6 +23,7 @@ import { useTabLocked } from "./use-tab-locked";
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
 import { useProjectContext } from "@/sdk";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
+import { useThreadAnalyticsOrgs } from "@/hooks/use-thread-analytics";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import {
   DESTINATION_ROUTE,
@@ -73,6 +75,7 @@ export const NAV_DESTINATION_KEYS = [
   "reports",
   "board",
   "files",
+  "threadAnalytics",
 ] as const;
 
 type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
@@ -128,6 +131,9 @@ function useNavDestinations(): NavDestination[] {
   const scopeId = useScopeId();
   const { project, repo } = useProjectScope();
   const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
+
+  // Non-blocking: the row stays absent until the admin check resolves true.
+  const isAdminOrg = useThreadAnalyticsOrgs().data?.isAdmin === true;
 
   const lacksSource = scopedProjectLacksSource(scopeId, project);
   const destinationEnabled = (viewId: "overview" | "reports" | "board") =>
@@ -226,6 +232,21 @@ function useNavDestinations(): NavDestination[] {
           link: { to: DESTINATION_ROUTE.library, params: { org: org.slug } },
         }
       : null,
+    threadAnalytics:
+      isAdminOrg &&
+      routeExistsInScope(DESTINATION_ROUTE.threadAnalytics, scopeId)
+        ? {
+            key: "threadAnalytics",
+            label: t("sidebar.navDestinations.threadAnalytics"),
+            icon: <MessageChatSquare size={16} />,
+            isActive: leafPath === DESTINATION_ROUTE.threadAnalytics,
+            trackAs: "thread_analytics",
+            link: {
+              to: DESTINATION_ROUTE.threadAnalytics,
+              params: { org: org.slug },
+            },
+          }
+        : null,
   };
 
   return NAV_DESTINATION_KEYS.map((key) => rows[key]).filter(

@@ -20,6 +20,8 @@ export const DESTINATION_ROUTE = {
   tasks: "/$org/tasks/{-$taskKey}",
   reports: "/$org/reports",
   library: "/$org/library",
+  /** Admin orgs only: every org's chats and automations. */
+  threadAnalytics: "/$org/thread-analytics",
   discover: "/$org/discover",
   /** The `/$org` resolver. Transiently matched before it redirects, so Home
    *  highlights there instead of leaving the list blank on cold entry. */
@@ -86,6 +88,7 @@ const SCOPE_BOUND_ROUTES: ReadonlyMap<string, ScopeBinding> = new Map<
 >([
   [DESTINATION_ROUTE.reports, "project-only"],
   [DESTINATION_ROUTE.library, "org-only"],
+  [DESTINATION_ROUTE.threadAnalytics, "org-only"],
 ]);
 
 /** Whether `path` names a page that exists under `scopeId` — `null` being the

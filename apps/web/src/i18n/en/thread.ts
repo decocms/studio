@@ -280,7 +280,6 @@ export const thread = {
   "thread.publishPopover.updatesPullRequest": "Updates pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Describe this update…",
   "thread.analytics.title": "Chats & automations",
-  "thread.analytics.open": "Chats analytics",
   "thread.analytics.notAdmin":
     "Chat analytics is only available in an admin organization.",
   "thread.analytics.tabLive": "Live",

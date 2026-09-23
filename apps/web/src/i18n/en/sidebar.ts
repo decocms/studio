@@ -18,6 +18,7 @@ export const sidebar = {
   "sidebar.navDestinations.reports": "Reports",
   "sidebar.navDestinations.settings": "Settings",
   "sidebar.navDestinations.tasks": "Board",
+  "sidebar.navDestinations.threadAnalytics": "Chats analytics",
   "sidebar.myThreadsSection.noChatsYet": "No chats yet",
   "sidebar.myThreadsSection.noChatsMatchFilters": "No chats match your filters",
   "sidebar.projectNav.automations": "Automations",

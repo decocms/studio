@@ -295,7 +295,6 @@ export const thread = {
     "Atualiza o pull request #{number}",
   "thread.publishPopover.versionNotePlaceholder": "Descreva esta atualização…",
   "thread.analytics.title": "Chats e automações",
-  "thread.analytics.open": "Análise de chats",
   "thread.analytics.notAdmin":
     "A análise de chats só está disponível em uma organização administradora.",
   "thread.analytics.tabLive": "Ao vivo",

@@ -22,6 +22,7 @@ describe("nav destinations", () => {
       "reports",
       "board",
       "files",
+      "threadAnalytics",
     ]);
   });
 
