@@ -252,7 +252,7 @@ export function otherPullRequestsLead(
     `This issue spans ${others.length + 1} repositories, and it has an open pull request in each of the others too:`,
     ...others.map(
       (o) =>
-        `- ${o.repo}: pull request #${o.number} (${o.url}) on branch \`${o.head}\`. After cloning that repository, run \`git fetch origin ${o.head} && git checkout ${o.head}\` BEFORE editing, and push to update that SAME pull request — do NOT open a new one there.`,
+        `- ${o.repo}: pull request #${o.number} (${o.url}) on branch \`${o.head}\`. After cloning that repository, run \`git fetch origin +refs/heads/${o.head}:refs/remotes/origin/${o.head} && git checkout -B ${o.head} origin/${o.head}\` BEFORE editing (the clone is single-branch, so a bare \`git fetch origin ${o.head}\` creates no branch to check out), and push to update that SAME pull request — do NOT open a new one there.`,
     ),
     "A change that only lands on one side is worse than none: if you cannot update them all, update none and say why.",
   ];

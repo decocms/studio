@@ -224,7 +224,12 @@ describe("buildClaudeCodeTaskPrompt", () => {
     });
     expect(prompt).toContain("spans 2 repositories");
     expect(prompt).toContain("acme/web-br: pull request #21");
-    expect(prompt).toContain("git checkout fix-hreflang");
+    expect(prompt).toContain(
+      "git fetch origin +refs/heads/fix-hreflang:refs/remotes/origin/fix-hreflang",
+    );
+    expect(prompt).toContain(
+      "git checkout -B fix-hreflang origin/fix-hreflang",
+    );
     expect(prompt).toContain("update none and say why");
   });
 
