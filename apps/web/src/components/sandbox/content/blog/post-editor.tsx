@@ -23,6 +23,7 @@ import {
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
 import { ImageField } from "@/components/sections-editor/fields/image-field";
+import { NumberField } from "@/components/sections-editor/fields/number-field";
 import { StringField } from "@/components/sections-editor/fields/string-field";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
@@ -453,6 +454,19 @@ function PostSettings({
           onChange={(v) => onChange("date", v)}
           path="post-date"
           label={t("sandbox.postEditor.dateLabel")}
+        />
+        {/* The blog app's `readTime`, in minutes — nothing computes it, so an
+            empty value means the site shows no estimate. */}
+        <NumberField
+          schema={{
+            type: "integer",
+            title: t("sandbox.postEditor.readTimeLabel"),
+            description: t("sandbox.postEditor.readTimeDescription"),
+          }}
+          value={typeof post.readTime === "number" ? post.readTime : undefined}
+          onChange={(v) => onChange("readTime", v)}
+          path="post-read-time"
+          label={t("sandbox.postEditor.readTimeLabel")}
         />
       </div>
       {/* Cover image + its alt text: `alt` is the blog app's alt for `image`,

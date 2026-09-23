@@ -612,6 +612,9 @@ export const sandbox = {
   "sandbox.postEditor.noContentYet":
     "This post has no content yet. Use ⊕ to add your first block.",
   "sandbox.postEditor.postTitlePlaceholder": "Post title",
+  "sandbox.postEditor.readTimeDescription":
+    "Estimated minutes to read, shown by the site. Leave empty to show none.",
+  "sandbox.postEditor.readTimeLabel": "Read time (minutes)",
   "sandbox.postEditor.previewRequiresSlugAndCategory":
     "Set the post slug (and its category) plus the blog app's pageSlug to preview",
   "sandbox.postEditor.previewTooltip": "Open the post preview in a new tab",
