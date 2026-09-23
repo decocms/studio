@@ -159,7 +159,7 @@ function SeriesCard({
 }
 
 /** `/$org/$taskId` is the forever-supported way into any org's thread. */
-export function threadHref(org: string, threadId: string): string {
+function threadHref(org: string, threadId: string): string {
   return `/${encodeURIComponent(org)}/${encodeURIComponent(threadId)}`;
 }
 
