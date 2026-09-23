@@ -110,6 +110,11 @@ qa-android stop
 
 Then `Read` the PNGs. A screenshot you never opened is not verification.
 
+**Run `qa-android start` in the foreground**, with the Bash tool's longest
+timeout (600000 ms). If it times out, run it again: the booted emulator and
+Gradle's caches are reused. Never background it and end your turn waiting for
+a notification — in an autonomous run, ending the turn ends the run.
+
 **Find things with `ui`, then tap them.** It lists every element Android's
 accessibility layer sees — for a Flutter app, its Semantics tree: text,
 button labels, tooltips — with the centre point of each. Tapping a label's

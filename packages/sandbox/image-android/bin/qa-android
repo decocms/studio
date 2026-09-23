@@ -38,9 +38,9 @@ ensure_avd() {
 hw.lcd.width=720
 hw.lcd.height=1600
 hw.lcd.density=320
-hw.ramSize=4096
+hw.ramSize=3072
 hw.keyboard=yes
-disk.dataPartition.size=6G
+disk.dataPartition.size=3G
 showDeviceFrame=no
 EOF
 }
@@ -55,7 +55,7 @@ boot_emulator() {
   mkdir -p "$STATE"
   setsid emulator -avd "$AVD" -port 5554 -no-window -no-audio -no-boot-anim \
     -no-snapshot -no-metrics -gpu swiftshader_indirect -accel on \
-    -memory 4096 -cores "${QA_ANDROID_CORES:-4}" \
+    -memory 3072 -cores "${QA_ANDROID_CORES:-4}" \
     >"$STATE/emulator.log" 2>&1 < /dev/null &
   echo $! > "$STATE/emulator.pid"
   adb start-server >/dev/null
@@ -92,6 +92,21 @@ exclude_build_output() {
   done
 }
 
+# User-home gradle.properties overrides the project's. Flutter's template asks
+# for -Xmx8G plus a separate Kotlin daemon, which with the emulator alongside
+# overruns the pod's memory.
+cap_gradle() {
+  local f="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+  [ -f "$f" ] && return 0
+  mkdir -p "$(dirname "$f")"
+  cat > "$f" <<'EOF'
+org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC
+org.gradle.workers.max=2
+org.gradle.daemon.idletimeout=600000
+kotlin.compiler.execution.strategy=in-process
+EOF
+}
+
 # Gradle's own failure report out of a verbose flutter log, or its tail.
 gradle_error() {
   local report
@@ -113,13 +128,14 @@ cmd_start() {
   [ -d android ] || die "no android/ project here, so there is nothing to run on the emulator"
 
   exclude_build_output
+  cap_gradle
   boot_emulator
   stop_app
   # Build first, verbosely: without -v, flutter reduces any Gradle failure to
   # "assembleDebug failed". The run that follows reuses this build.
   echo "qa-android: building — the first Gradle build takes minutes"
   mkdir -p /tmp/flutter-gradle/dot-gradle /tmp/flutter-gradle/build /tmp/flutter-gradle/kotlin
-  flutter build apk --debug -v ${target:+-t "$target"} >"$STATE/build.log" 2>&1 \
+  flutter build apk --debug --target-platform android-x64 -v ${target:+-t "$target"} >"$STATE/build.log" 2>&1 \
     || die "the Android build failed (full log: $STATE/build.log):
 $(gradle_error "$STATE/build.log")"
   : > "$STATE/app.log"
