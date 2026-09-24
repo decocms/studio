@@ -39,7 +39,7 @@ services:
 
   # MinIO — S3-compatible object storage for assets/buckets/org-fs.
   minio:
-    image: minio/minio
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     container_name: studio-minio
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
@@ -54,7 +54,7 @@ services:
 
   # One-shot: wait for MinIO, then create the bucket Studio expects.
   minio-init:
-    image: minio/mc
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     depends_on:
       minio:
         condition: service_started
