@@ -55,12 +55,12 @@ import {
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import { GeneratePostDialog, type IdeaSeed } from "./generate-post-dialog";
 import { useGeneratePost } from "./use-generate-post";
+import { type BlogSupport, postStatusUnsupported } from "./blog-capabilities";
 import {
-  APPS_UPDATE_COMMAND,
-  type BlogSupport,
-  postStatusUnsupported,
-} from "./blog-capabilities";
-import { POST_STATUS_LABEL, type PostStatusMove } from "./use-post-status-move";
+  moveUnsupportedText,
+  POST_STATUS_LABEL,
+  type PostStatusMove,
+} from "./use-post-status-move";
 import {
   BRAND_BLOCK_KEY,
   buildIdeaBlock,
@@ -725,12 +725,7 @@ export function PostsWorkspace({
                   onDrop(status, e.dataTransfer.getData(DRAG_KEY));
                 }}
                 title={
-                  unsupported
-                    ? t("sandbox.postBoard.moveUnsupported", {
-                        required: unsupported.required,
-                        command: APPS_UPDATE_COMMAND,
-                      })
-                    : undefined
+                  unsupported ? moveUnsupportedText(t, unsupported) : undefined
                 }
                 className={cn(
                   "flex shrink-0 flex-col rounded-xl border bg-muted/30 transition-colors",

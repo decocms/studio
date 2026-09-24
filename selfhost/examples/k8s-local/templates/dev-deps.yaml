@@ -65,12 +65,12 @@ spec:
     spec:
       initContainers:
         - name: create-bucket
-          image: minio/minio
+          image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
           command: ["sh", "-c", "mkdir -p /data/studio"]
           volumeMounts: [{ name: data, mountPath: /data }]
       containers:
         - name: minio
-          image: minio/minio
+          image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
           args: ["server", "/data", "--console-address", ":9001"]
           env:
             - { name: MINIO_ROOT_USER, value: minioadmin }

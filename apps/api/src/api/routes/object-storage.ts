@@ -6,6 +6,9 @@ import { detectContentType, sanitizeKey } from "@/object-storage/key-utils";
 type Variables = { studioContext: StudioContext };
 
 const DEFAULT_EXPIRES_IN = 3600;
+const MIN_EXPIRES_IN = 60;
+// AWS SigV4 rejects a presigned URL past this lifetime.
+const MAX_EXPIRES_IN = 604800;
 
 function requireStorage(ctx: StudioContext) {
   if (!ctx.auth?.user?.id && !ctx.auth?.apiKey?.id) {
@@ -40,10 +43,14 @@ function parsePresignBody(body: unknown): {
     return { expiresIn: DEFAULT_EXPIRES_IN };
   }
   const value = body as { expiresIn?: unknown; contentType?: unknown };
-  const expiresIn =
+  const requested =
     typeof value.expiresIn === "number" && Number.isFinite(value.expiresIn)
       ? value.expiresIn
       : DEFAULT_EXPIRES_IN;
+  const expiresIn = Math.min(
+    Math.max(requested, MIN_EXPIRES_IN),
+    MAX_EXPIRES_IN,
+  );
   return {
     expiresIn,
     ...(typeof value.contentType === "string"
