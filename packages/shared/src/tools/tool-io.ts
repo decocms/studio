@@ -4524,6 +4524,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4595,6 +4596,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4642,6 +4644,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4677,6 +4680,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -4720,6 +4724,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4765,6 +4770,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -6167,6 +6173,23 @@ export interface StudioToolIO {
       key?: string | undefined;
     };
     output: { linkId: number };
+  };
+  JIRA_ISSUE_CREATE: {
+    input: {
+      summary: string;
+      issueType: string;
+      description?: string | undefined;
+      relatesTo?: string[] | undefined;
+      sprint?: "none" | "active" | undefined;
+      storyPoints?: number | undefined;
+    };
+    output: {
+      key: string;
+      url: string;
+      created: boolean;
+      linked: string[];
+      notLinked: { key: string; reason: string }[];
+    };
   };
   LIST_OBJECTS: {
     input: {

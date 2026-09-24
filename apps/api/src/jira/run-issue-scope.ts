@@ -32,6 +32,18 @@ export function runIssueKeys(
   return typeof one === "string" && one !== "" ? [one] : [];
 }
 
+/** The issues the run created itself (`JIRA_ISSUE_CREATE`), a subset of
+ *  {@link runIssueKeys}. */
+export function runCreatedIssueKeys(
+  metadata: ThreadMetadata | null | undefined,
+): string[] {
+  if (metadata?.source !== "jira") return [];
+  const keys = metadata.jira_created_issue_keys;
+  return Array.isArray(keys)
+    ? keys.filter((k): k is string => typeof k === "string")
+    : [];
+}
+
 /**
  * Resolve the issue a tool call names, or throw with the set it may name.
  * Keys compare case-insensitively (a person types `os-12`; Jira says `OS-12`)

@@ -981,3 +981,99 @@ describe("mediaUuidFromLocation", () => {
     }
   });
 });
+
+describe("JiraClient issue creation", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withFetch<T>(
+    respond: (url: string, init?: RequestInit) => Response,
+    body: (calls: Array<{ url: string; init?: RequestInit }>) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return respond(String(input), init);
+    }) as unknown as typeof fetch;
+    try {
+      return await body(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  it("posts once more with a flat description when Jira refuses the rich one", async () => {
+    let posts = 0;
+    await withFetch(
+      () =>
+        ++posts === 1
+          ? new Response("bad document", { status: 400 })
+          : new Response(JSON.stringify({ id: "1", key: "EX-1" })),
+      async (calls) => {
+        const out = await client().createIssue({
+          projectKey: "EX",
+          issueTypeId: "2",
+          summary: "s",
+          description: "line one\nline two",
+        });
+        expect(out).toEqual({ id: "1", key: "EX-1" });
+        const second = JSON.parse(String(calls[1]?.init?.body));
+        expect(second.fields.description).toEqual(
+          textToAdf("line one\nline two"),
+        );
+      },
+    );
+  });
+
+  it("does not retry a create that timed out or failed upstream", async () => {
+    // Jira may have created the issue before answering 502.
+    await withFetch(
+      () => new Response("bad gateway", { status: 502 }),
+      async (calls) => {
+        await expect(
+          client().createIssue({
+            projectKey: "EX",
+            issueTypeId: "2",
+            summary: "s",
+          }),
+        ).rejects.toThrow("502");
+        expect(calls).toHaveLength(1);
+      },
+    );
+  });
+
+  it("finds a company-managed story points field by its name", async () => {
+    await withFetch(
+      (url) =>
+        new Response(
+          JSON.stringify(
+            /issuetypes\?/.test(url)
+              ? { issueTypes: [{ id: "5", name: "Story" }] }
+              : {
+                  fields: [
+                    { fieldId: "customfield_10028", name: "Story Points" },
+                  ],
+                },
+          ),
+        ),
+      async () => {
+        expect(await client().getCreateMeta("EX", "STORY")).toEqual({
+          issueTypeId: "5",
+          issueTypeName: "Story",
+          storyPointsFieldId: "customfield_10028",
+          sprintFieldId: null,
+        });
+      },
+    );
+  });
+
+  it("answers null when the board has no active sprint", async () => {
+    await withFetch(
+      () => new Response(JSON.stringify({ values: [] })),
+      async () => {
+        expect(await client().getActiveSprint("42")).toBeNull();
+      },
+    );
+  });
+});

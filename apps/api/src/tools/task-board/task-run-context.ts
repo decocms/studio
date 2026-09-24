@@ -92,6 +92,7 @@ export const JIRA_RUN_TOOL_NAMES: readonly ToolName[] = [
   "JIRA_ISSUE_TRANSITION",
   "JIRA_ATTACHMENT_DOWNLOAD",
   "JIRA_REMOTE_LINK_ADD",
+  "JIRA_ISSUE_CREATE",
 ];
 
 /**

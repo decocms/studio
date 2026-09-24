@@ -5,7 +5,7 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
-import { sql, type Kysely } from "kysely";
+import { type Kysely, type RawBuilder, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import type { GithubRepo } from "@decocms/shared/sdk";
@@ -98,6 +98,14 @@ export class OrgScopedThreadStorage {
 
   appendThreadGithubRepo(id: string, repo: GithubRepo): Promise<GithubRepo[]> {
     return this.inner.appendThreadGithubRepo(id, this.requireOrg(), repo);
+  }
+
+  addRunJiraIssue(
+    id: string,
+    issueKey: string,
+    opts: { created: boolean },
+  ): Promise<string[]> {
+    return this.inner.addRunJiraIssue(id, this.requireOrg(), issueKey, opts);
   }
 
   pinRuntimeIfUnset(
@@ -514,6 +522,51 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .returning(sql<GithubRepo[]>`metadata->'githubRepos'`.as("repos"))
       .executeTakeFirst();
     return row?.repos ?? [];
+  }
+
+  /**
+   * Add an issue to `jira_issue_keys`, the set the run's Jira tools may act
+   * on, and — when the run created it — to `jira_created_issue_keys`. Returns
+   * the new set.
+   *
+   * One UPDATE, not a read in JS and a write of the whole blob: the run's
+   * tool calls can overlap, and a read-modify-write would drop the slower
+   * one's key. A run stamped before batches carries only `jira_issue_key`;
+   * that key seeds the set, so it stays reachable. Adding a key twice is a
+   * no-op.
+   */
+  async addRunJiraIssue(
+    id: string,
+    organizationId: string,
+    issueKey: string,
+    { created }: { created: boolean },
+  ): Promise<string[]> {
+    const entry = sql`jsonb_build_array(${issueKey}::text)`;
+    const append = (list: RawBuilder<unknown>) =>
+      sql`CASE WHEN ${list} @> ${entry} THEN ${list} ELSE ${list} || ${entry} END`;
+    const keys = sql`coalesce(
+      nullif(metadata->'jira_issue_keys', '[]'::jsonb),
+      CASE WHEN metadata ? 'jira_issue_key'
+        THEN jsonb_build_array(metadata->'jira_issue_key')
+        ELSE '[]'::jsonb END
+    )`;
+    const createdKeys = sql`coalesce(metadata->'jira_created_issue_keys', '[]'::jsonb)`;
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        metadata: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('jira_issue_keys', ${append(keys)})${
+          created
+            ? sql` || jsonb_build_object('jira_created_issue_keys', ${append(createdKeys)})`
+            : sql``
+        }`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returning(sql<string[]>`metadata->'jira_issue_keys'`.as("keys"))
+      .executeTakeFirst();
+    if (!row) throw new Error(`Thread ${id} not found`);
+    return row.keys;
   }
 
   async pinRuntimeIfUnset(

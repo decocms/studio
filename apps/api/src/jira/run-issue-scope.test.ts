@@ -1,5 +1,25 @@
 import { describe, expect, it } from "bun:test";
-import { pickRunIssue, runIssueKeys } from "./run-issue-scope";
+import {
+  pickRunIssue,
+  runCreatedIssueKeys,
+  runIssueKeys,
+} from "./run-issue-scope";
+
+describe("runCreatedIssueKeys", () => {
+  it("is the run's own creations, and nothing on a thread that is not a Jira run", () => {
+    expect(
+      runCreatedIssueKeys({
+        source: "jira",
+        jira_issue_keys: ["EX-1", "EX-9"],
+        jira_created_issue_keys: ["EX-9", 3],
+      }),
+    ).toEqual(["EX-9"]);
+    expect(runCreatedIssueKeys({ jira_created_issue_keys: ["EX-9"] })).toEqual(
+      [],
+    );
+    expect(runCreatedIssueKeys({ source: "jira" })).toEqual([]);
+  });
+});
 
 describe("runIssueKeys", () => {
   it("is the stamped set", () => {
