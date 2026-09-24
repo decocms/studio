@@ -168,7 +168,7 @@ const previewBaseDomain = parsePreviewBaseDomain(
 );
 const previewProxyDeps = {
   baseDomain: previewBaseDomain ?? "",
-  // getOrInitSharedRunner resolves to the AgentSandboxProvider when enabled,
+  // getOrInitSharedRunner resolves to the hosted provider when enabled,
   // or null — exactly what PreviewProxyDeps
   // wants, so no kind check or cast is needed.
   getRunner: getOrInitRunnerForPreview,

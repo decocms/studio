@@ -8,7 +8,7 @@
  */
 
 import { createSandboxFsHooks } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { HostedSandboxProvider } from "@decocms/sandbox/provider";
 import type { StudioContext } from "@/core/studio-context";
 import { mintMcpEndpoint } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { getAgentSandboxProvider } from "@/sandbox/lifecycle";
@@ -29,7 +29,7 @@ import type { SandboxFsHooks } from "@/harnesses/lib/decopilot/built-in-tools/vm
  */
 async function syncToolsCatalog(
   ctx: StudioContext,
-  runner: AgentSandboxProvider,
+  runner: HostedSandboxProvider,
   handle: string,
   vm: { virtualMcpId: string },
 ): Promise<void> {
@@ -71,7 +71,7 @@ async function syncToolsCatalog(
  * sandbox PROVISIONING stays lazy behind the memoized `ensureHandle` closure —
  * `ensureSandbox` only runs on the first VM-tool invocation. The
  * handle-resolution + auto-restart retry layer lives inside
- * `createSandboxFsHooks`, so the VM tools never touch `AgentSandboxProvider`.
+ * `createSandboxFsHooks`, so the VM tools never touch `HostedSandboxProvider`.
  */
 export async function buildAgentSandboxFs(
   ctx: StudioContext,

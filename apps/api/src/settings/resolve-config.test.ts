@@ -38,6 +38,69 @@ describe("resolveConfig agent sandbox availability", () => {
   );
 });
 
+describe("resolveConfig sandbox controller", () => {
+  const complete = {
+    STUDIO_SANDBOX_CONTROLLER_ENABLED: "true",
+    STUDIO_SANDBOX_CONTROLLER_URL: "https://sandbox-controller.test:8443",
+    STUDIO_SANDBOX_CONTROLLER_TLS_CERT: "/etc/controller/tls.crt",
+    STUDIO_SANDBOX_CONTROLLER_TLS_KEY: "/etc/controller/tls.key",
+    STUDIO_SANDBOX_CONTROLLER_CA: "/etc/controller/ca.crt",
+  };
+
+  it("is off by default, even with the connection settings present", () => {
+    expect(resolveConfig(flags, {}).settings.sandboxController).toBeNull();
+    const { STUDIO_SANDBOX_CONTROLLER_ENABLED: _, ...rest } = complete;
+    expect(resolveConfig(flags, rest).settings.sandboxController).toBeNull();
+  });
+
+  it("resolves a complete configuration", () => {
+    const result = resolveConfig(flags, {
+      ...complete,
+      STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT: "9443",
+    });
+    expect(result.settings.sandboxController).toEqual({
+      url: "https://sandbox-controller.test:8443",
+      certPath: "/etc/controller/tls.crt",
+      keyPath: "/etc/controller/tls.key",
+      caPath: "/etc/controller/ca.crt",
+      callbackPort: 9443,
+    });
+  });
+
+  it("refuses to enable without the mTLS pair", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        ...complete,
+        STUDIO_SANDBOX_CONTROLLER_TLS_KEY: "",
+        STUDIO_SANDBOX_CONTROLLER_CA: undefined,
+      }),
+    ).toThrow(
+      "STUDIO_SANDBOX_CONTROLLER_TLS_KEY, STUDIO_SANDBOX_CONTROLLER_CA",
+    );
+  });
+
+  it.each(["http://sandbox-controller.test", "not a url"])(
+    "refuses a non-https url %p",
+    (url) => {
+      expect(() =>
+        resolveConfig(flags, {
+          ...complete,
+          STUDIO_SANDBOX_CONTROLLER_URL: url,
+        }),
+      ).toThrow("https");
+    },
+  );
+
+  it("rejects an invalid callback port", () => {
+    expect(() =>
+      resolveConfig(flags, {
+        ...complete,
+        STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT: "70000",
+      }),
+    ).toThrow("STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT");
+  });
+});
+
 describe("resolveConfig sandbox sticky head ref", () => {
   it("defaults to disabled when unset", () => {
     const result = resolveConfig(flags, {});

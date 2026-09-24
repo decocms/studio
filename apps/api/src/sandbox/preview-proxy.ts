@@ -19,8 +19,8 @@
 
 import {
   PREVIEW_NOT_READY_HEADER,
-  type AgentSandboxProvider,
-} from "@decocms/sandbox/provider/agent-sandbox";
+  type HostedSandboxProvider,
+} from "@decocms/sandbox/provider";
 
 /**
  * Cap on frames buffered between client upgrade and upstream WS open. Vite
@@ -119,7 +119,7 @@ export interface PreviewProxyDeps {
    * the agent-sandbox runner — the caller treats null as "not a preview
    * deployment" and falls through.
    */
-  getRunner: () => Promise<AgentSandboxProvider | null>;
+  getRunner: () => Promise<HostedSandboxProvider | null>;
   baseDomain: string;
 }
 

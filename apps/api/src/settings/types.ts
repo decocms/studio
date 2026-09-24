@@ -249,6 +249,10 @@ export interface Settings {
    *  (SANDBOX_RELEASE_GRACE_MS, default 120000). Long enough that an immediate
    *  follow-up turn adopts the warm pod rather than paying a cold clone. */
   sandboxReleaseGraceMs: number;
+  /** Claims go through the sandbox controller instead of the in-process
+   *  runner (STUDIO_SANDBOX_CONTROLLER_ENABLED). Null — the default — keeps
+   *  the in-process runner. */
+  sandboxController: SandboxControllerSettings | null;
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;
@@ -314,6 +318,24 @@ export interface Settings {
   awsS3TenantRoleArn: string | undefined;
   awsS3TenantProvisionerAccessKeyId: string | undefined;
   awsS3TenantProvisionerSecretAccessKey: string | undefined;
+}
+
+/**
+ * One mTLS pair per installation. Studio's certificate is presented on calls
+ * to the controller and served on the callback listener, so it needs both the
+ * clientAuth and serverAuth usages. `caPath` verifies the controller both
+ * ways and must be dedicated to this pair: any certificate it signs may call
+ * the callbacks.
+ */
+export interface SandboxControllerSettings {
+  /** https base URL of the controller's claim API. */
+  url: string;
+  certPath: string;
+  keyPath: string;
+  caPath: string;
+  /** Port of the mTLS listener serving the controller's callbacks; unset
+   *  serves none, and the controller keeps the credentials it has. */
+  callbackPort: number | undefined;
 }
 
 export interface CliFlags {

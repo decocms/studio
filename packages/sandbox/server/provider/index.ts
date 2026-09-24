@@ -25,4 +25,6 @@ export type {
   RunnerStateStoreOps,
 } from "./state-store";
 export { composeSandboxRef } from "./sandbox-ref";
+export type { HostedSandboxProvider } from "./hosted";
+export { PREVIEW_NOT_READY_HEADER } from "./shared/preview-proxy";
 export { createSandboxFsHooks } from "./sandbox-fs-hooks";

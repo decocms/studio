@@ -1,25 +1,17 @@
-/** Hosted AgentSandboxProvider lifecycle. */
+/** Hosted sandbox provider lifecycle. */
 
 import type { StudioContext } from "@/core/studio-context";
-import type {
-  ClaimPhase,
-  AgentSandboxProvider,
-} from "@decocms/sandbox/provider/agent-sandbox";
+import type { HostedSandboxProvider } from "@decocms/sandbox/provider";
+import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { getDb } from "@/database";
 import type { Kysely } from "kysely";
 import { meter } from "@/observability";
 import type { Database as DatabaseSchema } from "@/storage/types";
 import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
-import { buildCloneInfo } from "@/shared/github-clone-info";
-import { cloneInfoForRepository } from "@/git-providers";
-import { RepositoryStorage } from "@/storage/repositories";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
-import { parseGithubOwnerRepo } from "@/sandbox/parse-github-clone-url";
-import { mintOrgFsConfigJson } from "@/file-storage/mount/provisioning";
-import { OrgRepoSyncStorage } from "@/storage/org-repo-syncs";
-import { auth } from "@/auth";
-import { getPublicUrl } from "@/core/server-constants";
+import type { SandboxControllerSettings } from "@/settings/types";
+import { sandboxCredentialMinters } from "@/sandbox/credential-mint";
 
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/api/src/index.ts` is wired
@@ -33,8 +25,8 @@ const INFLIGHT_KEY = Symbol.for(
   "decocms.sandbox.lifecycle.agent-sandbox-inflight",
 );
 type LifecycleGlobal = {
-  [RUNNER_KEY]?: AgentSandboxProvider;
-  [INFLIGHT_KEY]?: Promise<AgentSandboxProvider>;
+  [RUNNER_KEY]?: HostedSandboxProvider;
+  [INFLIGHT_KEY]?: Promise<HostedSandboxProvider>;
 };
 const lifecycleGlobal = globalThis as unknown as LifecycleGlobal;
 
@@ -44,8 +36,8 @@ const lifecycleGlobal = globalThis as unknown as LifecycleGlobal;
 // promoting it to the runner slot once it resolves) collapses them to a single
 // build. Cleared on failure so a retry can take a fresh swing.
 function resolveOnce(
-  build: () => Promise<AgentSandboxProvider>,
-): Promise<AgentSandboxProvider> {
+  build: () => Promise<HostedSandboxProvider>,
+): Promise<HostedSandboxProvider> {
   const cached = lifecycleGlobal[RUNNER_KEY];
   if (cached) return Promise.resolve(cached);
   const pending = lifecycleGlobal[INFLIGHT_KEY];
@@ -129,7 +121,9 @@ function readPreviewGateway(): { name: string; namespace: string } | undefined {
 
 async function instantiate(
   db: Kysely<DatabaseSchema>,
-): Promise<AgentSandboxProvider> {
+): Promise<HostedSandboxProvider> {
+  const controller = getSettings().sandboxController;
+  if (controller) return instantiateRemote(controller);
   const stateStore = new KyselySandboxProviderStateStore(db);
   const previewUrlPattern = readPreviewUrlPattern();
   // Dynamic import — @kubernetes/client-node is heavy and only needed when
@@ -157,67 +151,35 @@ async function instantiate(
     // that silently fails to parse costs N pods and serves nobody.
     tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
     meter,
-    mintCloneUrl: async (repo, mintOpts) => {
-      // First-class repositories re-mint through their provider account.
-      if (repo.repositoryId) {
-        const repository = await new RepositoryStorage(db).getUnscoped(
-          repo.repositoryId,
-        );
-        if (!repository) return null;
-        const { cloneUrl } = await cloneInfoForRepository(
-          { db, vault },
-          repository,
-          { bufferMs: mintOpts?.bufferMs },
-        );
-        return cloneUrl;
-      }
-      // Only connection-backed clones can be re-minted; buildCloneInfo
-      // refreshes standard OAuth GitHub connections from db + vault alone.
-      // Legacy repo-scoped tokens throw here (need an org-scoped ctx) and
-      // the runner falls back to the persisted URL.
-      if (!repo.connectionId) return null;
-      const parsed = parseGithubOwnerRepo(repo.cloneUrl);
-      if (!parsed) return null;
-      const { cloneUrl } = await buildCloneInfo(
-        repo.connectionId,
-        parsed.owner,
-        parsed.name,
-        db,
-        vault,
-        { bufferMs: mintOpts?.bufferMs },
-      );
-      return cloneUrl;
-    },
-    // Same lifetime problem as mintCloneUrl; see mintOrgFsConfig's docs.
-    mintOrgFsConfig: async (tenant) => {
-      if (!tenant.orgSlug) return null;
-      const json = await mintOrgFsConfigJson(
-        {
-          boundAuth: {
-            apiKey: {
-              create: (data) =>
-                auth.api.createApiKey({
-                  body: { ...data, userId: tenant.userId },
-                }),
-            },
-          },
-          storage: { orgRepoSyncs: new OrgRepoSyncStorage(db) },
-        },
-        {
-          orgSlug: tenant.orgSlug,
-          orgId: tenant.orgId,
-          baseUrl: getPublicUrl(),
-        },
-      );
-      return json ?? null;
-    },
+    ...sandboxCredentialMinters(db, vault),
+  });
+}
+
+/**
+ * The sandbox controller owns claims and credential refresh; Studio keeps
+ * only the daemon conversation.
+ */
+async function instantiateRemote(
+  controller: SandboxControllerSettings,
+): Promise<HostedSandboxProvider> {
+  const { RemoteSandboxProvider } = await import(
+    "@decocms/sandbox/provider/remote"
+  );
+  const [cert, key, ca] = await Promise.all([
+    Bun.file(controller.certPath).text(),
+    Bun.file(controller.keyPath).text(),
+    Bun.file(controller.caPath).text(),
+  ]);
+  return new RemoteSandboxProvider({
+    baseUrl: controller.url,
+    tls: { cert, key, ca },
   });
 }
 
 /** Resolve the hosted provider for enabled user-facing operations. */
 export function getAgentSandboxProvider(
   ctx: StudioContext,
-): Promise<AgentSandboxProvider> {
+): Promise<HostedSandboxProvider> {
   if (!getSettings().agentSandboxEnabled) {
     throw new Error(
       "Agent sandbox is disabled. Set STUDIO_AGENT_SANDBOX_ENABLED=true to enable it.",
@@ -232,7 +194,7 @@ export function getAgentSandboxProvider(
  */
 export function getAgentSandboxProviderForTeardown(
   ctx: StudioContext,
-): Promise<AgentSandboxProvider> {
+): Promise<HostedSandboxProvider> {
   return resolveOnce(() => instantiate(ctx.db));
 }
 
@@ -242,7 +204,7 @@ export function getAgentSandboxProviderForTeardown(
  * today. Constructs without a StudioContext (the state store only needs a
  * Kysely instance) and returns null when hosted agent sandboxes are disabled.
  */
-export async function getOrInitSharedRunner(): Promise<AgentSandboxProvider | null> {
+export async function getOrInitSharedRunner(): Promise<HostedSandboxProvider | null> {
   if (!getSettings().agentSandboxEnabled) return null;
   return resolveOnce(() => instantiate(getDb().db));
 }
@@ -294,7 +256,7 @@ export interface LifecycleHandle {
   unsubscribe(): void;
 }
 
-type LifecycleWatcher = Pick<AgentSandboxProvider, "watchClaimLifecycle">;
+type LifecycleWatcher = Pick<HostedSandboxProvider, "watchClaimLifecycle">;
 
 /**
  * Subscribe to a SandboxClaim's lifecycle phase stream. Multiple subscribers

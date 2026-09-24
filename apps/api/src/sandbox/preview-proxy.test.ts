@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { PREVIEW_NOT_READY_HEADER } from "@decocms/sandbox/provider/agent-sandbox";
+import { PREVIEW_NOT_READY_HEADER } from "@decocms/sandbox/provider";
 import {
   extractHandleFromHost,
   parsePreviewBaseDomain,
