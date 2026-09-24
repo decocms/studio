@@ -234,7 +234,8 @@ func (r *Runner) ensureLocked(ctx context.Context, id protocol.SandboxID, handle
 			// likely expired; forward the fresh one.
 			r.refreshGitCredential(ctx, rec, opts)
 			r.relayOrgFs(ctx, rec.daemonURL, rec.token, opts.OrgFsConfigJSON)
-			return r.finish(ctx, rec, false, true)
+			// Stamp a row the in-process runner wrote, so its pods stop claiming it.
+			return r.finish(ctx, rec, !writtenByUs(row), true)
 		}
 		if err := r.store.Delete(ctx, id, Name); err != nil {
 			return nil, err
@@ -534,6 +535,13 @@ func (r *Runner) adopt(ctx context.Context, id protocol.SandboxID, handle string
 
 // rehydrate rebuilds a record from its row, or nil on any mismatch (the caller
 // drops the row and falls through).
+func writtenByUs(row *store.Record) bool {
+	var st struct {
+		Writer string `json:"writer"`
+	}
+	return json.Unmarshal(row.State, &st) == nil && st.Writer == Writer
+}
+
 func (r *Runner) rehydrate(ctx context.Context, id protocol.SandboxID, handle string, row *store.Record) *record {
 	var st persisted
 	if json.Unmarshal(row.State, &st) != nil || st.Token == "" || (st.AdoptedSandboxName == "" && st.PodName == "") {
