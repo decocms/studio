@@ -248,7 +248,7 @@ let onboardingViewTracked = false;
 
 function CommerceOnboardingPage() {
   const search = useSearch({ from: "/reports-onboarding" });
-  const { org: requestedOrgSlug, siteUrl } = search;
+  const { org: requestedOrgSlug, siteUrl, fix } = search;
   const siteHost = siteUrlToHost(siteUrl);
 
   if (!onboardingViewTracked && isPostHogInitialized()) {
@@ -260,6 +260,9 @@ function CommerceOnboardingPage() {
     track("commerce_onboarding_viewed", {
       site_url: siteUrl,
       domain: siteHost ?? undefined,
+      // Which finding sent them here, when the report's per-finding CTA did.
+      // Absent on every other entry, which is itself the signal.
+      ...(fix ? { fix_check_id: fix } : {}),
       ...reportAttribution,
       // Person-level copy so the store follows the user across sessions.
       ...(siteHost ? { $set: { last_scanned_domain: siteHost } } : {}),
