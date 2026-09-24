@@ -374,4 +374,6 @@ export const taskBoard = {
   "taskBoard.analytics.tabQuality": "Quality",
   "taskBoard.analytics.tabErrors": "Errors",
   "taskBoard.analytics.tabTenants": "Tenants",
+  "taskBoard.analytics.noDataInRange": "No data in this range",
+  "taskBoard.analytics.nothingToShow": "Nothing to show",
 } as const;

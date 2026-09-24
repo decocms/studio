@@ -382,4 +382,6 @@ export const taskBoard = {
   "taskBoard.analytics.tabQuality": "Qualidade",
   "taskBoard.analytics.tabErrors": "Erros",
   "taskBoard.analytics.tabTenants": "Organizações",
+  "taskBoard.analytics.noDataInRange": "Sem dados neste período",
+  "taskBoard.analytics.nothingToShow": "Nada para mostrar",
 } satisfies Record<keyof typeof taskBoardEn, string>;

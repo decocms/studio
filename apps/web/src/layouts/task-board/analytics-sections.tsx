@@ -24,6 +24,7 @@ import {
 } from "@decocms/ui/components/table.tsx";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import type { AnalyticsSection } from "@/hooks/use-task-board-analytics";
+import { useT } from "@/i18n/use-t";
 
 /** Fixed order, never cycled — a series keeps its hue as the set changes. */
 const SERIES_COLORS = [
@@ -103,10 +104,12 @@ function SeriesCard({
     label: String(p.t ?? "").slice(0, 10),
   }));
 
+  const t = useT();
+
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
-        No data in this range
+        {t("taskBoard.analytics.noDataInRange")}
       </div>
     );
   }
@@ -182,13 +185,14 @@ function TableCard({
   section: Extract<AnalyticsSection, { kind: "table" }>;
   threadLinks?: boolean;
 }) {
+  const t = useT();
   const orgCol = section.columns.indexOf("Org");
   const threadCol =
     threadLinks && orgCol >= 0 ? section.columns.indexOf("Thread") : -1;
   if (section.rows.length === 0) {
     return (
       <div className="rounded-lg border border-border p-8 text-center text-sm text-muted-foreground">
-        Nothing to show
+        {t("taskBoard.analytics.nothingToShow")}
       </div>
     );
   }
