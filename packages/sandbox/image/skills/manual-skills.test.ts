@@ -22,6 +22,7 @@ const MANUAL_ONLY = [
   "jira-execute",
   "jira-review",
   "jira-merge",
+  "jira-release",
   "jira-validate-production",
 ];
 
