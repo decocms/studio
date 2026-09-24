@@ -70,14 +70,26 @@ function StatCard({
   );
 }
 
+/**
+ * Sorted, not insertion-order: insertion order tracks which point happens to
+ * carry a key first, so it drifts as the date range changes and a series
+ * would swap hues between visits — sorting keys by name keeps a series' hue
+ * fixed regardless of which points are in view.
+ */
+export function seriesKeys(
+  points: readonly Record<string, unknown>[],
+): string[] {
+  return Array.from(new Set(points.flatMap((p) => Object.keys(p))))
+    .filter((k) => k !== "t")
+    .sort();
+}
+
 function SeriesCard({
   section,
 }: {
   section: Extract<AnalyticsSection, { kind: "series" }>;
 }) {
-  const keys = Array.from(
-    new Set(section.points.flatMap((p) => Object.keys(p))),
-  ).filter((k) => k !== "t");
+  const keys = seriesKeys(section.points);
 
   const config: ChartConfig = Object.fromEntries(
     keys.map((k, i) => [
