@@ -8,6 +8,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/activity"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
 	"github.com/decocms/studio/sandbox-daemon/internal/orgfs"
+	"github.com/decocms/studio/sandbox-daemon/pkg/protocol"
 )
 
 const (
@@ -26,15 +27,24 @@ type HealthDeps struct {
 	GetConfigured   func() bool
 }
 
+// healthResponse is the wire contract plus the daemon-internal queue detail the
+// e2e suite and operators read.
+type healthResponse struct {
+	protocol.Health
+	Orchestrator OrchestratorState `json:"orchestrator"`
+}
+
 func Health(deps HealthDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		orch := deps.GetOrchestrator()
-		httpx.JSON(w, 200, map[string]any{
-			"ready":        deps.GetReady(),
-			"bootId":       deps.DaemonBootId,
-			"configured":   deps.GetConfigured(),
-			"orchestrator": orch,
-			"setup":        map[string]any{"running": orch.Running, "done": !orch.Running},
+		httpx.JSON(w, 200, healthResponse{
+			Health: protocol.Health{
+				Ready:      deps.GetReady(),
+				BootId:     deps.DaemonBootId,
+				Configured: deps.GetConfigured(),
+				Setup:      protocol.SetupState{Running: orch.Running, Done: !orch.Running},
+			},
+			Orchestrator: orch,
 		})
 	}
 }

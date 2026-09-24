@@ -11,6 +11,7 @@ import (
 	"github.com/decocms/studio/sandbox-daemon/internal/config"
 	"github.com/decocms/studio/sandbox-daemon/internal/httpx"
 	"github.com/decocms/studio/sandbox-daemon/internal/proc"
+	"github.com/decocms/studio/sandbox-daemon/pkg/protocol"
 )
 
 const (
@@ -160,13 +161,13 @@ func ConfigUpdate(deps ConfigDeps) http.HandlerFunc {
 		} else {
 			activity.MarkPrewarmed()
 		}
-		httpx.JSON(w, 200, map[string]any{
-			"bootId":     deps.DaemonBootId,
-			"transition": result.Transition.Kind,
+		httpx.JSON(w, 200, protocol.ConfigResponse{
+			BootId:     deps.DaemonBootId,
+			Transition: result.Transition.Kind,
 			// Both GET /config and this echo are proxied to the browser. Never let
 			// the resolved submodule PATs back out — they're needed only in the
 			// in-memory store for the clone step.
-			"config": stripSubmoduleTokens(result.After),
+			Config: stripSubmoduleTokens(result.After),
 		})
 	}
 }

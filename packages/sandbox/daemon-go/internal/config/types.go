@@ -1,99 +1,23 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
 
-// SubmoduleCredential is a PAT for git remotes the main clone token can't reach
-// (a different repo/org): private submodules, and the private `git:` package
-// dependencies a package manager resolves. The daemon writes the token to a
-// git-only credentials file and rewrites `git@<host>:` SSH URLs to HTTPS so it
-// authenticates.
-//
-// ⚠️ SECURITY: Token is a credential. It never enters the process env bag the
-// dev server sees, never appears in argv, and is redacted from every
-// `/_sandbox/config` response (see routes.stripSubmoduleTokens). It IS written
-// to a HOME-scoped git config that lives for the pod's lifetime, so in-pod code
-// can read it — see setup.InstallGitCredentials for why that is the trade.
-type SubmoduleCredential struct {
-	Host  string `json:"host"`
-	Token string `json:"token"`
-}
+	"github.com/decocms/studio/sandbox-daemon/pkg/protocol"
+)
 
-type GitRepository struct {
-	CloneUrl *string `json:"cloneUrl,omitempty"`
-	Branch   *string `json:"branch,omitempty"`
-	RepoName *string `json:"repoName,omitempty"`
-	// Credentials for private submodules, keyed by host. Absent/empty means
-	// submodules are fetched with only the ambient (no-credential) git config —
-	// public submodules work, private ones on other hosts fail auth.
-	SubmoduleCredentials []SubmoduleCredential `json:"submoduleCredentials,omitempty"`
-}
-
-type GitIdentity struct {
-	UserName  *string `json:"userName,omitempty"`
-	UserEmail *string `json:"userEmail,omitempty"`
-}
-
-type GitConfig struct {
-	Repository *GitRepository `json:"repository,omitempty"`
-	// Extra checkouts placed alongside the primary, one directory each, for an
-	// org whose work spans repositories (a storefront and its checkout, say).
-	// The primary stays the only one the dev server, the package-manager probe
-	// and the preview are derived from — these are read-and-push checkouts, so
-	// adding one cannot change what the sandbox serves.
-	//
-	// Replaced wholesale by a patch that carries the key, unlike Repository's
-	// field-by-field merge: the set is the unit a caller means, and a
-	// field-wise merge of a list has no sane answer for "which entry".
-	Repositories []GitRepository `json:"repositories,omitempty"`
-	Identity     *GitIdentity    `json:"identity,omitempty"`
-}
-
-type Operator struct {
-	UserName  *string `json:"userName,omitempty"`
-	UserEmail *string `json:"userEmail,omitempty"`
-}
-
-type PackageManagerConfig struct {
-	Name *string `json:"name,omitempty"`
-	Path *string `json:"path,omitempty"`
-}
-
-type Application struct {
-	PackageManager *PackageManagerConfig `json:"packageManager,omitempty"`
-	Runtime        *string               `json:"runtime,omitempty"`
-	Port           *float64              `json:"port,omitempty"`
-}
-
-type TenantConfig struct {
-	Git      *GitConfig `json:"git,omitempty"`
-	Operator *Operator  `json:"operator,omitempty"`
-	// CloneOnly: prepare the checkout and stop — no dependency install, no dev
-	// server. For a consumer that only needs the files (the sandbox-hosted
-	// harness dispatch path), where an install is pure latency competing with
-	// the run for the pod's CPU.
-	//
-	// It has to be explicit. Omitting `application` does NOT mean "no app":
-	// `fillApplicationDefaults` deliberately autodetects a package manager from
-	// the lockfile so a tenant who configured nothing still gets a dev server,
-	// and that autodetect is what silently reinstated the install this flag
-	// exists to skip.
-	CloneOnly   *bool             `json:"cloneOnly,omitempty"`
-	Application *Application      `json:"application,omitempty"`
-	Env         map[string]string `json:"env,omitempty"`
-	// Owning organization, stamped by Studio. Nothing in the boot path reads it;
-	// it exists so artifacts that outlive the pod can record whose they are.
-	//
-	// Concretely: the golden dependency cache. A repo hash does not isolate two
-	// organizations cloning the same URL (a public template), so a store shared
-	// across nodes must key by org — otherwise one org's dependency tree can be
-	// restored into another's sandbox. See setup.WriteGoldenMeta.
-	OrgId string `json:"orgId,omitempty"`
-}
-
-// IsCloneOnly reports whether this sandbox should stop after the checkout.
-func (c *TenantConfig) IsCloneOnly() bool {
-	return c != nil && c.CloneOnly != nil && *c.CloneOnly
-}
+// The wire types live in pkg/protocol so the sandbox controller compiles
+// against the same definitions; these aliases keep the daemon's own spelling.
+type (
+	SubmoduleCredential  = protocol.SubmoduleCredential
+	GitRepository        = protocol.GitRepository
+	GitIdentity          = protocol.GitIdentity
+	GitConfig            = protocol.GitConfig
+	Operator             = protocol.Operator
+	PackageManagerConfig = protocol.PackageManagerConfig
+	Application          = protocol.Application
+	TenantConfig         = protocol.TenantConfig
+)
 
 // Patch mirrors ConfigPatch: env values may be null (per-key delete).
 type Patch struct {
@@ -149,86 +73,4 @@ func isNull(raw json.RawMessage) bool {
 	return string(raw) == "null"
 }
 
-func (c *TenantConfig) CloneUrl() string {
-	if c == nil || c.Git == nil || c.Git.Repository == nil || c.Git.Repository.CloneUrl == nil {
-		return ""
-	}
-	return *c.Git.Repository.CloneUrl
-}
-
-func (c *TenantConfig) HasCloneUrl() bool {
-	return c != nil && c.Git != nil && c.Git.Repository != nil && c.Git.Repository.CloneUrl != nil
-}
-
-func (c *TenantConfig) Branch() string {
-	if c == nil || c.Git == nil || c.Git.Repository == nil || c.Git.Repository.Branch == nil {
-		return ""
-	}
-	return *c.Git.Repository.Branch
-}
-
-func (c *TenantConfig) RepoName() string {
-	if c == nil || c.Git == nil || c.Git.Repository == nil || c.Git.Repository.RepoName == nil {
-		return ""
-	}
-	return *c.Git.Repository.RepoName
-}
-
-// SubmoduleCredentials returns the configured per-host submodule PATs, nil when
-// none. ⚠️ SECURITY: the tokens in the result are credentials. Never log them.
-func (c *TenantConfig) SubmoduleCredentials() []SubmoduleCredential {
-	if c == nil || c.Git == nil || c.Git.Repository == nil {
-		return nil
-	}
-	return c.Git.Repository.SubmoduleCredentials
-}
-
-// AdditionalRepositories are the secondary checkouts, skipping any entry with
-// no clone URL — a half-written patch must not stall the whole clone stage.
-func (c *TenantConfig) AdditionalRepositories() []GitRepository {
-	if c == nil || c.Git == nil {
-		return nil
-	}
-	out := make([]GitRepository, 0, len(c.Git.Repositories))
-	for _, repo := range c.Git.Repositories {
-		if repo.CloneUrl == nil || *repo.CloneUrl == "" {
-			continue
-		}
-		out = append(out, repo)
-	}
-	return out
-}
-
-func (c *TenantConfig) HasBranch() bool {
-	return c != nil && c.Git != nil && c.Git.Repository != nil && c.Git.Repository.Branch != nil
-}
-
-func (c *TenantConfig) PmName() string {
-	if c == nil || c.Application == nil || c.Application.PackageManager == nil || c.Application.PackageManager.Name == nil {
-		return ""
-	}
-	return *c.Application.PackageManager.Name
-}
-
-func (c *TenantConfig) PmPath() string {
-	if c == nil || c.Application == nil || c.Application.PackageManager == nil || c.Application.PackageManager.Path == nil {
-		return ""
-	}
-	return *c.Application.PackageManager.Path
-}
-
-func (c *TenantConfig) Runtime() string {
-	if c == nil || c.Application == nil || c.Application.Runtime == nil {
-		return ""
-	}
-	return *c.Application.Runtime
-}
-
-func (c *TenantConfig) Port() (int, bool) {
-	if c == nil || c.Application == nil || c.Application.Port == nil {
-		return 0, false
-	}
-	return int(*c.Application.Port), true
-}
-
-func Str(s string) *string { return &s }
+func Str(s string) *string { return protocol.Str(s) }
