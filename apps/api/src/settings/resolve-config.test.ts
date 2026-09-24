@@ -81,6 +81,31 @@ describe("resolveConfig sandbox controller", () => {
     );
   });
 
+  it("lets dev run agent sandboxes with no controller when dev says why", () => {
+    const result = resolveConfig(flags, {
+      NODE_ENV: "development",
+      STUDIO_AGENT_SANDBOX_ENABLED: "true",
+      STUDIO_SANDBOX_CONTROLLER_UNAVAILABLE: "install Go",
+    });
+    expect(result.settings.sandboxController).toBeNull();
+    expect(result.settings.sandboxControllerUnavailable).toBe("install Go");
+  });
+
+  it("ignores that reason outside development", () => {
+    const env = {
+      NODE_ENV: "production",
+      STUDIO_AGENT_SANDBOX_ENABLED: "true",
+      STUDIO_SANDBOX_CONTROLLER_UNAVAILABLE: "install Go",
+    };
+    expect(() => resolveConfig(flags, env)).toThrow(
+      "STUDIO_AGENT_SANDBOX_ENABLED needs STUDIO_SANDBOX_CONTROLLER_URL",
+    );
+    expect(
+      resolveConfig(flags, { ...env, ...controller }).settings
+        .sandboxControllerUnavailable,
+    ).toBeNull();
+  });
+
   it("refuses a controller without the mTLS pair", () => {
     expect(() =>
       resolveConfig(flags, {

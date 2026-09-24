@@ -34,7 +34,10 @@ import {
 } from "@decocms/shared/thread/session-runtime";
 import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
 import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
-import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import {
+  getAgentSandboxProvider,
+  SandboxControllerUnavailableError,
+} from "../../sandbox/lifecycle";
 import { assertAiBudget } from "../../core/plan-feature-gate";
 import {
   getUserId,
@@ -248,7 +251,10 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   let runner: HostedSandboxProvider | null;
   try {
     runner = await getAgentSandboxProvider(ctx);
-  } catch {
+  } catch (err) {
+    if (err instanceof SandboxControllerUnavailableError) {
+      return c.json({ error: err.message }, 503);
+    }
     runner = null;
   }
 

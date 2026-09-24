@@ -253,6 +253,10 @@ export interface Settings {
    *  (STUDIO_SANDBOX_CONTROLLER_*). Required with agentSandboxEnabled; null
    *  when agent sandboxes are off and no controller is configured. */
   sandboxController: SandboxControllerSettings | null;
+  /** Development only: why `bun run dev` started no controller, and what to
+   *  install (STUDIO_SANDBOX_CONTROLLER_UNAVAILABLE). Sandbox tools answer 503
+   *  with it instead of the boot failing. */
+  sandboxControllerUnavailable: string | null;
 
   // External service credentials (optional)
   decoSupabaseUrl: string | undefined;

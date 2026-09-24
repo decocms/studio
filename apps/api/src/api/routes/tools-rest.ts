@@ -16,6 +16,7 @@ import { z } from "zod";
 import { ForbiddenError, UnauthorizedError } from "../../core/access-control";
 import { GatewayRefusalError } from "../../ai-providers/adapters/deco-ai-gateway";
 import { OrgBlockedError } from "../../core/org-notice-gate";
+import { SandboxControllerUnavailableError } from "../../sandbox/lifecycle";
 import { resolveToolByName, TOOL_BY_NAME } from "../../tools";
 import { getToolRegistration } from "../../tools/management-registration";
 import type { Env } from "../hono-env";
@@ -113,6 +114,9 @@ export const createToolsRestRoutes = () => {
           { error: error.message, ...(error.code ? { code: error.code } : {}) },
           error.status === 503 ? 503 : 403,
         );
+      }
+      if (error instanceof SandboxControllerUnavailableError) {
+        return c.json({ error: error.message }, 503);
       }
       const message = error instanceof Error ? error.message : "Tool failed";
       return c.json({ error: message }, 500);

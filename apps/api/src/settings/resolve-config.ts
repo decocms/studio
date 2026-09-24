@@ -74,6 +74,19 @@ export function describeEncryptionKeyForLog(ek: string): string {
 }
 
 /**
+ * Why `bun run dev` started no sandbox controller
+ * (STUDIO_SANDBOX_CONTROLLER_UNAVAILABLE, set by the dev CLI). Ignored outside
+ * development, where agent sandboxes keep requiring a controller.
+ */
+function resolveSandboxControllerUnavailable(
+  envVars: Record<string, string | undefined>,
+  nodeEnv: Settings["nodeEnv"],
+): string | null {
+  if (nodeEnv !== "development") return null;
+  return envVars.STUDIO_SANDBOX_CONTROLLER_UNAVAILABLE?.trim() || null;
+}
+
+/**
  * Agent sandboxes run through the sandbox controller, so enabling them
  * requires every mTLS input: a half-configured deploy fails at boot instead of
  * calling the controller without a client certificate. With them off, a
@@ -83,9 +96,13 @@ export function describeEncryptionKeyForLog(ek: string): string {
 function resolveSandboxController(
   envVars: Record<string, string | undefined>,
   agentSandboxEnabled: boolean,
+  unavailable: string | null,
 ): SandboxControllerSettings | null {
   const read = (name: string) => envVars[name]?.trim() || undefined;
-  if (!agentSandboxEnabled && !read("STUDIO_SANDBOX_CONTROLLER_URL")) {
+  if (
+    (!agentSandboxEnabled || unavailable) &&
+    !read("STUDIO_SANDBOX_CONTROLLER_URL")
+  ) {
     return null;
   }
   const required = {
@@ -461,6 +478,11 @@ export function resolveConfig(
     sandboxController: resolveSandboxController(
       envVars,
       toBool(envVars.STUDIO_AGENT_SANDBOX_ENABLED),
+      resolveSandboxControllerUnavailable(envVars, nodeEnv),
+    ),
+    sandboxControllerUnavailable: resolveSandboxControllerUnavailable(
+      envVars,
+      nodeEnv,
     ),
 
     // External service credentials

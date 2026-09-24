@@ -74,9 +74,23 @@ async function instantiate(
   });
 }
 
+/** Agent sandboxes are on, but `bun run dev` could not start a controller. */
+export class SandboxControllerUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`No sandbox controller is running: ${reason}`);
+    this.name = "SandboxControllerUnavailableError";
+  }
+}
+
 /** Resolves the provider whenever the settings name a controller. */
 function resolveProvider(): Promise<HostedSandboxProvider> {
-  const controller = getSettings().sandboxController;
+  const { sandboxController: controller, sandboxControllerUnavailable } =
+    getSettings();
+  if (!controller && sandboxControllerUnavailable) {
+    return Promise.reject(
+      new SandboxControllerUnavailableError(sandboxControllerUnavailable),
+    );
+  }
   if (!controller) {
     return Promise.reject(
       new Error(
@@ -168,10 +182,12 @@ export function getAgentSandboxProviderForTeardown(
 /**
  * Eager provider accessor for paths that need the provider before any user
  * request — preview-host proxying at the Bun.serve layer is the only caller
- * today. Returns null when hosted agent sandboxes are disabled.
+ * today. Returns null when hosted agent sandboxes are disabled or no
+ * controller is running.
  */
 export async function getOrInitSharedRunner(): Promise<HostedSandboxProvider | null> {
-  if (!getSettings().agentSandboxEnabled) return null;
+  const settings = getSettings();
+  if (!settings.agentSandboxEnabled || !settings.sandboxController) return null;
   return resolveProvider();
 }
 
