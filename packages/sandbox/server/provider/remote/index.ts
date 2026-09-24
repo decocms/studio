@@ -50,6 +50,15 @@ import {
   statusResponseSchema,
 } from "./schemas";
 
+export {
+  cloneUrlRequestSchema,
+  orgFsConfigRequestSchema,
+} from "./schemas";
+export {
+  CloneURLPath,
+  OrgFsConfigPath,
+} from "../../../controller-types/sandbox-api";
+
 const LOG_LABEL = "RemoteSandboxProvider";
 
 /** Bounds every controller call except ensure and events, which the controller bounds on progress. */

@@ -8,6 +8,7 @@ import { z } from "zod";
 import type {
   Capability,
   CapacityResponse,
+  CloneURLRequest,
   Daemon,
   DrainingResponse,
   EnsureResponse,
@@ -15,10 +16,12 @@ import type {
   ErrorResponse,
   FailureReason,
   Image,
+  OrgFsConfigRequest,
   Phase,
   PhaseKind,
   PodTermination,
   StatusResponse,
+  Tenant,
 } from "../../../controller-types/sandbox-api";
 
 const capabilitySchema: z.ZodType<Capability> = z.enum([
@@ -131,3 +134,29 @@ export const phaseSchema: z.ZodType<Phase> = z.object({
   nodeClaim: z.string().optional(),
   reason: failureReasonSchema.optional(),
 });
+
+// The callbacks the controller makes into Studio.
+
+export const cloneUrlRequestSchema: z.ZodType<CloneURLRequest> = z
+  .object({
+    connectionId: z.string().min(1).optional(),
+    repositoryId: z.string().min(1).optional(),
+    cloneUrl: z.string().min(1).max(4096),
+    bufferMs: z.number().int().nonnegative().optional(),
+  })
+  .refine((r) => r.connectionId !== undefined || r.repositoryId !== undefined, {
+    message: "connectionId or repositoryId is required",
+  });
+
+const tenantSchema: z.ZodType<Tenant> = z.object({
+  orgId: z.string().min(1),
+  userId: z.string().min(1),
+  orgSlug: z.string().optional(),
+  orgName: z.string().optional(),
+  userEmail: z.string().optional(),
+  userName: z.string().optional(),
+});
+
+export const orgFsConfigRequestSchema: z.ZodType<OrgFsConfigRequest> = z.object(
+  { tenant: tenantSchema },
+);

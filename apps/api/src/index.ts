@@ -160,9 +160,10 @@ const {
   previewWebSocketHandler,
   isPreviewWsData,
 } = await import("./sandbox/preview-proxy");
-const { getOrInitSharedRunner: getOrInitRunnerForPreview } = await import(
-  "./sandbox/lifecycle"
-);
+const {
+  getOrInitSharedRunner: getOrInitRunnerForPreview,
+  startSandboxControllerCallbacks,
+} = await import("./sandbox/lifecycle");
 const previewBaseDomain = parsePreviewBaseDomain(
   process.env.STUDIO_SANDBOX_PREVIEW_URL_PATTERN,
 );
@@ -307,6 +308,8 @@ const server = Bun.serve({
 });
 
 const stopProfiling = startProfiling();
+
+const sandboxControllerCallbacks = await startSandboxControllerCallbacks();
 
 // Local mode: seed admin user + organization after server is listening
 // This must run after Bun.serve() so that the org seed can fetch tools
@@ -479,6 +482,7 @@ async function gracefulShutdown(signal: string) {
     // 3. Force-close connections (SSE streams are long-lived and would block
     //    graceful drain indefinitely).
     await server.stop(true);
+    await sandboxControllerCallbacks?.stop();
 
     // Capture the REAL executor id before DBOS.shutdown() resets it to 'local'.
     // With a Conductor configured this is a random UUID (NOT settings.podName),

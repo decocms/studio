@@ -176,6 +176,53 @@ async function instantiateRemote(
   });
 }
 
+/**
+ * Start the mTLS listener the controller calls back on, when the controller
+ * is enabled with a callback port. Null otherwise: nothing listens, and the
+ * callback paths exist nowhere else.
+ */
+export async function startSandboxControllerCallbacks(): Promise<{
+  stop(): Promise<void>;
+} | null> {
+  const controller = getSettings().sandboxController;
+  if (!controller?.callbackPort) return null;
+  const [
+    { createSandboxControllerCallbackApp, serveSandboxControllerCallbacks },
+    { parseTenantPools },
+    { listStatesByCloneSource, listStatesByTenant },
+  ] = await Promise.all([
+    import("@/sandbox/controller-callbacks"),
+    import("@decocms/sandbox/provider/agent-sandbox/tenant-pools"),
+    import("@/storage/sandbox-runner-state"),
+  ]);
+  const [cert, key, ca] = await Promise.all([
+    Bun.file(controller.certPath).text(),
+    Bun.file(controller.keyPath).text(),
+    Bun.file(controller.caPath).text(),
+  ]);
+  const { db } = getDb();
+  const minters = sandboxCredentialMinters(
+    db,
+    new CredentialVault(getSettings().encryptionKey),
+  );
+  const app = createSandboxControllerCallbackApp({
+    statesByCloneSource: (source) => listStatesByCloneSource(db, source),
+    statesByTenant: (tenant) => listStatesByTenant(db, tenant),
+    tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
+    mintCloneUrl: minters.mintCloneUrl,
+    mintOrgFsConfig: minters.mintOrgFsConfig,
+  });
+  const server = serveSandboxControllerCallbacks({
+    port: controller.callbackPort,
+    tls: { cert, key, ca },
+    app,
+  });
+  console.log(
+    `[lifecycle] sandbox controller callbacks listening on :${server.port} (mTLS)`,
+  );
+  return { stop: () => server.stop(true) };
+}
+
 /** Resolve the hosted provider for enabled user-facing operations. */
 export function getAgentSandboxProvider(
   ctx: StudioContext,
