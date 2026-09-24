@@ -37,8 +37,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: {{ $claims.studio.namespace }}
           podSelector:
-            matchLabels:
-              {{- toYaml $claims.studio.podSelectorLabels | nindent 14 }}
+            {{- toYaml $claims.studio.podSelector | nindent 12 }}
       ports:
         - port: claims
           protocol: TCP

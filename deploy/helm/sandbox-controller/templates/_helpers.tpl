@@ -41,6 +41,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if not $c.studio.namespace -}}
 {{- fail "sandbox-controller: claims.studio.namespace is required with claims.enabled: the NetworkPolicy admits Studio's pods only." -}}
 {{- end -}}
+{{- $sel := $c.studio.podSelector | default dict -}}
+{{- if not (or $sel.matchLabels $sel.matchExpressions) -}}
+{{- fail "sandbox-controller: claims.studio.podSelector is empty, which would admit every pod in Studio's namespace." -}}
+{{- end -}}
 {{- if ne (empty $c.gateway.name) (empty $c.gateway.namespace) -}}
 {{- fail "sandbox-controller: claims.gateway.name and claims.gateway.namespace are both set or both empty." -}}
 {{- end -}}

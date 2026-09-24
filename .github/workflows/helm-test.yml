@@ -175,7 +175,7 @@ jobs:
           out=$(helm template sandbox-controller deploy/helm/sandbox-controller "${claims[@]}")
           for wanted in 'kind: Service$' 'kind: NetworkPolicy' 'sandboxclaims' '--claims-listen=:8443' \
               'STUDIO_SANDBOX_TENANT_POOLS' 'name: sandbox-controller-idle-ttl' \
-              '--leader-election-id=sandbox-controller.sandbox.deco.cx'; do
+              '--leader-election-id=sandbox-controller.sandbox.deco.cx' 'chart-deco-studio-worker'; do
             grep -q -- "${wanted}" <<<"${out}" || { echo "::error::claims.enabled=true did not render ${wanted}"; exit 1; }
           done
           # A preview URL pattern means Service DNS: no port-forward grant.
@@ -211,6 +211,21 @@ jobs:
           fi
           if grep -q -e 'sandboxvariants/status' -e '"create", "update", "patch"]' <<<"${stg}"; then
             echo "::error::a claims-only release can write variants, templates or pools"; exit 1
+          fi
+
+      - name: Render (an empty Studio pod selector must fail)
+        run: |
+          set +e
+          helm template c deploy/helm/sandbox-controller --set claims.enabled=true \
+            --set claims.tlsSecretName=tls --set claims.clientCASecretName=client-ca \
+            --set claims.database.secretName=db --set claims.studio.namespace=deco-studio \
+            --set-json 'claims.studio.podSelector={"matchExpressions":[]}' > /tmp/render.out 2>&1
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 0 ] || ! grep -q "podSelector is empty" /tmp/render.out; then
+            echo "::error::an empty podSelector rendered a policy admitting every pod"
+            cat /tmp/render.out
+            exit 1
           fi
 
       - name: Render (variants and claims both off must fail)
