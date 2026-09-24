@@ -100,6 +100,29 @@ describe("resolveOriginTokenEndpoint", () => {
     expect(result).toBeNull();
   });
 
+  it("falls back to the origin root when authorization_servers holds non-string entries", async () => {
+    let sawAuthServerUrl: string | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes(".well-known/oauth-protected-resource")) {
+        return new Response(
+          JSON.stringify({ authorization_servers: [12345] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      sawAuthServerUrl = url;
+      return new Response(
+        JSON.stringify({ token_endpoint: "https://idp.example.com/token" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof globalThis.fetch;
+
+    const result = await resolveOriginTokenEndpoint("https://mcp.example.com");
+
+    expect(result).toBe("https://idp.example.com/token");
+    expect(sawAuthServerUrl?.startsWith("https://mcp.example.com")).toBe(true);
+  });
+
   it("drains every discarded metadata response body on failure", async () => {
     const responses: Response[] = [];
     globalThis.fetch = (async () => {
