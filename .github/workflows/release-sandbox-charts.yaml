@@ -7,6 +7,7 @@ on:
       - "deploy/helm/sandbox-operator/**"
       - "deploy/helm/sandbox-env/**"
       - "deploy/helm/studio-previews/**"
+      - "deploy/helm/sandbox-controller/**"
   workflow_dispatch:
 
 env:
@@ -28,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chart: [sandbox-operator, sandbox-env, studio-previews]
+        chart: [sandbox-operator, sandbox-env, studio-previews, sandbox-controller]
     # `[release]:` commits come from the auto-bump bot and don't actually
     # change chart contents — skip them so we don't republish the same
     # version.

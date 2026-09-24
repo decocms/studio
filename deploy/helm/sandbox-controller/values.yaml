@@ -1,0 +1,26 @@
+image:
+  repository: ghcr.io/decocms/studio/sandbox-controller
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Where the SandboxTemplates live (the sandbox-env chart pins this) and so
+# where SandboxVariants are read and leader-election leases are held.
+sandboxNamespace: agent-sandbox-system
+
+# Secrets named in the default template's imagePullSecrets. The controller
+# reads them (get, by name) to check a variant's image exists before it
+# renders templates that would otherwise be ImagePullBackOff at claim time.
+imagePullSecretNames: []
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []

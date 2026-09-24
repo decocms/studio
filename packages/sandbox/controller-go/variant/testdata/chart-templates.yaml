@@ -1,0 +1,819 @@
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: sandbox
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: studio-sandbox-prod
+    app.kubernetes.io/version: 1.71.4
+    helm.sh/chart: sandbox-env-0.20.5
+    studio.decocms.com/env: prod
+  name: studio-sandbox-prod
+  namespace: agent-sandbox-system
+spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      annotations:
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: disabled
+      labels:
+        app.kubernetes.io/name: studio-sandbox-prod
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: WORKDIR
+          value: /app
+        - name: DAEMON_PORT
+          value: '9000'
+        - name: DAEMON_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: daemonToken
+              name: studio-sandbox-sentinel-prod
+        - name: GIT_CONFIG_COUNT
+          value: '1'
+        - name: GIT_CONFIG_KEY_0
+          value: safe.directory
+        - name: GIT_CONFIG_VALUE_0
+          value: '*'
+        - name: ORGFS_SIDECAR_CONFIG_PATH
+          value: /run/orgfs/config.json
+        - name: ORGFS_SIDECAR_STATUS_PATH
+          value: /run/orgfs/status.json
+        image: ghcr.io/decocms/studio/studio-sandbox-go:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: sandbox
+        ports:
+        - containerPort: 9000
+          name: daemon
+          protocol: TCP
+        - containerPort: 3000
+          name: dev
+          protocol: TCP
+        resources:
+          limits:
+            cpu: '2'
+            ephemeral-storage: 10Gi
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /app
+          name: workdir
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /home/sandbox
+          name: home
+        - mountPath: /app/org
+          mountPropagation: HostToContainer
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+        workingDir: /app
+      - env:
+        - name: APP_ROOT
+          value: /app
+        image: ghcr.io/decocms/studio/orgfs-sidecar:0.1.0
+        imagePullPolicy: IfNotPresent
+        name: orgfs-sidecar
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        securityContext:
+          privileged: true
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /app/org
+          mountPropagation: Bidirectional
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+      dnsConfig:
+        nameservers:
+        - 1.1.1.1
+        - 8.8.8.8
+        options:
+        - name: ndots
+          value: '1'
+      dnsPolicy: None
+      hostUsers: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - "set -eu\n# Flush so a same-netns re-run doesn't accumulate dup rules.\n\
+          iptables -F OUTPUT\niptables -A OUTPUT -o lo -j ACCEPT\n# Allow return traffic\
+          \ for connections initiated INTO the pod\n# (e.g. preview gateway \u2192\
+          \ daemon:9000). Without this rule the\n# OUTPUT chain REJECTs SYN-ACK responses\
+          \ back to the gateway\n# pod IP \u2014 gateway pod IPs sit in RFC1918, which\
+          \ the blockCIDRs\n# rules below REJECT. Symptom: Envoy \"upstream connect\
+          \ error /\n# connection timeout\" on every preview request.\n# Try -m conntrack,\
+          \ fall back to legacy -m state. If neither\n# is available (full-eBPF nodes\
+          \ without nf_conntrack) we\n# fail-closed: preview ingress is a load-bearing\
+          \ feature,\n# silently degrading it is not acceptable. Operator must run\n\
+          # this chart on a node that supports stateful filtering.\niptables -A OUTPUT\
+          \ -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n\
+          \  || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\
+          \ 2>/dev/null \\\n  || { echo \"ERROR: neither -m conntrack nor -m state\
+          \ available; cannot install ESTABLISHED,RELATED rule. Preview ingress would\
+          \ silently break. Failing the init container so the pod does not come up.\"\
+          \ >&2; exit 1; }\niptables -A OUTPUT -d \"10.0.0.0/8\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"172.16.0.0/12\" -j REJECT\niptables -A OUTPUT -d \"192.168.0.0/16\"\
+          \ -j REJECT\niptables -A OUTPUT -d \"169.254.0.0/16\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"100.64.0.0/10\" -j REJECT\niptables -A OUTPUT -p udp --dport\
+          \ 53 -j ACCEPT\niptables -A OUTPUT -p tcp --dport 53 -j ACCEPT\niptables\
+          \ -A OUTPUT -p tcp --dport 443 -j ACCEPT\niptables -A OUTPUT -j REJECT\n\
+          # Skip IPv6 cleanly on kernels without ip6_tables.\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  ip6tables -F OUTPUT\n  ip6tables -A OUTPUT -o lo -j ACCEPT\n\
+          \  # Same ESTABLISHED,RELATED rule for IPv6 \u2014 see IPv4 block\n  # above.\
+          \ Fail-closed for the same reason.\n  ip6tables -A OUTPUT -m conntrack --ctstate\
+          \ ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    || ip6tables -A OUTPUT\
+          \ -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    ||\
+          \ { echo \"ERROR: neither -m conntrack nor -m state available (ip6tables);\
+          \ cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container.\"\
+          \ >&2; exit 1; }\n  ip6tables -A OUTPUT -d \"fe80::/10\" -j REJECT\n  ip6tables\
+          \ -A OUTPUT -d \"fc00::/7\" -j REJECT\n  ip6tables -A OUTPUT -d \"fd00:ec2::/96\"\
+          \ -j REJECT\n  ip6tables -A OUTPUT -p udp --dport 53 -j ACCEPT\n  ip6tables\
+          \ -A OUTPUT -p tcp --dport 53 -j ACCEPT\n  ip6tables -A OUTPUT -p tcp --dport\
+          \ 443 -j ACCEPT\n  ip6tables -A OUTPUT -j REJECT\nfi\n# Dump rules so `kubectl\
+          \ logs -c setup-netpol` shows the policy.\necho \"=== final IPv4 OUTPUT\
+          \ ===\"\niptables -L OUTPUT -n -v --line-numbers\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  echo \"=== final IPv6 OUTPUT ===\"\n  ip6tables -L OUTPUT\
+          \ -n -v --line-numbers\nfi\n"
+        image: ghcr.io/decocms/studio/sandbox-netinit:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: setup-netpol
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - NET_ADMIN
+            drop:
+            - ALL
+          runAsNonRoot: false
+          runAsUser: 0
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 90
+      volumes:
+      - emptyDir:
+          sizeLimit: 4Gi
+        name: workdir
+      - emptyDir:
+          sizeLimit: 4Gi
+        name: tmp
+      - emptyDir:
+          sizeLimit: 5Gi
+        name: home
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: orgfs-org
+      - emptyDir:
+          sizeLimit: 1Mi
+        name: orgfs-ctl
+---
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: sandbox
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: studio-sandbox-prod
+    app.kubernetes.io/version: 1.71.4
+    helm.sh/chart: sandbox-env-0.20.5
+    studio.decocms.com/env: prod
+  name: studio-sandbox-prod-medium
+  namespace: agent-sandbox-system
+spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      annotations:
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: disabled
+      labels:
+        app.kubernetes.io/name: studio-sandbox-prod
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: WORKDIR
+          value: /app
+        - name: DAEMON_PORT
+          value: '9000'
+        - name: DAEMON_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: daemonToken
+              name: studio-sandbox-sentinel-prod
+        - name: GIT_CONFIG_COUNT
+          value: '1'
+        - name: GIT_CONFIG_KEY_0
+          value: safe.directory
+        - name: GIT_CONFIG_VALUE_0
+          value: '*'
+        - name: ORGFS_SIDECAR_CONFIG_PATH
+          value: /run/orgfs/config.json
+        - name: ORGFS_SIDECAR_STATUS_PATH
+          value: /run/orgfs/status.json
+        image: ghcr.io/decocms/studio/studio-sandbox-go:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: sandbox
+        ports:
+        - containerPort: 9000
+          name: daemon
+          protocol: TCP
+        - containerPort: 3000
+          name: dev
+          protocol: TCP
+        resources:
+          limits:
+            cpu: '2'
+            ephemeral-storage: 10Gi
+            memory: 6Gi
+          requests:
+            cpu: 500m
+            memory: 3Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /app
+          name: workdir
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /home/sandbox
+          name: home
+        - mountPath: /app/org
+          mountPropagation: HostToContainer
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+        workingDir: /app
+      - env:
+        - name: APP_ROOT
+          value: /app
+        image: ghcr.io/decocms/studio/orgfs-sidecar:0.1.0
+        imagePullPolicy: IfNotPresent
+        name: orgfs-sidecar
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        securityContext:
+          privileged: true
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /app/org
+          mountPropagation: Bidirectional
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+      dnsConfig:
+        nameservers:
+        - 1.1.1.1
+        - 8.8.8.8
+        options:
+        - name: ndots
+          value: '1'
+      dnsPolicy: None
+      hostUsers: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - "set -eu\n# Flush so a same-netns re-run doesn't accumulate dup rules.\n\
+          iptables -F OUTPUT\niptables -A OUTPUT -o lo -j ACCEPT\n# Allow return traffic\
+          \ for connections initiated INTO the pod\n# (e.g. preview gateway \u2192\
+          \ daemon:9000). Without this rule the\n# OUTPUT chain REJECTs SYN-ACK responses\
+          \ back to the gateway\n# pod IP \u2014 gateway pod IPs sit in RFC1918, which\
+          \ the blockCIDRs\n# rules below REJECT. Symptom: Envoy \"upstream connect\
+          \ error /\n# connection timeout\" on every preview request.\n# Try -m conntrack,\
+          \ fall back to legacy -m state. If neither\n# is available (full-eBPF nodes\
+          \ without nf_conntrack) we\n# fail-closed: preview ingress is a load-bearing\
+          \ feature,\n# silently degrading it is not acceptable. Operator must run\n\
+          # this chart on a node that supports stateful filtering.\niptables -A OUTPUT\
+          \ -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n\
+          \  || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\
+          \ 2>/dev/null \\\n  || { echo \"ERROR: neither -m conntrack nor -m state\
+          \ available; cannot install ESTABLISHED,RELATED rule. Preview ingress would\
+          \ silently break. Failing the init container so the pod does not come up.\"\
+          \ >&2; exit 1; }\niptables -A OUTPUT -d \"10.0.0.0/8\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"172.16.0.0/12\" -j REJECT\niptables -A OUTPUT -d \"192.168.0.0/16\"\
+          \ -j REJECT\niptables -A OUTPUT -d \"169.254.0.0/16\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"100.64.0.0/10\" -j REJECT\niptables -A OUTPUT -p udp --dport\
+          \ 53 -j ACCEPT\niptables -A OUTPUT -p tcp --dport 53 -j ACCEPT\niptables\
+          \ -A OUTPUT -p tcp --dport 443 -j ACCEPT\niptables -A OUTPUT -j REJECT\n\
+          # Skip IPv6 cleanly on kernels without ip6_tables.\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  ip6tables -F OUTPUT\n  ip6tables -A OUTPUT -o lo -j ACCEPT\n\
+          \  # Same ESTABLISHED,RELATED rule for IPv6 \u2014 see IPv4 block\n  # above.\
+          \ Fail-closed for the same reason.\n  ip6tables -A OUTPUT -m conntrack --ctstate\
+          \ ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    || ip6tables -A OUTPUT\
+          \ -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    ||\
+          \ { echo \"ERROR: neither -m conntrack nor -m state available (ip6tables);\
+          \ cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container.\"\
+          \ >&2; exit 1; }\n  ip6tables -A OUTPUT -d \"fe80::/10\" -j REJECT\n  ip6tables\
+          \ -A OUTPUT -d \"fc00::/7\" -j REJECT\n  ip6tables -A OUTPUT -d \"fd00:ec2::/96\"\
+          \ -j REJECT\n  ip6tables -A OUTPUT -p udp --dport 53 -j ACCEPT\n  ip6tables\
+          \ -A OUTPUT -p tcp --dport 53 -j ACCEPT\n  ip6tables -A OUTPUT -p tcp --dport\
+          \ 443 -j ACCEPT\n  ip6tables -A OUTPUT -j REJECT\nfi\n# Dump rules so `kubectl\
+          \ logs -c setup-netpol` shows the policy.\necho \"=== final IPv4 OUTPUT\
+          \ ===\"\niptables -L OUTPUT -n -v --line-numbers\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  echo \"=== final IPv6 OUTPUT ===\"\n  ip6tables -L OUTPUT\
+          \ -n -v --line-numbers\nfi\n"
+        image: ghcr.io/decocms/studio/sandbox-netinit:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: setup-netpol
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - NET_ADMIN
+            drop:
+            - ALL
+          runAsNonRoot: false
+          runAsUser: 0
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 90
+      volumes:
+      - emptyDir:
+          sizeLimit: 4Gi
+        name: workdir
+      - emptyDir:
+          sizeLimit: 4Gi
+        name: tmp
+      - emptyDir:
+          sizeLimit: 5Gi
+        name: home
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: orgfs-org
+      - emptyDir:
+          sizeLimit: 1Mi
+        name: orgfs-ctl
+---
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: sandbox
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: studio-sandbox-prod
+    app.kubernetes.io/version: 1.71.4
+    helm.sh/chart: sandbox-env-0.20.5
+    studio.decocms.com/env: prod
+  name: studio-sandbox-prod-android
+  namespace: agent-sandbox-system
+spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      annotations:
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: disabled
+      labels:
+        app.kubernetes.io/name: studio-sandbox-prod
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: WORKDIR
+          value: /app
+        - name: DAEMON_PORT
+          value: '9000'
+        - name: DAEMON_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: daemonToken
+              name: studio-sandbox-sentinel-prod
+        - name: GIT_CONFIG_COUNT
+          value: '1'
+        - name: GIT_CONFIG_KEY_0
+          value: safe.directory
+        - name: GIT_CONFIG_VALUE_0
+          value: '*'
+        - name: ORGFS_SIDECAR_CONFIG_PATH
+          value: /run/orgfs/config.json
+        - name: ORGFS_SIDECAR_STATUS_PATH
+          value: /run/orgfs/status.json
+        image: ghcr.io/decocms/studio/studio-sandbox-android:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: sandbox
+        ports:
+        - containerPort: 9000
+          name: daemon
+          protocol: TCP
+        - containerPort: 3000
+          name: dev
+          protocol: TCP
+        resources:
+          limits:
+            cpu: '4'
+            decocms.com/kvm: '1'
+            ephemeral-storage: 40Gi
+            memory: 12Gi
+          requests:
+            cpu: '2'
+            memory: 8Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /app
+          name: workdir
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /home/sandbox
+          name: home
+        - mountPath: /app/org
+          mountPropagation: HostToContainer
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+        workingDir: /app
+      - env:
+        - name: APP_ROOT
+          value: /app
+        image: ghcr.io/decocms/studio/orgfs-sidecar:0.1.0
+        imagePullPolicy: IfNotPresent
+        name: orgfs-sidecar
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        securityContext:
+          privileged: true
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /app/org
+          mountPropagation: Bidirectional
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+      dnsConfig:
+        nameservers:
+        - 1.1.1.1
+        - 8.8.8.8
+        options:
+        - name: ndots
+          value: '1'
+      dnsPolicy: None
+      hostUsers: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - "set -eu\n# Flush so a same-netns re-run doesn't accumulate dup rules.\n\
+          iptables -F OUTPUT\niptables -A OUTPUT -o lo -j ACCEPT\n# Allow return traffic\
+          \ for connections initiated INTO the pod\n# (e.g. preview gateway \u2192\
+          \ daemon:9000). Without this rule the\n# OUTPUT chain REJECTs SYN-ACK responses\
+          \ back to the gateway\n# pod IP \u2014 gateway pod IPs sit in RFC1918, which\
+          \ the blockCIDRs\n# rules below REJECT. Symptom: Envoy \"upstream connect\
+          \ error /\n# connection timeout\" on every preview request.\n# Try -m conntrack,\
+          \ fall back to legacy -m state. If neither\n# is available (full-eBPF nodes\
+          \ without nf_conntrack) we\n# fail-closed: preview ingress is a load-bearing\
+          \ feature,\n# silently degrading it is not acceptable. Operator must run\n\
+          # this chart on a node that supports stateful filtering.\niptables -A OUTPUT\
+          \ -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n\
+          \  || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\
+          \ 2>/dev/null \\\n  || { echo \"ERROR: neither -m conntrack nor -m state\
+          \ available; cannot install ESTABLISHED,RELATED rule. Preview ingress would\
+          \ silently break. Failing the init container so the pod does not come up.\"\
+          \ >&2; exit 1; }\niptables -A OUTPUT -d \"10.0.0.0/8\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"172.16.0.0/12\" -j REJECT\niptables -A OUTPUT -d \"192.168.0.0/16\"\
+          \ -j REJECT\niptables -A OUTPUT -d \"169.254.0.0/16\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"100.64.0.0/10\" -j REJECT\niptables -A OUTPUT -p udp --dport\
+          \ 53 -j ACCEPT\niptables -A OUTPUT -p tcp --dport 53 -j ACCEPT\niptables\
+          \ -A OUTPUT -p tcp --dport 443 -j ACCEPT\niptables -A OUTPUT -j REJECT\n\
+          # Skip IPv6 cleanly on kernels without ip6_tables.\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  ip6tables -F OUTPUT\n  ip6tables -A OUTPUT -o lo -j ACCEPT\n\
+          \  # Same ESTABLISHED,RELATED rule for IPv6 \u2014 see IPv4 block\n  # above.\
+          \ Fail-closed for the same reason.\n  ip6tables -A OUTPUT -m conntrack --ctstate\
+          \ ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    || ip6tables -A OUTPUT\
+          \ -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    ||\
+          \ { echo \"ERROR: neither -m conntrack nor -m state available (ip6tables);\
+          \ cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container.\"\
+          \ >&2; exit 1; }\n  ip6tables -A OUTPUT -d \"fe80::/10\" -j REJECT\n  ip6tables\
+          \ -A OUTPUT -d \"fc00::/7\" -j REJECT\n  ip6tables -A OUTPUT -d \"fd00:ec2::/96\"\
+          \ -j REJECT\n  ip6tables -A OUTPUT -p udp --dport 53 -j ACCEPT\n  ip6tables\
+          \ -A OUTPUT -p tcp --dport 53 -j ACCEPT\n  ip6tables -A OUTPUT -p tcp --dport\
+          \ 443 -j ACCEPT\n  ip6tables -A OUTPUT -j REJECT\nfi\n# Dump rules so `kubectl\
+          \ logs -c setup-netpol` shows the policy.\necho \"=== final IPv4 OUTPUT\
+          \ ===\"\niptables -L OUTPUT -n -v --line-numbers\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  echo \"=== final IPv6 OUTPUT ===\"\n  ip6tables -L OUTPUT\
+          \ -n -v --line-numbers\nfi\n"
+        image: ghcr.io/decocms/studio/sandbox-netinit:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: setup-netpol
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - NET_ADMIN
+            drop:
+            - ALL
+          runAsNonRoot: false
+          runAsUser: 0
+      nodeSelector:
+        decocms.com/nodepool: sandbox-android
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 90
+      tolerations:
+      - effect: NoSchedule
+        key: decocms.com/sandbox-android
+        operator: Equal
+        value: 'true'
+      volumes:
+      - emptyDir:
+          sizeLimit: 8Gi
+        name: workdir
+      - emptyDir:
+          sizeLimit: 4Gi
+        name: tmp
+      - emptyDir:
+          sizeLimit: 24Gi
+        name: home
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: orgfs-org
+      - emptyDir:
+          sizeLimit: 1Mi
+        name: orgfs-ctl
+---
+apiVersion: extensions.agents.x-k8s.io/v1alpha1
+kind: SandboxTemplate
+metadata:
+  labels:
+    app.kubernetes.io/component: sandbox
+    app.kubernetes.io/instance: t
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: studio-sandbox-prod
+    app.kubernetes.io/version: 1.71.4
+    helm.sh/chart: sandbox-env-0.20.5
+    studio.decocms.com/env: prod
+  name: studio-sandbox-prod-android-medium
+  namespace: agent-sandbox-system
+spec:
+  envVarsInjectionPolicy: Allowed
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      annotations:
+        vpc.amazonaws.com/v1alpha1.network-policy-enforcement: disabled
+      labels:
+        app.kubernetes.io/name: studio-sandbox-prod
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: WORKDIR
+          value: /app
+        - name: DAEMON_PORT
+          value: '9000'
+        - name: DAEMON_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: daemonToken
+              name: studio-sandbox-sentinel-prod
+        - name: GIT_CONFIG_COUNT
+          value: '1'
+        - name: GIT_CONFIG_KEY_0
+          value: safe.directory
+        - name: GIT_CONFIG_VALUE_0
+          value: '*'
+        - name: ORGFS_SIDECAR_CONFIG_PATH
+          value: /run/orgfs/config.json
+        - name: ORGFS_SIDECAR_STATUS_PATH
+          value: /run/orgfs/status.json
+        image: ghcr.io/decocms/studio/studio-sandbox-android:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: sandbox
+        ports:
+        - containerPort: 9000
+          name: daemon
+          protocol: TCP
+        - containerPort: 3000
+          name: dev
+          protocol: TCP
+        resources:
+          limits:
+            cpu: '4'
+            decocms.com/kvm: '1'
+            ephemeral-storage: 40Gi
+            memory: 12Gi
+          requests:
+            cpu: '2'
+            memory: 8Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /app
+          name: workdir
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /home/sandbox
+          name: home
+        - mountPath: /app/org
+          mountPropagation: HostToContainer
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+        workingDir: /app
+      - env:
+        - name: APP_ROOT
+          value: /app
+        image: ghcr.io/decocms/studio/orgfs-sidecar:0.1.0
+        imagePullPolicy: IfNotPresent
+        name: orgfs-sidecar
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        securityContext:
+          privileged: true
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /app/org
+          mountPropagation: Bidirectional
+          name: orgfs-org
+        - mountPath: /run/orgfs
+          name: orgfs-ctl
+      dnsConfig:
+        nameservers:
+        - 1.1.1.1
+        - 8.8.8.8
+        options:
+        - name: ndots
+          value: '1'
+      dnsPolicy: None
+      hostUsers: true
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - "set -eu\n# Flush so a same-netns re-run doesn't accumulate dup rules.\n\
+          iptables -F OUTPUT\niptables -A OUTPUT -o lo -j ACCEPT\n# Allow return traffic\
+          \ for connections initiated INTO the pod\n# (e.g. preview gateway \u2192\
+          \ daemon:9000). Without this rule the\n# OUTPUT chain REJECTs SYN-ACK responses\
+          \ back to the gateway\n# pod IP \u2014 gateway pod IPs sit in RFC1918, which\
+          \ the blockCIDRs\n# rules below REJECT. Symptom: Envoy \"upstream connect\
+          \ error /\n# connection timeout\" on every preview request.\n# Try -m conntrack,\
+          \ fall back to legacy -m state. If neither\n# is available (full-eBPF nodes\
+          \ without nf_conntrack) we\n# fail-closed: preview ingress is a load-bearing\
+          \ feature,\n# silently degrading it is not acceptable. Operator must run\n\
+          # this chart on a node that supports stateful filtering.\niptables -A OUTPUT\
+          \ -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n\
+          \  || iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT\
+          \ 2>/dev/null \\\n  || { echo \"ERROR: neither -m conntrack nor -m state\
+          \ available; cannot install ESTABLISHED,RELATED rule. Preview ingress would\
+          \ silently break. Failing the init container so the pod does not come up.\"\
+          \ >&2; exit 1; }\niptables -A OUTPUT -d \"10.0.0.0/8\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"172.16.0.0/12\" -j REJECT\niptables -A OUTPUT -d \"192.168.0.0/16\"\
+          \ -j REJECT\niptables -A OUTPUT -d \"169.254.0.0/16\" -j REJECT\niptables\
+          \ -A OUTPUT -d \"100.64.0.0/10\" -j REJECT\niptables -A OUTPUT -p udp --dport\
+          \ 53 -j ACCEPT\niptables -A OUTPUT -p tcp --dport 53 -j ACCEPT\niptables\
+          \ -A OUTPUT -p tcp --dport 443 -j ACCEPT\niptables -A OUTPUT -j REJECT\n\
+          # Skip IPv6 cleanly on kernels without ip6_tables.\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  ip6tables -F OUTPUT\n  ip6tables -A OUTPUT -o lo -j ACCEPT\n\
+          \  # Same ESTABLISHED,RELATED rule for IPv6 \u2014 see IPv4 block\n  # above.\
+          \ Fail-closed for the same reason.\n  ip6tables -A OUTPUT -m conntrack --ctstate\
+          \ ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    || ip6tables -A OUTPUT\
+          \ -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null \\\n    ||\
+          \ { echo \"ERROR: neither -m conntrack nor -m state available (ip6tables);\
+          \ cannot install ESTABLISHED,RELATED rule for IPv6. Failing the init container.\"\
+          \ >&2; exit 1; }\n  ip6tables -A OUTPUT -d \"fe80::/10\" -j REJECT\n  ip6tables\
+          \ -A OUTPUT -d \"fc00::/7\" -j REJECT\n  ip6tables -A OUTPUT -d \"fd00:ec2::/96\"\
+          \ -j REJECT\n  ip6tables -A OUTPUT -p udp --dport 53 -j ACCEPT\n  ip6tables\
+          \ -A OUTPUT -p tcp --dport 53 -j ACCEPT\n  ip6tables -A OUTPUT -p tcp --dport\
+          \ 443 -j ACCEPT\n  ip6tables -A OUTPUT -j REJECT\nfi\n# Dump rules so `kubectl\
+          \ logs -c setup-netpol` shows the policy.\necho \"=== final IPv4 OUTPUT\
+          \ ===\"\niptables -L OUTPUT -n -v --line-numbers\nif ip6tables -L > /dev/null\
+          \ 2>&1; then\n  echo \"=== final IPv6 OUTPUT ===\"\n  ip6tables -L OUTPUT\
+          \ -n -v --line-numbers\nfi\n"
+        image: ghcr.io/decocms/studio/sandbox-netinit:1.0.0
+        imagePullPolicy: IfNotPresent
+        name: setup-netpol
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - NET_ADMIN
+            drop:
+            - ALL
+          runAsNonRoot: false
+          runAsUser: 0
+      nodeSelector:
+        decocms.com/nodepool: sandbox-android
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 90
+      tolerations:
+      - effect: NoSchedule
+        key: decocms.com/sandbox-android
+        operator: Equal
+        value: 'true'
+      volumes:
+      - emptyDir:
+          sizeLimit: 8Gi
+        name: workdir
+      - emptyDir:
+          sizeLimit: 4Gi
+        name: tmp
+      - emptyDir:
+          sizeLimit: 24Gi
+        name: home
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: orgfs-org
+      - emptyDir:
+          sizeLimit: 1Mi
+        name: orgfs-ctl

@@ -67,6 +67,8 @@ metadata:
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+  annotations:
+    {{- include "sandbox-env.variantHandoverAnnotations" $ | nindent 4 }}
 spec:
   replicas: {{ $spec.warmPoolSize | default 0 }}
   updateStrategy:
@@ -81,6 +83,8 @@ metadata:
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" $ | nindent 4 }}
+  annotations:
+    {{- include "sandbox-env.variantHandoverAnnotations" $ | nindent 4 }}
 spec:
   replicas: {{ $spec.warmPoolMediumSize | default 0 }}
   updateStrategy:
