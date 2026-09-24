@@ -116,10 +116,11 @@ export const googleAdapter: ProviderAdapter = {
             await throwResponseError("Google listModels", res);
           }
           const data = await parseJsonResponse<{
-            models: GoogleModel[];
+            models?: GoogleModel[];
             nextPageToken?: string;
           }>("Google listModels", res);
-          models.push(...data.models);
+          // Google omits `models` on an empty page instead of `models: []`.
+          models.push(...(data.models ?? []));
           pageToken = data.nextPageToken;
         } while (pageToken);
         return models
