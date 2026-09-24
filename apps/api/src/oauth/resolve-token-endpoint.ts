@@ -47,9 +47,13 @@ export async function resolveOriginTokenEndpoint(
       const resourceRes = await fetchProtectedResourceMetadata(connectionUrl);
       if (resourceRes.ok) {
         const data = (await resourceRes.json()) as {
-          authorization_servers?: string[];
+          authorization_servers?: unknown;
         };
-        authServerUrl = data.authorization_servers?.[0];
+        const candidate = Array.isArray(data.authorization_servers)
+          ? data.authorization_servers[0]
+          : undefined;
+        // authorization_servers is untrusted origin JSON — verify the shape.
+        if (typeof candidate === "string") authServerUrl = candidate;
       } else {
         await drainBody(resourceRes);
       }
