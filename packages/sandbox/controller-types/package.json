@@ -1,15 +1,17 @@
 {
   "name": "@decocms/sandbox-controller-types",
   "version": "0.1.0",
-  "description": "TypeScript types for the sandbox controller's SandboxVariant resource, generated from its Go types",
+  "description": "TypeScript types for the sandbox controller's SandboxVariant resource and its claim HTTP API, generated from its Go types",
   "license": "MIT",
   "type": "module",
   "types": "./sandbox-variant.ts",
   "exports": {
-    ".": "./sandbox-variant.ts"
+    ".": "./sandbox-variant.ts",
+    "./api": "./sandbox-api.ts"
   },
   "files": [
-    "sandbox-variant.ts"
+    "sandbox-variant.ts",
+    "sandbox-api.ts"
   ],
   "repository": {
     "type": "git",

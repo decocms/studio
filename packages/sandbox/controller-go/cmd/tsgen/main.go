@@ -1,8 +1,11 @@
-// Command tsgen writes TypeScript types for the SandboxVariant CRD from its
-// generated OpenAPI schema, so the Go types stay the one source of truth and
-// the control plane renders against what the API server will validate.
+// Command tsgen writes the TypeScript types in packages/sandbox/controller-types
+// from their Go source of truth:
 //
-// Usage: tsgen <crd.yaml> <out.ts>
+//   - tsgen <crd.yaml> <out.ts>: the SandboxVariant CRD, from its generated
+//     OpenAPI schema, so the control plane renders against what the API server
+//     will validate.
+//   - tsgen api <package dir> <out.ts>: the claim API, from the protocol
+//     package's declarations (see api.go).
 package main
 
 import (
@@ -16,11 +19,25 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: tsgen <crd.yaml> <out.ts>")
+	switch {
+	case len(os.Args) == 4 && os.Args[1] == "api":
+		out, err := apiTypes(os.Args[2])
+		if err != nil {
+			fail(err)
+		}
+		if err := os.WriteFile(os.Args[3], []byte(out), 0o644); err != nil {
+			fail(err)
+		}
+	case len(os.Args) == 3:
+		crdTypes(os.Args[1], os.Args[2])
+	default:
+		fmt.Fprintln(os.Stderr, "usage: tsgen <crd.yaml> <out.ts> | tsgen api <package dir> <out.ts>")
 		os.Exit(2)
 	}
-	raw, err := os.ReadFile(os.Args[1])
+}
+
+func crdTypes(crdPath, outPath string) {
+	raw, err := os.ReadFile(crdPath)
 	if err != nil {
 		fail(err)
 	}
@@ -50,7 +67,7 @@ func main() {
   status?: %[1]sStatus;
 }
 `, kind)
-	if err := os.WriteFile(os.Args[2], []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(outPath, []byte(b.String()), 0o644); err != nil {
 		fail(err)
 	}
 }
