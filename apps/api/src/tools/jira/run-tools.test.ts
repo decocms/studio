@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { taskRunContextStore } from "@/tools/task-board/task-run-context";
-import { JIRA_ISSUE_CREATE } from "./run-tools";
+import {
+  JIRA_ISSUE_CREATE,
+  JIRA_ISSUE_SEARCH,
+  JIRA_ISSUE_TRANSITION,
+} from "./run-tools";
 
 type Handler = typeof JIRA_ISSUE_CREATE.handler;
 type Ctx = Parameters<Handler>[1];
@@ -21,16 +25,37 @@ interface Call {
 function fakeJira(opts: {
   openIssues?: Array<{ key: string; summary: string }>;
   issues?: Record<string, { summary: string; linked?: string[] }>;
+  /** Issues the board's filter matches, beyond the run's own. */
+  onBoard?: string[];
   failLinkTo?: string;
 }) {
   const calls: Call[] = [];
   const handle = (method: string, path: string, body: unknown): unknown => {
-    if (path.startsWith("/rest/api/3/search/jql")) {
+    if (path.startsWith("/rest/agile/1.0/board/42/configuration")) {
+      return { filter: { id: "77" } };
+    }
+    if (path.startsWith("/rest/api/3/filter/77")) {
+      return { jql: 'project = "EX" ORDER BY Rank ASC' };
+    }
+    const jql = path.startsWith("/rest/api/3/search/jql")
+      ? (new URLSearchParams(path.split("?")[1]).get("jql") ?? "")
+      : null;
+    const byKey = jql?.match(/key = "([A-Z]+-\d+)"/);
+    if (byKey?.[1]) {
+      const onBoard = (opts.onBoard ?? []).includes(byKey[1]);
+      return { issues: onBoard ? [{ id: byKey[1], key: byKey[1] }] : [] };
+    }
+    if (jql !== null) {
       return {
         issues: (opts.openIssues ?? []).map((i) => ({
           id: i.key,
           key: i.key,
-          fields: { summary: i.summary },
+          fields: {
+            summary: i.summary,
+            status: { name: "BACKLOG" },
+            issuetype: { name: "Story" },
+            updated: "2026-01-02T03:04:05.000+0000",
+          },
         })),
       };
     }
@@ -65,6 +90,14 @@ function fakeJira(opts: {
     }
     if (path.startsWith("/rest/agile/1.0/board/42/sprint")) {
       return { values: [{ id: 7, name: "Sprint 7" }] };
+    }
+    const transitions = path.match(
+      /^\/rest\/api\/3\/issue\/([A-Z]+-\d+)\/transitions$/,
+    );
+    if (transitions) {
+      return method === "GET"
+        ? { transitions: [{ id: "31", name: "Start", to: { name: "Doing" } }] }
+        : undefined;
     }
     if (method === "POST" && path === "/rest/api/3/issue") {
       return { id: "1000", key: "EX-99" };
@@ -112,7 +145,7 @@ function fakeJira(opts: {
 }
 
 function makeCtx(metadata: Record<string, unknown>) {
-  const addRunJiraIssue = mock(async () => []);
+  const recordJiraIssueCreated = mock(async () => []);
   const ctx = {
     organization: { id: "org_1" },
     access: { check: mock(async () => {}) },
@@ -128,11 +161,11 @@ function makeCtx(metadata: Record<string, unknown>) {
       },
       threads: {
         get: mock(async () => ({ id: THREAD, metadata })),
-        addRunJiraIssue,
+        recordJiraIssueCreated,
       },
     },
   } as unknown as Ctx;
-  return { ctx, addRunJiraIssue };
+  return { ctx, recordJiraIssueCreated };
 }
 
 const RUN = { source: "jira", jira_issue_keys: ["EX-1", "EX-2"] };
@@ -163,7 +196,7 @@ describe("JIRA_ISSUE_CREATE", () => {
   });
 
   it("creates in the run's project, in the active sprint, and links the run's issues", async () => {
-    const { ctx, addRunJiraIssue } = makeCtx(RUN);
+    const { ctx, recordJiraIssueCreated } = makeCtx(RUN);
 
     const out = await run(() =>
       JIRA_ISSUE_CREATE.handler(
@@ -192,9 +225,7 @@ describe("JIRA_ISSUE_CREATE", () => {
     expect(fields.customfield_10016).toBe(0);
     expect(fields.customfield_10020).toBe(7);
     expect((fields.description as { type: string }).type).toBe("doc");
-    expect(addRunJiraIssue).toHaveBeenCalledWith(THREAD, "EX-99", {
-      created: true,
-    });
+    expect(recordJiraIssueCreated).toHaveBeenCalledWith(THREAD, "EX-99");
     expect(
       writes()
         .filter((c) => c.path === "/rest/api/3/issueLink")
@@ -213,14 +244,27 @@ describe("JIRA_ISSUE_CREATE", () => {
     ]);
   });
 
-  it("refuses to link an issue outside the run before writing anything", async () => {
-    const { ctx, addRunJiraIssue } = makeCtx(RUN);
+  it("links a board issue the run was not dispatched on", async () => {
+    useJira({ onBoard: ["EX-30"] });
+    const { ctx } = makeCtx(RUN);
+
+    const out = await run(() =>
+      JIRA_ISSUE_CREATE.handler(input({ relatesTo: ["ex-30"] }), ctx),
+    );
+
+    expect(out.linked).toEqual(["EX-30"]);
+  });
+
+  it("refuses to link an issue off the board before writing anything", async () => {
+    const { ctx, recordJiraIssueCreated } = makeCtx(RUN);
 
     await expect(
-      run(() => JIRA_ISSUE_CREATE.handler(input({ relatesTo: ["EX-3"] }), ctx)),
-    ).rejects.toThrow("EX-3 is not an issue this run works on");
+      run(() =>
+        JIRA_ISSUE_CREATE.handler(input({ relatesTo: ["OTHER-3"] }), ctx),
+      ),
+    ).rejects.toThrow("OTHER-3 is not on the connected Jira board");
     expect(writes()).toEqual([]);
-    expect(addRunJiraIssue).not.toHaveBeenCalled();
+    expect(recordJiraIssueCreated).not.toHaveBeenCalled();
   });
 
   it("returns an open issue that already has the summary, and links only what is missing", async () => {
@@ -228,7 +272,7 @@ describe("JIRA_ISSUE_CREATE", () => {
       openIssues: [{ key: "EX-50", summary: " release - 24/09 " }],
       issues: { "EX-50": { summary: "release - 24/09", linked: ["EX-1"] } },
     });
-    const { ctx, addRunJiraIssue } = makeCtx(RUN);
+    const { ctx, recordJiraIssueCreated } = makeCtx(RUN);
 
     const out = await run(() =>
       JIRA_ISSUE_CREATE.handler(input({ relatesTo: ["EX-1", "EX-2"] }), ctx),
@@ -243,10 +287,8 @@ describe("JIRA_ISSUE_CREATE", () => {
     const search = jira.calls.find((c) => c.path.includes("/search/jql"));
     const jql = new URLSearchParams(search?.path.split("?")[1]).get("jql");
     expect(jql).toContain("reporter = currentUser()");
-    // Found, not created, but the run still needs to act on it.
-    expect(addRunJiraIssue).toHaveBeenCalledWith(THREAD, "EX-50", {
-      created: false,
-    });
+    // Found, not created: it does not count against the cap.
+    expect(recordJiraIssueCreated).not.toHaveBeenCalled();
   });
 
   it("finds its own earlier creation without relying on search", async () => {
@@ -284,7 +326,7 @@ describe("JIRA_ISSUE_CREATE", () => {
 
   it("reports a failed link and keeps the created issue reachable", async () => {
     useJira({ failLinkTo: "EX-2" });
-    const { ctx, addRunJiraIssue } = makeCtx(RUN);
+    const { ctx, recordJiraIssueCreated } = makeCtx(RUN);
 
     const out = await run(() =>
       JIRA_ISSUE_CREATE.handler(input({ relatesTo: ["EX-1", "EX-2"] }), ctx),
@@ -294,9 +336,7 @@ describe("JIRA_ISSUE_CREATE", () => {
     expect(out.notLinked).toEqual([
       { key: "EX-2", reason: expect.stringContaining("403") },
     ]);
-    expect(addRunJiraIssue).toHaveBeenCalledWith(THREAD, "EX-99", {
-      created: true,
-    });
+    expect(recordJiraIssueCreated).toHaveBeenCalledWith(THREAD, "EX-99");
   });
 
   it("names the project's issue types when the requested one does not exist", async () => {
@@ -332,5 +372,102 @@ describe("JIRA_ISSUE_CREATE", () => {
     await expect(
       run(() => JIRA_ISSUE_CREATE.handler(input(), ctx)),
     ).rejects.toThrow("single project");
+  });
+});
+
+describe("the board boundary on the other run tools", () => {
+  const originalFetch = globalThis.fetch;
+  let jira: ReturnType<typeof fakeJira>;
+  const useJira = (opts: Parameters<typeof fakeJira>[0]) => {
+    jira = fakeJira(opts);
+    globalThis.fetch = jira.fetchMock as unknown as typeof fetch;
+  };
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("moves an issue on the board that the run was not dispatched on", async () => {
+    useJira({ onBoard: ["EX-30"] });
+    const { ctx } = makeCtx(RUN);
+
+    const out = await run(() =>
+      JIRA_ISSUE_TRANSITION.handler(
+        { issueKey: "EX-30", toStatus: "doing" },
+        ctx,
+      ),
+    );
+
+    expect(out).toEqual({ status: "Doing" });
+  });
+
+  it("does not touch an issue elsewhere on the Jira site", async () => {
+    useJira({});
+    const { ctx } = makeCtx(RUN);
+
+    await expect(
+      run(() =>
+        JIRA_ISSUE_TRANSITION.handler(
+          { issueKey: "HR-4", toStatus: "Doing" },
+          ctx,
+        ),
+      ),
+    ).rejects.toThrow("HR-4 is not on the connected Jira board");
+    expect(jira.calls.some((c) => c.path.includes("/transitions"))).toBe(false);
+  });
+
+  it("skips the board check for the run's own issue", async () => {
+    useJira({});
+    const { ctx } = makeCtx(RUN);
+
+    await run(() =>
+      JIRA_ISSUE_TRANSITION.handler(
+        { issueKey: "ex-1", toStatus: "Doing" },
+        ctx,
+      ),
+    );
+
+    expect(jira.calls.some((c) => c.path.includes("/search/jql"))).toBe(false);
+  });
+});
+
+describe("JIRA_ISSUE_SEARCH", () => {
+  const originalFetch = globalThis.fetch;
+  let jira: ReturnType<typeof fakeJira>;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("narrows the query to the board and keeps its ordering", async () => {
+    jira = fakeJira({
+      openIssues: [
+        { key: "EX-5", summary: "one" },
+        { key: "EX-6", summary: "two" },
+      ],
+    });
+    globalThis.fetch = jira.fetchMock as unknown as typeof fetch;
+    const { ctx } = makeCtx(RUN);
+
+    const out = await JIRA_ISSUE_SEARCH.handler(
+      { jql: 'status = "Code Review" ORDER BY updated DESC', limit: 1 },
+      ctx,
+    );
+
+    const search = jira.calls.find((c) => c.path.includes("/search/jql"));
+    expect(new URLSearchParams(search?.path.split("?")[1]).get("jql")).toBe(
+      '(project = "EX") AND (status = "Code Review") ORDER BY updated DESC',
+    );
+    expect(out).toEqual({
+      issues: [
+        {
+          key: "EX-5",
+          url: "https://acme.atlassian.net/browse/EX-5",
+          summary: "one",
+          status: "BACKLOG",
+          type: "Story",
+          updated: "2026-01-02T03:04:05.000+0000",
+        },
+      ],
+      truncated: true,
+    });
   });
 });

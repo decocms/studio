@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
-  pickRunIssue,
+  pickIssue,
   runCreatedIssueKeys,
   runIssueKeys,
 } from "./run-issue-scope";
@@ -10,7 +10,7 @@ describe("runCreatedIssueKeys", () => {
     expect(
       runCreatedIssueKeys({
         source: "jira",
-        jira_issue_keys: ["EX-1", "EX-9"],
+        jira_issue_keys: ["EX-1"],
         jira_created_issue_keys: ["EX-9", 3],
       }),
     ).toEqual(["EX-9"]);
@@ -46,27 +46,39 @@ describe("runIssueKeys", () => {
   });
 });
 
-describe("pickRunIssue", () => {
+describe("pickIssue", () => {
   it("is the only issue when none is named", () => {
-    expect(pickRunIssue(["EX-1"], undefined)).toBe("EX-1");
-    expect(pickRunIssue(["EX-1"], "  ")).toBe("EX-1");
+    expect(pickIssue(["EX-1"], undefined)).toEqual({
+      key: "EX-1",
+      inRun: true,
+    });
+    expect(pickIssue(["EX-1"], "  ")).toEqual({ key: "EX-1", inRun: true });
   });
 
   it("demands a key when the run spans several", () => {
-    expect(() => pickRunIssue(["EX-1", "EX-2"], undefined)).toThrow(
+    expect(() => pickIssue(["EX-1", "EX-2"], undefined)).toThrow(
       /2 issues \(EX-1, EX-2\)/,
     );
   });
 
-  it("resolves a named issue in the run's own spelling", () => {
-    expect(pickRunIssue(["EX-1", "EX-2"], "ex-2")).toBe("EX-2");
-    expect(pickRunIssue(["EX-1"], "EX-1")).toBe("EX-1");
+  it("resolves a run issue in the run's own spelling", () => {
+    expect(pickIssue(["EX-1", "EX-2"], "ex-2")).toEqual({
+      key: "EX-2",
+      inRun: true,
+    });
   });
 
-  it("refuses an issue outside the run", () => {
-    expect(() => pickRunIssue(["EX-1", "EX-2"], "EX-3")).toThrow(
-      /EX-3 is not an issue this run works on/,
-    );
-    expect(() => pickRunIssue([], "EX-1")).toThrow(/not working on a Jira/);
+  it("passes any other key on, marked for the board check", () => {
+    expect(pickIssue(["EX-1"], " ex-30 ")).toEqual({
+      key: "EX-30",
+      inRun: false,
+    });
+  });
+
+  it("refuses what is not an issue key", () => {
+    for (const bad of ["EX", "12", "EX-1/../x", "EX-1 OR key = X-2"]) {
+      expect(() => pickIssue(["EX-1"], bad)).toThrow(/not a Jira issue key/);
+    }
+    expect(() => pickIssue([], "EX-1")).toThrow(/not working on a Jira/);
   });
 });

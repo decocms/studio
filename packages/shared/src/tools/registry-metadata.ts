@@ -223,6 +223,7 @@ const ALL_TOOL_NAMES = [
   "JIRA_ATTACHMENT_DOWNLOAD",
   "JIRA_REMOTE_LINK_ADD",
   "JIRA_ISSUE_CREATE",
+  "JIRA_ISSUE_SEARCH",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -1058,34 +1059,38 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_ISSUE_GET",
-    description: "Re-read the Jira issue a run is working on",
+    description: "Read a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_COMMENT_ADD",
-    description: "Comment on the Jira issue a run is working on",
+    description: "Comment on a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_ISSUE_TRANSITION",
-    description: "Move the Jira issue a run is working on to another status",
+    description: "Move a Jira issue on the board to another status",
     category: "Jira",
   },
   {
     name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
-      "Get a short-lived download URL for an attachment of the run's Jira issue",
+      "Get a short-lived download URL for an attachment of a Jira issue",
     category: "Jira",
   },
   {
     name: "JIRA_REMOTE_LINK_ADD",
-    description:
-      "Link a pull request or deploy preview on the run's Jira issue",
+    description: "Link a pull request or deploy preview on a Jira issue",
     category: "Jira",
   },
   {
     name: "JIRA_ISSUE_CREATE",
-    description: "Create a Jira issue from a run, linked to the run's issues",
+    description: "Create a Jira issue on the board from a run",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_SEARCH",
+    description: "Search the Jira board's issues with JQL from a run",
     category: "Jira",
   },
   {

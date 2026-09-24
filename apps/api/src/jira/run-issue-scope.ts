@@ -4,17 +4,17 @@
  * A run is dispatched on a SET of issues — one, for a status rule or a
  * per-issue manual run; several, for a manual run started on a batch — and
  * the set is stamped in the run thread's metadata by Studio at dispatch. The
- * tools take an optional `issueKey` and this decides what it resolves to: an
- * issue in the set, or the only issue when the set has one and no key was
- * given. Anything else is refused, so a run started on OS-1 cannot be talked
- * into moving OS-2 by a key the model typed.
+ * tools take an optional `issueKey`: left out, it is the run's issue when the
+ * run has one. Named, it may be any issue on the integration's board — a
+ * spike opens the issues it spawns, a card's body points at another — and
+ * the tools check the board, not the set (`run-tools.ts`).
  */
 
 import type { ThreadMetadata } from "@decocms/shared/entities";
 
 /**
- * The issues a run may act on, from its thread's metadata. Empty when the
- * thread is not a Jira run at all.
+ * The issues a run was dispatched on, from its thread's metadata. Empty when
+ * the thread is not a Jira run at all.
  *
  * `jira_issue_keys` is the set. `jira_issue_key` alone is what a run stamped
  * before batches existed carries, and is still that run's whole set.
@@ -32,8 +32,7 @@ export function runIssueKeys(
   return typeof one === "string" && one !== "" ? [one] : [];
 }
 
-/** The issues the run created itself (`JIRA_ISSUE_CREATE`), a subset of
- *  {@link runIssueKeys}. */
+/** The issues the run created itself (`JIRA_ISSUE_CREATE`). */
 export function runCreatedIssueKeys(
   metadata: ThreadMetadata | null | undefined,
 ): string[] {
@@ -44,31 +43,35 @@ export function runCreatedIssueKeys(
     : [];
 }
 
+const ISSUE_KEY = /^[A-Z][A-Z0-9_]*-\d+$/;
+
 /**
- * Resolve the issue a tool call names, or throw with the set it may name.
- * Keys compare case-insensitively (a person types `os-12`; Jira says `OS-12`)
- * and the run's own spelling is what comes back.
+ * The issue a tool call names. `inRun` says whether it is one the run was
+ * dispatched on — those need no board check, Studio picked them from the
+ * board. Keys compare case-insensitively (a person types `os-12`; Jira says
+ * `OS-12`) and a run issue comes back in the run's own spelling.
  */
-export function pickRunIssue(
-  allowed: readonly string[],
+export function pickIssue(
+  runKeys: readonly string[],
   requested: string | undefined,
-): string {
-  if (allowed.length === 0) {
+): { key: string; inRun: boolean } {
+  if (runKeys.length === 0) {
     throw new Error("This run is not working on a Jira issue");
   }
-  const wanted = requested?.trim();
+  const wanted = requested?.trim().toUpperCase();
   if (!wanted) {
-    const only = allowed[0];
-    if (allowed.length === 1 && only !== undefined) return only;
+    const only = runKeys[0];
+    if (runKeys.length === 1 && only !== undefined) {
+      return { key: only, inRun: true };
+    }
     throw new Error(
-      `This run works on ${allowed.length} issues (${allowed.join(", ")}) — pass \`issueKey\` to say which one`,
+      `This run works on ${runKeys.length} issues (${runKeys.join(", ")}) — pass \`issueKey\` to say which one`,
     );
   }
-  const match = allowed.find((k) => k.toLowerCase() === wanted.toLowerCase());
-  if (!match) {
-    throw new Error(
-      `${wanted} is not an issue this run works on — it works on ${allowed.join(", ")}`,
-    );
+  const own = runKeys.find((k) => k.toUpperCase() === wanted);
+  if (own) return { key: own, inRun: true };
+  if (!ISSUE_KEY.test(wanted)) {
+    throw new Error(`"${requested}" is not a Jira issue key, e.g. EX-12`);
   }
-  return match;
+  return { key: wanted, inRun: false };
 }

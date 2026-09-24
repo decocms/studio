@@ -103,8 +103,9 @@ export type SuperAgentPromptOpts = {
   /** The run works on something outside the board — one Jira issue, or a
    *  batch of them — and the card is only its anchor. `body` replaces the
    *  card's description in the prompt, `title` names the thread, and the
-   *  thread is stamped with `issueKeys` so its Jira tools know which issues
-   *  it may act on and the monitoring filter can tell it apart. */
+   *  thread is stamped with `issueKeys` so its Jira tools know which issue
+   *  a call without a key means and the monitoring filter can tell it
+   *  apart. */
   source?: { kind: "jira"; issueKeys: string[]; title: string; body: string };
 };
 

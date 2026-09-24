@@ -84,7 +84,7 @@ const ThreadMetadataSchema = z
       .array(z.string())
       .optional()
       .describe(
-        "The Jira issues a 'jira' run created itself. Each is also in jira_issue_keys, so the run can act on it.",
+        "The Jira issues a 'jira' run created itself, so a repeated create returns the one it made.",
       ),
   })
   .catchall(z.unknown());

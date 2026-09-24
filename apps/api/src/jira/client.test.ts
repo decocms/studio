@@ -8,6 +8,7 @@ import {
   JiraClient,
   JiraUserDirectory,
   mediaUuidFromLocation,
+  narrowJql,
 } from "./client";
 
 describe("normalizeSiteUrl", () => {
@@ -1075,5 +1076,64 @@ describe("JiraClient issue creation", () => {
         expect(await client().getActiveSprint("42")).toBeNull();
       },
     );
+  });
+});
+
+describe("narrowJql", () => {
+  const scope = 'project = "EX"';
+
+  it("ANDs the clause onto the scope and keeps its ordering last", () => {
+    expect(narrowJql(scope, "status = Done order by updated DESC")).toBe(
+      '(project = "EX") AND (status = Done) order by updated DESC',
+    );
+    expect(narrowJql(scope, "ORDER BY created")).toBe(
+      '(project = "EX") ORDER BY created',
+    );
+    expect(narrowJql(scope, "  ")).toBe('(project = "EX")');
+  });
+
+  it("counts parentheses inside quoted strings as text", () => {
+    expect(narrowJql(scope, "summary ~ \"a (b\" AND text ~ 'c)'")).toBe(
+      '(project = "EX") AND (summary ~ "a (b" AND text ~ \'c)\')',
+    );
+  });
+
+  it("refuses a clause that would close the scope's group", () => {
+    for (const escape of [
+      "status = Done) OR (project = HR",
+      "(status = Done",
+      "status = Done) OR project = HR OR (key = X",
+      'summary ~ "unterminated',
+    ]) {
+      expect(() => narrowJql(scope, escape)).toThrow("do not balance");
+    }
+  });
+});
+
+describe("JiraClient.isOnBoard", () => {
+  it("is false for a key Jira does not know, which search answers with 400", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("/configuration")) {
+        return new Response(JSON.stringify({ filter: { id: "77" } }));
+      }
+      if (url.includes("/filter/77")) {
+        return new Response(JSON.stringify({ jql: 'project = "EX"' }));
+      }
+      return new Response("An issue with key 'EX-404' does not exist", {
+        status: 400,
+      });
+    }) as unknown as typeof fetch;
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "e@acme.com",
+        "tok",
+      );
+      expect(await client.isOnBoard("42", "EX-404")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

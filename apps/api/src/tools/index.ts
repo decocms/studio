@@ -275,6 +275,7 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
   JiraTools.JIRA_REMOTE_LINK_ADD,
   JiraTools.JIRA_ISSUE_CREATE,
+  JiraTools.JIRA_ISSUE_SEARCH,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,

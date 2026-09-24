@@ -6191,6 +6191,20 @@ export interface StudioToolIO {
       notLinked: { key: string; reason: string }[];
     };
   };
+  JIRA_ISSUE_SEARCH: {
+    input: { jql: string; limit?: number | undefined };
+    output: {
+      issues: {
+        key: string;
+        url: string;
+        summary: string;
+        status: string;
+        type: string | null;
+        updated: string;
+      }[];
+      truncated: boolean;
+    };
+  };
   LIST_OBJECTS: {
     input: {
       prefix?: string | undefined;

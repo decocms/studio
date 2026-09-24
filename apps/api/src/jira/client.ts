@@ -199,6 +199,42 @@ function stripOrderBy(jql: string): string {
   return jql.replace(/\s+order\s+by\s+[\s\S]*$/i, "").trim();
 }
 
+/**
+ * A caller's JQL narrowed to a scope: `(<scope>) AND (<clause>) ORDER BY …`.
+ *
+ * The clause must be self-contained. `a) OR (project = X` would close the
+ * scope's group and OR its way out of it, so a clause whose parentheses do
+ * not balance outside quoted strings is refused rather than wrapped.
+ */
+export function narrowJql(scope: string, jql: string): string {
+  const match = jql.match(/(^|\s)order\s+by\s[\s\S]*$/i);
+  const clause = (match ? jql.slice(0, match.index) : jql).trim();
+  const orderBy = match ? ` ${match[0].trim()}` : "";
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = 0; i < clause.length; i++) {
+    const char = clause[i];
+    if (quote) {
+      if (char === "\\") i++;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "(") {
+      depth++;
+    } else if (char === ")" && --depth < 0) {
+      break;
+    }
+  }
+  if (depth !== 0 || quote) {
+    throw new Error(
+      "The JQL's parentheses or quotes do not balance — send one self-contained condition",
+    );
+  }
+  return clause
+    ? `(${scope}) AND (${clause})${orderBy}`
+    : `(${scope})${orderBy}`;
+}
+
 /** Guard for interpolating a board id into a path. */
 export function assertBoardId(boardId: string): string {
   if (!/^\d+$/.test(boardId)) {
@@ -422,6 +458,29 @@ export class JiraClient {
       );
     }
     return `project = ${JSON.stringify(projectKey)}`;
+  }
+
+  /**
+   * Whether the issue is on the board — matches the board's own scope, the
+   * same query the trigger watches. A key Jira does not know is a 400 from
+   * search, and simply not on the board.
+   */
+  async isOnBoard(boardId: string, issueKey: string): Promise<boolean> {
+    const scope = await this.getBoardScopeJql(boardId);
+    const query = new URLSearchParams({
+      jql: narrowJql(scope, `key = "${issueKey.replace(/["\\]/g, "")}"`),
+      maxResults: "1",
+      fields: "summary",
+    });
+    try {
+      const page = await this.request<{ issues?: unknown[] }>(
+        `/rest/api/3/search/jql?${query}`,
+      );
+      return (page.issues?.length ?? 0) > 0;
+    } catch (err) {
+      if (err instanceof JiraRequestError && err.status === 400) return false;
+      throw err;
+    }
   }
 
   /**

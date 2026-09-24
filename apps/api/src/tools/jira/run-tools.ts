@@ -2,12 +2,14 @@
  * The Jira tools a Jira-triggered run is served instead of the board tools.
  *
  * The run works on an ISSUE — or, when a person started it on a batch, on a
- * SET of issues — so this is how it reads them, comments on them, moves them,
- * and fetches their files — all through Studio, with the integration's own
- * credential, which never reaches the sandbox. Which issues is not an input:
- * the run's MCP endpoint is keyed by thread (`task-run-context.ts`), and the
- * thread was stamped with its issues at dispatch. `issueKey` on each tool
- * only picks one of THOSE; a run on one issue can leave it out.
+ * SET of issues — and reaches the rest of the integration's board from
+ * there: it reads them, searches them, comments on them, moves them, creates
+ * them and fetches their files, all through Studio with the integration's
+ * own credential, which never reaches the sandbox. `issueKey` on each tool
+ * picks the issue; a run on one issue can leave it out. Any issue on the
+ * board is fair game, one elsewhere on the Jira site is not: the credential
+ * reaches every project the account can see, and the board is what the
+ * organization connected.
  */
 
 import { z } from "zod";
@@ -18,7 +20,7 @@ import {
   ATTACHMENT_GRANT_TTL_MS,
   mintAttachmentToken,
 } from "@/jira/attachment-token";
-import { JiraClient } from "@/jira/client";
+import { JiraClient, narrowJql } from "@/jira/client";
 import { uploadCommentImages } from "@/jira/comment-images";
 import {
   issueUrl,
@@ -26,7 +28,7 @@ import {
   renderIssueForPrompt,
 } from "@/jira/issue-prompt";
 import {
-  pickRunIssue,
+  pickIssue,
   runCreatedIssueKeys,
   runIssueKeys,
 } from "@/jira/run-issue-scope";
@@ -49,8 +51,8 @@ const issueKeyInput = z
   .string()
   .optional()
   .describe(
-    "Which issue, when this run works on several (they are listed in your " +
-      "opening message). Leave out on a run about one issue.",
+    "Which issue: any on the board, e.g. one this run's issue links to or " +
+      "one you created. Leave out for this run's issue, when it has one.",
   );
 
 /**
@@ -71,23 +73,36 @@ async function resolveRunIssue(
   );
   if (!integration) throw new Error("Jira is not connected for this org");
   const thread = await ctx.storage.threads.get(threadId);
-  const issueKey = pickRunIssue(runIssueKeys(thread?.metadata), requestedKey);
-  return {
-    integration,
-    client: new JiraClient(
-      integration.siteUrl,
-      integration.email,
-      integration.apiToken,
-    ),
-    issueKey,
-  };
+  const client = new JiraClient(
+    integration.siteUrl,
+    integration.email,
+    integration.apiToken,
+  );
+  const picked = pickIssue(runIssueKeys(thread?.metadata), requestedKey);
+  if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
+  return { integration, client, issueKey: picked.key };
+}
+
+async function assertOnBoard(
+  client: JiraClient,
+  integration: OrgJiraIntegration,
+  issueKey: string,
+): Promise<void> {
+  if (!integration.boardId) {
+    throw new Error(
+      `Jira has no board connected, so ${issueKey} cannot be checked — only this run's issues are reachable`,
+    );
+  }
+  if (!(await client.isOnBoard(integration.boardId, issueKey))) {
+    throw new Error(`${issueKey} is not on the connected Jira board`);
+  }
 }
 
 export const JIRA_ISSUE_GET = defineTool({
   name: "JIRA_ISSUE_GET",
   description:
-    "Re-read the Jira issue this run is working on: summary, status, " +
-    "description, comments, and attachments with the ids " +
+    "Read a Jira issue — this run's, or another on the board: summary, " +
+    "status, description, comments, and attachments with the ids " +
     "JIRA_ATTACHMENT_DOWNLOAD takes.",
   inputSchema: z.object({ issueKey: issueKeyInput }),
   outputSchema: z.object({
@@ -119,7 +134,7 @@ export const JIRA_ISSUE_GET = defineTool({
 export const JIRA_COMMENT_ADD = defineTool({
   name: "JIRA_COMMENT_ADD",
   description:
-    "Post a comment on the Jira issue this run is working on. Markdown is " +
+    "Post a comment on a Jira issue on the board. Markdown is " +
     "rendered as Jira rich text, tables included. Leave one when you finish: " +
     "what you did, and any pull request link. To show evidence, write the " +
     "image to `org/output/<name>.png` in your working pod and reference it as " +
@@ -152,7 +167,7 @@ export const JIRA_COMMENT_ADD = defineTool({
 export const JIRA_REMOTE_LINK_ADD = defineTool({
   name: "JIRA_REMOTE_LINK_ADD",
   description:
-    "Put a link on the Jira issue this run is working on — its pull request, " +
+    "Put a link on a Jira issue on the board — its pull request, " +
     "its deploy preview. A link on the card is what a person clicks; the same " +
     "URL inside a comment is not. Posting the same `key` again updates that " +
     "link instead of adding a second.",
@@ -194,7 +209,7 @@ export const JIRA_REMOTE_LINK_ADD = defineTool({
 export const JIRA_ISSUE_TRANSITION = defineTool({
   name: "JIRA_ISSUE_TRANSITION",
   description:
-    "Move the Jira issue this run is working on to another status, by the " +
+    "Move a Jira issue on the board to another status, by the " +
     "status name (case-insensitive). Only a status the issue's workflow can " +
     "reach from where it is; the error names the reachable ones.",
   inputSchema: z.object({
@@ -223,6 +238,67 @@ export const JIRA_ISSUE_TRANSITION = defineTool({
   },
 });
 
+const MAX_SEARCH_RESULTS = 100;
+
+export const JIRA_ISSUE_SEARCH = defineTool({
+  name: "JIRA_ISSUE_SEARCH",
+  description:
+    'Find issues on the board with JQL, e.g. `status = "Code Review"` or ' +
+    '`text ~ "checkout" ORDER BY updated DESC`. The query is narrowed to ' +
+    "the board, so name only the condition. Returns keys to read in full with " +
+    "JIRA_ISSUE_GET.",
+  inputSchema: z.object({
+    jql: z.string().max(2000),
+    limit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).default(20),
+  }),
+  outputSchema: z.object({
+    issues: z.array(
+      z.object({
+        key: z.string(),
+        url: z.string(),
+        summary: z.string(),
+        status: z.string(),
+        type: z.string().nullable(),
+        updated: z.string(),
+      }),
+    ),
+    /** More matched than `limit`. */
+    truncated: z.boolean(),
+  }),
+  handler: async (input, ctx) => {
+    await ctx.access.check();
+    const organization = requireOrganization(ctx);
+    const integration = await ctx.storage.jiraIntegrations.getByOrg(
+      organization.id,
+    );
+    if (!integration) throw new Error("Jira is not connected for this org");
+    if (!integration.boardId) {
+      throw new Error("Jira has no board connected to search");
+    }
+    const client = new JiraClient(
+      integration.siteUrl,
+      integration.email,
+      integration.apiToken,
+    );
+    const scope = await client.getBoardScopeJql(integration.boardId);
+    const page = await client.searchIssues({
+      jql: narrowJql(scope, input.jql),
+    });
+    return {
+      issues: page.issues.slice(0, input.limit).map((issue) => ({
+        key: issue.key,
+        url: issueUrl(integration.siteUrl, issue.key),
+        summary: issue.fields.summary,
+        status: issue.fields.status.name,
+        type: issue.fields.issuetype?.name ?? null,
+        updated: issue.fields.updated,
+      })),
+      truncated:
+        page.issues.length > input.limit || page.nextPageToken !== null,
+    };
+  },
+});
+
 /** A runaway guard, not a quota: a release creates one issue per site. */
 const MAX_CREATED_PER_RUN = 5;
 
@@ -246,10 +322,10 @@ export const JIRA_ISSUE_CREATE = defineTool({
   name: "JIRA_ISSUE_CREATE",
   description:
     "Create a Jira issue in the project this run works in — a release card, " +
-    "a follow-up found along the way. The new issue joins the issues this " +
-    "run may act on, so comment on it, link it and move it with the other " +
-    "Jira tools by its key. If an open issue this integration created in the " +
-    "last two weeks already has this exact summary, that one is returned instead " +
+    "a follow-up found along the way — then comment on it, link it and move " +
+    "it with the other Jira tools by its key. If an open issue this " +
+    "integration created in the last two weeks already has this exact " +
+    "summary, that one is returned instead " +
     "(`created: false`) and still linked, so calling again after a restart " +
     "does not duplicate it. Write the full description now; there is no " +
     "tool to edit it later.",
@@ -273,7 +349,7 @@ export const JIRA_ISSUE_CREATE = defineTool({
       .max(100)
       .default([])
       .describe(
-        "Issues of this run to link to the new one as `Relates`, e.g. the " +
+        "Issues on the board to link to the new one as `Relates`, e.g. the " +
           "cards a release ships.",
       ),
     sprint: z
@@ -305,10 +381,6 @@ export const JIRA_ISSUE_CREATE = defineTool({
     if (runKeys.length === 0) {
       throw new Error("This run is not working on a Jira issue");
     }
-    // Only issues the run already works on — never one the model typed.
-    const relatesTo = [
-      ...new Set(input.relatesTo.map((k) => pickRunIssue(runKeys, k))),
-    ];
     const projects = [...new Set(runKeys.map(projectOf))];
     const projectKey = projects[0];
     if (projects.length !== 1 || !projectKey || !PROJECT_KEY.test(projectKey)) {
@@ -321,6 +393,15 @@ export const JIRA_ISSUE_CREATE = defineTool({
       integration.email,
       integration.apiToken,
     );
+    // Checked before anything is written: a bad key must not leave an issue
+    // behind with half its links.
+    const relatesTo: string[] = [];
+    for (const requested of input.relatesTo) {
+      const picked = pickIssue(runKeys, requested);
+      if (relatesTo.includes(picked.key)) continue;
+      if (!picked.inRun) await assertOnBoard(client, integration, picked.key);
+      relatesTo.push(picked.key);
+    }
 
     const alreadyCreated = runCreatedIssueKeys(thread?.metadata);
     let key = await findOpenIssueWithSummary(
@@ -367,10 +448,10 @@ export const JIRA_ISSUE_CREATE = defineTool({
         description: input.description,
         fields,
       }));
+      // Before linking, which can fail: the cap and the repeat check both
+      // read this record.
+      await ctx.storage.threads.recordJiraIssueCreated(threadId, key);
     }
-    // Before linking: a failed link must not leave an issue the run cannot
-    // reach, or its retry would find it and still be unable to act on it.
-    await ctx.storage.threads.addRunJiraIssue(threadId, key, { created });
 
     const already = created
       ? new Set<string>()
@@ -434,8 +515,8 @@ async function findOpenIssueWithSummary(
 export const JIRA_ATTACHMENT_DOWNLOAD = defineTool({
   name: "JIRA_ATTACHMENT_DOWNLOAD",
   description:
-    "Get a short-lived URL for one attachment of the Jira issue this run is " +
-    "working on, to `curl -L -o <path>` into the sandbox. Attachment ids are " +
+    "Get a short-lived URL for one attachment of a Jira issue on the board, " +
+    "to `curl -L -o <path>` into the sandbox. Attachment ids are " +
     "listed by JIRA_ISSUE_GET. The URL needs no credential and expires.",
   inputSchema: z.object({
     issueKey: issueKeyInput,
@@ -453,8 +534,8 @@ export const JIRA_ATTACHMENT_DOWNLOAD = defineTool({
       ctx,
       input.issueKey,
     );
-    // Only this issue's attachments: the grant is minted from one of the
-    // run's own issues, never from an id the model typed for some other one.
+    // Only this issue's attachments: the grant is minted from an issue the
+    // board check passed, never from an id the model typed for some other one.
     const attachment = (await client.listAttachments(issueKey)).find(
       (a) => a.id === input.attachmentId,
     );
