@@ -843,6 +843,8 @@ export class AgentSandboxProvider {
    */
   async adoptLiveClaim(id: SandboxId, handle: string): Promise<boolean> {
     if (this.records.has(handle)) return true;
+    const row = await this.stateStore?.getByHandle(handle).catch(() => null);
+    if (row && this.refusesRow(row)) return false;
     const existing = await getSandboxClaim(
       this.kubeConfig,
       this.namespace,
@@ -1124,6 +1126,13 @@ export class AgentSandboxProvider {
     if (ops) {
       const persisted = await ops.get(id);
       if (persisted) {
+        // Falling through to adopt would rotate the token the other writer
+        // holds, and its retry would rotate it back.
+        if (this.refusesRow(persisted)) {
+          throw new Error(
+            `sandbox ${persisted.handle} is owned by ${foreignRowWriter(persisted.state)}; this Studio pod does not serve it`,
+          );
+        }
         const rec = await this.rehydrate(id, handle, persisted);
         if (rec) {
           // Resume reuses the running pod, whose daemon still holds the clone
@@ -2516,12 +2525,25 @@ export class AgentSandboxProvider {
 
   // ---- Handle resolution (post-restart) -------------------------------------
 
+  /** A row another writer owns is never rehydrated, adopted or resurrected. */
+  private refusesRow(row: {
+    handle: string;
+    state: Record<string, unknown>;
+  }): boolean {
+    const writer = foreignRowWriter(row.state);
+    if (!writer) return false;
+    console.warn(
+      `[${LOG_LABEL}] refusing sandbox ${row.handle}: its state row was written by ${writer}`,
+    );
+    return true;
+  }
+
   private async getRecord(handle: string): Promise<K8sRecord | null> {
     const cached = this.records.get(handle);
     if (cached) return cached;
     if (!this.stateStore) return null;
     const persisted = await this.stateStore.getByHandle(handle);
-    if (!persisted) return null;
+    if (!persisted || this.refusesRow(persisted)) return null;
     const rec = await this.rehydrate(persisted.id, handle, persisted);
     if (rec) this.records.set(handle, rec);
     return rec;
@@ -2544,7 +2566,7 @@ export class AgentSandboxProvider {
   private async resurrectByHandle(handle: string): Promise<K8sRecord | null> {
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(handle);
-    if (!row) return null;
+    if (!row || this.refusesRow(row)) return null;
     const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
     if (!persistedOpts) return null;
     // Persisted credentials carry first-provision tokens, long expired by now.
@@ -3189,6 +3211,19 @@ function readClaimTenant(claim: SandboxResource): RunnerTenant | null {
     userEmail: annotations[ANNOTATION_KEYS.userEmail],
     userName: annotations[ANNOTATION_KEYS.userName],
   };
+}
+
+/**
+ * The writer stamped on a sandbox_runner_state row, when it is not this
+ * runner. The in-process runner writes no `writer`; the sandbox controller
+ * writes `"sandbox-controller"`.
+ */
+export function foreignRowWriter(
+  state: Record<string, unknown>,
+): string | null {
+  const writer = state.writer;
+  if (writer === undefined || writer === null) return null;
+  return typeof writer === "string" ? writer : JSON.stringify(writer);
 }
 
 /**
