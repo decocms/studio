@@ -13,7 +13,7 @@
 {{- $previewName := include "sandbox-env.previewName" . }}
 {{- $infra := .Values.previewGateway.infrastructure | default dict }}
 # Wildcard preview-URL ingress. The Gateway fronts `*.<domain>`; per-claim
-# HTTPRoutes are minted by the Studio runner against this Gateway and route
+# HTTPRoutes are minted by the sandbox controller against this Gateway and route
 # directly to each sandbox's headless Service at port 9000 (daemon owns the
 # public surface — routing straight at the dev port 3000 would bypass CSP/HMR
 # rewrites and break iframe embedding + SSE).
@@ -30,8 +30,8 @@
 # request path was the previous design, and it's been replaced by per-claim
 # routing. Studio now creates one HTTPRoute per SandboxClaim in
 # `agent-sandbox-system` (same namespace as the operator's Service, no
-# ReferenceGrant needed) and tears it down on claim delete. RBAC for that
-# lives in templates/sandbox-rbac.yaml.
+# ReferenceGrant needed) and tears it down on claim delete. The sandbox
+# controller holds the RBAC for that.
 #
 # Browser → (LB) → Gateway → HTTPRoute(handle) → Service(handle):9000 → pod.
 # Studio is no longer the data-path proxy.

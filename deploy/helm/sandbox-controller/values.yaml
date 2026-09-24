@@ -98,10 +98,16 @@ claims:
   tenantPools: []
 
   # Studio's pods: the only ones the NetworkPolicy lets reach the claim API.
+  # Both the API pods and the worker pods (chart-deco-studio-worker) call it:
+  # the worker runs the sandboxed agent loops. With several Studio releases in
+  # one namespace, narrow this by app.kubernetes.io/instance.
   studio:
     namespace: ""
-    podSelectorLabels:
-      app.kubernetes.io/name: chart-deco-studio
+    podSelector:
+      matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values: [chart-deco-studio, chart-deco-studio-worker]
   networkPolicy:
     # Further NetworkPolicy ingress rules, e.g. a metrics scraper: the policy
     # otherwise denies every other ingress to the controller pods.

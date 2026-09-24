@@ -41,9 +41,10 @@ local-Kubernetes path below. For a prod-*like* topology (multiple nodes, zones),
 - **"Install everything" is a self-host convenience, kept separate:**
   - **Compose** bundles every dependency as containers (the easy local path).
   - **Local-k8s** is an **umbrella chart** ([`examples/k8s-local`](examples/k8s-local))
-    that declares the lean Studio chart, the sandbox operator, and `sandbox-env`
-    as Helm `dependencies`, and adds throwaway Postgres + MinIO as its own
-    templates — so one `helm install` brings up the whole stack, wired. It never
+    that declares the lean Studio chart, the sandbox operator, `sandbox-env` and
+    the sandbox controller as Helm `dependencies`, and adds throwaway Postgres +
+    MinIO and the Studio/controller mTLS certificates as its own templates — so
+    one `helm install` brings up the whole stack, wired. It never
     touches the official chart; it just composes it.
 - **Production** points the chart at managed services — the umbrella is not used.
 
@@ -55,8 +56,9 @@ helm install deco-studio selfhost/examples/k8s-local -n deco-studio --create-nam
 ```
 
 Use release name **`deco-studio`** — the Studio subchart derives its Service,
-ServiceAccount, NATS, and instance-label names from it, and the sandbox RBAC is
-granted to the `deco-studio` ServiceAccount. `scripts/local-k8s.sh` wraps these
+NATS, and instance-label names from it, and the controller its
+`deco-studio-sandbox-controller` Service; the values and certificates name both.
+`scripts/local-k8s.sh` wraps these
 two commands (plus a namespace-terminating guard, rollout wait, access hints,
 and `uninstall`).
 
@@ -106,26 +108,57 @@ removed values key won't error — `helm template` after big `deploy/` changes).
 
 - **App logic (UI / tools / API)** — plain `bun run dev` (embedded Postgres, Vite
   hot reload). Fastest loop; no cluster. See [`../CLAUDE.md`](../CLAUDE.md).
+  With `STUDIO_AGENT_SANDBOX_ENABLED=true` and no `STUDIO_SANDBOX_CONTROLLER_URL`,
+  it also builds and runs the sandbox controller from source on its **docker runtime** —
+  one container per sandbox, over throwaway mTLS certificates in
+  `.deco/sandbox-controller/`. Without Go, OpenSSL or a working
+  `docker version` it logs one line, skips the controller, and sandbox tools
+  answer 503 saying what to install.
 - **Sandbox / preview / k8s behavior** — [`examples/dev-hybrid`](examples/dev-hybrid):
-  `bun run dev` on your host, but Postgres/NATS/MinIO **and the real
-  agent-sandbox operator** come from the k8s-local install (the app in-cluster is
-  scaled to 0). Studio drives the cluster's sandbox via your kubeconfig +
-  API-server port-forward, so code-exec/previews work — which the laptop-only
-  loop can't do.
+  Studio from source on your host, but Postgres/NATS/MinIO **and the real
+  agent-sandbox operator** come from the k8s-local install (the app and
+  controller in-cluster are scaled to 0). A host controller drives the cluster's
+  sandbox via your kubeconfig + API-server port-forward, so code-exec/previews
+  run on Kubernetes.
 - **The artifact itself (chart/image)** — build a local image and
   `helm upgrade --set image.tag=…`; closest to prod, slowest loop.
 
 ## Sandbox (code-execution + previews)
 
 The sandbox is a separate layer — the `sandbox-operator` (agent-sandbox operator
-+ CRDs) and `sandbox-env` charts under [`deploy/helm`](../deploy/helm), plus
-Studio wiring (`STUDIO_AGENT_SANDBOX_ENABLED=true`). Core Studio (agents,
-connections, MCP proxy) runs fine without it; enable it for the *full* install.
++ CRDs), `sandbox-env` and `sandbox-controller` charts under
+[`deploy/helm`](../deploy/helm), plus Studio wiring
+(`STUDIO_AGENT_SANDBOX_ENABLED=true` and the chart's `sandboxController`
+values, i.e. `STUDIO_SANDBOX_CONTROLLER_*`). Studio holds no cluster access: it
+calls the controller's claim API over mTLS, and the controller (with
+`claims.enabled`) creates the `SandboxClaim`s with the RBAC it holds. Enabling
+sandboxes without a controller connection fails the render and Studio's boot.
+Core Studio (agents, connections, MCP proxy) runs fine without the layer;
+enable it for the *full* install.
 
 The umbrella installs the sandbox layer as part of the one `helm install`: the
-operator, `sandbox-env` (wired inline in [`examples/k8s-local/values.yaml`](examples/k8s-local/values.yaml)),
-and the Studio `STUDIO_SANDBOX_*` config. Previews run in-process locally (no
-Gateway/ingress).
+operator, `sandbox-env` and the controller (wired inline in
+[`examples/k8s-local/values.yaml`](examples/k8s-local/values.yaml)), the
+certificates and Secrets the controller reads
+([`templates/sandbox-controller-tls.yaml`](examples/k8s-local/templates/sandbox-controller-tls.yaml)),
+and Studio's `sandboxController` connection. Previews run in-process locally
+(no Gateway/ingress).
+
+The controller image tag defaults to the `sandbox-controller` chart's
+`appVersion`, published by `.github/workflows/release-sandbox-controller.yaml`
+when that version first lands on `main`. If the tag is not published yet, build
+it into the cluster's image store (Rancher Desktop in moby mode shares it with
+`docker build`):
+
+```bash
+docker build -f packages/sandbox/controller-go/Dockerfile packages/sandbox \
+  -t ghcr.io/decocms/studio/sandbox-controller:<appVersion>
+```
+
+Without Kubernetes, the controller serves the same claim API on its **docker
+runtime** (`--kubernetes=false --docker --docker-image <image>`), one container
+per sandbox on the engine the `docker` CLI reaches. `bun run dev` starts it that
+way; there is no packaged single-machine install beyond that.
 
 **Warm pool** (pre-spawned sandbox pods for zero cold-start) is **on by default**
 in the umbrella (size 1) — safe because the sandbox image is multi-arch.
@@ -142,6 +175,9 @@ shows it with placeholders (nothing environment-specific baked in):
 - **Node isolation:** pin sandbox pods to a dedicated tainted NodePool so an
   escape lands away from Studio/Postgres/NATS.
 - **Zone spread**, **warm pool** (+ optional HPA), and **sentinel token**.
+- **Controller:** [`production/values-sandbox-controller-prod.yaml`](production/values-sandbox-controller-prod.yaml)
+  and the cert-manager pair in
+  [`production/sandbox-controller-certificates.yaml`](production/sandbox-controller-certificates.yaml).
 - **Preview URLs:** wildcard `*.<domain>` via an Istio Gateway + cert-manager
   (needs Gateway API CRDs + a DNS-01 issuer — off in the example until those
   exist).
@@ -165,7 +201,7 @@ shows it with placeholders (nothing environment-specific baked in):
   Traefik (`rdctl set --kubernetes.options.traefik=false`) or front Studio with an
   ingress. The install script detects this and prints the right path.
 - `./selfhost/scripts/local-k8s.sh uninstall` removes **everything** (Studio,
-  dev deps, sandbox operator/env, namespaces).
+  dev deps, sandbox operator/env/controller, namespaces).
 
 ## Layout
 
@@ -174,16 +210,20 @@ selfhost/
 ├── README.md              # this file
 ├── examples/                            # LOCAL only
 │   ├── k8s-local/                       # batteries-included umbrella chart
-│   │   ├── Chart.yaml                   #   deps: chart-deco-studio + sandbox-operator + sandbox-env
-│   │   ├── values.yaml                  #   wires it all (dev deps, SA, sandbox, previews)
-│   │   └── templates/dev-deps.yaml      #   throwaway Postgres + MinIO
+│   │   ├── Chart.yaml                   #   deps: chart-deco-studio + sandbox-operator + sandbox-env + sandbox-controller
+│   │   ├── values.yaml                  #   wires it all (dev deps, sandbox, controller, previews)
+│   │   └── templates/
+│   │       ├── dev-deps.yaml            #   throwaway Postgres + MinIO
+│   │       └── sandbox-controller-tls.yaml  # throwaway mTLS pair + controller Secrets
 │   ├── docker-compose/                  # compose example (includes the deploy/ stack)
 │   │   ├── compose.yaml
 │   │   └── .env.example
-│   └── dev-hybrid/                      # `bun dev` on the host vs the cluster's backends + sandbox
+│   └── dev-hybrid/                      # Studio + controller on the host vs the cluster's backends + sandbox
 │       └── dev-hybrid.sh
 ├── production/                          # PRODUCTION references (external deps, hardened)
-│   └── values-sandbox-env-prod.yaml     #   prod-hardened sandbox-env
+│   ├── values-sandbox-env-prod.yaml     #   prod-hardened sandbox-env
+│   ├── values-sandbox-controller-prod.yaml  # the controller's claim API
+│   └── sandbox-controller-certificates.yaml # cert-manager mTLS pair
 ├── scripts/
 │   └── local-k8s.sh            # thin wrapper: helm dep build + install + teardown
 └── skills/

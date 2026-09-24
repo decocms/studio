@@ -119,8 +119,14 @@ services:
       S3_SECRET_ACCESS_KEY: minioadmin
       # Enable hosted execution for POST /decopilot/messages. No sandbox is
       # actually provisioned because ensureSandbox is lazy
-      # (built-in-tools/index.ts) and the mock-ai test never emits tool calls.
+      # (built-in-tools/index.ts) and the mock-ai test never emits tool calls,
+      # so the controller connection below is never dialled and its files are
+      # never read; it only satisfies the settings check.
       STUDIO_AGENT_SANDBOX_ENABLED: "true"
+      STUDIO_SANDBOX_CONTROLLER_URL: https://sandbox-controller.invalid:8443
+      STUDIO_SANDBOX_CONTROLLER_TLS_CERT: /nonexistent/tls.crt
+      STUDIO_SANDBOX_CONTROLLER_TLS_KEY: /nonexistent/tls.key
+      STUDIO_SANDBOX_CONTROLLER_CA: /nonexistent/ca.crt
     ports:
       - "127.0.0.1:13001:3000"
     # POD_NAME makes `run_owner_pod` match the compose service name

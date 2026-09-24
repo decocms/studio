@@ -13,6 +13,7 @@ Chart sources:
 - [Studio](https://github.com/decocms/studio/tree/main/deploy/helm/studio)
 - [Sandbox operator](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-operator)
 - [Sandbox environment](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-env)
+- [Sandbox controller](https://github.com/decocms/studio/tree/main/deploy/helm/sandbox-controller)
 
 <Callout type="tip">
   **Easiest path:** for a one-command install with bundled dependencies (local or a POC cluster), use the [umbrella chart](https://github.com/decocms/studio/tree/main/selfhost/examples/k8s-local) or `selfhost/scripts/local-k8s.sh` (see [Quickstart](/en/studio/self-hosting/quickstart)). There's also a **guide for coding agents** ([`SKILL.md`](https://github.com/decocms/studio/blob/main/selfhost/skills/self-host-studio/SKILL.md)) that interviews you and writes a reusable install directory — an umbrella chart with pinned OCI dependencies plus your values. This page is the **chart reference** for installing directly and for production — the full dependency guide (managed vs in-cluster Postgres/S3/ClickHouse, secrets with/without ESO, ingress, sandbox) lives in [`selfhost/production`](https://github.com/decocms/studio/tree/main/selfhost/production).
@@ -22,17 +23,22 @@ For the runtime architecture (web/API/worker split, Postgres, NATS, and AgentSan
 
 ## Deployment model
 
-A production deployment uses three Helm releases:
+A production deployment uses four Helm releases:
 
 | Chart | Scope | Purpose |
 | --- | --- | --- |
 | `chart-deco-studio` | Once per Studio environment | Runs an nginx front door with two API containers per pod, queue workers, NATS, persistence, and optional observability components |
 | `sandbox-operator` | Once per Kubernetes cluster | Installs the upstream Kubernetes SIGs [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) controller and CRDs |
-| `sandbox-env` | Once per Studio environment | Installs the environment's `SandboxTemplate`, runner RBAC, sentinel Secret, and optional warm pool, preview Gateway, and idle housekeeper |
+| `sandbox-env` | Once per Studio environment | Installs the environment's `SandboxTemplate`, sentinel Secret, and optional warm pool, preview Gateway, and idle housekeeper |
+| `sandbox-controller` | Once per Studio environment | Serves the mTLS claim API Studio calls to start and stop sandboxes, holds the cluster RBAC for claims, owns `sandbox_runner_state` in Studio's database, and reconciles `SandboxVariant` image variants |
 
-The operator is shared cluster infrastructure. Each `sandbox-env` release is isolated by `envName`, so production, staging, and other Studio releases can share the operator and the `agent-sandbox-system` namespace without resource-name collisions.
+The operator is shared cluster infrastructure. Each `sandbox-env` release is isolated by `envName`, so production, staging, and other Studio releases can share the operator and the `agent-sandbox-system` namespace without resource-name collisions. Each environment also gets its own controller release, named after the release; exactly one release per namespace reconciles `SandboxVariant`s (`variants.enabled`), and the others only serve claims.
 
-When a hosted agent needs a sandbox, Studio creates a `SandboxClaim`. The operator turns that claim into an ephemeral sandbox pod from the environment's `SandboxTemplate`. Studio reaches the daemon through Kubernetes port-forward for control traffic. If preview routing is enabled, Studio also creates one `HTTPRoute` per claim so the wildcard Gateway routes directly to the sandbox Service on port 9000.
+When a hosted agent needs a sandbox, Studio calls the sandbox controller. The controller creates a `SandboxClaim`, the operator turns it into an ephemeral sandbox pod from the environment's `SandboxTemplate`, and the controller tells Studio where the pod's daemon is and which bearer opens it. Studio then talks to the daemon directly through its in-cluster Service; control traffic never passes through the controller. If preview routing is enabled, the controller also creates one `HTTPRoute` per claim so the wildcard Gateway routes directly to the sandbox Service on port 9000. Studio itself holds no Kubernetes RBAC for sandboxes.
+
+<Callout type="warning">
+  Keep the controller's claim API inside the cluster. mTLS is its only authentication, and a caller holding a certificate from its CA can start sandboxes with arbitrary environment variables. The chart's NetworkPolicy admits only Studio's pods.
+</Callout>
 
 ## Prerequisites
 
@@ -42,6 +48,7 @@ When a hosted agent needs a sandbox, Studio creates a `SandboxClaim`. The operat
 - A StorageClass for Studio and the chart-managed NATS JetStream PVCs
 - An S3-compatible object store and credentials for the organization filesystem (org-fs)
 - Support for `spec.hostUsers: true` and privileged sidecars in `agent-sandbox-system`; the mandatory org-fs sidecar uses FUSE and bidirectional mount propagation
+- A way to issue the Studio/controller mTLS certificates from one dedicated CA; the examples below use [cert-manager](https://cert-manager.io)
 - For public preview URLs only: Gateway API CRDs, a Gateway controller, wildcard DNS, and either cert-manager with a DNS-01 `ClusterIssuer` or load-balancer TLS termination
 
 For production, schedule sandbox pods on a dedicated, tainted node pool. Sandbox pods run user-authored code and should not share nodes with Studio, Postgres, NATS, or observability workloads.
@@ -51,10 +58,13 @@ For production, schedule sandbox pods on a dedicated, tainted node pool. Sandbox
 The commands below pin chart versions explicitly. Pin them in your own deployment too, instead of tracking whatever is newest.
 
 ```bash
-export STUDIO_CHART_VERSION=0.16.1
+export STUDIO_CHART_VERSION=0.17.0
 export SANDBOX_OPERATOR_CHART_VERSION=0.1.4
-export SANDBOX_ENV_CHART_VERSION=0.17.3
+export SANDBOX_ENV_CHART_VERSION=0.23.0
+export SANDBOX_CONTROLLER_CHART_VERSION=0.2.0
 ```
+
+These are the first versions that run sandboxes through the controller: `chart-deco-studio` 0.17.0 adds `sandboxController`, and `sandbox-env` 0.23.0 drops the Role it used to grant Studio.
 
 The charts are published as public OCI artifacts, so no registry credentials are needed. To pick a newer version, list what is published:
 
@@ -62,9 +72,10 @@ The charts are published as public OCI artifacts, so no registry credentials are
 helm show chart oci://ghcr.io/decocms/chart-deco-studio | grep '^version:'
 helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-operator | grep '^version:'
 helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-env | grep '^version:'
+helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-controller | grep '^version:'
 ```
 
-Every published version is also listed on the package pages: [chart-deco-studio](https://github.com/orgs/decocms/packages/container/package/chart-deco-studio), [sandbox-operator](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-operator), [sandbox-env](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-env).
+Every published version is also listed on the package pages: [chart-deco-studio](https://github.com/orgs/decocms/packages/container/package/chart-deco-studio), [sandbox-operator](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-operator), [sandbox-env](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-env), [sandbox-controller](https://github.com/orgs/decocms/packages/container/package/studio%2Fcharts%2Fsandbox-controller).
 
 ### 1. Install the cluster-wide sandbox operator
 
@@ -88,7 +99,71 @@ kubectl get crd sandboxclaims.extensions.agents.x-k8s.io \
   sandboxwarmpools.extensions.agents.x-k8s.io
 ```
 
-### 2. Configure and install Studio
+### 2. Issue the Studio/controller certificates
+
+Studio and the controller authenticate each other with mTLS in both directions: Studio presents its certificate to the claim API, and the controller presents its certificate when it calls Studio back to re-mint clone and org-fs credentials. Issue both leaves from one CA dedicated to this pair, each with the server and client auth usages, because each side serves with its leaf and calls the other with it. The DNS names are the Service names each side dials.
+
+With cert-manager, a self-signed root, a CA `ClusterIssuer`, and one `Certificate` per side:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: sandbox-controller-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sandbox-controller-ca
+  namespace: cert-manager # the CA issuer reads its Secret from here
+spec:
+  isCA: true
+  commonName: sandbox-controller-ca
+  secretName: sandbox-controller-ca
+  issuerRef:
+    name: sandbox-controller-selfsigned
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: sandbox-controller-ca
+spec:
+  ca:
+    secretName: sandbox-controller-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sandbox-controller-tls
+  namespace: agent-sandbox-system
+spec:
+  secretName: sandbox-controller-tls
+  dnsNames: [sandbox-controller.agent-sandbox-system.svc]
+  usages: [digital signature, key encipherment, server auth, client auth]
+  issuerRef:
+    name: sandbox-controller-ca
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: studio-sandbox-controller-client
+  namespace: deco-studio
+spec:
+  secretName: studio-sandbox-controller-client
+  dnsNames: [deco-studio.deco-studio.svc]
+  usages: [digital signature, key encipherment, server auth, client auth]
+  issuerRef:
+    name: sandbox-controller-ca
+    kind: ClusterIssuer
+```
+
+cert-manager writes `tls.crt`, `tls.key`, and `ca.crt` into each Secret, which is the shape both charts read. Create the `deco-studio` namespace before applying, since the Studio certificate lives there.
+
+### 3. Configure and install Studio
 
 Hosted sandboxes require S3-compatible object storage. Studio considers it configured only when all four required variables are present:
 
@@ -105,29 +180,32 @@ The credentials need `s3:ListBucket` on the bucket and `s3:GetObject`, `s3:PutOb
 
 Store the S3 variables alongside `DATABASE_URL`, `BETTER_AUTH_SECRET`, and `ENCRYPTION_KEY` in the Kubernetes Secret consumed by Studio. Do not put credentials in `configMap.meshConfig` or in the `sandbox-env` release; sandbox pods access org-fs through Studio's authenticated API and do not receive the S3 keys directly.
 
-Create `studio-values.yaml`. `envName`, the template suffix, Studio namespace, release name, and service-account name must agree with the `sandbox-env` release installed in the next step.
+Create `studio-values.yaml`. The Studio release name and namespace must match the certificate's DNS name and the controller's callback URL below.
 
 ```yaml
 database:
   engine: postgresql
   url: "" # supplied as DATABASE_URL by the existing Secret
 
-serviceAccount:
-  create: true
-  name: deco-studio
-  automount: true
-
 configMap:
   meshConfig:
     BETTER_AUTH_URL: "https://studio.example.com"
     BASE_URL: "https://studio.example.com"
     STUDIO_AGENT_SANDBOX_ENABLED: "true"
-    STUDIO_ENV: "production"
-    STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-production"
+
+# The controller connection. Required with STUDIO_AGENT_SANDBOX_ENABLED:
+# the chart refuses to render one without the other.
+sandboxController:
+  enabled: true
+  url: "https://sandbox-controller.agent-sandbox-system.svc:8443"
+  tlsSecretName: studio-sandbox-controller-client # tls.crt, tls.key, ca.crt
+  callbackPort: 9443 # exposed as the Service port `sandbox-callbacks`
 
 secret:
   secretName: deco-studio-secrets
 ```
+
+The chart turns `sandboxController` into Studio's `STUDIO_SANDBOX_CONTROLLER_URL`, `STUDIO_SANDBOX_CONTROLLER_TLS_CERT`, `STUDIO_SANDBOX_CONTROLLER_TLS_KEY`, `STUDIO_SANDBOX_CONTROLLER_CA`, and `STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT`. Outside the chart, set those variables yourself: with `STUDIO_AGENT_SANDBOX_ENABLED=true`, Studio refuses to boot unless the URL is `https://` and the certificate, key, and CA paths are all set. Studio needs no ServiceAccount or cluster RBAC for sandboxes.
 
 <Callout type="note">
   `configMap.meshConfig` is a deprecated chart-key name retained for upgrade
@@ -157,40 +235,74 @@ helm install deco-studio \
 
 The main Deployment contains nginx and two API containers. The separate worker Deployment is required and enabled by default. The chart also enables its NATS dependency by default and requires PostgreSQL so API and worker pods share the DBOS run queue.
 
-### 3. Install the per-environment sandbox resources
+### 4. Install the per-environment sandbox resources
 
 ```bash
 helm install sandbox-env-production \
   oci://ghcr.io/decocms/studio/charts/sandbox-env \
   --version "$SANDBOX_ENV_CHART_VERSION" \
   --namespace agent-sandbox-system \
-  --set envName=production \
-  --set mesh.namespace=deco-studio \
-  --set mesh.serviceAccountName=deco-studio
+  --set envName=production
 ```
 
-This creates `SandboxTemplate/studio-sandbox-production` and grants only the named Studio service account permission to manage claims, read sandboxes, port-forward to sandbox pods, patch their Services, and manage per-claim `HTTPRoute` objects in `agent-sandbox-system`.
+This creates `SandboxTemplate/studio-sandbox-production` (plus its `-medium` variant) and the sentinel Secret `studio-sandbox-sentinel-production`.
 
-<Callout type="note">
-  The sandbox chart's `mesh.*` values key is a deprecated name retained for
-  upgrade compatibility; it points to the Studio release. `mesh.serviceName`,
-  `mesh.servicePort`, and `mesh.podSelectorLabels` are deprecated and unused by
-  the current per-claim preview routing design. New installations do not need
-  to set those three fields.
-</Callout>
+### 5. Install the sandbox controller
 
-### 4. Verify the complete deployment
+The controller reads Studio's database, where it owns `sandbox_runner_state`. Give it the same `DATABASE_URL` in its own namespace:
+
+```bash
+kubectl -n agent-sandbox-system create secret generic sandbox-controller-db \
+  --from-literal=DATABASE_URL="postgresql://user:pass@postgres.example.com:5432/studio"
+```
+
+Create `controller-values.yaml`:
+
+```yaml
+claims:
+  enabled: true
+  # The controller's leaf; its ca.crt also verifies Studio in both directions.
+  tlsSecretName: sandbox-controller-tls
+  clientCASecretName: sandbox-controller-tls
+  studioCASecretName: sandbox-controller-tls
+  # Studio's `sandbox-callbacks` Service port.
+  studioCallbackUrl: "https://deco-studio.deco-studio.svc:9443"
+  database:
+    secretName: sandbox-controller-db
+  # The sandbox-env release of this environment.
+  sandboxTemplate: studio-sandbox-production
+  envName: production
+  # Required in a cluster: with a pattern, Studio reaches daemons by Service DNS.
+  # It is also the preview URL Studio shows (see Preview Gateway below).
+  previewUrlPattern: "https://{handle}.preview.example.com"
+  studio:
+    namespace: deco-studio
+```
+
+```bash
+helm install sandbox-controller \
+  oci://ghcr.io/decocms/studio/charts/sandbox-controller \
+  --version "$SANDBOX_CONTROLLER_CHART_VERSION" \
+  --namespace agent-sandbox-system \
+  --values controller-values.yaml
+```
+
+The chart installs the `SandboxVariant` CRD, the controller Deployment, a `ClusterIP` Service on port 8443, a NetworkPolicy that admits only Studio's API and worker pods (`claims.studio`), and a Role in `agent-sandbox-system` that lets it manage claims, patch the sandbox Services, and manage per-claim `HTTPRoute` objects. `claims.envName` is stamped as `studio.decocms.com/env` on every claim, pod, and route; the housekeeper scopes its sweeps by that label. Without `claims.previewUrlPattern` the controller port-forwards to daemons, which only works when Studio runs on the same host.
+
+### 6. Verify the complete deployment
 
 ```bash
 helm status deco-studio -n deco-studio
 helm status sandbox-operator -n agent-sandbox-system
 helm status sandbox-env-production -n agent-sandbox-system
+helm status sandbox-controller -n agent-sandbox-system
 
 kubectl get deployments,pods -n deco-studio
 kubectl get deployment -n agent-sandbox-system
+kubectl rollout status deployment/sandbox-controller -n agent-sandbox-system
 kubectl get sandboxtemplate,sandboxwarmpool -n agent-sandbox-system
 kubectl auth can-i create sandboxclaims.extensions.agents.x-k8s.io \
-  --as=system:serviceaccount:deco-studio:deco-studio \
+  --as=system:serviceaccount:agent-sandbox-system:sandbox-controller \
   -n agent-sandbox-system
 ```
 
@@ -202,7 +314,7 @@ kubectl port-forward svc/deco-studio 8080:80 -n deco-studio
 
 Studio is then available at `http://localhost:8080`.
 
-### 5. Expose Studio
+### 7. Expose Studio
 
 The chart's Service is `ClusterIP` and the Ingress is optional and off by default, because the controller, class, TLS issuer, and annotations differ per cluster. Pick the option that matches what you already run.
 
@@ -235,13 +347,13 @@ Studio serves the whole app from the root, so one `/` `Prefix` rule per host is 
   Whichever you choose, set `BASE_URL` and `BETTER_AUTH_URL` to the same public `https://` URL. Auth callbacks are built from those values, not from the incoming request host, so a mismatch produces sign-in redirects that fail.
 </Callout>
 
-### 6. Connect an AI provider
+### 8. Connect an AI provider
 
 A self-hosted deployment ships with no model access. Agents and Decopilot stay unusable until an organization owner connects a provider under **Settings → AI Providers** with a key you own — Anthropic, Google Gemini, OpenRouter, or any OpenAI-compatible endpoint, including a self-hosted vLLM server. The hosted deco AI Gateway and its starter credits are a feature of the managed offering; do not plan a self-hosted rollout around them. See [AI Providers](/en/studio/ai-providers).
 
 Egress note: unless you run the models in your own network, Studio pods need outbound HTTPS to the provider's API.
 
-### 7. Configure authentication
+### 9. Configure authentication
 
 Studio uses Better Auth. For Kubernetes, configure it with environment variables in the same Secret or ConfigMap the chart already injects — there is nothing extra to mount:
 
@@ -290,39 +402,44 @@ topologySpreadConstraints:
 
 ### Warm pool
 
-Warm pools are disabled by default because every idle warm pod consumes the full sandbox resource request. Enabling one also requires Studio and the sandbox template to share a sentinel token. Studio uses it only for the first daemon configuration request and immediately rotates the daemon to a per-claim token.
+Warm pools are disabled by default because every idle warm pod consumes the full sandbox resource request. Enabling one also requires the controller and the sandbox template to share a sentinel token. The controller uses it only for the first daemon configuration request and immediately rotates the daemon to a per-claim token.
 
-Generate the token once, store it in the Studio Secret as `STUDIO_SANDBOX_SENTINEL_TOKEN`, and pass the same value to `sandbox-env`:
+`sandbox-env` generates the token into `studio-sandbox-sentinel-<envName>` and preserves it across upgrades. The controller runs in the same namespace, so it can read that Secret directly:
 
 ```bash
-export SANDBOX_SENTINEL_TOKEN="$(openssl rand -base64 48)"
-
 helm upgrade sandbox-env-production \
   oci://ghcr.io/decocms/studio/charts/sandbox-env \
   --version "$SANDBOX_ENV_CHART_VERSION" \
   --namespace agent-sandbox-system \
   --reuse-values \
-  --set-string sentinel.token="$SANDBOX_SENTINEL_TOKEN" \
   --set warmPool.enabled=true \
   --set warmPool.size=2
+
+helm upgrade sandbox-controller \
+  oci://ghcr.io/decocms/studio/charts/sandbox-controller \
+  --version "$SANDBOX_CONTROLLER_CHART_VERSION" \
+  --namespace agent-sandbox-system \
+  --reuse-values \
+  --set claims.sentinel.secretName=studio-sandbox-sentinel-production
 ```
 
-If `sentinel.token` is omitted, the chart generates and preserves a Secret for sandbox pods, but Studio still needs the same value before it can consume warm-pool pods. For GitOps, generate the value in your secret manager and deliver it to both namespaces. Do not place it in `configMap.meshConfig`.
+Without the sentinel, the controller provisions every claim cold and cannot use the pool. Set `sentinel.token` on `sandbox-env` only when another release needs the same value; source it from your secret manager, not a values file. Tenant pools (`claims.tenantPools`) also need the sentinel.
 
 The optional warm-pool HPA requires `warmPool.enabled: true`, `warmPool.autoscaling.enabled: true`, and at least one explicit `autoscaling/v2` metric. The chart intentionally provides no default metric.
 
 ### Idle housekeeper
 
-Studio refreshes claim activity, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes.
+Studio renews claims while someone is using them, while the optional housekeeper CronJob cleans up idle or unrecoverable claims and orphaned routes/pods. Its defaults run every five minutes and reap claims idle for 15 minutes. Point it at the controller's idle TTL so the two cannot drift:
 
 ```yaml
 housekeeper:
   enabled: true
   schedule: "*/5 * * * *"
-  idleTtlSeconds: 900
+  # Rendered by the sandbox-controller release from claims.idleTtlSeconds.
+  idleTtlConfigMap: sandbox-controller-idle-ttl
 ```
 
-`STUDIO_ENV` is required when the housekeeper is enabled because its default selectors are environment-scoped. Without the matching label, it intentionally selects no claims.
+The controller's `claims.envName` is required when the housekeeper is enabled, because the housekeeper's default selectors are environment-scoped. Without the matching label, it intentionally selects no claims.
 
 ### Preview Gateway
 
@@ -330,7 +447,7 @@ housekeeper:
   Treat public preview URLs as a later phase. They need Gateway API CRDs, a Gateway controller, wildcard DNS, and a wildcard certificate via DNS-01 — dependencies that usually belong to another team and another schedule. Studio, agents, and code execution all work without them; only shareable preview links are missing.
 </Callout>
 
-Without a preview Gateway, Studio can use its legacy in-process preview proxy when a preview URL pattern and the required external routing are provided. The current production design uses Gateway API and routes each preview directly to its sandbox daemon:
+Without a preview Gateway, Studio can use its legacy in-process preview proxy when `STUDIO_SANDBOX_PREVIEW_URL_PATTERN` is set on Studio and the wildcard host routes to Studio. The current production design uses Gateway API and routes each preview directly to its sandbox daemon:
 
 ```text
 Browser -> load balancer -> Gateway -> per-claim HTTPRoute -> sandbox Service:9000
@@ -348,14 +465,14 @@ previewGateway:
   clusterIssuer: letsencrypt-dns
 ```
 
-Then add the matching values to Studio:
+Then point the controller at it, so it attaches one `HTTPRoute` per claim:
 
 ```yaml
-configMap:
-  meshConfig:
-    STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.example.com"
-    STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-production"
-    STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "istio-system"
+claims:
+  previewUrlPattern: "https://{handle}.preview.example.com"
+  gateway:
+    name: agent-sandbox-preview-production
+    namespace: istio-system
 ```
 
 The Gateway name and namespace must either both be set or both be absent. Create wildcard DNS for `*.preview.example.com` pointing to the Gateway load balancer. With `tlsTermination: gateway`, the `ClusterIssuer` must support DNS-01 because wildcard certificates cannot use HTTP-01. Set `tlsTermination: loadBalancer` instead when the external load balancer owns the certificate.
@@ -406,9 +523,28 @@ These defaults come from `deploy/helm/studio/values.yaml`:
 | `previewGateway.enabled` | Wildcard preview Gateway | `false` |
 | `housekeeper.enabled` | Idle-claim cleanup CronJob | `false` |
 
+## Main sandbox controller values
+
+These defaults come from `deploy/helm/sandbox-controller/values.yaml`:
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `image.repository` / `image.tag` | Controller image | `ghcr.io/decocms/studio/sandbox-controller` / the chart's `appVersion` |
+| `sandboxNamespace` | Namespace of the templates, variants, and claims | `agent-sandbox-system` |
+| `variants.enabled` | Reconcile `SandboxVariant`s; one release per namespace | `true` |
+| `claims.enabled` | Serve the claim API Studio calls | `false` |
+| `claims.tlsSecretName` / `claims.clientCASecretName` | Server certificate / CA of Studio's client certificate | Required with claims |
+| `claims.studioCallbackUrl` / `claims.studioCASecretName` | Studio's callback listener / its CA; empty URL disables credential re-mints | `""` |
+| `claims.database.secretName` | Secret with Studio's `DATABASE_URL` | Required with claims |
+| `claims.sandboxTemplate` / `claims.envName` | The `sandbox-env` template and environment label | `studio-sandbox` / `""` |
+| `claims.previewUrlPattern` / `claims.gateway` | Preview URL and the Gateway per-claim routes attach to | `""` |
+| `claims.sentinel.secretName` | Warm-pool sentinel Secret | `""` |
+| `claims.idleTtlSeconds` / `claims.deleteDeadline` | Idle window / how long a delete waits before answering "still draining" | `900` / `30s` |
+| `claims.studio.namespace` / `claims.studio.podSelector` | Studio pods the NetworkPolicy admits | Required / API and worker pods |
+
 ## Upgrades and removal
 
-Render and lint all three charts before applying changes:
+Render and lint the charts before applying changes:
 
 ```bash
 helm lint deploy/helm/studio \
@@ -425,7 +561,13 @@ helm template sandbox-operator deploy/helm/sandbox-operator \
 helm template sandbox-env-production deploy/helm/sandbox-env \
   --namespace agent-sandbox-system \
   --set envName=production
+helm template sandbox-controller deploy/helm/sandbox-controller \
+  --namespace agent-sandbox-system --values controller-values.yaml
 ```
+
+<Callout type="warning">
+  **Moving an existing install to the controller is a drain, not a rolling deploy.** A Studio that still runs its own sandbox runner and the controller would both manage the same claims. Upgrade Studio and install the controller, let the old Studio pods finish, and only then upgrade `sandbox-env` to 0.23.0, which removes the Role the old Studio used.
+</Callout>
 
 Files under a Helm chart's `crds/` directory are installed once but are not upgraded by `helm upgrade`. When the sandbox operator's upstream `appVersion` changes, apply the new CRDs before upgrading the operator:
 
@@ -438,6 +580,7 @@ helm upgrade sandbox-operator deploy/helm/sandbox-operator \
 Uninstall environment resources before the shared operator. Removing the operator first leaves claims and custom resources without a controller.
 
 ```bash
+helm uninstall sandbox-controller -n agent-sandbox-system
 helm uninstall sandbox-env-production -n agent-sandbox-system
 helm uninstall deco-studio -n deco-studio
 # Only after every environment has removed sandbox-env:

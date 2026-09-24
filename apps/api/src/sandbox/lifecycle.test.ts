@@ -1,7 +1,12 @@
-import { beforeEach, describe, expect, it } from "bun:test";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { ClaimPhase } from "@decocms/sandbox/provider";
+import type { StudioContext } from "@/core/studio-context";
+import { getSettings, setGlobalSettings } from "@/settings";
 import {
   __resetSharedLifecyclesForTesting,
+  getAgentSandboxProvider,
+  getOrInitSharedRunner,
+  SandboxControllerUnavailableError,
   startSandboxControllerCallbacks,
   subscribeLifecycle,
 } from "./lifecycle";
@@ -11,6 +16,26 @@ describe("startSandboxControllerCallbacks", () => {
   // nowhere: the public app never serves them.
   it("starts no listener while the controller is off", async () => {
     expect(await startSandboxControllerCallbacks()).toBeNull();
+  });
+});
+
+describe("agent sandboxes on with no dev controller", () => {
+  const original = getSettings();
+  afterEach(() => setGlobalSettings(original));
+
+  it("answers with what to install instead of reaching a controller", async () => {
+    setGlobalSettings({
+      ...original,
+      agentSandboxEnabled: true,
+      sandboxController: null,
+      sandboxControllerUnavailable: "install Go",
+    });
+    const attempt = getAgentSandboxProvider({} as StudioContext);
+    await expect(attempt).rejects.toBeInstanceOf(
+      SandboxControllerUnavailableError,
+    );
+    await expect(attempt).rejects.toThrow("install Go");
+    expect(await getOrInitSharedRunner()).toBeNull();
   });
 });
 

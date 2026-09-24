@@ -14,6 +14,10 @@ import {
   setServerUrl,
   updateService,
 } from "../cli-store";
+import {
+  controllerArgv,
+  prepareDevController,
+} from "../dev-sandbox-controller";
 import { findAvailablePort } from "../find-available-port";
 
 export interface DevOptions {
@@ -104,6 +108,17 @@ export async function startDevServer(
     ? await findAvailablePort(Number(vitePort) + 1)
     : await findAvailablePort(Number(options.port));
 
+  // import.meta.dir = apps/api/src/cli/commands → go up 5 levels to repo root
+  const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..");
+
+  // Before settings resolve: they read the controller env this sets.
+  const devController = await prepareDevController({
+    env: process.env,
+    home: options.home,
+    repoRoot,
+  });
+  Object.assign(process.env, devController.env);
+
   const { settings, services, managedServiceNames } = await buildSettings({
     port: String(port),
     home: options.home,
@@ -120,12 +135,23 @@ export async function startDevServer(
   setMigrationsDone();
 
   // ── Spawn dev servers ─────────────────────────────────────────────
-  // import.meta.dir = apps/api/src/cli/commands → go up 5 levels to repo root
-  const repoRoot = join(import.meta.dir, "..", "..", "..", "..", "..");
-
   // When TUI is active, pipe stdout/stderr so child output doesn't corrupt
   // Ink's cursor-based rendering. Lines are fed into the CLI store instead.
   const useInherit = noTui === true;
+  const output = useInherit ? "inherit" : "pipe";
+
+  // After migrations: the controller owns a table they create.
+  const controller = devController.endpoints
+    ? Bun.spawn(controllerArgv(devController.endpoints), {
+        cwd: repoRoot,
+        env: { ...process.env, DATABASE_URL: settings.databaseUrl },
+        stdio: ["ignore", output, output],
+      })
+    : null;
+  if (controller && !useInherit) {
+    pipeToLogStore(controller.stdout as ReadableStream<Uint8Array>);
+    pipeToLogStore(controller.stderr as ReadableStream<Uint8Array>);
+  }
   const child = Bun.spawn(["bun", "run", "dev:servers"], {
     cwd: repoRoot,
     env: {
@@ -184,11 +210,12 @@ export async function startDevServer(
 
   const shutdown = async (signal: NodeJS.Signals) => {
     child.kill(signal);
+    controller?.kill(signal);
     // Wait for the server to finish graceful shutdown before killing shared
     // services. Otherwise pg dies mid-flight and DBOS / app.shutdown error
     // out connecting to a dead system DB. The server has its own 55s force-
     // exit timer, so this won't hang indefinitely.
-    await child.exited;
+    await Promise.all([child.exited, controller?.exited]);
     if (managedServiceNames.length > 0) {
       const { stopServices } = await import("../../services/ensure-services");
       await stopServices(settings.dataDir);

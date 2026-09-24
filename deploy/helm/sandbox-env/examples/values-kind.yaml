@@ -38,16 +38,3 @@ previewGateway:
 # ── warm pool off in kind ──────────────────────────────────────────────
 warmPool:
   enabled: false
-
-# ── Studio cross-references (legacy `mesh.*` values key) ───────────────
-# studio kind install conventionally lands in `deco-studio` namespace
-# with release name `deco-studio`. Override here if you `helm install`
-# studio under a different name/namespace.
-mesh:
-  namespace: "deco-studio"
-  serviceAccountName: "deco-studio"
-  serviceName: "deco-studio"
-  servicePort: 80
-  podSelectorLabels:
-    app.kubernetes.io/name: "chart-deco-studio"
-    app.kubernetes.io/instance: "deco-studio"

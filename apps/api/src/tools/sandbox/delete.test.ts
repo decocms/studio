@@ -1,7 +1,8 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { HostedSandboxProvider } from "@decocms/sandbox/provider";
+import { SandboxDrainingError } from "@decocms/sandbox/provider/remote";
 
 // Mock the hosted teardown runner before importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
@@ -11,7 +12,7 @@ async function* readyOnly() {
 }
 
 const mockRunner: Pick<
-  AgentSandboxProvider,
+  HostedSandboxProvider,
   | "alive"
   | "delete"
   | "ensure"
@@ -189,6 +190,60 @@ describe("SANDBOX_DELETE", () => {
       .metadata;
     // After removal, the user bucket should be gone entirely.
     expect(updated.sandboxMap["user-1"]).toBeUndefined();
+  });
+
+  it("keeps the entry and asks for a retry while the claim is draining", async () => {
+    mockDelete.mockImplementation(async (handle) => {
+      throw new SandboxDrainingError(handle);
+    });
+    const metadata: Metadata = {
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "agent-sandbox",
+        HOSTED_ENTRY,
+      ),
+    };
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp: makeVirtualMcp("org_1", metadata),
+      updateSpy,
+    });
+
+    await expect(
+      SANDBOX_DELETE.handler(
+        { virtualMcpId: "vmcp_1", branch: BRANCH, removeWorktree: false },
+        ctx,
+      ),
+    ).rejects.toThrow("Retry the delete");
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("clears the entry when the delete fails for another reason", async () => {
+    mockDelete.mockImplementation(async () => {
+      throw new Error("controller unreachable");
+    });
+    const metadata: Metadata = {
+      sandboxMap: makeSandboxMap(
+        "user-1",
+        BRANCH,
+        "agent-sandbox",
+        HOSTED_ENTRY,
+      ),
+    };
+    const updateSpy = mock(async () => {});
+    const ctx = makeCtx({
+      virtualMcp: makeVirtualMcp("org_1", metadata),
+      updateSpy,
+    });
+
+    const result = await SANDBOX_DELETE.handler(
+      { virtualMcpId: "vmcp_1", branch: BRANCH, removeWorktree: false },
+      ctx,
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(updateSpy).toHaveBeenCalledTimes(1);
   });
 
   it("does not route a native desktop entry through the hosted provider", async () => {

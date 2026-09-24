@@ -2,35 +2,20 @@
 #
 # This chart is independent of chart-deco-studio and of the sandbox-operator
 # chart. It installs the Studio-side resources that consume the operator's
-# CRDs (SandboxTemplate, RBAC, NetworkPolicy, optional WarmPool, optional
+# CRDs (SandboxTemplate, optional WarmPool, optional
 # preview Gateway/Certificate). Install one release per environment that
 # needs to use the operator — every resource name is suffixed with
 # `envName` so multiple releases coexist in `agent-sandbox-system`.
 #
-# DEPRECATED NAME — cross-chart wiring remains under `mesh.*` so existing
-# releases keep upgrading safely. These values identify the Studio release; a
-# future chart major may rename the key to `studio.*`.
-#
-# Tell this chart where the studio
-# release for THIS environment runs so the RBAC RoleBinding, NetworkPolicy
-# ingress selector, and preview HTTPRoute backendRef can reach it. There is
-# no runtime coupling back the other way — studio consumes nothing from
-# this chart at install time; it simply talks to the operator's CRDs and
-# the daemon Service the operator creates per SandboxClaim.
-#
-# Studio side: the install for THIS environment must point its runner
-# at the env-suffixed SandboxTemplate by setting
-#   STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<envName>
-# in the studio chart's `configMap.meshConfig`. Without that override Studio
-# falls back to "studio-sandbox" (no suffix) and claim creation will fail
-# with "sandboxtemplate not found".
+# The sandbox controller release serving THIS environment points its claims
+# here with `claims.sandboxTemplate=studio-sandbox-<envName>` and
+# `claims.envName=<envName>`; Studio itself needs no cluster access.
 
 # ── env identity ───────────────────────────────────────────────────────
 # Required. Used as suffix on every resource name this chart creates so
 # multiple releases (dev / staging / prod / ...) coexist in the shared
 # `agent-sandbox-system` namespace without collisions. Examples:
 #   envName=staging  →  SandboxTemplate/studio-sandbox-staging,
-#                       Role/studio-sandbox-runner-staging,
 #                       NetworkPolicy/studio-sandbox-staging,
 #                       Gateway/agent-sandbox-preview-staging, ...
 # Use a short DNS label (a-z0-9-, 1-32 chars). Conventionally matches the
@@ -126,10 +111,10 @@ resources:
     ephemeral-storage: 10Gi
 
 # ── the `-medium` SandboxTemplate's ceilings ───────────────────────────
-# Deep-merged over `resources` above, so state only what differs. Studio sends
-# headless agent-loop claims (Claude Code dispatch: cloneOnly, no dev server)
-# to `<STUDIO_SANDBOX_TEMPLATE_NAME>-medium` unconditionally, so this chart
-# version must be deployed before the Studio release that does.
+# Deep-merged over `resources` above, so state only what differs. The sandbox
+# controller sends headless agent-loop claims (Claude Code dispatch:
+# cloneOnly, no dev server) to `<claims.sandboxTemplate>-medium` when it
+# exists.
 #
 # Why a separate template instead of raising the shared limit: prod OOMKilled
 # three pods at the 4Gi limit on 2026-08-13, all inside a claude-code loop
@@ -792,18 +777,16 @@ nodePlaceholder:
 # ── preview URL gateway (optional) ─────────────────────────────────────
 # Wildcard preview-URL ingress. Renders an Istio Gateway (HTTPS, terminates
 # `*.<domain>`) + a cert-manager Certificate. Per-claim HTTPRoutes are NOT
-# rendered here — the Studio runner mints one HTTPRoute per SandboxClaim in
+# rendered here — the sandbox controller mints one HTTPRoute per SandboxClaim in
 # `agent-sandbox-system` and tears it down on claim delete, so each preview
 # URL routes directly to its sandbox Service:9000. Studio is no longer in
 # the data path; it only writes the routing config.
 #
-# Wiring on the studio side (chart-deco-studio configMap.meshConfig):
-#   STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.<domain>"
-#   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-<envName>"
-#   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "<previewGateway.namespace>"
-# Without those, Studio falls back to in-process proxying via its own Service
-# (the previous design). That fallback also requires a separate cluster-wide
-# HTTPRoute that this chart no longer creates.
+# Wiring: the sandbox-controller chart's `claims.previewUrlPattern`
+# ("https://{handle}.<domain>") and `claims.gateway.{name,namespace}`
+# ("agent-sandbox-preview-<envName>", `previewGateway.namespace`); Studio's
+# STUDIO_SANDBOX_PREVIEW_URL_PATTERN carries the same pattern for its
+# preview proxy.
 #
 # Manual prerequisites (not templated):
 #   1. DNS: Cloudflare (or other) wildcard `*.<domain>` → cluster
@@ -854,29 +837,6 @@ previewGateway:
   infrastructure:
     annotations: {}
     labels: {}
-
-# ── Studio cross-references (legacy `mesh.*` values key) ───────────────
-# Tells this chart where the chart-deco-studio release for THIS
-# environment runs so the RBAC RoleBinding, NetworkPolicy ingress
-# selector, and preview-Gateway HTTPRoute backendRef all point at it.
-# These values must match the namespace + release-name + service-port of
-# the studio install for the same env.
-mesh:
-  # Namespace where the studio release runs. The Studio ServiceAccount and
-  # Service are looked up here.
-  namespace: "deco-studio"
-  # Name of the Studio ServiceAccount that gets the RoleBinding allowing
-  # SandboxClaim CRUD + portforward against agent-sandbox-system.
-  # Conventionally the studio release name (chart.fullname).
-  serviceAccountName: "deco-studio"
-  # DEPRECATED — removal target: chart 0.8.0. Per-claim HTTPRoutes are
-  # minted by Studio now, so the cluster-wide preview backendRef is gone
-  # and these three keys are unused. Kept one minor to not break overrides.
-  serviceName: "deco-studio"
-  servicePort: 80
-  podSelectorLabels:
-    app.kubernetes.io/name: "chart-deco-studio"
-    app.kubernetes.io/instance: "deco-studio"
 
 # ── idle-reap housekeeper ──────────────────────────────────────────────
 # CronJob that direct-deletes ReconcilerError claims, gracefully shuts down

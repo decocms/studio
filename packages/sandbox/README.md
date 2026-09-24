@@ -1,13 +1,13 @@
 # @decocms/sandbox
 
-Runs Studio coding workloads through AgentSandbox with lifecycle, filesystem,
-dispatch, and proxy contracts.
+Runs Studio coding workloads in sandboxes the sandbox controller provisions,
+with lifecycle, filesystem, dispatch, and proxy contracts.
 
 | Attribute | Value |
 | --- | --- |
 | Workspace | `@decocms/sandbox` (`packages/sandbox`) |
 | Kind | Private sandbox control-plane and daemon package |
-| Runtime | Go daemon (`daemon-go/`); Bun host-side provider |
+| Runtime | Go daemon (`daemon-go/`) and controller (`controller-go/`); Bun host-side provider |
 | Distribution | Private workspace package; container image with the daemon binary |
 
 ## Overview
@@ -19,9 +19,10 @@ process, dispatch, and preview-proxy operations. It is the only daemon
 implementation; the TypeScript one it replaced is deleted, and its black-box
 contract now lives in `daemon-e2e/`.
 
-Studio addresses a sandbox by logical identity and talks to it through the one
-`AgentSandboxProvider`. Kubernetes transport and lifecycle behavior stay inside
-that class.
+Studio addresses a sandbox by logical identity and talks to it through
+`RemoteSandboxProvider`, a client of the sandbox controller (`controller-go/`).
+The controller owns claims, pools, and credential refresh on its runtimes;
+Studio holds no cluster access and dials each daemon directly.
 
 A sandbox is isolated per user and project reference, so one user's workspace
 never becomes another user's execution context.
@@ -41,18 +42,20 @@ never becomes another user's execution context.
 ## Usage
 
 Studio enables hosted sandbox infrastructure with
-`STUDIO_AGENT_SANDBOX_ENABLED=true`. The API owns that deployment capability;
-the package exposes the concrete AgentSandbox implementation and its shared
-identity types.
+`STUDIO_AGENT_SANDBOX_ENABLED=true` and the `STUDIO_SANDBOX_CONTROLLER_*`
+connection. The API owns that deployment capability; the package exposes the
+provider contract, the controller client, and shared identity types.
 
-Code that works with the hosted provider names it directly:
+Code that works with the hosted provider depends on its contract:
 
 ```ts
-import type { SandboxId } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type {
+  HostedSandboxProvider,
+  SandboxId,
+} from "@decocms/sandbox/provider";
 
 export async function ensureSandbox(
-  provider: AgentSandboxProvider,
+  provider: HostedSandboxProvider,
   id: SandboxId,
 ) {
   return provider.ensure(id);
@@ -72,8 +75,9 @@ const input = harnessStreamInputSchema.parse(untrustedInput);
 
 The package has four major layers:
 
-1. **Provider layer** — `AgentSandboxProvider` owns lifecycle and proxy
-   operations through the Kubernetes agent-sandbox operator.
+1. **Provider layer** — `RemoteSandboxProvider` asks the sandbox controller for
+   lifecycle operations over mTLS; the controller drives the Kubernetes
+   agent-sandbox operator (or docker locally).
 2. **Daemon layer** — the Go daemon (`daemon-go/`) serves HTTP inside the sandbox
    on port `9000`. Authenticated routes perform project, process, Git,
    filesystem, and dispatch work.
@@ -83,19 +87,19 @@ The package has four major layers:
    servers, while organization filesystem helpers manage mounted Studio content.
 
 A logical sandbox is identified by `SandboxId`, which pairs a `userId` with an
-opaque `projectRef`. AgentSandbox maps that identity to a deterministic, DNS-safe
-handle. The handle and preview URL are bearer-like links
+opaque `projectRef`. Studio maps that identity to a deterministic, DNS-safe
+handle and passes it to the controller. The handle and preview URL are bearer-like links
 for the preview surface; daemon control requests still
 require separate authentication.
 
 The normal request path is:
 
 ```text
-Studio API -> AgentSandboxProvider -> authenticated daemon -> process/filesystem/harness
+Studio API -> RemoteSandboxProvider -> authenticated daemon -> process/filesystem/harness
 ```
 
-For `agent-sandbox`, the provider resolves the Kubernetes workload and its routed
-daemon URL.
+The controller answers where each daemon is and which bearer opens it; daemon
+traffic goes straight from Studio to the pod.
 
 ## Development
 
@@ -144,8 +148,8 @@ bun run lint
 
 ## Boundaries
 
-- Studio callers use `AgentSandboxProvider`; Kubernetes clients and transport
-  details must not leak into business logic.
+- Studio callers use `HostedSandboxProvider`; controller transport details must
+  not leak into business logic.
 - Daemon code is Go and lives in `daemon-go/`. Do not add a second daemon
   implementation, and do not reach into `daemon-go/` from TypeScript — the
   contract between them is HTTP, asserted in `daemon-e2e/`.
@@ -166,16 +170,17 @@ bun run lint
 
 ## Hosted provisioning
 
-Production deployments enable AgentSandbox with
-`STUDIO_AGENT_SANDBOX_ENABLED=true`. Hosted provisioning is disabled when the
-flag is absent or false. Native Studio uses `local-api` as its persisted
-runtime ownership marker and handles lifecycle locally; hosted routes always
-use the agent-sandbox provider.
+Production deployments enable hosted sandboxes with
+`STUDIO_AGENT_SANDBOX_ENABLED=true`, which requires the sandbox controller
+connection. Hosted provisioning is disabled when the flag is absent or false.
+Native Studio uses `local-api` as its persisted runtime ownership marker and
+handles lifecycle locally; hosted routes always go through the controller.
 
 ## Routing and preview traffic
 
-The daemon listens on port `9000`. A production `agent-sandbox` deployment may
-set `STUDIO_SANDBOX_PREVIEW_URL_PATTERN`, for example
+The daemon listens on port `9000`. A production deployment may set the
+controller's preview URL pattern (and Studio's
+`STUDIO_SANDBOX_PREVIEW_URL_PATTERN`, for its preview proxy), for example
 `https://{handle}.preview.example.com`. The preview gateway resolves that handle
 to a live claim, and the daemon forwards ordinary HTTP and WebSocket traffic to
 the configured development-server port.
@@ -189,7 +194,7 @@ Handles have the shape `<branch-slug>-<hash>` (or `s-<hash>` without a usable
 branch slug), where the hash is derived from `userId:projectRef`.
 
 Daemon control endpoints use the `/_sandbox/*` namespace, with `/health` at the
-root. AgentSandbox forwards those routes separately from the public preview
+root. Studio forwards those routes separately from the public preview
 contract.
 
 ## Export surface
@@ -198,7 +203,8 @@ contract.
 | --- | --- |
 | `@decocms/sandbox/shared` | Constants, daemon event types, shell quoting, Git identity, and shared helpers |
 | `@decocms/sandbox/provider` | Sandbox contracts, references, and filesystem hooks |
-| `@decocms/sandbox/provider/agent-sandbox` | Kubernetes agent-sandbox provider implementation |
+| `@decocms/sandbox/provider/remote` | Sandbox controller client (`RemoteSandboxProvider`) and callback schemas |
+| `@decocms/sandbox/provider/tenant-pools` | `STUDIO_SANDBOX_TENANT_POOLS` parsing for the controller callbacks |
 | `@decocms/sandbox/daemon-client` | Authenticated daemon HTTP client |
 | `@decocms/sandbox/org-fs` | Organization filesystem client and contracts |
 | `@decocms/sandbox/dispatch` | Harness run schemas and fixtures namespace |
@@ -215,7 +221,8 @@ path.
 | --- | --- |
 | `daemon-go/` | The sandbox daemon (Go). Runs as PID 1 inside every sandbox pod. |
 | `daemon-e2e/` | Black-box HTTP/SSE conformance suite for whatever binary `DAEMON_E2E_CMD` names; defaults to `daemon-go/bin/daemon`. |
-| `server/` | The host-side AgentSandbox implementation and authenticated daemon client. |
+| `server/` | The host-side controller client and authenticated daemon client. |
+| `controller-go/` | The sandbox controller (Go): SandboxVariants and the claim API. |
 | `dispatch/` | Harness run schemas, error codes, and fixtures. |
 | `orgfs/` | Org-filesystem client, WebDAV handler, and the privileged mounter sidecar image entrypoint. |
 | `proxy/` | HTTP/WebSocket preview-proxy primitives used by Studio. |

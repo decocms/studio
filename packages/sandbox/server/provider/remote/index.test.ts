@@ -300,6 +300,93 @@ describe("RemoteSandboxProvider lifetime", () => {
   });
 });
 
+describe("RemoteSandboxProvider.listSandboxImages", () => {
+  it("merges every runtime's variants into one sorted list", async () => {
+    const ctl = serve(() =>
+      Response.json({
+        runtimes: [
+          {
+            runtime: "agent-sandbox",
+            images: [
+              { name: "flutter", baseTag: "1.2.0" },
+              { name: "android" },
+            ],
+          },
+          { runtime: "docker", images: [{ name: "android" }] },
+        ],
+      }),
+    );
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(await provider.listSandboxImages()).toEqual(["android", "flutter"]);
+    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/images");
+  });
+
+  it("drops default and names a repository cannot store", async () => {
+    const ctl = serve(() =>
+      Response.json({
+        runtimes: [
+          {
+            runtime: "agent-sandbox",
+            images: [
+              { name: "default" },
+              { name: "Android" },
+              { name: "" },
+              { name: "x".repeat(40) },
+              { name: "android" },
+            ],
+          },
+        ],
+      }),
+    );
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(await provider.listSandboxImages()).toEqual(["android"]);
+  });
+
+  it("answers an empty list when no runtime is available", async () => {
+    const ctl = serve(() => Response.json({ runtimes: [] }));
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(await provider.listSandboxImages()).toEqual([]);
+  });
+
+  it.each([
+    ["an error status", () => new Response("nope", { status: 500 })],
+    ["a malformed body", () => Response.json({ runtimes: "all" })],
+  ])("throws on %s", async (_label, respond) => {
+    const ctl = serve(respond);
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    await expect(provider.listSandboxImages()).rejects.toBeInstanceOf(
+      SandboxControllerError,
+    );
+  });
+});
+
+describe("RemoteSandboxProvider.markTenantPoolsDirty", () => {
+  it("posts the push and answers the pools the controller marked", async () => {
+    const ctl = serve(() => Response.json({ pools: ["tenant-acme-site-ci"] }));
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(
+      await provider.markTenantPoolsDirty("acme/site", "refs/heads/main"),
+    ).toEqual(["tenant-acme-site-ci"]);
+    expect(ctl.seen[0]!.method).toBe("POST");
+    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/tenant-pools/push");
+    expect(ctl.seen[0]!.json()).toEqual({
+      repo: "acme/site",
+      ref: "refs/heads/main",
+    });
+  });
+
+  it.each([
+    ["an error status", () => new Response("nope", { status: 500 })],
+    ["a malformed body", () => Response.json({ pools: "all" })],
+  ])("answers no pools on %s", async (_label, respond) => {
+    const ctl = serve(respond);
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(
+      await provider.markTenantPoolsDirty("acme/site", "refs/heads/main"),
+    ).toEqual([]);
+  });
+});
+
 describe("RemoteSandboxProvider.hasSchedulableCapacity", () => {
   it("reuses an answer for a few seconds and coalesces concurrent callers", async () => {
     const ctl = serve(() => Response.json({ schedulable: false }));

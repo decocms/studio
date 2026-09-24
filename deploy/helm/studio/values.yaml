@@ -173,24 +173,6 @@ preview:
   # managedNamespaceMetadata, which is the omission that yields a silent 404.
   namespaceLabels: {}
 
-  # Hosted agent sandboxes for a preview. OFF by default, and it should stay off
-  # unless someone is actively testing agent behaviour.
-  #
-  # Enabling binds this release's ServiceAccount to a Role in a namespace shared
-  # with production sandboxes — see templates/preview-sandbox-rbac.yaml for why
-  # that cannot currently be narrowed, and what would remove the need.
-  #
-  # The application also needs STUDIO_AGENT_SANDBOX_ENABLED plus matching
-  # environment, template, sentinel/pool and preview-routing configuration
-  # pointed at an existing environment; enabling this alone grants permission
-  # but changes no behaviour.
-  sandbox:
-    enabled: false
-    # Namespace holding the SandboxTemplates, warm pools and claims.
-    namespace: agent-sandbox-system
-    # An existing Role in that namespace, owned by the sandbox-env chart.
-    roleName: ""
-
   # Hard deadline for the migration Job. backoffLimit only counts failed pods;
   # a Job that hangs without producing one — missing ConfigMap, missing
   # ServiceAccount — never trips it and blocks the sync operation forever, which
@@ -245,11 +227,34 @@ migrateJob:
     limits:
       memory: "1Gi"
 
-# ServiceAccount for the API and worker pods. Undocumented until now, though the
-# templates have always honoured it — and the sandbox layer depends on it: the
-# sandbox-env chart grants claim/port-forward RBAC to a NAMED service account,
-# so leaving Studio on `default` yields 403 "cannot create sandboxclaims".
-# Set create: true with a name matching sandbox-env's mesh.serviceAccountName.
+# The sandbox controller (deploy/helm/sandbox-controller with claims.enabled)
+# every hosted agent sandbox goes through. Hosted sandboxes
+# (configMap.meshConfig.STUDIO_AGENT_SANDBOX_ENABLED) require it, and the
+# render fails without it. Off by default: a Studio without hosted sandboxes
+# needs no controller and no cluster access.
+sandboxController:
+  enabled: false
+  # The controller's claim API, e.g.
+  # https://sandbox-controller.agent-sandbox-system.svc:8443. mTLS only.
+  url: ""
+  # Secret holding Studio's certificate (tls.crt, tls.key) and the CA of the
+  # installation's Studio/controller pair (key `caKey`), e.g. a cert-manager
+  # Certificate's Secret. Studio presents the certificate to the controller
+  # and serves the callbacks with it; the CA verifies the controller in both
+  # directions. The controller's claims.clientCASecretName must hold the same CA.
+  tlsSecretName: ""
+  caKey: ca.crt
+  # The mTLS listener the controller calls back on to re-mint clone and org-fs
+  # credentials; the Service exposes it as port `sandbox-callbacks`, which the
+  # controller's claims.studioCallbackUrl points at (https://<service>:<port>).
+  # Served by the first API container of each pod only: both share the pod's
+  # network. 0 turns the callbacks off, and long-lived sandboxes then push
+  # with an expired clone token.
+  callbackPort: 9443
+
+# ServiceAccount for the API and worker pods. Studio needs no cluster RBAC for
+# sandboxes (the sandbox controller holds it), so the default namespace
+# account is enough unless something else binds to this one.
 serviceAccount:
   # Renders the ServiceAccount and runs the pods as it.
   create: false

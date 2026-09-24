@@ -10,14 +10,6 @@
 # Replace every <PLACEHOLDER>. Secrets come from an ExternalSecret (or an
 # existing Secret) — never inline them in a values file committed to git.
 
-# ── ServiceAccount — REQUIRED when using the sandbox ─────────────────────────
-# Studio must run under a named ServiceAccount that the sandbox-env RBAC grants
-# SandboxClaim access to (sandbox-env's mesh.serviceAccountName). Running as
-# "default" → SandboxClaim creation is 403 ("cannot create resource sandboxclaims").
-serviceAccount:
-  create: true
-  # name: studio   # defaults to the release name; must match sandbox-env's mesh.serviceAccountName
-
 # ── Database (managed Postgres; DBOS workflow engine lives here too) ──────────
 # Managed (RDS/Cloud SQL) OR your own in-cluster Postgres (e.g. a CNPG cluster) —
 # either way, point database.url (or DATABASE_URL via the ExternalSecret) at it.
@@ -49,11 +41,9 @@ externalSecret:
 #     --from-literal=ENCRYPTION_KEY="$(openssl rand -base64 32)" \
 #     --from-literal=S3_ACCESS_KEY_ID="<key>" \
 #     --from-literal=S3_SECRET_ACCESS_KEY="<secret>" \
-#     --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio" \
-#     --from-literal=STUDIO_SANDBOX_SENTINEL_TOKEN="$(openssl rand -hex 32)"   # if using sandbox
+#     --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio"
 #
-# BETTER_AUTH_SECRET + ENCRYPTION_KEY MUST stay stable across restarts. The
-# sentinel token MUST equal sandbox-env.sentinel.token.
+# BETTER_AUTH_SECRET + ENCRYPTION_KEY MUST stay stable across restarts.
 secret:
   secretName: "studio-prod-secrets"               # comment out if using Path A
   # (Leaving BOTH externalSecret.enabled=false AND secret.secretName unset makes
@@ -80,17 +70,21 @@ configMap:
     # and run a managed/HA NATS instead.
     # NATS_URL: "nats://<your-nats>:4222"
 
-    # ── Sandbox wiring (when using code-execution / previews) ────────────────
-    # Must line up with the sandbox-env release. STUDIO_SANDBOX_SENTINEL_TOKEN is
-    # the SHARED bearer — deliver it via the ExternalSecret with the SAME value as
-    # sandbox-env's sentinel.token, or the daemon handshake fails and claims never
-    # go Ready ("environment variable override is not allowed ... DAEMON_TOKEN").
+    # ── Sandbox (when using code-execution / previews) ───────────────────────
+    # Needs sandboxController below; the render fails without it. Template,
+    # env label, sentinel and preview routing are the controller's values
+    # (values-sandbox-controller-prod.yaml), not Studio's.
     STUDIO_AGENT_SANDBOX_ENABLED: "true"
     STUDIO_ENV: "<env>"                                   # e.g. prod
-    STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-<env>"  # = studio-sandbox-<STUDIO_ENV>
-    # STUDIO_SANDBOX_SENTINEL_TOKEN → via ExternalSecret (== sandbox-env.sentinel.token)
-    # Preview URLs (needs the sandbox preview Gateway; see values-sandbox-env-prod.yaml):
-    # STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.<your-domain>"
+
+# ── Sandbox controller connection (with STUDIO_AGENT_SANDBOX_ENABLED) ────────
+# The controller's claim API, over the mTLS pair from
+# sandbox-controller-certificates.yaml. Studio holds no cluster RBAC.
+sandboxController:
+  enabled: true
+  url: "https://sandbox-controller.agent-sandbox-system.svc:8443"
+  tlsSecretName: studio-sandbox-controller-client   # tls.crt, tls.key, ca.crt
+  callbackPort: 9443                                # = the controller's claims.studioCallbackUrl port
 
 # ── Compute — baseline from deco's OWN production (studio.decocms.com, us-west-2) ─
 # These are a safe MINIMUM for a real deployment. Per-pod requests/limits are

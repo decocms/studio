@@ -6959,6 +6959,10 @@ export interface StudioToolIO {
     };
     output: { success: boolean };
   };
+  SANDBOX_IMAGE_LIST: {
+    input: { [x: string]: never };
+    output: { images: string[] };
+  };
   GITHUB_LIST_USER_ORGS: {
     input: { connectionId: string };
     output: {

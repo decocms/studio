@@ -11,6 +11,13 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if and .Values.sandboxController.enabled .Values.sandboxController.callbackPort }}
+    # The controller's mTLS callbacks; only the first API container listens.
+    - port: {{ .Values.sandboxController.callbackPort }}
+      targetPort: sbx-callbacks
+      protocol: TCP
+      name: sandbox-callbacks
+    {{- end }}
   selector:
     {{- include "chart-deco-studio.selectorLabels" . | nindent 4 }}
   {{- with .Values.service.trafficDistribution }}

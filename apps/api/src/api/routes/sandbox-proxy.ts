@@ -19,7 +19,7 @@ import {
   composeSandboxRef,
   type HostedSandboxProvider,
 } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type { ClaimPhase } from "@decocms/sandbox/provider";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   loadBranchThread,
@@ -34,7 +34,10 @@ import {
 } from "@decocms/shared/thread/session-runtime";
 import { liveSandboxForBranch } from "../../tools/sandbox/live-sandbox-for-branch";
 import { stampRuntimeIfAbsent } from "../../tools/thread/stamp-runtime-if-absent";
-import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import {
+  getAgentSandboxProvider,
+  SandboxControllerUnavailableError,
+} from "../../sandbox/lifecycle";
 import { assertAiBudget } from "../../core/plan-feature-gate";
 import {
   getUserId,
@@ -248,7 +251,10 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
   let runner: HostedSandboxProvider | null;
   try {
     runner = await getAgentSandboxProvider(ctx);
-  } catch {
+  } catch (err) {
+    if (err instanceof SandboxControllerUnavailableError) {
+      return c.json({ error: err.message }, 503);
+    }
     runner = null;
   }
 
@@ -923,7 +929,6 @@ export const createSandboxRoutes = () => {
       virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
       userId: claim.userId,
-      projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
     });
   });

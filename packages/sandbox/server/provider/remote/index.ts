@@ -8,24 +8,31 @@
  */
 
 import type { z } from "zod";
+import {
+  type SandboxImage,
+  SandboxImageSchema,
+} from "@decocms/shared/git-providers";
 import type {
   Daemon,
   EnsureRequest,
   LifetimeRequest,
   Phase,
+  TenantPoolsPushRequest,
 } from "../../../controller-types/sandbox-api";
 import {
   PathCapacity,
   PathEvents,
+  PathImages,
   PathLifetime,
   PathSandbox,
   PathSandboxes,
+  PathTenantPoolsPush,
 } from "../../../controller-types/sandbox-api";
 import {
   ConfigRequestError,
   proxyDaemonRequest as fetchDaemon,
 } from "../../daemon-client";
-import type { ClaimPhase } from "../agent-sandbox/lifecycle-types";
+import type { ClaimPhase } from "../lifecycle-types";
 import type { HostedSandboxProvider } from "../hosted";
 import { computeHandle } from "../shared";
 import {
@@ -46,8 +53,10 @@ import {
   drainingResponseSchema,
   ensureResponseSchema,
   errorResponseSchema,
+  imagesResponseSchema,
   phaseSchema,
   statusResponseSchema,
+  tenantPoolsPushResponseSchema,
 } from "./schemas";
 
 export {
@@ -152,8 +161,8 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
       signal: signals.length > 0 ? AbortSignal.any(signals) : undefined,
       ...(this.tls ? { tls: this.tls } : {}),
-      // Bun's own fetch timeout, off as for the kube watch streams in
-      // agent-sandbox/client.ts: ensure answers only once the daemon is ready.
+      // Bun's own fetch timeout, off: ensure answers only once the daemon is
+      // ready, and the events stream is long-lived.
       ...(timeoutMs === null ? { timeout: false } : {}),
     };
     return fetch(`${this.base}${path}${opts.query ?? ""}`, init);
@@ -437,6 +446,25 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
   }
 
   /**
+   * The variants any available runtime serves, as one list: Studio stores an
+   * image name on the repository and never picks the runtime. Names a
+   * repository cannot hold are dropped rather than offered.
+   */
+  async listSandboxImages(): Promise<SandboxImage[]> {
+    const res = await this.request(PathImages);
+    if (!res.ok) throw await this.failure(res, "images");
+    const { runtimes } = await this.parse(res, imagesResponseSchema, "images");
+    const names = new Set<SandboxImage>();
+    for (const { images } of runtimes) {
+      for (const { name } of images) {
+        const parsed = SandboxImageSchema.safeParse(name);
+        if (parsed.success && parsed.data !== "default") names.add(parsed.data);
+      }
+    }
+    return [...names].sort();
+  }
+
+  /**
    * The controller owns its claim cache, so there is nothing to adopt here;
    * this re-reads the address, so a caller's one retry dials a live daemon.
    */
@@ -445,9 +473,32 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
     return Boolean(status?.alive && status.daemon);
   }
 
-  /** Tenant pools are the controller's to reconcile. */
-  markTenantPoolsDirty(_repoFullName: string, _ref: string): string[] {
-    return [];
+  /**
+   * Asks the controller to refresh the tenant pools warmed on this repo and
+   * branch now. An accelerator only: on failure the pools still refresh on
+   * the controller's own schedule, so this answers no pools instead of
+   * failing the webhook.
+   */
+  async markTenantPoolsDirty(
+    repoFullName: string,
+    ref: string,
+  ): Promise<string[]> {
+    const body: TenantPoolsPushRequest = { repo: repoFullName, ref };
+    try {
+      const res = await this.request(PathTenantPoolsPush, {
+        method: "POST",
+        body,
+      });
+      if (!res.ok) throw await this.failure(res, "tenant pool push");
+      return (
+        await this.parse(res, tenantPoolsPushResponseSchema, "tenant pool push")
+      ).pools;
+    } catch (err) {
+      console.warn(
+        `[${LOG_LABEL}] tenant pool push for ${repoFullName}@${ref} failed: ${errMsg(err)}`,
+      );
+      return [];
+    }
   }
 
   close(): void {

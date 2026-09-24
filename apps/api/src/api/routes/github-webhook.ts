@@ -154,8 +154,8 @@ export function createGithubWebhookRoutes(deps: GithubWebhookDeps): Hono {
         const repo = payload.repository?.full_name;
         if (!ref || !repo) return c.json({ ok: true, ignored: "shape" });
         const runner = await getOrInitSharedRunner();
-        // The pool reconciler refreshes on its next tick; nothing waits here.
-        const pools = runner?.markTenantPoolsDirty(repo, ref) ?? [];
+        // The controller refreshes the pools on its next tick; nothing waits here.
+        const pools = (await runner?.markTenantPoolsDirty(repo, ref)) ?? [];
         return c.json({ ok: true, pools });
       }
 

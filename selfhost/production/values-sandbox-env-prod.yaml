@@ -6,7 +6,9 @@
 #   helm install sandbox-env-prod deploy/helm/sandbox-env \
 #     -n agent-sandbox-system -f selfhost/production/values-sandbox-env-prod.yaml
 #
-# Requires the sandbox-operator installed first (CRDs + controller).
+# Requires the sandbox-operator installed first (CRDs + controller), and a
+# sandbox-controller release pointed at this one
+# (values-sandbox-controller-prod.yaml) — it creates the claims.
 
 envName: "prod"
 
@@ -19,14 +21,6 @@ resources:
   limits:
     cpu: 2
     memory: 4Gi
-
-# Legacy sandbox-env values key retained for upgrade compatibility.
-mesh:
-  namespace: "deco-studio"          # your Studio release namespace
-  serviceAccountName: "deco-studio"
-  podSelectorLabels:
-    app.kubernetes.io/name: "chart-deco-studio"
-    app.kubernetes.io/instance: "deco-studio"
 
 # ── Egress enforcement ("proxy pra fora") ──────────────────────────────────
 # Sandbox pods run untrusted code, so outbound is locked down by an iptables
@@ -65,9 +59,11 @@ warmPool:
   size: 2
 
 # ── Sentinel token ─────────────────────────────────────────────────────────
-# Leave empty to auto-generate (preserved across upgrades). Supply your own
-# only if you need the same value in another release; source it from a secret,
-# not this file, in real deployments.
+# Leave empty to auto-generate (preserved across upgrades) into Secret
+# studio-sandbox-sentinel-<envName>; the controller reads that Secret
+# (claims.sentinel.secretName). Supply your own only if you need the same value
+# in another release; source it from a secret, not this file, in real
+# deployments.
 sentinel:
   token: ""
 
@@ -85,12 +81,9 @@ previewGateway:
   domain: "preview.example.com"      # <-- your wildcard domain
   # clusterIssuer: "<your-dns01-clusterissuer>"
 
-# Then wire the Studio release (chart-deco-studio values):
-#   configMap:
-#     meshConfig:
-#       STUDIO_AGENT_SANDBOX_ENABLED: "true"
-#       STUDIO_ENV: "prod"
-#       STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-prod"
-#       STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.preview.example.com"
-#       STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-prod"
-#       STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "istio-system"
+# Then point the controller at it (values-sandbox-controller-prod.yaml):
+#   claims:
+#     previewUrlPattern: "https://{handle}.preview.example.com"
+#     gateway:
+#       name: agent-sandbox-preview-prod
+#       namespace: istio-system

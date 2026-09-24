@@ -3,7 +3,8 @@ name: studio-k8s-local
 description: |
   Batteries-included local Kubernetes install of deco Studio — one `helm install`.
   Bundles the Studio app (chart-deco-studio, which itself brings NATS) + the
-  agent-sandbox operator + sandbox-env, and adds throwaway PostgreSQL + MinIO as
+  agent-sandbox operator + sandbox-env + the sandbox controller, and adds
+  throwaway PostgreSQL + MinIO and the Studio/controller mTLS certificates as
   its own templates. DEV/LOCAL ONLY.
 
   Install with release name `deco-studio` so every derived name lines up:
@@ -28,3 +29,9 @@ dependencies:
   - name: sandbox-env
     version: "*"
     repository: "file://../../../deploy/helm/sandbox-env"
+  # Creates the SandboxClaims for Studio over an mTLS claim API and holds the
+  # cluster RBAC for them; Studio holds none. Installs into this release's
+  # namespace (deco-studio); its Role is in agent-sandbox-system.
+  - name: sandbox-controller
+    version: "*"
+    repository: "file://../../../deploy/helm/sandbox-controller"

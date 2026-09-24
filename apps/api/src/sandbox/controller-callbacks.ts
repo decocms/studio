@@ -27,7 +27,7 @@ import {
 import {
   repoKeyFromCloneUrl,
   type TenantPool,
-} from "@decocms/sandbox/provider/agent-sandbox/tenant-pools";
+} from "@decocms/sandbox/provider/tenant-pools";
 import type { CloneCredentialSource } from "@/storage/sandbox-runner-state";
 
 export interface SandboxControllerCallbackDeps {

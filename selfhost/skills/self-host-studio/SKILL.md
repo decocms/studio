@@ -92,23 +92,30 @@ detected environment, then walk these. Record answers into a values file you'll
      + `secretStoreName`.
    - **No ESO** (common) → they create a plain Secret and set `secret.secretName`;
      the chart injects every key. Give them the command:
-     `kubectl -n <ns> create secret generic studio-secrets --from-literal=BETTER_AUTH_SECRET=… --from-literal=ENCRYPTION_KEY=… --from-literal=S3_ACCESS_KEY_ID=… --from-literal=S3_SECRET_ACCESS_KEY=… --from-literal=DATABASE_URL=… [--from-literal=STUDIO_SANDBOX_SENTINEL_TOKEN=…]`
+     `kubectl -n <ns> create secret generic studio-secrets --from-literal=BETTER_AUTH_SECRET=… --from-literal=ENCRYPTION_KEY=… --from-literal=S3_ACCESS_KEY_ID=… --from-literal=S3_SECRET_ACCESS_KEY=… --from-literal=DATABASE_URL=…`
    - **Local/dev** → fixed inline values are fine (chart-managed Secret).
    `BETTER_AUTH_SECRET` + `ENCRYPTION_KEY` MUST be stable across restarts.
 
 5. **Sandbox (code-exec + previews)?** The sandbox is NOT part of the Studio
-   chart — it's **two separate charts** installed into `agent-sandbox-system`:
-   `sandbox-operator` (cluster-wide CRDs + controller) + `sandbox-env` (per-env
-   template/RBAC/warm pool). So a full install = Studio chart + these two + they
-   must agree. If yes, you MUST wire all three or claims fail (the usual blockers):
-   - `serviceAccount.create: true` on Studio (runs as the SA the sandbox RBAC
-     grants; `default` → 403 "cannot create sandboxclaims").
-   - a **shared sentinel token**: the SAME value in `sandbox-env.sentinel.token`
-     and Studio's `STUDIO_SANDBOX_SENTINEL_TOKEN` (generate one: `openssl rand -hex 32`).
-     Missing → Studio cold-provisions and the template rejects `DAEMON_TOKEN`.
-   - `STUDIO_AGENT_SANDBOX_ENABLED=true`, `STUDIO_ENV=<env>`,
-     `STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`.
-   All three live in ONE artifact, so the values file is the only place the
+   chart — it's **three separate charts**: `sandbox-operator` (cluster-wide CRDs
+   + controller), `sandbox-env` (per-env template/warm pool) and
+   `sandbox-controller` (per env; creates the claims for Studio over an mTLS
+   claim API and holds the cluster RBAC — Studio holds none). If yes, wire all
+   of them or claims fail:
+   - Studio: `STUDIO_AGENT_SANDBOX_ENABLED=true` AND `sandboxController`
+     (`enabled`, https `url`, `tlsSecretName` with `tls.crt`/`tls.key`/`ca.crt`).
+     One without the other fails the render.
+   - Controller: `claims.enabled`, `tlsSecretName` + `clientCASecretName` (same
+     CA as Studio's), `studioCallbackUrl` = Studio's `sandbox-callbacks` port,
+     `database.secretName` (Studio's `DATABASE_URL`), `studio.namespace`,
+     `sandboxTemplate=studio-sandbox-<env>`, `envName=<env>`, and in a cluster
+     `previewUrlPattern`. Its Secrets must be in the controller's namespace.
+   - Warm pool: `claims.sentinel.secretName` → a Secret whose `daemonToken`
+     equals `sandbox-env.sentinel.token`.
+   - Certificates: one dedicated CA, each leaf with server AND client auth
+     (cert-manager in prod, see `selfhost/production/`; the local umbrella
+     generates them). Never expose the claim API outside the cluster.
+   All of it lives in ONE artifact, so the values file is the only place the
    handshake has to be right.
    Preview URLs need the preview Gateway (prod) or the in-process proxy (local).
    (In-cluster **ClickHouse** is likewise separate-ish — the Studio chart's
@@ -120,14 +127,15 @@ detected environment, then walk these. Record answers into a values file you'll
 
 ## The artifact — a directory the user owns
 
-A full install spans **three charts** (Studio + sandbox-operator + sandbox-env)
-that must agree on a service account and a shared token. Threading that by hand
-across three `helm install` commands is where installs break. So always produce
+A full install spans **four charts** (Studio + sandbox-operator + sandbox-env +
+sandbox-controller) that must agree on template names, certificates and the
+callback URL. Threading that by hand across four `helm install` commands is
+where installs break. So always produce
 one umbrella directory instead, whatever the tier:
 
 ```
 <name>/                    # e.g. studio-local, studio-prod
-├── Chart.yaml             # the three charts as OCI dependencies, versions PINNED
+├── Chart.yaml             # the four charts as OCI dependencies, versions PINNED
 ├── values.yaml            # every interview answer + the cross-chart handshake
 ├── templates/             # the user's own extras live here
 ├── secrets.sh             # commands that create the Secret — gitignored, never committed
@@ -152,6 +160,7 @@ dependencies:
   - { name: chart-deco-studio, version: "<pin>", repository: "oci://ghcr.io/decocms" }
   - { name: sandbox-operator,  version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
   - { name: sandbox-env,       version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
+  - { name: sandbox-controller, version: "<pin>", repository: "oci://ghcr.io/decocms/studio/charts" }
 ```
 
 **Pin real versions, never `"*"` or a range.** Resolve the current ones first and
@@ -161,15 +170,19 @@ write those numbers in:
 helm show chart oci://ghcr.io/decocms/chart-deco-studio            | grep '^version:'
 helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-operator | grep '^version:'
 helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-env      | grep '^version:'
+helm show chart oci://ghcr.io/decocms/studio/charts/sandbox-controller | grep '^version:'
 helm dependency build <name>   # proves every path and pin before any values work
 ```
 
 `<name>/values.yaml` — nest each subchart's config under its name, wiring the
-interview answers AND the cross-chart handshake:
-`chart-deco-studio.serviceAccount.create=true`, the shared sentinel token on both
-`chart-deco-studio…STUDIO_SANDBOX_SENTINEL_TOKEN` and `sandbox-env.sentinel.token`,
-and `sandbox-operator.allowForeignNamespace=true` (the operator self-pins to
-`agent-sandbox-system` regardless).
+interview answers AND the cross-chart handshake from step 5
+(`chart-deco-studio.sandboxController`, `sandbox-controller.claims.*`, the
+sentinel on `sandbox-env` and the controller's Secret), and
+`sandbox-operator.allowForeignNamespace=true` (the operator self-pins to
+`agent-sandbox-system` regardless). The controller subchart installs into the
+release namespace, so its Secrets go there too — copy
+`selfhost/examples/k8s-local` (`values.yaml` + `templates/sandbox-controller-tls.yaml`)
+for the local wiring.
 
 `<name>/templates/` — the user's extras: ExternalSecrets, a CNPG Postgres, extra
 config. For a **local** tier, also drop in throwaway Postgres + MinIO; the
@@ -227,8 +240,9 @@ helm template deco-studio <name> -n deco-studio | less    # never skip
 helm upgrade --install deco-studio <name> -n deco-studio --create-namespace
 ```
 
-Use release name **`deco-studio`** (the Studio subchart derives Service/SA/NATS/
-instance-label names from it; sandbox RBAC is granted to the `deco-studio` SA).
+Use release name **`deco-studio`** (the Studio subchart derives Service/NATS/
+instance-label names from it, the controller `deco-studio-sandbox-controller`;
+the controller URL, callback URL and certificate names depend on both).
 Re-running the same three commands is how upgrades work — see §5.
 
 **Access — port-forward is the reliable path**, any cluster:
@@ -282,17 +296,26 @@ Every dependency is a toggle: **bundled** (`postgresql.enabled` — dev only /
 ## 2. Configure the sandbox (code-execution + previews)
 
 Optional layer: `sandbox-operator` (CRDs + controller) + `sandbox-env`
-(SandboxTemplate/RBAC/NetworkPolicy) + Studio wiring. The local umbrella
-belongs in the same artifact, wired in its `values.yaml`.
+(SandboxTemplate/warm pool) + `sandbox-controller` (claims, RBAC) + Studio
+wiring. It belongs in the same artifact, wired in its `values.yaml`.
 For a standalone/prod install, wire Studio with:
 
 ```yaml
 configMap:
   meshConfig:
     STUDIO_AGENT_SANDBOX_ENABLED: "true"
-    STUDIO_ENV: "<envName>"
-    STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-<envName>"
+sandboxController:
+  enabled: true
+  url: "https://sandbox-controller.agent-sandbox-system.svc:8443"
+  tlsSecretName: studio-sandbox-controller-client
 ```
+
+and the controller with `selfhost/production/values-sandbox-controller-prod.yaml`
+(+ `sandbox-controller-certificates.yaml`).
+- Do not set `STUDIO_SANDBOX_TEMPLATE_NAME`, Studio's
+  `STUDIO_SANDBOX_SENTINEL_TOKEN`, `STUDIO_SANDBOX_PREVIEW_GATEWAY_*`, sandbox-env
+  `mesh.*` or a Studio ServiceAccount for sandboxes: nothing reads them. Their
+  jobs are the controller's `claims.*` values.
 
 Production posture (see `selfhost/production/values-sandbox-env-prod.yaml`):
 **egress lockdown** (`netinit` iptables: REJECT in-cluster CIDRs, allow 443+53),
@@ -318,8 +341,11 @@ wildcard **preview URLs** (Istio Gateway + cert-manager; needs Gateway API CRDs)
 | App/worker restarts early with `ECONNREFUSED :5432` | started before Postgres ready — benign, self-heals |
 | `insufficient storage resources` (NATS JetStream) | file store too small → raise `nats.config.jetstream.fileStore.pvc.size` (non-fatal) |
 | Sandbox pod `ImagePullBackOff` (manifest unknown, or "no matching manifest for linux/arm64") | overrode `sandbox-env.image.tag` with a stale/nonexistent tag — the daemon image is `studio-sandbox-go` and old `studio-sandbox` tags don't exist in it → drop the override and use the chart's own pin (multi-arch) |
-| `SandboxClaim` create → `403 Forbidden ... serviceaccount:deco-studio:default cannot create` | Studio ran as SA `default` but sandbox RBAC is granted to SA `deco-studio` → set `serviceAccount.create: true` so Studio runs as `deco-studio` (set it in the artifact's values) |
-| `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | Studio has no sentinel token → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set the SAME token on both sides: `sandbox-env.sentinel.token` and `STUDIO_SANDBOX_SENTINEL_TOKEN` (flips Studio to warm-pool mode; the artifact must set both) |
+| Render fails `STUDIO_AGENT_SANDBOX_ENABLED requires sandboxController.enabled=true` | sandboxes on without the controller connection → set `chart-deco-studio.sandboxController` (url, tlsSecretName) |
+| Studio boot fails `STUDIO_AGENT_SANDBOX_ENABLED needs STUDIO_SANDBOX_CONTROLLER_URL, …` or `must be an https URL` | controller env incomplete (outside the chart) → set all of `STUDIO_SANDBOX_CONTROLLER_{URL,TLS_CERT,TLS_KEY,CA}`, URL `https://` |
+| Sandbox start fails with a TLS / certificate error | the two leaves are not from one CA, lack server+client auth, or the DNS name does not match the URL dialed → reissue from one dedicated CA with both usages and the Service DNS names |
+| Claim fails `sandboxtemplate not found` | controller `claims.sandboxTemplate` is not `studio-sandbox-<envName>` of the sandbox-env release |
+| `SandboxClaim` stuck, condition `ReconcilerError: environment variable override is not allowed ... "DAEMON_TOKEN"` | controller has no sentinel → it cold-provisions (`warmpool: none`) and injects `DAEMON_TOKEN`, which the template rejects → set `claims.sentinel.secretName` to a Secret (controller namespace) whose `daemonToken` equals `sandbox-env.sentinel.token` |
 | Monitoring dashboard 500 / `UNKNOWN_TABLE: studio_monitoring_logs` | ClickHouse connects fine but the view isn't provisioned → apply the DDL from `apps/api/src/monitoring/clickhouse-setup.md` once ClickHouse is up and `otel_logs` exists |
 | ClickHouse torn down / `UPGRADE FAILED` after a re-run with observability | disabling the `clickhouse-cluster` CR on a running release makes the operator delete ClickHouse → only two-phase when the CRD is ABSENT (first install) — never do `--set clickhouse-cluster.enabled=false` on a live release |
 | `helm install` fails "must be installed into the 'agent-sandbox-system' namespace" | installing `sandbox-operator` as a subchart under another release namespace → set `sandbox-operator.allowForeignNamespace=true` (operator resources are pinned to agent-sandbox-system regardless); the umbrella does this |
@@ -370,7 +396,7 @@ kubectl delete ns deco-studio agent-sandbox-system
 docker compose -f docker-compose.postgres.yml down -v   # compose tier
 ```
 
-That leaves the cluster-scoped CRDs (agent-sandbox + clickhouse.com). For a truly
+That leaves the cluster-scoped CRDs (agent-sandbox, sandbox.deco.cx + clickhouse.com). For a truly
 clean slate:
 
 ```bash

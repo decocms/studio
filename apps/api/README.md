@@ -212,7 +212,10 @@ Core settings include:
 | `ENCRYPTION_KEY` | Stable credential-vault key | Set explicitly in production |
 | `CONFIG_PATH` | Theme, logo, and monitoring JSON configuration | `./config.json` |
 | `STUDIO_DISPATCH_ROLE` | Queue role: `all`, `api`, or `worker` | `all` |
-| `STUDIO_AGENT_SANDBOX_ENABLED` | Enable hosted AgentSandbox provisioning | `false` |
+| `STUDIO_AGENT_SANDBOX_ENABLED` | Enable hosted sandboxes; requires the `STUDIO_SANDBOX_CONTROLLER_*` connection | `false` |
+| `STUDIO_SANDBOX_CONTROLLER_URL` | Sandbox controller claim API (`https://`, mTLS) | Required with hosted sandboxes |
+| `STUDIO_SANDBOX_CONTROLLER_TLS_CERT` / `_TLS_KEY` / `_CA` | Studio's certificate and key, and the controller CA | Required with hosted sandboxes |
+| `STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT` | mTLS listener for the controller's credential callbacks | Off |
 | `CLICKHOUSE_URL` | Optional ClickHouse monitoring endpoint | Local monitoring backend |
 
 Authentication providers use `AUTH_*` variables. The validated list lives in

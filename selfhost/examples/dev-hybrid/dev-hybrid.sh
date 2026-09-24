@@ -5,15 +5,17 @@
 #   • the API + web apps run on your host (Vite + src/index.ts, hot reload), and
 #   • Postgres / NATS / MinIO / agent-sandbox all come from the k8s-local install,
 #     so sandbox code-exec + previews exercise the real operator — impossible in
-#     the pure `bun dev` loop (no operator on your laptop).
+#     the pure `bun dev` loop (no operator on your laptop), and
+#   • the sandbox controller runs on your host too (`go run`), against the
+#     cluster through your kubeconfig.
 #
 # How it works: it ensures the k8s-local umbrella is up (installs it if missing —
 # without in-cluster ClickHouse, since `bun dev` uses the local monitoring path),
-# scales the in-cluster Studio app + worker to 0 (so they don't duel the host
-# process over the same DB/NATS run queue), port-forwards the cluster's backend
-# Services to localhost, and launches the raw dev servers pointed at them. On
-# exit, the port-forwards are torn down and the in-cluster app is scaled back
-# to 1.
+# scales the in-cluster Studio app + worker + sandbox controller to 0 (so they
+# don't duel the host processes over the same DB/NATS run queue and sandbox
+# state), port-forwards the cluster's backend Services to localhost, and launches
+# the controller and the raw dev servers pointed at them. On exit, the
+# port-forwards are torn down and the in-cluster app is scaled back to 1.
 #
 # Self-contained: no prerequisite step. Bringing up the cluster (if needed) uses
 # the same local-k8s.sh; the Helm release / observability are otherwise untouched
@@ -36,6 +38,8 @@ LOCAL_K8S="${REPO_ROOT}/selfhost/scripts/local-k8s.sh"
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }
 command -v bun     >/dev/null || { echo "bun not found" >&2; exit 1; }
 command -v helm    >/dev/null || { echo "helm not found" >&2; exit 1; }
+command -v go      >/dev/null || { echo "go not found (the sandbox controller runs from source)" >&2; exit 1; }
+command -v openssl >/dev/null || { echo "openssl not found (generates the controller's mTLS pair)" >&2; exit 1; }
 
 # Self-contained: if the umbrella isn't up yet, bring it up (core + sandbox, no
 # in-cluster ClickHouse — the host `bun dev` uses the local monitoring path).
@@ -65,7 +69,7 @@ if [ -f "${PID_FILE}" ]; then
   while read -r stale; do
     [ -n "${stale}" ] || continue
     case "$(ps -o command= -p "${stale}" 2>/dev/null)" in
-      *bun*|*kubectl*) echo "==> Reaping a leftover dev process (${stale})"
+      *bun*|*kubectl*|*"go run"*|*controller-go*) echo "==> Reaping a leftover dev process (${stale})"
                        kill -KILL "-${stale}" 2>/dev/null || true ;;
     esac
   done < "${PID_FILE}"
@@ -86,13 +90,18 @@ cleanup() {
   sleep 2
   for pid in "${CHILD_PIDS[@]:-}"; do kill -KILL "-${pid}" 2>/dev/null || true; done
   echo "==> Restoring in-cluster Studio app (scale back to 1)"
-  kubectl -n "${NAMESPACE}" scale deploy/"${RELEASE}" deploy/"${RELEASE}"-worker --replicas=1 >/dev/null 2>&1 || true
+  kubectl -n "${NAMESPACE}" scale deploy/"${RELEASE}" deploy/"${RELEASE}"-worker \
+    deploy/"${RELEASE}"-sandbox-controller --replicas=1 >/dev/null 2>&1 || true
   rm -f "${PID_FILE}"
 }
 trap cleanup EXIT INT TERM HUP
 
-echo "==> Scaling the in-cluster Studio app + worker to 0 (host process takes over)"
-kubectl -n "${NAMESPACE}" scale deploy/"${RELEASE}" deploy/"${RELEASE}"-worker --replicas=0
+# The in-cluster controller too: it answers daemons by Service DNS and calls
+# back to the in-cluster Studio, neither of which the host can use, and two
+# controllers must not write the same sandbox state.
+echo "==> Scaling the in-cluster Studio app + worker + sandbox controller to 0 (host processes take over)"
+kubectl -n "${NAMESPACE}" scale deploy/"${RELEASE}" deploy/"${RELEASE}"-worker \
+  deploy/"${RELEASE}"-sandbox-controller --replicas=0
 
 echo "==> Waiting for backend Services to be ready"
 kubectl -n "${NAMESPACE}" rollout status deploy/studio-db --timeout=120s || true
@@ -108,6 +117,15 @@ kubectl -n "${NAMESPACE}" rollout status statefulset/"${RELEASE}"-nats --timeout
 DB_PORT="${DB_PORT:-5432}"
 MINIO_PORT="${MINIO_PORT:-9000}"
 NATS_PORT="${NATS_PORT:-4222}"
+# The host controller's claim API and Studio's callback listener.
+CONTROLLER_PORT="${CONTROLLER_PORT:-7443}"
+CALLBACK_PORT="${CALLBACK_PORT:-7444}"
+for port in "${CONTROLLER_PORT}" "${CALLBACK_PORT}"; do
+  if lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "    ERROR: port ${port} is already in use; set CONTROLLER_PORT / CALLBACK_PORT." >&2
+    exit 1
+  fi
+done
 
 echo "==> Port-forwarding cluster backends to localhost (db:${DB_PORT} minio:${MINIO_PORT} nats:${NATS_PORT})"
 for spec in "studio-db:${DB_PORT}:5432" "studio-minio:${MINIO_PORT}:9000" "${RELEASE}-nats:${NATS_PORT}:4222"; do
@@ -128,8 +146,8 @@ echo "==> Starting Studio from source (bun run dev) against the cluster"
 echo "    UI: http://localhost:${VITE_PORT}   (hot reload; sandbox from the cluster)"
 echo ""
 
-# Studio loads ~/.kube/config (your Rancher context, admin) for the agent-sandbox
-# provider, so it creates SandboxClaims + port-forwards to the daemon in
+# The host sandbox controller loads ~/.kube/config (your Rancher context,
+# admin), so it creates SandboxClaims + port-forwards to the daemon in
 # agent-sandbox-system straight from the host. Backends point at the forwards.
 cd "${REPO_ROOT}"
 
@@ -154,7 +172,7 @@ fi
 # (`deco dev`) which spins up its OWN Postgres/NATS, ignoring these targets.
 # src/index.ts instead honors
 # DATABASE_URL / NATS_URL / STUDIO_SANDBOX_* from the environment, so it connects
-# to the cluster (via the port-forwards) and the agent-sandbox provider.
+# to the cluster (via the port-forwards) and the host sandbox controller.
 # We export ${ENV_FILE} into the environment; there's no apps/api/.env, so the
 # API dev server's own `--env-file=.env` is a no-op and these values win.
 echo "==> Config: ${ENV_FILE}"
@@ -190,6 +208,36 @@ if ! bun run --cwd=apps/api migrate; then
   echo "    Studio version than this checkout. Proceeding against the existing schema."
   echo "    For a source-owned schema, reset it:  RESET_DB=1 re-run (see README)."
 fi
+# A throwaway CA + controller/Studio leaves, the same generator `bun run dev`
+# uses, then the controller on the kubernetes runtime, reaching daemons by
+# port-forward (no --preview-url-pattern): only possible because it shares the
+# host with Studio.
+CONTROLLER_DIR="${SCRIPT_DIR}/.sandbox-controller"
+echo "==> Generating the controller's mTLS pair in ${CONTROLLER_DIR}"
+DEV_CONTROLLER_TS="${REPO_ROOT}/apps/api/src/cli/dev-sandbox-controller.ts"
+bun -e "const { generateDevCerts } = await import(process.argv[1]); await generateDevCerts(process.argv[2]);" \
+  "${DEV_CONTROLLER_TS}" "${CONTROLLER_DIR}"
+
+echo "==> Starting the sandbox controller (go run, kubernetes runtime) on 127.0.0.1:${CONTROLLER_PORT}"
+(cd "${REPO_ROOT}/packages/sandbox/controller-go" && exec go run . \
+  --namespace=agent-sandbox-system \
+  --variants=false --leader-elect=false \
+  --metrics-bind-address=0 --health-probe-bind-address=0 \
+  --claims-listen="127.0.0.1:${CONTROLLER_PORT}" \
+  --claims-tls-cert="${CONTROLLER_DIR}/controller.crt" \
+  --claims-tls-key="${CONTROLLER_DIR}/controller.key" \
+  --claims-client-ca="${CONTROLLER_DIR}/ca.crt" \
+  --studio-callback-url="https://127.0.0.1:${CALLBACK_PORT}" \
+  --studio-ca="${CONTROLLER_DIR}/ca.crt" \
+  --sandbox-template="${SANDBOX_TEMPLATE:-studio-sandbox-local}" \
+  --env-name="${SANDBOX_ENV_NAME:-local}" </dev/null) & track $!
+
+export STUDIO_SANDBOX_CONTROLLER_URL="https://127.0.0.1:${CONTROLLER_PORT}"
+export STUDIO_SANDBOX_CONTROLLER_TLS_CERT="${CONTROLLER_DIR}/studio.crt"
+export STUDIO_SANDBOX_CONTROLLER_TLS_KEY="${CONTROLLER_DIR}/studio.key"
+export STUDIO_SANDBOX_CONTROLLER_CA="${CONTROLLER_DIR}/ca.crt"
+export STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT="${CALLBACK_PORT}"
+
 echo "==> Starting Vite + server (src/index.ts) against the cluster"
 
 # Start each leg with THIS bun, not via `bun run dev:servers`.

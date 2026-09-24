@@ -1,14 +1,9 @@
 # Wiring for the local umbrella. Install with release name `deco-studio` so the
-# Studio subchart's derived names (Service, ServiceAccount, NATS, instance label)
-# all resolve to `deco-studio` and match the references below.
+# subcharts' derived names (Studio Service, NATS, the controller's
+# `deco-studio-sandbox-controller` Service) match the references below.
 
 # ── Studio app (chart-deco-studio subchart) ────────────────────────────────
 chart-deco-studio:
-  # Dedicated SA (named after the release → "deco-studio"); REQUIRED so the
-  # sandbox RBAC (granted to "deco-studio") matches the pod's identity.
-  serviceAccount:
-    create: true
-
   # Generic port-80 route: browsers resolve *.localhost → 127.0.0.1, servicelb
   # forwards :80 to Studio, and sandbox previews (<handle>.preview.localhost)
   # route the same way. No ingress / /etc/hosts.
@@ -39,20 +34,19 @@ chart-deco-studio:
       S3_ACCESS_KEY_ID: "minioadmin"
       S3_SECRET_ACCESS_KEY: "minioadmin"
       S3_FORCE_PATH_STYLE: "true"
-      # Sandbox: server-side (agent-sandbox), wired to sandbox-env's template.
+      # Hosted sandboxes, through the sandbox controller below.
       STUDIO_AGENT_SANDBOX_ENABLED: "true"
       STUDIO_ENV: "local"
-      STUDIO_SANDBOX_TEMPLATE_NAME: "studio-sandbox-local"
-      # Shared sentinel token — MUST equal sandbox-env.sentinel.token below.
-      # Its presence flips Studio into warm-pool mode: claims are created with
-      # `warmpool: "default"` + empty env and the daemon token is rotated
-      # post-bind. Without it Studio cold-provisions (`warmpool: "none"`) and
-      # injects DAEMON_TOKEN via claim env, which the SandboxTemplate rejects
-      # ("environment variable override is not allowed ... DAEMON_TOKEN") →
-      # claim never goes Ready → the sandbox never connects. LOCAL fixed value.
-      STUDIO_SANDBOX_SENTINEL_TOKEN: "local-dev-sandbox-sentinel-token-change-me"
-      # Preview a site running in a sandbox at <handle>.preview.localhost.
+      # Studio's in-process preview proxy serves <handle>.preview.localhost
+      # (no Gateway locally). Same pattern as the controller's.
       STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "http://{handle}.preview.localhost"
+
+  # The controller's claim API, over the mTLS pair that
+  # templates/sandbox-controller-tls.yaml generates.
+  sandboxController:
+    enabled: true
+    url: "https://deco-studio-sandbox-controller.deco-studio.svc:8443"
+    tlsSecretName: studio-sandbox-controller-client
 
   # Laptop-sized — everything trimmed small; this is local, not prod.
   persistence:
@@ -93,30 +87,48 @@ chart-deco-studio:
 # ── Sandbox env (sandbox-env subchart) ─────────────────────────────────────
 sandbox-env:
   envName: "local"
-  # Shared warm-pool sentinel token — MUST equal STUDIO_SANDBOX_SENTINEL_TOKEN
-  # in the legacy Studio meshConfig key above. An explicit value lets both
-  # charts agree without extracting the auto-generated Secret. LOCAL fixed value.
+  # Shared warm-pool sentinel token — MUST equal the `daemonToken` of the
+  # controller's sentinel Secret (templates/sandbox-controller-tls.yaml). An
+  # explicit value lets both agree without extracting the generated Secret,
+  # which lives in agent-sandbox-system while the controller runs in
+  # deco-studio. LOCAL fixed value.
   sentinel:
     token: "local-dev-sandbox-sentinel-token-change-me"
-  mesh:
-    # Legacy sandbox-env values key retained for upgrade compatibility.
-    namespace: "deco-studio"          # where Studio (and its SA) runs
-    serviceAccountName: "deco-studio"  # must equal the Studio SA above
-    podSelectorLabels:
-      app.kubernetes.io/name: "chart-deco-studio"
-      app.kubernetes.io/instance: "deco-studio"   # = the release name
-  # Pin a published multi-arch studio-sandbox-go tag (arm64 + amd64).
-  image:
-    tag: "1.41.0"
   # Local: previews via Studio's in-process proxy (no Gateway API / cert-manager).
   previewGateway:
     enabled: false
   # Pre-warmed sandbox pool ON — one pod, zero cold-start on the first sandbox.
-  # Safe now that studio-sandbox-go 1.41.0 is multi-arch (runs on arm64). Turn off
-  # with --set sandbox-env.warmPool.enabled=false to save laptop resources.
+  # Turn off with --set sandbox-env.warmPool.enabled=false to save laptop
+  # resources.
   warmPool:
     enabled: true
     size: 1
+
+# ── Sandbox controller (sandbox-controller subchart) ───────────────────────
+# Its image tag defaults to the chart's appVersion; a tag that is not yet
+# published has to be built locally from packages/sandbox (see the README).
+sandbox-controller:
+  claims:
+    enabled: true
+    # The controller's leaf; its ca.crt also verifies Studio both ways.
+    tlsSecretName: sandbox-controller-tls
+    clientCASecretName: sandbox-controller-tls
+    studioCASecretName: sandbox-controller-tls
+    # Studio's `sandbox-callbacks` Service port (sandboxController.callbackPort).
+    studioCallbackUrl: "https://deco-studio.deco-studio.svc:9443"
+    # The controller owns sandbox_runner_state in Studio's database.
+    database:
+      secretName: sandbox-controller-db
+    # Warm-pool mode: the pool pods' shared token (sandbox-env.sentinel.token).
+    sentinel:
+      secretName: sandbox-controller-sentinel
+    sandboxTemplate: studio-sandbox-local
+    envName: local
+    # Set, the controller and Studio reach daemons by Service DNS; this is also
+    # the preview URL Studio hands the browser.
+    previewUrlPattern: "http://{handle}.preview.localhost"
+    studio:
+      namespace: deco-studio
 
 # ── Sandbox operator (sandbox-operator subchart) ───────────────────────────
 sandbox-operator:

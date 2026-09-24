@@ -16,7 +16,7 @@ Studio uses **PostgreSQL** as its database. The repo ships three compose files u
 
 - **`docker-compose.postgres.yml`** — **self-host, all-in-one**: Studio (published image) **plus a fully bundled stack** (PostgreSQL + NATS + MinIO), all wired so the app provisions nothing itself. The recommended starting point. (`selfhost/examples/docker-compose` wraps this with a documented `.env.example`.)
 - **`docker-compose.yml`** — **self-host, bring-your-own DB**: Studio only (published image), expecting a PostgreSQL you provide.
-- **`docker-compose.dev.yml`** — **development**: only the dependencies (PostgreSQL + a 3-node NATS cluster, prod-like topology); you run the API and web apps **from source** with `bun run dev:servers`. No sandbox here — that needs Kubernetes (see the [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid) loop).
+- **`docker-compose.dev.yml`** — **development**: only the dependencies (PostgreSQL + a 3-node NATS cluster, prod-like topology); you run the API and web apps **from source** with `bun run dev:servers`. `dev:servers` starts no sandbox controller, so hosted sandboxes need one configured through `STUDIO_SANDBOX_CONTROLLER_*`. `bun run dev` starts one itself on the controller's Docker runtime when `STUDIO_AGENT_SANDBOX_ENABLED=true` and no controller URL is set; for sandboxes on Kubernetes, see the [dev-hybrid](https://github.com/decocms/studio/tree/main/selfhost/examples/dev-hybrid) loop.
 
 The self-host files use a Docker volume for persistence and an automatic `/health` check.
 

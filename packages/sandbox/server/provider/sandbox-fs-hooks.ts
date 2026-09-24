@@ -6,10 +6,10 @@
  * deadlines, and the one-shot restart retry stay hidden behind both hooks.
  */
 
-import type { AgentSandboxProvider } from "./agent-sandbox/runner";
+import type { HostedSandboxProvider } from "./hosted";
 
 type SandboxFsProvider = Pick<
-  AgentSandboxProvider,
+  HostedSandboxProvider,
   "proxyDaemonRequest" | "renewTtl"
 >;
 
@@ -256,7 +256,7 @@ async function daemonRequest(
 }
 
 /**
- * Build the daemon hooks over the two AgentSandboxProvider capabilities they
+ * Build the daemon hooks over the two provider capabilities they
  * need. Keeping this as a narrow Pick prevents filesystem helpers from growing
  * an implicit dependency on the full provisioning surface.
  */

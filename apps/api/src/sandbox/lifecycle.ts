@@ -1,13 +1,12 @@
 /** Hosted sandbox provider lifecycle. */
 
 import type { StudioContext } from "@/core/studio-context";
-import type { HostedSandboxProvider } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type {
+  ClaimPhase,
+  HostedSandboxProvider,
+} from "@decocms/sandbox/provider";
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import { getDb } from "@/database";
-import type { Kysely } from "kysely";
-import { meter } from "@/observability";
-import type { Database as DatabaseSchema } from "@/storage/types";
-import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
 import type { SandboxControllerSettings } from "@/settings/types";
@@ -54,112 +53,11 @@ function resolveOnce(
   return promise;
 }
 
-// Set in prod (k8s behind ingress) so the provider skips the local
-// 127.0.0.1 port-forward path and emits a URL the user's browser can
-// actually reach. Empty/unset = local forwarder fallback (dev).
-function readPreviewUrlPattern(): string | undefined {
-  const raw = process.env.STUDIO_SANDBOX_PREVIEW_URL_PATTERN;
-  return raw && raw.trim() !== "" ? raw : undefined;
-}
-
-// Per-env SandboxTemplate name. The sandbox-env Helm chart suffixes the
-// template name with envName so multiple envs share `agent-sandbox-system`
-// without collisions; studio in this env must point its claims at the
-// matching suffixed name. Empty/unset → AgentSandboxProvider's built-in
-// default ("studio-sandbox") so single-env installs that didn't suffix
-// keep working.
-function readSandboxTemplateName(): string | undefined {
-  const raw = process.env.STUDIO_SANDBOX_TEMPLATE_NAME;
-  return raw && raw.trim() !== "" ? raw : undefined;
-}
-
-function readEnvName(): string | undefined {
-  const raw = process.env.STUDIO_ENV;
-  return raw && raw.trim() !== "" ? raw : undefined;
-}
-
-// Shared bearer baked into the SandboxTemplate's pod env via the
-// sandbox-env helm chart's Secret. Set on the studio side from the same
-// Secret so both ends agree on what the warm-pool sentinel is.
-//
-// Presence flips AgentSandboxProvider into warm-pool mode (claims with
-// `warmpool: "default"` + empty env; per-claim token rotated post-bind).
-// Empty/unset → legacy cold-start path with per-claim env injection.
-function readSandboxSentinelToken(): string | undefined {
-  const raw = process.env.STUDIO_SANDBOX_SENTINEL_TOKEN;
-  return raw && raw.trim() !== "" ? raw : undefined;
-}
-
-// Per-claim HTTPRoute attaches to this Gateway. When NAME + NAMESPACE are
-// set alongside STUDIO_SANDBOX_PREVIEW_URL_PATTERN, studio mints one
-// HTTPRoute per SandboxClaim so the wildcard Gateway can route directly
-// to each sandbox's Service:9000 (studio leaves the data path).
-//
-// Both required — no default — because the provider is Gateway-API-generic
-// (Istio, Envoy Gateway, Cilium, Kong, ...) and there's no portable
-// "default gateway namespace": Istio classic uses istio-system, Istio
-// ambient prefers a separate `istio-ingress`/`gateway` ns, and other
-// implementations vary. A wrong default would silently write routes that
-// fail to attach (parentRef → non-existent Gateway) and the failure mode
-// is a 404 from the gateway with no log on the studio side.
-//
-// Both unset → provider falls back to in-process preview proxying (legacy).
-// Half-configured (one set, the other not) → fail fast at boot rather
-// than silently choose a behavior the operator didn't ask for.
-function readPreviewGateway(): { name: string; namespace: string } | undefined {
-  const name = process.env.STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME?.trim();
-  const namespace =
-    process.env.STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE?.trim();
-  if (!name && !namespace) return undefined;
-  if (!name || !namespace) {
-    throw new Error(
-      "STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME and STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE must both be set, or both unset. Half-configured per-claim HTTPRoute routing would silently fail to attach.",
-    );
-  }
-  return { name, namespace };
-}
-
-async function instantiate(
-  db: Kysely<DatabaseSchema>,
-): Promise<HostedSandboxProvider> {
-  const controller = getSettings().sandboxController;
-  if (controller) return instantiateRemote(controller);
-  const stateStore = new KyselySandboxProviderStateStore(db);
-  const previewUrlPattern = readPreviewUrlPattern();
-  // Dynamic import — @kubernetes/client-node is heavy and only needed when
-  // hosted agent sandboxes are enabled.
-  const { AgentSandboxProvider, parseTenantPools } = await import(
-    "@decocms/sandbox/provider/agent-sandbox"
-  );
-  // `meter` is reassigned by initObservability() after sdk.start(); read
-  // it at provider construction (post-init) so we get the real instruments
-  // not the no-op evaluated at module load.
-  // Ambient vault (encryption key only, no request ctx) so the runner can
-  // re-mint a fresh clone credential on autonomous recovery instead of
-  // replaying the expired token baked into the persisted cloneUrl.
-  const vault = new CredentialVault(getSettings().encryptionKey);
-  return new AgentSandboxProvider({
-    stateStore,
-    previewUrlPattern,
-    sandboxTemplateName: readSandboxTemplateName(),
-    envName: readEnvName(),
-    previewGateway: readPreviewGateway(),
-    sentinelToken: readSandboxSentinelToken(),
-    // JSON array of tenant warm pools (see the provider's
-    // `tenant-pools.ts`). Unset — the default — means no pool is ever
-    // resolved and no reconciler runs. Throws on malformed config: a pool
-    // that silently fails to parse costs N pods and serves nobody.
-    tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
-    meter,
-    ...sandboxCredentialMinters(db, vault),
-  });
-}
-
 /**
- * The sandbox controller owns claims and credential refresh; Studio keeps
- * only the daemon conversation.
+ * The sandbox controller owns claims, pools and credential refresh; Studio
+ * keeps only the daemon conversation.
  */
-async function instantiateRemote(
+async function instantiate(
   controller: SandboxControllerSettings,
 ): Promise<HostedSandboxProvider> {
   const { RemoteSandboxProvider } = await import(
@@ -176,9 +74,36 @@ async function instantiateRemote(
   });
 }
 
+/** Agent sandboxes are on, but `bun run dev` could not start a controller. */
+export class SandboxControllerUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`No sandbox controller is running: ${reason}`);
+    this.name = "SandboxControllerUnavailableError";
+  }
+}
+
+/** Resolves the provider whenever the settings name a controller. */
+function resolveProvider(): Promise<HostedSandboxProvider> {
+  const { sandboxController: controller, sandboxControllerUnavailable } =
+    getSettings();
+  if (!controller && sandboxControllerUnavailable) {
+    return Promise.reject(
+      new SandboxControllerUnavailableError(sandboxControllerUnavailable),
+    );
+  }
+  if (!controller) {
+    return Promise.reject(
+      new Error(
+        "Agent sandbox is disabled. Set STUDIO_AGENT_SANDBOX_ENABLED=true and the STUDIO_SANDBOX_CONTROLLER_* settings to enable it.",
+      ),
+    );
+  }
+  return resolveOnce(() => instantiate(controller));
+}
+
 /**
- * Start the mTLS listener the controller calls back on, when the controller
- * is enabled with a callback port. Null otherwise: nothing listens, and the
+ * Start the mTLS listener the controller calls back on, when agent sandboxes
+ * are enabled with a callback port. Null otherwise: nothing listens, and the
  * callback paths exist nowhere else.
  */
 export async function startSandboxControllerCallbacks(): Promise<{
@@ -192,7 +117,7 @@ export async function startSandboxControllerCallbacks(): Promise<{
     { listStatesByCloneSource, listStatesByTenant },
   ] = await Promise.all([
     import("@/sandbox/controller-callbacks"),
-    import("@decocms/sandbox/provider/agent-sandbox/tenant-pools"),
+    import("@decocms/sandbox/provider/tenant-pools"),
     import("@/storage/sandbox-runner-state"),
   ]);
   const [cert, key, ca] = await Promise.all([
@@ -225,35 +150,45 @@ export async function startSandboxControllerCallbacks(): Promise<{
 
 /** Resolve the hosted provider for enabled user-facing operations. */
 export function getAgentSandboxProvider(
-  ctx: StudioContext,
+  _ctx: StudioContext,
 ): Promise<HostedSandboxProvider> {
   if (!getSettings().agentSandboxEnabled) {
     throw new Error(
       "Agent sandbox is disabled. Set STUDIO_AGENT_SANDBOX_ENABLED=true to enable it.",
     );
   }
-  return resolveOnce(() => instantiate(ctx.db));
+  return resolveProvider();
+}
+
+/** Image variants a repository can pick; none while hosted sandboxes are off. */
+export async function listSandboxImages(
+  ctx: StudioContext,
+): Promise<SandboxImage[]> {
+  if (!getSettings().agentSandboxEnabled) return [];
+  return (await getAgentSandboxProvider(ctx)).listSandboxImages();
 }
 
 /**
- * Resolve the hosted provider for teardown even after it has been disabled.
- * This shares the exact singleton used by enabled user-facing operations.
+ * Resolve the hosted provider for teardown. Shares the singleton used by
+ * user-facing operations; with agent sandboxes off there is no controller to
+ * reach, and this rejects.
  */
 export function getAgentSandboxProviderForTeardown(
-  ctx: StudioContext,
+  _ctx: StudioContext,
 ): Promise<HostedSandboxProvider> {
-  return resolveOnce(() => instantiate(ctx.db));
+  return resolveProvider();
 }
 
 /**
  * Eager provider accessor for paths that need the provider before any user
  * request — preview-host proxying at the Bun.serve layer is the only caller
- * today. Constructs without a StudioContext (the state store only needs a
- * Kysely instance) and returns null when hosted agent sandboxes are disabled.
+ * today. Returns null when hosted agent sandboxes are disabled or no
+ * controller is running.
  */
 export async function getOrInitSharedRunner(): Promise<HostedSandboxProvider | null> {
-  if (!getSettings().agentSandboxEnabled) return null;
-  return resolveOnce(() => instantiate(getDb().db));
+  const settings = getSettings();
+  if (!settings.agentSandboxEnabled || !settings.sandboxController) return null;
+  return resolveProvider();
 }
 
 // ---------------------------------------------------------------------------

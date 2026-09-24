@@ -1,0 +1,57 @@
+# PRODUCTION sandbox-controller example, with PLACEHOLDERS. The controller is
+# what creates SandboxClaims for Studio: Studio calls its claim API over mTLS
+# and holds no cluster RBAC itself. Install it in the sandbox namespace, next
+# to the sandbox-env release of the same environment:
+#
+#   helm install sandbox-controller deploy/helm/sandbox-controller \
+#     -n agent-sandbox-system -f selfhost/production/values-sandbox-controller-prod.yaml
+#
+# Needs the certificates from sandbox-controller-certificates.yaml and a Secret
+# `sandbox-controller-db` in agent-sandbox-system holding Studio's DATABASE_URL:
+#
+#   kubectl -n agent-sandbox-system create secret generic sandbox-controller-db \
+#     --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio"
+#
+# Never expose the claim API outside the cluster: a caller holding a
+# certificate from its CA can start sandboxes with arbitrary env. The chart's
+# NetworkPolicy admits only Studio's pods (claims.studio).
+
+claims:
+  enabled: true
+
+  # The controller's leaf; its ca.crt (the pair's CA) also verifies Studio's
+  # client certificate and Studio's callback listener.
+  tlsSecretName: sandbox-controller-tls
+  clientCASecretName: sandbox-controller-tls
+  studioCASecretName: sandbox-controller-tls
+
+  # Studio's `sandbox-callbacks` Service port (studio chart
+  # sandboxController.callbackPort, default 9443), for clone and org-fs
+  # credential re-mints.
+  studioCallbackUrl: "https://studio.studio.svc:9443"
+
+  # The controller owns sandbox_runner_state in Studio's database.
+  database:
+    secretName: sandbox-controller-db
+
+  # sandbox-env's generated warm-pool sentinel (same namespace). Set means
+  # warm-pool mode, which warmPool.enabled in values-sandbox-env-prod.yaml needs.
+  sentinel:
+    secretName: studio-sandbox-sentinel-prod
+
+  # The sandbox-env release of this environment (envName: prod).
+  sandboxTemplate: studio-sandbox-prod
+  envName: prod
+
+  # Required in a cluster: set, Studio reaches daemons by Service DNS (empty
+  # port-forwards, which only works with the controller and Studio on one host).
+  # It is also the preview URL Studio hands the browser.
+  previewUrlPattern: "https://{handle}.preview.example.com"   # <-- your wildcard domain
+  # With sandbox-env previewGateway.enabled: the Gateway it renders
+  # (agent-sandbox-preview-<envName>) and its namespace. Both or neither.
+  # gateway:
+  #   name: agent-sandbox-preview-prod
+  #   namespace: istio-system
+
+  studio:
+    namespace: studio   # your Studio release namespace

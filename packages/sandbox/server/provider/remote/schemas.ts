@@ -16,12 +16,14 @@ import type {
   ErrorResponse,
   FailureReason,
   Image,
+  ImagesResponse,
   OrgFsConfigRequest,
   Phase,
   PhaseKind,
   PodTermination,
   StatusResponse,
   Tenant,
+  TenantPoolsPushResponse,
 } from "../../../controller-types/sandbox-api";
 
 const capabilitySchema: z.ZodType<Capability> = z.enum([
@@ -90,6 +92,26 @@ export const drainingResponseSchema: z.ZodType<DrainingResponse> = z.object({
 export const capacityResponseSchema: z.ZodType<CapacityResponse> = z.object({
   schedulable: z.boolean(),
 });
+
+// Names are kept as strings here; which of them a repository may store is the
+// caller's rule (SandboxImageSchema).
+export const imagesResponseSchema: z.ZodType<ImagesResponse> = z.object({
+  runtimes: z.array(
+    z.object({
+      runtime: z.string(),
+      images: z.array(
+        z.object({
+          name: z.string(),
+          baseTag: z.string().optional(),
+          defaultTemplateTag: z.string().optional(),
+        }),
+      ),
+    }),
+  ),
+});
+
+export const tenantPoolsPushResponseSchema: z.ZodType<TenantPoolsPushResponse> =
+  z.object({ pools: z.array(z.string()) });
 
 const errorCodeSchema: z.ZodType<ErrorCode> = z.enum([
   "bad-request",

@@ -583,6 +583,7 @@ export const KEYS = {
       query,
     ] as const,
   gitAccounts: (orgId: string) => ["git-accounts", orgId] as const,
+  sandboxImages: (orgId: string) => ["sandbox-images", orgId] as const,
   /** Omit `accountId` for the whole org's list — that key is also the prefix a
    *  mutation invalidates to refresh every per-account listing with it. */
   repositories: (orgId: string, accountId?: string) =>

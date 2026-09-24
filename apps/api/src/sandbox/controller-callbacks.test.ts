@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TenantPool } from "@decocms/sandbox/provider/agent-sandbox/tenant-pools";
+import type { TenantPool } from "@decocms/sandbox/provider/tenant-pools";
 import type { CloneCredentialSource } from "@/storage/sandbox-runner-state";
 import {
   cloneUrlIdentity,
