@@ -67,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH "+protocol.PathLifetime, s.lifetime)
 	mux.HandleFunc("POST "+protocol.PathCredentials, s.credentials)
 	mux.HandleFunc("GET "+protocol.PathEvents, s.events)
+	mux.HandleFunc("POST "+protocol.PathTenantPoolsPush, s.tenantPoolsPush)
 	return mux
 }
 
@@ -423,6 +424,24 @@ func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) tenantPoolsPush(w http.ResponseWriter, r *http.Request) {
+	var req protocol.TenantPoolsPushRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	if req.Repo == "" || req.Ref == "" {
+		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "repo and ref are required")
+		return
+	}
+	out := protocol.TenantPoolsPushResponse{Pools: []string{}}
+	for _, rt := range s.Registry.All() {
+		if pools, ok := rt.Provider.(runtime.TenantPools); ok {
+			out.Pools = append(out.Pools, pools.MarkTenantPoolsDirty(req.Repo, req.Ref)...)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // events is SSE: one `data: <Phase>` per transition, ending after a terminal

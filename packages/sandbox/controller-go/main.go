@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/agentsandbox"
@@ -282,8 +283,8 @@ func runLocal(ctx context.Context, cf claimFlags) error {
 }
 
 // setupClaims wires the claim API onto the manager: the HTTP server on every
-// replica (it is stateless over the database), the credential refresher on the
-// leader only.
+// replica (it is stateless over the database), the credential refresher and
+// the tenant-pool warmer on the leader only.
 func setupClaims(mgr manager.Manager, namespace string, cf claimFlags) (func(), error) {
 	if (cf.gatewayName == "") != (cf.gatewayNamespace == "") {
 		// Half-configured writes routes that never attach, and the failure is a
@@ -353,7 +354,14 @@ func setupClaims(mgr manager.Manager, namespace string, cf claimFlags) (func(), 
 	if err := mgr.Add(claimAPI{d.server(cf, registry)}); err != nil {
 		return fail(err)
 	}
+	// Leader-only, both: each mints credentials through Studio.
 	if err := mgr.Add(manager.RunnableFunc(runner.RunCredentialRefresher)); err != nil {
+		return fail(err)
+	}
+	if err := mgr.Add(manager.RunnableFunc(runner.RunTenantPools)); err != nil {
+		return fail(err)
+	}
+	if err := metrics.Registry.Register(agentsandbox.PoolPodsMetric); err != nil {
 		return fail(err)
 	}
 	return func() {

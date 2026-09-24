@@ -106,9 +106,11 @@ type Runner struct {
 	fwd       *forwarder
 	templates *templateResolver
 	pools     []TenantPool
-	now       func() time.Time
-	newToken  func() string
-	timing    timing
+	// Leader-only state of RunTenantPools.
+	poolWarmer *poolWarmer
+	now        func() time.Time
+	newToken   func() string
+	timing     timing
 }
 
 var _ runtime.Provider = (*Runner)(nil)
@@ -133,14 +135,15 @@ func New(deps Deps, cfg Config) (*Runner, error) {
 	}
 	k := &kube{dyn: deps.Dynamic, core: deps.Core, namespace: cfg.Namespace}
 	r := &Runner{
-		cfg:      cfg,
-		kube:     k,
-		store:    deps.Store,
-		daemon:   daemonclient.New(deps.DaemonTransport),
-		fwd:      &forwarder{rest: deps.Rest, core: deps.Core, namespace: cfg.Namespace, forward: map[string]*forward{}},
-		now:      time.Now,
-		timing:   defaultTiming,
-		newToken: daemonclient.NewToken,
+		cfg:        cfg,
+		kube:       k,
+		store:      deps.Store,
+		daemon:     daemonclient.New(deps.DaemonTransport),
+		fwd:        &forwarder{rest: deps.Rest, core: deps.Core, namespace: cfg.Namespace, forward: map[string]*forward{}},
+		now:        time.Now,
+		timing:     defaultTiming,
+		poolWarmer: newPoolWarmer(),
+		newToken:   daemonclient.NewToken,
 	}
 	r.templates = &templateResolver{base: cfg.TemplateName, exists: k.templateExists, now: func() time.Time { return r.now() }, probes: map[string]templateProbe{}}
 	if len(cfg.TenantPools) > 0 {
@@ -148,7 +151,6 @@ func New(deps Deps, cfg Config) (*Runner, error) {
 			slog.Warn("tenant pools configured without a sentinel token; ignoring them (warm-pool mode is off)")
 		} else {
 			r.pools = cfg.TenantPools
-			slog.Warn("tenant pools bind claims here, but this runtime does not warm their pods yet; the in-process reconciler still must", "pools", len(cfg.TenantPools))
 		}
 	}
 	return r, nil

@@ -61,6 +61,12 @@ type Provider interface {
 	Close()
 }
 
+// TenantPools is a Provider that warms per-tenant pools off a repository.
+type TenantPools interface {
+	// MarkTenantPoolsDirty names the pools a push to repo's ref made stale.
+	MarkTenantPoolsDirty(repo, ref string) []string
+}
+
 // Runtime is a Provider plus how the registry picks it.
 type Runtime struct {
 	Name         string

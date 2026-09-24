@@ -37,6 +37,7 @@ type fakeProvider struct {
 	released    []time.Duration
 	rotated     []string
 	phases      []protocol.Phase
+	pushes      [][2]string
 }
 
 func (f *fakeProvider) Probe(context.Context) (bool, string) { return true, "" }
@@ -85,6 +86,10 @@ func (f *fakeProvider) Watch(context.Context, string) (<-chan protocol.Phase, er
 	return ch, nil
 }
 func (f *fakeProvider) Schedulable(context.Context) (bool, error) { return true, nil }
+func (f *fakeProvider) MarkTenantPoolsDirty(repo, ref string) []string {
+	f.pushes = append(f.pushes, [2]string{repo, ref})
+	return []string{"tenant-acme"}
+}
 func (f *fakeProvider) Images(context.Context) ([]protocol.ImageInfo, error) {
 	return []protocol.ImageInfo{{Name: "android", BaseTag: "1"}}, nil
 }
@@ -314,6 +319,18 @@ func TestReadRoutes(t *testing.T) {
 		if res, _ := do(t, r[0], srv.URL+r[1], nil); res.StatusCode != 404 && res.StatusCode != 405 {
 			t.Errorf("%s %s = %d", r[0], r[1], res.StatusCode)
 		}
+	}
+}
+
+func TestTenantPoolsPush(t *testing.T) {
+	p := &fakeProvider{}
+	srv, _ := newServer(t, p)
+	res, body := do(t, "POST", srv.URL+"/tenant-pools/push", map[string]any{"repo": "acme/site", "ref": "refs/heads/main"})
+	if res.StatusCode != 200 || strings.TrimSpace(body) != `{"pools":["tenant-acme"]}` || len(p.pushes) != 1 {
+		t.Fatalf("status=%d body=%s pushes=%v", res.StatusCode, body, p.pushes)
+	}
+	if res, _ := do(t, "POST", srv.URL+"/tenant-pools/push", map[string]any{"repo": "acme/site"}); res.StatusCode != 400 {
+		t.Fatalf("a push without a ref = %d", res.StatusCode)
 	}
 }
 

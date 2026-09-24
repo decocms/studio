@@ -51,6 +51,27 @@ func WorkloadConfig(opts *protocol.EnsureOptions, tenantPoolPodBound bool) *daem
 	return buildConfigPayload(args)
 }
 
+// PoolConfig is the /config body that warms an unbound tenant-pool pod:
+// the pool's repo and workload, no identity and no cloneOnly. runtime ""
+// is node, devPort 0 the default port, and packageManager "" leaves the
+// daemon to autodetect from the lockfile, as for a claim that names none.
+func PoolConfig(repo *protocol.EnsureRepo, runtime, packageManager, packageManagerPath string, devPort int) *daemon.TenantConfig {
+	args := payloadArgs{runtime: runtime, repo: repo, port: defaultDevPort}
+	if args.runtime == "" {
+		args.runtime = "node"
+	}
+	if devPort != 0 {
+		args.port = devPort
+	}
+	if packageManager != "" {
+		args.packageManager = &daemon.PackageManagerConfig{Name: daemon.Str(packageManager)}
+		if packageManagerPath != "" {
+			args.packageManager.Path = daemon.Str(packageManagerPath)
+		}
+	}
+	return buildConfigPayload(args)
+}
+
 type payloadArgs struct {
 	runtime        string
 	packageManager *daemon.PackageManagerConfig

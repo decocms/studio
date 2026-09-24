@@ -38,6 +38,9 @@ export const PathRuntimes = "/runtimes";
 /** GET → CapacityResponse. */
 export const PathCapacity = "/capacity";
 
+/** POST: TenantPoolsPushRequest → TenantPoolsPushResponse. */
+export const PathTenantPoolsPush = "/tenant-pools/push";
+
 /** GET → HealthzResponse. Needs a client certificate like every other route. */
 export const PathHealthz = "/healthz";
 
@@ -284,6 +287,23 @@ export interface LifetimeRequest {
  */
 export interface CredentialsRequest {
   cloneUrl: string;
+}
+
+/**
+ * TenantPoolsPushRequest is POST /tenant-pools/push: a GitHub push landed, so
+ * the tenant pools warmed on that repo and branch refresh their unbound pods
+ * now instead of at their next periodic refresh.
+ */
+export interface TenantPoolsPushRequest {
+  /** `owner/name`, case-insensitive. */
+  repo: string;
+  /** The pushed ref, e.g. `refs/heads/main`. */
+  ref: string;
+}
+
+/** TenantPoolsPushResponse names the pools the push marked stale. */
+export interface TenantPoolsPushResponse {
+  pools: Array<string>;
 }
 
 /**

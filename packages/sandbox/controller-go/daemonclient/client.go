@@ -225,6 +225,21 @@ func (c *Client) PostConfig(ctx context.Context, daemonURL, token string, cfg *d
 	return &out, nil
 }
 
+// PostSetupStep re-runs a setup step against the config the daemon holds.
+// `clone` chains into install and start: fetch and reset to origin, reinstall
+// only if the lockfile moved, restart dev.
+func (c *Client) PostSetupStep(ctx context.Context, daemonURL, token, step string) error {
+	endpoint := "/_sandbox/setup/" + step
+	res, err := c.request(ctx, http.MethodPost, daemonURL+endpoint, token, nil, endpoint, c.ConfigTimeout, true)
+	if err != nil {
+		return err
+	}
+	if !res.ok() {
+		return fmt.Errorf("sandbox daemon %s returned %d: %s", endpoint, res.status, res.body)
+	}
+	return nil
+}
+
 // PostOrgFsConfig relays the org-fs mount config to the pod's sidecar. A
 // separate endpoint: an orgFs-only /config patch classifies as a no-op.
 func (c *Client) PostOrgFsConfig(ctx context.Context, daemonURL, token, configJSON string) error {
