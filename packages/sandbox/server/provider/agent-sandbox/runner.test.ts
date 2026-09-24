@@ -1,7 +1,11 @@
-import { describe, expect, it } from "bun:test";
-import type { EnsureOptions } from "../types";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { KubeConfig } from "@kubernetes/client-node";
+import type { RunnerStateStore } from "../state-store";
+import type { EnsureOptions, SandboxId } from "../types";
 import {
+  AgentSandboxProvider,
   earlierShutdown,
+  foreignRowWriter,
   freshOrgFsConfigJson,
   laterShutdown,
   stripEnsureOpts,
@@ -168,5 +172,99 @@ describe("freshOrgFsConfigJson", () => {
     });
     expect(fresh).toBe('{"token":"old"}');
     expect(called).toBe(false);
+  });
+});
+
+describe("foreignRowWriter", () => {
+  it("treats a row without a writer as the in-process runner's", () => {
+    expect(foreignRowWriter({ token: "t" })).toBeNull();
+    expect(foreignRowWriter({ writer: null })).toBeNull();
+  });
+
+  it("names any other writer", () => {
+    expect(foreignRowWriter({ writer: "sandbox-controller" })).toBe(
+      "sandbox-controller",
+    );
+    expect(foreignRowWriter({ writer: 7 })).toBe("7");
+  });
+});
+
+// The rolling-deploy defence: an old pod rehydrating a controller-owned row
+// rotates the daemon token, the controller rotates it back, and the two
+// ping-pong across every live sandbox for the length of the deploy.
+describe("AgentSandboxProvider refuses rows another writer owns", () => {
+  const id: SandboxId = {
+    userId: "user_1",
+    projectRef: "agent:org_1:vmcp_1:thread:thrd_1/conn_1",
+  };
+  const providers: AgentSandboxProvider[] = [];
+  afterEach(() => {
+    for (const p of providers.splice(0)) p.close();
+  });
+
+  function setup() {
+    // Points nowhere: nothing here may reach a cluster.
+    const kubeConfig = new KubeConfig();
+    kubeConfig.loadFromOptions({
+      clusters: [{ name: "none", server: "https://127.0.0.1:1" }],
+      users: [{ name: "none" }],
+      contexts: [{ name: "none", cluster: "none", user: "none" }],
+      currentContext: "none",
+    });
+    const writes: string[] = [];
+    const row = {
+      handle: "conn-1-0000000000000000",
+      state: {
+        adoptedSandboxName: "studio-sandbox-abcde",
+        token: "controller-token",
+        workdir: "/app",
+        ensureOpts: { cloneOnly: true },
+        writer: "sandbox-controller",
+      },
+      updatedAt: new Date(),
+    };
+    const stateStore: RunnerStateStore = {
+      get: async () => row,
+      getByHandle: async () => ({ ...row, id }),
+      put: async () => void writes.push("put"),
+      delete: async () => void writes.push("delete"),
+      deleteByHandle: async () => void writes.push("deleteByHandle"),
+    };
+    const provider = new AgentSandboxProvider({ kubeConfig, stateStore });
+    providers.push(provider);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    return { provider, writes, warn, row };
+  }
+
+  it("fails ensure instead of adopting the claim and rotating its token", async () => {
+    const { provider, writes, warn } = setup();
+    await expect(provider.ensure(id)).rejects.toThrow("sandbox-controller");
+    expect(writes).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it("neither rehydrates nor resurrects it for daemon traffic", async () => {
+    const { provider, writes, warn, row } = setup();
+    const res = await provider.proxyDaemonRequest(row.handle, "/_sandbox/x", {
+      method: "GET",
+      headers: new Headers(),
+      body: null,
+    });
+    expect(res.status).toBe(404);
+    expect(writes).toEqual([]);
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("refusing sandbox")),
+    ).toBe(true);
+    warn.mockRestore();
+  });
+
+  it("does not adopt the live claim", async () => {
+    const { provider, writes, warn, row } = setup();
+    expect(await provider.adoptLiveClaim(id, row.handle)).toBe(false);
+    expect(writes).toEqual([]);
+    expect(
+      warn.mock.calls.some((c) => String(c[0]).includes("refusing sandbox")),
+    ).toBe(true);
+    warn.mockRestore();
   });
 });

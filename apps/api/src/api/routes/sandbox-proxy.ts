@@ -15,11 +15,11 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { createMiddleware } from "hono/factory";
-import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type {
-  AgentSandboxProvider,
-  ClaimPhase,
-} from "@decocms/sandbox/provider/agent-sandbox";
+import {
+  composeSandboxRef,
+  type HostedSandboxProvider,
+} from "@decocms/sandbox/provider";
+import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   loadBranchThread,
@@ -88,7 +88,7 @@ interface VmClaim {
   callerUserId: string;
   /** Null when no sandbox runner is configured on this studio instance — or
    *  when the session is sandbox-less (`runtime` below). */
-  runner: AgentSandboxProvider | null;
+  runner: HostedSandboxProvider | null;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -245,7 +245,7 @@ const resolveVmClaim = createMiddleware<VmEnv>(async (c, next) => {
     return next();
   }
 
-  let runner: AgentSandboxProvider | null;
+  let runner: HostedSandboxProvider | null;
   try {
     runner = await getAgentSandboxProvider(ctx);
   } catch {
@@ -355,7 +355,7 @@ async function resolveClaimRuntime(
  */
 async function resolveBranchRunner(
   c: Context<VmEnv>,
-): Promise<AgentSandboxProvider | null> {
+): Promise<HostedSandboxProvider | null> {
   const claim = c.get("vmClaim");
   if (claim.runner) return claim.runner;
   try {
@@ -366,7 +366,7 @@ async function resolveBranchRunner(
 }
 
 /** Guard for routes that need a non-null runner. Returns the runner or a 503. */
-function requireRunner(c: Context<VmEnv>): AgentSandboxProvider | Response {
+function requireRunner(c: Context<VmEnv>): HostedSandboxProvider | Response {
   const { runner } = c.get("vmClaim");
   if (!runner) {
     return c.json({ error: "No sandbox runner configured" }, 503);
@@ -522,7 +522,7 @@ async function proxyDaemon(
     /** Null out the hosted daemon's container-internal `repoDir`. */
     redactRepoDir?: boolean;
     /** Pod-addressed route: act on this runner whatever the session's runtime is. */
-    runner?: AgentSandboxProvider;
+    runner?: HostedSandboxProvider;
   },
 ) {
   // Sandbox-less Fast Preview: daemon-backed routes have no daemon, ever.
@@ -681,8 +681,8 @@ export function redactRepoDir(text: string): string {
 
 export async function fetchDaemonJson<T>(
   runner: {
-    proxyDaemonRequest: AgentSandboxProvider["proxyDaemonRequest"];
-    adoptLiveClaim: AgentSandboxProvider["adoptLiveClaim"];
+    proxyDaemonRequest: HostedSandboxProvider["proxyDaemonRequest"];
+    adoptLiveClaim: HostedSandboxProvider["adoptLiveClaim"];
   },
   claimName: string,
   daemonPath: string,
@@ -1120,7 +1120,7 @@ export const createSandboxRoutes = () => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (the claim middleware
       // only admits a null runner for that mode).
-      let runner: AgentSandboxProvider | null = null;
+      let runner: HostedSandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;
@@ -1222,7 +1222,7 @@ export const createSandboxRoutes = () => {
     async (c) => {
       const claim = c.get("vmClaim");
       // runner === null ⇔ sandbox-less Fast Preview (see suggest-commit).
-      let runner: AgentSandboxProvider | null = null;
+      let runner: HostedSandboxProvider | null = null;
       if (claim.runtime !== "cms") {
         const required = requireRunner(c);
         if (required instanceof Response) return required;

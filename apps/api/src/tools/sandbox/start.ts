@@ -16,7 +16,7 @@ import {
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { HostedSandboxProvider } from "@decocms/sandbox/provider";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
 import type { SandboxImage } from "@decocms/shared/git-providers";
@@ -358,7 +358,7 @@ type StartParams = {
   /** The thread's secondary checkouts, accumulated by `TASK_ADD_REPO`. */
   threadRepos?: GithubRepo[];
   existing: SandboxRecord | null;
-  runner: AgentSandboxProvider;
+  runner: HostedSandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
 };
@@ -965,9 +965,9 @@ const CAPACITY_POLL_MS = 5_000;
  * original for anything that wants it.
  */
 async function ensureOrRephrase(
-  runner: AgentSandboxProvider,
-  ...args: Parameters<AgentSandboxProvider["ensure"]>
-): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  runner: HostedSandboxProvider,
+  ...args: Parameters<HostedSandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<HostedSandboxProvider["ensure"]>>> {
   try {
     return await runner.ensure(...args);
   } catch (err) {
@@ -980,7 +980,7 @@ async function ensureOrRephrase(
 }
 
 async function waitForSchedulableCapacity(
-  runner: AgentSandboxProvider,
+  runner: HostedSandboxProvider,
 ): Promise<void> {
   const deadline = Date.now() + CAPACITY_WAIT_MS;
   let logged = false;

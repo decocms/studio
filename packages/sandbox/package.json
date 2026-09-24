@@ -15,6 +15,8 @@
     "./shared": "./shared.ts",
     "./provider": "./server/provider/index.ts",
     "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
+    "./provider/agent-sandbox/tenant-pools": "./server/provider/agent-sandbox/tenant-pools.ts",
+    "./provider/remote": "./server/provider/remote/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./org-fs": "./org-fs.ts",
     "./dispatch": "./dispatch/index.ts",

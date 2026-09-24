@@ -5,7 +5,12 @@
  */
 
 import { homedir } from "os";
-import type { CliFlags, DispatchRole, Settings } from "./types";
+import type {
+  CliFlags,
+  DispatchRole,
+  SandboxControllerSettings,
+  Settings,
+} from "./types";
 
 const DISPATCH_ROLES = new Set<DispatchRole>(["all", "worker", "api"]);
 
@@ -66,6 +71,47 @@ export function describeEncryptionKeyForLog(ek: string): string {
   }
   const masked = ek.length <= 8 ? "***" : `${ek.slice(0, 4)}..${ek.slice(-4)}`;
   return `[settings] ENCRYPTION_KEY is set (${masked}, ${ek.length} chars)`;
+}
+
+/**
+ * Off unless explicitly enabled; once enabled, every mTLS input is required,
+ * so a half-configured deploy fails at boot instead of calling the controller
+ * without a client certificate.
+ */
+function resolveSandboxController(
+  envVars: Record<string, string | undefined>,
+): SandboxControllerSettings | null {
+  if (!toBool(envVars.STUDIO_SANDBOX_CONTROLLER_ENABLED)) return null;
+  const read = (name: string) => envVars[name]?.trim() || undefined;
+  const required = {
+    url: "STUDIO_SANDBOX_CONTROLLER_URL",
+    certPath: "STUDIO_SANDBOX_CONTROLLER_TLS_CERT",
+    keyPath: "STUDIO_SANDBOX_CONTROLLER_TLS_KEY",
+    caPath: "STUDIO_SANDBOX_CONTROLLER_CA",
+  } as const;
+  const missing = Object.values(required).filter((name) => !read(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `STUDIO_SANDBOX_CONTROLLER_ENABLED needs ${missing.join(", ")}`,
+    );
+  }
+  const url = read(required.url) ?? "";
+  if (!URL.canParse(url) || new URL(url).protocol !== "https:") {
+    throw new Error(
+      "STUDIO_SANDBOX_CONTROLLER_URL must be an https URL: the claim API is mTLS only",
+    );
+  }
+  return {
+    url,
+    certPath: read(required.certPath) ?? "",
+    keyPath: read(required.keyPath) ?? "",
+    caPath: read(required.caPath) ?? "",
+    callbackPort: toPositiveIntegerOrUndefined(
+      "STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT",
+      envVars.STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT,
+      65535,
+    ),
+  };
 }
 
 function toBool(value: string | undefined): boolean {
@@ -407,6 +453,7 @@ export function resolveConfig(
       envVars.SANDBOX_RELEASE_GRACE_MS,
       120_000,
     ),
+    sandboxController: resolveSandboxController(envVars),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,

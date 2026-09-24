@@ -2,8 +2,17 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   __resetSharedLifecyclesForTesting,
+  startSandboxControllerCallbacks,
   subscribeLifecycle,
 } from "./lifecycle";
+
+describe("startSandboxControllerCallbacks", () => {
+  // With the controller off nothing listens, so the callback paths exist
+  // nowhere: the public app never serves them.
+  it("starts no listener while the controller is off", async () => {
+    expect(await startSandboxControllerCallbacks()).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // subscribeLifecycle — multi-tab dedup
