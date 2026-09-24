@@ -32,7 +32,8 @@ const PathImages = "/images"
 // GET → RuntimesResponse.
 const PathRuntimes = "/runtimes"
 
-// GET → CapacityResponse.
+// GET → CapacityResponse. `?sandboxImage=<name>` judges the nodes that
+// image's variant schedules onto instead of the default image's.
 const PathCapacity = "/capacity"
 
 // POST: TenantPoolsPushRequest → TenantPoolsPushResponse.

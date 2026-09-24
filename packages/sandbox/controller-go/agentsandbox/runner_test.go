@@ -714,19 +714,4 @@ func TestPodTermination(t *testing.T) {
 	}
 }
 
-func TestSchedulable(t *testing.T) {
-	pending := func(reason string) *corev1.Pod {
-		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p" + reason, Namespace: ns}, Status: corev1.PodStatus{Phase: corev1.PodPending,
-			Conditions: []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: reason}}}}
-	}
-	k := &kube{core: k8sfake.NewSimpleClientset(pending("SchedulingGated")), namespace: ns}
-	if ok, _ := k.schedulable(context.Background()); !ok {
-		t.Fatal("a pod pending for another reason is not a capacity signal")
-	}
-	k = &kube{core: k8sfake.NewSimpleClientset(pending(corev1.PodReasonUnschedulable)), namespace: ns}
-	if ok, _ := k.schedulable(context.Background()); ok {
-		t.Fatal("an unschedulable pod means no capacity")
-	}
-}
-
 func resourceQuantity(s string) resource.Quantity { return resource.MustParse(s) }

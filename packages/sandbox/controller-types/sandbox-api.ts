@@ -35,7 +35,10 @@ export const PathImages = "/images";
 /** GET → RuntimesResponse. */
 export const PathRuntimes = "/runtimes";
 
-/** GET → CapacityResponse. */
+/**
+ * GET → CapacityResponse. `?sandboxImage=<name>` judges the nodes that
+ * image's variant schedules onto instead of the default image's.
+ */
 export const PathCapacity = "/capacity";
 
 /** POST: TenantPoolsPushRequest → TenantPoolsPushResponse. */

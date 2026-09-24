@@ -55,7 +55,8 @@ type Provider interface {
 	RotateCredential(ctx context.Context, handle, cloneURL string) error
 	// Watch streams phases until a terminal one or ctx ends.
 	Watch(ctx context.Context, handle string) (<-chan protocol.Phase, error)
-	Schedulable(ctx context.Context) (bool, error)
+	// Schedulable judges the nodes a sandbox on image would land on.
+	Schedulable(ctx context.Context, image string) (bool, error)
 	// Images are the non-default images the runtime can serve.
 	Images(ctx context.Context) ([]protocol.ImageInfo, error)
 	Close()
@@ -131,12 +132,13 @@ type probeResult struct {
 
 // Registry holds every configured runtime and caches what it asks them.
 type Registry struct {
-	now        func() time.Time
-	mu         sync.Mutex
-	byName     map[string]*Runtime
-	ordered    []*Runtime
-	probes     map[string]cached[probeResult]
-	capacities map[string]cached[bool]
+	now     func() time.Time
+	mu      sync.Mutex
+	byName  map[string]*Runtime
+	ordered []*Runtime
+	probes  map[string]cached[probeResult]
+	// Keyed by runtime, then image: a variant's nodes fill independently.
+	capacities map[string]map[string]cached[bool]
 	images     map[string]cached[[]protocol.ImageInfo]
 }
 
@@ -152,7 +154,7 @@ func NewRegistry(runtimes ...*Runtime) *Registry {
 		byName:     byName,
 		ordered:    ordered,
 		probes:     map[string]cached[probeResult]{},
-		capacities: map[string]cached[bool]{},
+		capacities: map[string]map[string]cached[bool]{},
 		images:     map[string]cached[[]protocol.ImageInfo]{},
 	}
 }
@@ -188,22 +190,28 @@ func (r *Registry) Available(ctx context.Context, rt *Runtime) (bool, string) {
 
 // Schedulable fails open: a probe that cannot answer must not become a global
 // stop on admission.
-func (r *Registry) Schedulable(ctx context.Context, rt *Runtime) bool {
+func (r *Registry) Schedulable(ctx context.Context, rt *Runtime, image string) bool {
 	if !rt.Has(protocol.CapCapacity) {
 		return true
 	}
+	if IsDefaultImage(image) {
+		image = ""
+	}
 	r.mu.Lock()
-	hit, ok := r.capacities[rt.Name]
+	hit, ok := r.capacities[rt.Name][image]
 	r.mu.Unlock()
 	if ok && r.now().Sub(hit.at) < capacityTTL {
 		return hit.value
 	}
-	value, err := rt.Provider.Schedulable(ctx)
+	value, err := rt.Provider.Schedulable(ctx, image)
 	if err != nil {
 		value = true
 	}
 	r.mu.Lock()
-	r.capacities[rt.Name] = cached[bool]{at: r.now(), value: value}
+	if r.capacities[rt.Name] == nil {
+		r.capacities[rt.Name] = map[string]cached[bool]{}
+	}
+	r.capacities[rt.Name][image] = cached[bool]{at: r.now(), value: value}
 	r.mu.Unlock()
 	return value
 }
@@ -255,7 +263,7 @@ func (r *Registry) Describe(ctx context.Context) []protocol.RuntimeInfo {
 		}
 		if ok {
 			info.Capacity = &protocol.Capacity{
-				Schedulable: r.Schedulable(ctx, rt),
+				Schedulable: r.Schedulable(ctx, rt, ""),
 				ObservedAt:  r.now().UTC().Format(time.RFC3339),
 			}
 		}
@@ -294,7 +302,7 @@ func Place(ctx context.Context, r *Registry, req protocol.EnsureRequest) Placeme
 				return false
 			}
 		}
-		if !r.Schedulable(ctx, rt) {
+		if !r.Schedulable(ctx, rt, image) {
 			reasons[rt.Name] = "no capacity"
 			return false
 		}

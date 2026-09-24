@@ -229,23 +229,25 @@ func podTermination(pod *corev1.Pod) *protocol.PodTermination {
 	return out
 }
 
-// schedulable is the scheduler's own verdict: false while any pod in the
-// namespace is Pending as Unschedulable. A lagging signal by one admission,
-// which is the point: one run pays the wait instead of eight.
-func (k *kube) schedulable(ctx context.Context) (bool, error) {
+// unschedulablePods are the namespace's pods Pending as Unschedulable: the
+// scheduler's own verdict, and only about pods it already tried to place. A
+// pod Pending while it pulls its image has a node and is not one.
+func (k *kube) unschedulablePods(ctx context.Context) ([]corev1.Pod, error) {
 	pods, err := k.core.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{FieldSelector: "status.phase=Pending"})
 	if err != nil {
-		return true, err
+		return nil, err
 	}
+	var out []corev1.Pod
 	for _, pod := range pods.Items {
 		if pod.Status.Phase != corev1.PodPending {
 			continue
 		}
 		for _, c := range pod.Status.Conditions {
 			if c.Type == corev1.PodScheduled && c.Status == corev1.ConditionFalse && c.Reason == corev1.PodReasonUnschedulable {
-				return false, nil
+				out = append(out, pod)
+				break
 			}
 		}
 	}
-	return true, nil
+	return out, nil
 }

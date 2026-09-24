@@ -37,7 +37,9 @@ type fakeProvider struct {
 	released    []time.Duration
 	rotated     []string
 	phases      []protocol.Phase
-	pushes      [][2]string
+	// fullImages are unschedulable.
+	fullImages map[string]bool
+	pushes     [][2]string
 }
 
 func (f *fakeProvider) Probe(context.Context) (bool, string) { return true, "" }
@@ -85,7 +87,9 @@ func (f *fakeProvider) Watch(context.Context, string) (<-chan protocol.Phase, er
 	close(ch)
 	return ch, nil
 }
-func (f *fakeProvider) Schedulable(context.Context) (bool, error) { return true, nil }
+func (f *fakeProvider) Schedulable(_ context.Context, image string) (bool, error) {
+	return !f.fullImages[image], nil
+}
 func (f *fakeProvider) MarkTenantPoolsDirty(repo, ref string) []string {
 	f.pushes = append(f.pushes, [2]string{repo, ref})
 	return []string{"tenant-acme"}
@@ -318,6 +322,20 @@ func TestReadRoutes(t *testing.T) {
 	for _, r := range [][2]string{{"POST", "/sandboxes/h/adopt"}, {"GET", "/sandboxes"}, {"PUT", "/sandboxes/h"}} {
 		if res, _ := do(t, r[0], srv.URL+r[1], nil); res.StatusCode != 404 && res.StatusCode != 405 {
 			t.Errorf("%s %s = %d", r[0], r[1], res.StatusCode)
+		}
+	}
+}
+
+func TestCapacityPerImage(t *testing.T) {
+	srv, _ := newServer(t, &fakeProvider{fullImages: map[string]bool{"android": true}})
+	for query, want := range map[string]string{
+		"":                           `{"schedulable":true}`,
+		"?sandboxImage=default":      `{"schedulable":true}`,
+		"?sandboxImage=android":      `{"schedulable":false}`,
+		"?sandboxImage=Not_An_Image": `"code":"bad-request"`,
+	} {
+		if _, body := do(t, "GET", srv.URL+"/capacity"+query, nil); !strings.Contains(body, want) {
+			t.Errorf("/capacity%s = %s, want %s", query, body, want)
 		}
 	}
 }

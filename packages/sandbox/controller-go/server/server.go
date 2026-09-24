@@ -119,11 +119,16 @@ func (s *Server) runtimes(w http.ResponseWriter, r *http.Request) {
 }
 
 // capacity is Studio's admission gate: true when any available runtime has
-// room. Per-runtime detail lives in /runtimes.
+// room for the image. Per-runtime detail lives in /runtimes.
 func (s *Server) capacity(w http.ResponseWriter, r *http.Request) {
+	image := r.URL.Query().Get("sandboxImage")
+	if image != "" && !imagePattern.MatchString(image) {
+		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "sandboxImage must match "+imagePattern.String())
+		return
+	}
 	out := protocol.CapacityResponse{}
 	for _, rt := range s.Registry.All() {
-		if ok, _ := s.Registry.Available(r.Context(), rt); ok && s.Registry.Schedulable(r.Context(), rt) {
+		if ok, _ := s.Registry.Available(r.Context(), rt); ok && s.Registry.Schedulable(r.Context(), rt, image) {
 			out.Schedulable = true
 			break
 		}
