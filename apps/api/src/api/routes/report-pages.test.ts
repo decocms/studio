@@ -1,24 +1,22 @@
-import { describe, expect, test } from "bun:test";
-import { buildReportHead, type ReportSeo } from "./report-pages";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  buildReportHead,
+  createReportPagesRoutes,
+  type ReportSeo,
+} from "./report-pages";
 
 /** Pull the `content`/`href` of a tag from a built head block. */
 function attr(head: string, re: RegExp): string | null {
   return head.match(re)?.[1] ?? null;
 }
 
-const SEO: ReportSeo = {
-  brand: "Nike",
-  score: 68,
-  verdict: "Organic traffic is in free fall.",
-};
+const SEO: ReportSeo = { brand: "Nike", score: 68 };
 
 describe("buildReportHead — dynamic report SEO", () => {
-  test("title carries brand + real score; description carries the verdict", () => {
+  test("title carries brand + real score", () => {
     const head = buildReportHead("nike.com", SEO);
     const title = attr(head, /<title>([^<]*)<\/title>/);
     expect(title).toBe("Nike commerce report — 68/100 · decocms");
-    const desc = attr(head, /name="description" content="([^"]*)"/);
-    expect(desc).toContain("Organic traffic is in free fall.");
     // og + twitter mirror the primary tags.
     expect(attr(head, /property="og:title" content="([^"]*)"/)).toBe(title);
     expect(attr(head, /name="twitter:title" content="([^"]*)"/)).toBe(title);
@@ -58,6 +56,13 @@ describe("buildReportHead — dynamic report SEO", () => {
     );
   });
 
+  test("advertises the Markdown mirror next to the canonical page", () => {
+    const head = buildReportHead("nike.com", null);
+    expect(
+      attr(head, /rel="alternate" type="text\/markdown" href="([^"]*)"/),
+    ).toMatch(/^https?:\/\/.+\/report\/nike\.com\.md$/);
+  });
+
   test("keeps report pages out of the index (noindex, follow)", () => {
     const head = buildReportHead("nike.com", SEO);
     expect(head).toContain('name="robots" content="noindex, follow"');
@@ -70,5 +75,39 @@ describe("buildReportHead — dynamic report SEO", () => {
     const head = buildReportHead(malicious, null);
     expect(head).not.toContain('"><svg onload=alert(1)>');
     expect(head).toContain("&quot;&gt;&lt;svg onload=alert(1)&gt;");
+  });
+});
+
+describe("GET /report/:domain.md", () => {
+  const app = createReportPagesRoutes(undefined);
+  let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, "fetch">>;
+  afterEach(() => fetchSpy.mockRestore());
+
+  const engineReplies = (response: Response) => {
+    fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(response);
+  };
+
+  test("serves the engine's markdown for the normalized domain", async () => {
+    engineReplies(new Response("# Example\n", { status: 200 }));
+    const res = await app.request("/WWW.Example.com.md");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/markdown");
+    expect(await res.text()).toBe("# Example\n");
+    const [url] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(
+      /\/api\/v2\/public\/diagnostics\/example\.com\/onepager\.md$/,
+    );
+  });
+
+  test("answers 404 when nothing is published", async () => {
+    engineReplies(new Response("not_found", { status: 404 }));
+    const res = await app.request("/example.com.md");
+    expect(res.status).toBe(404);
+  });
+
+  test("answers 502 when the engine fails", async () => {
+    engineReplies(new Response("boom", { status: 500 }));
+    const res = await app.request("/example.com.md");
+    expect(res.status).toBe(502);
   });
 });

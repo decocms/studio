@@ -1,23 +1,26 @@
 import posthog from "posthog-js";
 import { useState } from "react";
-import type { TemplateDeck } from "@decocms/shared/reports/deck-types";
 import { faviconForDomain } from "@decocms/shared/report-seo";
-import type { ReportState } from "@decocms/shared/reports/to-deck";
+import type {
+  OnePager,
+  ReportState,
+} from "@decocms/shared/reports/public-report";
 import { isPostHogInitialized } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
+import OnePagerReport from "./onepager";
 import {
   orchestrateScan,
   readPending,
-  reportDrops,
   type ScanPhase,
 } from "./orchestrate-scan";
-import { ReportAuthGate, ReportAuthOverlay, ReportBackdrop } from "./auth-gate";
 import { ReportSocialProof } from "./report-social-proof";
-import SignalDeck from "./signal-deck";
-import { DECK } from "./templates/tokens";
+import { ReportAuthOverlay } from "./sign-in-overlay";
+import { DECK } from "./tokens";
 
 const LIME = "#D0EC1A";
 const FOREST = "#07401A";
+const CARD_SHADOW =
+  "0 1px 2px rgba(40,37,36,0.05), 0 18px 48px -18px rgba(40,37,36,0.28)";
 
 const distinctId = () =>
   isPostHogInitialized() ? posthog.get_distinct_id() : undefined;
@@ -26,55 +29,34 @@ export default function ScanGate({
   domain,
   initial,
   sessionEmail,
-  sessionUser,
   lang,
-  authenticated = true,
 }: {
   domain: string;
-  initial?: ReportState;
+  initial: ReportState;
   sessionEmail: string;
-  sessionUser?: { name?: string; email?: string; image?: string };
   lang?: string;
-  authenticated?: boolean;
 }) {
-  const [deck, setDeck] = useState<TemplateDeck | null>(
-    initial?.status === "ready" ? initial.deck : null,
-  );
+  const [report, setReport] = useState<OnePager | null>(initial.report);
   const [phase, setPhase] = useState<ScanPhase>(() =>
-    initial?.status !== "ready" && readPending(domain) ? "pending" : "scanning",
+    readPending(domain) ? "pending" : "scanning",
   );
 
   // Kick the scan lifecycle on mount (callback ref, aborted on unmount). The
   // ref re-attaches when `domain` changes — the abort cancels the old run.
   const scanRef = (el: HTMLDivElement | null) => {
-    if (!el) return;
-    if (initial) reportDrops(domain, initial.drops);
-    if (initial?.status === "ready") return;
+    if (!el || initial.status === "ready") return;
     const controller = new AbortController();
     orchestrateScan(
       domain,
       distinctId(),
       controller.signal,
-      {
-        onPhase: setPhase,
-        onDeck: setDeck,
-      },
+      { onPhase: setPhase, onReport: setReport },
       lang,
     );
     return () => controller.abort();
   };
 
-  if (deck)
-    return (
-      <SignalDeck
-        deck={deck}
-        sessionUser={sessionUser}
-        authenticated={authenticated}
-      />
-    );
-  if (phase === "unauthorized") {
-    return <ReportAuthGate domain={domain} />;
-  }
+  if (report) return <OnePagerReport report={report} />;
 
   return (
     <div ref={scanRef}>
@@ -136,14 +118,12 @@ function ScanScreen({
     <div
       className="fixed inset-0 overflow-hidden"
       style={{
+        background: DECK.bg,
         color: DECK.ink,
         fontFamily: "Switzer, 'Inter var', Helvetica, Arial, sans-serif",
         WebkitFontSmoothing: "antialiased",
       }}
     >
-      <ReportBackdrop domain={domain} />
-      <div className="pointer-events-none absolute inset-0 bg-white/35" />
-
       {/* Lime progress strip */}
       <div
         className="fixed inset-x-0 top-0 z-10 h-[2px] overflow-hidden"
@@ -163,8 +143,7 @@ function ScanScreen({
             className="max-h-full w-full max-w-[460px] overflow-y-auto rounded-2xl sm:rounded-3xl px-5 pt-5 pb-6 sm:px-8 sm:pt-8 sm:pb-9"
             style={{
               background: "#fff",
-              boxShadow:
-                "0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.12)",
+              boxShadow: CARD_SHADOW,
             }}
           >
             {/* Domain pill */}
@@ -315,8 +294,7 @@ function ScanScreen({
             className="w-full max-w-[460px] rounded-3xl px-8 py-10"
             style={{
               background: "#fff",
-              boxShadow:
-                "0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.12)",
+              boxShadow: CARD_SHADOW,
             }}
           >
             <div
@@ -417,9 +395,8 @@ function StepDot({ state }: { state: StageState }) {
 // ── anonymous: sign in to get the finished report ────────────────────────────
 
 /** The scan runs without an account, so there's no address to deliver it to.
- *  Signing in from here (same in-place card the deck uses — no navigation, so
- *  the poll keeps running behind it) both registers the requester's email with
- *  the engine's notification list and unlocks the deck past the cover. */
+ *  Signing in from here happens in place, so the poll keeps running behind
+ *  the card. */
 function SignInToBeNotified({ domain }: { domain: string }) {
   const t = useT();
   const [open, setOpen] = useState(false);

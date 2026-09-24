@@ -264,6 +264,8 @@ const onboardingSearch = z.lazy(() =>
   z.object({
     org: z.string().optional(),
     siteUrl: z.string().optional(),
+    // The report finding whose "fix automatically" button sent the visitor.
+    fix: z.string().optional(),
   }),
 );
 
@@ -309,18 +311,11 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
-// Auth-gated report for a scanned domain. The route itself stays
-// outside the org shell so login can happen inline over its locked preview.
+// Public report, readable without a session — hence outside the org shell.
 const reportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/report/$domain",
   component: lazyRouteComponent(() => import("./routes/reports.tsx")),
-  validateSearch: z.lazy(() =>
-    z.object({
-      // Reviewer preview password — bypasses the engine's publish gate only.
-      key: z.string().optional(),
-    }),
-  ),
 });
 
 // ============================================

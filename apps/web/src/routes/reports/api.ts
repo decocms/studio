@@ -1,12 +1,11 @@
-// Thin client for the authenticated reports proxy (`/api/_reports/*`).
-// Mirrors the server types in `@decocms/shared/reports/to-deck`.
+// Thin client for the reports proxy (`/api/_reports/*`).
 
 import type {
   ReportState,
   ResolvedLinkToken,
   ScanStatus,
   ScanTrigger,
-} from "@decocms/shared/reports/to-deck";
+} from "@decocms/shared/reports/public-report";
 
 class ReportsApiError extends Error {
   constructor(readonly status: number) {
@@ -15,26 +14,15 @@ class ReportsApiError extends Error {
   }
 }
 
-export function isReportsUnauthorized(error: unknown): boolean {
-  return error instanceof ReportsApiError && error.status === 401;
-}
-
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new ReportsApiError(res.status);
   return (await res.json()) as T;
 }
 
-/** Read the deck for an already-scanned domain (instant). `lang` renders it in
- *  the viewer's locale (e.g. "pt-BR", "en"); omitted → the site default. */
-export function getReport(
-  domain: string,
-  key?: string,
-  lang?: string,
-): Promise<ReportState> {
-  const params = new URLSearchParams();
-  if (key) params.set("key", key);
-  if (lang) params.set("lang", lang);
-  const qs = params.toString() ? `?${params.toString()}` : "";
+/** Read the report for an already-scanned domain (instant). `lang` renders it
+ *  in the viewer's locale (e.g. "pt-BR", "en"); omitted → the site default. */
+export function getReport(domain: string, lang?: string): Promise<ReportState> {
+  const qs = lang ? `?${new URLSearchParams({ lang }).toString()}` : "";
   return fetch(`/api/_reports/site/${encodeURIComponent(domain)}${qs}`).then(
     (r) => json<ReportState>(r),
   );
@@ -66,4 +54,9 @@ export function resolveEmailLinkToken(
   return fetch(`/api/_reports/link-token/${encodeURIComponent(id)}`).then((r) =>
     json<ResolvedLinkToken | null>(r),
   );
+}
+
+/** The report as Markdown, served by the API at `/report/:domain.md`. */
+export function reportMarkdownPath(domain: string): string {
+  return `/report/${encodeURIComponent(domain)}.md`;
 }

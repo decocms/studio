@@ -15,8 +15,10 @@
  *   POST /upgrade { org_id, name } -> { url, org_id, scope, token, run }
  *   POST /run     { org_id }       -> { url, scope, run }   (triggered on
  *                                      "See full report"; the flow awaits it)
- * It also captures the public report scan contract used by report-auth specs:
+ * It also captures the public report scan contract used by report specs:
  *   POST /api/v2/diagnostics/run { url, email, distinct_id }
+ * and serves one published report (`published.example`) as the one-pager:
+ *   GET /api/v2/public/diagnostics/published.example/onepager{,.md}
  * And exposes an empty OpenAI-compatible model catalog for UI specs that need
  * a configured provider without calling a real model vendor:
  *   GET /v1/models -> { data: [] }
@@ -30,6 +32,68 @@ const RUN_RE = /^\/api\/v2\/internal\/diagnostics\/([^/]+)\/run$/;
 const PUBLIC_REPORT_RUN_PATH = "/api/v2/diagnostics/run";
 const CAPTURED_REPORT_RUN_PATH = "/__e2e/report-run";
 const capturedReportRuns = new Map<string, Record<string, unknown>>();
+const PUBLISHED_ONEPAGER_PATH =
+  "/api/v2/public/diagnostics/published.example/onepager";
+const PUBLISHED_ONEPAGER = {
+  domain: "published.example",
+  brand: "Published Example",
+  scanned_at: "2026-09-20T12:00:00.000Z",
+  lang: "en",
+  score: 62,
+  band: "Fair",
+  totals: { measured: 3, registry_total: 5, passed: 1, failed: 2, blocked: 1 },
+  buckets: [
+    {
+      id: "critical",
+      label: "Critical",
+      items: [
+        {
+          check_id: "PERF-001",
+          title: "LCP within target",
+          category: "Performance",
+          severity: "error",
+          controllability: "Deco-controllable",
+          pages: ["Home"],
+          tasks: ["Preload the hero image"],
+          evidence: "LCP 4.1s on the home page",
+          sources: [],
+        },
+      ],
+    },
+    {
+      id: "important",
+      label: "Important",
+      items: [
+        {
+          check_id: "SEC-002",
+          title: "HSTS enabled",
+          category: "Security",
+          severity: "warning",
+          controllability: "External",
+          pages: [],
+          tasks: [],
+          evidence: "No Strict-Transport-Security header",
+          sources: [],
+        },
+      ],
+    },
+    { id: "worth", label: "Worth doing", items: [] },
+  ],
+  passing: { count: 1, items: [{ check_id: "SEO-001", title: "Has a title" }] },
+  not_measured: {
+    count: 1,
+    groups: [
+      {
+        reason: "tool-auth",
+        label: "Waiting for a data connection",
+        count: 1,
+        checks: ["Revenue per session"],
+      },
+    ],
+  },
+  categories: [],
+  screenshots: [],
+};
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -43,6 +107,21 @@ const server = createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/v1/models") {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ data: [] }));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === PUBLISHED_ONEPAGER_PATH) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(PUBLISHED_ONEPAGER));
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === `${PUBLISHED_ONEPAGER_PATH}.md`
+  ) {
+    res.writeHead(200, { "content-type": "text/markdown; charset=utf-8" });
+    res.end("# Published Example — diagnostic\n\n### ✗ LCP within target\n");
     return;
   }
 

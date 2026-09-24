@@ -101,12 +101,10 @@ export const KEYS = {
   homeGithubContributions: (orgId: string, connectionId: string) =>
     ["home-github-contributions", orgId, connectionId] as const,
 
-  // Authenticated report deck for a scanned domain (/report/:domain). `lang`
-  // (the viewer's locale) is part of the key so switching language refetches.
-  report: (domain: string, key?: string, lang?: string) =>
-    ["report", domain, key ?? "", lang ?? ""] as const,
-  // Prefix of `report` above (no key/lang) — invalidates every variant for a
-  // domain at once, e.g. after an in-place login unlocks the full deck.
+  // Public report for a domain; `lang` in the key so a language switch refetches.
+  report: (domain: string, lang?: string) =>
+    ["report", domain, lang ?? ""] as const,
+  // Prefix of `report` above: invalidates every language variant of a domain.
   reportAll: (domain: string) => ["report", domain] as const,
 
   reportsConnection: (orgId: string, connectionId: string) =>

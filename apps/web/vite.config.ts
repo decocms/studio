@@ -279,6 +279,12 @@ const sharedProxy = {
     secure: false,
     ws: true,
   },
+  // The report's Markdown mirror; the report page itself stays with the SPA.
+  "^/report/[^/]+\\.md$": {
+    target: appServerTarget,
+    changeOrigin: false,
+    secure: false,
+  },
   "/health": {
     target: appServerTarget,
     changeOrigin: false,

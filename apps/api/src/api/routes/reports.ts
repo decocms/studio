@@ -1,54 +1,32 @@
-/** Report Routes — `/api/_reports/*`: proxy to the reports engine (`/api/v2`), master key server-side. Login gates reading the deck, not producing it — see each route below. */
+/** Report Routes — `/api/_reports/*`: proxy to the reports engine (`/api/v2`), master key server-side. Reading a report needs no login; see each route below. */
 
 import { Hono, type MiddlewareHandler } from "hono";
 import { auth } from "@/auth";
 import { resolveApiKey, resolveBaseUrl } from "@/tools/reports/auth-client";
-import {
-  type DomainSuggestion,
-  type PublicReportResponse,
-  type ReportState,
-  type ResolvedLinkToken,
-  type ScanStatus,
-  type ScanTrigger,
-  toDeck,
-} from "@decocms/shared/reports/to-deck";
+import { fetchPublicOnePager } from "@/tools/reports/public-report";
+import type {
+  DomainSuggestion,
+  ReportState,
+  ResolvedLinkToken,
+  ScanStatus,
+  ScanTrigger,
+} from "@decocms/shared/reports/public-report";
 
 function engineFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${resolveBaseUrl({})}${path}`, init);
 }
 
-/**
- * Read an already-scanned domain's deck. Callers without a session get the
- * full state back too — the route handler truncates it to the cover slide.
- */
+/** Read a domain's published one-pager. `lang` renders it in the viewer's
+ *  locale; omitted → the site default. */
 async function fetchReport(
   domain: string,
-  // Reviewer preview: the approval password unlocks a pre-publish read —
-  // forwarded as ?pw=, the engine bypasses ONLY its publish gate and returns
-  // exactly what the public will see once approved.
-  key?: string,
-  // Viewer locale, forwarded as ?lang= so the engine renders that language.
   lang?: string,
 ): Promise<ReportState> {
-  const params = new URLSearchParams();
-  if (key) params.set("pw", key);
-  if (lang) params.set("lang", lang);
-  const qs = params.toString() ? `?${params.toString()}` : "";
-  const res = await engineFetch(
-    `/api/v2/public/diagnostics/${encodeURIComponent(domain)}${qs}`,
-    { headers: { Accept: "application/json" } },
-  );
-  if (res.status === 404)
-    return { status: "not_found", deck: null, scanned_at: null, drops: [] };
-  if (!res.ok) throw new Error(`report read HTTP ${res.status}`);
-  const resp = (await res.json()) as PublicReportResponse;
-  const { deck, drops } = toDeck(resp);
-  return {
-    status: deck.slides.length ? "ready" : "empty",
-    deck,
-    scanned_at: resp.scanned_at,
-    drops,
-  };
+  const report = await fetchPublicOnePager(domain, { lang });
+  if (!report) return { status: "not_found", report: null };
+  return report.scanned_at
+    ? { status: "ready", report }
+    : { status: "empty", report: null };
 }
 
 const TERMINAL = new Set(["complete", "errored", "terminated", "unknown"]);
@@ -83,36 +61,22 @@ const requireReportUser: MiddlewareHandler<ReportsEnv> = async (c, next) => {
 app.use("/link-token/*", requireReportUser);
 app.use("/suggest", requireReportUser);
 
-/** GET /api/_reports/site/:domain — the deck for an already-scanned domain.
- *  Unauthenticated callers get the cover slide only; starting a new scan
- *  still requires signing in (see POST /run). */
+/** GET /api/_reports/site/:domain — the whole report for a scanned domain,
+ *  session or not; starting a scan is POST /run. */
 app.get("/site/:domain", async (c) => {
   const domain = c.req.param("domain").trim();
   if (!domain) return c.json({ error: "domain is required" }, 400);
-  const user = c.get("reportUser");
-  const key = c.req.query("key")?.trim() || undefined;
   const lang = c.req.query("lang")?.trim() || undefined;
   try {
-    const state = await fetchReport(domain, key, lang);
-    // Never cached: the deck carries short-lived signed screenshot URLs.
-    c.header("Cache-Control", "private, no-store");
-    if (user || !state.deck) return c.json(state);
-    // Only `slides` is cut — `meta.toc` (built in `toDeck` from the full list)
-    // stays, so the cover can still show every chapter title. The titles are the
-    // teaser; the findings behind them are what needs a session.
-    return c.json({
-      ...state,
-      deck: { ...state.deck, slides: state.deck.slides.slice(0, 1) },
-      truncated: state.status === "ready",
-    });
+    return c.json(await fetchReport(domain, lang));
   } catch {
     return c.json({ error: "report read failed" }, 502);
   }
 });
 
 /** POST /api/_reports/run — trigger a scan (master-key, server-only). Open to
- *  anonymous callers: producing a report needs no account, only reading the
- *  full deck does. The engine is idempotent + single-flight, so spamming this
+ *  anonymous callers: producing a report needs no account. The engine is
+ *  idempotent + single-flight, so spamming this
  *  for a domain never starts parallel runs. When there IS a session, its email
  *  is sent as the requester's notification address — never a caller-supplied
  *  one; anonymous runs send none and are followed in-tab instead. The optional

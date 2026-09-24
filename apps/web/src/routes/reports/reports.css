@@ -1,8 +1,8 @@
-/* Signal Deck styles — ported from the decocms landing's app.css. Loaded only
-   with the lazy /report route chunk, so none of this leaks into the app. */
+/* /report styles. Loaded only with the lazy /report route chunk, so none of
+   this leaks into the app. */
 
-/* The deck's typeface. Scoped: only elements that opt into
-   font-family: Switzer pick it up (the deck root + ScanGate). */
+/* The scan screen's typeface. Scoped: only elements that opt into
+   font-family: Switzer pick it up. */
 @font-face {
   font-family: "Switzer";
   font-style: normal;
@@ -25,50 +25,6 @@
   animation: reportIndeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-/* Signal Deck — the tiny uppercase kicker above slide
-   headlines. Soft green, near-flat tracking (tracked tight). */
-.deck-eyebrow {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #8caa25;
-}
-@media (min-width: 640px) {
-  .deck-eyebrow {
-    font-size: 12px;
-  }
-}
-
-/* Signal Deck entrance reveal. Transition-based (not a keyframe) so it replays
-   every time a slide becomes active — the deck keeps all slides mounted and
-   toggles [data-show] as you navigate. ease-out: content enters, then settles. */
-.reveal {
-  opacity: 0;
-  transform: translateY(12px);
-  transition:
-    opacity 480ms cubic-bezier(0.215, 0.61, 0.355, 1),
-    transform 480ms cubic-bezier(0.215, 0.61, 0.355, 1);
-  will-change: transform, opacity;
-}
-.reveal[data-show="true"] {
-  opacity: 1;
-  transform: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .reveal,
-  .reveal[data-show="true"] {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-  /* Park the indeterminate bar at the start as a static, visible segment. */
-  .animate-indeterminate {
-    animation: none;
-    transform: translateX(0);
-  }
-}
-
 /* ── ScanGate logo carousel ─────────────────────────────────────────────── */
 @keyframes logoCycleEnter {
   from {
@@ -86,576 +42,822 @@
   animation: logoCycleEnter 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-/* ── CTA dimension marquee ────────────────────────────────────────────────
-   The closing slide runs the audited dimensions as a slow, endless marquee of
-   pills. The track holds the list twice so the -50% loop is seamless. */
-.report-marquee-track {
-  display: flex;
-  width: max-content;
-  animation: report-marquee 40s linear infinite;
-}
-@keyframes report-marquee {
-  from {
+@media (prefers-reduced-motion: reduce) {
+  /* Park the indeterminate bar at the start as a static, visible segment. */
+  .animate-indeterminate {
+    animation: none;
     transform: translateX(0);
   }
-  to {
-    transform: translateX(-50%);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .report-marquee-track {
-    animation: none;
-  }
 }
 
-/* ── CTA task stream ──────────────────────────────────────────────────────
-   The left-hand backlog of fixes drifts downward endlessly. The track holds
-   the list twice so the loop is seamless. */
-.report-task-track {
+/* ── The one-pager ──────────────────────────────────────────────────────────
+   Ported from the engine's renderer (decocms/reports api/v2/onepager-page.ts),
+   every rule scoped under .dg. Light is the brand; dark follows the app. */
+.dg {
+  --dg-bg: transparent;
+  --dg-panel: #fff;
+  --dg-inset: oklch(0.985 0.001 106.4);
+  --dg-border: oklch(0.915 0.005 80);
+  --dg-hair: oklch(0.936 0.004 80);
+  --dg-track: oklch(0.93 0.004 80);
+  --dg-fg: oklch(0.145 0.01 60);
+  --dg-fg-2: oklch(0.42 0.012 60);
+  --dg-muted: oklch(0.54 0.008 48.6);
+  --dg-ink: oklch(0.205 0.012 60);
+  --dg-on-ink: oklch(0.98 0.005 60);
+  --dg-brand: #d0ec1a;
+  --dg-brand-fg: #07401a;
+  --dg-brand-ink: #455600;
+  --dg-brand-tint: #eff6cc;
+  --dg-bad: #b02525;
+  --dg-bad-dot: #d43d3d;
+  --dg-warn: #7a5600;
+  --dg-warn-dot: oklch(0.62 0.17 70);
+  --dg-mid: #7a5600;
+  --dg-mid-dot: oklch(0.75 0.13 85);
+  --dg-good: oklch(0.45 0.12 150);
+  --dg-good-dot: oklch(0.6 0.17 149);
+  --dg-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--dg-fg);
+  background: var(--dg-bg);
+  font:
+    17px / 1.6 ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Inter,
+    Roboto,
+    sans-serif;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 8px 24px 72px;
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
+}
+.dark .dg {
+  --dg-panel: oklch(0.216 0.006 56);
+  --dg-inset: oklch(0.245 0.006 60);
+  --dg-border: oklch(0.32 0.006 60);
+  --dg-hair: oklch(0.29 0.006 60);
+  --dg-track: oklch(0.32 0.006 60);
+  --dg-fg: oklch(0.97 0.002 80);
+  --dg-fg-2: oklch(0.78 0.006 70);
+  --dg-muted: oklch(0.64 0.008 60);
+  --dg-ink: oklch(0.97 0.002 80);
+  --dg-on-ink: oklch(0.2 0.008 60);
+  --dg-brand-ink: #d0ec1a;
+  --dg-brand-tint: oklch(0.29 0.045 118);
+  --dg-bad: oklch(0.74 0.15 25);
+  --dg-warn: oklch(0.8 0.13 78);
+  --dg-mid: oklch(0.8 0.13 85);
+  --dg-good: oklch(0.78 0.14 152);
+}
+.dg * {
+  box-sizing: border-box;
+}
+.dg h1,
+.dg h2,
+.dg h3,
+.dg h4 {
+  margin: 0;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.dg p,
+.dg ul,
+.dg ol {
+  margin: 0;
+}
+.dg code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--dg-muted);
+}
+/* :where() keeps this at class specificity so every component rule below
+   (.dg-fix, .dg-box-close) outranks it. Written as a type selector it beat
+   them all, and in dark mode — where brand-ink IS the lime — the fix
+   button rendered lime text on a lime pill. */
+.dg :where(a) {
+  color: var(--dg-brand-ink);
+}
+.dg-muted {
+  color: var(--dg-muted);
+}
+.dg-meta {
+  font-size: 14px;
+  color: var(--dg-muted);
+}
+.dg-lede {
+  font-size: 16px;
+  color: var(--dg-fg-2);
+  max-width: 62ch;
+  text-wrap: pretty;
+}
+.dg-empty {
+  font-size: 17px;
+  color: var(--dg-fg-2);
+  max-width: 62ch;
+}
+.dg-good {
+  color: var(--dg-good);
+}
+.dg-warn {
+  color: var(--dg-warn);
+}
+.dg-bad {
+  color: var(--dg-bad);
+}
+.dg-mid {
+  color: var(--dg-mid);
+}
+
+.dg-head {
+  padding: 30px 0 26px;
+}
+.dg-head-top {
   display: flex;
-  flex-direction: column;
-  animation: report-task-fall 22s linear infinite;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
-@keyframes report-task-fall {
-  from {
-    transform: translateY(-50%);
-  }
-  to {
-    transform: translateY(0);
-  }
+.dg-brand {
+  display: flex;
+  gap: 13px;
+  align-items: center;
 }
-@media (prefers-reduced-motion: reduce) {
-  .report-task-track {
-    animation: none;
-  }
+.dg-brand img {
+  border-radius: 9px;
+  background: #fff;
+  padding: 3px;
+  object-fit: contain;
+  border: 1px solid var(--dg-border);
 }
-
-/* ── Cover: holographic "Deco Score" card ────────────────────────────────
-   The opening slide is a single physical trading card that deals itself in,
-   tilts toward the pointer in 3-D, and carries a holographic foil that shifts
-   with the tilt — a Pokémon-holo treatment for the score. All the shine layers
-   read the pointer through inherited CSS vars (--mx/--my/--posx/--posy/--active)
-   set on `.holo-tilt` from React, so no re-render happens per frame. */
-.holo-stage {
-  perspective: 1050px;
+.dg-head h1 {
+  font-size: 28px;
+  font-weight: 600;
 }
-
-/* Shared holo rainbow used by every foil layer. Deliberately pale: at 0.6 alpha
-   the six hues read as distinct blotches of pink/peach/lilac on white paper
-   rather than as one iridescent sheen. */
-.holo-tilt {
-  --holo: repeating-linear-gradient(
-    125deg,
-    rgba(255, 119, 115, 0.4) 0%,
-    rgba(255, 223, 110, 0.4) 8%,
-    rgba(158, 255, 120, 0.4) 16%,
-    rgba(120, 255, 244, 0.4) 24%,
-    rgba(120, 158, 255, 0.4) 32%,
-    rgba(216, 117, 255, 0.4) 40%,
-    rgba(255, 119, 115, 0.4) 48%
-  );
-  --mx: 50%;
-  --my: 50%;
-  --posx: 50%;
-  --posy: 50%;
-  --active: 0;
-  transform-style: preserve-3d;
-  /* Pointer tilt only — the stronger rotation + tighter perspective carry the
-     3-D read. No scale/translateZ: the card already fills its container, so
-     growing it would overflow the (overflow-hidden) frame. */
-  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
-  /* No transform transition: the pointer easing loop (CoverTemplate) drives
-     --rx/--ry every frame, so a CSS ease here would only lag and fight it. */
-  transition: box-shadow 260ms ease;
-  /* Metallic frame: the 2px padding of .holo-tilt shows this silvered edge, with
-     an iridescent sheen (the holo, overlaid) that drifts with the tilt so the
-     border itself reads as foil. */
-  background:
-    linear-gradient(
-      145deg,
-      #efe9e0 0%,
-      #ffffff 16%,
-      #cfc9bf 40%,
-      #ffffff 54%,
-      #d7d1c7 74%,
-      #ffffff 88%,
-      #e6e1d8 100%
-    ), var(--holo);
-  background-blend-mode: overlay;
-  background-size:
-    100% 100%,
-    300% 300%;
-  background-position:
-    0 0,
-    var(--posx) var(--posy);
-  box-shadow:
-    0 40px 80px -28px rgba(13, 9, 6, 0.42),
-    0 12px 30px -14px rgba(13, 9, 6, 0.22),
-    0 2px 5px rgba(13, 9, 6, 0.07);
-  will-change: transform;
+.dg-domain {
+  color: var(--dg-muted);
+  font-size: 15px;
+}
+.dg-head-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.dg-head-facts {
+  display: grid;
+  gap: 10px;
+  min-width: min(100%, 300px);
+  flex: 1;
+}
+.dg-stats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  color: var(--dg-fg-2);
+}
+.dg-stat b {
+  font-weight: 600;
+  color: var(--dg-fg);
+  font-variant-numeric: tabular-nums;
+}
+.dg-head-score {
+  text-align: center;
+  flex: none;
+}
+.dg-ring {
+  display: block;
+}
+.dg-ring-num {
+  fill: var(--dg-fg);
+  font:
+    600 30px / 1 ui-sans-serif,
+    -apple-system,
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.dg-band {
+  font-weight: 600;
+  margin-top: 8px;
+  font-size: 14px;
 }
 
-/* Whole-card iridescent wash — overlay so the rainbow reads on the light card
-   surface too. Masked to bloom around the pointer, so the holo looks like light
-   catching foil (vivid where the "light" hits, gone elsewhere) rather than a
-   flat tint. Falls back to a soft central bloom at rest. */
-.holo-foil {
-  background-image: var(--holo);
-  /* A big background-size is what makes this read as sheen instead of a
-     rainbow: at 260% roughly one full cycle spanned the card, so six hues sat
-     on the page at once in ~180px bands. Stretched, only two or three
-     neighbouring hues are ever visible and they blend into each other. */
-  background-size: 460% 460%;
-  background-position: var(--posx) var(--posy);
-  mix-blend-mode: overlay;
-  opacity: calc(0.16 + var(--active) * 0.4);
-  -webkit-mask-image: radial-gradient(
-    circle at var(--mx) var(--my),
-    #000 0%,
-    rgba(0, 0, 0, 0.3) 24%,
-    transparent 48%
-  );
-  mask-image: radial-gradient(
-    circle at var(--mx) var(--my),
-    #000 0%,
-    rgba(0, 0, 0, 0.3) 24%,
-    transparent 48%
-  );
-  transition: opacity 320ms ease;
+.dg-agent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  background: var(--dg-brand-tint);
+  border-radius: 16px;
+  padding: 16px 20px;
+}
+.dg-agent-text {
+  font-size: 15px;
+  color: var(--dg-brand-ink);
+  max-width: 54ch;
+  flex: 1 1 300px;
+}
+.dg-agent-text strong {
+  font-weight: 600;
+}
+.dg-agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+}
+/* The label swaps to "Copiado ✓" on click. Without a reserved width the button
+   shrinks, the bar stops wrapping, and the whole report jumps up a line — a
+   layout shift caused by our own success state. min-width holds the widest
+   label, so the swap only changes colour and text. */
+.dg-copy {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--dg-ink);
+  color: var(--dg-on-ink);
+  border: 0;
+  padding: 10px 20px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13.5rem;
+}
+.dg-copy:hover {
+  opacity: 0.85;
+}
+.dg-copy[data-done] {
+  background: var(--dg-brand);
+  color: var(--dg-brand-fg);
+}
+.dg-agent-link {
+  font-size: 15px;
+  color: var(--dg-brand-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 1px solid currentColor;
 }
 
-/* Specular glare that tracks the pointer. */
-.holo-glare {
-  background: radial-gradient(
-    circle at var(--mx) var(--my),
-    rgba(255, 255, 255, 0.75),
-    rgba(255, 255, 255, 0) 42%
-  );
-  mix-blend-mode: soft-light;
-  opacity: calc(var(--active) * 0.9);
-  transition: opacity 320ms ease;
+.dg-bucket {
+  margin-top: 44px;
 }
-
-/* ── Cover: the index panel ───────────────────────────────────────────────
-   The right half of the cover card. It used to be a dark lacquered chamber —
-   deep forest, lime bloom, measurement grid — which read as a second surface
-   glued onto the paper one, cast the visitor's own screenshot green, and forced
-   every foil layer to be tuned twice (a light-coloured blend over #07401a can
-   only wash it out). It is now the same paper as the left page, lifted a shade
-   and hairlined, so the card is one sheet with two columns. */
-.deco-chamber {
-  background: #ffffff;
-  border: 1px solid rgba(40, 37, 36, 0.06);
-  box-shadow: 0 1px 2px rgba(40, 37, 36, 0.03);
+.dg-bucket h2,
+.dg-shots h2,
+.dg-areas h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--dg-fg-2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
-/* The chamber's browser preview earns its place only when the card is both wide
-   and tall enough to show more than the browser chrome; otherwise the chamber is
-   the macro-theme breakdown and the button alone. */
-.deco-chamber-preview {
+.dg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+.dg-bucket h2 .dg-bad {
+  color: var(--dg-bad-dot);
+}
+.dg-bucket h2 .dg-warn {
+  color: var(--dg-warn-dot);
+}
+.dg-bucket h2 .dg-mid {
+  color: var(--dg-mid-dot);
+}
+.dg-fold .dg-good {
+  color: var(--dg-good-dot);
+}
+.dg-fold .dg-none {
+  color: var(--dg-muted);
+}
+.dg-count {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.dg-rows {
+  margin-top: 14px;
+  background: var(--dg-panel);
+  border: 1px solid var(--dg-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.dg-row {
+  border-top: 1px solid var(--dg-hair);
+  scroll-margin-top: 24px;
+}
+.dg-row:first-child {
+  border-top: 0;
+}
+.dg-row-head {
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 17px 20px;
+  list-style: none;
+  transition: background 0.15s;
+}
+.dg-row-head::-webkit-details-marker {
   display: none;
 }
-@media (min-width: 1024px) and (min-height: 800px) {
-  .deco-chamber-preview {
-    display: block;
-    /* The browser window is deliberately taller than the space it gets — it
-       bleeds down behind the index. Dissolve that edge instead of slicing it.
-       A plain 2-stop linear mask reads as a visible band on photographic
-       content: alpha and perceived opacity aren't the same curve, so a
-       "linear" fade looks like it lingers then snaps. Eased stops (the
-       standard easing-gradient curve, https://larsenwork.com/easing-gradients)
-       approximate an ease-out instead, over a taller 128px zone. */
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      #000 calc(100% - 128px),
-      rgba(0, 0, 0, 0.738) calc(100% - 90px),
-      rgba(0, 0, 0, 0.541) calc(100% - 68px),
-      rgba(0, 0, 0, 0.382) calc(100% - 51px),
-      rgba(0, 0, 0, 0.278) calc(100% - 39px),
-      rgba(0, 0, 0, 0.194) calc(100% - 30px),
-      rgba(0, 0, 0, 0.126) calc(100% - 21px),
-      rgba(0, 0, 0, 0.075) calc(100% - 15px),
-      rgba(0, 0, 0, 0.042) calc(100% - 10px),
-      rgba(0, 0, 0, 0.021) calc(100% - 6px),
-      rgba(0, 0, 0, 0.008) calc(100% - 3px),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      #000 calc(100% - 128px),
-      rgba(0, 0, 0, 0.738) calc(100% - 90px),
-      rgba(0, 0, 0, 0.541) calc(100% - 68px),
-      rgba(0, 0, 0, 0.382) calc(100% - 51px),
-      rgba(0, 0, 0, 0.278) calc(100% - 39px),
-      rgba(0, 0, 0, 0.194) calc(100% - 30px),
-      rgba(0, 0, 0, 0.126) calc(100% - 21px),
-      rgba(0, 0, 0, 0.075) calc(100% - 15px),
-      rgba(0, 0, 0, 0.042) calc(100% - 10px),
-      rgba(0, 0, 0, 0.021) calc(100% - 6px),
-      rgba(0, 0, 0, 0.008) calc(100% - 3px),
-      transparent 100%
-    );
-  }
+.dg-row-head:hover {
+  background: var(--dg-inset);
 }
-/* Wide-but-short viewports (a shallow browser window, not a phone) keep the
-   chamber `lg:flex-1` — it still stretches full height — while
-   `.deco-chamber-preview` drops out below `min-height: 800px`. With nothing
-   above the area rows and the bottom-anchored `justify-end`, the panel used
-   to leave a tall empty void above the rows instead of balancing against the
-   left column. Centering the remaining content here — the one breakpoint
-   band where the preview is truly gone but the panel is still full-height —
-   fixes that without touching the (correctly bottom-anchored) case where the
-   preview is showing. */
-@media (min-width: 1024px) and (max-height: 799px) {
-  .deco-chamber {
-    justify-content: center;
-  }
+.dg-row-head:focus-visible {
+  outline: 2px solid var(--dg-ink);
+  outline-offset: -2px;
 }
-
-/* Centering alone still sat the rows+button block noticeably higher than the
-   left column's score+headline: the left never centers as a whole, it pins
-   the identity row at the top and only centers the *remainder* below it (see
-   the spacer comment further down — that's deliberate, to keep an overflowing
-   verdict from climbing onto the domain line). So the left's true content
-   band starts ~identity's-height below the card top, while the chamber's
-   started right at the top. A `padding-top` roughly matching identity's
-   height (measured, not guessed — ~52px at this width) before centering the
-   remainder reproduces the same "fixed offset, then centered" rhythm on the
-   right, so the two columns' content bands line up. The tightest band below
-   gets a smaller version of this once the card-shrinks-to-content rule
-   further down frees up enough margin for it. */
-@media (min-width: 1024px) and (min-height: 560px) and (max-height: 799px) {
-  .deco-chamber {
-    padding-top: 48px;
-  }
+.dg-row-text {
+  flex: 1;
+  min-width: 0;
 }
-
-/* A short viewport can't hold every layer of evidence at a readable size. The
-   cover keeps what makes someone read on — the verdict, the score and the
-   chapter index — and drops the breathing room around the story block.
-   Everything left keeps its own height (`shrink-0` on the story children),
-   so nothing silently collapses to zero when the column is tight.
-
-   The ring/number/margin/padding here are sized in four bands rather than
-   left as fixed Tailwind values, because at heights the original three-band
-   version didn't cover (a laptop with every toolbar open, or a browser
-   zoomed past ~125%) the headline and the chamber's area rows measurably
-   clipped against the card edge — verified with a Playwright box-metrics
-   sweep from 380px to 1000px, not eyeballed. Each band was picked so the
-   verdict block (identity + ring row + margin + headline) still fits inside
-   the card at the SHORTEST height the band covers, the worst case for that
-   band. Below ~420px height there's no band left that both fits and stays
-   legible; that's an accepted floor. Above ~800px the ring holds its full
-   (enlarged) size, since there's always slack there.
-
-   Written as four mutually-exclusive `max-height` bands so the winner never
-   depends on stylesheet order — a `lg:` utility and a `max-height` rule have
-   the same specificity, and which one lands is otherwise down to which file
-   the bundler emitted last. */
-.deco-cover-ring {
-  width: 100px;
-  height: 100px;
+.dg-x {
+  flex: none;
+  margin-top: 1px;
+  display: inline-flex;
 }
-.deco-cover-number {
-  font-size: 2.25rem;
+.dg-x.dg-bad {
+  color: var(--dg-bad-dot);
 }
-@media (min-width: 1024px) and (min-height: 800px) {
-  .deco-cover-ring {
-    width: 190px;
-    height: 190px;
-  }
-  .deco-cover-number {
-    font-size: 4.25rem;
-  }
-  .deco-cover-verdict {
-    margin-top: 1.75rem;
-  }
-  .deco-cover-story {
-    padding-top: 1.75rem;
-    padding-bottom: 1.75rem;
-  }
+.dg-x.dg-warn {
+  color: var(--dg-warn-dot);
 }
-@media (min-width: 1024px) and (min-height: 700px) and (max-height: 799px) {
-  .deco-cover-ring {
-    width: 128px;
-    height: 128px;
-  }
-  .deco-cover-number {
-    font-size: 2.75rem;
-  }
-  .deco-cover-verdict {
-    margin-top: 1.5rem;
-  }
-  .deco-cover-story {
-    padding-top: 1.5rem;
-    padding-bottom: 1.5rem;
-  }
+.dg-x.dg-mid {
+  color: var(--dg-mid-dot);
 }
-
-/* Below ~700px the card is genuinely cramped (a 1024x660 window, a laptop with
-   every toolbar open). One more step down rather than letting the foot of the
-   column clip. */
-@media (min-width: 1024px) and (min-height: 560px) and (max-height: 699px) {
-  .deco-cover-ring {
-    width: 92px;
-    height: 92px;
-  }
-  .deco-cover-number {
-    font-size: 2.05rem;
-  }
-  .deco-cover-verdict {
-    margin-top: 0.875rem;
-  }
-  .deco-cover-story {
-    padding-top: 0.875rem;
-    padding-bottom: 0.625rem;
-  }
+.dg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
-/* A browser zoomed past ~125–150% on a normal laptop screen lands here. */
-@media (min-width: 1024px) and (max-height: 559px) {
-  .deco-cover-ring {
-    width: 68px;
-    height: 68px;
-  }
-  .deco-cover-number {
-    font-size: 1.6rem;
-  }
-  .deco-cover-verdict {
-    margin-top: 0.5rem;
-  }
-  .deco-cover-story {
-    padding-top: 0.5rem;
-    padding-bottom: 0.375rem;
-  }
-  .deco-chamber-blur {
-    display: none;
-  }
-  .deco-chamber-content {
-    gap: 0.5rem;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-  }
-  .deco-cover-cta {
-    height: 2rem;
-  }
-  /* Same rhythm-matching as the band above, at a smaller offset: the card
-     shrinking to its content (below) freed up enough overflow margin here
-     to afford it, verified with the same measurement rig. */
-  .deco-chamber {
-    padding-top: 16px;
-  }
+.dg-row h3 {
+  font-size: 17px;
+  font-weight: 550;
+  line-height: 1.4;
 }
-
-/* These were tuned tight back when the chamber had to assume it might get no
-   slack at all below `min-height:800px`. It always gets real slack now — the
-   card has a `min-height` floor (below) instead of shrinking arbitrarily
-   small — so rows this cramped were leaving the row block sitting in a
-   card with tens of px of headroom to spare, looking pinched for no reason.
-   Loosened back up, checked against the measured margin at each band's
-   shortest height so this still can't reintroduce clipping. */
-@media (max-height: 799px) {
-  .deco-cover-areas li {
-    padding-top: 0.875rem;
-    padding-bottom: 0.875rem;
-  }
+.dg-toggle {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  color: var(--dg-muted);
+  transition: color 0.15s;
 }
-@media (max-height: 699px) {
-  .deco-cover-areas li {
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-  }
+.dg-row-head:hover .dg-toggle {
+  color: var(--dg-fg);
 }
-@media (max-height: 559px) {
-  .deco-cover-areas li {
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
-  }
-}
-
-.deco-chamber::before {
+.dg-toggle::before,
+.dg-toggle::after {
   content: "";
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 34px 34px;
-  -webkit-mask-image: radial-gradient(
-    120% 100% at 50% 0%,
-    #000 18%,
-    transparent 74%
-  );
-  mask-image: radial-gradient(120% 100% at 50% 0%, #000 18%, transparent 74%);
+  left: 50%;
+  top: 50%;
+  background: currentColor;
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
 }
-
-/* Only the small/short layouts scroll the breakdown; fade the last row there
-   so the overflow is legible as "there's more". Above `lg` it isn't clipped. */
-@media (max-width: 1023px) {
-  .deco-cover-areas {
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      #000 calc(100% - 18px),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      #000 calc(100% - 18px),
-      transparent 100%
-    );
-  }
+.dg-toggle::before {
+  width: 11px;
+  height: 1.5px;
 }
-
-.deco-chamber-blur > div {
-  position: absolute;
-  inset: 0;
+.dg-toggle::after {
+  width: 1.5px;
+  height: 11px;
+  transition: transform 0.2s var(--dg-ease);
 }
-.deco-chamber-blur > div:nth-child(1) {
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 35%);
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 35%);
+.dg-row[open] .dg-toggle::after {
+  transform: translate(-50%, -50%) scaleY(0);
 }
-.deco-chamber-blur > div:nth-child(2) {
-  backdrop-filter: blur(9px);
-  -webkit-backdrop-filter: blur(9px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 35%, #000 60%);
-  mask-image: linear-gradient(to bottom, transparent 35%, #000 60%);
+.dg-chips {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 9px;
 }
-.deco-chamber-blur > div:nth-child(3) {
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 60%, #000 100%);
-  mask-image: linear-gradient(to bottom, transparent 60%, #000 100%);
+.dg-chip {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--dg-border);
+  color: var(--dg-fg-2);
+  white-space: nowrap;
 }
-
-/* Deal-in entrance — the card flips up around its vertical axis to face you
-   (a trading-card reveal), rising a touch and overshooting slightly before it
-   settles flat. The stage's perspective gives the flip its depth. */
-.holo-card {
-  opacity: 0;
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-  /* Pre-promote to a compositor layer so the opening frame of the flip doesn't
-     jank while the browser sets up the mix-blend-mode holo layers. */
-  will-change: transform, opacity;
+.dg-chip-lever {
+  color: var(--dg-brand-ink);
+  border-color: currentColor;
 }
-/* One continuous motion (no intermediate keyframes) so there's no velocity dip
-   mid-flip: the card rises up from below while it flips around to face you, with
-   a prompt start and a gentle end overshoot. Desktop runs it a touch faster. */
-.holo-card[data-enter="true"] {
-  animation: decoCardIn 820ms cubic-bezier(0.25, 0.65, 0.3, 1.07) both;
+.dg-row-body {
+  padding: 2px 20px 22px;
+  animation: dg-in 0.22s var(--dg-ease) both;
 }
-@media (min-width: 1024px) {
-  .holo-card[data-enter="true"] {
-    animation-duration: 620ms;
-  }
-}
-@keyframes decoCardIn {
-  0% {
+@keyframes dg-in {
+  from {
     opacity: 0;
-    transform: translateY(72px) scale(0.9) rotateY(-82deg);
+    transform: translateY(-3px);
   }
-  100% {
+  to {
     opacity: 1;
-    transform: translateY(0) scale(1) rotateY(0deg);
+    transform: none;
   }
 }
+.dg-part {
+  margin-top: 18px;
+  max-width: 64ch;
+}
+.dg-part h4 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dg-muted);
+  margin-bottom: 7px;
+}
+.dg-body-p {
+  font-size: 16.5px;
+  color: var(--dg-fg);
+  text-wrap: pretty;
+}
+.dg-ev {
+  font-size: 14px;
+  color: var(--dg-fg-2);
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.6;
+  background: var(--dg-inset);
+  border: 1px solid var(--dg-hair);
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+.dg-part .dg-meta {
+  margin-top: 7px;
+}
+.dg-tasks {
+  list-style: decimal;
+  margin: 0 0 0 20px;
+  display: grid;
+  gap: 9px;
+  font-size: 16.5px;
+  color: var(--dg-fg);
+}
+.dg-actions {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.dg-fix {
+  display: inline-flex;
+  align-items: center;
+  background: var(--dg-brand);
+  color: var(--dg-brand-fg);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter 0.15s;
+}
+.dg-fix:hover {
+  filter: brightness(1.04);
+}
+.dg-fix-note {
+  font-size: 14px;
+  color: var(--dg-muted);
+  max-width: 44ch;
+}
+.dg-part .dg-meta a {
+  color: var(--dg-muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.dg-part .dg-meta a:hover {
+  color: var(--dg-fg);
+  border-bottom-color: currentColor;
+}
 
-/* One-shot diagonal light sweep across the whole card on entrance. */
-.holo-sweep-bar {
+.dg-shots {
+  margin-top: 48px;
+}
+.dg-shots .dg-lede {
+  margin-top: 10px;
+}
+.dg-shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+  align-items: start;
+}
+.dg-shot {
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: zoom-in;
+  background: var(--dg-panel);
+  border: 1px solid var(--dg-border);
+  border-radius: 14px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.15s,
+    transform 0.2s var(--dg-ease);
+}
+.dg-shot:hover {
+  border-color: var(--dg-muted);
+  transform: translateY(-2px);
+}
+.dg-shot img {
+  display: block;
+  width: 100%;
+  height: 158px;
+  object-fit: cover;
+  object-position: top;
+}
+.dg-shot-mobile img {
+  height: 240px;
+}
+.dg-shot-cap {
+  display: block;
+  padding: 10px 13px;
+  font-size: 14px;
+  color: var(--dg-fg-2);
+}
+.dg-box {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: oklch(0.16 0.004 60 / 0.84);
+  animation: dg-fade 0.18s var(--dg-ease) both;
+}
+@keyframes dg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.dg-box-bg {
   position: absolute;
-  inset: -20% -40%;
-  background: linear-gradient(
-    100deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.65) 48%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0.65) 52%,
-    transparent 70%
-  );
-  mix-blend-mode: overlay;
-  opacity: 0;
-  transform: translateX(-120%);
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: zoom-out;
 }
-.holo-card[data-enter="true"] .holo-sweep-bar {
-  animation: decoSweep 900ms ease-out 460ms both;
+.dg-box figure {
+  position: relative;
+  max-width: 1080px;
+  max-height: 100%;
+  overflow: auto;
+  border-radius: 14px;
+  background: var(--dg-panel);
+  border: 1px solid var(--dg-border);
 }
-@keyframes decoSweep {
-  0% {
-    opacity: 0;
-    transform: translateX(-120%) skewX(-14deg);
-  }
-  35% {
-    opacity: 0.85;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(120%) skewX(-14deg);
-  }
+.dg-box img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.dg-box figcaption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+  font-size: 14px;
+  color: var(--dg-fg-2);
+}
+.dg-box-close {
+  margin-left: auto;
+  color: var(--dg-fg);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
 }
 
-/* Touch devices can't hover, so keep the foil alive with a slow idle drift. */
-@media (hover: none) {
-  .holo-foil {
-    opacity: 0.22;
-    animation: decoFoilIdle 7s ease-in-out infinite;
-  }
+.dg-areas {
+  margin-top: 48px;
 }
-@keyframes decoFoilIdle {
-  0%,
-  100% {
-    background-position: 18% 30%;
+.dg-area-list {
+  margin-top: 14px;
+  background: var(--dg-panel);
+  border: 1px solid var(--dg-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.dg-area {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(90px, 200px) 40px;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--dg-hair);
+  font-size: 15px;
+}
+.dg-area:first-child {
+  border-top: 0;
+}
+.dg-area-name {
+  font-weight: 550;
+}
+.dg-area-score {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dg-area-meta {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: var(--dg-muted);
+  margin-top: -4px;
+}
+.dg-bar {
+  display: block;
+  height: 5px;
+  background: var(--dg-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.dg-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.dg-bg-good {
+  background: var(--dg-good-dot);
+}
+.dg-bg-warn {
+  background: var(--dg-warn-dot);
+}
+.dg-bg-bad {
+  background: var(--dg-bad-dot);
+}
+.dg-bg-none {
+  background: transparent;
+}
+
+.dg-coverage {
+  margin-top: 48px;
+  display: grid;
+  gap: 10px;
+}
+.dg-fold {
+  background: var(--dg-panel);
+  border: 1px solid var(--dg-border);
+  border-radius: 16px;
+  padding: 16px 20px;
+}
+.dg-fold summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+}
+.dg-fold summary::-webkit-details-marker {
+  display: none;
+}
+.dg-list {
+  list-style: disc;
+  margin: 12px 0 0 20px;
+  display: grid;
+  gap: 7px;
+  font-size: 15px;
+  color: var(--dg-fg-2);
+}
+.dg-blocked {
+  margin-top: 16px;
+  font-size: 15px;
+}
+.dg-fold > .dg-meta {
+  margin-top: 10px;
+}
+
+.dg-cta {
+  margin-top: 48px;
+  border-top: 1px solid var(--dg-border);
+  padding-top: 36px;
+}
+.dg-cta h2 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--dg-fg);
+}
+.dg-cta p {
+  color: var(--dg-fg-2);
+  max-width: 60ch;
+  margin: 10px 0 20px;
+  font-size: 16.5px;
+}
+.dg-cta a {
+  display: inline-block;
+  background: var(--dg-brand);
+  color: var(--dg-brand-fg);
+  font-weight: 600;
+  padding: 12px 24px;
+  border-radius: 999px;
+  text-decoration: none;
+}
+.dg-foot {
+  margin-top: 40px;
+  color: var(--dg-muted);
+  font-size: 14px;
+  text-wrap: pretty;
+}
+
+@media (max-width: 640px) {
+  .dg {
+    padding: 8px 18px 56px;
   }
-  50% {
-    background-position: 82% 74%;
+  .dg-head h1 {
+    font-size: 24px;
+  }
+  .dg-row-head,
+  .dg-row-body,
+  .dg-area {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .dg-area {
+    grid-template-columns: 1fr 40px;
+  }
+  .dg-area .dg-bar {
+    grid-column: 1 / -1;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .holo-card,
-  .holo-card[data-enter="true"] {
-    opacity: 1;
-    animation: none;
-  }
-  .holo-tilt {
-    transition: none;
-  }
-  .holo-card[data-enter="true"] .holo-sweep-bar {
-    animation: none;
-    opacity: 0;
-  }
-  .holo-foil {
-    animation: none;
+  .dg *,
+  .dg *::before,
+  .dg *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-/* Below the preview's threshold, the card was still stretching to the full
-   slide height via this `h-full` chain — the centering/padding bands above
-   only repositioned the leftover space, they never reclaimed it. A card that
-   shrinks to its content here instead lets `.holo-stage`'s own
-   `items-center justify-center` absorb the extra as margin OUTSIDE the card,
-   which reads as "a smaller card, well-proportioned" instead of "a big card
-   with a hole in it". Verified with the same Playwright measurement rig used
-   above: card height at a 1400×590 viewport drops from ~353px (mostly empty)
-   to ~285px (snug to content), with no new overflow down to 420px.
-
-   Unbounded, that shrink went too far the other way: at the card's 1120px
-   max-width, ~200–285px of height is a 4–5.6:1 slab, far flatter than the
-   ~2:1 the card reads as everywhere else. `min-height` puts a floor under
-   the shrink — the card still gives back most of the empty space, just not
-   all of it — without touching the overflow math above, since more height
-   than content needs can't reintroduce clipping.
-
-   The floor is in `svh`, not a flat px, because a flat floor doesn't know
-   about the ~237px of header+footer chrome outside the card: at a fixed
-   420px it would ask for more height than a 420px-tall *viewport* even has
-   left to give, pushing the card into the chrome instead of just being
-   less-thin. Scaling with viewport height keeps the floor a fraction of
-   what's actually available at every height in this band, not just the
-   tallest one. */
-@media (max-height: 799px) {
-  .holo-card,
-  .holo-tilt {
-    height: auto;
-    min-height: min(380px, 58svh);
-  }
+.dg-page {
+  min-height: 100vh;
+  background: #fff;
+}
+.dark .dg-page {
+  background: oklch(0.178 0.003 67.7);
+}
+.dg-share {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  border: 1px solid var(--dg-border);
+  background: var(--dg-panel);
+  color: var(--dg-fg-2);
+  border-radius: 999px;
+  padding: 7px 16px;
+  cursor: pointer;
+  flex: none;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.dg-share:hover {
+  color: var(--dg-fg);
+  border-color: var(--dg-muted);
 }

@@ -90,28 +90,52 @@ test("a Studio session unlocks the report API", async ({ playwright }) => {
   await authenticated.dispose();
 });
 
-test("an expired report session returns to the inline login", async ({
+test("an anonymous visitor reads a published report in full", async ({
   page,
 }) => {
-  await signUpViaApi(page.context().request);
-  await page.route("**/api/_reports/site/**", (route) =>
-    route.fulfill({
-      status: 401,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "Authentication required" }),
-    }),
+  await page.goto("/report/published.example#check-SEC-002");
+
+  await expect(
+    page.getByRole("heading", { name: "Published Example" }),
+  ).toBeVisible();
+  // Every bucket and every finding, with no session and no login card.
+  await expect(
+    page.getByRole("heading", { name: /Critical — fix now/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Important/ })).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Access your report" }),
+  ).toHaveCount(0);
+  // The deep link opens its finding.
+  await expect(
+    page.getByText("No Strict-Transport-Security header"),
+  ).toBeVisible();
+
+  await page.getByText("LCP within target").click();
+  const fix = page.getByRole("link", { name: "Fix automatically" });
+  await expect(fix).toHaveAttribute("href", /fix=PERF-001/);
+  await expect(page.getByRole("link", { name: "Open .md" })).toHaveAttribute(
+    "href",
+    "/report/published.example.md",
   );
+});
 
-  await page.goto("/report/session-expired.example");
+test("the report is readable as Markdown without a session", async ({
+  playwright,
+}) => {
+  const anonymous = await newApiContext(playwright);
 
-  const dialog = page.getByRole("dialog", { name: "Access your report" });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Already received by")).toBeVisible();
+  const published = await anonymous.get("/report/published.example.md");
+  expect(published.status()).toBe(200);
+  expect(published.headers()["content-type"]).toContain("text/markdown");
+  expect(await published.text()).toContain("LCP within target");
 
-  const preview = page.locator('div[aria-hidden="true"]').filter({
-    hasText: "A complete view of your store and where to grow first.",
-  });
-  await expect(preview).toHaveCSS("filter", "blur(9px)");
+  const missing = await anonymous.get(
+    `/report/never-scanned-${crypto.randomUUID()}.example.md`,
+  );
+  expect(missing.status()).toBe(404);
+
+  await anonymous.dispose();
 });
 
 test("a failed initial read never triggers a scan", async ({ page }) => {

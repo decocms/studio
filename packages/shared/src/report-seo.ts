@@ -53,19 +53,18 @@ export function reportShareCopy(opts: {
   brand: string;
   domain: string;
   score?: number | null;
-  verdict?: string | null;
 }): { title: string; description: string } {
-  const { brand, domain, score, verdict } = opts;
+  const { brand, domain, score } = opts;
 
   const title =
     typeof score === "number"
       ? `${brand} commerce report — ${Math.round(score)}/100 · decocms`
       : `${brand} commerce report · decocms`;
 
-  const tail = `See the full ${brand} scorecard — SEO, performance, conversion & AEO signals scored by decocms.`;
-  const description = verdict?.trim()
-    ? clampText(`${verdict.trim().replace(/\s+/g, " ")} — ${tail}`, 200)
-    : clampText(`How does ${domain} really perform? ${tail}`, 200);
+  const description = clampText(
+    `How does ${domain} really perform? See the full ${brand} scorecard — SEO, performance, conversion & AEO signals scored by decocms.`,
+    200,
+  );
 
   return { title, description };
 }

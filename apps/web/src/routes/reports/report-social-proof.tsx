@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { DECK } from "./templates/tokens";
+import { DECK } from "./tokens";
 import { useT } from "@/i18n/use-t.ts";
 
 // Intrinsic pixel dimensions keep SVGs with preserveAspectRatio="none" from
