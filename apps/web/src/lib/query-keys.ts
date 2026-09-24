@@ -214,14 +214,6 @@ export const KEYS = {
   optimisticProjectSidebarViews: (orgId: string, virtualMcpId: string) =>
     ["virtual-mcp", "optimistic-sidebar-views", orgId, virtualMcpId] as const,
 
-  githubBranches: (
-    orgId: string,
-    orgSlug: string,
-    connectionId: string | null | undefined,
-    owner: string,
-    repo: string,
-  ) => ["github-branches", orgId, orgSlug, connectionId, owner, repo] as const,
-
   /**
    * The branch's change request with its CI runs, review state and comments —
    * ONE key for all four, so those hooks share a single request (see
@@ -331,13 +323,6 @@ export const KEYS = {
   projectSearch: (userId: string, term: string) =>
     ["project-search", userId, term] as const,
 
-  // Home tile-board layout (positions/sizes/hidden), KV-backed per org.
-  boardLayout: (orgSlug: string) => ["board-layout", orgSlug] as const,
-
-  // Prompts exposed by an agent's gateway (drawer's prompt list).
-  agentPrompts: (orgId: string, agentId: string) =>
-    ["agent-prompts", orgId, agentId] as const,
-
   // Tool call results (generic caching for MCP tool calls)
   // scope is required - scopes the cache (connectionId for connection-scoped, locator for org/project-scoped)
   toolCall: (scope: string, toolName: string, paramsKey: string) =>
@@ -441,8 +426,6 @@ export const KEYS = {
   // Thread queries (scoped by locator)
   threadsInfinite: (locator: string, paramsKey: string) =>
     ["threads", "list-infinite", locator, paramsKey] as const,
-  overviewThreads: (locator: string) =>
-    ["threads", "overview", locator] as const,
   threadMessages: (locator: string, threadId: string) =>
     ["threads", "messages", locator, threadId] as const,
   threadOutputs: (threadId: string) => ["thread-outputs", threadId] as const,
@@ -809,22 +792,6 @@ export const KEYS = {
   // Native-only coding-agent availability; process-wide, not org-scoped.
   localAgentCapabilities: () => ["local-agent-capabilities"] as const,
 
-  // GitHub integration
-  githubUserOrgs: (orgId: string, connectionId: string) =>
-    ["github-user-orgs", orgId, connectionId] as const,
-  githubOrgRepos: (
-    orgId: string,
-    connectionId: string,
-    installationLogin: string,
-    query: string,
-  ) =>
-    [
-      "github-org-repos",
-      orgId,
-      connectionId,
-      installationLogin,
-      query,
-    ] as const,
   // Desktop app (Tauri) only — the Keychain auth-status gate read by
   // `apps/web/src/desktop/use-desktop-auth.ts`. Lives here because
   // `plugins/enforce-query-key-constants.ts` requires every query key to be a
