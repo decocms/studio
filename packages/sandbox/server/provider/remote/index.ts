@@ -8,6 +8,10 @@
  */
 
 import type { z } from "zod";
+import {
+  type SandboxImage,
+  SandboxImageSchema,
+} from "@decocms/shared/git-providers";
 import type {
   Daemon,
   EnsureRequest,
@@ -18,6 +22,7 @@ import type {
 import {
   PathCapacity,
   PathEvents,
+  PathImages,
   PathLifetime,
   PathSandbox,
   PathSandboxes,
@@ -48,6 +53,7 @@ import {
   drainingResponseSchema,
   ensureResponseSchema,
   errorResponseSchema,
+  imagesResponseSchema,
   phaseSchema,
   statusResponseSchema,
   tenantPoolsPushResponseSchema,
@@ -437,6 +443,25 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
     }
     this.capacity = { value, at: Date.now() };
     return value;
+  }
+
+  /**
+   * The variants any available runtime serves, as one list: Studio stores an
+   * image name on the repository and never picks the runtime. Names a
+   * repository cannot hold are dropped rather than offered.
+   */
+  async listSandboxImages(): Promise<SandboxImage[]> {
+    const res = await this.request(PathImages);
+    if (!res.ok) throw await this.failure(res, "images");
+    const { runtimes } = await this.parse(res, imagesResponseSchema, "images");
+    const names = new Set<SandboxImage>();
+    for (const { images } of runtimes) {
+      for (const { name } of images) {
+        const parsed = SandboxImageSchema.safeParse(name);
+        if (parsed.success && parsed.data !== "default") names.add(parsed.data);
+      }
+    }
+    return [...names].sort();
   }
 
   /**

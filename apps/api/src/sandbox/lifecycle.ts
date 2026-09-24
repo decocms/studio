@@ -5,6 +5,7 @@ import type {
   ClaimPhase,
   HostedSandboxProvider,
 } from "@decocms/sandbox/provider";
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
@@ -143,6 +144,14 @@ export function getAgentSandboxProvider(
     );
   }
   return resolveProvider();
+}
+
+/** Image variants a repository can pick; none while hosted sandboxes are off. */
+export async function listSandboxImages(
+  ctx: StudioContext,
+): Promise<SandboxImage[]> {
+  if (!getSettings().agentSandboxEnabled) return [];
+  return (await getAgentSandboxProvider(ctx)).listSandboxImages();
 }
 
 /**

@@ -1,3 +1,4 @@
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import type { ClaimPhase } from "./lifecycle-types";
 import type {
   EnsureOptions,
@@ -21,6 +22,8 @@ export interface HostedSandboxProvider {
     signal?: AbortSignal,
   ): AsyncGenerator<ClaimPhase, void, unknown>;
   hasSchedulableCapacity(): Promise<boolean>;
+  /** Image variants a repository can pick, besides `default`. */
+  listSandboxImages(): Promise<SandboxImage[]>;
   getPreviewUrl(handle: string): Promise<string | null>;
   proxyDaemonRequest(
     handle: string,

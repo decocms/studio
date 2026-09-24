@@ -321,7 +321,6 @@ export const settings = {
   "settings.repositories.anonymousClone": "Clone anônimo",
   "settings.repositories.sandboxImageLabel": "Imagem do sandbox",
   "settings.repositories.sandboxImageDefault": "Imagem padrão",
-  "settings.repositories.sandboxImageAndroid": "Emulador Android",
   "settings.repositories.sandboxImageError":
     "Não foi possível alterar a imagem do sandbox",
   "settings.repositories.addDialogTitle": "Adicionar repositório",

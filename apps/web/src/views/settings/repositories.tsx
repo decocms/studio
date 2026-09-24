@@ -63,6 +63,7 @@ import {
   useGitAccounts,
   useGitProviderCapabilities,
   useRepositories,
+  useSandboxImages,
 } from "@/hooks/use-git-providers";
 import { useT } from "@/i18n/use-t.ts";
 import { errorMessage } from "@/lib/error-message";
@@ -261,13 +262,20 @@ function AccountRow({
  * Which image this repo's sandboxes boot from. Changing it affects the NEXT
  * sandbox: a running one keeps the image it was claimed with, because a
  * SandboxClaim names its template once and the pod cannot be re-imaged.
+ *
+ * Hidden when the cluster offers no variants, unless the repository already
+ * names one, which must stay visible so it can be cleared.
  */
 function SandboxImageSelect({ repository }: { repository: Repository }) {
   const t = useT();
   const update = useUpdateRepository();
+  const images = useSandboxImages().data ?? [];
+  const current = repository.sandboxImage;
+  const unlisted = current !== "default" && !images.includes(current);
+  if (images.length === 0 && !unlisted) return null;
   return (
     <Select
-      value={repository.sandboxImage}
+      value={current}
       disabled={update.isPending}
       onValueChange={(value) =>
         update.mutate(
@@ -294,17 +302,16 @@ function SandboxImageSelect({ repository }: { repository: Repository }) {
         <SelectItem value="default" className="text-xs">
           {t("settings.repositories.sandboxImageDefault")}
         </SelectItem>
-        <SelectItem value="android" className="text-xs">
-          {t("settings.repositories.sandboxImageAndroid")}
-        </SelectItem>
-        {/* A variant set through REPOSITORY_UPDATE that this list doesn't
-            name still has to show as the current value. */}
-        {repository.sandboxImage !== "default" &&
-          repository.sandboxImage !== "android" && (
-            <SelectItem value={repository.sandboxImage} className="text-xs">
-              {repository.sandboxImage}
-            </SelectItem>
-          )}
+        {images.map((image) => (
+          <SelectItem key={image} value={image} className="text-xs">
+            {image}
+          </SelectItem>
+        ))}
+        {unlisted && (
+          <SelectItem value={current} className="text-xs">
+            {current}
+          </SelectItem>
+        )}
       </SelectContent>
     </Select>
   );
