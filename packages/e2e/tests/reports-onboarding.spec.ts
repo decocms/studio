@@ -269,12 +269,12 @@ test.describe("Commerce onboarding route isolation", () => {
 
     // After site setup the flow hands off to the org: it redirects off
     // /reports-onboarding to the report route, where the blocking connections
-    // modal (with the "View diagnostic" CTA) opens over the report.
+    // modal (with the "View Deco Score" CTA) opens over the report.
     await page.waitForURL((url) => url.pathname !== "/reports-onboarding", {
       timeout: 20_000,
     });
     await expect(
-      page.getByRole("button", { name: "View diagnostic" }),
+      page.getByRole("button", { name: "View Deco Score" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -297,7 +297,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/reports-onboarding?siteUrl=https://example.com/path");
 
     await expect(
-      page.getByRole("button", { name: "View diagnostic" }),
+      page.getByRole("button", { name: "View Deco Score" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -321,7 +321,7 @@ test.describe("Commerce onboarding route isolation", () => {
       // assert only the invariant path suffix.
       connection_url: expect.stringMatching(/\/api\/v2\/mcp$/),
       connection_type: "HTTP",
-      title: "Store Report",
+      title: "Deco Score",
     });
     // Setup must mint and persist a client token (stored encrypted at rest) —
     // a non-null token guards against the old stub silently creating a
@@ -342,7 +342,7 @@ test.describe("Commerce onboarding route isolation", () => {
     expect(virtual.rows[0]).toMatchObject({
       connection_url: `virtual://${virtualMcpId}`,
       connection_type: "VIRTUAL",
-      title: "Report Agent",
+      title: "Deco Score Agent",
       pinned: true,
     });
   });
@@ -358,7 +358,7 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await page.goto("/reports-onboarding?siteUrl=example.com");
     await expect(
-      page.getByRole("button", { name: "View diagnostic" }),
+      page.getByRole("button", { name: "View Deco Score" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -367,14 +367,14 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await expect(page.getByLabel("Site URL")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "View diagnostic" }),
+      page.getByRole("button", { name: "View Deco Score" }),
     ).toBeVisible({
       timeout: 20_000,
     });
     // The old "Companion MCPs" placeholder was replaced by the companion
     // section, whose header is hidden when no companion requirements resolve
     // (the case in this e2e env). The ready view is already asserted via the
-    // "View diagnostic" CTA above; here we only guard against leaking raw
+    // "View Deco Score" CTA above; here we only guard against leaking raw
     // connection titles into the onboarding view.
     await expect(page.getByText("Reports MCP")).toHaveCount(0);
     await expect(page.getByText("Reports agent")).toHaveCount(0);
@@ -400,7 +400,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.goto("/reports-onboarding?siteUrl=example.com");
 
     const loading = page.getByText(
-      "Connect your tools to see the full diagnostic",
+      "Connect your tools to see the full Deco Score",
     );
     const meetingHeading = page.getByRole("heading", {
       name: "Need help? Talk to us",
@@ -414,7 +414,7 @@ test.describe("Commerce onboarding route isolation", () => {
       timeout: 1_000,
     });
     await expect(
-      page.getByRole("button", { name: "View diagnostic" }),
+      page.getByRole("button", { name: "View Deco Score" }),
     ).toBeVisible({ timeout: 20_000 });
   });
 
@@ -439,7 +439,7 @@ test.describe("Commerce onboarding route isolation", () => {
     await page.getByLabel("Site URL").fill("example.com");
     await page.getByRole("button", { name: "Continue" }).click();
     await expect(
-      page.getByRole("button", { name: "View diagnostic" }),
+      page.getByRole("button", { name: "View Deco Score" }),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -458,9 +458,9 @@ test.describe("Commerce onboarding route isolation", () => {
 
     // The connect step is a blocking modal over the org: it must NOT be
     // dismissable. Pressing Escape leaves it open; the only way forward is the
-    // "View diagnostic" CTA.
+    // "View Deco Score" CTA.
     const reportCta = page.getByRole("button", {
-      name: "View diagnostic",
+      name: "View Deco Score",
     });
     await expect(reportCta).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("Escape");
@@ -693,6 +693,6 @@ test.describe("Commerce onboarding route isolation", () => {
 
     await expect(page).toHaveURL((url) => url.pathname === "/onboarding");
     await expect(page.getByLabel("Site URL")).toHaveCount(0);
-    await expect(page.getByText("Reports")).toHaveCount(0);
+    await expect(page.getByText("Deco Score")).toHaveCount(0);
   });
 });

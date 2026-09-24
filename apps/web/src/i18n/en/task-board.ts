@@ -151,7 +151,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.noTagsFound": "No tags yet. Type a name to create one.",
   "taskBoard.taskDialog.assignButton": "Assign",
   "taskBoard.taskDialog.createdByLabel": "Created by",
-  "taskBoard.taskDialog.createdBySystemLabel": "Report",
+  "taskBoard.taskDialog.createdBySystemLabel": "Deco Score",
   "taskBoard.taskDialog.unknownCreatorLabel": "Unknown",
   "taskBoard.taskDialog.projectButton": "Select project",
   "taskBoard.taskDialog.noProject": "No project",
@@ -231,7 +231,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.projectLabel": "Project",
   "taskBoard.taskDialog.reviewsLabel": "Reviews",
   "taskBoard.taskDialog.reportsContentLocked":
-    "Generated from your report — title, description, and priority are managed automatically",
+    "Generated from your Deco Score — title, description, and priority are managed automatically",
   "taskBoard.taskDialog.savingLabel": "Saving...",
   "taskBoard.taskDialog.showMore": "Show more",
   "taskBoard.taskDialog.timelineFoldMore": "{count} more updates",
@@ -308,7 +308,7 @@ export const taskBoard = {
   "taskBoard.rerun.confirm": "Re-run",
   "taskBoard.subscriptionPaywall.trialTitle": "Subscribe to keep auto-fixing",
   "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
-    "Continuous monitoring of your site, catching new issues automatically",
+    "Your Deco Score kept up to date, catching new issues automatically",
   "taskBoard.subscriptionPaywall.trialBenefitAutoFix":
     "The agent fixes what it finds and opens a pull request for your review",
   "taskBoard.subscriptionPaywall.trialBenefitRuns":

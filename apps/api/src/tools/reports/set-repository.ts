@@ -184,9 +184,9 @@ async function updateReportAgentBinding(
 export const REPORTS_SET_REPOSITORY = defineTool({
   name: "REPORTS_SET_REPOSITORY",
   description:
-    "Point the organization's Reports diagnostic at one of its linked repositories, or unlink the current one. Works for GitHub, GitLab and Bitbucket.",
+    "Point the organization's Deco Score at one of its linked repositories, or unlink the current one. Works for GitHub, GitLab and Bitbucket.",
   annotations: {
-    title: "Set Reports Repository",
+    title: "Set Deco Score Repository",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

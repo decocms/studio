@@ -1,9 +1,9 @@
 import type { reports as reportsEn } from "../en/reports.ts";
 
 export const reports = {
-  "reports.authGate.accessYourReport": "Acesse seu relatório",
+  "reports.authGate.accessYourReport": "Acesse seu Deco Score",
   "reports.authGate.authSubtitle":
-    "Entre ou crie sua conta para receber o relatório por e-mail.",
+    "Entre ou crie sua conta para receber o Deco Score por e-mail.",
   "reports.authGate.codeSentTo": "Enviamos um código para {email}",
   "reports.authGate.continueWith": "Continuar com {provider}",
   "reports.authGate.divider": "ou",
@@ -33,45 +33,45 @@ export const reports = {
     "Quer receber por e-mail quando ficar pronto?",
   "reports.scanGate.anonymousSignIn": "Entrar para ser avisado",
   "reports.scanGate.errorBlocked":
-    "Este relatório não está disponível publicamente.",
+    "Este Deco Score não está disponível publicamente.",
   "reports.scanGate.errorEmpty":
-    "Escaneamos sua loja, mas o relatório ainda está sendo montado. Verifique em breve.",
+    "Escaneamos sua loja, mas o Deco Score ainda está sendo montado. Verifique em breve.",
   "reports.scanGate.errorFailed":
-    "Algo deu errado ao acessar o relatório. Tente novamente.",
+    "Algo deu errado ao abrir o Deco Score. Tente novamente.",
   "reports.scanGate.headlineEnd": "sendo preparado.",
-  "reports.scanGate.headlineStart": "Seu relatório está",
+  "reports.scanGate.headlineStart": "Seu Deco Score está",
   "reports.scanGate.notificationHelp": "Avisamos assim que ficar pronto.",
   "reports.scanGate.notificationLabel": "Enviaremos uma notificação para:",
-  "reports.scanGate.stageBuilding": "Montando seu relatório",
+  "reports.scanGate.stageBuilding": "Calculando seu Deco Score",
   "reports.scanGate.stageCollecting": "Coletando dados públicos",
   "reports.scanGate.stageInitiated": "Análise iniciada",
   "reports.scanGate.stageNow": "agora",
-  "reports.scanGate.stageReady": "Relatório pronto",
+  "reports.scanGate.stageReady": "Deco Score pronto",
   "reports.scanGate.subtitle":
     "Você pode acompanhar por aqui — leva alguns minutos.",
   "reports.scanGate.tryAnother": "Tentar outra loja",
   "reports.socialProof.alreadyReceived": "Já receberam",
   "reports.banner.storeDefault": "sua loja",
-  "reports.banner.generatingTitle": "Gerando seu diagnóstico",
-  "reports.banner.readyTitle": "Seu relatório está pronto",
+  "reports.banner.generatingTitle": "Gerando seu Deco Score",
+  "reports.banner.readyTitle": "Seu Deco Score está pronto",
   "reports.banner.generatingSubtitle":
     "Analisando {store}. Isso leva alguns minutos.",
   "reports.banner.readySubtitle": "Veja a análise completa de {store}.",
-  "reports.emptyState.title": "Nenhum relatório ainda",
+  "reports.emptyState.title": "Nenhum Deco Score ainda",
   "reports.emptyState.description":
-    "Rode um diagnóstico da sua loja para ver como ela está e o que corrigir primeiro.",
+    "Gere o Deco Score da sua loja para ver como ela está e o que corrigir primeiro.",
   "reports.emptyState.siteUrlLabel": "URL da loja",
   "reports.emptyState.siteUrlPlaceholder": "sualoja.com.br",
-  "reports.emptyState.start": "Iniciar diagnóstico",
+  "reports.emptyState.start": "Gerar Deco Score",
   "reports.emptyState.starting": "Iniciando...",
   "reports.emptyState.checkPerformance": "Performance",
   "reports.emptyState.checkSeo": "SEO",
   "reports.emptyState.checkFunnel": "Funil de conversão",
   "reports.emptyState.checkTracking": "Dados e rastreamento",
   "reports.onePager.lede":
-    "Diagnóstico público da experiência digital. Só o que qualquer visitante observa de fora.",
+    "Deco Score público. Só o que qualquer visitante observa de fora.",
   "reports.onePager.ledeScanned":
-    "Diagnóstico público da experiência digital, varredura em {date}. Só o que qualquer visitante observa de fora.",
+    "Deco Score público, varredura em {date}. Só o que qualquer visitante observa de fora.",
   "reports.onePager.statFailed": "reprovadas",
   "reports.onePager.statPassed": "aprovadas",
   "reports.onePager.statBlocked": "não medidas",
@@ -82,13 +82,13 @@ export const reports = {
   "reports.onePager.linkCopied": "Link copiado",
   "reports.onePager.agentTitle": "Para o seu agente.",
   "reports.onePager.agentText":
-    "O relatório inteiro em Markdown: achados, evidência medida e o que fazer.",
+    "O Deco Score inteiro em Markdown: achados, evidência medida e o que fazer.",
   "reports.onePager.copyPrompt": "Copiar como prompt",
   "reports.onePager.copied": "Copiado ✓",
   "reports.onePager.copyFailed": "Falhou ✕",
   "reports.onePager.openMarkdown": "Abrir .md",
   "reports.onePager.promptPrefix":
-    "Segue o diagnóstico da experiência digital de {domain}, em Markdown. Cada item é uma verificação REPROVADA, com a evidência medida. Comece pelos itens críticos: para cada um, diga o que você mudaria e onde, e pergunte o que faltar. Não invente números que não estejam no relatório.",
+    "Segue o Deco Score de {domain}, em Markdown. Cada item é uma verificação REPROVADA, com a evidência medida. Comece pelos itens críticos: para cada um, diga o que você mudaria e onde, e pergunte o que faltar. Não invente números que não estejam nele.",
   "reports.onePager.shotsTitle": "Capturas da jornada",
   "reports.onePager.shotsLede":
     "O que o navegador do nosso agente viu nas páginas amostradas, no mesmo carregamento que decidiu as verificações de acessibilidade e rastreamento.",
@@ -150,8 +150,8 @@ export const reports = {
   "reports.onePager.blockedManual": "Depende de verificação manual",
   "reports.onePager.ctaTitle": "Isto é só a parte pública.",
   "reports.onePager.ctaText":
-    "Este diagnóstico usou apenas o que qualquer visitante observa de fora. O completo conecta GA4, Search Console e a plataforma do site para medir a jornada real e dimensionar cada correção em reais.",
-  "reports.onePager.ctaButton": "Rodar o diagnóstico completo",
+    "Este Deco Score usou apenas o que qualquer visitante observa de fora. O completo conecta GA4, Search Console e a plataforma do site para medir a jornada real e dimensionar cada correção em reais.",
+  "reports.onePager.ctaButton": "Ver o Deco Score completo",
   "reports.onePager.footerGenerated": "Gerado por decocms",
   "reports.onePager.footerPublicOnly":
     "Somente dados públicos; nada foi acessado com credenciais.",

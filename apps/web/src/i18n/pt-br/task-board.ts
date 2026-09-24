@@ -158,7 +158,7 @@ export const taskBoard = {
     "Nenhuma tag ainda. Digite um nome para criar uma.",
   "taskBoard.taskDialog.assignButton": "Atribuir",
   "taskBoard.taskDialog.createdByLabel": "Criado por",
-  "taskBoard.taskDialog.createdBySystemLabel": "Relatório",
+  "taskBoard.taskDialog.createdBySystemLabel": "Deco Score",
   "taskBoard.taskDialog.unknownCreatorLabel": "Desconhecido",
   "taskBoard.taskDialog.projectButton": "Selecionar projeto",
   "taskBoard.taskDialog.noProject": "Sem projeto",
@@ -241,7 +241,7 @@ export const taskBoard = {
   "taskBoard.taskDialog.projectLabel": "Projeto",
   "taskBoard.taskDialog.reviewsLabel": "Revisões",
   "taskBoard.taskDialog.reportsContentLocked":
-    "Gerado pelo seu relatório — título, descrição e prioridade são gerenciados automaticamente",
+    "Gerado pelo seu Deco Score — título, descrição e prioridade são gerenciados automaticamente",
   "taskBoard.taskDialog.savingLabel": "Salvando...",
   "taskBoard.taskDialog.showMore": "Ver mais",
   "taskBoard.taskDialog.timelineFoldMore": "mais {count} atualizações",
@@ -318,7 +318,7 @@ export const taskBoard = {
   "taskBoard.subscriptionPaywall.trialTitle":
     "Assine para continuar com o auto-fix",
   "taskBoard.subscriptionPaywall.trialBenefitMonitoring":
-    "Monitoramento contínuo do seu site, detectando novos problemas automaticamente",
+    "Deco Score sempre atualizado, detectando novos problemas automaticamente",
   "taskBoard.subscriptionPaywall.trialBenefitAutoFix":
     "O agente corrige o que encontra e abre um pull request para sua revisão",
   "taskBoard.subscriptionPaywall.trialBenefitRuns":

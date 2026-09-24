@@ -640,8 +640,8 @@ export const settings = {
   "settings.planUsage.feature.model_choice": "Escolher o modelo",
   "settings.planUsage.feature.trialChat": "Acesso limitado ao chat",
   "settings.planUsage.feature.credits": "Créditos extras",
-  "settings.planUsage.feature.diagnostic": "Diagnóstico de commerce",
-  "settings.planUsage.feature.diagnostic_enriched": "Diagnóstico enriquecido",
+  "settings.planUsage.feature.diagnostic": "Deco Score",
+  "settings.planUsage.feature.diagnostic_enriched": "Deco Score enriquecido",
   "settings.plans.title": "Planos",
   "settings.plans.loadFailed": "Não foi possível carregar os planos.",
   "settings.plans.currentPlan": "Plano atual",
@@ -792,9 +792,9 @@ export const settings = {
   "settings.review.deliveryLanesDescription":
     "Adiciona Aprovado, Implantado e Valida\u00e7\u00e3o P\u00f3s Deploy entre Em Revis\u00e3o e Conclu\u00eddo, e faz um pull request mesclado cair em Implantado em vez de Conclu\u00eddo. Para times cujo processo de release continua depois do merge.",
   "settings.review.autoAssignReportTasksTitle":
-    "Atribuir tarefas de relat\u00f3rio ao Super Agent automaticamente",
+    "Atribuir tarefas do Deco Score ao Super Agent automaticamente",
   "settings.review.autoAssignReportTasksDescription":
-    "Tarefas criadas a partir de um relat\u00f3rio s\u00e3o delegadas ao Super Agent automaticamente, em vez de ficarem sem respons\u00e1vel.",
+    "Tarefas criadas a partir do Deco Score são delegadas ao Super Agent automaticamente, em vez de ficarem sem responsável.",
   "settings.review.updateError":
     "N\u00e3o foi poss\u00edvel atualizar a configura\u00e7\u00e3o",
   "settings.taskPrompt.title": "System prompt",

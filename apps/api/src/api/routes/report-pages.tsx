@@ -89,7 +89,7 @@ export function buildReportHead(
   // fallback for an unscanned domain — both 1200×630, so summary_large_image.
   // og:image MUST be absolute for every unfurler.
   const image = `${canonical}/og.png`;
-  const imageAlt = `${brand} commerce report by decocms`;
+  const imageAlt = `${brand} Deco Score by decocms`;
 
   return [
     `<title>${esc(title)}</title>`,
@@ -183,14 +183,14 @@ export function createReportPagesRoutes(clientDir: string | undefined): Hono {
       const markdown = await fetchPublicOnePagerMarkdown(domain, {
         signal: AbortSignal.timeout(MARKDOWN_TIMEOUT_MS),
       });
-      if (markdown === null) return c.text("Report not found", 404);
+      if (markdown === null) return c.text("Deco Score not found", 404);
       return c.body(markdown, 200, {
         "Content-Type": "text/markdown; charset=utf-8",
         "Cache-Control": "public, max-age=600, stale-while-revalidate=3600",
         "Access-Control-Allow-Origin": "*",
       });
     } catch {
-      return c.text("Report unavailable", 502);
+      return c.text("Deco Score unavailable", 502);
     }
   });
 

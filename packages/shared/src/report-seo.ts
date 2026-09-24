@@ -58,11 +58,11 @@ export function reportShareCopy(opts: {
 
   const title =
     typeof score === "number"
-      ? `${brand} commerce report — ${Math.round(score)}/100 · decocms`
-      : `${brand} commerce report · decocms`;
+      ? `${brand} Deco Score — ${Math.round(score)}/100 · decocms`
+      : `${brand} Deco Score · decocms`;
 
   const description = clampText(
-    `How does ${domain} really perform? See the full ${brand} scorecard — SEO, performance, conversion & AEO signals scored by decocms.`,
+    `How does ${domain} really perform? See the full ${brand} Deco Score — SEO, performance, conversion & AEO signals scored by decocms.`,
     200,
   );
 

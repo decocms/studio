@@ -16,7 +16,7 @@ describe("buildReportHead — dynamic report SEO", () => {
   test("title carries brand + real score", () => {
     const head = buildReportHead("nike.com", SEO);
     const title = attr(head, /<title>([^<]*)<\/title>/);
-    expect(title).toBe("Nike commerce report — 68/100 · decocms");
+    expect(title).toBe("Nike Deco Score — 68/100 · decocms");
     // og + twitter mirror the primary tags.
     expect(attr(head, /property="og:title" content="([^"]*)"/)).toBe(title);
     expect(attr(head, /name="twitter:title" content="([^"]*)"/)).toBe(title);
@@ -42,7 +42,7 @@ describe("buildReportHead — dynamic report SEO", () => {
     );
     // Domain-derived brand + generic score-less title.
     expect(attr(head, /<title>([^<]*)<\/title>/)).toBe(
-      "Nike commerce report · decocms",
+      "Nike Deco Score · decocms",
     );
   });
 

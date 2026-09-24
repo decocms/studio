@@ -20,7 +20,7 @@ test("an anonymous visitor's scan starts without a login wall", async ({
     page.getByRole("button", { name: "Sign in to get notified" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("dialog", { name: "Access your report" }),
+    page.getByRole("dialog", { name: "Access your Deco Score" }),
   ).toHaveCount(0);
 
   await expect(page).toHaveURL(/share_id=example%3Aslide%3Atest/);
@@ -104,7 +104,7 @@ test("an anonymous visitor reads a published report in full", async ({
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: /Important/ })).toBeVisible();
   await expect(
-    page.getByRole("dialog", { name: "Access your report" }),
+    page.getByRole("dialog", { name: "Access your Deco Score" }),
   ).toHaveCount(0);
   // The deep link opens its finding.
   await expect(
@@ -160,7 +160,7 @@ test("a failed initial read never triggers a scan", async ({ page }) => {
   await page.goto("/report/read-error.example");
 
   await expect(
-    page.getByRole("alert", { name: "Couldn't load the report" }),
+    page.getByRole("alert", { name: "Couldn't load the Deco Score" }),
   ).toBeVisible();
   expect(scanRequests).toBe(0);
 });
