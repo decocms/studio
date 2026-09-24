@@ -11,9 +11,9 @@ export function requireObjectStorage(ctx: StudioContext): BoundObjectStorage {
   return ctx.objectStorage;
 }
 
-export const MIN_EXPIRES_IN = 60;
+const MIN_EXPIRES_IN = 60;
 // AWS SigV4 rejects a presigned URL past this lifetime.
-export const MAX_EXPIRES_IN = 604800;
+const MAX_EXPIRES_IN = 604800;
 
 /** Clamp a caller-supplied expiresIn to a sane range, falling back when absent/invalid. */
 export function clampExpiresIn(
