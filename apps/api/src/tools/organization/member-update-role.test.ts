@@ -33,6 +33,42 @@ describe("ORGANIZATION_MEMBER_UPDATE_ROLE outputSchema", () => {
 });
 
 describe("ORGANIZATION_MEMBER_UPDATE_ROLE handler", () => {
+  it("blocks a plain member from self-promoting to admin (#3388)", async () => {
+    // Regression for #3388: a "user"-role caller must be denied regardless of memberId.
+    const updateMemberRole = mock(async () => ({}));
+    const ctx = {
+      auth: { user: { id: "user-1" } },
+      access: { check: mock(async () => {}) },
+      organization: { id: "org-1", slug: "acme", name: "Acme" },
+      db: {
+        selectFrom: () => ({
+          select: () => ({
+            where: () => ({
+              where: () => ({
+                executeTakeFirst: async () => ({ role: "user" }),
+              }),
+            }),
+          }),
+        }),
+      },
+      boundAuth: { organization: { updateMemberRole } },
+    } as unknown as Parameters<
+      typeof ORGANIZATION_MEMBER_UPDATE_ROLE.handler
+    >[1];
+
+    await expect(
+      ORGANIZATION_MEMBER_UPDATE_ROLE.handler(
+        {
+          organizationId: "org-1",
+          memberId: "own-member-id",
+          role: ["admin"],
+        },
+        ctx,
+      ),
+    ).rejects.toThrow('Insufficient privileges to assign role "admin"');
+    expect(updateMemberRole.mock.calls.length).toBe(0);
+  });
+
   it("rejects an organizationId other than the authenticated one", async () => {
     const updateMemberRole = mock(async () => ({}));
     const ctx = {
