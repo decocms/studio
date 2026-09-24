@@ -13,6 +13,13 @@ const flags: CliFlags = {
   skipMigrations: false,
 };
 
+const controller = {
+  STUDIO_SANDBOX_CONTROLLER_URL: "https://sandbox-controller.test:8443",
+  STUDIO_SANDBOX_CONTROLLER_TLS_CERT: "/etc/controller/tls.crt",
+  STUDIO_SANDBOX_CONTROLLER_TLS_KEY: "/etc/controller/tls.key",
+  STUDIO_SANDBOX_CONTROLLER_CA: "/etc/controller/ca.crt",
+};
+
 describe("resolveConfig agent sandbox availability", () => {
   it("defaults to disabled", () => {
     expect(resolveConfig(flags, {}).settings.agentSandboxEnabled).toBe(false);
@@ -20,6 +27,7 @@ describe("resolveConfig agent sandbox availability", () => {
 
   it.each(["true", "1"])("enables with %p", (value) => {
     const result = resolveConfig(flags, {
+      ...controller,
       STUDIO_AGENT_SANDBOX_ENABLED: value,
     });
 
@@ -39,23 +47,15 @@ describe("resolveConfig agent sandbox availability", () => {
 });
 
 describe("resolveConfig sandbox controller", () => {
-  const complete = {
-    STUDIO_SANDBOX_CONTROLLER_ENABLED: "true",
-    STUDIO_SANDBOX_CONTROLLER_URL: "https://sandbox-controller.test:8443",
-    STUDIO_SANDBOX_CONTROLLER_TLS_CERT: "/etc/controller/tls.crt",
-    STUDIO_SANDBOX_CONTROLLER_TLS_KEY: "/etc/controller/tls.key",
-    STUDIO_SANDBOX_CONTROLLER_CA: "/etc/controller/ca.crt",
-  };
+  const enabled = { ...controller, STUDIO_AGENT_SANDBOX_ENABLED: "true" };
 
-  it("is off by default, even with the connection settings present", () => {
+  it("is null with agent sandboxes off and no controller configured", () => {
     expect(resolveConfig(flags, {}).settings.sandboxController).toBeNull();
-    const { STUDIO_SANDBOX_CONTROLLER_ENABLED: _, ...rest } = complete;
-    expect(resolveConfig(flags, rest).settings.sandboxController).toBeNull();
   });
 
   it("resolves a complete configuration", () => {
     const result = resolveConfig(flags, {
-      ...complete,
+      ...enabled,
       STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT: "9443",
     });
     expect(result.settings.sandboxController).toEqual({
@@ -67,15 +67,33 @@ describe("resolveConfig sandbox controller", () => {
     });
   });
 
-  it("refuses to enable without the mTLS pair", () => {
+  it("is still read with agent sandboxes off, so teardown can reach it", () => {
+    expect(
+      resolveConfig(flags, controller).settings.sandboxController?.url,
+    ).toBe("https://sandbox-controller.test:8443");
+  });
+
+  it("refuses to enable agent sandboxes without a controller", () => {
+    expect(() =>
+      resolveConfig(flags, { STUDIO_AGENT_SANDBOX_ENABLED: "true" }),
+    ).toThrow(
+      "STUDIO_AGENT_SANDBOX_ENABLED needs STUDIO_SANDBOX_CONTROLLER_URL",
+    );
+  });
+
+  it("refuses a controller without the mTLS pair", () => {
     expect(() =>
       resolveConfig(flags, {
-        ...complete,
+        ...enabled,
         STUDIO_SANDBOX_CONTROLLER_TLS_KEY: "",
         STUDIO_SANDBOX_CONTROLLER_CA: undefined,
       }),
     ).toThrow(
       "STUDIO_SANDBOX_CONTROLLER_TLS_KEY, STUDIO_SANDBOX_CONTROLLER_CA",
+    );
+    const { STUDIO_SANDBOX_CONTROLLER_CA: _, ...noCa } = controller;
+    expect(() => resolveConfig(flags, noCa)).toThrow(
+      "STUDIO_SANDBOX_CONTROLLER_URL needs STUDIO_SANDBOX_CONTROLLER_CA",
     );
   });
 
@@ -84,7 +102,7 @@ describe("resolveConfig sandbox controller", () => {
     (url) => {
       expect(() =>
         resolveConfig(flags, {
-          ...complete,
+          ...enabled,
           STUDIO_SANDBOX_CONTROLLER_URL: url,
         }),
       ).toThrow("https");
@@ -94,7 +112,7 @@ describe("resolveConfig sandbox controller", () => {
   it("rejects an invalid callback port", () => {
     expect(() =>
       resolveConfig(flags, {
-        ...complete,
+        ...enabled,
         STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT: "70000",
       }),
     ).toThrow("STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT");

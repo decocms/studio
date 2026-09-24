@@ -19,7 +19,7 @@ import {
   composeSandboxRef,
   type HostedSandboxProvider,
 } from "@decocms/sandbox/provider";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type { ClaimPhase } from "@decocms/sandbox/provider";
 import { computeClaimHandle } from "../../sandbox/claim-handle";
 import {
   loadBranchThread,

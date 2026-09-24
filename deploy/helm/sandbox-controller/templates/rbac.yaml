@@ -7,8 +7,7 @@ metadata:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
 ---
 # Namespaced. variants.enabled writes templates and pools; claims.enabled adds
-# what Studio's in-process runner holds in sandbox-env's sandbox-rbac.yaml,
-# less what this runtime never calls (sandboxes, watches).
+# the claim runtime's access (it never reads sandboxes or opens watches).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

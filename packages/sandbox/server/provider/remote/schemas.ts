@@ -22,6 +22,7 @@ import type {
   PodTermination,
   StatusResponse,
   Tenant,
+  TenantPoolsPushResponse,
 } from "../../../controller-types/sandbox-api";
 
 const capabilitySchema: z.ZodType<Capability> = z.enum([
@@ -90,6 +91,9 @@ export const drainingResponseSchema: z.ZodType<DrainingResponse> = z.object({
 export const capacityResponseSchema: z.ZodType<CapacityResponse> = z.object({
   schedulable: z.boolean(),
 });
+
+export const tenantPoolsPushResponseSchema: z.ZodType<TenantPoolsPushResponse> =
+  z.object({ pools: z.array(z.string()) });
 
 const errorCodeSchema: z.ZodType<ErrorCode> = z.enum([
   "bad-request",

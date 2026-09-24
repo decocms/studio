@@ -249,9 +249,9 @@ export interface Settings {
    *  (SANDBOX_RELEASE_GRACE_MS, default 120000). Long enough that an immediate
    *  follow-up turn adopts the warm pod rather than paying a cold clone. */
   sandboxReleaseGraceMs: number;
-  /** Claims go through the sandbox controller instead of the in-process
-   *  runner (STUDIO_SANDBOX_CONTROLLER_ENABLED). Null — the default — keeps
-   *  the in-process runner. */
+  /** The sandbox controller every hosted sandbox goes through
+   *  (STUDIO_SANDBOX_CONTROLLER_*). Required with agentSandboxEnabled; null
+   *  when agent sandboxes are off and no controller is configured. */
   sandboxController: SandboxControllerSettings | null;
 
   // External service credentials (optional)

@@ -148,7 +148,7 @@ function withSecurityHeaders(res: Response): Response {
   });
 }
 
-// Sandbox preview reverse-proxy (agent-sandbox only). The base domain is parsed at
+// Sandbox preview reverse-proxy. The base domain is parsed at
 // boot from STUDIO_SANDBOX_PREVIEW_URL_PATTERN; null disables the proxy and
 // preview-host requests fall through to the normal studio routing (which 404s
 // because nothing matches). The Bun-level WS handler is registered
@@ -174,20 +174,6 @@ const previewProxyDeps = {
   // wants, so no kind check or cast is needed.
   getRunner: getOrInitRunnerForPreview,
 };
-
-// Tenant warm pools need the provider BEFORE any request: its reconciler is
-// what bootstraps the pool's pods, and the whole point is that they are warm
-// when the first user arrives. Everything else builds the provider lazily, so
-// without this a configured pool sits empty until someone happens to open a
-// sandbox. Fire-and-forget — a provider that can't be built must not stop boot.
-if (process.env.STUDIO_SANDBOX_TENANT_POOLS?.trim()) {
-  void getOrInitRunnerForPreview().catch((err: unknown) => {
-    console.warn(
-      "[lifecycle] eager sandbox provider init for tenant pools failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-  });
-}
 
 // Create the Hono app (any DBOS.registerWorkflow calls happen during this
 // import chain). Launch DBOS afterwards so the registry is sealed before

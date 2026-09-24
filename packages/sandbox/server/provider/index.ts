@@ -1,8 +1,7 @@
 /**
- * Public surface. `agent-sandbox` sits behind its own subpath export
- * (./provider/agent-sandbox) because its SDK is heavy and not every deploy
- * needs it. `local-api` remains in shared persisted/native contracts but
- * has no server-side provider implementation.
+ * Public surface. The hosted provider (`./provider/remote`) talks to the
+ * sandbox controller. `local-api` remains in shared persisted/native contracts
+ * but has no server-side provider implementation.
  */
 
 export type {
@@ -26,5 +25,6 @@ export type {
 } from "./state-store";
 export { composeSandboxRef } from "./sandbox-ref";
 export type { HostedSandboxProvider } from "./hosted";
+export type { ClaimFailureReason, ClaimPhase } from "./lifecycle-types";
 export { PREVIEW_NOT_READY_HEADER } from "./shared/preview-proxy";
 export { createSandboxFsHooks } from "./sandbox-fs-hooks";

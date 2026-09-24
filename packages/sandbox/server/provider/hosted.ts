@@ -1,4 +1,4 @@
-import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
+import type { ClaimPhase } from "./lifecycle-types";
 import type {
   EnsureOptions,
   PodTermination,
@@ -8,9 +8,8 @@ import type {
 } from "./types";
 
 /**
- * What Studio calls on a hosted sandbox provider: the in-process
- * `AgentSandboxProvider`, or `RemoteSandboxProvider` when the sandbox
- * controller owns claims.
+ * What Studio calls on a hosted sandbox provider. `RemoteSandboxProvider` is
+ * the implementation; tests substitute fakes.
  */
 export interface HostedSandboxProvider {
   ensure(id: SandboxId, opts?: EnsureOptions): Promise<Sandbox>;
@@ -32,7 +31,7 @@ export interface HostedSandboxProvider {
   resolvePreviewUpstreamUrl(handle: string): Promise<string | null>;
   proxyPreviewRequest(handle: string, request: Request): Promise<Response>;
   /** Pool names a push to `repoFullName`@`ref` made stale. */
-  markTenantPoolsDirty(repoFullName: string, ref: string): string[];
+  markTenantPoolsDirty(repoFullName: string, ref: string): Promise<string[]>;
   releaseAfter(handle: string, graceMs: number): Promise<void>;
   renewTtl(handle: string): Promise<void>;
   close(): void;

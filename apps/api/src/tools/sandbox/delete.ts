@@ -54,9 +54,8 @@ export const SANDBOX_DELETE = defineTool({
       return { success: true };
     }
 
-    const runner = await getAgentSandboxProviderForTeardown(ctx);
-
-    // Clear first so the UI returns to idle regardless of teardown outcome.
+    // Clear first so the UI returns to idle regardless of teardown outcome,
+    // including when no controller is configured to reach.
     await removeSandboxMapEntry(
       ctx.storage.virtualMcps,
       input.virtualMcpId,
@@ -65,8 +64,8 @@ export const SANDBOX_DELETE = defineTool({
       input.branch,
     );
 
-    await runner
-      .delete(entry.sandboxHandle)
+    await getAgentSandboxProviderForTeardown(ctx)
+      .then((runner) => runner.delete(entry.sandboxHandle))
       .catch((err) =>
         console.error(
           `[SANDBOX_DELETE] ${AGENT_SANDBOX_KIND} ${entry.sandboxHandle}: ${

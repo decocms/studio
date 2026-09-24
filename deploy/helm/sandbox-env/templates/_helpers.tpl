@@ -62,14 +62,6 @@ runtime switch a pod could use to disagree with the template that created it.
 {{- end }}
 
 {{/*
-Studio runner Role / RoleBinding name. Stays under 63 chars even with a
-32-char envName.
-*/}}
-{{- define "sandbox-env.runnerRoleName" -}}
-{{- printf "studio-sandbox-runner-%s" (include "sandbox-env.envName" .) -}}
-{{- end }}
-
-{{/*
 Preview Gateway / HTTPRoute / Certificate name.
 */}}
 {{- define "sandbox-env.previewName" -}}

@@ -4,7 +4,7 @@ import { createSandboxFsHooks, opDeadlineMs } from "./sandbox-fs-hooks";
 type SandboxFsProvider = Parameters<typeof createSandboxFsHooks>[0];
 
 /**
- * A minimal fake of the two AgentSandboxProvider capabilities used by the fs
+ * A minimal fake of the two provider capabilities used by the fs
  * hooks. `captured` records the last `(path, body)` so tests can assert the
  * wire translation, and `response` lets each test choose the daemon's reply.
  */

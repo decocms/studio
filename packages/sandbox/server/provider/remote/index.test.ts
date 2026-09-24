@@ -300,6 +300,33 @@ describe("RemoteSandboxProvider lifetime", () => {
   });
 });
 
+describe("RemoteSandboxProvider.markTenantPoolsDirty", () => {
+  it("posts the push and answers the pools the controller marked", async () => {
+    const ctl = serve(() => Response.json({ pools: ["tenant-acme-site-ci"] }));
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(
+      await provider.markTenantPoolsDirty("acme/site", "refs/heads/main"),
+    ).toEqual(["tenant-acme-site-ci"]);
+    expect(ctl.seen[0]!.method).toBe("POST");
+    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/tenant-pools/push");
+    expect(ctl.seen[0]!.json()).toEqual({
+      repo: "acme/site",
+      ref: "refs/heads/main",
+    });
+  });
+
+  it.each([
+    ["an error status", () => new Response("nope", { status: 500 })],
+    ["a malformed body", () => Response.json({ pools: "all" })],
+  ])("answers no pools on %s", async (_label, respond) => {
+    const ctl = serve(respond);
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    expect(
+      await provider.markTenantPoolsDirty("acme/site", "refs/heads/main"),
+    ).toEqual([]);
+  });
+});
+
 describe("RemoteSandboxProvider.hasSchedulableCapacity", () => {
   it("reuses an answer for a few seconds and coalesces concurrent callers", async () => {
     const ctl = serve(() => Response.json({ schedulable: false }));

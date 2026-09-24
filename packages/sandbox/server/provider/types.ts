@@ -1,6 +1,6 @@
 import type { SandboxImage } from "@decocms/shared/git-providers";
 
-/** Shared inputs and outputs for the hosted AgentSandboxProvider. */
+/** Shared inputs and outputs for the hosted sandbox provider. */
 
 export interface SandboxId {
   userId: string;
@@ -8,7 +8,7 @@ export interface SandboxId {
   projectRef: string;
 }
 
-/** Opaque handle; transport details stay inside AgentSandboxProvider. */
+/** Opaque handle; transport details stay inside the provider. */
 export interface Sandbox {
   handle: string;
   workdir: string;
@@ -45,7 +45,7 @@ export interface Workload {
 }
 
 /**
- * What a sandbox is for. AgentSandboxProvider may size, pool, and place the two
+ * What a sandbox is for. The sandbox controller may size, pool, and place the two
  * differently.
  *
  * - `interactive` (default): a person is in the loop — dev server, preview URL,
@@ -111,14 +111,14 @@ export interface EnsureRepo {
 
 export interface EnsureOptions {
   /**
-   * Defaults to `interactive` when absent. AgentSandboxProvider uses this to
+   * Defaults to `interactive` when absent. The controller uses this to
    * decide the SandboxTemplate (memory ceiling) and the warm pool, so it has
    * to survive into the persisted opts a resurrected claim is rebuilt from.
    */
   purpose?: SandboxPurpose;
   /**
    * The image the primary repository asked for, defaulting to `default`.
-   * AgentSandboxProvider turns it into a SandboxTemplate suffix — a claim can
+   * The controller turns it into a SandboxTemplate suffix — a claim can
    * override neither image nor resources, so each one is its own template —
    * and a non-default image opts out of tenant and warm pools, which are
    * built from the default image's template.

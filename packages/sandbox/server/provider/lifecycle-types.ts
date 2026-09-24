@@ -1,4 +1,4 @@
-/** Lifecycle phases emitted while an AgentSandbox claim becomes ready. */
+/** Lifecycle phases emitted while a sandbox claim becomes ready. */
 export type ClaimFailureReason =
   | "image-pull-backoff"
   | "crash-loop-backoff"

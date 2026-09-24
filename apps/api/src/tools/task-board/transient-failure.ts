@@ -17,9 +17,9 @@
  * list of infrastructure messages, because that kind is written by
  * `run-reactor` for ANY harness error — the sandbox-provisioning timeout and a
  * bug in the agent's own code arrive identically. The upgrade path is a typed
- * failure kind at the throw site (`SandboxTimeoutError` in
- * `packages/sandbox/.../client.ts` already exists as a class; it just doesn't
- * survive the trip through the error part), at which point this list goes away.
+ * failure kind at the throw site (the controller's failed claim phase already
+ * carries a `reason`; it just doesn't survive the trip through the error
+ * part), at which point this list goes away.
  * Keep the list SHORT and specific: a false positive burns a retry, and every
  * entry must be a message a healthy cluster does not produce.
  */

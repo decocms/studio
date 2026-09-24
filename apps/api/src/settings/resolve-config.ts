@@ -74,15 +74,20 @@ export function describeEncryptionKeyForLog(ek: string): string {
 }
 
 /**
- * Off unless explicitly enabled; once enabled, every mTLS input is required,
- * so a half-configured deploy fails at boot instead of calling the controller
- * without a client certificate.
+ * Agent sandboxes run through the sandbox controller, so enabling them
+ * requires every mTLS input: a half-configured deploy fails at boot instead of
+ * calling the controller without a client certificate. With them off, a
+ * configured controller is still read, so teardown of sandboxes started before
+ * they were turned off can reach it.
  */
 function resolveSandboxController(
   envVars: Record<string, string | undefined>,
+  agentSandboxEnabled: boolean,
 ): SandboxControllerSettings | null {
-  if (!toBool(envVars.STUDIO_SANDBOX_CONTROLLER_ENABLED)) return null;
   const read = (name: string) => envVars[name]?.trim() || undefined;
+  if (!agentSandboxEnabled && !read("STUDIO_SANDBOX_CONTROLLER_URL")) {
+    return null;
+  }
   const required = {
     url: "STUDIO_SANDBOX_CONTROLLER_URL",
     certPath: "STUDIO_SANDBOX_CONTROLLER_TLS_CERT",
@@ -92,7 +97,7 @@ function resolveSandboxController(
   const missing = Object.values(required).filter((name) => !read(name));
   if (missing.length > 0) {
     throw new Error(
-      `STUDIO_SANDBOX_CONTROLLER_ENABLED needs ${missing.join(", ")}`,
+      `${agentSandboxEnabled ? "STUDIO_AGENT_SANDBOX_ENABLED" : "STUDIO_SANDBOX_CONTROLLER_URL"} needs ${missing.join(", ")}`,
     );
   }
   const url = read(required.url) ?? "";
@@ -453,7 +458,10 @@ export function resolveConfig(
       envVars.SANDBOX_RELEASE_GRACE_MS,
       120_000,
     ),
-    sandboxController: resolveSandboxController(envVars),
+    sandboxController: resolveSandboxController(
+      envVars,
+      toBool(envVars.STUDIO_AGENT_SANDBOX_ENABLED),
+    ),
 
     // External service credentials
     decoSupabaseUrl: envVars.DECO_SUPABASE_URL,

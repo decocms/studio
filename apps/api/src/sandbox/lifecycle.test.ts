@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import type { ClaimPhase } from "@decocms/sandbox/provider/agent-sandbox";
+import type { ClaimPhase } from "@decocms/sandbox/provider";
 import {
   __resetSharedLifecyclesForTesting,
   startSandboxControllerCallbacks,

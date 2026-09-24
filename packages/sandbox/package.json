@@ -14,8 +14,7 @@
   "exports": {
     "./shared": "./shared.ts",
     "./provider": "./server/provider/index.ts",
-    "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
-    "./provider/agent-sandbox/tenant-pools": "./server/provider/agent-sandbox/tenant-pools.ts",
+    "./provider/tenant-pools": "./server/provider/tenant-pools.ts",
     "./provider/remote": "./server/provider/remote/index.ts",
     "./daemon-client": "./server/daemon-client.ts",
     "./org-fs": "./org-fs.ts",
@@ -26,9 +25,7 @@
   },
   "dependencies": {
     "@decocms/shared": "workspace:*",
-    "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@opentelemetry/api": "^1.9.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

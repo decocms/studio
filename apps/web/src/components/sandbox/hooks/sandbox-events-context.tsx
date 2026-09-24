@@ -20,8 +20,7 @@ import { buildSandboxUrl } from "@/sdk/sandbox-url";
  *
  * `ClaimPhase` is imported as a type-only reference from the canonical
  * server-side definition; `import type` is erased at build time, so the
- * web bundle does not pull in `@kubernetes/client-node` or any of the
- * runner's runtime code.
+ * web bundle pulls in none of the provider's runtime code.
  */
 
 import {
@@ -36,10 +35,7 @@ import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { KEYS, invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { exponentialBackoffWithJitter } from "@decocms/shared/std";
 
-import type {
-  ClaimFailureReason,
-  ClaimPhase,
-} from "@decocms/sandbox/provider/agent-sandbox";
+import type { ClaimFailureReason, ClaimPhase } from "@decocms/sandbox/provider";
 
 export type { ClaimFailureReason, ClaimPhase };
 

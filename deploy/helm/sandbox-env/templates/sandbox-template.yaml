@@ -1,4 +1,4 @@
-# SandboxTemplates consumed by the SandboxClaims the Studio runner creates for
+# SandboxTemplates consumed by the SandboxClaims the sandbox controller creates for
 # THIS environment. Rendered once per (image x size) — see the bottom of this
 # file — because a SandboxClaim can override NEITHER (CRD: additionalPodMetadata,
 # env, lifecycle, sandboxTemplateRef, warmpool), so every combination has to be
@@ -23,8 +23,8 @@
 # Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
 # ship with that as the install target, and the operator's RBAC watches it by
 # default. The template *name* is suffixed with envName so multiple
-# environments' SandboxTemplates coexist; Studio in this env must reference
-# the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
+# environments' SandboxTemplates coexist; the controller serving this env
+# must reference the suffixed name via `claims.sandboxTemplate`.
 {{ define "sandbox-env.sandboxTemplate" -}}
 {{- /* A variant may pin its own nodes: its image can need hardware the default
        pool lacks (android: /dev/kvm, only on nested-virtualization nodes). */}}
@@ -77,9 +77,9 @@ spec:
       {{- end }}
       labels:
         # Per-env name so each env's NetworkPolicy podSelector matches only
-        # its own pods. The Studio runner stamps the same value via
+        # its own pods. The sandbox controller stamps the same value via
         # SandboxClaim.additionalPodMetadata (driven by
-        # STUDIO_SANDBOX_TEMPLATE_NAME pointing at the env-suffixed
+        # `claims.sandboxTemplate` pointing at the env-suffixed
         # template) — keep these in lockstep.
         app.kubernetes.io/name: {{ include "sandbox-env.sandboxName" . }}
         # Do NOT set `studio.decocms.com/role` here. The operator (v0.4.2+)
