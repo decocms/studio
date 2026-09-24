@@ -38,6 +38,17 @@ keying off `app.kubernetes.io/name` get a single coherent label.
 {{- end }}
 
 {{/*
+Variant templates and pools outlive the chart: the next chart version stops
+rendering them and the sandbox controller adopts them from its SandboxVariant.
+Both Helm and Argo CD must leave them in place when they drop out of the
+render, or they are deleted before anything owns them.
+*/}}
+{{- define "sandbox-env.variantHandoverAnnotations" -}}
+helm.sh/resource-policy: keep
+argocd.argoproj.io/sync-options: Prune=false
+{{- end }}
+
+{{/*
 Sandbox container image. The daemon implementation IS the image, so there is no
 runtime switch a pod could use to disagree with the template that created it.
 */}}

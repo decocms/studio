@@ -286,3 +286,28 @@ jobs:
       - name: Summary
         if: env.DISPATCH_TOKEN != ''
         run: echo "Dispatched \`image-bump\` (studio-sandbox-go ${{ needs.build-push.outputs.version }}) to decocms/deco-apps-cd" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Variant images are built FROM each base tag in decocms/infra_applications
+  # (sandbox-images/<variant>/). Tell it a new base exists. Needs only the base:
+  # its builds are the variants. Absent token → no-op, job passes.
+  # ---------------------------------------------------------------------------
+  notify-variant-builds:
+    name: Trigger infra_applications variant builds
+    needs: [build-push]
+    if: needs.build-push.result == 'success' && needs.build-push.outputs.image-exists != 'true'
+    runs-on: ubuntu-latest
+    env:
+      DISPATCH_TOKEN: ${{ secrets.INFRA_APPLICATIONS_DISPATCH_TOKEN }}
+    steps:
+      - name: Skip notice (dispatch token not configured)
+        if: env.DISPATCH_TOKEN == ''
+        run: echo "::notice::INFRA_APPLICATIONS_DISPATCH_TOKEN not set — skipping the variant build trigger."
+      - name: Dispatch sandbox-base-released to infra_applications
+        if: env.DISPATCH_TOKEN != ''
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.INFRA_APPLICATIONS_DISPATCH_TOKEN }}
+          repository: decocms/infra_applications
+          event-type: sandbox-base-released
+          client-payload: '{"version": "${{ needs.build-push.outputs.version }}"}'

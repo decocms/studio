@@ -123,6 +123,24 @@ jobs:
             exit 1
           fi
 
+  sandbox-controller:
+    name: sandbox-controller chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Lint and render
+        run: |
+          helm lint deploy/helm/sandbox-controller
+          helm template c deploy/helm/sandbox-controller --set 'imagePullSecretNames={ghcr}' \
+            | grep -q 'resourceNames:' \
+            || { echo "::error::imagePullSecretNames did not render a secrets rule"; exit 1; }
+
   studio:
     name: studio chart
     runs-on: ubuntu-latest

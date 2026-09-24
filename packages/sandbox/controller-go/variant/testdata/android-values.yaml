@@ -1,0 +1,24 @@
+imageVariants:
+  android:
+    repository: ghcr.io/decocms/studio/studio-sandbox-android
+    nodeSelector:
+      decocms.com/nodepool: sandbox-android
+    tolerations:
+      - key: decocms.com/sandbox-android
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
+    resources:
+      requests:
+        cpu: "2"
+        memory: 8Gi
+      limits:
+        cpu: "4"
+        memory: 12Gi
+        ephemeral-storage: 40Gi
+        decocms.com/kvm: "1"
+    volumeSizes:
+      home: 24Gi
+      workdir: 8Gi
+    warmPoolSize: 0
+    warmPoolMediumSize: 0

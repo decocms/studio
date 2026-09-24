@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sandbox-controller.labels" . | nindent 4 }}
+---
+# Namespaced, and only what reconciling variants needs. No claims, pods or
+# routes: the controller does not take claims yet.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sandbox-controller
+  namespace: {{ .Values.sandboxNamespace }}
+  labels:
+    {{- include "sandbox-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["sandbox.deco.cx"]
+    resources: ["sandboxvariants"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["sandbox.deco.cx"]
+    resources: ["sandboxvariants/status"]
+    verbs: ["get", "update", "patch"]
+  # Setting blockOwnerDeletion on the rendered objects' ownerReference.
+  - apiGroups: ["sandbox.deco.cx"]
+    resources: ["sandboxvariants/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxtemplates", "sandboxwarmpools"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Leader election records its transitions as events.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  {{- with .Values.imagePullSecretNames }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames:
+      {{- toYaml . | nindent 6 }}
+    verbs: ["get"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sandbox-controller
+  namespace: {{ .Values.sandboxNamespace }}
+  labels:
+    {{- include "sandbox-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sandbox-controller
+subjects:
+  - kind: ServiceAccount
+    name: sandbox-controller
+    namespace: {{ .Release.Namespace }}

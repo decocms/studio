@@ -47,10 +47,13 @@
       // Without marking them as entries, knip treats their graphs as unused.
       // daemon-e2e/stub-harness.mjs is exec'd by the daemon under test as its
       // HARNESS_RUNNER_CMD — a process launch knip can't trace, same as above.
+      // controller-types/ is published as @decocms/sandbox-controller-types for
+      // the control plane, which renders SandboxVariants outside this repo.
       "entry": [
         "orgfs/sidecar-main.ts",
         "image/skills/*/*.mjs",
-        "daemon-e2e/stub-harness.mjs"
+        "daemon-e2e/stub-harness.mjs",
+        "controller-types/sandbox-variant.ts"
       ]
     },
     "packages/typegen": {},

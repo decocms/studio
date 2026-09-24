@@ -38,6 +38,10 @@ metadata:
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
+  {{- if .imageVariant }}
+  annotations:
+    {{- include "sandbox-env.variantHandoverAnnotations" . | nindent 4 }}
+  {{- end }}
 spec:
   # The operator's controller rejects per-claim env outright when
   # `claim.spec.warmpool != "none"`, so warm-pool consumption requires

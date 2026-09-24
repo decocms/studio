@@ -8,6 +8,7 @@
  * redirect flow (see `api/routes/git-providers.ts`); tokens are accepted here.
  */
 
+import { detectSandboxImage } from "@/git-providers/detect-sandbox-image";
 import { listOrgRepoChoices } from "@/git-providers/repo-choices";
 
 import { z } from "zod";
@@ -364,7 +365,7 @@ export const REPOSITORY_SEARCH = defineTool({
 export const REPOSITORY_LINK = defineTool({
   name: "REPOSITORY_LINK",
   description:
-    "Link a repository to the organization. With an account, the repository is verified against the provider and its facts (id, default branch, visibility) recorded; without one it is linked as an anonymous public clone.",
+    "Link a repository to the organization. With an account, the repository is verified against the provider and its facts (id, default branch, visibility) recorded, and a newly linked repository's sandbox image is detected from its files (a Flutter app with an Android project gets `android`); without one it is linked as an anonymous public clone.",
   annotations: {
     title: "Link repository",
     readOnlyHint: false,
@@ -425,6 +426,11 @@ export const REPOSITORY_LINK = defineTool({
         `${ref.path} was not found on ${ref.host} or the account cannot access it`,
       );
     }
+    // Only a new row: re-linking must not overwrite an image an owner picked.
+    const isNew = !(await ctx.storage.repositories.findByRef(
+      organization.id,
+      summary.ref,
+    ));
     const repository = await ctx.storage.repositories.upsert({
       organizationId: organization.id,
       ref: summary.ref,
@@ -432,6 +438,9 @@ export const REPOSITORY_LINK = defineTool({
       externalId: summary.externalId,
       defaultBranch: summary.defaultBranch,
       visibility: summary.visibility,
+      sandboxImage: isNew
+        ? await detectSandboxImage(client, summary.ref)
+        : undefined,
       createdBy: userId,
     });
     return { repository: toRepositoryOutput(repository) };

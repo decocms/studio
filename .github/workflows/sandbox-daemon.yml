@@ -68,10 +68,40 @@ jobs:
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              packages/sandbox/*|packages/typegen/*|packages/shared/*) relevant=true; break ;;
+              packages/sandbox/*|packages/typegen/*|packages/shared/*|deploy/helm/sandbox-env/*|deploy/helm/sandbox-controller/*) relevant=true; break ;;
             esac
           done <<< "$FILES"
           echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
+  # The sandbox controller: unit tests (incl. the golden test against the
+  # sandbox-env chart's own render, hence helm) and generated-code staleness.
+  controller-go:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: packages/sandbox/controller-go/go.mod
+          cache-dependency-path: packages/sandbox/controller-go/go.sum
+
+      - uses: azure/setup-helm@v4
+
+      - name: Go vet, unit tests and build
+        working-directory: packages/sandbox/controller-go
+        run: |
+          go vet ./...
+          go test -race ./...
+          go build ./...
+
+      - name: Generated CRD, deepcopy and TypeScript types are current
+        working-directory: packages/sandbox/controller-go
+        run: |
+          go generate ./...
+          git diff --exit-code -- . ../controller-types ../../../deploy/helm/sandbox-controller/crds
 
   daemon-e2e:
     needs: changes
