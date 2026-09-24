@@ -54,6 +54,9 @@ type fakeDaemon struct {
 	orgFs   []string
 	hosts   []string
 	reject  bool
+	// transition answers /config; "bootstrap" when empty.
+	transition string
+	steps      []string
 }
 
 type configCall struct {
@@ -81,7 +84,14 @@ func (d *fakeDaemon) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if auth, ok := body["auth"].(map[string]any); ok {
 			d.token = auth["rotateToken"].(string)
 		}
-		_, _ = io.WriteString(w, `{"bootId":"`+d.bootID+`","transition":"bootstrap","config":{}}`)
+		transition := d.transition
+		if transition == "" {
+			transition = "bootstrap"
+		}
+		_, _ = io.WriteString(w, `{"bootId":"`+d.bootID+`","transition":"`+transition+`","config":{}}`)
+	case "/_sandbox/setup/clone":
+		d.steps = append(d.steps, "clone:"+strings.TrimPrefix(r.Header.Get("authorization"), "Bearer "))
+		w.WriteHeader(http.StatusAccepted)
 	case "/_sandbox/orgfs-config":
 		b, _ := io.ReadAll(r.Body)
 		d.orgFs = append(d.orgFs, string(b))
@@ -148,7 +158,7 @@ func newHarness(t *testing.T, cfg Config, objects ...k8sruntime.Object) *harness
 	h := &harness{t: t, daemon: &fakeDaemon{bootID: "boot-1"}, store: storetest.NewMemory(), studio: &fakeStudio{}, ready: true,
 		bind: func(name string) string { return name }}
 	h.dyn = dynamicfake.NewSimpleDynamicClientWithCustomListKinds(k8sruntime.NewScheme(), map[schema.GroupVersionResource]string{
-		ClaimGVR: "SandboxClaimList", TemplateGVR: "SandboxTemplateList", HTTPRouteGVR: "HTTPRouteList",
+		ClaimGVR: "SandboxClaimList", TemplateGVR: "SandboxTemplateList", HTTPRouteGVR: "HTTPRouteList", WarmPoolGVR: "SandboxWarmPoolList",
 	}, objects...)
 	h.core = k8sfake.NewSimpleClientset()
 	record := func(action k8stesting.Action) (bool, k8sruntime.Object, error) {
@@ -723,21 +733,6 @@ func TestPodTermination(t *testing.T) {
 	}
 	if podTermination(pod(corev1.PodStatus{})) != nil {
 		t.Fatal("a running pod has nothing to report")
-	}
-}
-
-func TestSchedulable(t *testing.T) {
-	pending := func(reason string) *corev1.Pod {
-		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "p" + reason, Namespace: ns}, Status: corev1.PodStatus{Phase: corev1.PodPending,
-			Conditions: []corev1.PodCondition{{Type: corev1.PodScheduled, Status: corev1.ConditionFalse, Reason: reason}}}}
-	}
-	k := &kube{core: k8sfake.NewSimpleClientset(pending("SchedulingGated")), namespace: ns}
-	if ok, _ := k.schedulable(context.Background()); !ok {
-		t.Fatal("a pod pending for another reason is not a capacity signal")
-	}
-	k = &kube{core: k8sfake.NewSimpleClientset(pending(corev1.PodReasonUnschedulable)), namespace: ns}
-	if ok, _ := k.schedulable(context.Background()); ok {
-		t.Fatal("an unschedulable pod means no capacity")
 	}
 }
 

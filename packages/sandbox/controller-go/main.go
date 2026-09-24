@@ -2,6 +2,8 @@
 // SandboxTemplates and SandboxWarmPools a variant claim resolves to, and, with
 // --claims-listen, serves the claim API Studio's RemoteSandboxProvider speaks.
 // With --kubernetes=false it serves only the claim API, on the docker runtime.
+// With --variants=false it leaves SandboxVariants to another controller in the
+// namespace and only serves claims.
 //
 //go:generate go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0 object paths=./api/... crd:crdVersions=v1 output:crd:dir=../../../deploy/helm/sandbox-controller/crds
 //go:generate go run ./cmd/tsgen ../../../deploy/helm/sandbox-controller/crds/sandbox.deco.cx_sandboxvariants.yaml ../controller-types/sandbox-variant.ts
@@ -30,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/agentsandbox"
@@ -62,13 +65,15 @@ type dockerFlags struct {
 }
 
 func main() {
-	var namespace, metricsAddr, probeAddr string
-	var leaderElect, kubernetes bool
+	var namespace, metricsAddr, probeAddr, leaderElectionID string
+	var leaderElect, kubernetes, variants bool
 	var cf claimFlags
 	flag.StringVar(&namespace, "namespace", "agent-sandbox-system", "namespace holding the SandboxTemplates, SandboxVariants and SandboxClaims")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "metrics endpoint")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "healthz/readyz endpoint")
 	flag.BoolVar(&leaderElect, "leader-elect", true, "one active replica at a time")
+	flag.StringVar(&leaderElectionID, "leader-election-id", "sandbox-controller.sandbox.deco.cx", "lease name; distinct per controller sharing --namespace, since each elects its own leader")
+	flag.BoolVar(&variants, "variants", true, "reconcile SandboxVariants; exactly one controller per --namespace may, the others only serve claims")
 	flag.StringVar(&cf.listen, "claims-listen", "", "address for the claim API (e.g. :8443); empty keeps it off and the controller only reconciles variants")
 	flag.StringVar(&cf.tlsCert, "claims-tls-cert", "", "claim API server certificate, also presented on callbacks to Studio")
 	flag.StringVar(&cf.tlsKey, "claims-tls-key", "", "key for --claims-tls-cert")
@@ -107,6 +112,9 @@ func main() {
 		}
 		return
 	}
+	if !variants && cf.listen == "" {
+		fail(errors.New("--variants=false leaves nothing to run without --claims-listen"), "flags")
+	}
 
 	scheme := k8sruntime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
@@ -122,7 +130,7 @@ func main() {
 		Metrics:                 metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress:  probeAddr,
 		LeaderElection:          leaderElect,
-		LeaderElectionID:        "sandbox-controller.sandbox.deco.cx",
+		LeaderElectionID:        leaderElectionID,
 		LeaderElectionNamespace: namespace,
 		// main exits as soon as the manager stops, so handing the lease over on
 		// SIGTERM is safe, and a rollout's new pod does not wait out the lease.
@@ -131,9 +139,11 @@ func main() {
 	if err != nil {
 		fail(err, "manager")
 	}
-	r := &variant.Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), ImageExists: variant.RegistryHead}
-	if err := r.SetupWithManager(mgr); err != nil {
-		fail(err, "controller")
+	if variants {
+		r := &variant.Reconciler{Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), ImageExists: variant.RegistryHead}
+		if err := r.SetupWithManager(mgr); err != nil {
+			fail(err, "controller")
+		}
 	}
 	if cf.listen != "" {
 		closeClaims, err := setupClaims(mgr, namespace, cf)
@@ -282,8 +292,8 @@ func runLocal(ctx context.Context, cf claimFlags) error {
 }
 
 // setupClaims wires the claim API onto the manager: the HTTP server on every
-// replica (it is stateless over the database), the credential refresher on the
-// leader only.
+// replica (it is stateless over the database), the credential refresher and
+// the tenant-pool warmer on the leader only.
 func setupClaims(mgr manager.Manager, namespace string, cf claimFlags) (func(), error) {
 	if (cf.gatewayName == "") != (cf.gatewayNamespace == "") {
 		// Half-configured writes routes that never attach, and the failure is a
@@ -353,7 +363,14 @@ func setupClaims(mgr manager.Manager, namespace string, cf claimFlags) (func(), 
 	if err := mgr.Add(claimAPI{d.server(cf, registry)}); err != nil {
 		return fail(err)
 	}
+	// Leader-only, both: each mints credentials through Studio.
 	if err := mgr.Add(manager.RunnableFunc(runner.RunCredentialRefresher)); err != nil {
+		return fail(err)
+	}
+	if err := mgr.Add(manager.RunnableFunc(runner.RunTenantPools)); err != nil {
+		return fail(err)
+	}
+	if err := metrics.Registry.Register(agentsandbox.PoolPodsMetric); err != nil {
 		return fail(err)
 	}
 	return func() {

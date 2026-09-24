@@ -1,7 +1,9 @@
+{{- include "sandbox-controller.validateClaims" . }}
+{{- $claims := .Values.claims }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
@@ -15,7 +17,7 @@ spec:
       labels:
         {{- include "sandbox-controller.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: sandbox-controller
+      serviceAccountName: {{ include "sandbox-controller.fullname" . }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -34,11 +36,63 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --namespace={{ .Values.sandboxNamespace }}
+            - --leader-election-id={{ include "sandbox-controller.fullname" . }}.sandbox.deco.cx
+            {{- if not .Values.variants.enabled }}
+            - --variants=false
+            {{- end }}
+            {{- if $claims.enabled }}
+            - --claims-listen=:{{ $claims.port }}
+            - --claims-tls-cert=/etc/sandbox-controller/tls/tls.crt
+            - --claims-tls-key=/etc/sandbox-controller/tls/tls.key
+            - --claims-client-ca=/etc/sandbox-controller/client-ca/{{ $claims.clientCAKey }}
+            {{- with $claims.studioCallbackUrl }}
+            - {{ printf "--studio-callback-url=%s" . | quote }}
+            {{- end }}
+            {{- if $claims.studioCASecretName }}
+            - --studio-ca=/etc/sandbox-controller/studio-ca/{{ $claims.studioCAKey }}
+            {{- end }}
+            - {{ printf "--sandbox-template=%s" $claims.sandboxTemplate | quote }}
+            {{- with $claims.envName }}
+            - {{ printf "--env-name=%s" . | quote }}
+            {{- end }}
+            {{- with $claims.previewUrlPattern }}
+            - {{ printf "--preview-url-pattern=%s" . | quote }}
+            {{- end }}
+            {{- if $claims.gateway.name }}
+            - {{ printf "--preview-gateway-name=%s" $claims.gateway.name | quote }}
+            - {{ printf "--preview-gateway-namespace=%s" $claims.gateway.namespace | quote }}
+            {{- end }}
+            - --idle-ttl={{ int $claims.idleTtlSeconds }}s
+            - {{ printf "--delete-deadline=%s" $claims.deleteDeadline | quote }}
+            {{- end }}
+          {{- if $claims.enabled }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $claims.database.secretName }}
+                  key: {{ $claims.database.key }}
+            {{- if $claims.sentinel.secretName }}
+            - name: STUDIO_SANDBOX_SENTINEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $claims.sentinel.secretName }}
+                  key: {{ $claims.sentinel.key }}
+            {{- end }}
+            {{- with $claims.tenantPools }}
+            - name: STUDIO_SANDBOX_TENANT_POOLS
+              value: {{ toJson . | quote }}
+            {{- end }}
+          {{- end }}
           ports:
             - name: metrics
               containerPort: 8080
             - name: probes
               containerPort: 8081
+            {{- if $claims.enabled }}
+            - name: claims
+              containerPort: {{ $claims.port }}
+            {{- end }}
           livenessProbe:
             httpGet: { path: /healthz, port: probes }
           readinessProbe:
@@ -50,3 +104,31 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          {{- if $claims.enabled }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/sandbox-controller/tls
+              readOnly: true
+            - name: client-ca
+              mountPath: /etc/sandbox-controller/client-ca
+              readOnly: true
+            {{- if $claims.studioCASecretName }}
+            - name: studio-ca
+              mountPath: /etc/sandbox-controller/studio-ca
+              readOnly: true
+            {{- end }}
+          {{- end }}
+      {{- if $claims.enabled }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ $claims.tlsSecretName }}
+        - name: client-ca
+          secret:
+            secretName: {{ $claims.clientCASecretName }}
+        {{- if $claims.studioCASecretName }}
+        - name: studio-ca
+          secret:
+            secretName: {{ $claims.studioCASecretName }}
+        {{- end }}
+      {{- end }}

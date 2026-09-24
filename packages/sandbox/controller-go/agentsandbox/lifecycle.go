@@ -7,9 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/decocms/studio/packages/sandbox/controller-go/api/v1alpha1"
 	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
@@ -208,10 +205,6 @@ func daemonError(err error) error {
 	return out
 }
 
-func (r *Runner) Schedulable(ctx context.Context) (bool, error) {
-	return r.kube.schedulable(ctx)
-}
-
 // Images are the Ready SandboxVariants built on this runtime's base template.
 func (r *Runner) Images(ctx context.Context) ([]protocol.ImageInfo, error) {
 	if r.cfg.Variants == nil {
@@ -226,13 +219,7 @@ func (r *Runner) Images(ctx context.Context) ([]protocol.ImageInfo, error) {
 		if v.Spec.BaseTemplate != r.cfg.TemplateName || len(v.Name) <= len(v.Spec.BaseTemplate)+1 {
 			continue
 		}
-		ready := false
-		for _, c := range v.Status.Conditions {
-			if c.Type == v1alpha1.ConditionReady && c.Status == metav1.ConditionTrue {
-				ready = true
-			}
-		}
-		if ready {
+		if variantReady(&v) {
 			out = append(out, protocol.ImageInfo{Name: v.Variant(), BaseTag: v.Spec.BaseTag, DefaultTemplateTag: v.Status.DefaultTemplateTag})
 		}
 	}

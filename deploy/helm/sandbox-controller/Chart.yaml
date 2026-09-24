@@ -6,6 +6,6 @@ description: |
   that image variant resolves to, copied from the live default template
   that the sandbox-env chart renders. Requires the sandbox-operator chart.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.30.0-0"

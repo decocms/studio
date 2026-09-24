@@ -210,7 +210,7 @@ func (r *Runner) Watch(context.Context, string) (<-chan protocol.Phase, error) {
 	return ch, nil
 }
 
-func (r *Runner) Schedulable(context.Context) (bool, error) { return true, nil }
+func (r *Runner) Schedulable(context.Context, string) (bool, error) { return true, nil }
 
 // Images are the configured variants besides the default.
 func (r *Runner) Images(context.Context) ([]protocol.ImageInfo, error) {

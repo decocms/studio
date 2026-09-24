@@ -8,10 +8,21 @@ image:
 # where SandboxVariants are read and leader-election leases are held.
 sandboxNamespace: agent-sandbox-system
 
-# Secrets named in the default template's imagePullSecrets. The controller
-# reads them (get, by name) to check a variant's image exists before it
-# renders templates that would otherwise be ImagePullBackOff at claim time.
+# Secrets named in the default template's imagePullSecrets. With
+# variants.enabled the controller reads them (get, by name) to check a
+# variant's image exists before it renders templates that would otherwise be
+# ImagePullBackOff at claim time.
 imagePullSecretNames: []
+
+# Environments sharing sandboxNamespace (staging and prod do) each install a
+# release, since the claim runtime below is per environment. Objects are named
+# after the release ("sandbox-controller" keeps that name), and each release
+# elects its own leader. Exactly one release per namespace reconciles
+# SandboxVariants; set false on the others, which then only serve claims.
+# The CRD in crds/ is cluster-wide: install it from one release only (Argo CD
+# `helm.skipCrds: true`, or `helm install --skip-crds`, on the others).
+variants:
+  enabled: true
 
 replicas: 1
 
@@ -24,3 +35,74 @@ resources:
 
 nodeSelector: {}
 tolerations: []
+
+# The claim API Studio's remote sandbox provider speaks. Off: the controller
+# only reconciles SandboxVariants, and nothing below renders.
+claims:
+  enabled: false
+  port: 8443
+
+  # kubernetes.io/tls Secret with the claim API's server certificate. The
+  # same certificate is the client certificate on callbacks to Studio.
+  tlsSecretName: ""
+  # Secret holding the CA that signs Studio's client certificate. Transport
+  # auth is the only auth: there is no bearer fallback.
+  clientCASecretName: ""
+  clientCAKey: ca.crt
+
+  # Studio's https base URL for credential re-mints. Empty disables them, and
+  # long-lived sandboxes then push with an expired clone token.
+  studioCallbackUrl: ""
+  # Secret with the CA verifying Studio's server certificate on callbacks;
+  # system roots when empty.
+  studioCASecretName: ""
+  studioCAKey: ca.crt
+
+  # Secret with the DATABASE_URL of Studio's database: the controller owns
+  # sandbox_runner_state there.
+  database:
+    secretName: ""
+    key: DATABASE_URL
+
+  # The pool pods' shared sentinel (sandbox-env's studio-sandbox-sentinel-<env>,
+  # key daemonToken). Set means warm-pool mode, which tenant pools need. The
+  # Secret must be in the controller's namespace.
+  sentinel:
+    secretName: ""
+    key: daemonToken
+
+  # Base SandboxTemplate; claims add `-<image>` and `-medium`.
+  sandboxTemplate: studio-sandbox
+  # Stamped as studio.decocms.com/env on claims, pods and routes; the
+  # housekeeper scopes by it.
+  envName: ""
+  # e.g. https://{handle}.preview.example.com. Set means Studio reaches
+  # daemons by Service DNS; empty port-forwards, which only works with the
+  # controller and Studio on one host.
+  previewUrlPattern: ""
+  # Gateway per-claim HTTPRoutes attach to; both or neither.
+  gateway:
+    name: ""
+    namespace: ""
+
+  # The idle window every ensure and renewal pushes a claim's shutdown out
+  # to. Also published as ConfigMap `<release fullname>-idle-ttl` (key
+  # `ttlMs`, e.g. `sandbox-controller-idle-ttl`) in sandboxNamespace, which
+  # the same environment's sandbox-env housekeeper reads with
+  # `housekeeper.idleTtlConfigMap`, so the two cannot drift.
+  idleTtlSeconds: 900
+  deleteDeadline: 30s
+
+  # STUDIO_SANDBOX_TENANT_POOLS as a list, same entries as Studio's. Each
+  # needs a matching sandbox-env `tenantPools` entry of the same name.
+  tenantPools: []
+
+  # Studio's pods: the only ones the NetworkPolicy lets reach the claim API.
+  studio:
+    namespace: ""
+    podSelectorLabels:
+      app.kubernetes.io/name: chart-deco-studio
+  networkPolicy:
+    # Further NetworkPolicy ingress rules, e.g. a metrics scraper: the policy
+    # otherwise denies every other ingress to the controller pods.
+    extraIngress: []

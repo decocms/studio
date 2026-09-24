@@ -32,8 +32,12 @@ const PathImages = "/images"
 // GET → RuntimesResponse.
 const PathRuntimes = "/runtimes"
 
-// GET → CapacityResponse.
+// GET → CapacityResponse. `?sandboxImage=<name>` judges the nodes that
+// image's variant schedules onto instead of the default image's.
 const PathCapacity = "/capacity"
+
+// POST: TenantPoolsPushRequest → TenantPoolsPushResponse.
+const PathTenantPoolsPush = "/tenant-pools/push"
 
 // GET → HealthzResponse. Needs a client certificate like every other route.
 const PathHealthz = "/healthz"
@@ -257,6 +261,21 @@ type LifetimeRequest struct {
 // primary checkout's clone credential in place (same repository, new token).
 type CredentialsRequest struct {
 	CloneURL string `json:"cloneUrl"`
+}
+
+// TenantPoolsPushRequest is POST /tenant-pools/push: a GitHub push landed, so
+// the tenant pools warmed on that repo and branch refresh their unbound pods
+// now instead of at their next periodic refresh.
+type TenantPoolsPushRequest struct {
+	// `owner/name`, case-insensitive.
+	Repo string `json:"repo"`
+	// The pushed ref, e.g. `refs/heads/main`.
+	Ref string `json:"ref"`
+}
+
+// TenantPoolsPushResponse names the pools the push marked stale.
+type TenantPoolsPushResponse struct {
+	Pools []string `json:"pools"`
 }
 
 // PhaseKind is one pre-ready lifecycle phase. Runtimes without an equivalent

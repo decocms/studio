@@ -51,6 +51,8 @@ type templateResolver struct {
 	base   string
 	exists func(ctx context.Context, name string) (bool, error)
 	now    func() time.Time
+	// onAbsent reports a derived template going missing; a warning by default.
+	onAbsent func(name string)
 
 	mu     sync.Mutex
 	probes map[string]templateProbe
@@ -90,7 +92,11 @@ func (t *templateResolver) resolve(ctx context.Context, purpose protocol.Purpose
 	}
 	// Warn once per absence, not once per claim.
 	if !hit || cached.present {
-		slog.Warn("SandboxTemplate not found (or not readable); claims fall back to a template without that suffix", "template", wanted)
+		if t.onAbsent != nil {
+			t.onAbsent(wanted)
+		} else {
+			slog.Warn("SandboxTemplate not found (or not readable); claims fall back to a template without that suffix", "template", wanted)
+		}
 	}
 	// Drop the image before the size: a missing variant must not also cost a
 	// harness run its -medium memory ceiling.
