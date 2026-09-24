@@ -120,6 +120,11 @@ spec:
             - name: {{ $api.portName }}
               containerPort: {{ $api.port }}
               protocol: TCP
+            {{- if and $.Values.sandboxController.enabled $.Values.sandboxController.callbackPort (eq $api.portName "api-0") }}
+            - name: sbx-callbacks
+              containerPort: {{ $.Values.sandboxController.callbackPort }}
+              protocol: TCP
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "chart-deco-studio.fullname" $ }}-config
@@ -136,6 +141,13 @@ spec:
               value: "$(POD_NAME_BASE)-{{ $api.portName }}"
             - name: STUDIO_DISPATCH_ROLE
               value: "api"
+            {{- if $.Values.sandboxController.enabled }}
+            {{- include "chart-deco-studio.sandboxControllerEnv" $ | nindent 12 }}
+            {{- if and $.Values.sandboxController.callbackPort (eq $api.portName "api-0") }}
+            - name: STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT
+              value: {{ $.Values.sandboxController.callbackPort | quote }}
+            {{- end }}
+            {{- end }}
             {{- if $.Values.fastPreviewCache.enabled }}
             - name: FAST_PREVIEW_CACHE_DIR
               value: {{ $.Values.fastPreviewCache.mountPath | quote }}
@@ -239,6 +251,11 @@ spec:
               mountPath: {{ $.Values.nats.clusterCreds.mountDir | quote }}
               readOnly: true
             {{- end }}
+            {{- if $.Values.sandboxController.enabled }}
+            - name: sandbox-controller-tls
+              mountPath: /etc/studio/sandbox-controller
+              readOnly: true
+            {{- end }}
           {{- with $.Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -267,6 +284,11 @@ spec:
       {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        {{- if .Values.sandboxController.enabled }}
+        - name: sandbox-controller-tls
+          secret:
+            secretName: {{ .Values.sandboxController.tlsSecretName }}
+        {{- end }}
         {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
         - name: ca-cert
           configMap:

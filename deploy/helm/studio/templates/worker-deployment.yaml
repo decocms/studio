@@ -112,6 +112,9 @@ spec:
               value: {{ .Values.configMap.meshConfig.PORT | default "3000" | quote }}
             - name: STUDIO_DISPATCH_ROLE
               value: worker
+            {{- if .Values.sandboxController.enabled }}
+            {{- include "chart-deco-studio.sandboxControllerEnv" . | nindent 12 }}
+            {{- end }}
             {{- if .Values.terminationGracePeriodSeconds }}
             - name: SHUTDOWN_GRACE_SECONDS
               value: {{ .Values.terminationGracePeriodSeconds | quote }}
@@ -192,10 +195,20 @@ spec:
               mountPath: {{ .Values.nats.clusterCreds.mountDir | quote }}
               readOnly: true
             {{- end }}
+            {{- if .Values.sandboxController.enabled }}
+            - name: sandbox-controller-tls
+              mountPath: /etc/studio/sandbox-controller
+              readOnly: true
+            {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        {{- if .Values.sandboxController.enabled }}
+        - name: sandbox-controller-tls
+          secret:
+            secretName: {{ .Values.sandboxController.tlsSecretName }}
+        {{- end }}
         {{- if and (eq (lower (default "sqlite" .Values.database.engine)) "postgresql") .Values.database.caCert }}
         - name: ca-cert
           configMap:

@@ -255,6 +255,55 @@ jobs:
           helm lint deploy/helm/studio \
             --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio
 
+      - name: Render (sandbox controller connection)
+        run: |
+          set -euo pipefail
+          db=(--set database.url=postgresql://ci:ci@postgres.example.com:5432/studio)
+          ctl=(--set sandboxController.enabled=true
+            --set sandboxController.url=https://sandbox-controller.agent-sandbox-system.svc:8443
+            --set sandboxController.tlsSecretName=studio-sandbox-controller-tls)
+          out=$(helm template deco-studio deploy/helm/studio "${db[@]}" "${ctl[@]}" \
+            --set-string configMap.meshConfig.STUDIO_AGENT_SANDBOX_ENABLED=true \
+            --set worker.enabled=true)
+          for wanted in 'STUDIO_SANDBOX_CONTROLLER_URL' 'secretName: studio-sandbox-controller-tls' \
+              'name: sandbox-callbacks' 'name: sbx-callbacks'; do
+            grep -q -- "${wanted}" <<<"${out}" || { echo "::error::controller connection did not render ${wanted}"; exit 1; }
+          done
+          # Two API containers share each pod's network: one listener, or the second fails to bind.
+          n=$(grep -c 'name: STUDIO_SANDBOX_CONTROLLER_CALLBACK_PORT' <<<"${out}")
+          [ "${n}" -eq 1 ] || { echo "::error::callback port on ${n} containers, want 1"; exit 1; }
+          # Both API containers and the worker reach sandboxes.
+          n=$(grep -c 'name: STUDIO_SANDBOX_CONTROLLER_URL' <<<"${out}")
+          [ "${n}" -eq 3 ] || { echo "::error::controller URL on ${n} containers, want 3 (api-0, api-1, worker)"; exit 1; }
+          if helm template deco-studio deploy/helm/studio "${db[@]}" | grep -q 'SANDBOX_CONTROLLER'; then
+            echo "::error::the controller connection rendered while off"; exit 1
+          fi
+
+      - name: Render (sandbox controller validations must fail)
+        run: |
+          set -uo pipefail
+          expect_fail() {
+            desc="$1"; want="$2"; shift 2
+            if out=$(helm template deco-studio deploy/helm/studio \
+                       --set database.url=postgresql://ci:ci@postgres.example.com:5432/studio "$@" 2>&1); then
+              echo "::error::${desc}: rendered successfully — the guard is missing"; exit 1
+            fi
+            if ! grep -q "${want}" <<<"${out}"; then
+              echo "::error::${desc}: failed for the wrong reason. Wanted '${want}', got:"; echo "${out}"; exit 1
+            fi
+            echo "ok: ${desc}"
+          }
+          expect_fail "hosted sandboxes without a controller" "requires sandboxController.enabled=true" \
+            --set-string configMap.meshConfig.STUDIO_AGENT_SANDBOX_ENABLED=true
+          expect_fail "plain http controller" "must be the controller's https URL" \
+            --set sandboxController.enabled=true --set sandboxController.url=http://c:8443 \
+            --set sandboxController.tlsSecretName=tls
+          expect_fail "no certificate" "tlsSecretName is required" \
+            --set sandboxController.enabled=true --set sandboxController.url=https://c:8443
+          expect_fail "callback port on the API port" "collides" \
+            --set sandboxController.enabled=true --set sandboxController.url=https://c:8443 \
+            --set sandboxController.tlsSecretName=tls --set sandboxController.callbackPort=3001
+
       # Subchart .tgz files are vendored under deploy/helm/studio/charts/
       # (see .gitignore comment) — no `helm dependency build` needed.
       - name: Render
@@ -746,20 +795,6 @@ jobs:
             --set preview.postgres.enabled=false \
             --set externalSecret.enabled=false
 
-          # Binding sandbox access to the namespace's `default` ServiceAccount
-          # would hand it to every pod in the preview — Postgres and MinIO
-          # included — and the render would look perfectly healthy.
-          # values-preview.yaml turns serviceAccount.create on, so this case has
-          # to turn it back off — the point is the guard, not the default.
-          expect_fail "sandbox without a named ServiceAccount" "requires serviceAccount.create=true" \
-            --set preview.host=h.example.com \
-            --set preview.sandbox.enabled=true \
-            --set preview.sandbox.roleName=some-role \
-            --set serviceAccount.create=false
-          expect_fail "sandbox without a role" "preview.sandbox.roleName is required" \
-            --set preview.host=h.example.com \
-            --set preview.sandbox.enabled=true \
-            --set serviceAccount.create=true
 
           # image.command is a list, which --set cannot express cleanly.
           printf 'image:\n  command: ["bun","run","deco"]\n' > /tmp/no-skip.yaml

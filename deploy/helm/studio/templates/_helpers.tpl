@@ -345,15 +345,45 @@ Service/Deployment name for the preview's own MinIO.
 Guards the sandbox binding. Both checks stop a render that would look correct
 and grant the wrong thing.
 */}}
-{{- define "chart-deco-studio.validatePreviewSandbox" -}}
-{{- if and .Values.preview.enabled .Values.preview.sandbox.enabled }}
-{{- if not .Values.serviceAccount.create }}
-{{- fail "chart-deco-studio: preview.sandbox.enabled=true requires serviceAccount.create=true — otherwise the binding lands on the namespace's `default` ServiceAccount, handing sandbox access to every pod in the preview, Postgres and MinIO included" -}}
+{{/*
+Hosted agent sandboxes run only through the sandbox controller, so turning them
+on in meshConfig without the connection would boot a Studio that refuses to
+start. Checked here so the render fails instead of the pods.
+*/}}
+{{- define "chart-deco-studio.validateSandboxController" -}}
+{{- $c := .Values.sandboxController -}}
+{{- $enabled := toString (default "" .Values.configMap.meshConfig.STUDIO_AGENT_SANDBOX_ENABLED) -}}
+{{- if and (has $enabled (list "true" "1")) (not $c.enabled) }}
+{{- fail "chart-deco-studio: STUDIO_AGENT_SANDBOX_ENABLED requires sandboxController.enabled=true: hosted sandboxes run only through the sandbox controller" -}}
 {{- end }}
-{{- if not .Values.preview.sandbox.roleName }}
-{{- fail "chart-deco-studio: preview.sandbox.roleName is required when preview.sandbox.enabled=true" -}}
+{{- if $c.enabled }}
+{{- if not (hasPrefix "https://" (default "" $c.url)) }}
+{{- fail "chart-deco-studio: sandboxController.url must be the controller's https URL: the claim API is mTLS only" -}}
+{{- end }}
+{{- if not $c.tlsSecretName }}
+{{- fail "chart-deco-studio: sandboxController.tlsSecretName is required with sandboxController.enabled=true" -}}
+{{- end }}
+{{- if has (int $c.callbackPort) (list 80 3000 3001 8080) }}
+{{- fail (printf "chart-deco-studio: sandboxController.callbackPort %d collides with a port Studio's pod already serves" (int $c.callbackPort)) -}}
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{/*
+The controller connection for every container that reaches sandboxes (both API
+containers and the worker). The callback listener is added by the caller, on
+one container only.
+*/}}
+{{- define "chart-deco-studio.sandboxControllerEnv" -}}
+{{- $c := .Values.sandboxController -}}
+- name: STUDIO_SANDBOX_CONTROLLER_URL
+  value: {{ $c.url | quote }}
+- name: STUDIO_SANDBOX_CONTROLLER_TLS_CERT
+  value: /etc/studio/sandbox-controller/tls.crt
+- name: STUDIO_SANDBOX_CONTROLLER_TLS_KEY
+  value: /etc/studio/sandbox-controller/tls.key
+- name: STUDIO_SANDBOX_CONTROLLER_CA
+  value: {{ printf "/etc/studio/sandbox-controller/%s" $c.caKey | quote }}
 {{- end }}
 
 {{/*
