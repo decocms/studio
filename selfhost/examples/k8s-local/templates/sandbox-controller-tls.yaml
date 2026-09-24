@@ -1,0 +1,65 @@
+{{- /*
+Studio ↔ sandbox controller wiring for the local umbrella. LOCAL ONLY.
+
+A throwaway CA and one leaf per side, both carrying server and client auth:
+each side serves with its leaf and calls the other with it. Generated on the
+first install and read back with `lookup` afterwards, so an upgrade keeps the
+pair the running pods already trust (`helm template` has no cluster to read, so
+it always renders a fresh pair).
+
+Also the controller's DATABASE_URL and warm-pool sentinel, which it reads from
+Secrets in its own namespace.
+*/ -}}
+{{- $ns := .Release.Namespace -}}
+{{- $controller := lookup "v1" "Secret" $ns "sandbox-controller-tls" -}}
+{{- $studio := lookup "v1" "Secret" $ns "studio-sandbox-controller-client" -}}
+{{- $controllerData := dict -}}
+{{- $studioData := dict -}}
+{{- if and $controller $studio -}}
+{{- $controllerData = $controller.data -}}
+{{- $studioData = $studio.data -}}
+{{- else -}}
+{{- $ca := genCA "studio-local-sandbox-controller-ca" 3650 -}}
+{{- $controllerHost := printf "%s-sandbox-controller.%s.svc" .Release.Name $ns -}}
+{{- $studioHost := printf "%s.%s.svc" .Release.Name $ns -}}
+{{- $controllerCert := genSignedCert "sandbox-controller" nil (list $controllerHost) 3650 $ca -}}
+{{- $studioCert := genSignedCert "studio" nil (list $studioHost) 3650 $ca -}}
+{{- $controllerData = dict "tls.crt" ($controllerCert.Cert | b64enc) "tls.key" ($controllerCert.Key | b64enc) "ca.crt" ($ca.Cert | b64enc) -}}
+{{- $studioData = dict "tls.crt" ($studioCert.Cert | b64enc) "tls.key" ($studioCert.Key | b64enc) "ca.crt" ($ca.Cert | b64enc) -}}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sandbox-controller-tls
+  namespace: {{ $ns }}
+type: kubernetes.io/tls
+data:
+  {{- toYaml $controllerData | nindent 2 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: studio-sandbox-controller-client
+  namespace: {{ $ns }}
+type: kubernetes.io/tls
+data:
+  {{- toYaml $studioData | nindent 2 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sandbox-controller-db
+  namespace: {{ $ns }}
+type: Opaque
+stringData:
+  # The umbrella's throwaway Postgres (templates/dev-deps.yaml).
+  DATABASE_URL: "postgresql://studio:studio@studio-db.{{ $ns }}.svc:5432/studio"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sandbox-controller-sentinel
+  namespace: {{ $ns }}
+type: Opaque
+stringData:
+  daemonToken: {{ index .Values "sandbox-env" "sentinel" "token" | quote }}

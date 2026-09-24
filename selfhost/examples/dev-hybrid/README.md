@@ -2,18 +2,20 @@
 
 Develop Studio **from source with hot reload**, while the **real backends and
 sandbox** come from the k8s-local install. It's the loop for working on
-sandbox/preview/k8s behavior — the pure `bun dev` loop can't do that (no
-agent-sandbox operator on your laptop), and the pure cluster loop makes you
-rebuild an image per change.
+Kubernetes sandbox/preview behavior — the pure `bun run dev` loop runs sandboxes
+on the sandbox controller's docker runtime instead (no agent-sandbox operator on
+your laptop), and the pure cluster loop makes you rebuild an image per change.
 
 ```
-        your host                         local cluster (Rancher/k3d)
-   ┌─────────────────┐              ┌──────────────────────────────────┐
-   │ bun dev:servers  │  kubeconfig  │  agent-sandbox operator          │
-   │ (web + API)      │─────────────▶│  + warm pool  (creates sandboxes,│
-   │                  │  port-forward│    port-forward to daemon:9000)  │
-   │  DATABASE_URL ───┼─────────────▶│  studio-db / studio-minio / nats │
-   └─────────────────┘              │  (Studio app + worker scaled to 0)│
+        your host                          local cluster (Rancher/k3d)
+   ┌───────────────────┐             ┌──────────────────────────────────┐
+   │ bun dev:servers   │    mTLS     │  agent-sandbox operator          │
+   │ (web + API) ──────┼──┐          │  + warm pool                     │
+   │ sandbox controller│◀─┘kubeconfig│  (SandboxClaims; port-forward    │
+   │ (go run)  ────────┼────────────▶│   to daemon:9000)                │
+   │  DATABASE_URL ────┼────────────▶│  studio-db / studio-minio / nats │
+   └───────────────────┘ port-forward│  (Studio app, worker, controller │
+                                     │   scaled to 0)                   │
                                      └──────────────────────────────────┘
 ```
 
@@ -29,28 +31,37 @@ What it does:
 1. **If the cluster isn't up, brings it up** — runs `local-k8s.sh` with
    `OBSERVABILITY=0` (core + sandbox; no in-cluster ClickHouse, since `bun dev`
    uses the local monitoring path). If it's already up, skips straight ahead.
-2. Scales the in-cluster `deco-studio` app + worker to **0** (so the host process
-   is the only one draining the shared DB/NATS run queue — no dueling workers).
-   It uses `kubectl scale`, NOT helm, so the release + observability are untouched.
+2. Scales the in-cluster `deco-studio` app + worker + sandbox controller to
+   **0** (so the host processes are the only ones draining the shared DB/NATS
+   run queue and writing sandbox state — no dueling workers). It uses
+   `kubectl scale`, NOT helm, so the release + observability are untouched.
 3. Port-forwards `studio-db:5432`, `studio-minio:9000`, `<release>-nats:4222`.
-4. Exports **`.env`** (created from [`.env.example`](.env.example) on first run)
-   and runs the **raw dev servers** — `bun run dev:servers` (Vite from
-   `apps/web` + the real API server from `apps/api/src/index.ts`), after
-   migrating from `apps/api`.
+4. Exports **`.env`** (created from [`.env.example`](.env.example) on first run),
+   migrates from `apps/api`, writes a throwaway CA + controller/Studio
+   certificates into `.sandbox-controller/`, starts the **sandbox controller**
+   from source (`go run`, kubernetes runtime, claim API on `127.0.0.1:7443`), and
+   runs the **raw dev servers** — Vite from `apps/web` + the real API server from
+   `apps/api/src/index.ts` — with `STUDIO_SANDBOX_CONTROLLER_*` pointing at it.
+
+Needs `go` and `openssl` on the host besides `kubectl`, `helm` and `bun`.
 
 **Why not `bun run dev`?** That entrypoint is `deco dev` — it spins up its OWN
-embedded Postgres/NATS, ignoring these targets. The raw server `src/index.ts`
-instead honors
+embedded Postgres/NATS and a docker-runtime controller, ignoring these targets.
+The raw server `src/index.ts` instead honors
 `DATABASE_URL`/`NATS_URL`/`STUDIO_SANDBOX_*` from the environment, so it connects
-to the cluster's backends and the agent-sandbox provider.
+to the cluster's backends and the host sandbox controller.
 
 ## Configuring it — the `.env`
 
 All the cluster-pointing config lives in `selfhost/examples/dev-hybrid/.env`
 (copied from `.env.example` the first time; git-ignored). It's a real, documented
-file you can edit — DB/NATS/S3 targets (the port-forward endpoints), the sandbox
-provider + template + **sentinel token** (must match the umbrella's
-`sandbox-env.sentinel.token`), and the app secrets/URLs.
+file you can edit — DB/NATS/S3 targets (the port-forward endpoints), the
+sandbox **sentinel token** the host controller reads (must match the umbrella's
+`sandbox-env.sentinel.token`), and the app secrets/URLs. The controller
+connection (`STUDIO_SANDBOX_CONTROLLER_*`) is not in it: the script sets it for
+the certificates it just generated. `CONTROLLER_PORT` / `CALLBACK_PORT` move the
+claim API and Studio's callback listener; `SANDBOX_TEMPLATE` /
+`SANDBOX_ENV_NAME` default to the umbrella's `studio-sandbox-local` / `local`.
 
 The script exports this file into the environment before starting the servers.
 There's no `apps/api/.env`, so `dev:server`'s own `--env-file=.env` is a no-op
@@ -61,13 +72,16 @@ or bump the ports).
 
 ## Why the sandbox works from your host
 
-Studio's agent-sandbox provider loads your **kubeconfig** (`~/.kube/config`, the
-Rancher context = admin), so it satisfies the sandbox RBAC and creates
-`SandboxClaim`s in `agent-sandbox-system`. It reaches each sandbox daemon over
-the **API server's port-forward** (not in-cluster Service DNS), which is exactly
-what your host can reach. The sentinel token is passed as
-`STUDIO_SANDBOX_SENTINEL_TOKEN` (same fixed value the umbrella wires) so Studio runs
-in warm-pool mode.
+Studio holds no cluster access; it asks the sandbox controller over mTLS. The
+host controller loads your **kubeconfig** (`~/.kube/config`, the Rancher
+context = admin), so it can create `SandboxClaim`s in `agent-sandbox-system`.
+It runs without `--preview-url-pattern`, so it reaches each sandbox daemon over
+the **API server's port-forward** (not in-cluster Service DNS) and hands Studio
+that local address — which only works because Studio shares its host. The
+in-cluster controller is scaled to 0 for the same reason: the daemon addresses
+it hands out and its callbacks to the in-cluster Studio are unreachable from the
+host. The controller reads `STUDIO_SANDBOX_SENTINEL_TOKEN` (same fixed value the
+umbrella wires) so claims use the warm pool.
 
 ## Database version skew
 
@@ -103,5 +117,9 @@ After a reset, plain re-runs are idempotent (the source owns the schema).
   URL; if you change the port, also update `BASE_URL`/`BETTER_AUTH_URL`/the
   preview pattern in `.env`.
 
-For iterating on **app logic only** (no sandbox), the lighter loop is plain
-`bun run dev` (embedded Postgres) — see [`../../../CLAUDE.md`](../../../CLAUDE.md).
+For iterating without the cluster, the lighter loop is plain `bun run dev`
+(embedded Postgres) — see [`../../../CLAUDE.md`](../../../CLAUDE.md). With
+`STUDIO_AGENT_SANDBOX_ENABLED=true` and no `STUDIO_SANDBOX_CONTROLLER_URL`, it
+runs the sandbox controller on the docker runtime itself; without Go, OpenSSL or
+a working `docker version` it skips the controller and sandbox tools answer 503
+saying what to install.

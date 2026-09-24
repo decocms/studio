@@ -5,7 +5,8 @@
 #
 # Thin wrapper over the umbrella chart at selfhost/examples/k8s-local, which
 # declares everything as Helm dependencies — Studio (+ bundled NATS), the
-# agent-sandbox operator, sandbox-env — and adds throwaway PostgreSQL + MinIO as
+# agent-sandbox operator, sandbox-env, the sandbox controller — and adds
+# throwaway PostgreSQL + MinIO and the Studio/controller mTLS certificates as
 # its own templates. No scattered `kubectl apply` steps: the chart owns it all.
 #
 # The umbrella installs the full sandbox layer by default (code-execution +
@@ -122,6 +123,7 @@ fi
 echo "==> Waiting for Studio to roll out (first image pull can take minutes)"
 kubectl -n "${NAMESPACE}" rollout status deploy/"${RELEASE}" --timeout=300s || true
 kubectl -n "${NAMESPACE}" rollout status deploy/"${RELEASE}"-worker --timeout=300s || true
+kubectl -n "${NAMESPACE}" rollout status deploy/"${RELEASE}"-sandbox-controller --timeout=300s || true
 
 # Self-heal the warm pool: sandbox pool pods mount the sentinel Secret + read the
 # SandboxTemplate via secretKeyRef, but a `helm upgrade` that fixes either does

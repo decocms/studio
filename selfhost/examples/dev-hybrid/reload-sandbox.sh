@@ -22,7 +22,7 @@
 set -euo pipefail
 
 NAMESPACE="${SANDBOX_NAMESPACE:-agent-sandbox-system}"
-TEMPLATE="${STUDIO_SANDBOX_TEMPLATE_NAME:-studio-sandbox-local}"
+TEMPLATE="${SANDBOX_TEMPLATE:-studio-sandbox-local}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
@@ -62,8 +62,8 @@ docker build -t "${IMAGE}" \
 
 # Same tag + imagePullPolicy: IfNotPresent means kubelet already resolves to the
 # new local image — only the pods holding the old one need replacing. Studio
-# reprovisions on the next run (404 -> 410), and the operator refills the warm
-# pool on its own.
+# reprovisions through the controller on the next run (404 -> 410), and the
+# operator refills the warm pool on its own.
 echo "==> Recycling sandboxes in ${NAMESPACE}"
 kubectl -n "${NAMESPACE}" delete sandbox --all
 

@@ -19,8 +19,9 @@ Production is **not** the umbrella. Install the lean chart
 ## Recommended: bundle it in your own umbrella (wrapper) chart
 
 Rather than installing several charts by hand and threading shared values between
-them (easy to get wrong — a missing ServiceAccount or an unshared sentinel token
-breaks the sandbox), wrap them in a small **umbrella chart you own**, install it
+them (easy to get wrong — a template name, certificate or callback URL that one
+side does not match breaks the sandbox), wrap them in a small **umbrella chart
+you own**, install it
 as one release, and extend it with your own extras. This is exactly how the local
 `examples/k8s-local` works — and how deco's own internal deploy does it
 (`deco-apps-cd`'s `deco-studio` wraps `chart-deco-studio` + its ExternalSecrets).
@@ -43,23 +44,30 @@ dependencies:
   - name: sandbox-env
     version: "<pin>"
     repository: "oci://ghcr.io/decocms/studio/charts"
+  - name: sandbox-controller
+    version: "<pin>"
+    repository: "oci://ghcr.io/decocms/studio/charts"
 ```
 
 Confirm the pins resolve before wiring values — `helm dependency build` is the
 cheapest way to catch a wrong path or a version that was never published:
 
 ```bash
-helm dependency build your-studio   # pulls all three into charts/
+helm dependency build your-studio   # pulls all four into charts/
 ```
 
-Then `your-studio/values.yaml` wires all three consistently (SA, the shared
-sentinel token on both sides, S3, DB), and `your-studio/templates/` is where you
+Then `your-studio/values.yaml` wires them consistently (the controller
+connection on both sides, template and env names, S3, DB), and
+`your-studio/templates/` is where you
 add YOUR extras — ExternalSecrets, an Ingress, a Postgres `Cluster` (CNPG), extra
 config — without forking the app chart. One `helm install`, everything lines up.
 
 > The umbrella must span two namespaces (Studio in yours, the sandbox operator in
 > `agent-sandbox-system`); set `sandbox-operator.allowForeignNamespace=true` (the
-> sandbox resources self-pin to `agent-sandbox-system` regardless). See
+> sandbox resources self-pin to `agent-sandbox-system` regardless). The
+> controller subchart installs into the umbrella's namespace (its Role still
+> lands in `agent-sandbox-system`), so the Secrets it reads — certificates,
+> `DATABASE_URL`, the warm-pool sentinel — must be there too. See
 > `examples/k8s-local` for a complete, working example to copy.
 
 ## Studio app (installing the charts directly)
@@ -90,12 +98,10 @@ Two supported paths (never inline secret material in git):
     --from-literal=ENCRYPTION_KEY="$(openssl rand -base64 32)" \
     --from-literal=S3_ACCESS_KEY_ID="<key>" \
     --from-literal=S3_SECRET_ACCESS_KEY="<secret>" \
-    --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio" \
-    --from-literal=STUDIO_SANDBOX_SENTINEL_TOKEN="$(openssl rand -hex 32)"   # sandbox only
+    --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio"
   ```
 
-`BETTER_AUTH_SECRET` + `ENCRYPTION_KEY` MUST be stable across restarts; the
-sentinel token MUST equal `sandbox-env.sentinel.token`.
+`BETTER_AUTH_SECRET` + `ENCRYPTION_KEY` MUST be stable across restarts.
 
 ### Ingress — optional, off by default
 
@@ -139,23 +145,44 @@ The hardened sandbox posture ships in the `sandbox-env` chart; see
   can't reach your Services. This is the sandbox's outbound firewall.
 - **Node isolation:** pin sandbox pods to a dedicated tainted NodePool so an
   escape lands away from Studio/Postgres/NATS.
-- **Zone spread**, **warm pool** (+ optional HPA), and a **sentinel token**.
+- **Zone spread**, **warm pool** (+ optional HPA), and a **sentinel token**
+  (generated into `studio-sandbox-sentinel-<envName>`, which the controller
+  reads).
 - **Preview URLs:** wildcard `*.<domain>` via an Istio Gateway + cert-manager
   (needs Gateway API CRDs + a DNS-01 issuer). Locally this is replaced by the
   in-process Studio proxy on `:80`.
 
-Install the operator first (once per cluster, into `agent-sandbox-system`), then
-`sandbox-env`:
+Studio never touches the cluster for sandboxes: it calls the **sandbox
+controller** over mTLS, and the controller creates the `SandboxClaim`s with the
+RBAC it holds. Install, in order (the operator once per cluster, the rest once
+per environment, all into `agent-sandbox-system`):
 
 ```bash
 helm install agent-sandbox deploy/helm/sandbox-operator \
   -n agent-sandbox-system --create-namespace
 helm install sandbox-env-prod deploy/helm/sandbox-env \
   -n agent-sandbox-system -f selfhost/production/values-sandbox-env-prod.yaml
+# The Studio/controller mTLS pair (cert-manager; placeholders inside):
+kubectl apply -f selfhost/production/sandbox-controller-certificates.yaml
+kubectl -n agent-sandbox-system create secret generic sandbox-controller-db \
+  --from-literal=DATABASE_URL="postgresql://user:pass@host:5432/studio"
+helm install sandbox-controller deploy/helm/sandbox-controller \
+  -n agent-sandbox-system -f selfhost/production/values-sandbox-controller-prod.yaml
 ```
 
-Then wire Studio: `STUDIO_AGENT_SANDBOX_ENABLED=true`, `STUDIO_ENV=<env>`,
-`STUDIO_SANDBOX_TEMPLATE_NAME=studio-sandbox-<env>`, and the preview URL pattern
-pointing at your wildcard domain.
+Then wire Studio ([`values-studio-prod.yaml`](values-studio-prod.yaml)):
+`STUDIO_AGENT_SANDBOX_ENABLED=true` plus `sandboxController` (`url`,
+`tlsSecretName`, `callbackPort`). The chart refuses to render the first without
+the second, and Studio refuses to boot with an incomplete or non-`https`
+controller connection. The template name, env label, sentinel and preview
+routing are the controller's `claims.*` values
+([`values-sandbox-controller-prod.yaml`](values-sandbox-controller-prod.yaml)).
+Keep the claim API cluster-internal: a caller holding a certificate from its
+CA can start sandboxes with arbitrary env.
+
+On one machine without Kubernetes, the controller serves the same claim API on
+its `docker` runtime (`--kubernetes=false --docker --docker-image <image>`), one
+container per sandbox; that is what `bun run dev` starts. There is no packaged
+production install for it.
 
 See the top-level [`selfhost/README.md`](../README.md) for the full model.

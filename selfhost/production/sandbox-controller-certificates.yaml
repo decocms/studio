@@ -1,0 +1,81 @@
+# PRODUCTION example — the mTLS pair between Studio and the sandbox
+# controller, issued by cert-manager. Placeholders assume Studio installed as
+# release `studio` in namespace `studio` (values-studio-prod.yaml) and the
+# controller as release `sandbox-controller` in `agent-sandbox-system`
+# (values-sandbox-controller-prod.yaml).
+#
+#   kubectl apply -f selfhost/production/sandbox-controller-certificates.yaml
+#
+# Dedicate the CA to this pair: every certificate it signs can call the
+# controller's claim API and Studio's callbacks. Each leaf carries server AND
+# client auth, because each side serves with it and calls the other with it.
+# cert-manager writes tls.crt, tls.key and ca.crt into each Secret, which is the
+# shape both charts read. The CA's Secret lives in cert-manager's cluster
+# resource namespace (`cert-manager` by default), where a CA ClusterIssuer
+# reads it.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: sandbox-controller-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sandbox-controller-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: sandbox-controller-ca
+  secretName: sandbox-controller-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: sandbox-controller-selfsigned
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: sandbox-controller-ca
+spec:
+  ca:
+    secretName: sandbox-controller-ca
+---
+# The controller's leaf: its claim API's server certificate, and its client
+# certificate on callbacks. The DNS name is the one Studio's
+# sandboxController.url dials.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sandbox-controller-tls
+  namespace: agent-sandbox-system
+spec:
+  secretName: sandbox-controller-tls
+  commonName: sandbox-controller
+  dnsNames:
+    - sandbox-controller.agent-sandbox-system.svc
+  usages: [digital signature, key encipherment, server auth, client auth]
+  issuerRef:
+    name: sandbox-controller-ca
+    kind: ClusterIssuer
+---
+# Studio's leaf: its client certificate to the controller, and the callback
+# listener's server certificate. The DNS name is the one the controller's
+# claims.studioCallbackUrl dials.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: studio-sandbox-controller-client
+  namespace: studio
+spec:
+  secretName: studio-sandbox-controller-client
+  commonName: studio
+  dnsNames:
+    - studio.studio.svc
+  usages: [digital signature, key encipherment, server auth, client auth]
+  issuerRef:
+    name: sandbox-controller-ca
+    kind: ClusterIssuer
