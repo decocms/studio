@@ -345,12 +345,10 @@ function markdownToSections(md: string): ParsedImport {
       sections.push({ kind: "divider" });
     } else if (image) {
       flushAll();
-      sections.push({
-        kind: "image",
-        url: image[2] ?? "",
-        alt: image[1] ?? "",
-        caption: "",
-      });
+      const url = image[2] ?? "";
+      if (isSafeUrl(url)) {
+        sections.push({ kind: "image", url, alt: image[1] ?? "", caption: "" });
+      }
     } else if (listItem) {
       flushPara();
       flushQuote();
