@@ -22,8 +22,8 @@ const testLabel = "sandbox.deco.cx/test"
 // TestIntegration runs a real container on the local engine through ensure,
 // alive and delete. Opt-in: SANDBOX_DOCKER_IT=1. It builds a throwaway image
 // around testdata/fakedaemon, or runs SANDBOX_DOCKER_IT_IMAGE (a sandbox
-// image) when set, and removes every container labelled
-// sandbox.deco.cx/test=1, and the image it built, when it ends.
+// image) when set. It removes only what it created, by a label value unique
+// to the run and the image tag it built.
 func TestIntegration(t *testing.T) {
 	if os.Getenv("SANDBOX_DOCKER_IT") != "1" {
 		t.Skip("set SANDBOX_DOCKER_IT=1 to run against the local docker engine")
@@ -46,9 +46,11 @@ func TestIntegration(t *testing.T) {
 		tag = "sandbox-controller-it:" + hex.EncodeToString(suffix)
 	}
 	handle := "it-" + hex.EncodeToString(suffix)
+	// Unique to this run: cleanup must never match anyone else's containers.
+	runLabel := "docker-runtime-agent-" + hex.EncodeToString(suffix)
 	t.Cleanup(func() {
 		ctx := context.Background()
-		out, _ := exec.CommandContext(ctx, "docker", "container", "ls", "--all", "--quiet", "--filter", "label="+testLabel+"=1").Output()
+		out, _ := exec.CommandContext(ctx, "docker", "container", "ls", "--all", "--quiet", "--filter", "label="+testLabel+"="+runLabel).Output()
 		if ids := strings.Fields(string(out)); len(ids) > 0 {
 			_ = exec.CommandContext(ctx, "docker", append([]string{"container", "rm", "--force", "--volumes"}, ids...)...).Run()
 		}
@@ -57,7 +59,7 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 	if built {
-		buildFakeDaemonImage(ctx, t, tag)
+		buildFakeDaemonImage(ctx, t, tag, runLabel)
 	}
 
 	st := storetest.NewMemory()
@@ -68,7 +70,7 @@ func TestIntegration(t *testing.T) {
 		ReadyWait: 30 * time.Second,
 		Memory:    "256m",
 		CPUs:      "1",
-		Labels:    map[string]string{testLabel: "1"},
+		Labels:    map[string]string{testLabel: runLabel},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +130,7 @@ func TestIntegration(t *testing.T) {
 	}
 }
 
-func buildFakeDaemonImage(ctx context.Context, t *testing.T, tag string) {
+func buildFakeDaemonImage(ctx context.Context, t *testing.T, tag, runLabel string) {
 	run := func(args ...string) string {
 		t.Helper()
 		out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
@@ -153,6 +155,6 @@ func buildFakeDaemonImage(ctx context.Context, t *testing.T, tag string) {
 	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	run("build", "--quiet", "--label", testLabel+"=1", "--tag", tag, dir)
+	run("build", "--quiet", "--label", testLabel+"="+runLabel, "--tag", tag, dir)
 
 }
