@@ -48,6 +48,9 @@ export function RichTextBlock({
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read only inside the onUpdate callback, never during render
   onChangeRef.current = onChange;
 
+  // What the editor last held, so an external `html` rewrite can be told apart from our own edit echoing back.
+  const [lastKnownHtml, setLastKnownHtml] = useState(html);
+
   const [linkOpen, setLinkOpen] = useState(false);
 
   const editor = useEditor({
@@ -84,9 +87,17 @@ export function RichTextBlock({
     onUpdate: ({ editor }) => {
       const next = editor.getHTML();
       // TipTap emits "<p></p>" for empty content — normalize to "".
-      onChangeRef.current(next === "<p></p>" ? "" : next);
+      const normalized = next === "<p></p>" ? "" : next;
+      setLastKnownHtml(normalized);
+      onChangeRef.current(normalized);
     },
   });
+
+  // TipTap only seeds `content` at creation — sync an external `html` rewrite in.
+  if (editor && html !== lastKnownHtml) {
+    setLastKnownHtml(html);
+    editor.commands.setContent(html || "", { emitUpdate: false });
+  }
 
   // TipTap v3 no longer re-renders on transactions by default, so focus and
   // mark state must be selected reactively — reading `editor.isFocused`
