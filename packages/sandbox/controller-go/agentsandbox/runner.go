@@ -2,8 +2,6 @@ package agentsandbox
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/api/v1alpha1"
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
 	"github.com/decocms/studio/packages/sandbox/controller-go/store"
@@ -50,14 +49,6 @@ var Capabilities = []protocol.Capability{
 	protocol.CapCapacity,
 }
 
-// Studio is the controller's callbacks into Studio, which owns the database
-// and vault credentials are minted from. An empty result means Studio
-// declined; the caller keeps what it has.
-type Studio interface {
-	MintCloneURL(ctx context.Context, repo protocol.EnsureRepo, bufferMs int64) (string, error)
-	MintOrgFsConfig(ctx context.Context, tenant protocol.Tenant) (string, error)
-}
-
 type Gateway struct{ Name, Namespace string }
 
 type Config struct {
@@ -79,7 +70,7 @@ type Config struct {
 	IdleTTL       time.Duration
 	// Tenant pools only take effect in warm-pool mode.
 	TenantPools []TenantPool
-	Studio      Studio
+	Studio      daemonclient.Studio
 	// Variants lists the SandboxVariants for GET /images.
 	Variants func(ctx context.Context) ([]v1alpha1.SandboxVariant, error)
 }
@@ -111,7 +102,7 @@ type Runner struct {
 	cfg       Config
 	kube      *kube
 	store     store.Store
-	daemon    *daemonClient
+	daemon    *daemonclient.Client
 	fwd       *forwarder
 	templates *templateResolver
 	pools     []TenantPool
@@ -142,19 +133,14 @@ func New(deps Deps, cfg Config) (*Runner, error) {
 	}
 	k := &kube{dyn: deps.Dynamic, core: deps.Core, namespace: cfg.Namespace}
 	r := &Runner{
-		cfg:    cfg,
-		kube:   k,
-		store:  deps.Store,
-		daemon: newDaemonClient(deps.DaemonTransport),
-		fwd:    &forwarder{rest: deps.Rest, core: deps.Core, namespace: cfg.Namespace, forward: map[string]*forward{}},
-		now:    time.Now,
-		timing: defaultTiming,
-		newToken: func() string {
-			// 32 bytes, as Studio generated them; the daemon wants 32..256 chars.
-			b := make([]byte, 32)
-			_, _ = rand.Read(b)
-			return hex.EncodeToString(b)
-		},
+		cfg:      cfg,
+		kube:     k,
+		store:    deps.Store,
+		daemon:   daemonclient.New(deps.DaemonTransport),
+		fwd:      &forwarder{rest: deps.Rest, core: deps.Core, namespace: cfg.Namespace, forward: map[string]*forward{}},
+		now:      time.Now,
+		timing:   defaultTiming,
+		newToken: daemonclient.NewToken,
 	}
 	r.templates = &templateResolver{base: cfg.TemplateName, exists: k.templateExists, now: func() time.Time { return r.now() }, probes: map[string]templateProbe{}}
 	if len(cfg.TenantPools) > 0 {
@@ -364,7 +350,7 @@ func (r *Runner) provision(ctx context.Context, id protocol.SandboxID, handle st
 	// A pod this handle used to point at is being replaced; a forward to it
 	// dials a corpse, and would be reused under the same handle.
 	r.fwd.close(handle)
-	boot := bootSecrets{token: r.newToken(), daemonBootID: newBootID(), workdir: defaultWorkdir}
+	boot := bootSecrets{token: r.newToken(), daemonBootID: daemonclient.NewBootID(), workdir: defaultWorkdir}
 	// Resolved before the template: a tenant-pool claim must name the template
 	// the pool's pods were built from.
 	pool := r.tenantPool(opts)
@@ -436,9 +422,9 @@ func (r *Runner) bind(ctx context.Context, id protocol.SandboxID, handle string,
 	}
 	// Cold Sandboxes are named after the claim, adopted ones after their pool.
 	poolBound := pool != nil && adopted != handle
-	payload := workloadConfigPayload(&opts, poolBound)
+	payload := daemonclient.WorkloadConfig(&opts, poolBound)
 	bootID := boot.daemonBootID
-	if err := r.daemon.waitReady(ctx, daemonURL); err != nil {
+	if err := r.daemon.WaitReady(ctx, daemonURL); err != nil {
 		return release(err)
 	}
 	if r.warm() {
@@ -446,11 +432,11 @@ func (r *Runner) bind(ctx context.Context, id protocol.SandboxID, handle string,
 		// rotate to the per-claim token with the workload. Afterwards only the
 		// per-claim token is accepted, which is what stops a recycled pod
 		// honouring the previous tenant.
-		if h := r.daemon.probeHealth(ctx, daemonURL); h != nil {
+		if h := r.daemon.ProbeHealth(ctx, daemonURL); h != nil {
 			bootID = h.BootId
 		}
-		if _, err := r.daemon.postConfig(ctx, daemonURL, r.cfg.SentinelToken, payload, boot.token); err != nil {
-			var cfgErr *ConfigRequestError
+		if _, err := r.daemon.PostConfig(ctx, daemonURL, r.cfg.SentinelToken, payload, boot.token); err != nil {
+			var cfgErr *daemonclient.ConfigRequestError
 			if errors.As(err, &cfgErr) && cfgErr.Status == http.StatusUnauthorized {
 				// The pod already rotated to another claim's token. No local
 				// recovery: this token is new to it. Named so the pool reusing a
@@ -460,7 +446,7 @@ func (r *Runner) bind(ctx context.Context, id protocol.SandboxID, handle string,
 			return release(bootstrapError(err))
 		}
 	} else if payload != nil {
-		if _, err := r.daemon.postConfig(ctx, daemonURL, boot.token, payload, ""); err != nil {
+		if _, err := r.daemon.PostConfig(ctx, daemonURL, boot.token, payload, ""); err != nil {
 			return release(bootstrapError(err))
 		}
 	}
@@ -476,7 +462,7 @@ func (r *Runner) bind(ctx context.Context, id protocol.SandboxID, handle string,
 // bootstrapError words a daemon's rejection of the handshake as a retryable
 // provisioning failure: the claim is released, and a retry gets another pod.
 func bootstrapError(err error) error {
-	var cfgErr *ConfigRequestError
+	var cfgErr *daemonclient.ConfigRequestError
 	if !errors.As(err, &cfgErr) {
 		return err
 	}
@@ -494,7 +480,7 @@ func bootstrapError(err error) error {
 func (r *Runner) join(ctx context.Context, id protocol.SandboxID, handle string, opts protocol.EnsureOptions, claim *Claim) (*record, error) {
 	boot := bootSecrets{workdir: defaultWorkdir}
 	if r.warm() {
-		boot.token, boot.daemonBootID = r.newToken(), newBootID()
+		boot.token, boot.daemonBootID = r.newToken(), daemonclient.NewBootID()
 	} else {
 		boot.token, boot.daemonBootID = claim.env("DAEMON_TOKEN"), claim.env("DAEMON_BOOT_ID")
 	}
@@ -524,7 +510,7 @@ func (r *Runner) adopt(ctx context.Context, id protocol.SandboxID, handle string
 	if err != nil {
 		return nil, err
 	}
-	health := r.daemon.probeHealth(ctx, daemonURL)
+	health := r.daemon.ProbeHealth(ctx, daemonURL)
 	if health == nil {
 		r.fwd.close(handle)
 		return nil, fmt.Errorf("daemon of %s did not answer /health", handle)
@@ -576,7 +562,7 @@ func (r *Runner) rehydrate(ctx context.Context, id protocol.SandboxID, handle st
 	if err != nil {
 		return nil
 	}
-	health := r.daemon.probeHealth(ctx, daemonURL)
+	health := r.daemon.ProbeHealth(ctx, daemonURL)
 	if health == nil {
 		r.fwd.close(handle)
 		return nil
@@ -589,7 +575,7 @@ func (r *Runner) rehydrate(ctx context.Context, id protocol.SandboxID, handle st
 		if r.warm() {
 			var opts *protocol.EnsureOptions
 			if st.EnsureOpts != nil {
-				fresh := r.withFreshCredentials(ctx, *st.EnsureOpts)
+				fresh := daemonclient.FreshCredentials(ctx, r.cfg.Studio, *st.EnsureOpts)
 				opts = &fresh
 			}
 			if !r.rebootstrap(ctx, daemonURL, st.Token, opts) {
@@ -633,15 +619,15 @@ func (r *Runner) rebootstrap(ctx context.Context, daemonURL, token string, opts 
 		return false
 	}
 	// A recreated pool pod is empty; nothing warm to preserve.
-	payload := workloadConfigPayload(opts, false)
+	payload := daemonclient.WorkloadConfig(opts, false)
 	orgFs := ""
 	if opts != nil {
 		orgFs = opts.OrgFsConfigJSON
 	}
-	_, err := r.daemon.postConfig(ctx, daemonURL, r.cfg.SentinelToken, payload, token)
-	var cfgErr *ConfigRequestError
+	_, err := r.daemon.PostConfig(ctx, daemonURL, r.cfg.SentinelToken, payload, token)
+	var cfgErr *daemonclient.ConfigRequestError
 	if errors.As(err, &cfgErr) && cfgErr.Status == http.StatusUnauthorized {
-		_, err = r.daemon.postConfig(ctx, daemonURL, token, payload, token)
+		_, err = r.daemon.PostConfig(ctx, daemonURL, token, payload, token)
 	}
 	if err != nil {
 		slog.Warn("re-bootstrap failed", "err", err)
@@ -656,11 +642,11 @@ func (r *Runner) refreshGitCredential(ctx context.Context, rec *record, opts pro
 	if opts.Repo == nil {
 		return
 	}
-	patch := gitCredentialRefreshPatch(opts.Repo.CloneURL)
+	patch := daemonclient.CredentialRefreshPatch(opts.Repo.CloneURL)
 	if patch == nil {
 		return
 	}
-	if _, err := r.daemon.postConfig(ctx, rec.daemonURL, rec.token, patch, ""); err != nil {
+	if _, err := r.daemon.PostConfig(ctx, rec.daemonURL, rec.token, patch, ""); err != nil {
 		slog.Warn("git credential refresh failed", "handle", rec.handle, "err", err)
 	}
 }
@@ -671,7 +657,7 @@ func (r *Runner) relayOrgFs(ctx context.Context, daemonURL, token, configJSON st
 	if configJSON == "" {
 		return
 	}
-	if err := r.daemon.postOrgFsConfig(ctx, daemonURL, token, configJSON); err != nil {
+	if err := r.daemon.PostOrgFsConfig(ctx, daemonURL, token, configJSON); err != nil {
 		slog.Warn("org-fs sidecar config relay failed", "err", err)
 	}
 }
@@ -728,7 +714,7 @@ func (r *Runner) waitAdopted(ctx context.Context, handle string) (string, error)
 			return "", &runtime.Error{Code: protocol.ErrClaimStalled,
 				Message: fmt.Sprintf("SandboxClaim %s did not record an adopted Sandbox (status.sandbox.name) within %ds", handle, int(r.timing.adoptWait.Seconds()))}
 		}
-		if err := sleepCtx(ctx, r.timing.adoptPoll); err != nil {
+		if err := daemonclient.Sleep(ctx, r.timing.adoptPoll); err != nil {
 			return "", err
 		}
 	}
@@ -752,7 +738,7 @@ func (r *Runner) waitGone(ctx context.Context, handle string) error {
 			}
 			return fmt.Errorf("SandboxClaim %s: %w", handle, err)
 		}
-		if err := sleepCtx(ctx, r.timing.gonePoll); err != nil {
+		if err := daemonclient.Sleep(ctx, r.timing.gonePoll); err != nil {
 			return err
 		}
 	}
@@ -789,13 +775,4 @@ func stripEnsureOpts(opts protocol.EnsureOptions) *protocol.EnsureOptions {
 		return nil
 	}
 	return &out
-}
-
-func newBootID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	h := hex.EncodeToString(b)
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }

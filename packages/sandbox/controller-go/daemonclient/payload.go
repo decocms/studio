@@ -1,8 +1,10 @@
-package agentsandbox
+package daemonclient
 
 import (
+	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 
 	daemon "github.com/decocms/studio/sandbox-daemon/pkg/protocol"
@@ -12,14 +14,14 @@ import (
 
 const defaultDevPort = 3000
 
-// workloadConfigPayload is the daemon /config body for a claim's options,
+// WorkloadConfig is the daemon /config body for a claim's options,
 // shared by provision and warm-pool re-bootstrap so a recreated pod re-clones
 // the same workload. opts nil (a row persisted without options) sends no
 // cloneOnly at all.
 //
 // cloneOnly is dropped on a bound tenant-pool pod: its clone step would stop
 // the dev task that makes the pod warm.
-func workloadConfigPayload(opts *protocol.EnsureOptions, tenantPoolPodBound bool) *daemon.TenantConfig {
+func WorkloadConfig(opts *protocol.EnsureOptions, tenantPoolPodBound bool) *daemon.TenantConfig {
 	if opts == nil {
 		return buildConfigPayload(payloadArgs{runtime: "node", port: defaultDevPort})
 	}
@@ -193,12 +195,50 @@ func cloneURLHasCredentials(raw string) bool {
 	return err == nil && u.User != nil && u.User.Username() != ""
 }
 
-// gitCredentialRefreshPatch forwards only the credentialed clone URL: the
+// CredentialRefreshPatch forwards only the credentialed clone URL: the
 // daemon classifies same-repo + new-token as git-credential-refresh and
 // rotates origin in place. Nil for a public clone: nothing to rotate.
-func gitCredentialRefreshPatch(cloneURL string) *daemon.TenantConfig {
+func CredentialRefreshPatch(cloneURL string) *daemon.TenantConfig {
 	if cloneURL == "" || !cloneURLHasCredentials(cloneURL) {
 		return nil
 	}
 	return &daemon.TenantConfig{Git: &daemon.GitConfig{Repository: &daemon.GitRepository{CloneUrl: daemon.Str(cloneURL)}}}
+}
+
+// StripURLCredentials drops userinfo before a clone URL lands anywhere another
+// reader can see it. Fails closed: an unparseable URL becomes "".
+func StripURLCredentials(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	u.User = nil
+	return u.String()
+}
+
+// Port is where the daemon listens inside the sandbox.
+const Port = 9000
+
+// reservedEnv are the bootstrap keys a caller's env must not shadow.
+var reservedEnv = map[string]bool{"DAEMON_TOKEN": true, "DAEMON_BOOT_ID": true, "APP_ROOT": true, "PROXY_PORT": true}
+
+// BootEnv is the daemon's boot environment: the caller's env with the
+// bootstrap keys set over it, and the caller keys that were dropped for
+// shadowing one, sorted.
+func BootEnv(callerEnv map[string]string, token, bootID, workdir string) (map[string]string, []string) {
+	out := map[string]string{}
+	var dropped []string
+	for k, v := range callerEnv {
+		if reservedEnv[k] {
+			dropped = append(dropped, k)
+			continue
+		}
+		out[k] = v
+	}
+	sort.Strings(dropped)
+	out["DAEMON_TOKEN"] = token
+	out["DAEMON_BOOT_ID"] = bootID
+	out["APP_ROOT"] = workdir
+	out["PROXY_PORT"] = fmt.Sprint(Port)
+	return out, dropped
 }

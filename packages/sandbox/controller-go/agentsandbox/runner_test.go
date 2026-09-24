@@ -33,6 +33,15 @@ const (
 	sentinel = "sentinel-sentinel-sentinel-sentinel"
 )
 
+func marshal(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 var testID = protocol.SandboxID{UserID: "u_1", ProjectRef: "agent:org:vmcp:main"}
 
 // fakeDaemon answers like the daemon: /health, and /config that honours the
@@ -188,7 +197,7 @@ func newHarness(t *testing.T, cfg Config, objects ...k8sruntime.Object) *harness
 		t.Fatal(err)
 	}
 	r.timing = timing{watchPoll: 5 * time.Millisecond, stall: 2 * time.Second, adoptWait: 2 * time.Second, adoptPoll: 5 * time.Millisecond, goneWait: 2 * time.Second, gonePoll: 5 * time.Millisecond}
-	r.daemon.sleep = func(context.Context, time.Duration) error { return nil }
+	r.daemon.Sleep = func(context.Context, time.Duration) error { return nil }
 	r.newToken = func() string { return strings.Repeat("a", 64) }
 	h.runner = r
 	h.daemon.token = "unset"

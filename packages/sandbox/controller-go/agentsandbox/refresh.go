@@ -7,45 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/store"
 )
-
-// withFreshCloneURL re-mints the repo's credential through Studio, falling
-// back to the one it has: a mint failure must not block provisioning or
-// recovery.
-func (r *Runner) withFreshCloneURL(ctx context.Context, repo *protocol.EnsureRepo, buffer time.Duration) *protocol.EnsureRepo {
-	if repo == nil || r.cfg.Studio == nil || (repo.ConnectionID == "" && repo.RepositoryID == "") {
-		return repo
-	}
-	fresh, err := r.cfg.Studio.MintCloneURL(ctx, *repo, buffer.Milliseconds())
-	if err != nil {
-		slog.Warn("clone credential re-mint failed", "err", err)
-		return repo
-	}
-	if fresh == "" {
-		return repo
-	}
-	out := *repo
-	out.CloneURL = fresh
-	return &out
-}
-
-// withFreshCredentials re-mints both credentials a persisted options blob
-// embeds: the clone token (~55min) and the org-fs API key (deleted at expiry).
-// Every path that replays a persisted blob goes through here.
-func (r *Runner) withFreshCredentials(ctx context.Context, opts protocol.EnsureOptions) protocol.EnsureOptions {
-	opts.Repo = r.withFreshCloneURL(ctx, opts.Repo, 0)
-	if opts.OrgFsConfigJSON != "" && opts.Tenant != nil && r.cfg.Studio != nil {
-		fresh, err := r.cfg.Studio.MintOrgFsConfig(ctx, *opts.Tenant)
-		if err != nil {
-			slog.Warn("org-fs credential re-mint failed", "err", err)
-		} else if fresh != "" {
-			opts.OrgFsConfigJSON = fresh
-		}
-	}
-	return opts
-}
 
 // RunCredentialRefresher keeps git alive in long-lived sandboxes until ctx
 // ends. Recovery only re-mints on a claim event, so a pod edited continuously
@@ -124,11 +89,11 @@ func (r *Runner) refreshOne(ctx context.Context, row store.Record) {
 		return
 	}
 	repo := st.EnsureOpts.Repo
-	fresh := r.withFreshCloneURL(ctx, repo, credentialRefreshBuffer)
+	fresh := daemonclient.FreshCloneURL(ctx, r.cfg.Studio, repo, credentialRefreshBuffer)
 	if fresh.CloneURL == repo.CloneURL {
 		return
 	}
-	patch := gitCredentialRefreshPatch(fresh.CloneURL)
+	patch := daemonclient.CredentialRefreshPatch(fresh.CloneURL)
 	if patch == nil {
 		return
 	}
@@ -136,7 +101,7 @@ func (r *Runner) refreshOne(ctx context.Context, row store.Record) {
 	if err != nil {
 		return
 	}
-	if _, err := r.daemon.postConfig(ctx, daemonURL, st.Token, patch, ""); err != nil {
+	if _, err := r.daemon.PostConfig(ctx, daemonURL, st.Token, patch, ""); err != nil {
 		slog.Warn("credential refresh push failed", "handle", row.Handle, "err", err)
 		return
 	}

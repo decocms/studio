@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/api/v1alpha1"
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
 	"github.com/decocms/studio/packages/sandbox/controller-go/store"
@@ -49,7 +50,7 @@ func (r *Runner) Delete(ctx context.Context, handle string) error {
 		if err == nil && c == nil {
 			return nil
 		}
-		if err := sleepCtx(ctx, r.timing.gonePoll); err != nil {
+		if err := daemonclient.Sleep(ctx, r.timing.gonePoll); err != nil {
 			return err
 		}
 	}
@@ -93,7 +94,7 @@ func (r *Runner) Resurrect(ctx context.Context, handle string) (bool, error) {
 		return false, err
 	}
 	slog.Info("resurrecting evicted sandbox", "handle", handle)
-	if _, err := r.Ensure(ctx, rec.ID, rec.Handle, r.withFreshCredentials(ctx, *st.EnsureOpts)); err != nil {
+	if _, err := r.Ensure(ctx, rec.ID, rec.Handle, daemonclient.FreshCredentials(ctx, r.cfg.Studio, *st.EnsureOpts)); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -160,10 +161,10 @@ func (r *Runner) RotateCredential(ctx context.Context, handle, cloneURL string) 
 	if st == nil {
 		return &runtime.Error{Code: protocol.ErrUnknownHandle, Message: "no sandbox recorded under " + handle}
 	}
-	if st.EnsureOpts == nil || st.EnsureOpts.Repo == nil || stripURLCredentials(st.EnsureOpts.Repo.CloneURL) != stripURLCredentials(cloneURL) || stripURLCredentials(cloneURL) == "" {
+	if st.EnsureOpts == nil || st.EnsureOpts.Repo == nil || daemonclient.StripURLCredentials(st.EnsureOpts.Repo.CloneURL) != daemonclient.StripURLCredentials(cloneURL) || daemonclient.StripURLCredentials(cloneURL) == "" {
 		return &runtime.Error{Code: protocol.ErrBadRequest, Message: "cloneUrl must name the sandbox's own repository"}
 	}
-	patch := gitCredentialRefreshPatch(cloneURL)
+	patch := daemonclient.CredentialRefreshPatch(cloneURL)
 	if patch == nil {
 		return nil
 	}
@@ -171,8 +172,8 @@ func (r *Runner) RotateCredential(ctx context.Context, handle, cloneURL string) 
 	if err != nil {
 		return err
 	}
-	if _, err := r.daemon.postConfig(ctx, daemonURL, st.Token, patch, ""); err != nil {
-		return daemonError(err)
+	if _, err := r.daemon.PostConfig(ctx, daemonURL, st.Token, patch, ""); err != nil {
+		return daemonclient.DaemonError(err)
 	}
 	return r.recordCloneURL(ctx, rec.ID, handle, cloneURL)
 }
@@ -200,7 +201,7 @@ func (r *Runner) recordCloneURL(ctx context.Context, id protocol.SandboxID, hand
 
 func daemonError(err error) error {
 	out := &runtime.Error{Code: protocol.ErrDaemon, Message: "sandbox daemon rejected the call", Err: err}
-	var cfgErr *ConfigRequestError
+	var cfgErr *daemonclient.ConfigRequestError
 	if errors.As(err, &cfgErr) {
 		out.Status = cfgErr.Status
 	}

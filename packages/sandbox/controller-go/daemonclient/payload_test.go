@@ -1,4 +1,4 @@
-package agentsandbox
+package daemonclient
 
 import (
 	"encoding/json"
@@ -79,7 +79,7 @@ func TestWorkloadConfigPayload(t *testing.T) {
 		{name: "a row with no options says nothing", opts: nil, isNil: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := workloadConfigPayload(tc.opts, tc.poolBound)
+			got := WorkloadConfig(tc.opts, tc.poolBound)
 			if tc.isNil {
 				if got != nil {
 					t.Fatalf("want nil, got %s", marshal(t, got))
@@ -101,11 +101,11 @@ func TestWorkloadConfigPayload(t *testing.T) {
 	}
 }
 
-func TestGitCredentialRefreshPatch(t *testing.T) {
-	if p := gitCredentialRefreshPatch("https://github.com/acme/public.git"); p != nil {
+func TestCredentialRefreshPatch(t *testing.T) {
+	if p := CredentialRefreshPatch("https://github.com/acme/public.git"); p != nil {
 		t.Fatalf("a public clone has nothing to rotate, got %s", marshal(t, p))
 	}
-	got := marshal(t, gitCredentialRefreshPatch("https://x-access-token:new@github.com/acme/site.git"))
+	got := marshal(t, CredentialRefreshPatch("https://x-access-token:new@github.com/acme/site.git"))
 	// Only the URL: a patch naming submodule credentials or repositories would
 	// replace them.
 	if want := `{"git":{"repository":{"cloneUrl":"https://x-access-token:new@github.com/acme/site.git"}}}`; got != want {
