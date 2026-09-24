@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 )
 
@@ -26,7 +27,7 @@ import (
 const legacySSAFieldManager = "mesh-sandbox-runner"
 
 const (
-	daemonPort = 9000
+	daemonPort = daemonclient.Port
 	// mainContainer is the agent container; siblings are the org-fs sidecar
 	// and init containers.
 	mainContainer = "sandbox"

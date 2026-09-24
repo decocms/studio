@@ -31,6 +31,7 @@ import (
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/agentsandbox"
 	"github.com/decocms/studio/packages/sandbox/controller-go/api/v1alpha1"
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
 	"github.com/decocms/studio/packages/sandbox/controller-go/server"
 	"github.com/decocms/studio/packages/sandbox/controller-go/store"
@@ -146,7 +147,7 @@ func setupClaims(mgr manager.Manager, namespace string, cf claimFlags) (func(), 
 	if err != nil {
 		return nil, err
 	}
-	var callbacks agentsandbox.Studio
+	var callbacks daemonclient.Studio
 	if cf.studioURL != "" {
 		clientTLS, err := studio.ClientTLS(cf.tlsCert, cf.tlsKey, cf.studioCA)
 		if err != nil {

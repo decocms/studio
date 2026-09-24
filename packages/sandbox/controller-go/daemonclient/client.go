@@ -1,4 +1,7 @@
-package agentsandbox
+// Package daemonclient is what every runtime does to bring a sandbox daemon up
+// and keep it configured: the daemon's control endpoints, the /_sandbox/config
+// payload built from a claim's options, and credential re-minting.
+package daemonclient
 
 import (
 	"bytes"
@@ -40,24 +43,27 @@ func (e *ConfigRequestError) Error() string {
 	return fmt.Sprintf("sandbox daemon /_sandbox/config returned %d: %s", e.Status, e.Body)
 }
 
-type daemonClient struct {
+// Client calls one daemon at a time; it is safe for concurrent use.
+type Client struct {
 	http *http.Client
 	// Replaced in tests.
-	sleep         func(context.Context, time.Duration) error
-	configTimeout time.Duration
+	Sleep         func(context.Context, time.Duration) error
+	ConfigTimeout time.Duration
 }
 
-func newDaemonClient(transport http.RoundTripper) *daemonClient {
+// New builds a Client; nil transport is a default one.
+func New(transport http.RoundTripper) *Client {
 	if transport == nil {
 		transport = &http.Transport{
 			DialContext:         (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 			MaxIdleConnsPerHost: 4,
 		}
 	}
-	return &daemonClient{http: &http.Client{Transport: transport}, sleep: sleepCtx, configTimeout: configTimeout}
+	return &Client{http: &http.Client{Transport: transport}, Sleep: Sleep, ConfigTimeout: configTimeout}
 }
 
-func sleepCtx(ctx context.Context, d time.Duration) error {
+// Sleep waits d or until ctx ends.
+func Sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
@@ -88,13 +94,13 @@ func neverSent(err error) bool {
 // may have been applied and replaying it is not safe: a POST carrying
 // auth.rotateToken rotates the bearer before anything else, so a retry after a
 // timeout would present a token the daemon no longer accepts.
-func (c *daemonClient) request(ctx context.Context, method, url, token string, body []byte, endpoint string, timeout time.Duration, replayable bool) (daemonResponse, error) {
+func (c *Client) request(ctx context.Context, method, url, token string, body []byte, endpoint string, timeout time.Duration, replayable bool) (daemonResponse, error) {
 	var last error
 	backoff := retryMin
 	for attempt := 0; attempt < requestAttempts; attempt++ {
 		if attempt > 0 {
 			jitter := time.Duration((rand.Float64() - 0.5) * float64(backoff))
-			if err := c.sleep(ctx, backoff+jitter); err != nil {
+			if err := c.Sleep(ctx, backoff+jitter); err != nil {
 				break
 			}
 			backoff = min(backoff*2, retryMax)
@@ -111,7 +117,7 @@ func (c *daemonClient) request(ctx context.Context, method, url, token string, b
 	return daemonResponse{}, fmt.Errorf("[SANDBOX_UNREACHABLE] sandbox daemon %s request failed: %w", endpoint, last)
 }
 
-func (c *daemonClient) once(ctx context.Context, method, url, token string, body []byte, timeout time.Duration) (daemonResponse, error) {
+func (c *Client) once(ctx context.Context, method, url, token string, body []byte, timeout time.Duration) (daemonResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var reader io.Reader
@@ -140,9 +146,9 @@ func (c *daemonClient) once(ctx context.Context, method, url, token string, body
 	return daemonResponse{status: res.StatusCode, body: blob}, nil
 }
 
-// probeHealth reads /health, the one unauthenticated endpoint, once. Nil when
+// ProbeHealth reads /health, the one unauthenticated endpoint, once. Nil when
 // unreachable or not a daemon's answer.
-func (c *daemonClient) probeHealth(ctx context.Context, daemonURL string) *daemon.Health {
+func (c *Client) ProbeHealth(ctx context.Context, daemonURL string) *daemon.Health {
 	ctx, cancel := context.WithTimeout(ctx, healthProbeTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, daemonURL+"/health", nil)
@@ -177,23 +183,23 @@ func (c *daemonClient) probeHealth(ctx context.Context, daemonURL string) *daemo
 	}
 }
 
-// waitReady polls /health until it answers (setup may still be running).
-func (c *daemonClient) waitReady(ctx context.Context, daemonURL string) error {
+// WaitReady polls /health until it answers (setup may still be running).
+func (c *Client) WaitReady(ctx context.Context, daemonURL string) error {
 	for i := 0; i < readyAttempts; i++ {
-		if c.probeHealth(ctx, daemonURL) != nil {
+		if c.ProbeHealth(ctx, daemonURL) != nil {
 			return nil
 		}
 		jitter := time.Duration((rand.Float64()*2 - 1) * float64(readyJitter))
-		if err := c.sleep(ctx, readyInterval+jitter); err != nil {
+		if err := c.Sleep(ctx, readyInterval+jitter); err != nil {
 			return err
 		}
 	}
 	return fmt.Errorf("sandbox daemon at %s did not respond on /health within %s", daemonURL, readyAttempts*readyInterval)
 }
 
-// postConfig sets the daemon's tenant config. rotateToken, when set, replaces
+// PostConfig sets the daemon's tenant config. rotateToken, when set, replaces
 // the daemon's bearer before the patch applies.
-func (c *daemonClient) postConfig(ctx context.Context, daemonURL, token string, cfg *daemon.TenantConfig, rotateToken string) (*daemon.ConfigResponse, error) {
+func (c *Client) PostConfig(ctx context.Context, daemonURL, token string, cfg *daemon.TenantConfig, rotateToken string) (*daemon.ConfigResponse, error) {
 	req := daemon.ConfigRequest{}
 	if cfg != nil {
 		req.TenantConfig = *cfg
@@ -205,7 +211,7 @@ func (c *daemonClient) postConfig(ctx context.Context, daemonURL, token string, 
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.request(ctx, http.MethodPost, daemonURL+"/_sandbox/config", token, blob, "/_sandbox/config", c.configTimeout, rotateToken == "")
+	res, err := c.request(ctx, http.MethodPost, daemonURL+"/_sandbox/config", token, blob, "/_sandbox/config", c.ConfigTimeout, rotateToken == "")
 	if err != nil {
 		return nil, err
 	}
@@ -219,10 +225,10 @@ func (c *daemonClient) postConfig(ctx context.Context, daemonURL, token string, 
 	return &out, nil
 }
 
-// postOrgFsConfig relays the org-fs mount config to the pod's sidecar. A
+// PostOrgFsConfig relays the org-fs mount config to the pod's sidecar. A
 // separate endpoint: an orgFs-only /config patch classifies as a no-op.
-func (c *daemonClient) postOrgFsConfig(ctx context.Context, daemonURL, token, configJSON string) error {
-	res, err := c.request(ctx, http.MethodPost, daemonURL+"/_sandbox/orgfs-config", token, []byte(configJSON), "/_sandbox/orgfs-config", c.configTimeout, true)
+func (c *Client) PostOrgFsConfig(ctx context.Context, daemonURL, token, configJSON string) error {
+	res, err := c.request(ctx, http.MethodPost, daemonURL+"/_sandbox/orgfs-config", token, []byte(configJSON), "/_sandbox/orgfs-config", c.ConfigTimeout, true)
 	if err != nil {
 		return err
 	}

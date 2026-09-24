@@ -1,7 +1,6 @@
 package agentsandbox
 
 import (
-	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
@@ -10,6 +9,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 )
 
@@ -30,9 +30,6 @@ const (
 	annGitRepoURL = "studio.decocms.com/git-repo-url"
 	annGitBranch  = "studio.decocms.com/git-branch"
 )
-
-// reservedEnv are the bootstrap keys a caller's env must not shadow.
-var reservedEnv = map[string]bool{"DAEMON_TOKEN": true, "DAEMON_BOOT_ID": true, "APP_ROOT": true, "PROXY_PORT": true}
 
 type bootSecrets struct {
 	token        string
@@ -86,18 +83,6 @@ func sanitizeAnnotationValue(v string) string {
 	return string(out)
 }
 
-// stripURLCredentials drops userinfo before a clone URL lands on an object
-// anyone with namespace read can see. Fails closed: unparseable annotates
-// nothing.
-func stripURLCredentials(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return ""
-	}
-	u.User = nil
-	return u.String()
-}
-
 // tenantAnnotations is human-readable ownership for `kubectl describe`.
 // Informational only.
 func tenantAnnotations(opts protocol.EnsureOptions) map[string]string {
@@ -115,7 +100,7 @@ func tenantAnnotations(opts protocol.EnsureOptions) map[string]string {
 	}
 	if r := opts.Repo; r != nil {
 		put(annGitRepo, r.DisplayName)
-		put(annGitRepoURL, stripURLCredentials(r.CloneURL))
+		put(annGitRepoURL, daemonclient.StripURLCredentials(r.CloneURL))
 		// The synthetic isolation key reads better than repo.branch, the
 		// derived git ref.
 		branch := opts.Branch
@@ -140,24 +125,6 @@ func readClaimTenant(c *Claim) *protocol.Tenant {
 	}
 }
 
-func envMap(opts protocol.EnsureOptions, boot bootSecrets) (map[string]string, []string) {
-	out := map[string]string{}
-	var dropped []string
-	for k, v := range opts.Env {
-		if reservedEnv[k] {
-			dropped = append(dropped, k)
-			continue
-		}
-		out[k] = v
-	}
-	sort.Strings(dropped)
-	out["DAEMON_TOKEN"] = boot.token
-	out["DAEMON_BOOT_ID"] = boot.daemonBootID
-	out["APP_ROOT"] = boot.workdir
-	out["PROXY_PORT"] = fmt.Sprint(daemonPort)
-	return out, dropped
-}
-
 type claimInput struct {
 	handle    string
 	namespace string
@@ -177,7 +144,7 @@ func buildClaim(in claimInput) (*Claim, []string) {
 	var env []EnvVar
 	var dropped []string
 	if !in.warm {
-		m, d := envMap(in.opts, in.boot)
+		m, d := daemonclient.BootEnv(in.opts.Env, in.boot.token, in.boot.daemonBootID, in.boot.workdir)
 		dropped = d
 		keys := make([]string, 0, len(m))
 		for k := range m {

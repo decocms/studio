@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/decocms/studio/packages/sandbox/controller-go/daemonclient"
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
 )
@@ -221,7 +222,7 @@ func (r *Runner) Watch(ctx context.Context, handle string) (<-chan protocol.Phas
 		}
 		for first := true; ; first = false {
 			if !first {
-				if sleepCtx(ctx, r.timing.watchPoll) != nil {
+				if daemonclient.Sleep(ctx, r.timing.watchPoll) != nil {
 					return
 				}
 				r.observe(ctx, handle, o)
