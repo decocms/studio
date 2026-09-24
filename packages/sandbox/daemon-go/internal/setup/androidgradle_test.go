@@ -4,6 +4,7 @@ package setup
 // trip IS the contract.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,7 +57,7 @@ func TestUploadAndroidGradle(t *testing.T) {
 		if stats.Uploaded != 1 {
 			t.Fatalf("stats = %+v", stats)
 		}
-		archive := filepath.Join(remote, "android-gradle", "org_a", repoCacheKey(gradleCloneUrl), "2026-W39.tar.zst")
+		archive := filepath.Join(remote, "android-gradle", "org_a", repoCacheKey(gradleCloneUrl), "2026-W39_000000000000.tar.zst")
 		members := archiveMembers(t, archive)
 		for _, want := range []string{"caches/modules-2/files-2.1/com.acme/lib.jar", "wrapper/dists/gradle-8.12-all/gradle.zip"} {
 			if !strings.Contains(members, want) {
@@ -74,6 +75,38 @@ func TestUploadAndroidGradle(t *testing.T) {
 		uploadAndroidGradle(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "prod"}, now, &stats)
 		if stats.Skipped != 1 || stats.Uploaded != 0 {
 			t.Fatalf("re-sweep stats = %+v", stats)
+		}
+	})
+
+	t.Run("republishes once the build cache has outgrown the week's largest", func(t *testing.T) {
+		cache, remote := t.TempDir(), t.TempDir()
+		dir := nodeLocalGradle(t, cache, "org_a", "prod")
+		repoRemote := filepath.Join(remote, "android-gradle", "org_a", repoCacheKey(gradleCloneUrl))
+		// The archive a partial build published before sizes were in the name.
+		writeFile(t, filepath.Join(repoRemote, "2026-W39.tar.zst"), "")
+		entry := filepath.Join(dir, "caches", "build-cache-1", "entry")
+		sweep := func(size int64) UploaderStats {
+			t.Helper()
+			writeFile(t, entry, "")
+			if err := os.Truncate(entry, size); err != nil {
+				t.Fatal(err)
+			}
+			var stats UploaderStats
+			uploadAndroidGradle(UploaderOpts{CacheRoot: cache, RemoteRoot: remote, Env: "prod"}, now, &stats)
+			return stats
+		}
+		if s := sweep(androidGradleRepublishMin - 1); s.Skipped != 1 {
+			t.Fatalf("grew less than the minimum, stats = %+v", s)
+		}
+		if s := sweep(androidGradleRepublishMin); s.Uploaded != 1 {
+			t.Fatalf("outgrew the legacy archive, stats = %+v", s)
+		}
+		if s := sweep(2*androidGradleRepublishMin - 1); s.Skipped != 1 {
+			t.Fatalf("less than doubled, stats = %+v", s)
+		}
+		want := filepath.Join(repoRemote, fmt.Sprintf("2026-W39_%012d.tar.zst", androidGradleRepublishMin))
+		if got := latestArchive(repoRemote); got != want {
+			t.Fatalf("latestArchive = %q, want %q", got, want)
 		}
 	})
 

@@ -9,12 +9,11 @@ description: >-
 inputs:
   image:
     description: MinIO container image — single source of truth for the pinned version.
-    # quay.io, not Docker Hub: `minio/minio` no longer EXISTS on Docker Hub
-    # (the pull fails "repository does not exist", not a rate limit), so the
-    # old preference for it — same tags, no runner rate limit — is moot. quay
-    # is MinIO's own registry and carries the identical tag;
-    # tests/multi-pod/docker-compose.yml has pulled from it since #4748.
-    default: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # pgsty/minio, a community fork that keeps publishing MinIO server builds:
+    # upstream archived its repo and stopped shipping images. `minio/minio` no
+    # longer exists on Docker Hub and quay.io/minio/minio now answers 401 to
+    # anonymous pulls. Same binary, entrypoint, and /minio/health/ready probe.
+    default: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
   port:
     description: Host port to publish and probe for readiness.
     default: "9000"

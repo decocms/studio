@@ -4,9 +4,9 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import { useMoveBlocks } from "@/components/sections-editor/use-move-blocks";
 import {
-  APPS_UPDATE_COMMAND,
   type BlogSupport,
   postStatusUnsupported,
+  type StatusUnsupported,
 } from "./blog-capabilities";
 import {
   blocksPostStatus,
@@ -27,12 +27,33 @@ export const POST_STATUS_LABEL: Record<PostStatus, TranslationKey> = {
   archived: "sandbox.postBoard.laneArchived",
 };
 
+/**
+ * One wording for the board tooltip and the move toast, so a lane and the
+ * toast it produces can't explain the same refusal differently.
+ */
+export function moveUnsupportedText(
+  t: ReturnType<typeof useT>,
+  gate: StatusUnsupported,
+): string {
+  switch (gate.reason) {
+    case "unknown":
+      return t("sandbox.postBoard.moveUnknownApp");
+    case "no-app":
+      return t("sandbox.postBoard.moveNoBlogApp");
+    case "outdated":
+      return t("sandbox.postBoard.moveUnsupported", {
+        required: gate.required,
+        command: gate.command,
+      });
+  }
+}
+
 /** Why a target lane is refused, or null when the move may go ahead. */
 export type MoveRefusal =
   /** Required fields are missing — the post can't go live yet. */
   | { kind: "incomplete" }
-  /** The site's blog app is too old to honour this state. */
-  | { kind: "unsupported"; required: string; version: string | null }
+  /** The site's blog app can't honour this state — see `StatusUnsupported`. */
+  | ({ kind: "unsupported" } & StatusUnsupported)
   /** A move for this post is already in flight. */
   | { kind: "in-flight" }
   /** `generating` is owned by the generation run, never set by hand. */
@@ -95,10 +116,7 @@ export function usePostStatusMove({
   const reasonText = (refusal: MoveRefusal): string => {
     switch (refusal.kind) {
       case "unsupported":
-        return t("sandbox.postBoard.moveUnsupported", {
-          required: refusal.required,
-          command: APPS_UPDATE_COMMAND,
-        });
+        return moveUnsupportedText(t, refusal);
       case "incomplete":
         return t("sandbox.postBoard.moveBlocked");
       case "in-flight":

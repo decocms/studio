@@ -7,19 +7,22 @@ package setup
 // Different from a node_modules golden in one way that shapes everything here:
 // a Gradle cache is not an immutable tree for one lockfile, it is a directory
 // every build on the node adds to. So there is no content key. The node-local
-// dir is per repository, the shared archive is per (org, repo, ISO week), and a
-// restore takes the newest week there is — a stale cache is still a cache, and
-// Gradle downloads only what it lacks.
+// dir is per repository, the shared archives are per (org, repo, ISO week) and
+// named for the build cache they carry, and a restore takes the newest week's
+// largest — a stale cache is still a cache, and Gradle downloads only what it
+// lacks.
 //
 // Only the relocatable parts travel: the dependency cache, the build cache and
 // the wrapper distributions. Transforms and the per-version dirs are rebuilt.
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,6 +34,11 @@ var androidGradleArchived = []string{"caches/modules-2", "caches/build-cache-1",
 // androidGradleRestoring is created in the Gradle home while a restore runs, so
 // `qa-android start` waits for the links instead of racing them with its own.
 const androidGradleRestoring = ".studio-cache-restoring"
+
+// A week's first archive can come from an early or partial build, with deps but
+// barely any compiled outputs. A node whose build cache has since at least
+// doubled, and by this much, publishes a new one beside it.
+const androidGradleRepublishMin = 64 << 20
 
 func androidGradleDir(cacheRoot, cloneUrl string) string {
 	return filepath.Join(cacheRoot, "android", "gradle", repoCacheKey(cloneUrl))
@@ -156,12 +164,15 @@ func latestArchive(dir string) string {
 	if len(names) == 0 {
 		return ""
 	}
-	sort.Strings(names) // ISO weeks sort chronologically as strings
+	// `<week>_<build-cache bytes, zero-padded>`: newest week first, then the
+	// biggest build cache. A pre-size `<week>` name sorts below its week's others.
+	sort.Strings(names)
 	return filepath.Join(dir, names[len(names)-1])
 }
 
 // uploadAndroidGradle forwards each repo's node-local Gradle cache as this
-// week's archive, when there is none yet. Called from UploadNodeGoldens, so it
+// week's archive, when there is none yet or the node's build cache has outgrown
+// the week's largest. Called from UploadNodeGoldens, so it
 // shares its stats, its environment filter and its read-back discipline.
 func uploadAndroidGradle(opts UploaderOpts, now time.Time, stats *UploaderStats) {
 	root := filepath.Join(opts.CacheRoot, "android", "gradle")
@@ -198,17 +209,53 @@ func uploadAndroidGradle(opts UploaderOpts, now time.Time, stats *UploaderStats)
 			stats.NoMeta++
 			continue
 		}
-		archive := filepath.Join(remote, isoWeek(now)+remoteArchiveSuffix)
-		if fileExists(archive) {
+		week := isoWeek(now)
+		local := dirSize(filepath.Join(dir, "caches", "build-cache-1"))
+		if published, ok := weekBuildCache(remote, week); ok &&
+			(local < 2*published || local-published < androidGradleRepublishMin) {
 			stats.Skipped++
 			continue
 		}
+		archive := filepath.Join(remote, fmt.Sprintf("%s_%012d%s", week, local, remoteArchiveSuffix))
 		if uploadTree(dir, parts, []string{"*.lock", "gc.properties"}, archive, opts) {
 			stats.Uploaded++
 		} else {
 			stats.Failed++
 		}
 	}
+}
+
+// weekBuildCache is the largest build cache among week's archives in remote, and
+// whether there is any archive for that week.
+func weekBuildCache(remote, week string) (int64, bool) {
+	entries, _ := os.ReadDir(remote)
+	var largest int64
+	found := false
+	for _, e := range entries {
+		name, isArchive := strings.CutSuffix(e.Name(), remoteArchiveSuffix)
+		if !isArchive || (name != week && !strings.HasPrefix(name, week+"_")) {
+			continue
+		}
+		found = true
+		// The pre-size `<week>` name fails to parse and counts as 0.
+		if n, err := strconv.ParseInt(strings.TrimPrefix(name, week+"_"), 10, 64); err == nil {
+			largest = max(largest, n)
+		}
+	}
+	return largest, found
+}
+
+func dirSize(dir string) int64 {
+	var n int64
+	filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, err := d.Info(); err == nil {
+				n += info.Size()
+			}
+		}
+		return nil
+	})
+	return n
 }
 
 // uploadTree compresses parts (relative to dir) straight to its shared key.

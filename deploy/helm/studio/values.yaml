@@ -127,8 +127,10 @@ preview:
   minio:
     enabled: true
     image:
-      repository: minio/minio
-      tag: RELEASE.2025-04-22T22-12-26Z
+      # Community fork: upstream no longer publishes images (see
+      # .github/actions/start-minio).
+      repository: pgsty/minio
+      tag: RELEASE.2026-08-04T00-00-00Z
       pullPolicy: IfNotPresent
     bucket: studio
     # Fixed and NOT secret: reachable only from inside the preview's namespace,

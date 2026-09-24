@@ -40,6 +40,7 @@ import { savedBlockKey, unwrapSection } from "./unwrap-section";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { ParsedSection } from "./section-list";
 import { resolveSchema } from "./resolve-schema";
+import { applySchemaDefaults } from "./apply-schema-defaults";
 import { findSiteSeoEntry, resolveSeoTarget } from "./seo-block";
 import { defaultPageSeoResolveType } from "./seo-schema";
 import { activeSeoResolveType, buildSeoSavePayload } from "./seo-save";
@@ -950,7 +951,10 @@ export function SectionsEditor({
   };
 
   const handleFormChange = (val: unknown) => {
-    const next = val as Record<string, unknown>;
+    const next = applySchemaDefaults(activeSchema, val) as Record<
+      string,
+      unknown
+    >;
     setFormValue(next);
     if (selectedSectionIndex !== null) {
       scheduleAutoSave(next, selectedSectionIndex);

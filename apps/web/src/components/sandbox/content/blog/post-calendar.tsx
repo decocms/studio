@@ -29,9 +29,8 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { usePreferences } from "@/hooks/use-preferences.ts";
 import { useT } from "@/i18n/use-t.ts";
 import {
-  APPS_SCHEDULING_VERSION,
-  APPS_UPDATE_COMMAND,
   type BlogSupport,
+  postStatusUnsupported,
   supportsScheduling,
 } from "./blog-capabilities";
 import {
@@ -60,10 +59,20 @@ const UNSCHEDULED_CHIP =
 /**
  * Sits over the blurred grid when the site can't back scheduling. Never a CTA
  * — the fix is a command in the repo, not a button here.
+ *
+ * Always says something: the grid behind it is blurred and inert, so a silent
+ * overlay is a dead calendar with no reason given. "Still reading" is a reason.
  */
 function SupportOverlay({ support }: { support: BlogSupport }) {
   const t = useT();
-  const runtimeUnsupported = support.kind === "unsupported-runtime";
+  const gate = postStatusUnsupported(support, "scheduled");
+  if (!gate) return null;
+  const title =
+    gate.reason === "outdated"
+      ? "sandbox.postCalendar.outdatedAppsTitle"
+      : gate.reason === "no-app"
+        ? "sandbox.postCalendar.unsupportedRuntimeTitle"
+        : "sandbox.postCalendar.unknownAppTitle";
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-background/30 p-6">
       <Alert
@@ -72,23 +81,19 @@ function SupportOverlay({ support }: { support: BlogSupport }) {
       >
         <AlertCircle />
         <div>
-          <AlertTitle>
-            {t(
-              runtimeUnsupported
-                ? "sandbox.postCalendar.unsupportedRuntimeTitle"
-                : "sandbox.postCalendar.outdatedAppsTitle",
-            )}
-          </AlertTitle>
+          <AlertTitle>{t(title)}</AlertTitle>
           <AlertDescription>
-            {runtimeUnsupported
-              ? t("sandbox.postCalendar.unsupportedRuntimeDescription")
-              : t("sandbox.postCalendar.outdatedAppsDescription", {
-                  required: APPS_SCHEDULING_VERSION,
-                })}
+            {gate.reason === "outdated"
+              ? t("sandbox.postCalendar.outdatedAppsDescription", {
+                  required: gate.required,
+                })
+              : gate.reason === "no-app"
+                ? t("sandbox.postCalendar.unsupportedRuntimeDescription")
+                : t("sandbox.postCalendar.unknownAppDescription")}
           </AlertDescription>
-          {!runtimeUnsupported && (
+          {gate.reason === "outdated" && (
             <code className="mt-2 block rounded-md bg-muted px-2 py-1 font-mono text-xs text-foreground">
-              {APPS_UPDATE_COMMAND}
+              {gate.command}
             </code>
           )}
         </div>

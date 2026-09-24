@@ -123,7 +123,16 @@ prepare_emulator() {
   if [ -d "$AVD_DIR/snapshots/boot" ]; then
     echo "qa-android: resuming the emulator from its boot snapshot"
     launch_emulator -snapshot boot
-    wait_boot || { kill_emulator; rm -rf "$AVD_DIR/snapshots/boot"; }
+    wait_boot || {
+      kill_emulator
+      rm -rf "$AVD_DIR/snapshots/boot"
+      # The node-shared snapshot this AVD was copied from is what's corrupt —
+      # every later pod on this node would otherwise copy it, fail the same
+      # resume, and fall back to a cold boot, forever. Evict it so the next
+      # publish_snapshot (below) gets a chance to replace it with a good one.
+      local snap; snap=$(snapshot_cache)
+      [ -n "$snap" ] && rm -rf "$snap"
+    }
   fi
   if ! booted; then
     echo "qa-android: cold-booting the emulator"
@@ -163,15 +172,15 @@ exclude_build_output() {
 }
 
 # User-home gradle.properties overrides the project's. Flutter's template asks
-# for -Xmx8G plus a separate Kotlin daemon, which with the emulator alongside
-# overruns the pod's memory.
+# for -Xmx8G plus a separate Kotlin daemon; one in-process compiler in a 6g heap
+# fits the pod with room to spare, since `start` never builds with the emulator
+# up. Workers default to the pod's CPUs.
 cap_gradle() {
   local f="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
   [ -f "$f" ] && return 0
   mkdir -p "$(dirname "$f")"
   cat > "$f" <<'EOF'
-org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC
-org.gradle.workers.max=2
+org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC
 org.gradle.daemon.idletimeout=600000
 org.gradle.caching=true
 kotlin.compiler.execution.strategy=in-process
