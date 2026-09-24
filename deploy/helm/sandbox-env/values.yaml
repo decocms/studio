@@ -83,7 +83,9 @@ image:
 # environment, alongside its NodePool.
 #
 # `android` runs an Android emulator so an agent can build a mobile app, tap
-# through it and screenshot it (packages/sandbox/image-android). The emulator
+# through it and screenshot it. Build a variant FROM this chart's base image
+# (`ARG BASE_TAG` / `FROM ghcr.io/decocms/studio/studio-sandbox-go:${BASE_TAG}`);
+# deco's variants are built in decocms/infra_applications. The emulator
 # needs /dev/kvm, so its pods go to nodes launched with nested virtualization
 # (terraform-eks-cluster: the `sandbox-android` NodePool) and request the KVM
 # device from the device plugin that runs there. The memory is the emulator's
@@ -92,7 +94,7 @@ image:
 imageVariants: {}
 # imageVariants:
 #   android:
-#     repository: ghcr.io/decocms/studio/studio-sandbox-android
+#     repository: ghcr.io/decocms/studio-sandbox-android
 #     nodeSelector:
 #       decocms.com/nodepool: sandbox-android
 #     tolerations:
