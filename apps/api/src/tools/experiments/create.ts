@@ -19,8 +19,12 @@ export const EXPERIMENT_CREATE = defineTool({
     site: z.string().min(1),
     key: z
       .string()
+      .trim()
       .min(1)
-      .regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase letters, digits and dashes"),
+      .max(120)
+      .describe(
+        "The random matcher block's name (e.g. `Cross Sell Bag`) — the deco runtime records the split as `event:props:<that name>`, so results only populate when the key equals it.",
+      ),
     name: z.string().min(1),
     goals: z.array(z.string()).optional(),
     variants: variantsInputSchema.optional(),

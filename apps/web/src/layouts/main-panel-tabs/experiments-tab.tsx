@@ -126,7 +126,7 @@ function CreateDialog({
               <Input
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
-                placeholder="plp-ranking"
+                placeholder="Cross Sell Bag"
               />
             </div>
             <div className="flex flex-col gap-1">

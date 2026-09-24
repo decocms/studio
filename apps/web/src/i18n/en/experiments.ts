@@ -12,7 +12,7 @@ export const experiments = {
   "experiments.col.status": "Status",
   "experiments.col.variants": "Variants",
   "experiments.dialog.newTitle": "New experiment",
-  "experiments.dialog.key": "Key",
+  "experiments.dialog.key": "Matcher block name",
   "experiments.dialog.name": "Name",
   "experiments.dialog.variants": "Variants",
   "experiments.dialog.weightSum": "Weights must sum to 100 (now {sum})",

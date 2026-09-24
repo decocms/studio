@@ -14,7 +14,7 @@ export const experiments = {
   "experiments.col.status": "Status",
   "experiments.col.variants": "Variantes",
   "experiments.dialog.newTitle": "Novo experimento",
-  "experiments.dialog.key": "Chave",
+  "experiments.dialog.key": "Nome do bloco matcher",
   "experiments.dialog.name": "Nome",
   "experiments.dialog.variants": "Variantes",
   "experiments.dialog.weightSum": "Os pesos devem somar 100 (agora {sum})",
