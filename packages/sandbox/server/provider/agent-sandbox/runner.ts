@@ -2069,17 +2069,26 @@ export class AgentSandboxProvider {
         if (this.claimWatchAbort.signal.aborted) return;
         const repo = rec.ensureOpts?.repo;
         if (!repo) return;
-        const fresh = await this.withFreshCloneUrl(
-          repo,
-          CREDENTIAL_REFRESH_BUFFER_MS,
-        );
-        await this.refreshDaemonGitCredential(rec, {
-          ...rec.ensureOpts,
-          repo: fresh,
-        });
-        // Keep the record's URL current so the next sweep sees the fresh token
-        // (a no-op) rather than re-deriving the stale one.
-        rec.ensureOpts = { ...rec.ensureOpts, repo: fresh };
+        try {
+          const fresh = await this.withFreshCloneUrl(
+            repo,
+            CREDENTIAL_REFRESH_BUFFER_MS,
+          );
+          await this.refreshDaemonGitCredential(rec, {
+            ...rec.ensureOpts,
+            repo: fresh,
+          });
+          // Next sweep sees the fresh token (a no-op) instead of re-deriving the stale one.
+          rec.ensureOpts = { ...rec.ensureOpts, repo: fresh };
+        } catch (err) {
+          // refreshCredentialsByConnection swallows this per-item; log here or it's untraceable.
+          console.warn(
+            `[${LOG_LABEL}] git credential refresh failed for ${rec.handle}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          throw err;
+        }
       },
     );
   }
