@@ -155,7 +155,7 @@ export function shouldAdvanceToReview(
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
-  // A repo-backed task reaches In Review only once a PR exists (the agent's PR-open hook moves it mid-run); on thread-finish we require a linked PR so a finished edit with no PR doesn't dead-end In Review. Non-repo tasks advance on finish.
+  // A repo-backed task reaches review only once a PR is linked; one that finishes without one is left to the review sweeper (`settleFinishedRunsWithoutPr`), which finds its PR by branch or hands it to a person. Non-repo tasks advance on finish.
   if (item.repo != null && !hasPr) return false;
   if (
     !used.every(
@@ -1220,6 +1220,80 @@ export class TaskBoardStorage {
     // One entry per card: the newest failed thread is the one to react to.
     const seen = new Set<string>();
     return rows.filter((r) => !seen.has(r.id) && seen.add(r.id));
+  }
+
+  /**
+   * Super Agent cards whose run finished and left the board nothing: still In
+   * Progress, no review cycle, no linked PR, nothing still running, and the
+   * newest linked run `completed`. `finishedAt` is when that run ended.
+   *
+   * Nothing else looks at this shape. The thread-finish backstop and stall
+   * recovery both hold a repo-backed card In Progress until a PR is linked, and
+   * the review sweeper only visits cards already in their review phase — so a
+   * PR no Studio hook saw (a `claude-code` run's `gh pr create` inside the pod)
+   * left the card there for good. A newest run that FAILED is the failure
+   * reaction's card, not this one. Due-filtered on `last_swept_at` like
+   * `listItemsPendingReview`, because the caller spends GitHub calls per card.
+   */
+  async listItemsFinishedWithoutPr(
+    limit: number,
+    dueBefore: Date,
+  ): Promise<{ id: string; organizationId: string; finishedAt: Date }[]> {
+    const newestLinked = (column: "status" | "updated_at") =>
+      sql<string>`(select t.${sql.ref(column)} from task_board_item_threads l
+            join threads t on t.id = l.thread_id
+           where l.task_board_item_id = i.id
+           order by t.updated_at desc limit 1)`;
+    const rows = await this.db
+      .selectFrom("task_board_items as i")
+      .select([
+        "i.id as id",
+        "i.organization_id as organizationId",
+        newestLinked("updated_at").as("finishedAt"),
+      ])
+      .where("i.status", "=", LANES.progress)
+      .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
+      .where("i.review_cycle_started_at", "is", null)
+      .where("i.dismissed_at", "is", null)
+      .where("i.retry_at", "is", null)
+      .where("i.source", "is", null)
+      .where((eb) =>
+        eb.or([
+          eb("i.last_swept_at", "is", null),
+          eb("i.last_swept_at", "<", dueBefore),
+        ]),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_item_prs as p")
+              .select("p.task_board_item_id")
+              .whereRef("p.task_board_item_id", "=", "i.id"),
+          ),
+        ),
+      )
+      .where(newestLinked("status"), "=", "completed")
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_item_threads as l2")
+              .innerJoin("threads as t2", "t2.id", "l2.thread_id")
+              .select("t2.id")
+              .whereRef("l2.task_board_item_id", "=", "i.id")
+              .where("t2.status", "in", ["in_progress", "requires_action"]),
+          ),
+        ),
+      )
+      .orderBy("i.updated_at", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map((r) => ({
+      id: r.id,
+      organizationId: r.organizationId,
+      finishedAt: new Date(r.finishedAt),
+    }));
   }
 
   /**
