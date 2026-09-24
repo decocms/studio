@@ -782,13 +782,11 @@ nodePlaceholder:
 # URL routes directly to its sandbox Service:9000. Studio is no longer in
 # the data path; it only writes the routing config.
 #
-# Wiring on the studio side (chart-deco-studio configMap.meshConfig):
-#   STUDIO_SANDBOX_PREVIEW_URL_PATTERN: "https://{handle}.<domain>"
-#   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAME: "agent-sandbox-preview-<envName>"
-#   STUDIO_SANDBOX_PREVIEW_GATEWAY_NAMESPACE: "<previewGateway.namespace>"
-# Without those, Studio falls back to in-process proxying via its own Service
-# (the previous design). That fallback also requires a separate cluster-wide
-# HTTPRoute that this chart no longer creates.
+# Wiring: the sandbox-controller chart's `claims.previewUrlPattern`
+# ("https://{handle}.<domain>") and `claims.gateway.{name,namespace}`
+# ("agent-sandbox-preview-<envName>", `previewGateway.namespace`); Studio's
+# STUDIO_SANDBOX_PREVIEW_URL_PATTERN carries the same pattern for its
+# preview proxy.
 #
 # Manual prerequisites (not templated):
 #   1. DNS: Cloudflare (or other) wildcard `*.<domain>` → cluster
