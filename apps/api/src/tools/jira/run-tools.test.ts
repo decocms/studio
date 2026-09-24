@@ -306,6 +306,23 @@ describe("JIRA_ISSUE_CREATE", () => {
     expect(writes()).toEqual([]);
   });
 
+  it("falls through to search when a prior creation no longer reads", async () => {
+    useJira({
+      openIssues: [{ key: "EX-50", summary: "release - 24/09" }],
+      issues: { "EX-50": { summary: "release - 24/09" } },
+      // "EX-99" is not stubbed in `issues`, so getIssue 404s.
+    });
+    const { ctx } = makeCtx({
+      ...RUN,
+      jira_created_issue_keys: ["EX-99"],
+    });
+
+    const out = await run(() => JIRA_ISSUE_CREATE.handler(input(), ctx));
+
+    expect(out).toMatchObject({ key: "EX-50", created: false });
+    expect(writes()).toEqual([]);
+  });
+
   it("stops creating once the run has created five issues", async () => {
     const created = ["EX-10", "EX-11", "EX-12", "EX-13", "EX-14"];
     useJira({

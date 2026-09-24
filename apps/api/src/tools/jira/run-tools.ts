@@ -501,8 +501,9 @@ async function findOpenIssueWithSummary(
   alreadyCreated: readonly string[],
 ): Promise<string | null> {
   for (const key of alreadyCreated) {
-    const issue = await client.getIssue(key);
-    if (sameSummary(issue.fields.summary, summary)) return issue.key;
+    // A gone or unreadable prior creation must not block the search below.
+    const issue = await client.getIssue(key).catch(() => null);
+    if (issue && sameSummary(issue.fields.summary, summary)) return issue.key;
   }
   const { issues } = await client.searchIssues({
     jql: `project = "${projectKey}" AND reporter = currentUser() AND statusCategory != Done AND created >= ${DUPLICATE_LOOKBACK} ORDER BY created DESC`,
