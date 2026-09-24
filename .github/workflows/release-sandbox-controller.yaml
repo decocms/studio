@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "packages/sandbox/controller-go/**"
+      - "packages/sandbox/daemon-go/pkg/**"
       - "deploy/helm/sandbox-controller/Chart.yaml"
   workflow_dispatch:
 
@@ -74,7 +75,10 @@ jobs:
         if: steps.tag-check.outputs.exists != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./packages/sandbox/controller-go
+          # The sandbox package, not controller-go alone: the controller builds
+          # against daemon-go/pkg/protocol through a replace directive.
+          context: ./packages/sandbox
+          file: ./packages/sandbox/controller-go/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

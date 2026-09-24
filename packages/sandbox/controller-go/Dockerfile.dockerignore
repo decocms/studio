@@ -1,0 +1,7 @@
+*
+!controller-go/
+!daemon-go/go.mod
+!daemon-go/go.sum
+!daemon-go/pkg/
+**/*_test.go
+**/testdata
