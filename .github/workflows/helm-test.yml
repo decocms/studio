@@ -172,14 +172,57 @@ jobs:
             --set claims.gateway.name=preview --set claims.gateway.namespace=istio-system
             --set-json 'claims.tenantPools=[{"name":"tenant-acme-ci","orgId":"org","repo":"acme/site"}]')
           helm lint deploy/helm/sandbox-controller "${claims[@]}"
-          out=$(helm template c deploy/helm/sandbox-controller "${claims[@]}")
+          out=$(helm template sandbox-controller deploy/helm/sandbox-controller "${claims[@]}")
           for wanted in 'kind: Service$' 'kind: NetworkPolicy' 'sandboxclaims' '--claims-listen=:8443' \
-              'STUDIO_SANDBOX_TENANT_POOLS' 'name: sandbox-controller-idle-ttl'; do
+              'STUDIO_SANDBOX_TENANT_POOLS' 'name: sandbox-controller-idle-ttl' \
+              '--leader-election-id=sandbox-controller.sandbox.deco.cx'; do
             grep -q -- "${wanted}" <<<"${out}" || { echo "::error::claims.enabled=true did not render ${wanted}"; exit 1; }
           done
           # A preview URL pattern means Service DNS: no port-forward grant.
           if grep -q 'pods/portforward' <<<"${out}"; then
             echo "::error::pods/portforward granted with a preview URL pattern"
+            exit 1
+          fi
+
+      - name: Render (two environments in one namespace)
+        run: |
+          set -euo pipefail
+          claims=(--namespace agent-sandbox-system --set claims.enabled=true
+            --set claims.tlsSecretName=tls --set claims.clientCASecretName=client-ca
+            --set claims.database.secretName=db --set claims.studio.namespace=deco-studio)
+          prod=$(helm template sandbox-controller deploy/helm/sandbox-controller "${claims[@]}")
+          stg=$(helm template sandbox-controller-staging deploy/helm/sandbox-controller "${claims[@]}" \
+            --set variants.enabled=false)
+          # Same kind + name in one namespace would be one object fought over by two releases.
+          names() {
+            awk '/^kind:/ { k = $2 } /^metadata:/ { m = 1; next } m && /^  name:/ { print k "/" $2; m = 0 }' <<<"$1" | sort
+          }
+          dup=$(comm -12 <(names "${prod}") <(names "${stg}"))
+          if [ -n "${dup}" ]; then
+            echo "::error::two releases render the same objects:"; echo "${dup}"; exit 1
+          fi
+          for wanted in '--leader-election-id=sandbox-controller-staging.sandbox.deco.cx' \
+              '--variants=false' 'name: sandbox-controller-staging-idle-ttl'; do
+            grep -q -- "${wanted}" <<<"${stg}" || { echo "::error::second release did not render ${wanted}"; exit 1; }
+          done
+          # Only the variants release writes templates or reads pull secrets.
+          if grep -q -e '--variants=false' <<<"${prod}"; then
+            echo "::error::the default release stopped reconciling variants"; exit 1
+          fi
+          if grep -q -e 'sandboxvariants/status' -e '"create", "update", "patch"]' <<<"${stg}"; then
+            echo "::error::a claims-only release can write variants, templates or pools"; exit 1
+          fi
+
+      - name: Render (variants and claims both off must fail)
+        run: |
+          set +e
+          helm template c deploy/helm/sandbox-controller --set variants.enabled=false \
+            > /tmp/render.out 2>&1
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 0 ] || ! grep -q "both off" /tmp/render.out; then
+            echo "::error::a controller with nothing to do rendered"
+            cat /tmp/render.out
             exit 1
           fi
 

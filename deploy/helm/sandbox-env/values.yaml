@@ -889,9 +889,11 @@ housekeeper:
 
   # Should match (or be shorter than) DEFAULT_IDLE_TTL_MS in runner.ts.
   idleTtlSeconds: 900
-  # Once the sandbox controller takes claims: `sandbox-controller-idle-ttl`,
-  # the ConfigMap its chart renders from `claims.idleTtlSeconds`. Replaces
-  # idleTtlSeconds, so the controller and the sweep share one TTL.
+  # Once the sandbox controller takes claims: `<fullname>-idle-ttl`, the
+  # ConfigMap the controller release serving THIS envName renders from
+  # `claims.idleTtlSeconds` (e.g. `sandbox-controller-staging-idle-ttl`; a
+  # release named `sandbox-controller` renders `sandbox-controller-idle-ttl`).
+  # Replaces idleTtlSeconds, so the controller and the sweep share one TTL.
   idleTtlConfigMap: ""
 
   # A claim whose daemon served traffic this recently gets its shutdownTime

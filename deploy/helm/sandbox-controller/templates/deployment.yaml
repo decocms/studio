@@ -3,7 +3,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
@@ -17,7 +17,7 @@ spec:
       labels:
         {{- include "sandbox-controller.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: sandbox-controller
+      serviceAccountName: {{ include "sandbox-controller.fullname" . }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -36,6 +36,10 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - --namespace={{ .Values.sandboxNamespace }}
+            - --leader-election-id={{ include "sandbox-controller.fullname" . }}.sandbox.deco.cx
+            {{- if not .Values.variants.enabled }}
+            - --variants=false
+            {{- end }}
             {{- if $claims.enabled }}
             - --claims-listen=:{{ $claims.port }}
             - --claims-tls-cert=/etc/sandbox-controller/tls/tls.crt

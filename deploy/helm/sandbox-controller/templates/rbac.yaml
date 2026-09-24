@@ -1,25 +1,27 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
 ---
-# Namespaced. Reconciling variants needs the first block; claims.enabled adds
+# Namespaced. variants.enabled writes templates and pools; claims.enabled adds
 # what Studio's in-process runner holds in sandbox-env's sandbox-rbac.yaml,
 # less what this runtime never calls (sandboxes, watches).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Values.sandboxNamespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
 rules:
+  # The claim runtime reads them too, for GET /images and capacity.
   - apiGroups: ["sandbox.deco.cx"]
     resources: ["sandboxvariants"]
     verbs: ["get", "list", "watch"]
+  {{- if .Values.variants.enabled }}
   - apiGroups: ["sandbox.deco.cx"]
     resources: ["sandboxvariants/status"]
     verbs: ["get", "update", "patch"]
@@ -30,6 +32,12 @@ rules:
   - apiGroups: ["extensions.agents.x-k8s.io"]
     resources: ["sandboxtemplates", "sandboxwarmpools"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
+  {{- else }}
+  # The template probe and the tenant pools' selectors.
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxtemplates", "sandboxwarmpools"]
+    verbs: ["get"]
+  {{- end }}
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -66,6 +74,7 @@ rules:
     verbs: ["get", "create"]
   {{- end }}
   {{- end }}
+  {{- if .Values.variants.enabled }}
   {{- with .Values.imagePullSecretNames }}
   - apiGroups: [""]
     resources: ["secrets"]
@@ -73,19 +82,20 @@ rules:
       {{- toYaml . | nindent 6 }}
     verbs: ["get"]
   {{- end }}
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Values.sandboxNamespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
 subjects:
   - kind: ServiceAccount
-    name: sandbox-controller
+    name: {{ include "sandbox-controller.fullname" . }}
     namespace: {{ .Release.Namespace }}

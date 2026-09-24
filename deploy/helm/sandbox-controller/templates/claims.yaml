@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
@@ -22,7 +22,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: sandbox-controller
+  name: {{ include "sandbox-controller.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
@@ -52,7 +52,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: sandbox-controller-idle-ttl
+  name: {{ include "sandbox-controller.fullname" . }}-idle-ttl
   namespace: {{ .Values.sandboxNamespace }}
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}

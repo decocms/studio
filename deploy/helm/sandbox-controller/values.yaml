@@ -8,10 +8,21 @@ image:
 # where SandboxVariants are read and leader-election leases are held.
 sandboxNamespace: agent-sandbox-system
 
-# Secrets named in the default template's imagePullSecrets. The controller
-# reads them (get, by name) to check a variant's image exists before it
-# renders templates that would otherwise be ImagePullBackOff at claim time.
+# Secrets named in the default template's imagePullSecrets. With
+# variants.enabled the controller reads them (get, by name) to check a
+# variant's image exists before it renders templates that would otherwise be
+# ImagePullBackOff at claim time.
 imagePullSecretNames: []
+
+# Environments sharing sandboxNamespace (staging and prod do) each install a
+# release, since the claim runtime below is per environment. Objects are named
+# after the release ("sandbox-controller" keeps that name), and each release
+# elects its own leader. Exactly one release per namespace reconciles
+# SandboxVariants; set false on the others, which then only serve claims.
+# The CRD in crds/ is cluster-wide: install it from one release only (Argo CD
+# `helm.skipCrds: true`, or `helm install --skip-crds`, on the others).
+variants:
+  enabled: true
 
 replicas: 1
 
@@ -75,8 +86,9 @@ claims:
     namespace: ""
 
   # The idle window every ensure and renewal pushes a claim's shutdown out
-  # to. Also published as ConfigMap `sandbox-controller-idle-ttl` (key
-  # `ttlMs`) in sandboxNamespace, which the sandbox-env housekeeper reads with
+  # to. Also published as ConfigMap `<release fullname>-idle-ttl` (key
+  # `ttlMs`, e.g. `sandbox-controller-idle-ttl`) in sandboxNamespace, which
+  # the same environment's sandbox-env housekeeper reads with
   # `housekeeper.idleTtlConfigMap`, so the two cannot drift.
   idleTtlSeconds: 900
   deleteDeadline: 30s

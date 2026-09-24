@@ -1,3 +1,16 @@
+{{/*
+One release per environment sharing a sandbox namespace, so every object is
+named after the release. A release whose name contains the chart name (the
+default "sandbox-controller") keeps that name as is.
+*/}}
+{{- define "sandbox-controller.fullname" -}}
+{{- if contains .Chart.Name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end }}
+
 {{- define "sandbox-controller.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 app.kubernetes.io/name: sandbox-controller
@@ -13,6 +26,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "sandbox-controller.validateClaims" -}}
 {{- $c := .Values.claims -}}
+{{- if not (or .Values.variants.enabled $c.enabled) -}}
+{{- fail "sandbox-controller: variants.enabled and claims.enabled are both off; the controller would do nothing." -}}
+{{- end -}}
 {{- if $c.enabled -}}
 {{- range $field := list "tlsSecretName" "clientCASecretName" -}}
 {{- if not (index $c $field) -}}
