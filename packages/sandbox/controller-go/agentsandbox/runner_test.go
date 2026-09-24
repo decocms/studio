@@ -410,6 +410,28 @@ func TestResumeRotatesCredentialAndRenews(t *testing.T) {
 	}
 }
 
+func TestResumeStampsARowTheInProcessRunnerWrote(t *testing.T) {
+	h := newHarness(t, Config{Namespace: ns})
+	h.daemon.token = strings.Repeat("a", 64)
+	if _, err := h.runner.Ensure(context.Background(), testID, "main-abc", protocol.EnsureOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	legacy := h.persisted()
+	legacy.Writer = ""
+	if err := h.store.Put(context.Background(), testID, Name, "main-abc", legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.runner.Ensure(context.Background(), testID, "main-abc", protocol.EnsureOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.created) != 1 {
+		t.Fatalf("resume created %d claims", len(h.created))
+	}
+	if st := h.persisted(); st.Writer != Writer || st.Token != legacy.Token {
+		t.Fatalf("resumed row = writer %q token kept %v", st.Writer, st.Token == legacy.Token)
+	}
+}
+
 func TestRecreatedWarmPodRebootstraps(t *testing.T) {
 	h := newHarness(t, Config{Namespace: ns, SentinelToken: sentinel})
 	h.daemon.token = sentinel
