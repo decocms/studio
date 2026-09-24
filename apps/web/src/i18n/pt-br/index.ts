@@ -33,6 +33,7 @@ import { common } from "./common.ts";
 import { reportsOnboarding } from "./reports-onboarding.ts";
 import { collections } from "./collections.ts";
 import { chooseEditor } from "./choose-editor.ts";
+import { openPr } from "./open-pr.ts";
 import { chat } from "./chat.ts";
 import { credits } from "./credits.ts";
 import { automations } from "./automations.ts";
@@ -79,6 +80,7 @@ export const ptBR = {
   ...reportsOnboarding,
   ...collections,
   ...chooseEditor,
+  ...openPr,
   ...chat,
   ...credits,
   ...automations,

@@ -309,6 +309,25 @@ const chooseEditorRoute = createRoute({
   ),
 });
 
+/**
+ * The `deco.studio/<owner>/<repo>/<pr>` shortlink: resolve (repo, PR) → the
+ * project's editor, opened on that PR's branch with the chat ready.
+ *
+ * Three fully dynamic segments, and the ONLY route of that shape. The org tree
+ * has no fully dynamic 3-segment sibling (`/$org/$taskId` is two, and every
+ * 3-segment org path — `/$org/projects/$agentId`, `/$org/settings/...` — has a
+ * static middle segment that outranks a param), so this can shadow nothing and
+ * nothing shadows it. Registering a second `/$a/$b/$c` would reintroduce the
+ * same-shape ambiguity the ROUTE GRAMMAR note below warns about.
+ *
+ * Root route so login can bounce back with the path intact.
+ */
+const openPrRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/$repoOwner/$repoName/$prNumber",
+  component: lazyRouteComponent(() => import("./routes/open-pr.tsx")),
+});
+
 // Auth-gated report for a scanned domain. The route itself stays
 // outside the org shell so login can happen inline over its locked preview.
 const reportRoute = createRoute({
@@ -1570,6 +1589,7 @@ const routeTree = rootRoute.addChildren([
   reportsOnboardingRoute,
   legacyCommerceOnboardingRoute,
   chooseEditorRoute,
+  openPrRoute,
   reportRoute,
   loginRoute,
   cliAuthSuccessRoute,
