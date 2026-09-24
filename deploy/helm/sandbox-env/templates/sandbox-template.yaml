@@ -1,5 +1,5 @@
 # SandboxTemplates consumed by the SandboxClaims the Studio runner creates for
-# THIS environment. Rendered once per (image x size) — see the bottom of this
+# THIS environment. Rendered once per size — see the bottom of this
 # file — because a SandboxClaim can override NEITHER (CRD: additionalPodMetadata,
 # env, lifecycle, sandboxTemplateRef, warmpool), so every combination has to be
 # its own template. Studio composes the name as
@@ -9,16 +9,9 @@
 # Size: the default one that interactive claims use, and `-medium`, which
 # differs ONLY in `resources` (values.yaml mediumResources).
 #
-# Image: the default image, and one per entry in values.yaml `imageVariants`.
-# A variant carries a heavier toolchain than every sandbox should pull — the
-# `android` one adds the Android SDK and an emulator so an agent can run a
-# mobile app and screenshot it. Both sizes are rendered for every variant, so
-# a variant is present in both or neither: Studio degrades a missing derived
-# template to the BASE one in a single step, and a half-rendered variant would
-# make that fallback lose the image and the memory ceiling at once.
-#
-# A variant can be prewarmed like any other template — see
-# sandbox-warm-pool.yaml, which renders its pools at size 0 by default.
+# Image variants (values.yaml `imageVariants`) are not rendered here: each is a
+# SandboxVariant (sandbox-variants.yaml), and the sandbox controller copies
+# these templates into `<base>-<variant>[-medium]`.
 #
 # Hardcoded to the operator's own namespace (agent-sandbox-system) — the CRDs
 # ship with that as the install target, and the operator's RBAC watches it by
@@ -26,22 +19,14 @@
 # environments' SandboxTemplates coexist; Studio in this env must reference
 # the suffixed name via STUDIO_SANDBOX_TEMPLATE_NAME.
 {{ define "sandbox-env.sandboxTemplate" -}}
-{{- /* A variant may pin its own nodes: its image can need hardware the default
-       pool lacks (android: /dev/kvm, only on nested-virtualization nodes). */}}
-{{- $variant := dict }}
-{{- if .imageVariant }}{{- $variant = index .Values.imageVariants .imageVariant }}{{- end }}
-{{- $volumeSizes := mergeOverwrite (deepCopy (.Values.volumeSizes | default dict)) ($variant.volumeSizes | default dict) }}
+{{- $volumeSizes := .Values.volumeSizes | default dict }}
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
-  name: {{ include "sandbox-env.sandboxName" . }}{{ .imageSuffix }}{{ .sizeSuffix }}
+  name: {{ include "sandbox-env.sandboxName" . }}{{ .sizeSuffix }}
   namespace: agent-sandbox-system
   labels:
     {{- include "sandbox-env.sandboxLabels" . | nindent 4 }}
-  {{- if .imageVariant }}
-  annotations:
-    {{- include "sandbox-env.variantHandoverAnnotations" . | nindent 4 }}
-  {{- end }}
 spec:
   # The operator's controller rejects per-claim env outright when
   # `claim.spec.warmpool != "none"`, so warm-pool consumption requires
@@ -95,11 +80,11 @@ spec:
       # 30s) before SIGKILL — the pushed branch is the only durable copy of the
       # user's work. See values.yaml.
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
-      {{- with ($variant.nodeSelector | default .Values.nodeSelector) }}
+      {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with ($variant.tolerations | default .Values.tolerations) }}
+      {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -470,14 +455,6 @@ spec:
         {{- end }}
 {{- end }}
 {{- $mediumResources := mergeOverwrite (deepCopy .Values.resources) .Values.mediumResources }}
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" "" "sizeSuffix" "" "resources" .Values.resources) .) }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "sizeSuffix" "" "resources" .Values.resources) .) }}
 ---
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" "" "sizeSuffix" "-medium" "resources" $mediumResources) .) }}
-{{- range $variant, $spec := .Values.imageVariants }}
-{{- $variantResources := mergeOverwrite (deepCopy $.Values.resources) ($spec.resources | default dict) }}
-{{- $variantMediumResources := mergeOverwrite (deepCopy $mediumResources) ($spec.resources | default dict) }}
----
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "" "resources" $variantResources) $) }}
----
-{{ include "sandbox-env.sandboxTemplate" (merge (dict "imageSuffix" (printf "-%s" $variant) "imageVariant" $variant "sizeSuffix" "-medium" "resources" $variantMediumResources) $) }}
-{{- end }}
+{{ include "sandbox-env.sandboxTemplate" (merge (dict "sizeSuffix" "-medium" "resources" $mediumResources) .) }}

@@ -26,6 +26,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as net from "node:net";
 import { PassThrough } from "node:stream";
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import { sleep } from "@decocms/shared/std";
 import { createCapacityProbe } from "./capacity";
 import {
@@ -76,6 +77,7 @@ import {
   getSandboxClaim,
   HTTPROUTE_CONSTANTS,
   isPodUnbound,
+  listVariantTemplates,
   listWarmPoolPods,
   readPodTermination,
   sandboxTemplateExists,
@@ -105,6 +107,7 @@ import {
   poolsMatchingPush,
   resolveTenantPool,
   type TenantPool,
+  variantImages,
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
@@ -141,11 +144,11 @@ const DEFAULT_NAMESPACE = "agent-sandbox-system";
 const DEFAULT_TEMPLATE_NAME = "studio-sandbox";
 
 /**
- * How long a `-medium` SandboxTemplate lookup is trusted, in both directions —
- * so a chart upgrade (or rollback) is picked up within one TTL without a GET per
- * claim.
+ * How long a derived SandboxTemplate lookup (or the list of variants) is
+ * trusted, in both directions — so a chart upgrade (or rollback) is picked up
+ * within one TTL without a GET per claim.
  */
-const MEDIUM_TEMPLATE_PROBE_TTL_MS = 5 * 60_000;
+const TEMPLATE_PROBE_TTL_MS = 5 * 60_000;
 
 const DAEMON_CONTAINER_PORT = 9000;
 // In-pod port the daemon's reverse proxy targets. Studio never connects here
@@ -541,6 +544,10 @@ export class AgentSandboxProvider {
   >();
   /** Derived SandboxTemplate lookups by name; see `resolveTemplateName`. */
   private templateProbes: TemplateProbes = {};
+  private variantImagesProbe: {
+    checkedAt: number;
+    images: SandboxImage[];
+  } | null = null;
   /** Pool names a GitHub push says are stale; drained by the next tick. */
   private readonly dirtyPools = new Set<string>();
   private closed = false;
@@ -713,6 +720,21 @@ export class AgentSandboxProvider {
   hasSchedulableCapacity(): Promise<boolean> {
     this.capacityProbe ??= createCapacityProbe(this.kubeConfig, this.namespace);
     return this.capacityProbe();
+  }
+
+  /** Image variants this deployment's claims can use; see `variantImages`. */
+  async listSandboxImages(): Promise<SandboxImage[]> {
+    const now = Date.now();
+    const cached = this.variantImagesProbe;
+    if (cached && now - cached.checkedAt < TEMPLATE_PROBE_TTL_MS) {
+      return cached.images;
+    }
+    const images = variantImages(
+      await listVariantTemplates(this.kubeConfig, this.namespace),
+      this.sandboxTemplateName,
+    );
+    this.variantImagesProbe = { checkedAt: now, images };
+    return images;
   }
 
   async getPreviewUrl(handle: string): Promise<string | null> {
@@ -1341,7 +1363,7 @@ export class AgentSandboxProvider {
       templateName: this.sandboxTemplateName,
       probes: this.templateProbes,
       now: Date.now(),
-      ttlMs: MEDIUM_TEMPLATE_PROBE_TTL_MS,
+      ttlMs: TEMPLATE_PROBE_TTL_MS,
       exists: (template) =>
         sandboxTemplateExists(this.kubeConfig, this.namespace, template),
       onAbsent: (template) =>

@@ -11,9 +11,18 @@
   "files": [
     "sandbox-variant.ts"
   ],
+  "keywords": [
+    "sandbox",
+    "kubernetes",
+    "crd",
+    "sandboxvariant"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/decocms/studio",
+    "url": "git+https://github.com/decocms/studio.git",
     "directory": "packages/sandbox/controller-types"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

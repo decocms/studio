@@ -11,7 +11,10 @@
  */
 import { z } from "zod";
 
-import type { SandboxImage } from "@decocms/shared/git-providers";
+import {
+  type SandboxImage,
+  SandboxImageSchema,
+} from "@decocms/shared/git-providers";
 import type { SandboxPurpose } from "../types";
 
 const tenantPoolSchema = z.object({
@@ -141,8 +144,8 @@ export function claimWarmPoolName(
  *
  * Two independent suffixes, in this order: the IMAGE the repo asked for, then
  * the SIZE the claim needs. A SandboxClaim can override neither the image nor
- * the resources, so each combination has to be its own template, and the
- * sandbox-env chart renders the cross product.
+ * the resources, so each combination has to be its own template: the
+ * sandbox-env chart renders the sizes, the sandbox controller each variant's.
  *
  * Size — a `harness-run` claim gets the roomier `-medium` template: that is
  * where prod's 4Gi OOMKills happened. A claim that matched a TENANT POOL also
@@ -166,6 +169,27 @@ export function claimTemplateName(
     sandboxImage && sandboxImage !== "default" ? `-${sandboxImage}` : "";
   const size = purpose === "harness-run" || tenantPool ? "-medium" : "";
   return `${templateName}${image}${size}`;
+}
+
+/**
+ * The images a repository can pick on this deployment: variants whose default
+ * template `claimTemplateName` would name. The namespace holds every
+ * environment's templates, and each variant has a `-medium` one too, so the
+ * label alone would list another environment's variants and repeat each one.
+ */
+export function variantImages(
+  templates: readonly { name: string; variant: string }[],
+  templateName: string,
+): SandboxImage[] {
+  const images = new Set<SandboxImage>();
+  for (const { name, variant } of templates) {
+    if (variant === "default" || !SandboxImageSchema.safeParse(variant).success)
+      continue;
+    if (name === claimTemplateName(undefined, templateName, null, variant)) {
+      images.add(variant);
+    }
+  }
+  return [...images].sort();
 }
 
 /** Result of one derived-template lookup, cached for `ttlMs`. */

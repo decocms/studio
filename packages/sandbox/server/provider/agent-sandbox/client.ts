@@ -21,6 +21,7 @@
  */
 
 import { sleep } from "@decocms/shared/std";
+import { z } from "zod";
 import {
   type KubeConfig,
   type V1Status as V1StatusUpstream,
@@ -356,6 +357,44 @@ export async function sandboxTemplateExists(
     return true;
   } catch (error) {
     throw new SandboxError(`Failed to get SandboxTemplate: ${name}`, error);
+  }
+}
+
+const VariantTemplateListSchema = z.object({
+  items: z.array(
+    z.object({
+      metadata: z.object({
+        name: z.string(),
+        labels: z.record(z.string(), z.string()).optional(),
+      }),
+    }),
+  ),
+});
+
+/**
+ * SandboxTemplates labelled with their image variant, by name. `403` and `404`
+ * answer none, as in `sandboxTemplateExists`: a variant this deploy cannot see
+ * is one its claims cannot use.
+ */
+export async function listVariantTemplates(
+  kc: KubeConfig,
+  namespace: string,
+): Promise<{ name: string; variant: string }[]> {
+  const path = `${CLAIM_PATH_PREFIX}/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.TEMPLATE_PLURAL}?labelSelector=${encodeURIComponent(K8S_CONSTANTS.VARIANT_LABEL)}`;
+  try {
+    const resp = await kubeFetch(kc, { method: "GET", path });
+    if (resp.status === 404 || resp.status === 403) {
+      await drainBody(resp);
+      return [];
+    }
+    await ensureOk(resp, "listVariantTemplates");
+    const { items } = VariantTemplateListSchema.parse(await resp.json());
+    return items.flatMap(({ metadata }) => {
+      const variant = metadata.labels?.[K8S_CONSTANTS.VARIANT_LABEL];
+      return variant ? [{ name: metadata.name, variant }] : [];
+    });
+  } catch (error) {
+    throw new SandboxError("Failed to list variant SandboxTemplates", error);
   }
 }
 

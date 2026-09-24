@@ -50,12 +50,15 @@ image:
   # Override to Never on local kind clusters that load via `kind load`.
   pullPolicy: IfNotPresent
 
-# ── sandbox image variants (extra SandboxTemplates) ────────────────────
-# Each entry renders TWO more SandboxTemplates —
-# `<base>-<name>` and `<base>-<name>-medium` — identical to the default ones
-# except for what the entry overrides. A repository opts in (Settings →
-# Repositories), Studio composes the template name, and a name the cluster does
-# not have degrades to the base template rather than parking the claim.
+# ── sandbox image variants (SandboxVariants) ───────────────────────────
+# Each entry renders a `SandboxVariant` named `<base>-<name>`, from which the
+# sandbox controller (deploy/helm/sandbox-controller, REQUIRED for any entry)
+# renders two more SandboxTemplates — `<base>-<name>` and `<base>-<name>-medium`
+# — copied from the default ones except for what the entry overrides, plus a
+# SandboxWarmPool for each. A repository opts in (Settings → Repositories, which
+# lists the variants the cluster has), Studio composes the template name, and a
+# name the cluster does not have degrades to the base template rather than
+# parking the claim.
 #
 # Per entry:
 #   repository / tag   the image; `tag` defaults to `image.tag`, because the
@@ -63,12 +66,16 @@ image:
 #                      release workflow publishes both under one version.
 #   nodeSelector /     REPLACE the chart-wide ones for this variant's pods —
 #   tolerations        for an image that needs hardware the default pool lacks.
-#   resources          deep-merged over `resources` (and `mediumResources` for
-#                      the -medium template).
+#   resources          deep-merged over each template size's own resources.
 #   volumeSizes        merged over `volumeSizes`.
-#   warmPoolSize /     its own SandboxWarmPools (requires warmPool.enabled).
+#   warmPoolSize /     its SandboxWarmPools' sizes (0 unless warmPool.enabled).
 #   warmPoolMediumSize Default 0, which costs nothing: an empty pool is served
 #                      by a cold pod from the claim's own template.
+#   keep               true keeps the SandboxVariant (and so its templates)
+#                      when the entry is removed here, for handing it to
+#                      another writer.
+#
+# Variant names match ^[a-z][a-z0-9-]{0,31}$ and may not be `medium` or end in `-medium`.
 #
 # Default {}: a variant's templates are only safe to render where its nodes
 # exist. A template that renders but cannot schedule does not trigger Studio's

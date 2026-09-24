@@ -1,0 +1,57 @@
+{{- /*
+One SandboxVariant per `imageVariants` entry. The sandbox controller renders
+its two SandboxTemplates and two SandboxWarmPools from the live default
+templates, so this chart no longer renders them; installing this version
+requires the sandbox-controller chart (its CRD) first.
+
+Pools used to exist only with warmPool.enabled; the controller always renders
+them, so a disabled warm pool maps to size 0, which is served cold.
+*/ -}}
+{{- $base := include "sandbox-env.sandboxName" . }}
+{{- $baseTag := .Values.image.tag | default .Chart.AppVersion }}
+{{- range $variant, $spec := .Values.imageVariants }}
+{{- $tag := $spec.tag | default $baseTag }}
+{{- $size := 0 }}
+{{- $mediumSize := 0 }}
+{{- if $.Values.warmPool.enabled }}
+{{- $size = $spec.warmPoolSize | default 0 }}
+{{- $mediumSize = $spec.warmPoolMediumSize | default 0 }}
+{{- end }}
+---
+apiVersion: sandbox.deco.cx/v1alpha1
+kind: SandboxVariant
+metadata:
+  name: {{ $base }}-{{ $variant }}
+  namespace: agent-sandbox-system
+  labels:
+    {{- include "sandbox-env.labels" $ | nindent 4 }}
+  {{- if $spec.keep }}
+  annotations:
+    {{- include "sandbox-env.keepAnnotations" $ | nindent 4 }}
+  {{- end }}
+spec:
+  baseTemplate: {{ $base }}
+  image:
+    repository: {{ required (printf "imageVariants.%s.repository is required" $variant) $spec.repository }}
+    tag: {{ $tag | quote }}
+  baseTag: {{ $tag | quote }}
+  {{- with $spec.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $spec.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $spec.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $spec.volumeSizes }}
+  volumeSizes:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  warmPool:
+    size: {{ $size }}
+    mediumSize: {{ $mediumSize }}
+{{- end }}

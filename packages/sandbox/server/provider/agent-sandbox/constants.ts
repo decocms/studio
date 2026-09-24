@@ -10,6 +10,8 @@ export const K8S_CONSTANTS = {
   CLAIM_API_VERSION: "v1alpha1",
   CLAIM_PLURAL: "sandboxclaims",
   TEMPLATE_PLURAL: "sandboxtemplates",
+  /** On the SandboxTemplates the sandbox controller renders; the value is the variant. */
+  VARIANT_LABEL: "sandbox.deco.cx/variant",
 
   /** The agent container in every sandbox pod; siblings are the org-fs sidecar and init containers. */
   MAIN_CONTAINER_NAME: "sandbox",

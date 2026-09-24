@@ -9,6 +9,7 @@ import {
   repoKeyFromCloneUrl,
   resolveTenantPool,
   type TenantPool,
+  variantImages,
 } from "./tenant-pools";
 
 const POOLS = parseTenantPools(
@@ -452,5 +453,65 @@ describe("claimTemplateName with a tenant pool", () => {
   it("leaves a non-pool interactive claim on the default template", () => {
     expect(claimTemplateName("interactive", "sbx", null)).toBe("sbx");
     expect(claimTemplateName(undefined, "sbx")).toBe("sbx");
+  });
+});
+
+describe("variantImages", () => {
+  const base = "studio-sandbox-prod";
+
+  it("lists each variant once, from its default-size template", () => {
+    expect(
+      variantImages(
+        [
+          { name: "studio-sandbox-prod-android", variant: "android" },
+          { name: "studio-sandbox-prod-android-medium", variant: "android" },
+          { name: "studio-sandbox-prod-gpu", variant: "gpu" },
+          { name: "studio-sandbox-prod-gpu-medium", variant: "gpu" },
+        ],
+        base,
+      ),
+    ).toEqual(["android", "gpu"]);
+  });
+
+  it("skips another environment's variants in the shared namespace", () => {
+    expect(
+      variantImages(
+        [
+          { name: "studio-sandbox-staging-android", variant: "android" },
+          { name: "studio-sandbox-prod-staging-android", variant: "android" },
+        ],
+        base,
+      ),
+    ).toEqual([]);
+  });
+
+  it("skips a variant whose only template is -medium", () => {
+    expect(
+      variantImages(
+        [{ name: "studio-sandbox-prod-android-medium", variant: "android" }],
+        base,
+      ),
+    ).toEqual([]);
+  });
+
+  it("skips labels a repository cannot store, and `default`", () => {
+    expect(
+      variantImages(
+        [
+          { name: "studio-sandbox-prod-default", variant: "default" },
+          { name: "studio-sandbox-prod-Android", variant: "Android" },
+          { name: "studio-sandbox-prod-", variant: "" },
+          {
+            name: `studio-sandbox-prod-${"a".repeat(33)}`,
+            variant: "a".repeat(33),
+          },
+        ],
+        base,
+      ),
+    ).toEqual([]);
+  });
+
+  it("is empty when the cluster has no variants", () => {
+    expect(variantImages([], base)).toEqual([]);
   });
 });

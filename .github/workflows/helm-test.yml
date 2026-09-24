@@ -104,6 +104,25 @@ jobs:
             --set warmPool.size=2 \
             > /dev/null
 
+      # The variant's own contract (schema, CEL, parity with the controller's
+      # render) is the controller-go job's TestChartRendersTheVariant.
+      - name: Render (image variant kept)
+        run: |
+          set -euo pipefail
+          helm template sandbox-env deploy/helm/sandbox-env \
+            --namespace agent-sandbox-system \
+            --set envName=ci \
+            -f packages/sandbox/controller-go/variant/testdata/android-values.yaml \
+            --set imageVariants.android.keep=true \
+            > /tmp/variant.yaml
+          fail() { echo "::error::$1"; exit 1; }
+          grep -q '^kind: SandboxVariant$' /tmp/variant.yaml || fail "imageVariants did not render a SandboxVariant"
+          grep -q 'name: studio-sandbox-ci-android$' /tmp/variant.yaml || fail "SandboxVariant is not named <base>-<variant>"
+          grep -q 'helm.sh/resource-policy: keep' /tmp/variant.yaml || fail "keep: true did not add helm.sh/resource-policy: keep"
+          if grep -q 'name: studio-sandbox-ci-android-medium$' /tmp/variant.yaml; then
+            fail "the chart rendered a variant template; the controller owns those"
+          fi
+
       - name: Render (envName missing must fail)
         run: |
           set +e

@@ -45,6 +45,17 @@ export function useGitProviderCapabilities() {
   });
 }
 
+/** The image variants the cluster offers; they change with its config, not per request. */
+export function useSandboxImages() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  return useQuery({
+    queryKey: KEYS.sandboxImages(org.id),
+    staleTime: CAPABILITIES_STALE_MS,
+    queryFn: async () => (await studio.call("SANDBOX_IMAGE_LIST", {})).images,
+  });
+}
+
 export function useGitAccounts() {
   const { org } = useProjectContext();
   const studio = useStudioTools();

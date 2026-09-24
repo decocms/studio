@@ -247,6 +247,7 @@ const ALL_TOOL_NAMES = [
   // VM tools (app-only)
   "SANDBOX_START",
   "SANDBOX_DELETE",
+  "SANDBOX_IMAGE_LIST",
 
   // GitHub App installations (app-only)
   "GITHUB_LIST_USER_ORGS",
@@ -1205,6 +1206,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "VM",
   },
   {
+    name: "SANDBOX_IMAGE_LIST",
+    description: "List the sandbox images a repository can pick",
+    category: "VM",
+  },
+  {
     name: "GITHUB_LIST_USER_ORGS",
     description: "List GitHub user's personal account and organizations",
     category: "GitHub",
@@ -1619,6 +1625,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "GIT_ACCOUNT_LIST",
       "REPOSITORY_LIST",
       "REPOSITORY_SEARCH",
+      "SANDBOX_IMAGE_LIST",
       // The change-request panel's whole read side, for anyone who can open a preview
       "CHANGE_REQUEST_STATE",
       "CHANGE_REQUEST_LAST_MERGED",

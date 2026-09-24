@@ -2,25 +2,35 @@ package variant
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsinternal "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	structuralschema "k8s.io/apiextensions-apiserver/pkg/apiserver/schema"
+	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel"
+	"k8s.io/apiextensions-apiserver/pkg/apiserver/validation"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
+	celconfig "k8s.io/apiserver/pkg/apis/cel"
 	"sigs.k8s.io/yaml"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/api/v1alpha1"
 )
 
-// testdata/chart-templates.yaml is the sandbox-env chart's own render, so this
-// test is the adoption contract: a template the controller adopts from the
-// chart must come out byte-for-byte the same spec, or the first reconcile
-// rewrites every variant pod's template. Regenerate after a chart change:
+// testdata/chart-templates.yaml is sandbox-env 0.21.0's render, the last
+// chart version that rendered variant templates, so this test is the adoption
+// contract: a template the controller adopts from that chart must come out
+// byte-for-byte the same spec, or the first reconcile rewrites every variant
+// pod's template. It was rendered with
 //
 //	helm template t deploy/helm/sandbox-env --set envName=prod --set image.tag=1.0.0 \
 //	  -f packages/sandbox/controller-go/variant/testdata/android-values.yaml
@@ -47,10 +57,11 @@ func chartTemplates(t *testing.T) map[string]*unstructured.Unstructured {
 	return out
 }
 
-// The fixture's specs must be the chart's current render (labels carry the
-// chart version, so they are not compared), or the golden test above
-// proves parity with a chart that no longer exists. CI installs helm.
-func TestFixtureIsTheChartsRender(t *testing.T) {
+// The chart now writes testdata/android-values.yaml as a SandboxVariant. It
+// must be the one androidVariant builds, so the adoption contract above is
+// the one the chart's variant gets, and it must pass the CRD's schema and CEL
+// rules, or `helm upgrade` fails on apply. CI installs helm.
+func TestChartRendersTheVariant(t *testing.T) {
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Skip("helm not installed")
 	}
@@ -59,30 +70,90 @@ func TestFixtureIsTheChartsRender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	live := map[string]any{}
+	var variants []map[string]any
 	dec := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(out), 4096)
 	for {
 		u := &unstructured.Unstructured{}
 		if err := dec.Decode(&u.Object); err != nil {
 			break
 		}
-		if u.GetKind() == "SandboxTemplate" {
-			spec, _, _ := unstructured.NestedMap(u.Object, "spec")
-			live[u.GetName()] = normalize(t, spec)
+		switch u.GetKind() {
+		case "SandboxVariant":
+			variants = append(variants, u.Object)
+		case "SandboxTemplate", "SandboxWarmPool":
+			if u.GetLabels()[LabelVariant] != "" || strings.Contains(u.GetName(), "-android") {
+				t.Errorf("chart still renders %s %s; the controller owns it", u.GetKind(), u.GetName())
+			}
 		}
 	}
-	fixture := map[string]any{}
-	for name, u := range chartTemplates(t) {
-		spec, _, _ := unstructured.NestedMap(u.Object, "spec")
-		fixture[name] = normalize(t, spec)
+	if len(variants) != 1 {
+		t.Fatalf("rendered %d SandboxVariants, want 1", len(variants))
 	}
-	if !reflect.DeepEqual(live, fixture) {
-		t.Fatal("testdata/chart-templates.yaml is stale; regenerate it (see chartTemplates)")
+
+	schema, validator := crdValidator(t)
+	if errs := validation.ValidateCustomResource(field.NewPath("root"), variants[0], schema); len(errs) > 0 {
+		t.Errorf("schema: %v", errs)
+	}
+	if errs, _ := validator.Validate(context.Background(), field.NewPath("root"), crdStructural(t), variants[0], nil, celconfig.RuntimeCELCostBudget); len(errs) > 0 {
+		t.Errorf("CEL: %v", errs)
+	}
+
+	raw, err := yaml.Marshal(variants[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got v1alpha1.SandboxVariant
+	if err := yaml.UnmarshalStrict(raw, &got); err != nil {
+		t.Fatalf("chart renders a field the API does not have: %v", err)
+	}
+	want := androidVariant(t)
+	if got.Name != want.Name || got.Namespace != want.Namespace {
+		t.Errorf("rendered %s/%s, want %s/%s", got.Namespace, got.Name, want.Namespace, want.Name)
+	}
+	g, _ := yaml.Marshal(got.Spec)
+	w, _ := yaml.Marshal(want.Spec)
+	if !bytes.Equal(g, w) {
+		t.Errorf("chart's SandboxVariant differs\n--- chart\n%s\n--- androidVariant\n%s", g, w)
 	}
 }
 
+func crdSchema(t *testing.T) *apiextensionsinternal.JSONSchemaProps {
+	t.Helper()
+	raw, err := os.ReadFile("../../../../deploy/helm/sandbox-controller/crds/sandbox.deco.cx_sandboxvariants.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var crd apiextensionsv1.CustomResourceDefinition
+	if err := yaml.Unmarshal(raw, &crd); err != nil {
+		t.Fatal(err)
+	}
+	var internal apiextensionsinternal.JSONSchemaProps
+	if err := apiextensionsv1.Convert_v1_JSONSchemaProps_To_apiextensions_JSONSchemaProps(crd.Spec.Versions[0].Schema.OpenAPIV3Schema, &internal, nil); err != nil {
+		t.Fatal(err)
+	}
+	return &internal
+}
+
+func crdStructural(t *testing.T) *structuralschema.Structural {
+	t.Helper()
+	s, err := structuralschema.NewStructural(crdSchema(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func crdValidator(t *testing.T) (validation.SchemaValidator, *cel.Validator) {
+	t.Helper()
+	schema, _, err := validation.NewSchemaValidator(crdSchema(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return schema, cel.NewValidator(crdStructural(t), true, celconfig.PerCallLimit)
+}
+
 // androidVariant is testdata/android-values.yaml as a SandboxVariant, the way
-// chart N+1 will write it.
+// the chart writes it.
 func androidVariant(t *testing.T) *v1alpha1.SandboxVariant {
 	t.Helper()
 	raw, err := os.ReadFile("testdata/android-values.yaml")

@@ -1,6 +1,7 @@
 /** Hosted AgentSandboxProvider lifecycle. */
 
 import type { StudioContext } from "@/core/studio-context";
+import type { SandboxImage } from "@decocms/shared/git-providers";
 import type {
   ClaimPhase,
   AgentSandboxProvider,
@@ -224,6 +225,14 @@ export function getAgentSandboxProvider(
     );
   }
   return resolveOnce(() => instantiate(ctx.db));
+}
+
+/** Image variants a repository can pick; none while hosted sandboxes are off. */
+export async function listSandboxImages(
+  ctx: StudioContext,
+): Promise<SandboxImage[]> {
+  if (!getSettings().agentSandboxEnabled) return [];
+  return (await getAgentSandboxProvider(ctx)).listSandboxImages();
 }
 
 /**

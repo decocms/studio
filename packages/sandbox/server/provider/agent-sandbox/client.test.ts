@@ -13,6 +13,7 @@ import {
   ensureServicePort,
   getSandboxClaim,
   type HttpRoute,
+  listVariantTemplates,
   patchSandboxClaimShutdown,
   type SandboxClaim,
   type SandboxResource,
@@ -692,5 +693,50 @@ describe("podTermination", () => {
         "sandbox",
       ),
     ).toBeNull();
+  });
+});
+
+describe("listVariantTemplates", () => {
+  it("lists templates by the variant label and reads the label's value", async () => {
+    fetchImpl = async () =>
+      jsonResponse(200, {
+        items: [
+          {
+            metadata: {
+              name: "studio-sandbox-prod-android",
+              labels: { [K8S_CONSTANTS.VARIANT_LABEL]: "android" },
+            },
+          },
+          { metadata: { name: "unlabelled" } },
+        ],
+      });
+    expect(await listVariantTemplates(makeKc(), NS)).toEqual([
+      { name: "studio-sandbox-prod-android", variant: "android" },
+    ]);
+    const url = new URL(fetchCalls[0]!.url);
+    expect(url.pathname).toBe(
+      `/apis/${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}/namespaces/${NS}/${K8S_CONSTANTS.TEMPLATE_PLURAL}`,
+    );
+    expect(url.searchParams.get("labelSelector")).toBe(
+      K8S_CONSTANTS.VARIANT_LABEL,
+    );
+  });
+
+  it("answers none on 403 and 404", async () => {
+    for (const status of [403, 404]) {
+      fetchImpl = async () => jsonResponse(status, { kind: "Status" });
+      expect(await listVariantTemplates(makeKc(), NS)).toEqual([]);
+    }
+  });
+
+  it("throws on another error or a malformed list", async () => {
+    fetchImpl = async () => jsonResponse(500, { message: "boom" });
+    await expect(listVariantTemplates(makeKc(), NS)).rejects.toThrow(
+      "Failed to list variant SandboxTemplates",
+    );
+    fetchImpl = async () => jsonResponse(200, { items: [{}] });
+    await expect(listVariantTemplates(makeKc(), NS)).rejects.toThrow(
+      "Failed to list variant SandboxTemplates",
+    );
   });
 });
