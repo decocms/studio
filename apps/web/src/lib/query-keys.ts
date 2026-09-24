@@ -95,12 +95,6 @@ export const KEYS = {
   taskBoardComments: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-comments", itemId] as const,
 
-  homeGithubRecentPrs: (orgId: string, connectionId: string) =>
-    ["home-github-recent-prs", orgId, connectionId] as const,
-
-  homeGithubContributions: (orgId: string, connectionId: string) =>
-    ["home-github-contributions", orgId, connectionId] as const,
-
   // Public report for a domain; `lang` in the key so a language switch refetches.
   report: (domain: string, lang?: string) =>
     ["report", domain, lang ?? ""] as const,
