@@ -122,7 +122,14 @@ spec:
                 - name: NS
                   value: agent-sandbox-system
                 - name: TTL_MS
+                  {{- with .Values.housekeeper.idleTtlConfigMap }}
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ . }}
+                      key: ttlMs
+                  {{- else }}
                   value: {{ mul .Values.housekeeper.idleTtlSeconds 1000 | quote }}
+                  {{- end }}
                 - name: RENEW_ACTIVE_MS
                   value: {{ mul .Values.housekeeper.renewActiveSeconds 1000 | quote }}
                 - name: RENEW_SLACK_SEC

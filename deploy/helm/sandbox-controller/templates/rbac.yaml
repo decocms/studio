@@ -6,8 +6,9 @@ metadata:
   labels:
     {{- include "sandbox-controller.labels" . | nindent 4 }}
 ---
-# Namespaced, and only what reconciling variants needs. No claims, pods or
-# routes: the controller does not take claims yet.
+# Namespaced. Reconciling variants needs the first block; claims.enabled adds
+# what Studio's in-process runner holds in sandbox-env's sandbox-rbac.yaml,
+# less what this runtime never calls (sandboxes, watches).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -36,6 +37,35 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]
+  {{- if .Values.claims.enabled }}
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["get", "list", "create", "delete", "patch"]
+  # The newest pod of a handle (OOM verdict), unplaceable pods (capacity),
+  # tenant-pool pods and the re-read before one is warmed.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # FailedScheduling and image-pull events for the lifecycle phases.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+  # Server-Side Apply of the daemon port onto the operator's per-Sandbox
+  # Service: apply is PATCH on the verb.
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "patch"]
+  # Per-claim HTTPRoutes, upserted by Server-Side Apply.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "create", "delete", "patch"]
+  {{- if not .Values.claims.previewUrlPattern }}
+  # Without a preview URL pattern the daemon is reached by port-forward.
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["get", "create"]
+  {{- end }}
+  {{- end }}
   {{- with .Values.imagePullSecretNames }}
   - apiGroups: [""]
     resources: ["secrets"]

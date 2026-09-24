@@ -1,0 +1,61 @@
+{{- if .Values.claims.enabled }}
+{{- $claims := .Values.claims }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sandbox-controller.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "sandbox-controller.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: claims
+      port: {{ $claims.port }}
+      targetPort: claims
+      protocol: TCP
+---
+# mTLS is the auth; this bounds who can even try. Selecting the pods for
+# ingress denies everything not listed, metrics included (see extraIngress).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sandbox-controller.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "sandbox-controller.selectorLabels" . | nindent 6 }}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $claims.studio.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $claims.studio.podSelectorLabels | nindent 14 }}
+      ports:
+        - port: claims
+          protocol: TCP
+    {{- with $claims.networkPolicy.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+---
+# The idle TTL has three enforcers (operator shutdownTime, the housekeeper's
+# sweep, this controller); this is the one value. sandbox-env's housekeeper
+# reads it through `housekeeper.idleTtlConfigMap`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sandbox-controller-idle-ttl
+  namespace: {{ .Values.sandboxNamespace }}
+  labels:
+    {{- include "sandbox-controller.labels" . | nindent 4 }}
+data:
+  ttlMs: {{ mul (int $claims.idleTtlSeconds) 1000 | quote }}
+{{- end }}
