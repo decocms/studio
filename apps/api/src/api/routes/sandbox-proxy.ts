@@ -923,7 +923,6 @@ export const createSandboxRoutes = () => {
       virtualMcpId: claim.virtualMcpId,
       branch: claim.branch,
       userId: claim.userId,
-      projectRef: claim.projectRef,
       virtualMcpMetadata: claim.virtualMcpMetadata,
     });
   });

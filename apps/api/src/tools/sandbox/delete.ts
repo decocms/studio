@@ -1,3 +1,4 @@
+import { SandboxDrainingError } from "@decocms/sandbox/provider/remote";
 import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { getAgentSandboxProviderForTeardown } from "../../sandbox/lifecycle";
@@ -54,8 +55,26 @@ export const SANDBOX_DELETE = defineTool({
       return { success: true };
     }
 
-    // Clear first so the UI returns to idle regardless of teardown outcome,
-    // including when no controller is configured to reach.
+    try {
+      const runner = await getAgentSandboxProviderForTeardown(ctx);
+      await runner.delete(entry.sandboxHandle);
+    } catch (err) {
+      // Still draining: keep the entry so a retry reaches the same claim, and
+      // nothing provisions a second daemon beside it meanwhile.
+      if (err instanceof SandboxDrainingError) {
+        throw new Error(
+          "The sandbox is still shutting down. Retry the delete in a few seconds.",
+        );
+      }
+      // Any other failure still clears the entry, so the UI returns to idle
+      // even when no controller is configured to reach.
+      console.error(
+        `[SANDBOX_DELETE] ${AGENT_SANDBOX_KIND} ${entry.sandboxHandle}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
     await removeSandboxMapEntry(
       ctx.storage.virtualMcps,
       input.virtualMcpId,
@@ -63,16 +82,6 @@ export const SANDBOX_DELETE = defineTool({
       sandboxUserId,
       input.branch,
     );
-
-    await getAgentSandboxProviderForTeardown(ctx)
-      .then((runner) => runner.delete(entry.sandboxHandle))
-      .catch((err) =>
-        console.error(
-          `[SANDBOX_DELETE] ${AGENT_SANDBOX_KIND} ${entry.sandboxHandle}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        ),
-      );
 
     return { success: true };
   },

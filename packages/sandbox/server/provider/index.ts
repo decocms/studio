@@ -16,13 +16,6 @@ export type {
 // Needed by studio callers (decopilot dispatch-run) that compute handles
 // directly. Re-exported here so consumers don't dig into shared/.
 export { computeHandle } from "./shared";
-export type {
-  RunnerStateRecord,
-  RunnerStateRecordWithId,
-  RunnerStatePut,
-  RunnerStateStore,
-  RunnerStateStoreOps,
-} from "./state-store";
 export { composeSandboxRef } from "./sandbox-ref";
 export type { HostedSandboxProvider } from "./hosted";
 export type { ClaimFailureReason, ClaimPhase } from "./lifecycle-types";

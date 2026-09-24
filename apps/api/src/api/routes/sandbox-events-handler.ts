@@ -10,10 +10,10 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { HostedSandboxProvider } from "@decocms/sandbox/provider";
+import { SandboxDrainingError } from "@decocms/sandbox/provider/remote";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
-import { KyselySandboxProviderStateStore } from "../../storage/sandbox-runner-state";
 import {
   AGENT_SANDBOX_KIND,
   readSandboxMap,
@@ -82,7 +82,6 @@ export interface VmEventsHandlerArgs {
   virtualMcpId: string;
   branch: string;
   userId: string;
-  projectRef: string;
   virtualMcpMetadata: Record<string, unknown> | null;
 }
 
@@ -94,7 +93,6 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
     virtualMcpId,
     branch,
     userId,
-    projectRef,
     virtualMcpMetadata,
   } = args;
   // The agent row is a no-op sandbox store for the synthetic Decopilot agent —
@@ -146,17 +144,21 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
       if (vmEntry?.sandboxHandle === claimName) {
         const stale = await isStaleHandle(runner, claimName);
         if (stale) {
-          await cleanupStaleEntry({
+          const outcome = await cleanupStaleEntry({
             ctx,
             runner,
             claimName,
             virtualMcpId,
             branch,
             userId,
-            projectRef,
             threadId: fromThread ? threadId : null,
           });
-          await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
+          // A draining claim is not gone: ending the stream without `gone`
+          // keeps the entry, so the client's reconnect retries the delete
+          // instead of provisioning a second daemon beside it.
+          if (outcome === "gone") {
+            await stream.writeSSE({ event: "gone", data: "" }).catch(() => {});
+          }
           return;
         }
       }
@@ -271,6 +273,10 @@ async function isStaleHandle(
   }
 }
 
+/**
+ * Deletes a stale claim, then drops the records that point at it. They stay
+ * while the controller reports the claim still draining.
+ */
 async function cleanupStaleEntry(args: {
   ctx: StudioContext;
   runner: HostedSandboxProvider;
@@ -278,39 +284,32 @@ async function cleanupStaleEntry(args: {
   virtualMcpId: string;
   branch: string;
   userId: string;
-  projectRef: string;
   /** Set when the stale entry was found on the thread (synthetic agent) — clear
-   *  it there instead of / in addition to the agent row. */
+   *  it there instead of the agent row. */
   threadId: string | null;
-}): Promise<void> {
-  const {
-    ctx,
-    runner,
-    claimName,
-    virtualMcpId,
-    branch,
-    userId,
-    projectRef,
-    threadId,
-  } = args;
-  // Drop the thread's sandboxMap entry first. A dangling `sandboxHandle` left
-  // in thread metadata makes every client SSE reconnect re-enter this stale
-  // path and re-issue a DELETE against the already-gone claim — a 404 flood
-  // that only stops when the tab closes.
-  if (threadId) {
-    try {
-      await removeThreadSandboxMapEntry(ctx, threadId, userId, branch);
-    } catch (err) {
-      console.warn(
-        `[vm-events] thread sandboxMap cleanup failed for ${threadId}/${branch}/${AGENT_SANDBOX_KIND}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  }
-  // Same reasoning for the agent row. Mirrors SANDBOX_DELETE.
+}): Promise<"gone" | "draining"> {
+  const { ctx, runner, claimName, virtualMcpId, branch, userId, threadId } =
+    args;
   try {
-    if (!threadId) {
+    await runner.delete(claimName);
+  } catch (err) {
+    if (err instanceof SandboxDrainingError) {
+      console.warn(`[vm-events] ${claimName} is still draining; retrying`);
+      return "draining";
+    }
+    console.warn(
+      `[vm-events] runner.delete failed for ${claimName}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  // A dangling `sandboxHandle` makes every client SSE reconnect re-enter this
+  // stale path and re-issue a DELETE against the gone claim — a 404 flood that
+  // only stops when the tab closes. Mirrors SANDBOX_DELETE.
+  try {
+    if (threadId) {
+      await removeThreadSandboxMapEntry(ctx, threadId, userId, branch);
+    } else {
       await removeSandboxMapEntry(
         ctx.storage.virtualMcps,
         virtualMcpId,
@@ -321,30 +320,12 @@ async function cleanupStaleEntry(args: {
     }
   } catch (err) {
     console.warn(
-      `[vm-events] sandboxMap cleanup failed for ${virtualMcpId}/${branch}/${AGENT_SANDBOX_KIND}: ${
+      `[vm-events] sandboxMap cleanup failed for ${threadId ?? virtualMcpId}/${branch}/${AGENT_SANDBOX_KIND}: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
   }
-  try {
-    await runner.delete(claimName);
-  } catch (err) {
-    console.warn(
-      `[vm-events] runner.delete failed for ${claimName}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-  try {
-    const stateStore = new KyselySandboxProviderStateStore(ctx.db);
-    await stateStore.delete({ userId, projectRef });
-  } catch (err) {
-    console.warn(
-      `[vm-events] sandbox_runner_state delete failed for ${userId}/${projectRef}/${AGENT_SANDBOX_KIND}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
+  return "gone";
 }
 
 async function emitLifecycle(args: {
