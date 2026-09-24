@@ -1239,11 +1239,12 @@ export class TaskBoardStorage {
     limit: number,
     dueBefore: Date,
   ): Promise<{ id: string; organizationId: string; finishedAt: Date }[]> {
+    // `t.id desc` breaks a tied `updated_at` deterministically across both calls.
     const newestLinked = (column: "status" | "updated_at") =>
       sql<string>`(select t.${sql.ref(column)} from task_board_item_threads l
             join threads t on t.id = l.thread_id
            where l.task_board_item_id = i.id
-           order by t.updated_at desc limit 1)`;
+           order by t.updated_at desc, t.id desc limit 1)`;
     const rows = await this.db
       .selectFrom("task_board_items as i")
       .select([
