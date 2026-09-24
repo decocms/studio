@@ -5095,6 +5095,8 @@ export interface StudioToolIO {
     };
     output: {
       available: boolean;
+      reason: "not_configured" | "no_site_data" | null;
+      analyticsSite: string;
       results: {
         visitors: { default: number; variant: number };
         goals: { goal: string; default: number; variant: number }[];

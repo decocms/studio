@@ -241,7 +241,9 @@ function Results({
   if (!data?.available) {
     return (
       <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        {t("experiments.results.unavailable")}
+        {data?.reason === "no_site_data"
+          ? t("experiments.results.noSiteData", { site: data.analyticsSite })
+          : t("experiments.results.unavailable")}
       </div>
     );
   }

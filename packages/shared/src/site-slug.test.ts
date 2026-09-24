@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { isValidSiteSlug, resolveAgentSiteSlug } from "./site-slug";
+import {
+  isValidSiteSlug,
+  resolveAgentSiteSlug,
+  resolveAnalyticsSiteSlug,
+} from "./site-slug";
 
 describe("isValidSiteSlug", () => {
   it("accepts valid lowercase slugs", () => {
@@ -84,5 +88,40 @@ describe("resolveAgentSiteSlug", () => {
     expect(
       resolveAgentSiteSlug({ title: null, metadata: { siteSlug: null } }),
     ).toBeNull();
+  });
+});
+
+describe("resolveAnalyticsSiteSlug", () => {
+  it("follows the analytics override for a migrated project", () => {
+    expect(
+      resolveAnalyticsSiteSlug({
+        title: "acme-tanstack",
+        metadata: { analyticsSiteSlug: "acme" },
+      }),
+    ).toBe("acme");
+  });
+
+  it("falls back to the project's own site slug without an override", () => {
+    expect(
+      resolveAnalyticsSiteSlug({
+        title: "x",
+        metadata: { siteSlug: "acme-tanstack" },
+      }),
+    ).toBe("acme-tanstack");
+  });
+
+  it("normalizes the override", () => {
+    expect(
+      resolveAnalyticsSiteSlug({ metadata: { analyticsSiteSlug: " ACME " } }),
+    ).toBe("acme");
+  });
+
+  it("ignores an override that is not a valid slug", () => {
+    expect(
+      resolveAnalyticsSiteSlug({
+        title: "acme-tanstack",
+        metadata: { analyticsSiteSlug: "../other" },
+      }),
+    ).toBe("acme-tanstack");
   });
 });

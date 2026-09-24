@@ -35,6 +35,8 @@ interface ListOut {
 }
 interface ResultsOut {
   available: boolean;
+  reason: "not_configured" | "no_site_data" | null;
+  analyticsSite: string;
   results: unknown;
 }
 
@@ -175,6 +177,8 @@ test.describe("A/B experiments tenancy", () => {
       { site, key: "plp-ranking" },
     );
     expect(results.available).toBe(false);
+    expect(results.reason).toBe("not_configured");
+    expect(results.analyticsSite).toBe(site);
     expect(results.results).toBeNull();
 
     // The results tool is also ownership-gated.

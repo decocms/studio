@@ -41,7 +41,7 @@ import {
 } from "@decocms/ui/components/popover.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
-import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { resolveAnalyticsSiteSlug } from "@decocms/shared/site-slug";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 
@@ -1751,7 +1751,7 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
   const { org } = useProjectContext();
   const entity = useVirtualMCP(virtualMcpId);
-  const siteSlug = resolveAgentSiteSlug(entity);
+  const siteSlug = resolveAnalyticsSiteSlug(entity);
   const enabled = Boolean(siteSlug);
   const base = siteSlug
     ? `/api/${org.slug}/monitor/${encodeURIComponent(siteSlug)}`

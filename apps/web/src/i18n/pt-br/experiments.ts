@@ -26,7 +26,9 @@ export const experiments = {
     'Excluir o experimento "{key}"? Isso não pode ser desfeito.',
   "experiments.results.title": "Resultados",
   "experiments.results.unavailable":
-    "O analytics não está configurado neste ambiente, então os resultados não aparecem aqui. Eles aparecem em staging e produção.",
+    "O analytics não está configurado neste ambiente, então os resultados não aparecem aqui.",
+  "experiments.results.noSiteData":
+    "Nenhum tráfego de analytics encontrado para {site}. O site pode ainda não estar enviando eventos de analytics, ou o tráfego dele é registrado sob outro site.",
   "experiments.results.empty": "Ainda sem participantes neste experimento.",
   "experiments.results.control": "Controle",
   "experiments.results.variant": "Variante",

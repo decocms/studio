@@ -24,7 +24,9 @@ export const experiments = {
     'Delete experiment "{key}"? This cannot be undone.',
   "experiments.results.title": "Results",
   "experiments.results.unavailable":
-    "Analytics isn't wired for this deployment, so results are unavailable here. They appear in staging and production.",
+    "Analytics isn't configured for this deployment, so results are unavailable here.",
+  "experiments.results.noSiteData":
+    "No analytics traffic found for {site}. The site may not be sending analytics events yet, or its traffic is reported under another site.",
   "experiments.results.empty": "No participants yet for this experiment.",
   "experiments.results.control": "Control",
   "experiments.results.variant": "Variant",

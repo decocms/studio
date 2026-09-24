@@ -10,7 +10,7 @@
  * timeseries for the selected goal, and the A/B statistics (see ./ab-test.ts).
  *
  * Unconfigured (no ONEDOLLAR_BACKEND_API_KEY, or the site resolves to no host)
- * returns `null` — the caller renders an unavailable/empty state, never a wrong
+ * returns a `not_configured`/`no_site_data` outcome — never a wrong
  * zero. Env + host resolution mirror `api/routes/monitor.ts`.
  */
 
@@ -86,20 +86,26 @@ async function siteOdHosts(
 
 type PFilter = [string, string, string[]];
 
+/** Why a result is absent is part of the answer — "the backend is not wired"
+ *  and "this site reports no traffic" need different fixes. */
+export type ExperimentResultsOutcome =
+  | { status: "ok"; results: ExperimentResults }
+  | { status: "not_configured" }
+  | { status: "no_site_data" };
+
 /**
  * Compute experiment results. Sums across every host the site is served on so a
- * www/apex split doesn't halve the counts. Returns `null` when unconfigured or
- * the site resolves to no host.
+ * www/apex split doesn't halve the counts.
  */
 export async function queryExperimentResults(
   input: ExperimentResultsInput,
-): Promise<ExperimentResults | null> {
+): Promise<ExperimentResultsOutcome> {
   const apiKey = getSettings().oneDollarStatsApiKey;
-  if (!apiKey || !isAnalyticsConfigured()) return null;
+  if (!apiKey || !isAnalyticsConfigured()) return { status: "not_configured" };
 
   const { slug, testName, since, until, goalOnDash } = input;
   const hosts = await siteOdHosts(slug, since, until);
-  if (hosts.length === 0) return null;
+  if (hosts.length === 0) return { status: "no_site_data" };
 
   const propKey = `event:props:${testName}`;
   const dateRange: [string, string] = [since, until];
@@ -235,14 +241,17 @@ export async function queryExperimentResults(
   const probabilityVariantBest = pBetter(defaultVariant, testVariant);
 
   return {
-    visitors,
-    goals: goalCounts,
-    timeseries: mergedTimeseries,
-    stats: {
-      totalParticipants: visitors.default + visitors.variant,
-      sampleSize: size,
-      probabilityVariantBest,
-      probabilityDefaultBest: 1 - probabilityVariantBest,
+    status: "ok",
+    results: {
+      visitors,
+      goals: goalCounts,
+      timeseries: mergedTimeseries,
+      stats: {
+        totalParticipants: visitors.default + visitors.variant,
+        sampleSize: size,
+        probabilityVariantBest,
+        probabilityDefaultBest: 1 - probabilityVariantBest,
+      },
     },
   };
 }
