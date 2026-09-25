@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { usePackagePath } from "./use-package-path";
 import { KEYS } from "@/lib/query-keys";
+import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
@@ -58,7 +59,8 @@ export function useMoveBlocks({
   const mutation = useMutation({
     mutationKey: decofileWriteMutationKey(orgSlug, virtualMcpId, branch),
     scope: decofileWriteScope(orgSlug, virtualMcpId, branch),
-    mutationFn: async ({ writes, deletes }: BlockMove) => {
+    mutationFn: async ({ writes: rawWrites, deletes }: BlockMove) => {
+      const writes = sanitizeSecretsForPersistence(rawWrites);
       if (fastPreviewActive) {
         // One PATCH, one commit — the server applies set and delete together.
         const draft = await patchDecofile(
