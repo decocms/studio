@@ -258,6 +258,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Per-site Monitor tab (CDN Performance + Audience from the stats-lake warehouse). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. Its own deployment-wide switch `MONITOR_GA` opens it to every org at once (independent of the control-plane trio).",
     ),
+  site_create_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      'The "Create a new site" option under New project: generates a GitHub repository from a site template in an account the org connected, and opens it as a project. Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org.',
+    ),
   delivery_lanes_enabled: z
     .boolean()
     .optional()
