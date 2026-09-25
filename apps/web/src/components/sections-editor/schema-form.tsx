@@ -17,7 +17,8 @@ import { InlineUnionField } from "./fields/inline-union-field";
 import { LocationField } from "./fields/location-field";
 import { MapField } from "./fields/map-field";
 import { MultivariateFieldWrapper } from "./fields/multivariate-field-wrapper";
-import { isSecretBlock, SecretField } from "./fields/secret-field";
+import { isSecretBlock } from "@decocms/shared/decofile";
+import { isSecretField, SecretField } from "./fields/secret-field";
 import {
   isEmptyFieldValue,
   RequiredFieldProvider,
@@ -331,12 +332,8 @@ export function renderField(props: FieldProps) {
     return <AnyOfField key={props.path} {...props} />;
   }
 
-  // Deco API secrets are stored as loader blocks, not plain strings.
-  if (
-    isSecretBlock(value) ||
-    schema.format === "password" ||
-    (value == null && schema.format === "password")
-  ) {
+  // Deco secrets (loader blocks and their `@format secret` value) must never hit a plain text input.
+  if (isSecretField(schema, value)) {
     return <SecretField key={props.path} {...props} />;
   }
 
@@ -355,12 +352,7 @@ export function renderField(props: FieldProps) {
         ? defaultForType(schema.type, schema.default)
         : value;
 
-  if (effectiveValue === null || effectiveValue === undefined) {
-    if (isSecretBlock(value)) {
-      return <SecretField key={props.path} {...props} />;
-    }
-    return null;
-  }
+  if (effectiveValue === null || effectiveValue === undefined) return null;
 
   if (isSecretBlock(effectiveValue)) {
     return <SecretField key={props.path} {...props} value={effectiveValue} />;

@@ -25,6 +25,8 @@ import type { GithubRepo } from "@decocms/shared/sdk/types";
 import {
   assertSafeDecoBlockKey,
   isReservedResolverBlockKey,
+  PlaintextSecretError,
+  sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -357,7 +359,15 @@ export function createDecofileRoutes() {
         400,
       );
     }
-    const patch: DecofilePatch = parsed.data;
+    let patch: DecofilePatch;
+    try {
+      patch = sanitizeSecretsForPersistence(parsed.data);
+    } catch (err) {
+      if (err instanceof PlaintextSecretError) {
+        return c.json({ error: err.message }, 400);
+      }
+      throw err;
+    }
 
     for (const key of [
       ...Object.keys(patch.set ?? {}),
