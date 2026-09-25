@@ -35,7 +35,7 @@ import {
   useDeleteOrgRepoSync,
   useOrgRepoSyncs,
 } from "@/hooks/use-org-repo-syncs";
-import { timeAgo } from "@/layouts/library/cards";
+import { timeAgo } from "@/lib/format-time";
 import { SettingsGroupPage } from "@/components/settings/settings-group-page";
 
 /** Suggest a volume name from the repo name (server re-validates). */

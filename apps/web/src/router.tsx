@@ -488,17 +488,45 @@ const orgHomeRoute = createRoute({
     /** Reports onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
+    /** The org's OTHER destination. It rides here rather than on `/$org/agents`
+     *  for the reason `projectsIndexRoute` documents below: one more child in
+     *  this tree pushes TanStack's `to: "."` search inference past its limit
+     *  and turns `prev` into `any` at every search caller in the app. Two
+     *  destinations, one route; the sidebar is what tells them apart. */
+    view: z.enum(["agents"]).optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
 
-/** Bare `/projects` promotes a search-carried legacy identity or lands on the
- *  organization Home. It is an entry point, never a second project list. */
+/**
+ * Bare `/projects` promotes a search-carried legacy identity or lands on the
+ * organization Home. It is an entry point, never a second project list.
+ *
+ * `?project=` is the exception, and the whole of the flat shape's routing
+ * (`lib/flat-projects.ts`): it names a project WITHOUT narrowing the shell,
+ * because `useScopeId` reads `$agentId` and the legacy `?virtualmcpid=`, and
+ * this is neither. It rides here rather than on a route of its own because one
+ * more child pushes TanStack's `to: "."` search inference past its limit and
+ * turns `prev` into `any` at every caller in the app.
+ */
 const projectsIndexRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/projects",
-  validateSearch: legacyWorkspaceCompatibilitySearchSchema,
+  staticData: { pageTitle: "projects.settings.title", defaultMain: "board" },
+  /** `files` is this screen's own: the flat shape has no sidebar to hold a
+   *  project's destinations, so the two a project HAS — itself, and its files
+   *  — are a toggle in the topbar and this is what it writes. Extended here
+   *  rather than added to the shared compatibility payload: no other route
+   *  owns it, and the same reason there is no child route for it (search
+   *  inference) applies to widening the shape everyone validates against. */
+  validateSearch: legacyWorkspaceCompatibilitySearchSchema.extend({
+    files: z.coerce.boolean().optional().catch(undefined),
+  }),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/flat-project.tsx"),
+  ),
   beforeLoad: ({ params, search }) => {
+    if (search.project?.trim()) return;
     const agentId = search.virtualmcpid?.trim();
     if (!agentId) {
       throw redirect({
@@ -721,6 +749,23 @@ const agentSettingsRoute = createRoute({
   },
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-settings.tsx"),
+  ),
+});
+
+/** A project's files — the same Library, rooted at the project's folder. */
+const agentLibraryRoute = createRoute({
+  pendingComponent: ChatLayoutPending,
+  errorComponent: ChatLayoutError,
+  getParentRoute: () => agentWorkspaceRoute,
+  path: "/library",
+  staticData: {
+    pageTitle: "sidebar.navDestinations.library",
+    defaultMain: "files",
+    mainView: "files",
+  },
+  validateSearch: z.object(librarySearchShape),
+  component: lazyRouteComponent(
+    () => import("./routes/workspace/agent-library.tsx"),
   ),
 });
 
@@ -1394,6 +1439,16 @@ const settingsTasksRoute = createRoute({
   },
 });
 
+/** Settings › Projects — the index into per-project settings. */
+const settingsProjectsRoute = createRoute({
+  staticData: { pageTitle: "projects.settings.title" },
+  getParentRoute: () => settingsRoute,
+  path: "/projects",
+  component: lazyRouteComponent(
+    () => import("./routes/orgs/settings/projects.tsx"),
+  ),
+});
+
 const settingsMembersRoute = createRoute({
   staticData: { pageTitle: "settings.nav.members" },
   getParentRoute: () => settingsRoute,
@@ -1490,6 +1545,7 @@ const settingsWithChildren = settingsRoute.addChildren([
   settingsSyncedReposRoute,
   settingsTaskBoardRoute,
   settingsTasksRoute,
+  settingsProjectsRoute,
   settingsMembersRoute,
   settingsRolesRoute,
   settingsSsoRoute,
@@ -1510,6 +1566,7 @@ const agentWorkspaceWithChildren = agentWorkspaceRoute.addChildren([
   agentAutomationsRoute,
   agentAutomationRoute,
   agentSettingsRoute,
+  agentLibraryRoute,
   agentAssetsRoute,
   agentGitRoute,
   agentHostingRoute,

@@ -83,9 +83,14 @@ async function fsFetch(
 }
 
 /** Children of `path` ("" = volume root), dirs first then by name. */
-export function useOrgFsList(volume: string, path: string) {
+export function useOrgFsList(
+  volume: string,
+  path: string,
+  opts?: { enabled?: boolean },
+) {
   const { org } = useProjectContext();
   return useQuery({
+    enabled: opts?.enabled ?? true,
     queryKey: KEYS.orgFsList(org.id, volume, path),
     // Keep the previous listing on screen while navigating into a dir —
     // but only within the same org+volume, so switching orgs (which

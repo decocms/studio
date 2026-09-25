@@ -25,6 +25,18 @@
   font-display: swap;
 }
 
+/* Switzer — deco's typeface. It already set the landing page and the report
+   deck; it was scoped out of the product, which left the app speaking in a
+   different voice from its own brand. It is the UI face now, and Inter is
+   only the fallback while it loads. */
+@font-face {
+  font-family: "Switzer";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/Switzer-Variable.woff2") format("woff2");
+}
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -57,6 +69,120 @@
   box-shadow: var(--card-shadow);
 }
 
+@utility card-shadow-raised {
+  box-shadow: var(--card-shadow-raised);
+}
+
+/* ============================================================
+   The system's vocabulary.
+
+   Four utilities carry nearly every surface and label in the product. They
+   exist so the relationship between a card's background, corner and edge is
+   stated ONCE — three classes repeated at ninety call sites is three chances
+   for a card to drift, and that drift is what makes an interface read as
+   assembled rather than designed.
+   ============================================================ */
+
+/** A sheet of work: white, moderately cornered, edged by a hairline ring and
+ *  the faintest shade. The default surface for anything that holds content. */
+@utility surface {
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border-radius: var(--studio-surface-radius);
+  box-shadow: var(--card-shadow);
+}
+
+/** A surface that can be picked up — raises on hover. Pair with `surface`. */
+@utility surface-interactive {
+  transition:
+    box-shadow 160ms var(--ease-out-cubic),
+    transform 160ms var(--ease-out-cubic);
+
+  &:hover {
+    box-shadow: var(--card-shadow-raised);
+  }
+}
+
+/** A surface drawn INSIDE another one — a well, a nested list, a code block.
+ *  It recedes rather than lifts: no shadow, just the paper showing through. */
+@utility surface-inset {
+  background-color: var(--muted);
+  border-radius: var(--radius-lg);
+}
+
+/**
+ * A caption: the facts under a title — a status, a project, a relative time,
+ * a cost.
+ *
+ * Deliberately NOT the mono face. It was, on the theory that "machine-written"
+ * deserved its own voice, and that was the wrong cut: "failed", "2d ago" and a
+ * project's name are language, and setting language in mono makes a caption
+ * read as log output. Mono is for strings you copy or compare character by
+ * character — a run id, a SHA, a path, code — and the product already set its
+ * task keys in sans with lining figures, so the mono rule was not even
+ * consistent with what was here.
+ *
+ * Tabular figures stay, because costs and counts still have to line up.
+ */
+@utility text-meta {
+  font-size: var(--text-xs);
+  line-height: 1.0625rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+/**
+ * Display type — the same typeface, set like a headline.
+ *
+ * There is no second family and there should not be one. A borrowed display
+ * serif is the loudest tell of a design nobody chose: the warm-serif-on-cream
+ * look now reads as "AI startup", and importing it would have said less about
+ * deco than the lime already does. Switzer carries the whole product, and a
+ * headline earns its authority from weight, tracking and size instead.
+ *
+ * Optical tracking is the part that cannot be left to a developer to
+ * remember: Switzer set at 40px with default spacing reads loose, and the
+ * correction belongs to the role, not the call site.
+ */
+@utility font-display {
+  font-weight: 640;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  font-feature-settings: "ss01";
+}
+
+/** Numbers that have to line up down a column, or not jitter as they tick. */
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/**
+ * The one focus state.
+ *
+ * Drawn as an `outline`, never a ring. Tailwind's `ring-*` composes into
+ * `box-shadow`, which is the same property `card-shadow` uses to draw a
+ * surface's hairline edge — so on every card, input and outline button the
+ * two fought, and whichever the stylesheet emitted last silently erased the
+ * other. An outline cannot collide with a shadow, and it follows
+ * `border-radius` on its own, so a pill button gets a pill focus ring for
+ * free rather than a rectangle around it.
+ */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/** For a control sitting ON a filled or dark surface, where ink-on-ink would
+ *  vanish — the halo inverts to the page colour instead. */
+@utility focus-ring-inverted {
+  &:focus-visible {
+    outline: 2px solid var(--background);
+    outline-offset: 2px;
+  }
+}
+
 /* Fades text out over its last `--fade-text-end`, for a control floating in that
    corner. Masking the text beats painting a gradient over it — a mask needs to
    know nothing about the background it sits on. */
@@ -78,6 +204,14 @@
   --card-shadow: 0 0 0 var(--border-hairline) var(--warning), var(--card-drop);
 }
 
+/* ============================================================
+   Colour.
+
+   These are the product's original palette values, kept as they were. The
+   structural layer around them — radius by role, the type scale, the
+   `surface` / `text-meta` utilities — is separate on purpose: shape and
+   typography were the parts that needed work, and the colours did not.
+   ============================================================ */
 :root {
   --background: oklch(0.99 0.003 73);
   --foreground: oklch(0.145 0.01 60);
@@ -121,6 +255,7 @@
   --warning-foreground: oklch(0.99 0.02 95);
   --special: oklch(0.55 0.18 290);
   --special-foreground: oklch(0.98 0.02 295);
+  --notice: oklch(0.65 0.13 245);
 
   /* How much of a user-picked colour (org tags) survives against the surface. */
   --user-color-strength: 100%;
@@ -140,15 +275,30 @@
   --chart-4: oklch(0.84 0.17 84.5);
   --chart-5: oklch(0.74 0.17 159);
 
-  --font-sans: "Inter var", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:
+    "Switzer", "Inter var", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   --font-mono:
     "CommitMono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
 
   --spacing: 0.25rem;
-  --radius: 0.375rem;
+  --radius: 0.5rem;
   --border-hairline: 1px;
+
+  /* ----------------------------------------------------------
+     Radius by ROLE, not by size. A component picks the one that matches what
+     it IS. These used to live only under `[data-compact-layout]`, so the same
+     card had two different corners depending on a preference nobody set.
+
+       button   a pill, always, at every size
+       control  an input, select, chip — a thing you operate
+       surface  a card, popover, dialog — a thing that holds other things
+     ---------------------------------------------------------- */
+  --studio-button-radius: 9999px;
+  --studio-control-radius: 0.625rem;
+  --studio-surface-radius: 0.875rem;
+  --studio-control-height: 2.25rem;
 
   --shadow-xs: oklch(0 0 0 / 0.03) 0px 1px 2px;
   --shadow-sm: oklch(0 0 0 / 0.04) 0px 2px 4px, oklch(0 0 0 / 0.02) 0px 1px 2px;
@@ -157,7 +307,11 @@
   --shadow-lg:
     oklch(0 0 0 / 0.08) 0px 8px 32px, oklch(0 0 0 / 0.06) 0px 4px 12px;
   --card-drop: 0px 1px 2px -1px #1d1b1812, 0px 2px 4px 0px #1d1b180d;
-  --card-shadow: 0px 0px 0px 1px #1d1b1814, var(--card-drop);
+  --card-ring: 0px 0px 0px 1px #1d1b1814;
+  --card-shadow: var(--card-ring), var(--card-drop);
+  /* A card you can pick up — hover and drag states raise it this far. */
+  --card-shadow-raised:
+    var(--card-ring), 0px 2px 4px -2px #1d1b1814, 0px 10px 24px -8px #1d1b181f;
 }
 
 .dark {
@@ -213,11 +367,14 @@
   --chart-3: oklch(0.61 0.2 6.81);
   --chart-4: oklch(0.84 0.17 84.5);
   --chart-5: oklch(0.74 0.17 159);
+  --notice: oklch(0.72 0.11 245);
   --card-drop:
     0 2px 2px 0 #0000001a, 0 4px 4px 0 #0000001a, 0 8px 8px 0 #0000001a;
-  --card-shadow:
-    inset 0 1px 0 0 #ffffff08, inset 0 0 0 1px #ffffff08, 0 0 0 1px #0000001a,
-    var(--card-drop);
+  --card-ring:
+    inset 0 1px 0 0 #ffffff08, inset 0 0 0 1px #ffffff08, 0 0 0 1px #0000001a;
+  --card-shadow: var(--card-ring), var(--card-drop);
+  --card-shadow-raised:
+    var(--card-ring), 0 4px 8px 0 #00000026, 0 16px 32px -8px #00000040;
 }
 
 @theme inline {
@@ -253,6 +410,9 @@
   --color-chart-5: var(--chart-5);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-lime-tint: var(--brand-lime-tint);
+  --color-notice: var(--notice);
   --color-brand-purple: var(--brand-purple-light);
   --color-brand-blue: var(--brand-blue);
 
@@ -282,17 +442,22 @@
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
 
-  /* Border Radius - matches Tailwind's scale, proportional to --radius (md = base) */
+  /* Border radius — an explicit scale, not multiples of a base.
+     The steps are drawn to land on the three role radii above, so the loose
+     `rounded-*` classes scattered through the app agree with the system
+     instead of drifting near it: `rounded-xl` IS the surface radius (14px)
+     and `rounded-lg` IS the control radius (10px). A derived scale cannot
+     promise that — every step moved when the base did. */
   --radius-none: 0;
-  --radius-xs: calc(var(--radius) * 0.333);
-  --radius-sm: calc(var(--radius) * 0.667);
-  --radius-DEFAULT: var(--radius);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) * 1.333);
-  --radius-xl: calc(var(--radius) * 1.667);
-  --radius-2xl: calc(var(--radius) * 2.667);
-  --radius-3xl: calc(var(--radius) * 4);
-  --radius-4xl: calc(var(--radius) * 5.333);
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-DEFAULT: 0.5rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
   --radius-full: 9999px;
 
   --default-border-width: 1px;
@@ -334,8 +499,45 @@
   --spacing-80: calc(var(--spacing) * 80);
   --spacing-96: calc(var(--spacing) * 96);
 
+  /* ----------------------------------------------------------
+     Type scale.
+
+     Tuned, not doubled. Interface text lives in a narrow band (11–15px) where
+     the steps have to be small or the hierarchy turns into shouting; display
+     text jumps clear of that band so a headline is unmistakably a headline.
+     Tracking tightens as size grows — Inter set at 40px with default tracking
+     reads loose and amateur, and the fix belongs in the scale rather than in
+     a `tracking-tight` a developer has to remember on every heading.
+     ---------------------------------------------------------- */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-2xs--letter-spacing: 0.01em;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.0625rem;
+  --text-xs--letter-spacing: 0.005em;
   --text-sm: 0.8125rem;
-  --text-sm--line-height: var(--studio-text-sm-line-height, calc(1.25 / 0.875));
+  --text-sm--line-height: var(--studio-text-sm-line-height, 1.25rem);
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.4375rem;
+  --text-base--letter-spacing: -0.005em;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.625rem;
+  --text-lg--letter-spacing: -0.01em;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-xl--letter-spacing: -0.015em;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.95rem;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-3xl: 1.9375rem;
+  --text-3xl--line-height: 2.375rem;
+  --text-3xl--letter-spacing: -0.022em;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 2.875rem;
+  --text-4xl--letter-spacing: -0.025em;
+  --text-5xl: 3.25rem;
+  --text-5xl--line-height: 3.5rem;
+  --text-5xl--letter-spacing: -0.028em;
 
   --animate-search-expand: search-expand 180ms var(--ease-out-cubic) both;
   --animate-device-icon-pop: device-icon-pop 150ms var(--ease-out-cubic) both;
@@ -416,6 +618,13 @@
   --studio-control-radius: calc(var(--radius) * 2.667);
   --studio-surface-radius: calc(var(--radius) * 4);
   --studio-button-radius: 9999px;
+}
+
+/* Compact no longer redefines the shape of the product — the role radii above
+   are the system in BOTH layouts, so a card has one corner regardless of a
+   preference. What is left here is the genuine difference: compact raises
+   secondary controls onto the card surface instead of tinting them. */
+:root[data-compact-layout="true"] {
   --studio-input-background: var(--card);
   --studio-outline-foreground: var(--card-foreground);
   --studio-outline-hover-background: var(--accent);
@@ -424,7 +633,6 @@
   --studio-secondary-hover-background: var(--accent);
   --studio-secondary-hover-foreground: var(--accent-foreground);
   --studio-secondary-shadow: var(--card-shadow);
-  --studio-text-sm-line-height: 1.25rem;
 }
 
 /* A search field growing out of the icon button it replaces. `from` only, so
@@ -632,12 +840,32 @@
     font-weight: 450;
     font-feature-settings:
       "cv01", "cv02", "cv03", "cv04", "cv08", "cv10", "ss08";
+    /* Inter var carries an optical-size axis; letting the browser drive it is
+       the difference between a headline that was scaled up and one that was
+       drawn at that size. */
+    font-optical-sizing: auto;
   }
 
   h1,
   h2,
-  h3 {
+  h3,
+  h4 {
     text-wrap: balance;
+  }
+
+  /* A paragraph should not be left with a single word on its last line. */
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Numbers are read by comparison far more often than they are read as
+     words, and a column of them that shifts as it updates is the cheapest
+     tell that nobody looked closely. Every table cell and every <time> is
+     lined by default; prose is untouched. */
+  th,
+  td,
+  time {
+    font-variant-numeric: tabular-nums;
   }
 
   /* Custom scrollbars for the whole product - only show on hover */
@@ -684,6 +912,10 @@
 
   --brand-green-light: #d0ec1a;
   --brand-green-dark: #07401a;
+  /* The deck's two working greens: a label/mark green that survives on
+     white, and the pale lime a delta pill is filled with. */
+  --brand-soft: #8caa25;
+  --brand-lime-tint: #eff6cc;
   --brand-purple-light: #a595ff;
   --brand-purple-dark: #151042;
   --brand-yellow-light: #ffc116;

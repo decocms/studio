@@ -356,6 +356,9 @@ export const settings = {
   "settings.preferences.newBlocksEditor": "Novo editor de blocos",
   "settings.preferences.newBlocksEditorDescription":
     "Experimente o editor de blocos redesenhado. O restante do Studio sempre usa o novo layout.",
+  "settings.preferences.projectFirstNav": "Navegação centrada em projetos",
+  "settings.preferences.projectFirstNavDescription":
+    "Experimente o trilho de organizações, o launcher de projetos e a home Hoje/Agentes.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",

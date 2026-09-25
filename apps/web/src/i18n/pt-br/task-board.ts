@@ -1,6 +1,15 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.feed.today": "Hoje",
+  "taskBoard.feed.yesterday": "Ontem",
+  "taskBoard.feed.eventBlocked": "Precisa de você",
+  "taskBoard.feed.eventHanded": "Devolvida para você",
+  "taskBoard.feed.eventRunning": "Agente trabalhando",
+  "taskBoard.feed.eventFailed": "Execução falhou",
+  "taskBoard.feed.eventDone": "Entregue",
+  "taskBoard.feed.eventDelivered": "Avançou",
+  "taskBoard.feed.eventReview": "Em revisão",
   "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",
@@ -299,6 +308,7 @@ export const taskBoard = {
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
   "taskBoard.taskFilters.projectLabel": "Projeto",
   "taskBoard.taskFilters.boardSettingsLabel": "Configurações do quadro",
+  "taskBoard.taskFilters.projectSettingsLabel": "Configurações do projeto",
   "taskBoard.taskFilters.projectNone": "Sem projeto",
   "taskBoard.taskFilters.searchLabel": "Buscar tarefas",
   "taskBoard.taskFilters.searchPlaceholder": "Buscar tarefas…",
@@ -384,4 +394,10 @@ export const taskBoard = {
   "taskBoard.analytics.tabTenants": "Organizações",
   "taskBoard.analytics.noDataInRange": "Sem dados neste período",
   "taskBoard.analytics.nothingToShow": "Nada para mostrar",
+  "taskBoard.feed.composerPlaceholder": "O que precisa ser feito?",
+  "taskBoard.feed.composerDescriptionPlaceholder": "Adicionar descrição...",
+  "taskBoard.feed.composerSubmit": "Adicionar",
+  "taskBoard.feed.railRunning": "Rodando agora",
+  "taskBoard.feed.railWaiting": "Esperando por você",
+  "taskBoard.feed.railIdle": "Nenhum agente rodando agora",
 } satisfies Record<keyof typeof taskBoardEn, string>;

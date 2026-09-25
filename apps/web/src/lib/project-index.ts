@@ -242,6 +242,31 @@ export function projectsForTask(
   return entry.projects;
 }
 
+/**
+ * Every card that belongs to one project.
+ *
+ * The narrowing a PROJECT-SCOPED view applies before it does anything else —
+ * the board rendered as a project's home, the org home's per-project lines.
+ * Deliberately NOT the board's `?repo=` filter: that one is an exact string
+ * match, so scoping through it hid every repo-less card the moment a project
+ * was picked (see the inverted tests in `task-board/filters-search.test.ts`).
+ * Scope is a narrowing of the INPUT; the filter is a choice the reader makes
+ * inside it, and conflating the two is what made them indistinguishable.
+ *
+ * Attribution is `projectsForTask`, so a repo-less project is still reached
+ * through its runs and a card on a repository two projects share counts for
+ * both — the same answer the sidebar and the home already give.
+ */
+export function tasksForProject<T extends AttributableTask>(
+  tasks: readonly T[],
+  index: ProjectIndex,
+  projectId: string,
+): T[] {
+  return tasks.filter((task) =>
+    projectsForTask(task, index).some((project) => project.id === projectId),
+  );
+}
+
 /** The single project a card belongs to, or null when the answer is "several"
  *  or "none" — a caller that renders ONE name must be told when there isn't one. */
 export function projectForTask(

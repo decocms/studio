@@ -21,6 +21,11 @@ describe("board search params", () => {
     expect(parseBoardSearch(params)).toEqual({ filters, layout: "list" });
   });
 
+  test("the feed is a third view, carried the same way", () => {
+    expect(boardSearchParams(EMPTY_FILTERS, "feed").view).toBe("feed");
+    expect(parseBoardSearch({ view: "feed" }).layout).toBe("feed");
+  });
+
   test("defaults are omitted from the URL", () => {
     expect(boardSearchParams(EMPTY_FILTERS, "board")).toEqual({
       view: undefined,

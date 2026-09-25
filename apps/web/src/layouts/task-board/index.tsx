@@ -1,16 +1,3 @@
-import type { CSSProperties } from "react";
-import type { ReactNode } from "react";
-import type { DragEndEvent } from "@dnd-kit/core";
-import type { DragOverEvent } from "@dnd-kit/core";
-import type { DragStartEvent } from "@dnd-kit/core";
-import type { TaskBoardItemType } from "./config";
-import type { TaskBoardItemPriority } from "./config";
-import type { TaskBoardItemTag } from "./config";
-import type { ReviewerKind } from "@decocms/shared/task-board";
-import type { ChecksSummary } from "./review-status";
-import type { TaskFilters } from "./task-filters-core";
-import type { ProjectIndexEntry } from "@/lib/project-index";
-import type { TiptapDoc } from "@/components/chat/types";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
 /**
@@ -21,7 +8,7 @@ import { Panel } from "@/components/panel";
 
 import { useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-
+import type { CSSProperties, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -32,6 +19,9 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -47,7 +37,7 @@ import { getInitials } from "@/lib/get-initials";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import {
   Tooltip,
@@ -96,7 +86,9 @@ import { formatTimeAgo } from "@/lib/format-time";
 import {
   agentRunState,
   cardNeedsAttention,
+  isLiveAttempt,
   TASK_TYPE_CONFIG,
+  type TaskBoardItemType,
   dueDateUrgency,
   insertSortOrder,
   isTaskBlocked,
@@ -107,16 +99,16 @@ import {
   PRIORITIES,
   PRIORITY_CONFIG,
   runSortOrders,
-  statusIconClassName,
   dropLane,
   LANE_DROPPABLE_PREFIX,
   laneHeader,
-  laneVisual,
   SUPER_AGENT_ASSIGNEE_ID,
   tagDotColor,
   TASK_TYPES,
   type TaskBoardItem,
+  type TaskBoardItemPriority,
   type TaskBoardItemStatus,
+  type TaskBoardItemTag,
   type Member,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
@@ -135,30 +127,58 @@ import { useRepositories } from "@/hooks/use-git-providers";
 import { SubscriptionPaywallDialog } from "./subscription-paywall-dialog";
 import { RerunDialog } from "./rerun-dialog";
 import { subscriptionErrorKind } from "@/components/task-board/is-subscription-error";
-import { isReportsTask } from "@decocms/shared/task-board";
-import { checksSummary, enabledReviewers } from "./review-status";
+import {
+  CANONICAL_COLUMN_KEYS,
+  DEFAULT_TASK_TYPE,
+  isReportsTask,
+  type ReviewerKind,
+} from "@decocms/shared/task-board";
+import {
+  type ChecksSummary,
+  checksSummary,
+  enabledReviewers,
+} from "./review-status";
 import { taskKey } from "@decocms/shared/task-key";
 import { useFlipLanes } from "./use-flip-lanes";
+import { summarizeTaskCost } from "./task-cost";
 import { Calendar as DayPickerCalendar } from "@decocms/ui/components/calendar.tsx";
 import { buildTaskChatContext } from "./build-task-chat-context";
 import { track } from "@/lib/posthog-client";
 import { useStudioTools } from "@/lib/studio-tools";
-import { EMPTY_FILTERS, taskMatchesFilters } from "./task-filters-core";
+import {
+  EMPTY_FILTERS,
+  taskMatchesFilters,
+  type TaskFilters,
+} from "./task-filters-core";
 import {
   AppliedFiltersBar,
   BoardSettingsButton,
   TaskFilterButton,
 } from "./view-controls";
 import { useBoardSearch, visibleSelection } from "./filters-search";
+import { feedEventKind, groupFeedByDay, type FeedEventKind } from "./feed";
+import { compactElapsed, feedRail } from "./feed-rail";
 import { useProjectIndex } from "@/hooks/use-project-index";
+import { useProjectScope } from "@/hooks/use-project-scope";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { projectRepo } from "@/lib/github-repo";
+import { scopedBoardItems } from "./board-scope";
 import {
   entryForFilter,
+  entryForTask,
   filterAfterCreate,
   stampableEntries,
+  type ProjectIndex,
+  type ProjectIndexEntry,
 } from "@/lib/project-index";
-import { ProjectEntryRow } from "@/components/project-entry";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
-import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
 import {
   findTaskByKeyOrId,
   taskRouteSegment,
@@ -166,7 +186,7 @@ import {
 import { useThreadActions } from "@/components/chat/store/hooks";
 import { writeChatDraft } from "@/lib/chat-draft";
 import { createMentionDoc } from "@/components/chat/tiptap/mention";
-
+import type { TiptapDoc } from "@/components/chat/types";
 import { toast } from "sonner";
 
 // Warm the chat chunk so opening a task's activity doesn't cold-load it (flash).
@@ -186,6 +206,17 @@ function formatDueDate(iso: string): { label: string; overdue: boolean } {
 /** Shared meta chip: an outlined pill, neutral border by default. */
 const PILL =
   "inline-flex items-center gap-1 rounded-full border-[length:var(--border-hairline)] border-border px-2 py-0.5 text-xs font-medium text-muted-foreground";
+
+/** A fact about a row said in plain text — glyph and word, no chrome. The
+ *  bordered {@link PILL} is kept for a tag, whose colour IS its border. */
+const META =
+  "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
+
+/** A lane's own controls: shown when the pointer is over the lane, or the
+ *  control has focus or its menu open. Always-on, every column headline
+ *  carried two grey glyphs that said nothing until they were wanted. */
+const LANE_ACTION =
+  "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
 /**
  * Footer glyph size. 12, not 14, because every icon here is drawn on a 24 grid:
@@ -488,6 +519,8 @@ function CardFooter({
   assignee,
   assignedBy,
   members,
+  leading,
+  trailing,
   onAssign,
   onPriorityChange,
   onTypeChange,
@@ -498,6 +531,13 @@ function CardFooter({
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
+  /** Facts a board card gets from its surroundings and a feed post cannot:
+   *  which project it belongs to, which lane it is in, what it has cost. They
+   *  join the left group so the footer keeps ONE baseline on both surfaces. */
+  leading?: ReactNode;
+  /** The right edge, after the assignee — a feed post's timestamp lands here
+   *  rather than in its own row. */
+  trailing?: ReactNode;
   onAssign?: (userId: string | null) => void;
   onPriorityChange?: (priority: TaskBoardItemPriority) => void;
   onTypeChange?: (type: TaskBoardItemType) => void;
@@ -519,6 +559,7 @@ function CardFooter({
         {item.dueDate && (
           <FooterDueDate iso={item.dueDate} onChange={onDueDateChange} />
         )}
+        {leading}
       </span>
       <span className="flex shrink-0 items-center gap-2">
         {(item.priority !== "none" || onPriorityChange) && (
@@ -539,23 +580,9 @@ function CardFooter({
           onAssign={onAssign}
           showDelegation={false}
         />
+        {trailing}
       </span>
     </div>
-  );
-}
-
-/** List-row priority: dot + name. Cards use {@link PriorityIcon} instead. */
-function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
-  const t = useT();
-  const config = PRIORITY_CONFIG[priority];
-  const label = t(config.labelKey);
-  return (
-    <span className={PILL} title={label}>
-      <span
-        className={cn("size-2 shrink-0 rounded-full", config.dotClassName)}
-      />
-      {label}
-    </span>
   );
 }
 
@@ -563,9 +590,7 @@ function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
 function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
   return (
-    <span
-      className={cn(PILL, overdue && "border-destructive/50 text-destructive")}
-    >
+    <span className={cn(META, overdue && "text-destructive")}>
       <Calendar size={FOOTER_GLYPH} />
       {label}
     </span>
@@ -797,7 +822,8 @@ function AssigneeDisplay({
             e.stopPropagation();
             setOpen(true);
           }}
-          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 transition-colors hover:border-muted-foreground hover:text-muted-foreground"
+          // Shown on the card's hover: a dashed circle on every unassigned card is a row of holes.
+          className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100"
         >
           <UserPlus01 size={13} />
         </button>
@@ -823,17 +849,71 @@ function AssigneeDisplay({
 /** The board, pointed at whichever org `?boardOrg=` names (normally your own).
  *  The swap has to wrap the board rather than live inside it: every hook below
  *  reads the org off `ProjectContext`. */
-export function TaskBoardPage() {
+export function TaskBoardPage({
+  scopeProject,
+  inlineTabs = false,
+  taskInSearch = false,
+}: {
+  /** Narrow to this project explicitly, for a mount whose ROUTE carries no
+   *  `$agentId` to read the scope from (`/$org/projects?project=`). Omitted on
+   *  every other mount, which resolves from the route as before.
+   *
+   *  Must be the RESOLVED entity. Passing it skips the "scope known, project
+   *  not yet" loading branch, so a stub carrying only an id would build an
+   *  index with no repository bucket and render an empty board instead of a
+   *  loading one. With only an id, pass nothing and let the route answer. */
+  scopeProject?: VirtualMCPEntity;
+  /** Draw the Board/List/Feed tabs at the top of the board instead of
+   *  portalling them into the panel toolbar. For a mount that is only PART of
+   *  its page (`/$org/projects?project=`, where a project header and its apps
+   *  sit above): a toolbar control belongs to the whole panel, so up there it
+   *  reads as switching the screen rather than the board under it.
+   *
+   *  A placement and not a "render them yourself" escape hatch, deliberately.
+   *  Switching to List or Feed has to `clearSelection()` — that only the board
+   *  can do, and a second copy of these tabs outside it would drop it. */
+  inlineTabs?: boolean;
+  /** Address the open card in `?task=` instead of the route's `{-$taskKey}`
+   *  segment — for a mount whose route has no such segment to write
+   *  (`/$org/projects?project=`, which cannot grow one: one more child route
+   *  breaks TanStack's `to: "."` search inference app-wide, as
+   *  `projectsIndexRoute` explains). Without it, clicking a card navigated to
+   *  a param the route does not own and nothing opened. */
+  taskInSearch?: boolean;
+} = {}) {
   return (
     <BoardOrgProvider>
-      <TaskBoardBody />
+      <TaskBoardBody
+        scopeProject={scopeProject}
+        inlineTabs={inlineTabs}
+        taskInSearch={taskInSearch}
+      />
     </BoardOrgProvider>
   );
 }
 
-function TaskBoardBody() {
+function TaskBoardBody({
+  scopeProject,
+  inlineTabs,
+  taskInSearch,
+}: {
+  scopeProject?: VirtualMCPEntity;
+  inlineTabs?: boolean;
+  taskInSearch?: boolean;
+}) {
   const t = useT();
-  const { items, isLoading } = useTaskBoardItems();
+  const { items: orgItems, isLoading: itemsLoading } = useTaskBoardItems();
+  /** A project's home IS this board — see `board-scope.ts` for why scope is a
+   *  narrowing of the input rather than a value in the `?repo=` filter. */
+  const { scopeId: routeScopeId, project: routeProject } = useProjectScope();
+  const scopeId = scopeProject?.id ?? routeScopeId;
+  const scopedProject = scopeProject ?? routeProject;
+  const { items, isLoading } = scopedBoardItems({
+    items: orgItems,
+    scopeId,
+    project: scopedProject,
+    isLoading: itemsLoading,
+  });
   const { data: orgTags = [] } = useTags();
   const actions = useTaskBoardItemActions();
   const repositories = useRepositories();
@@ -905,7 +985,9 @@ function TaskBoardBody() {
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
-  const { filters, setFilters, layout, setLayout } = useBoardSearch();
+  const { filters, setFilters, layout, setLayout } = useBoardSearch(
+    inlineTabs ? "feed" : "board",
+  );
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
@@ -952,12 +1034,25 @@ function TaskBoardBody() {
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
+  /** Scoped to a project, the gear is that project's own settings — the board
+   *  behind it has none of its own to open. Only the unscoped, org-wide board
+   *  (settings/task-board) has settings of its own to reach. */
   const openBoardSettings = () => {
+    if (scopedProject) {
+      navigate({
+        to: "/$org/projects/$agentId/settings",
+        params: { org: org.slug, agentId: scopedProject.id },
+      });
+      return;
+    }
     navigate({
       to: "/$org/settings/task-board",
       params: { org: org.slug },
     });
   };
+  const boardSettingsLabel = scopedProject
+    ? t("taskBoard.taskFilters.projectSettingsLabel")
+    : undefined;
   /**
    * `/$org/tasks/DECO-01` renders that card in place of the lanes — the one
    * address a task has, whether it was reached by clicking its card, by the
@@ -971,10 +1066,36 @@ function TaskBoardBody() {
    * on destinations that have no such param, where it reads `undefined` and
    * shows the lanes.
    */
-  const { taskKey: openTaskKey } = useParams({ strict: false }) as {
+  const { taskKey: taskKeyParam } = useParams({ strict: false }) as {
     taskKey?: string;
   };
-  const openItem = findTaskByKeyOrId(items, openTaskKey) ?? null;
+  const { task: taskKeySearch } = useSearch({ strict: false }) as {
+    task?: string;
+  };
+  const openTaskKey = taskInSearch ? taskKeySearch : taskKeyParam;
+  /**
+   * Where this mount writes a card's address — the route segment normally, or
+   * `?task=` on the one screen that has no segment to write (see
+   * `taskInSearch`). Every open, close and canonicalization goes through it,
+   * so the two spellings cannot drift apart.
+   */
+  const taskAddress = (key: string | undefined) =>
+    taskInSearch
+      ? {
+          params: (prev: Record<string, unknown>) => prev,
+          search: (prev: Record<string, unknown>) => ({ ...prev, task: key }),
+        }
+      : {
+          params: (prev: Record<string, unknown>) => ({
+            ...prev,
+            taskKey: key,
+          }),
+          search: (prev: Record<string, unknown>) => prev,
+        };
+  /** Resolved against the ORG's cards, not the scoped slice: a card's URL is
+   *  its one address, and a link followed from outside the project it belongs
+   *  to must open it rather than redirect away as stale. */
+  const openItem = findTaskByKeyOrId(orgItems, openTaskKey) ?? null;
   /** A deleted (or never-visible) card leaves the segment dangling; land on
    *  the board rather than an empty pane. */
   const staleTaskKey = !!openTaskKey && !openItem && !isLoading;
@@ -993,8 +1114,7 @@ function TaskBoardBody() {
     if (openTaskKey)
       navigate({
         to: ".",
-        params: (prev) => ({ ...prev, taskKey: undefined }),
-        search: (prev: Record<string, unknown>) => prev,
+        ...taskAddress(undefined),
         replace: true,
       });
   };
@@ -1102,14 +1222,7 @@ function TaskBoardBody() {
    * tasks route does not declare is dropped by its schema.
    */
   const openTask = (item: TaskBoardItem) => {
-    navigate({
-      to: ".",
-      params: (prev) => ({
-        ...prev,
-        taskKey: taskRouteSegment(org.slug, item),
-      }),
-      search: (prev: Record<string, unknown>) => prev,
-    });
+    navigate({ to: ".", ...taskAddress(taskRouteSegment(org.slug, item)) });
   };
 
   const closeCreate = () => {
@@ -1126,126 +1239,161 @@ function TaskBoardBody() {
   }
 
   if (staleTaskKey) {
-    return (
-      <Navigate
-        to="."
-        params={(prev) => ({ ...prev, taskKey: undefined })}
-        search={(prev: Record<string, unknown>) => prev}
-        replace
-      />
-    );
+    return <Navigate to="." {...taskAddress(undefined)} replace />;
   }
 
   if (canonicalKey && canonicalKey !== openTaskKey) {
-    return (
-      <Navigate
-        to="."
-        params={(prev) => ({ ...prev, taskKey: canonicalKey })}
-        search={(prev: Record<string, unknown>) => prev}
-        replace
-      />
-    );
+    return <Navigate to="." {...taskAddress(canonicalKey)} replace />;
   }
+
+  /** Board / List / Feed. One definition for both placements — see
+   *  `inlineTabs`. */
+  const layoutTabs = (
+    <Page.Tabs>
+      <Page.Tab
+        active={layout === "feed"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("common.taskBoard.feedView"),
+        })}
+        onClick={() => {
+          setLayout("feed");
+          clearSelection();
+        }}
+      >
+        {t("common.taskBoard.feedView")}
+      </Page.Tab>
+      <Page.Tab
+        active={layout === "board"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("common.taskBoard.boardView"),
+        })}
+        onClick={() => setLayout("board")}
+      >
+        {t("common.taskBoard.boardView")}
+      </Page.Tab>
+      <Page.Tab
+        active={layout === "list"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("common.taskBoard.listView"),
+        })}
+        onClick={() => {
+          setLayout("list");
+          clearSelection();
+        }}
+      >
+        {t("common.taskBoard.listView")}
+      </Page.Tab>
+    </Page.Tabs>
+  );
 
   /** The board itself — header, toolbar, lanes. Hoisted so wrapping it
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-      <>
-        {/* A task takes the header over: the board stays mounted behind it so
+      {/* A task takes the header over: the board stays mounted behind it so
           its scroll and dnd survive, and these would otherwise paint over
           the task's own trail and title. */}
-        {!openItem && (
-          <>
-            <Page.Title>{t("taskBoard.taskBoard.tasksTitle")}</Page.Title>
-            <Page.Actions
-              secondary={
-                items.length > 0 && (
-                  <>
-                    {/* No width swap: these three are ~100px together, so there
+      {!openItem && (
+        <>
+          {/* From the scope, so two overrides cannot disagree. */}
+          <Page.Title>
+            {scopeProject?.title ?? t("taskBoard.taskBoard.tasksTitle")}
+          </Page.Title>
+          <Page.Actions
+            secondary={
+              items.length > 0 && (
+                <>
+                  {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
                       drawer of the chip pickers they replaced. */}
-                    <div className="flex items-center gap-2">
-                      <SearchToggle
-                        value={filters.search}
-                        onChange={(search) =>
-                          handleFiltersChange({ ...filters, search })
-                        }
-                        label={t("taskBoard.taskFilters.searchLabel")}
-                        placeholder={t(
-                          "taskBoard.taskFilters.searchPlaceholder",
-                        )}
-                        clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
-                      />
-                      <TaskFilterButton
-                        filters={filters}
-                        items={items}
-                        members={members}
-                        tags={orgTags}
-                        index={projectIndex}
-                        onChange={handleFiltersChange}
-                      />
-                      <BoardSettingsButton onClick={openBoardSettings} />
-                    </div>
-                  </>
-                )
-              }
-            >
-              <TaskBoardAdminControls />
-              <Button size="sm" onClick={openCreate}>
-                <Plus size={16} />
-                {t("taskBoard.taskBoard.newTask")}
-              </Button>
-            </Page.Actions>
-            <Panel.Toolbar.Left.Portal>
-              <Page.Tabs>
-                <Page.Tab
-                  active={layout === "board"}
-                  aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-                    label: t("common.taskBoard.boardView"),
-                  })}
-                  onClick={() => setLayout("board")}
-                >
-                  {t("common.taskBoard.boardView")}
-                </Page.Tab>
-                <Page.Tab
-                  active={layout === "list"}
-                  aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-                    label: t("common.taskBoard.listView"),
-                  })}
-                  onClick={() => {
-                    setLayout("list");
-                    clearSelection();
-                  }}
-                >
-                  {t("common.taskBoard.listView")}
-                </Page.Tab>
-              </Page.Tabs>
-            </Panel.Toolbar.Left.Portal>
-          </>
-        )}
+                  <div className="flex items-center gap-2">
+                    <SearchToggle
+                      value={filters.search}
+                      onChange={(search) =>
+                        handleFiltersChange({ ...filters, search })
+                      }
+                      label={t("taskBoard.taskFilters.searchLabel")}
+                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
+                    />
+                    <TaskFilterButton
+                      filters={filters}
+                      items={items}
+                      members={members}
+                      tags={orgTags}
+                      index={projectIndex}
+                      onChange={handleFiltersChange}
+                    />
+                    <BoardSettingsButton
+                      onClick={openBoardSettings}
+                      label={boardSettingsLabel}
+                    />
+                  </div>
+                </>
+              )
+            }
+          >
+            <TaskBoardAdminControls />
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={16} />
+              {t("taskBoard.taskBoard.newTask")}
+            </Button>
+          </Page.Actions>
+          {inlineTabs ? (
+            /* The board's own toolbar strip, fenced off from the apps
+                   launcher above it by a full-bleed rule: without one the tabs
+                   read as a third row of the project header rather than the
+                   control of the region under them. Full-bleed and not capped
+                   like the row inside it — a rule that stops short of the panel
+                   edge is a box someone forgot to finish. The row is padded for
+                   the filters that sit beside these tabs. */
+            <div className="mt-2 border-t border-border">
+              {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
+              <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
+                {layoutTabs}
+              </div>
+            </div>
+          ) : (
+            <Panel.Toolbar.Left.Portal>{layoutTabs}</Panel.Toolbar.Left.Portal>
+          )}
+        </>
+      )}
 
-        <div className="mx-auto w-full max-w-[1680px] px-4 sm:px-8">
-          <TaskBoardAdminBanner />
-        </div>
-        <AppliedFiltersBar
-          filters={filters}
-          items={items}
-          members={members}
-          tags={orgTags}
-          index={projectIndex}
-          onChange={handleFiltersChange}
-        />
-      </>
+      <div
+        className={cn(
+          "mx-auto w-full max-w-[1680px]",
+          inlineTabs ? "px-4 md:px-8" : "px-4 sm:px-8",
+        )}
+      >
+        <TaskBoardAdminBanner />
+      </div>
+      <AppliedFiltersBar
+        filters={filters}
+        items={items}
+        members={members}
+        tags={orgTags}
+        index={projectIndex}
+        onChange={handleFiltersChange}
+      />
 
       {items.length === 0 ? (
-        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+        <div
+          className={cn(
+            "mx-auto w-full max-w-[1680px]",
+            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+          )}
+        >
           <div className="rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             {t("taskBoard.taskBoard.noTasksYet")}
           </div>
         </div>
       ) : visibleItems.length === 0 ? (
-        <div className="mx-auto w-full max-w-[1680px] px-4 pt-6 sm:px-8">
+        <div
+          className={cn(
+            "mx-auto w-full max-w-[1680px]",
+            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+          )}
+        >
           <div className="flex flex-col items-center gap-3 rounded-xl bg-card px-4 py-12 text-center text-sm text-muted-foreground card-shadow">
             {t("taskBoard.taskBoard.noTasksMatch")}
             <Button
@@ -1257,6 +1405,20 @@ function TaskBoardBody() {
             </Button>
           </div>
         </div>
+      ) : layout === "feed" ? (
+        <FeedView
+          items={visibleListItems}
+          index={projectIndex}
+          memberByUserId={memberByUserId}
+          onCompose={(input) =>
+            actions.create.mutate({
+              ...input,
+              repo: scopedProject ? projectRepo(scopedProject) : undefined,
+            })
+          }
+          onOpen={openTask}
+          project={inlineTabs ? (scopedProject ?? undefined) : undefined}
+        />
       ) : layout === "board" ? (
         <Lanes
           visible={!openItem}
@@ -1311,29 +1473,15 @@ function TaskBoardBody() {
             );
           }}
           onRerun={(item) => setRerunTargets([item])}
+          inlineTabs={inlineTabs}
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
-          <div className="mx-auto flex max-w-[820px] flex-col gap-2">
-            {visibleListItems.map((item) => (
-              <ListRow
-                key={item.id}
-                item={item}
-                assignee={
-                  item.assigneeId
-                    ? memberByUserId.get(item.assigneeId)
-                    : undefined
-                }
-                assignedBy={
-                  item.assignedBy
-                    ? memberByUserId.get(item.assignedBy)
-                    : undefined
-                }
-                onOpen={() => openTask(item)}
-              />
-            ))}
-          </div>
-        </div>
+        <ListView
+          items={visibleListItems}
+          memberByUserId={memberByUserId}
+          onOpen={openTask}
+          inlineTabs={inlineTabs}
+        />
       )}
     </>
   );
@@ -1811,6 +1959,7 @@ function Lanes({
   onTypeChange,
   onDueDateChange,
   visible,
+  inlineTabs,
 }: {
   items: TaskBoardItem[];
   members: Member[];
@@ -1833,6 +1982,8 @@ function Lanes({
   onDueDateChange?: (id: string, iso: string) => void;
   /** False while the task detail has the panel — see `useFlipLanes`. */
   visible: boolean;
+  /** See `TaskBoardPage`'s own doc comment. */
+  inlineTabs?: boolean;
 }) {
   const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -2077,7 +2228,23 @@ function Lanes({
             room is handled per-lane by each column's own scrollable div — a pb
             here would eat into this row's h-full and cut every column short,
             since it no longer wraps a single page-level scroll. */}
-        <div className="mx-auto flex h-full w-full max-w-[1680px] gap-3 px-4 pt-6 sm:px-8">
+        {/* The lanes SHARE the width instead of each taking a fixed 300px:
+            `minmax(280px, 1fr)` fills the panel when there is room and falls
+            back to scrolling once every lane is at its minimum. Fixed columns
+            left a dead margin on a wide screen and made the board scroll
+            sideways at widths where it did not have to. Inline, because the
+            track count is the lane count. 280px, not less — below it a card's
+            footer (type + key, due date, priority, checks, assignee) runs out
+            of room and its icons start overlapping instead of wrapping. */}
+        <div
+          className={cn(
+            "mx-auto grid h-full w-full max-w-[1680px] gap-3",
+            inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+          )}
+          style={{
+            gridTemplateColumns: `repeat(${boardLanes.length}, minmax(280px, 1fr))`,
+          }}
+        >
           {boardLanes.map((status) => (
             <Lane
               key={status}
@@ -2290,7 +2457,7 @@ function Lane({
       // identifiable by their localized label or utility classes.
       data-lane={status}
       className={cn(
-        "flex h-full w-[300px] shrink-0 flex-col rounded-xl py-1 transition-colors",
+        "group/lane flex h-full min-w-0 flex-col rounded-xl py-1 transition-colors",
         isTarget && "bg-muted/50",
       )}
     >
@@ -2326,7 +2493,7 @@ function Lane({
               aria-label={t("taskBoard.taskBoard.laneMenuAriaLabel", {
                 lane: label,
               })}
-              className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className={cn(LANE_ACTION, "ml-auto")}
             >
               <DotsHorizontal size={15} />
             </button>
@@ -2349,7 +2516,7 @@ function Lane({
           })}
           title={t("taskBoard.taskBoard.newTaskInLaneTitle", { lane: label })}
           onClick={() => onCreate(status)}
-          className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className={LANE_ACTION}
         >
           <Plus size={15} />
         </button>
@@ -2618,6 +2785,683 @@ function TaskCard({
   );
 }
 
+/**
+ * How each feed event reads: the badge pinned to the right of a post's author
+ * line, saying what the news is.
+ *
+ * `namesLane` is the one non-obvious field: a badge derived FROM the lane
+ * ("Shipped" is `done`, "In review" is `in_review`) would otherwise print its
+ * own lane a second time as a chip in the footer. Every other event — a run, a
+ * hand-off, a plain edit — leaves the lane unsaid, so the chip is the only
+ * place it appears.
+ *
+ * Only what someone has to act on is coloured, and only an event that IS news
+ * gets a badge at all: `created` and `updated` have no entry here, because a
+ * badge on nearly every post said no more than the timestamp beside it while
+ * making a red "Run failed" one more pill in a row of them.
+ */
+const FEED_EVENT_CONFIG: Partial<
+  Record<
+    FeedEventKind,
+    { labelKey: TranslationKey; badgeClassName: string; namesLane?: boolean }
+  >
+> = {
+  blocked: {
+    labelKey: "taskBoard.feed.eventBlocked",
+    badgeClassName: "border-warning/40 text-warning",
+  },
+  handed: {
+    labelKey: "taskBoard.feed.eventHanded",
+    badgeClassName: "border-warning/40 text-warning",
+  },
+  running: {
+    labelKey: "taskBoard.feed.eventRunning",
+    badgeClassName: "border-primary/40 text-primary",
+  },
+  failed: {
+    labelKey: "taskBoard.feed.eventFailed",
+    badgeClassName: "border-destructive/40 text-destructive",
+  },
+  done: {
+    labelKey: "taskBoard.feed.eventDone",
+    badgeClassName: "border-success/40 text-success",
+    namesLane: true,
+  },
+  delivered: {
+    labelKey: "taskBoard.feed.eventDelivered",
+    badgeClassName: "border-success/40 text-success",
+  },
+  review: {
+    labelKey: "taskBoard.feed.eventReview",
+    badgeClassName: "border-border text-muted-foreground",
+    namesLane: true,
+  },
+};
+
+const FEED_TIME_FMT = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const FEED_DAY_FMT = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  month: "short",
+  day: "numeric",
+});
+
+/**
+ * One post in the feed: who, when, what it is about, and what they said.
+ *
+ * A message in a thread, not a card in a grid — no border, no shadow, just a
+ * divider between one post and the next. Every card on this board already has
+ * an author (a person, or the agent that ran on it) and a body (the run's own
+ * last words), so it reads as a conversation the board has been having, and
+ * the card container was furniture around a sentence.
+ *
+ * The body is the newest live run's last message when there is one, and the
+ * description otherwise — an agent's own account of what it just did is the
+ * point of reading a feed, and a description that never changes is only a
+ * fallback for a card no agent has touched.
+ *
+ * Only facts this board holds appear in the footer. There is no comment count
+ * and no per-run reply thread to read, so neither is claimed.
+ */
+function FeedRow({
+  item,
+  bucket,
+  author,
+  assignee,
+  onOpen,
+}: {
+  item: TaskBoardItem;
+  bucket: ProjectIndexEntry | null;
+  /** Who last moved this card, when that resolves to a member of the org. */
+  author?: Member;
+  assignee?: Member;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  const event = FEED_EVENT_CONFIG[feedEventKind(item)];
+  const lane = laneHeader(item.status, t);
+  const LaneIcon = lane.visual.icon;
+  const body =
+    item.threads.filter(isLiveAttempt)[0]?.lastMessage ?? item.description;
+  /** The author falls back to the ASSIGNEE, which is the one slot that can hold
+   *  the agent: a run writes the row under an id no member list resolves, and
+   *  a post signed by nobody reads as a post nobody made. */
+  const byAgent = !author && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
+  const name = byAgent
+    ? t("taskBoard.taskDialog.superAgentLabel")
+    : (author?.user?.name ?? assignee?.user?.name);
+  const cost = summarizeTaskCost(item.threads);
+  const checks = useCardChecks(item);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full flex-col gap-3 rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card p-4 text-left card-shadow transition-colors hover:bg-accent/60"
+    >
+      {/* Badges first, Discord-style: what kind of post this is, before what
+          it says. */}
+      {(item.tags.length > 0 || event) && (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {event && (
+            <span className={cn(PILL, "shrink-0", event.badgeClassName)}>
+              {t(event.labelKey)}
+            </span>
+          )}
+          {item.tags.slice(0, CARD_TAG_LIMIT).map((tag) => (
+            <TagPill key={tag.id} tag={tag} />
+          ))}
+          {item.tags.length > CARD_TAG_LIMIT && (
+            <span className={PILL}>+{item.tags.length - CARD_TAG_LIMIT}</span>
+          )}
+        </span>
+      )}
+
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="text-[15px] leading-snug font-medium text-foreground">
+          {item.title}
+        </span>
+        {/* Discord's one-liner: who said it and what, truncated to a single
+            line rather than clamped to two — a preview, not a second body. */}
+        {body && (
+          <span className="truncate text-sm leading-relaxed text-muted-foreground">
+            {name && (
+              <span className="font-medium text-foreground">{name}: </span>
+            )}
+            {body}
+          </span>
+        )}
+      </span>
+
+      <CardFooter
+        item={item}
+        checks={checks}
+        assignee={assignee}
+        trailing={
+          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+            {FEED_TIME_FMT.format(new Date(item.updatedAt))}
+          </span>
+        }
+        leading={
+          <>
+            {bucket && (
+              <span className={cn(META, "text-foreground")}>
+                <ProjectEntryIcon entry={bucket} />
+                {bucket.title}
+              </span>
+            )}
+            {!event?.namesLane && (
+              <span className={META}>
+                <LaneIcon
+                  size={FOOTER_GLYPH}
+                  className={lane.visual.iconClassName}
+                />
+                {lane.label}
+              </span>
+            )}
+            {cost && (
+              <span
+                className={cn(META, "tabular-nums")}
+                title={t(
+                  cost.runCount === 1
+                    ? "taskBoard.taskDialog.costTooltipSingular"
+                    : "taskBoard.taskDialog.costTooltipPlural",
+                  { runs: String(cost.runCount) },
+                )}
+              >
+                {cost.total.toLocaleString(undefined, {
+                  style: "currency",
+                  currency: "USD",
+                })}
+              </span>
+            )}
+          </>
+        }
+      />
+    </button>
+  );
+}
+
+/** What starting a card from the feed's composer needs — the rest of a card
+ *  (labels, due date, assignee, project) takes its default and is edited on
+ *  the card itself, which is where someone is looking when it matters. */
+export interface FeedComposeInput {
+  title: string;
+  description: string;
+  status: TaskBoardItemStatus;
+  priority: TaskBoardItemPriority;
+  type: TaskBoardItemType;
+}
+
+/**
+ * The card at the top of the feed that starts a card.
+ *
+ * A feed you only read is a log. This is the reply box — title, an optional
+ * description, and the three properties worth setting before a first read
+ * (status, type, priority) rather than after. Everything else about the card
+ * (labels, due date, assignee, project) takes its default and is edited on
+ * the card itself, which is where someone is looking when it matters.
+ *
+ * It creates into the scope the feed is already showing, so a card typed inside
+ * a project belongs to that project rather than landing unattributed on the org
+ * board.
+ */
+function FeedComposer({
+  onCreated,
+}: {
+  onCreated: (input: FeedComposeInput) => void;
+}) {
+  const t = useT();
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [status, setStatus] = useState<TaskBoardItemStatus>(
+    CANONICAL_COLUMN_KEYS[0],
+  );
+  const [priority, setPriority] = useState<TaskBoardItemPriority>("medium");
+  const [type, setType] = useState<TaskBoardItemType>(DEFAULT_TASK_TYPE);
+  /** The description field appears once someone starts writing, not before:
+   *  at rest the composer is one line, so the feed under it is what the page
+   *  is about. State rather than `:focus-within` because picking a property
+   *  moves focus into a portaled menu, and a field that vanished while its
+   *  menu was open would shift the very row the menu hangs from. */
+  const [engaged, setEngaged] = useState(false);
+  const trimmed = title.trim();
+
+  const submit = () => {
+    if (!trimmed) return;
+    onCreated({
+      title: trimmed,
+      description: description.trim(),
+      status,
+      priority,
+      type,
+    });
+    setTitle("");
+    setDescription("");
+    setStatus(CANONICAL_COLUMN_KEYS[0]);
+    setPriority("medium");
+    setType(DEFAULT_TASK_TYPE);
+    setEngaged(false);
+  };
+
+  const statusHeader = laneHeader(status, t);
+  const StatusIcon = statusHeader.visual.icon;
+  const priorityConfig = PRIORITY_CONFIG[priority];
+  const PriorityIconGlyph = priorityConfig.icon;
+  const typeConfig = TASK_TYPE_CONFIG[type];
+  const TypeIconGlyph = typeConfig.icon;
+
+  return (
+    <div className="flex flex-col rounded-[var(--studio-surface-radius,var(--radius-xl))] bg-card card-shadow focus-within:ring-[2px] focus-within:ring-ring/20">
+      <div className="flex flex-col gap-1 px-4 pt-4 pb-4">
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onFocus={() => setEngaged(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          placeholder={t("taskBoard.feed.composerPlaceholder")}
+          className="w-full bg-transparent text-base font-medium text-foreground outline-none placeholder:text-muted-foreground"
+        />
+        {(engaged || description) && (
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={2}
+            placeholder={t("taskBoard.feed.composerDescriptionPlaceholder")}
+            className="w-full resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <StatusIcon
+                  size={14}
+                  className={statusHeader.visual.iconClassName}
+                />
+                {statusHeader.label}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {moveTargets(deliveryEnabled).map((s) => {
+                const { label, visual } = laneHeader(s, t);
+                const Icon = visual.icon;
+                return (
+                  <DropdownMenuItem
+                    key={s}
+                    onSelect={() => setStatus(s)}
+                    className="gap-2"
+                  >
+                    <Icon size={16} className={visual.iconClassName} />
+                    {label}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <TypeIconGlyph size={14} className={typeConfig.iconClassName} />
+                {t(typeConfig.labelKey)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {TASK_TYPES.map((tp) => {
+                const Icon = TASK_TYPE_CONFIG[tp].icon;
+                return (
+                  <DropdownMenuItem
+                    key={tp}
+                    onSelect={() => setType(tp)}
+                    className="gap-2"
+                  >
+                    <Icon
+                      size={16}
+                      className={TASK_TYPE_CONFIG[tp].iconClassName}
+                    />
+                    {t(TASK_TYPE_CONFIG[tp].labelKey)}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <PriorityIconGlyph
+                  size={14}
+                  className={priorityConfig.iconClassName}
+                />
+                {t(priorityConfig.labelKey)}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-40">
+              {PRIORITIES.map((p) => {
+                const Icon = PRIORITY_CONFIG[p].icon;
+                return (
+                  <DropdownMenuItem
+                    key={p}
+                    onSelect={() => setPriority(p)}
+                    className="gap-2"
+                  >
+                    <Icon
+                      size={16}
+                      className={PRIORITY_CONFIG[p].iconClassName}
+                    />
+                    {t(PRIORITY_CONFIG[p].labelKey)}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <Button size="sm" disabled={!trimmed} onClick={submit}>
+          {t("taskBoard.feed.composerSubmit")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The board as a reading order: every visible card, newest first, under the day
+ * it last moved on.
+ *
+ * `now` is read once per render rather than per row so a group and its rows
+ * cannot disagree about what "today" is across a midnight boundary. The day
+ * header is sticky: which day a row belongs to must be answerable without
+ * scrolling back up to find out.
+ */
+/**
+ * What is happening right now, beside the feed rather than inside it.
+ *
+ * The rail used to list the project's owner, repo and folder — true whether or
+ * not anything is happening, and already answered by project settings and the
+ * Library. A feed is read to find out what is going on, so its margin answers
+ * the two live questions the rows themselves scroll away from: which agents are
+ * working this second, and what has stopped waiting on a person. Both are
+ * derived from the cards already on screen, so nothing new is fetched and the
+ * rail cannot disagree with the feed beside it.
+ *
+ * Only rendered for the project overview's inline feed: the org-wide board
+ * would need to name a project on every row, which is the feed's own job.
+ */
+function FeedRail({
+  items,
+  now,
+  onOpen,
+}: {
+  items: TaskBoardItem[];
+  /** Read once by the feed and handed down, so the rail's ages and the day
+   *  headers beside them cannot disagree about when "now" is. */
+  now: Date;
+  onOpen: (item: TaskBoardItem) => void;
+}) {
+  const t = useT();
+  const rail = feedRail(items);
+
+  return (
+    <aside className="flex w-full shrink-0 flex-col gap-5 self-start overflow-y-auto pt-3 @4xl:w-[260px]">
+      <section className="flex flex-col gap-1">
+        <h3 className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              rail.runningTotal > 0 ? "animate-pulse bg-success" : "bg-border",
+            )}
+            aria-hidden
+          />
+          {t("taskBoard.feed.railRunning")}
+          {rail.runningTotal > 0 && (
+            <span className="tabular-nums">{rail.runningTotal}</span>
+          )}
+        </h3>
+        {rail.running.length === 0 ? (
+          <p className="px-2 text-xs text-muted-foreground">
+            {t("taskBoard.feed.railIdle")}
+          </p>
+        ) : (
+          rail.running.map(({ item, thread }) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onOpen(item)}
+              className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+            >
+              <SuperAgentIcon size={16} className="mt-0.5 shrink-0" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm text-foreground">
+                  {item.title}
+                </span>
+                {thread.lastMessage && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {thread.lastMessage}
+                  </span>
+                )}
+              </span>
+              <span className="shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground">
+                {compactElapsed(thread.createdAt, now.getTime())}
+              </span>
+            </button>
+          ))
+        )}
+      </section>
+
+      {rail.waiting.length > 0 && (
+        <section className="flex flex-col gap-1">
+          <h3 className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-warning" aria-hidden />
+            {t("taskBoard.feed.railWaiting")}
+            <span className="tabular-nums">{rail.waitingTotal}</span>
+          </h3>
+          {rail.waiting.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onOpen(item)}
+              className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                {item.title}
+              </span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {compactElapsed(item.updatedAt, now.getTime())}
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
+    </aside>
+  );
+}
+
+function FeedView({
+  items,
+  index,
+  memberByUserId,
+  onCompose,
+  onOpen,
+  project,
+}: {
+  items: TaskBoardItem[];
+  index: ProjectIndex;
+  memberByUserId: Map<string, Member>;
+  onCompose: (input: FeedComposeInput) => void;
+  onOpen: (item: TaskBoardItem) => void;
+  /** Present only for the project overview's inline feed — see `FeedRail`. */
+  project?: VirtualMCPEntity;
+}) {
+  const t = useT();
+  const now = new Date();
+  const days = groupFeedByDay(items, now);
+
+  return (
+    /* The composer and the rail sit OUTSIDE the scrolling region, and only the
+       posts scroll. Inside it they scrolled away — the reply box you came to
+       use, and the live status the rail exists to keep in view — and, worse,
+       they were sliced flat against the tabs above on the way out. */
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col",
+        project ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-6",
+          project
+            ? "w-full max-w-[1040px] @4xl:flex-row"
+            : "mx-auto w-full max-w-[760px]",
+        )}
+      >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <FeedComposer onCreated={onCompose} />
+          {/* A post leaving the top dissolves rather than being cut: the first
+              `FEED_FADE` of the scroller is masked out, the day header sticks
+              just below that band, and the same distance of padding keeps the
+              newest post clear of it at rest. The horizontal `px-2 -mx-2` is
+              room for the cards' shadow, which an `overflow` box clips. */}
+          <div className="min-h-0 flex-1 overflow-y-auto -mx-2 px-2 pt-5 pb-16 [mask-image:linear-gradient(to_bottom,transparent,#000_20px)]">
+            {days.map((day) => (
+              <section key={day.key} className="flex flex-col">
+                {/* Not sticky. Pinned, it ended up sitting ON a post — over an
+                    avatar and half a name — which reads as a rendering bug, and
+                    no label is worth that. The posts under one heading are few
+                    enough that scrolling past it is the whole cost. */}
+                <h2 className="mt-3 mb-4 px-1 text-xs font-medium text-muted-foreground">
+                  {day.relative === "today"
+                    ? t("taskBoard.feed.today")
+                    : day.relative === "yesterday"
+                      ? t("taskBoard.feed.yesterday")
+                      : FEED_DAY_FMT.format(day.date)}
+                </h2>
+                <div className="flex flex-col gap-2">
+                  {day.items.map((item) => (
+                    <FeedRow
+                      key={item.id}
+                      item={item}
+                      /* Every card on this feed IS `project` already — the
+                         chip would repeat the screen's own name on every row. */
+                      bucket={project ? null : entryForTask(item, index)}
+                      assignee={
+                        item.assigneeId
+                          ? memberByUserId.get(item.assigneeId)
+                          : undefined
+                      }
+                      author={memberByUserId.get(item.updatedBy)}
+                      onOpen={() => onOpen(item)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+        {project && <FeedRail items={items} now={now} onOpen={onOpen} />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The board as one column, grouped by lane in the board's own order — the
+ * status a reader scans for is a heading, not a glyph to decode on every row.
+ * A lane with nothing in it gets no heading: a list is read top to bottom, and
+ * an empty group is a line that says "keep going".
+ */
+function ListView({
+  items,
+  memberByUserId,
+  onOpen,
+  inlineTabs,
+}: {
+  items: TaskBoardItem[];
+  memberByUserId: Map<string, Member>;
+  onOpen: (item: TaskBoardItem) => void;
+  inlineTabs?: boolean;
+}) {
+  const t = useT();
+  const known = CANONICAL_COLUMN_KEYS as readonly string[];
+  const order = [
+    ...known,
+    ...items.map((i) => i.status).filter((s) => !known.includes(s)),
+  ];
+  const groups = order
+    .map((status) => ({
+      status,
+      items: items.filter((i) => i.status === status).sort(bySortOrder),
+    }))
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <div
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto pb-16",
+        inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
+      )}
+    >
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6">
+        {groups.map((group) => {
+          const { label, visual } = laneHeader(group.status, t);
+          const LaneIcon = visual.icon;
+          return (
+            <section key={group.status} className="flex flex-col">
+              <h2 className="sticky top-0 z-10 flex h-9 items-center gap-2 bg-background px-3 text-sm font-medium text-foreground">
+                <LaneIcon
+                  size={15}
+                  className={cn(
+                    "shrink-0",
+                    visual.iconClassName.replace(/\banimate-\S+\b/g, "").trim(),
+                  )}
+                />
+                {label}
+                <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                  {group.items.length}
+                </span>
+              </h2>
+              <div className="flex flex-col divide-y divide-border border-y border-border">
+                {group.items.map((item) => (
+                  <ListRow
+                    key={item.id}
+                    item={item}
+                    assignee={
+                      item.assigneeId
+                        ? memberByUserId.get(item.assigneeId)
+                        : undefined
+                    }
+                    assignedBy={
+                      item.assignedBy
+                        ? memberByUserId.get(item.assignedBy)
+                        : undefined
+                    }
+                    onOpen={() => onOpen(item)}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** One row, one line. Every fact sits in a fixed slot so a column of rows
+ *  aligns: priority, key, title, then labels, assignee and age at the right. */
 function ListRow({
   item,
   assignee,
@@ -2629,32 +3473,29 @@ function ListRow({
   assignedBy?: Member;
   onOpen: () => void;
 }) {
-  const StatusIcon = laneVisual(item.status).icon;
+  const { org } = useProjectContext();
+  const key = taskKey(org.slug, item.keySeq);
+  const runState = agentRunState(item);
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
+      className="flex h-11 items-center gap-3 px-3 text-left transition-colors hover:bg-accent/40"
     >
-      <StatusIcon
-        size={16}
-        className={cn("shrink-0", statusIconClassName(item))}
-      />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+      <span className="flex size-4 shrink-0 items-center justify-center">
+        {item.priority !== "none" && <PriorityIcon priority={item.priority} />}
+      </span>
+      {key && (
+        <span className="hidden w-16 shrink-0 font-mono text-xs text-muted-foreground sm:inline">
+          {key}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm text-foreground">
         {item.title}
       </span>
+      {runState && <AgentRunIndicator state={runState} />}
       {isTaskBlocked(item) && <BlockedBadge />}
       {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
-      {item.priority !== "none" && (
-        <span className="hidden sm:inline-flex">
-          <PriorityPill priority={item.priority} />
-        </span>
-      )}
-      {item.dueDate && (
-        <span className="hidden sm:inline-flex">
-          <DueDatePill iso={item.dueDate} />
-        </span>
-      )}
       {item.tags.length > 0 && (
         <span className="hidden items-center gap-1.5 sm:inline-flex">
           {item.tags.slice(0, 2).map((tag) => (
@@ -2665,12 +3506,19 @@ function ListRow({
           )}
         </span>
       )}
-      <AssigneeDisplay
-        item={item}
-        assignee={assignee}
-        assignedBy={assignedBy}
-      />
-      <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
+      {item.dueDate && (
+        <span className="hidden sm:inline-flex">
+          <DueDatePill iso={item.dueDate} />
+        </span>
+      )}
+      <span className="flex w-5 shrink-0 justify-center">
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
+        />
+      </span>
+      <span className="hidden w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline">
         {formatTimeAgo(new Date(item.createdAt))}
       </span>
     </button>

@@ -12,6 +12,7 @@ import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t";
 import { InboxFullButton, InboxIconButton } from "./inbox";
+import { SettingsFullButton, SettingsIconButton } from "./settings-button";
 import { SidebarFooterIcon, SIDEBAR_FOOTER_ICON_SIZE } from "./icon-slot";
 
 /** The one quick action left in the footer. Connections live in their own
@@ -39,9 +40,11 @@ function SidebarExtraActions() {
   );
 }
 
-/** Account footer — the invite action and the account row. Settings is a
- *  destination row now, so it is not repeated here. The usage chip only shows
- *  outside reports-only orgs. */
+/** Account footer — the invite action, the account row, and the two controls
+ *  that sit beside it: notifications and Settings. Neither is a destination —
+ *  you open them, change something and come back — which is why they are icons
+ *  on the account row rather than rows in the spine above. The usage chip only
+ *  shows outside reports-only orgs. */
 export function SidebarAccountFooter() {
   const isCollapsed = useSidebarCollapsed();
   const reportsOnly = useReportsOnly();
@@ -53,6 +56,9 @@ export function SidebarAccountFooter() {
         {showCredits && <SidebarTopActions />}
         <SidebarExtraActions />
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SettingsFullButton />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <InboxFullButton />
           </SidebarMenuItem>
@@ -74,6 +80,7 @@ export function SidebarAccountFooter() {
             <div className="flex-1 min-w-0">
               <AccountPopover />
             </div>
+            <SettingsIconButton />
             <InboxIconButton />
           </div>
         </SidebarMenuItem>

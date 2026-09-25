@@ -744,9 +744,17 @@ export function AppliedFiltersBar({
   );
 }
 
-export function BoardSettingsButton({ onClick }: { onClick: () => void }) {
+export function BoardSettingsButton({
+  onClick,
+  label: labelOverride,
+}: {
+  onClick: () => void;
+  /** The board's own project, when scoped, has settings of its own to open
+   *  instead — the caller names which. */
+  label?: string;
+}) {
   const t = useT();
-  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  const label = labelOverride ?? t("taskBoard.taskFilters.boardSettingsLabel");
 
   return (
     <IconButton

@@ -12,6 +12,7 @@ import {
   projectsForTask,
   stampableEntries,
   taskMatchesProjectFilter,
+  tasksForProject,
   type AttributableTask,
 } from "./project-index";
 
@@ -601,5 +602,52 @@ describe("stampableEntries", () => {
   test("offers a repository no project claims", () => {
     const index = buildProjectIndex([], ["acme/orphan"]);
     expect(stampableEntries(index).map((e) => e.id)).toEqual(["acme/orphan"]);
+  });
+});
+
+/**
+ * Scope is a narrowing of the INPUT, not a value in the board's filter. The
+ * filter is an exact string match, and scoping through it hid every repo-less
+ * card the moment a project was picked — see `task-board/filters-search.test.ts`
+ * for the inverted form of that bug.
+ */
+describe("tasksForProject", () => {
+  const index = buildProjectIndex([
+    project("p1", "Store", "acme/store"),
+    project("p2", "App", "acme/app"),
+  ]);
+
+  test("keeps only the cards attributed to the project", () => {
+    const store = task({ repo: "acme/store" });
+    const app = task({ repo: "acme/app" });
+    expect(tasksForProject([store, app], index, "p1")).toEqual([store]);
+  });
+
+  test("a project with no cards gets none rather than everything", () => {
+    expect(
+      tasksForProject([task({ repo: "acme/store" })], index, "p9"),
+    ).toEqual([]);
+  });
+
+  /** The reason this cannot be the `?repo=` filter: a repo-less project has no
+   *  string to match on and is reached through its runs. */
+  test("a repo-less project keeps the cards its runs claim", () => {
+    const repoless = buildProjectIndex([project("p3", "Ops")]);
+    const linked = task({ virtualMcpId: "p3" });
+    expect(
+      tasksForProject([linked, task({ repo: "acme/store" })], repoless, "p3"),
+    ).toEqual([linked]);
+  });
+
+  /** Two projects over one monorepo both claim the card, the same answer the
+   *  sidebar and the home already give. */
+  test("a shared repository counts for every project pinning it", () => {
+    const shared = buildProjectIndex([
+      project("a", "A", "acme/mono"),
+      project("b", "B", "acme/mono"),
+    ]);
+    const card = task({ repo: "acme/mono" });
+    expect(tasksForProject([card], shared, "a")).toEqual([card]);
+    expect(tasksForProject([card], shared, "b")).toEqual([card]);
   });
 });

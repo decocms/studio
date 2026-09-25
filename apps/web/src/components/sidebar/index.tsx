@@ -13,6 +13,7 @@
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useExitProjectScope } from "@/hooks/use-exit-project-scope";
 import { useInSettings } from "@/hooks/use-in-settings";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
 import { SidebarAccountFooter } from "./footer/sidebar-footer";
@@ -23,6 +24,7 @@ import { SidebarBackRow } from "./nav-row";
 import { NavSettingsRow } from "./nav-settings-row";
 import { ProjectNav } from "./project-nav";
 import { SidebarProjectsSection } from "./projects-section";
+import { SidebarProjectsTree } from "./projects-section-tree";
 import {
   SettingsBackRow,
   SettingsNav,
@@ -66,15 +68,21 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
  *  listed one row per project off a suspense query — restoring either would put
  *  a skeleton back in front of the sidebar. */
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const projectFirstNav = useProjectFirstNav();
   return (
     <ErrorBoundary>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <NavDestinationsContent onNavigate={onNavigate} />
           <ProjectNav onNavigate={onNavigate} />
-          <NavSettingsRow onNavigate={onNavigate} />
+          {/* Project-first navigation reaches settings from the org rail instead. */}
+          {!projectFirstNav && <NavSettingsRow onNavigate={onNavigate} />}
         </div>
-        <SidebarProjectsSection onNavigate={onNavigate} />
+        {projectFirstNav ? (
+          <SidebarProjectsTree onNavigate={onNavigate} />
+        ) : (
+          <SidebarProjectsSection onNavigate={onNavigate} />
+        )}
       </div>
     </ErrorBoundary>
   );

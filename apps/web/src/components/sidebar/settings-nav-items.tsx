@@ -13,6 +13,7 @@ import {
   GitBranch01,
   BarChart10,
   Building02,
+  Folder,
   Columns03,
   Stars01,
   CreditCard01,
@@ -140,10 +141,10 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
           to: "/$org/settings/connections",
         },
         {
-          key: "agents",
-          label: t("settings.nav.agents"),
-          icon: <Users03 size={14} />,
-          to: "/$org/settings/agents",
+          key: "projects",
+          label: t("projects.settings.title"),
+          icon: <Folder size={14} />,
+          to: "/$org/settings/projects",
         },
         {
           key: "automations",
