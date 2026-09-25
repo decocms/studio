@@ -66,6 +66,7 @@ export interface HeadObjectResult {
   size: number;
   lastModified?: Date;
   etag?: string;
+  metadata?: Record<string, string>;
 }
 
 export class S3Service {
@@ -232,6 +233,10 @@ export class S3Service {
       size: response.ContentLength ?? 0,
       lastModified: response.LastModified,
       etag: response.ETag,
+      metadata:
+        response.Metadata && Object.keys(response.Metadata).length > 0
+          ? response.Metadata
+          : undefined,
     };
   }
 

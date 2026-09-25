@@ -36,6 +36,7 @@ export const GET_OBJECT_METADATA = defineTool({
           ? result.lastModified
           : new Date().toISOString()),
       etag: result.etag ?? "",
+      metadata: result.metadata,
     };
   },
 });
