@@ -472,8 +472,10 @@
   color: var(--dg-brand-ink);
   border-color: currentColor;
 }
+/* The open body starts where the title does: row padding + the 18px failed
+   mark + the 16px gap in .dg-row-head. */
 .dg-row-body {
-  padding: 2px 20px 22px;
+  padding: 2px 20px 22px 54px;
   animation: dg-in 0.22s var(--dg-ease) both;
 }
 @keyframes dg-in {
@@ -519,7 +521,8 @@
 }
 .dg-tasks {
   list-style: decimal;
-  margin: 0 0 0 20px;
+  margin: 0;
+  padding-left: 1.3em;
   display: grid;
   gap: 9px;
   font-size: 16.5px;
@@ -817,6 +820,9 @@
   .dg-area {
     padding-left: 16px;
     padding-right: 16px;
+  }
+  .dg-row-body {
+    padding-left: 50px;
   }
   .dg-area {
     grid-template-columns: 1fr 40px;
