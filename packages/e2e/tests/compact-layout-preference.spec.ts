@@ -1,7 +1,7 @@
 import { expect, test } from "../fixtures/test";
 
 for (const savedPreference of [undefined, false, true, "true"]) {
-  test(`the default layout is independent of the editor preference (${savedPreference})`, async ({
+  test(`the default layout is independent of the editor preference (${typeof savedPreference}: ${savedPreference})`, async ({
     authedPage: { page, orgSlug },
   }) => {
     await page.addInitScript((compactPageLayout) => {
