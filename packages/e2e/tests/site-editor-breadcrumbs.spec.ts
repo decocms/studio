@@ -141,17 +141,19 @@ test.describe("Site Editor classic blocks editor", () => {
       await expect(
         blocks.getByPlaceholder("Page name", { exact: true }),
       ).toHaveValue("Home", { timeout: 60_000 });
-      // Classic renders the trail in place rather than contributing it to a
-      // page header, so at the page root a lone crumb would repeat the name
-      // the panel already shows in its own field.
+      // The classic editor keeps its page-name field. The application header
+      // is shared by both editor modes, with no duplicate trail in the panel.
       await expect(page.getByTestId("page-header")).toBeVisible();
       await expect(blocks.getByRole("navigation")).toHaveCount(0);
       await expect(blocks.getByText("Home", { exact: true })).toHaveCount(0);
-      // Drilling into a section gives the trail something to say, so it
-      // appears — and it must not stretch down the panel.
+      // Selecting a section contributes its trail to the application header.
       await blocks.getByRole("button", { name: /HeroSlideShow/ }).click();
-      const trail = blocks.getByRole("navigation");
+      const trail = page.getByTestId("page-header").getByRole("navigation");
       await expect(trail).toHaveCount(1);
+      await expect(
+        trail.getByRole("heading", { name: "HeroSlideShow", exact: true }),
+      ).toBeVisible();
+      await expect(blocks.getByRole("navigation")).toHaveCount(0);
       const trailBox = (await trail.boundingBox())!;
       expect(trailBox.height).toBeLessThan(80);
     } finally {
