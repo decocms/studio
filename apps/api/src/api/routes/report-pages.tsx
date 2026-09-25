@@ -181,6 +181,7 @@ export function createReportPagesRoutes(clientDir: string | undefined): Hono {
     const domain = normalizeDomain(c.req.param("file").replace(/\.md$/, ""));
     try {
       const markdown = await fetchPublicOnePagerMarkdown(domain, {
+        lang: c.req.query("lang")?.trim() || undefined,
         signal: AbortSignal.timeout(MARKDOWN_TIMEOUT_MS),
       });
       if (markdown === null) return c.text("Report not found", 404);
