@@ -197,7 +197,7 @@ export async function fetchProtectedResourceMetadata(
  * Falls back to the origin server's root if Protected Resource Metadata doesn't exist,
  * since many servers (like Apify) expose /.well-known/oauth-authorization-server at the root.
  */
-async function getOriginAuthServer(
+export async function getOriginAuthServer(
   connectionUrl: string,
 ): Promise<string | null> {
   // Parse URL upfront - if invalid, bail early
@@ -212,10 +212,14 @@ async function getOriginAuthServer(
     const response = await fetchProtectedResourceMetadata(connectionUrl);
     if (response.ok) {
       const data = (await response.json()) as {
-        authorization_servers?: string[];
+        authorization_servers?: unknown;
       };
-      if (data.authorization_servers?.[0]) {
-        return data.authorization_servers[0];
+      const candidate = Array.isArray(data.authorization_servers)
+        ? data.authorization_servers[0]
+        : undefined;
+      // authorization_servers is untrusted origin JSON — verify the shape.
+      if (typeof candidate === "string") {
+        return candidate;
       }
     }
   } catch {
