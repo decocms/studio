@@ -3,55 +3,79 @@ import { type Kysely, sql } from "kysely";
 /**
  * The storefront diagnostic is now called "Deco Score". `REPORTS_SETUP` writes
  * the connection's and agent's titles and the agent's pinned view label once,
- * at creation, so orgs onboarded before the rename keep the old names.
+ * at creation, so orgs onboarded before the rename keep the old names — and
+ * orgs onboarded before #7244 still carry the name before that, "Commerce
+ * Discovery", which that rename never migrated.
  *
- * Only values still equal to the old defaults change: a title or label someone
- * edited is theirs. The rows are matched by their deterministic ids, as in
- * migration 215: the connection is `<org>_commerce-discovery` and the agent is
- * `commerce-discovery_<org>`.
+ * Only values still equal to one of the old defaults change: a title or label
+ * someone edited is theirs. The rows are matched by their deterministic ids, as
+ * in migration 215: the connection is `<org>_commerce-discovery` and the agent
+ * is `commerce-discovery_<org>`.
+ *
+ * `down` restores the most recent old default. It cannot tell which older one
+ * a row carried, so a "Commerce Discovery" row comes back as "Store Report".
  */
 
-const CONNECTION = {
-  old: {
-    title: "Store Report",
-    description: "Your store's report and diagnostics",
+interface Field {
+  /** Every default this field has shipped with, newest first. */
+  old: string[];
+  new: string;
+}
+
+const CONNECTION: Record<"title" | "description", Field> = {
+  title: { old: ["Store Report", "Commerce Discovery"], new: "Deco Score" },
+  description: {
+    old: [
+      "Your store's report and diagnostics",
+      "Commerce report and diagnostics",
+      "Commerce Discovery report and commerce diagnostics.",
+    ],
+    new: "Your store's Deco Score",
   },
-  new: { title: "Deco Score", description: "Your store's Deco Score" },
 };
-const AGENT = {
-  old: {
-    title: "Report Agent",
-    description: "Ask anything about your store's report",
+const AGENT: Record<"title" | "description", Field> = {
+  title: {
+    old: ["Report Agent", "Commerce Discovery"],
+    new: "Deco Score Agent",
   },
-  new: {
-    title: "Deco Score Agent",
-    description: "Ask anything about your store's Deco Score",
+  description: {
+    old: [
+      "Ask anything about your store's report",
+      "Commerce report and diagnostics",
+      "Commerce Discovery report workspace.",
+    ],
+    new: "Ask anything about your store's Deco Score",
   },
 };
 const VIEW = {
   toolName: "get_my_diagnostic",
-  old: "Report",
-  new: "Deco Score",
+  label: { old: ["Report", "Commerce Discovery"], new: "Deco Score" } as Field,
 };
+
+/** Values to match and the value to write, for either direction. */
+function step(field: Field, direction: "up" | "down") {
+  return direction === "up"
+    ? { from: field.old, to: field.new }
+    : { from: [field.new], to: field.old[0] as string };
+}
 
 async function rename(
   db: Kysely<unknown>,
-  from: "old" | "new",
-  to: "old" | "new",
+  direction: "up" | "down",
 ): Promise<void> {
-  for (const column of ["title", "description"] as const) {
-    await sql`
-      UPDATE connections
-      SET ${sql.ref(column)} = ${CONNECTION[to][column]}
-      WHERE id = organization_id || '_commerce-discovery'
-        AND ${sql.ref(column)} = ${CONNECTION[from][column]}
-    `.execute(db);
-    await sql`
-      UPDATE connections
-      SET ${sql.ref(column)} = ${AGENT[to][column]}
-      WHERE id = 'commerce-discovery_' || organization_id
-        AND ${sql.ref(column)} = ${AGENT[from][column]}
-    `.execute(db);
+  for (const [idPattern, fields] of [
+    [sql`organization_id || '_commerce-discovery'`, CONNECTION],
+    [sql`'commerce-discovery_' || organization_id`, AGENT],
+  ] as const) {
+    for (const column of ["title", "description"] as const) {
+      const { from, to } = step(fields[column], direction);
+      await sql`
+        UPDATE connections
+        SET ${sql.ref(column)} = ${to}
+        WHERE id = ${idPattern}
+          AND ${sql.ref(column)} = ANY(${sql.val(from)}::text[])
+      `.execute(db);
+    }
   }
 
   /** `metadata` is TEXT holding JSON; a row that never parsed is skipped. */
@@ -66,6 +90,7 @@ async function rename(
     $fn$ LANGUAGE plpgsql IMMUTABLE;
   `.execute(db);
 
+  const { from, to } = step(VIEW.label, direction);
   await sql`
     WITH agents AS (
       SELECT id, deco_score_try_jsonb(metadata) AS m
@@ -82,8 +107,8 @@ async function rename(
             SELECT jsonb_agg(
               CASE
                 WHEN v ->> 'toolName' = ${VIEW.toolName}
-                 AND v ->> 'label' = ${VIEW[from]}
-                THEN v || jsonb_build_object('label', ${VIEW[to]}::text)
+                 AND v ->> 'label' = ANY(${sql.val(from)}::text[])
+                THEN v || jsonb_build_object('label', ${to}::text)
                 ELSE v
               END
               ORDER BY ord
@@ -98,7 +123,7 @@ async function rename(
           SELECT 1
           FROM jsonb_array_elements(a.m -> 'ui' -> 'pinnedViews') AS e(v)
           WHERE v ->> 'toolName' = ${VIEW.toolName}
-            AND v ->> 'label' = ${VIEW[from]}
+            AND v ->> 'label' = ANY(${sql.val(from)}::text[])
         )
     )
     UPDATE connections c
@@ -111,9 +136,9 @@ async function rename(
 }
 
 export async function up(db: Kysely<unknown>): Promise<void> {
-  await rename(db, "old", "new");
+  await rename(db, "up");
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await rename(db, "new", "old");
+  await rename(db, "down");
 }

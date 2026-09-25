@@ -28,6 +28,8 @@ const USER = "user_226";
 const ORG_DEFAULT = "org_226_default";
 const ORG_EDITED = "org_226_edited";
 const ORG_BROKEN = "org_226_broken";
+/** Onboarded before #7244: still carries the name before "Report". */
+const ORG_LEGACY = "org_226_legacy";
 
 const pinnedViews = (label: string) =>
   JSON.stringify({
@@ -85,7 +87,7 @@ describe("226 deco score names", () => {
       `.execute(db);
     };
 
-    for (const org of [ORG_DEFAULT, ORG_EDITED, ORG_BROKEN]) {
+    for (const org of [ORG_DEFAULT, ORG_EDITED, ORG_BROKEN, ORG_LEGACY]) {
       await sql`
         INSERT INTO organization (id, name, slug, "createdAt")
         VALUES (${org}, ${org}, ${org.replace(/_/g, "-")}, now())
@@ -133,6 +135,23 @@ describe("226 deco score names", () => {
       "{not json",
     );
 
+    await conn(
+      `${ORG_LEGACY}_commerce-discovery`,
+      ORG_LEGACY,
+      "HTTP",
+      "Commerce Discovery",
+      "Commerce Discovery report and commerce diagnostics.",
+      null,
+    );
+    await conn(
+      `commerce-discovery_${ORG_LEGACY}`,
+      ORG_LEGACY,
+      "VIRTUAL",
+      "Commerce Discovery",
+      "Commerce report and diagnostics",
+      pinnedViews("Commerce Discovery"),
+    );
+
     await up(db as never);
   });
 
@@ -170,6 +189,21 @@ describe("226 deco score names", () => {
     const agent = await row(`commerce-discovery_${ORG_EDITED}`);
     expect(agent?.title).toBe("Shop assistant");
     expect(agent?.metadata).toBe(pinnedViews("Scorecard"));
+  });
+
+  it("renames the defaults from before the Report rename too", async () => {
+    expect(await row(`${ORG_LEGACY}_commerce-discovery`)).toMatchObject({
+      title: "Deco Score",
+      description: "Your store's Deco Score",
+    });
+    const agent = await row(`commerce-discovery_${ORG_LEGACY}`);
+    expect(agent).toMatchObject({
+      title: "Deco Score Agent",
+      description: "Ask anything about your store's Deco Score",
+    });
+    expect(JSON.parse(agent?.metadata ?? "{}").ui.pinnedViews[0].label).toBe(
+      "Deco Score",
+    );
   });
 
   it("skips metadata that never parsed", async () => {
