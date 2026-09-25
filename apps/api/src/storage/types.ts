@@ -479,6 +479,21 @@ export interface OAuthPkceStateTable {
 }
 
 /** A user's linked Claude subscription token (migration 162). */
+/** The deployment's GitHub App, registered from the admin dashboard. */
+export interface DeploymentGithubAppTable {
+  id: ColumnType<string, string | undefined, never>;
+  app_id: string;
+  slug: string;
+  client_id: string;
+  encrypted_client_secret: string;
+  encrypted_private_key: string;
+  encrypted_webhook_secret: string | null;
+  html_url: string | null;
+  owner_login: string | null;
+  created_by: string | null;
+  created_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
 export interface ClaudeSubscriptionTable {
   user_id: string;
   encrypted_access_token: string;
@@ -2439,6 +2454,7 @@ export interface Database {
   // OAuth PKCE state table (short-lived, server-side verifier storage)
   oauth_pkce_states: OAuthPkceStateTable;
   claude_subscriptions: ClaudeSubscriptionTable;
+  deployment_github_app: DeploymentGithubAppTable;
 
   // Automations tables
   automations: AutomationTable;

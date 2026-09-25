@@ -131,4 +131,54 @@ export const admin = {
   "admin.users.unknown": "Unknown",
   "admin.users.unverified": "Unverified",
   "admin.users.verified": "Verified",
+  "admin.layout.githubTab": "GitHub",
+  "admin.github.description":
+    "Register the GitHub App this deployment uses to import repositories, clone them into sandboxes and open pull requests. GitHub creates it for you — nothing to copy by hand.",
+  "admin.github.failedToLoad": "Failed to load the GitHub App status",
+  "admin.github.envTitle": "Configured through environment variables",
+  "admin.github.envDescription":
+    "The GITHUB_APP_* variables set this deployment's App, and they take precedence over one registered here.",
+  "admin.github.envUnusable":
+    "The GITHUB_APP_* variables are set but the private key cannot sign. Check that its newlines survived the secret store.",
+  "admin.github.storedTitle": 'GitHub App "{slug}" is registered',
+  "admin.github.storedDescription":
+    "Members can now connect GitHub from Settings → Repositories. Install the App on the accounts or organizations whose repositories they will import.",
+  "admin.github.storedUnusable":
+    "The stored App's private key cannot sign. Register a new App below.",
+  "admin.github.install": "Install on an account",
+  "admin.github.viewOnGithub": "View on GitHub",
+  "admin.github.createTitle": "Create a GitHub App",
+  "admin.github.replaceTitle": "Register a different App",
+  "admin.github.organizationLabel": "GitHub organization (optional)",
+  "admin.github.organizationPlaceholder": "acme",
+  "admin.github.organizationHint":
+    "Leave empty to create the App under your personal GitHub account. You must be an owner of the organization.",
+  "admin.github.nameLabel": "App name",
+  "admin.github.publicLabel": "Allow installation on any GitHub account",
+  "admin.github.publicHint":
+    "Off: only the account that owns the App can install it. Turn on if members will import repositories from other accounts or organizations.",
+  "admin.github.create": "Create GitHub App",
+  "admin.github.replace": "Create and replace",
+  "admin.github.redirecting": "Opening GitHub...",
+  "admin.github.createFailed": "Could not start the GitHub App setup",
+  "admin.github.publicUrlNote":
+    "GitHub will send users back to {url}. It must be reachable from their browsers.",
+  "admin.github.outcomeCreated":
+    "GitHub App created. Install it on an account to start importing repositories.",
+  "admin.github.outcomeDenied": "GitHub App creation was cancelled.",
+  "admin.github.outcomeInvalidState":
+    "The setup link expired or was tampered with. Start again.",
+  "admin.github.outcomeSessionMismatch":
+    "Finish the setup in the same browser session, signed in as the deployment admin who started it.",
+  "admin.github.outcomeEnvConfigured":
+    "GITHUB_APP_* environment variables are set and take precedence; nothing was saved.",
+  "admin.github.outcomeExchangeFailed":
+    "GitHub created the App but Studio could not fetch its credentials. Try again, and delete the unused App on GitHub.",
+  "admin.github.remove": "Remove",
+  "admin.github.removeTitle": "Remove this GitHub App from Studio?",
+  "admin.github.removeDescription":
+    "Members will no longer be able to connect GitHub or clone through this App. The App stays on GitHub; delete it there if you no longer need it.",
+  "admin.github.cancel": "Cancel",
+  "admin.github.removed": "GitHub App removed",
+  "admin.github.removeFailed": "Could not remove the GitHub App",
 } as const;

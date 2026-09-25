@@ -43,7 +43,16 @@ import {
   pageChoices,
   preselectedRepositoryIds,
 } from "@/git-providers/github/connect-access";
-import { readGithubAppConfig } from "@/git-providers/github/env";
+import {
+  githubAppConfigSource,
+  readGithubAppConfig,
+} from "@/git-providers/github/env";
+import {
+  convertGithubManifestCode,
+  verifyManifestState,
+} from "@/git-providers/github/app-manifest";
+import { saveStoredGithubAppConfig } from "@/git-providers/github/stored-app-config";
+import { getSettings } from "@/settings";
 import {
   githubCliEnabled,
   githubCliPrincipal,
@@ -622,6 +631,57 @@ gitProviderCallbackRoutes.get("/github/setup", async (c) => {
       state: next,
     }),
   );
+});
+
+/**
+ * GitHub App Manifest redirect: GitHub created the App and hands back a
+ * one-time code for its credentials. Only the deployment admin whose signed
+ * state started the flow (`/api/_admin/github-app/manifest`) may finish it —
+ * checked against the live session, not just the state, so a leaked link is
+ * useless in anyone else's browser.
+ */
+gitProviderCallbackRoutes.get("/github/manifest-callback", async (c) => {
+  const done = (outcome: string) => {
+    const url = new URL("/_admin/github", getPublicUrl());
+    url.searchParams.set("github_app", outcome);
+    return c.redirect(url.toString());
+  };
+  const settings = getSettings();
+  const stateUserId = verifyManifestState(
+    c.req.query("state"),
+    settings.encryptionKey,
+  );
+  if (!stateUserId) return done("invalid_state");
+  const ctx = await ContextFactory.create(c.req.raw);
+  const user = ctx.auth.user;
+  const email = user?.email?.toLowerCase();
+  if (
+    !user ||
+    user.id !== stateUserId ||
+    !user.emailVerified ||
+    !email ||
+    !settings.deploymentAdminEmails.includes(email)
+  ) {
+    return done("session_mismatch");
+  }
+  if (githubAppConfigSource() === "env") return done("env_configured");
+  const code = c.req.query("code");
+  if (!code) return done("denied");
+  try {
+    const app = await convertGithubManifestCode(code);
+    await saveStoredGithubAppConfig(app, user.id);
+    console.info("[git-providers] GitHub App registered from the dashboard", {
+      appId: app.appId,
+      slug: app.slug,
+      owner: app.ownerLogin,
+    });
+    return done("created");
+  } catch (error) {
+    console.error("[git-providers] GitHub App manifest conversion failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return done("exchange_failed");
+  }
 });
 
 gitProviderCallbackRoutes.get("/gitlab/callback", async (c) => {

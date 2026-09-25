@@ -136,6 +136,8 @@ export const settings = {
     "Signing in with GitHub, GitLab or Bitbucket needs provider credentials an administrator configures for this deployment. You can still connect a GitLab or Bitbucket account with an access token.",
   "settings.repositories.githubUnavailable":
     "Ask an administrator to enable GitHub.",
+  "settings.repositories.githubSetupHint":
+    "Not set up yet — set up GitHub in one click from the admin dashboard.",
   "settings.repositories.connectGithubCli": "Connect with GitHub CLI",
   "settings.repositories.githubCliHint":
     "Use your local gh login to browse and import repositories.",

@@ -2,6 +2,7 @@ import * as migration221removeprivateregistry from "./221-remove-private-registr
 import * as migration222orggitcredentials from "./222-org-git-credentials";
 import * as migration224repositorysandboximage from "./224-repository-sandbox-image";
 import * as migration225threadanalyticsindexes from "./225-thread-analytics-indexes";
+import * as migration226deploymentgithubapp from "./226-deployment-github-app";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -487,6 +488,7 @@ const migrations: Record<string, Migration> = {
   "223-drop-org-main-agent-id": migration223droporgmainagentid,
   "224-repository-sandbox-image": migration224repositorysandboximage,
   "225-thread-analytics-indexes": migration225threadanalyticsindexes,
+  "226-deployment-github-app": migration226deploymentgithubapp,
 };
 
 export default migrations;

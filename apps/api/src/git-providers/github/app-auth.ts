@@ -632,6 +632,8 @@ export class GithubAppAuth {
 }
 
 let appAuthSingleton: GithubAppAuth | null | undefined;
+/** The config the singleton was built from, so a change rebuilds it. */
+let appAuthConfigKey: string | undefined;
 
 /**
  * The process-wide App signer, or null when this deployment has no App
@@ -643,8 +645,14 @@ let appAuthSingleton: GithubAppAuth | null | undefined;
  * is provider-neutral — holds no GitHub state of its own.
  */
 export function getGithubAppAuth(): GithubAppAuth | null {
-  if (appAuthSingleton === undefined) {
-    const config = readGithubAppConfig();
+  // Keyed on the config rather than built once: an App registered from the
+  // admin dashboard arrives after boot, and a re-registration replaces the key
+  // — either way the signer must follow without a restart. The env-only case
+  // still builds exactly once.
+  const config = readGithubAppConfig();
+  const key = config ? `${config.appId}\0${config.privateKeyPem}` : "";
+  if (appAuthSingleton === undefined || key !== appAuthConfigKey) {
+    appAuthConfigKey = key;
     appAuthSingleton =
       config && usableAppKey(config)
         ? new GithubAppAuth(config, {

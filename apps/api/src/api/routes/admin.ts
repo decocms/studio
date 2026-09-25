@@ -42,6 +42,7 @@ import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
 import type { Env } from "@/api/hono-env";
 import { createAdminPromptRoutes } from "./admin-prompts";
+import { createAdminGithubAppRoutes } from "./admin-github-app";
 
 /**
  * Mount path for the deployment-admin surface. Single source of truth: app.ts
@@ -820,6 +821,8 @@ export function createAdminRoutes(): Hono<Env> {
   // The agent-prompt editor (reads/writes decocms/studio over GitHub) — its own
   // module, mounted here so it inherits this router's admin fence.
   app.route("/", createAdminPromptRoutes());
+  // One-click GitHub App registration (GitHub's App Manifest flow).
+  app.route("/", createAdminGithubAppRoutes());
 
   return app;
 }

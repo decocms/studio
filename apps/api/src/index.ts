@@ -192,6 +192,10 @@ if (process.env.STUDIO_SANDBOX_TENANT_POOLS?.trim()) {
 // import chain). Launch DBOS afterwards so the registry is sealed before
 // the executor starts dequeueing workflows.
 const app = await createApp({ clientDir });
+// The GitHub App registered from the admin dashboard, if any: loaded into
+// memory now and re-read periodically so every replica serves it.
+const { startGithubAppConfigSync } = await import("./git-providers");
+startGithubAppConfigSync();
 // Conductor opt-in via env (SDK defaults conductorURL to wss://cloud.dbos.dev/...).
 const conductorKey = process.env.DBOS_CONDUCTOR_KEY?.trim();
 const conductorURL = process.env.DBOS_CONDUCTOR_URL?.trim();

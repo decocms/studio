@@ -12,6 +12,7 @@ const TABS = [
   { to: "/_admin/users", labelKey: "admin.layout.usersTab" },
   { to: "/_admin/orgs", labelKey: "admin.layout.organizationsTab" },
   { to: "/_admin/prompts", labelKey: "admin.layout.promptsTab" },
+  { to: "/_admin/github", labelKey: "admin.layout.githubTab" },
 ] as const;
 
 function AdminTabs() {

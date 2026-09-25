@@ -43,6 +43,7 @@ import {
   useConnectGitAccountToken,
   useConnectGithubCli,
 } from "@/hooks/use-git-providers";
+import { useDeploymentAdmin } from "@/hooks/use-deployment-admin";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { errorMessage } from "@/lib/error-message";
@@ -132,6 +133,9 @@ const TOKEN_COPY: Record<
 };
 
 const PROVIDER_ORDER: GitProviderKind[] = ["github", "gitlab", "bitbucket"];
+
+/** The admin dashboard page that registers the deployment's GitHub App. */
+const GITHUB_APP_SETUP_PATH = "/_admin/github";
 
 /**
  * The ways `provider` can be connected here, token first. Empty for GitHub
@@ -247,6 +251,10 @@ function AddAccountDialog({
 }) {
   const t = useT();
   const capabilities = useGitProviderCapabilities();
+  // A deployment admin can fix "GitHub isn't configured" themselves, in one
+  // click from the admin dashboard — so the row links there instead of
+  // telling them to ask an administrator.
+  const { isAdmin: isDeploymentAdmin } = useDeploymentAdmin();
   const cliConnect = useConnectGithubCli();
   const { org } = useProjectContext();
   const returnTo = `/${org.slug}/settings/repositories`;
@@ -341,6 +349,12 @@ function AddAccountDialog({
                 capabilities.data,
                 connectUrl,
               );
+              const setupHref =
+                provider === "github" &&
+                methods.length === 0 &&
+                isDeploymentAdmin
+                  ? GITHUB_APP_SETUP_PATH
+                  : undefined;
               return (
                 <OptionRow
                   key={provider}
@@ -350,9 +364,16 @@ function AddAccountDialog({
                       ? "settings.repositories.connectGithubCli"
                       : PROVIDER_COPY[provider].label,
                   )}
-                  description={t(providerHint(provider, methods))}
-                  disabled={methods.length === 0 || cliConnect.isPending}
-                  onClick={() => choose(provider)}
+                  description={t(
+                    setupHref
+                      ? "settings.repositories.githubSetupHint"
+                      : providerHint(provider, methods),
+                  )}
+                  disabled={
+                    !setupHref && (methods.length === 0 || cliConnect.isPending)
+                  }
+                  href={setupHref}
+                  onClick={setupHref ? undefined : () => choose(provider)}
                 />
               );
             })}

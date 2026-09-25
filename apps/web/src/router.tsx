@@ -164,11 +164,22 @@ const adminPromptsRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/admin/prompts.tsx")),
 });
 
+const adminGithubRoute = createRoute({
+  getParentRoute: () => adminLayout,
+  path: "/github",
+  // Outcome of GitHub's App Manifest redirect (see the API's manifest callback).
+  validateSearch: z.object({
+    github_app: z.string().optional().catch(undefined),
+  }),
+  component: lazyRouteComponent(() => import("./routes/admin/github.tsx")),
+});
+
 const adminLayoutWithChildren = adminLayout.addChildren([
   adminIndexRoute,
   adminUsersRoute,
   adminOrgsRoute,
   adminPromptsRoute,
+  adminGithubRoute,
 ]);
 
 // ============================================

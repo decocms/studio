@@ -139,6 +139,8 @@ export const settings = {
   "settings.repositories.noProvidersTitle": "Nenhum provedor git configurado",
   "settings.repositories.noProvidersDescription":
     "Entrar com GitHub, GitLab ou Bitbucket depende de credenciais do provedor que um administrador configura nesta instalação. Você ainda pode conectar uma conta do GitLab ou do Bitbucket com um token de acesso.",
+  "settings.repositories.githubSetupHint":
+    "Ainda não configurado — configure o GitHub em um clique no painel de administração.",
   "settings.repositories.githubUnavailable":
     "Peça a um administrador para habilitar o GitHub.",
   "settings.repositories.connectGithubCli": "Conectar com GitHub CLI",

@@ -43,3 +43,25 @@ export * from "./capabilities";
  * before repositories existed could only ever have been a github.com repo.
  */
 export { findRepositoryForLegacyBinding } from "./github/legacy-connection";
+
+/**
+ * Registering the deployment's GitHub App from the admin dashboard (GitHub's
+ * App Manifest flow). GitHub-only by construction: the App is what the
+ * "GitHub" provider authenticates with, and nothing else has a manifest flow.
+ */
+export {
+  githubAppRegistrationStatus,
+  type GithubAppRegistrationStatus,
+} from "./github/app-registration";
+export {
+  buildGithubAppManifest,
+  defaultGithubAppName,
+  githubManifestFormAction,
+  isValidGithubLogin,
+  signManifestState,
+} from "./github/app-manifest";
+export { githubAppConfigSource, readGithubWebhookSecret } from "./github/env";
+export {
+  deleteStoredGithubAppConfig,
+  startGithubAppConfigSync,
+} from "./github/stored-app-config";

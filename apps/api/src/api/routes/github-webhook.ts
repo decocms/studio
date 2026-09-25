@@ -7,7 +7,8 @@
  *    PR the event names, so CI results and a deploy bot's preview url reach the
  *    open dialog in about a second instead of on a poll.
  *
- * OPTIONAL everywhere. Without `GITHUB_WEBHOOK_SECRET` the route answers 503
+ * OPTIONAL everywhere. Without `GITHUB_WEBHOOK_SECRET` (or a GitHub App
+ * registered from the admin dashboard, which brings its own) the route answers 503
  * and both consumers still catch up on their own polling. Instance-level
  * (underscore namespace, mounted before the /api/:org catch-all) and outside
  * session auth: the caller is GitHub, authenticated exclusively by the HMAC
@@ -17,6 +18,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { readGithubWebhookSecret } from "@/git-providers";
 import { getOrInitSharedRunner } from "@/sandbox/lifecycle";
 import type { StudioContextFactory } from "@/automations/fire";
 import type { TaskBoardStorage } from "@/storage/task-board";
@@ -115,7 +117,7 @@ export function createGithubWebhookRoutes(deps: GithubWebhookDeps): Hono {
       onError: (c) => c.json({ error: "payload too large" }, 413),
     }),
     async (c) => {
-      const secret = process.env.GITHUB_WEBHOOK_SECRET;
+      const secret = readGithubWebhookSecret();
       if (!secret) {
         return c.json({ error: "github webhook not configured" }, 503);
       }

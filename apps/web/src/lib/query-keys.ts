@@ -666,6 +666,7 @@ export const KEYS = {
   // Prefix key: invalidates every orgs query regardless of the search term.
   deploymentAdminOrgsList: () => ["deployment-admin", "orgs"] as const,
   deploymentAdminPrompts: () => ["deployment-admin", "prompts"] as const,
+  deploymentAdminGithubApp: () => ["deployment-admin", "github-app"] as const,
   // An org's feature flags (stored + effective) in the deployment-admin editor.
   deploymentAdminOrgFlags: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "flags"] as const,
