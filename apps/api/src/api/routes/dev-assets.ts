@@ -12,6 +12,7 @@
  */
 
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { createHmac } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -22,6 +23,9 @@ import { safeEqual } from "./credential-vault";
 
 // Base directory for dev assets (relative to cwd)
 const DEV_ASSETS_BASE_DIR = "./data/assets";
+
+// Matches org-fs.ts's per-file upload cap; dev mode has no S3 to enforce this.
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
 
 // ============================================================================
 // Utility Functions
@@ -254,71 +258,82 @@ export const createDevAssetsRoutes = (opts: CreateDevAssetsRoutesOptions) => {
    * - signature: HMAC signature
    * - method: Must be "PUT"
    */
-  app.put(path, async (c) => {
-    const orgId = opts.orgFromPath
-      ? c.get("studioContext")?.organization?.id
-      : c.req.param("orgId");
+  app.put(
+    path,
+    bodyLimit({
+      maxSize: MAX_UPLOAD_BYTES,
+      onError: (c) =>
+        c.json({ error: "File exceeds the per-file size limit" }, 413),
+    }),
+    async (c) => {
+      const orgId = opts.orgFromPath
+        ? c.get("studioContext")?.organization?.id
+        : c.req.param("orgId");
 
-    if (!orgId) {
-      return c.json({ error: "Missing organization context" }, 500);
-    }
+      if (!orgId) {
+        return c.json({ error: "Missing organization context" }, 500);
+      }
 
-    // Get the path after the org segment.
-    const prefix = opts.orgFromPath
-      ? `/api/${c.req.param("org") ?? ""}/dev-assets/`
-      : `/api/dev-assets/${orgId}/`;
-    const key = c.req.path.replace(prefix, "");
+      // Get the path after the org segment.
+      const prefix = opts.orgFromPath
+        ? `/api/${c.req.param("org") ?? ""}/dev-assets/`
+        : `/api/dev-assets/${orgId}/`;
+      const key = c.req.path.replace(prefix, "");
 
-    if (!key) {
-      return c.json({ error: "Missing key" }, 400);
-    }
+      if (!key) {
+        return c.json({ error: "Missing key" }, 400);
+      }
 
-    // Validate query params
-    const expiresStr = c.req.query("expires");
-    const signature = c.req.query("signature");
-    const method = c.req.query("method");
+      // Validate query params
+      const expiresStr = c.req.query("expires");
+      const signature = c.req.query("signature");
+      const method = c.req.query("method");
 
-    if (!expiresStr || !signature || method !== "PUT") {
-      return c.json({ error: "Invalid or missing signature parameters" }, 400);
-    }
+      if (!expiresStr || !signature || method !== "PUT") {
+        return c.json(
+          { error: "Invalid or missing signature parameters" },
+          400,
+        );
+      }
 
-    const expires = parseInt(expiresStr, 10);
-    if (!Number.isFinite(expires)) {
-      return c.json({ error: "Invalid expires parameter" }, 400);
-    }
+      const expires = parseInt(expiresStr, 10);
+      if (!Number.isFinite(expires)) {
+        return c.json({ error: "Invalid expires parameter" }, 400);
+      }
 
-    const now = Math.floor(Date.now() / 1000);
+      const now = Math.floor(Date.now() / 1000);
 
-    // Check expiration
-    if (expires < now) {
-      return c.json({ error: "URL has expired" }, 403);
-    }
+      // Check expiration
+      if (expires < now) {
+        return c.json({ error: "URL has expired" }, 403);
+      }
 
-    // Verify signature
-    if (!verifySignature(orgId, key, expires, "PUT", signature)) {
-      return c.json({ error: "Invalid signature" }, 403);
-    }
+      // Verify signature
+      if (!verifySignature(orgId, key, expires, "PUT", signature)) {
+        return c.json({ error: "Invalid signature" }, 403);
+      }
 
-    // Get the file path and ensure directory exists
-    const filePath = getFilePath(orgId, key);
-    const dir = dirname(filePath);
+      // Get the file path and ensure directory exists
+      const filePath = getFilePath(orgId, key);
+      const dir = dirname(filePath);
 
-    try {
-      // Create directory if it doesn't exist
-      await mkdir(dir, { recursive: true });
+      try {
+        // Create directory if it doesn't exist
+        await mkdir(dir, { recursive: true });
 
-      // Read the request body
-      const body = await c.req.arrayBuffer();
+        // Read the request body
+        const body = await c.req.arrayBuffer();
 
-      // Write the file
-      await writeFile(filePath, Buffer.from(body));
+        // Write the file
+        await writeFile(filePath, Buffer.from(body));
 
-      return c.json({ success: true, key });
-    } catch (err) {
-      console.error("Error saving file:", err);
-      return c.json({ error: "Failed to save file" }, 500);
-    }
-  });
+        return c.json({ success: true, key });
+      } catch (err) {
+        console.error("Error saving file:", err);
+        return c.json({ error: "Failed to save file" }, 500);
+      }
+    },
+  );
 
   return app;
 };
