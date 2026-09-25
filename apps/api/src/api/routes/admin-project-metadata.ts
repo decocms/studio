@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import {
+  isValidSiteSlug,
+  resolveAgentSiteSlug,
+} from "@decocms/shared/site-slug";
 
 /** What a field's authorization may consult about the target organization. */
 export interface ProjectMetadataAuthContext {
@@ -88,10 +91,35 @@ export async function authorizeProjectMetadataPatch(
 }
 
 /** The editable keys of a project's metadata, absent ones as null. */
-export function pickProjectMetadata(
+function pickProjectMetadata(
   metadata: Record<string, unknown> | null | undefined,
 ): Record<ProjectMetadataKey, unknown> {
   return Object.fromEntries(
     FIELD_ENTRIES.map(([key]) => [key, metadata?.[key] ?? null]),
   ) as Record<ProjectMetadataKey, unknown>;
+}
+
+interface ProjectRow {
+  id: string;
+  title: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+/**
+ * The org's site projects: those whose site slug the org owns. The slug comes
+ * from `resolveAgentSiteSlug`, since projects imported before `siteSlug` was
+ * persisted still resolve by title. A project carrying an edited key stays
+ * listed even without an owned slug, so the admin can clear it.
+ */
+export function selectSiteProjects(
+  projects: readonly ProjectRow[],
+  ownedSlugs: ReadonlySet<string>,
+) {
+  return projects.flatMap((project) => {
+    const siteSlug = resolveAgentSiteSlug(project);
+    const metadata = pickProjectMetadata(project.metadata);
+    const edited = Object.values(metadata).some((value) => value !== null);
+    if (!siteSlug || (!ownedSlugs.has(siteSlug) && !edited)) return [];
+    return [{ id: project.id, title: project.title, siteSlug, metadata }];
+  });
 }
