@@ -675,6 +675,9 @@ export const KEYS = {
   // An org's owned site slugs (org_sites) in the deployment-admin editor.
   deploymentAdminOrgSites: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "sites"] as const,
+  // An org's site projects and their analytics-site override.
+  deploymentAdminOrgProjects: (orgId: string) =>
+    ["deployment-admin", "orgs", orgId, "projects"] as const,
 
   // Brand context (scoped by organization)
   defaultBrand: (organizationId: string) =>
