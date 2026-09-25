@@ -36,7 +36,8 @@ export function RailItem({
   children,
 }: {
   active: boolean;
-  label: string;
+  /** Omit for a mark that already says its own name (a tooltip still can). */
+  label?: string;
   children: ReactNode;
 }) {
   return (
@@ -56,17 +57,19 @@ export function RailItem({
       {children}
       {/* `aria-hidden`: every trigger this wraps already carries the same text
           as its accessible name, so announcing it twice is noise. */}
-      <span
-        aria-hidden
-        className={cn(
-          "line-clamp-2 w-full px-1 text-center text-2xs break-words transition-colors",
-          active
-            ? "font-medium text-sidebar-foreground"
-            : "text-muted-foreground group-hover/rail:text-sidebar-foreground",
-        )}
-      >
-        {label}
-      </span>
+      {label && (
+        <span
+          aria-hidden
+          className={cn(
+            "line-clamp-2 w-full px-1 text-center text-2xs break-words transition-colors",
+            active
+              ? "font-medium text-sidebar-foreground"
+              : "text-muted-foreground group-hover/rail:text-sidebar-foreground",
+          )}
+        >
+          {label}
+        </span>
+      )}
     </div>
   );
 }

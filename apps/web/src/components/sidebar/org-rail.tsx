@@ -46,7 +46,7 @@ function RailOrgButton({
   onSelect: () => void;
 }) {
   return (
-    <RailItem active={active} label={org.name}>
+    <RailItem active={active}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button

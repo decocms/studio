@@ -1290,98 +1290,91 @@ function TaskBoardBody({
    *  below does not reindent every line of it. */
   const boardContent = (
     <>
-          {/* A task takes the header over: the board stays mounted behind it so
+      {/* A task takes the header over: the board stays mounted behind it so
           its scroll and dnd survive, and these would otherwise paint over
           the task's own trail and title. */}
-          {!openItem && (
-            <>
-              {/* From the scope, so two overrides cannot disagree. */}
-              <Page.Title>
-                {scopeProject?.title ?? t("taskBoard.taskBoard.tasksTitle")}
-              </Page.Title>
-              <Page.Actions
-                secondary={
-                  items.length > 0 && (
-                    <>
-                      {/* No width swap: these three are ~100px together, so there
+      {!openItem && (
+        <>
+          {/* From the scope, so two overrides cannot disagree. */}
+          <Page.Title>
+            {scopeProject?.title ?? t("taskBoard.taskBoard.tasksTitle")}
+          </Page.Title>
+          <Page.Actions
+            secondary={
+              items.length > 0 && (
+                <>
+                  {/* No width swap: these three are ~100px together, so there
                       is no panel narrow enough to be worth trading them for a
                       drawer of the chip pickers they replaced. */}
-                      <div className="flex items-center gap-2">
-                        <SearchToggle
-                          value={filters.search}
-                          onChange={(search) =>
-                            handleFiltersChange({ ...filters, search })
-                          }
-                          label={t("taskBoard.taskFilters.searchLabel")}
-                          placeholder={t(
-                            "taskBoard.taskFilters.searchPlaceholder",
-                          )}
-                          clearLabel={t(
-                            "taskBoard.taskFilters.searchClearLabel",
-                          )}
-                        />
-                        <TaskFilterButton
-                          filters={filters}
-                          items={items}
-                          members={members}
-                          tags={orgTags}
-                          index={projectIndex}
-                          onChange={handleFiltersChange}
-                        />
-                        <BoardSettingsButton
-                          onClick={openBoardSettings}
-                          label={boardSettingsLabel}
-                        />
-                      </div>
-                    </>
-                  )
-                }
-              >
-                <TaskBoardAdminControls />
-                <Button size="sm" onClick={openCreate}>
-                  <Plus size={16} />
-                  {t("taskBoard.taskBoard.newTask")}
-                </Button>
-              </Page.Actions>
-              {inlineTabs ? (
-                /* The board's own toolbar strip, fenced off from the apps
+                  <div className="flex items-center gap-2">
+                    <SearchToggle
+                      value={filters.search}
+                      onChange={(search) =>
+                        handleFiltersChange({ ...filters, search })
+                      }
+                      label={t("taskBoard.taskFilters.searchLabel")}
+                      placeholder={t("taskBoard.taskFilters.searchPlaceholder")}
+                      clearLabel={t("taskBoard.taskFilters.searchClearLabel")}
+                    />
+                    <TaskFilterButton
+                      filters={filters}
+                      items={items}
+                      members={members}
+                      tags={orgTags}
+                      index={projectIndex}
+                      onChange={handleFiltersChange}
+                    />
+                    <BoardSettingsButton
+                      onClick={openBoardSettings}
+                      label={boardSettingsLabel}
+                    />
+                  </div>
+                </>
+              )
+            }
+          >
+            <TaskBoardAdminControls />
+            <Button size="sm" onClick={openCreate}>
+              <Plus size={16} />
+              {t("taskBoard.taskBoard.newTask")}
+            </Button>
+          </Page.Actions>
+          {inlineTabs ? (
+            /* The board's own toolbar strip, fenced off from the apps
                    launcher above it by a full-bleed rule: without one the tabs
                    read as a third row of the project header rather than the
                    control of the region under them. Full-bleed and not capped
                    like the row inside it — a rule that stops short of the panel
                    edge is a box someone forgot to finish. The row is padded for
                    the filters that sit beside these tabs. */
-                <div className="mt-2 border-t border-border">
-                  {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
-                  <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
-                    {layoutTabs}
-                  </div>
-                </div>
-              ) : (
-                <Panel.Toolbar.Left.Portal>
-                  {layoutTabs}
-                </Panel.Toolbar.Left.Portal>
-              )}
-            </>
+            <div className="mt-2 border-t border-border">
+              {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
+              <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
+                {layoutTabs}
+              </div>
+            </div>
+          ) : (
+            <Panel.Toolbar.Left.Portal>{layoutTabs}</Panel.Toolbar.Left.Portal>
           )}
-
-          <div
-            className={cn(
-              "mx-auto w-full max-w-[1680px]",
-              inlineTabs ? "px-4 md:px-8" : "px-4 sm:px-8",
-            )}
-          >
-            <TaskBoardAdminBanner />
-          </div>
-          <AppliedFiltersBar
-            filters={filters}
-            items={items}
-            members={members}
-            tags={orgTags}
-            index={projectIndex}
-            onChange={handleFiltersChange}
-          />
         </>
+      )}
+
+      <div
+        className={cn(
+          "mx-auto w-full max-w-[1680px]",
+          inlineTabs ? "px-4 md:px-8" : "px-4 sm:px-8",
+        )}
+      >
+        <TaskBoardAdminBanner />
+      </div>
+      <AppliedFiltersBar
+        filters={filters}
+        items={items}
+        members={members}
+        tags={orgTags}
+        index={projectIndex}
+        onChange={handleFiltersChange}
+      />
 
       {items.length === 0 ? (
         <div
@@ -3531,4 +3524,3 @@ function ListRow({
     </button>
   );
 }
-

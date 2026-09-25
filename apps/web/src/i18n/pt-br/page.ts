@@ -12,4 +12,6 @@ export const page = {
   "page.views": "Visualizações da página",
   "page.openThread": "Abrir chat",
   "page.closeThread": "Fechar chat",
+  "page.collapseSidebar": "Recolher barra lateral",
+  "page.expandSidebar": "Expandir barra lateral",
 } satisfies Record<keyof typeof enPage, string>;

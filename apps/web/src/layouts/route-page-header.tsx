@@ -1,14 +1,20 @@
 import type { ReactNode } from "react";
 import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutLeft, XClose } from "@untitledui/icons";
+import { LayoutLeft, MessageCircle01, XClose } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@decocms/ui/components/tooltip.tsx";
 import { Page } from "@/components/page";
 
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useAppTakeover } from "@/hooks/use-app-takeover";
 import { useInSettings } from "@/hooks/use-in-settings";
+import { useOptionalChatLayout } from "@/components/chat-layout";
 
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
@@ -29,6 +35,7 @@ export function RoutePageHeader({
   const inSettings = useInSettings();
   const { toggleSidebar } = useSidebar();
   const takeover = useAppTakeover();
+  const chatLayout = useOptionalChatLayout();
   const page = useRouterState({
     select: (state) =>
       state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
@@ -77,16 +84,41 @@ export function RoutePageHeader({
       </Link>
     </IconButton>
   );
+  /** An app takes the sidebar's place, so its own thread toggle — normally in
+   *  the sidebar header — goes with it. Without this, an app with the chat
+   *  closed has no way back into it. */
+  const chatToggle = takeover && chatLayout && (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          aria-label={t(
+            chatLayout.threadOpen ? "page.closeThread" : "page.openThread",
+          )}
+          aria-pressed={chatLayout.threadOpen}
+          active={chatLayout.threadOpen}
+          onClick={chatLayout.toggleThread}
+        >
+          <MessageCircle01 size={16} />
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {t(chatLayout.threadOpen ? "page.closeThread" : "page.openThread")}
+      </TooltipContent>
+    </Tooltip>
+  );
   return (
     <Page.Header
       leading={
-        <ToolbarIconButton
-          className="md:hidden"
-          onClick={toggleSidebar}
-          aria-label={t("layouts.shellControls.toggleSidebar")}
-        >
-          <LayoutLeft size={16} />
-        </ToolbarIconButton>
+        <>
+          <ToolbarIconButton
+            className="md:hidden"
+            onClick={toggleSidebar}
+            aria-label={t("layouts.shellControls.toggleSidebar")}
+          >
+            <LayoutLeft size={16} />
+          </ToolbarIconButton>
+          {chatToggle}
+        </>
       }
       breadcrumbs={breadcrumbs}
       actions={actions}

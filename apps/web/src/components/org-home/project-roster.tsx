@@ -141,17 +141,22 @@ function ProjectRosterItem({
   );
 }
 
+/** Empty by default: the classic org home has no daily-pulse query to draw
+ *  summaries or series from, and every row degrades to its quiet state. */
+const NO_SUMMARIES: Map<string, ProjectSummary> = new Map();
+const NO_SERIES: Map<string, readonly number[]> = new Map();
+
 export function ProjectRoster({
   projects,
-  summaries,
-  series,
+  summaries = NO_SUMMARIES,
+  series = NO_SERIES,
   action,
 }: {
   projects: VirtualMCPEntity[];
   /** One headline per project id, from `projectSummaries`. */
-  summaries: Map<string, ProjectSummary>;
+  summaries?: Map<string, ProjectSummary>;
   /** Shipped-per-day per project id, from `shippedSeries`. */
-  series: Map<string, readonly number[]>;
+  series?: Map<string, readonly number[]>;
   /** The block's own control — "New project". Passed in rather than imported
    *  so the roster owns no creation path. */
   action?: ReactNode;
