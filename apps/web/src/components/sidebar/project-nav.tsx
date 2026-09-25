@@ -47,6 +47,8 @@ import {
   type ProjectNativeViewId,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
 import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
+import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
 
 /** A project's curated app views. The metadata bag is `.loose()`, so this
  *  validates the shape rather than trusting it. */
@@ -182,17 +184,24 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
     (project.connections ?? []).map((c) => c.connection_id),
   )) {
     if (pinned.toolName === "fetch_assets") continue;
+    const panel = formatPinnedViewTabId(pinned.connectionId, pinned.toolName);
+    const icon = resolveTabIcon({
+      tabId: panel,
+      kind: "expanded",
+      iconUrl: pinned.icon,
+      connections: [],
+    });
     views.push({
       key: `pinned:${pinned.connectionId}:${pinned.toolName}`,
       label: pinned.label || pinned.toolName,
-      icon: pinned.icon ? (
-        <img src={pinned.icon} alt="" className="size-4 rounded-[3px]" />
-      ) : (
-        <Grid01 size={16} />
-      ),
-      panel: formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
-      isActive: (tabId) =>
-        tabId === formatPinnedViewTabId(pinned.connectionId, pinned.toolName),
+      icon:
+        icon.kind === "fallback" ? (
+          <Grid01 size={16} />
+        ) : (
+          <TabIconGlyph icon={icon} />
+        ),
+      panel,
+      isActive: (tabId) => tabId === panel,
     });
   }
   if (selectedViews.has("automations")) {
