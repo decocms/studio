@@ -10,24 +10,35 @@ const SECONDARY =
   "bg-[var(--studio-secondary-background)] text-[color:var(--studio-secondary-foreground)] shadow-[var(--studio-secondary-shadow)] hover:bg-[var(--studio-secondary-hover-background)] hover:text-[color:var(--studio-secondary-hover-foreground)]";
 
 const buttonVariants = cva(
-  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--studio-button-radius,calc(var(--radius)*1.333))] text-sm transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/20 focus-visible:ring-[2px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  [
+    "relative inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap",
+    /* A pill at every size, in every layout — see `--studio-button-radius`. */
+    "rounded-[var(--studio-button-radius)] text-sm font-medium",
+    /* Colour and shadow ease; the press is instant, because a button that
+       takes 150ms to look pressed feels like it missed the click. */
+    "transition-[background-color,box-shadow,color,opacity] duration-150 ease-[var(--ease-out-cubic)]",
+    "active:scale-[0.98] active:transition-none motion-reduce:active:scale-100",
+    "focus-ring",
+    "disabled:pointer-events-none disabled:opacity-45",
+    "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+    "aria-invalid:outline-destructive",
+  ],
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        /* The one filled button on a screen. Ink, so it is unmistakably the
+           thing to press, and nothing else on the page is this dark. */
+        default: "bg-primary text-primary-foreground hover:bg-primary/85",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive/70",
         secondary: SECONDARY,
         outline:
           "bg-[var(--studio-input-background)] text-[color:var(--studio-outline-foreground)] hover:bg-[var(--studio-outline-hover-background)] hover:text-accent-foreground card-shadow",
-        success:
-          "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/20 dark:focus-visible:ring-success/40",
-        warning:
-          "bg-warning text-warning-foreground hover:bg-warning/90 focus-visible:ring-warning/20 dark:focus-visible:ring-warning/40",
-        brand:
-          "bg-brand text-brand-foreground hover:bg-brand/90 focus-visible:ring-brand/20 dark:focus-visible:ring-brand/40",
-        special:
-          "bg-special text-special-foreground hover:bg-special/90 focus-visible:ring-special/20 dark:focus-visible:ring-special/40",
+        success: "bg-success text-success-foreground hover:bg-success/90",
+        warning: "bg-warning text-warning-foreground hover:bg-warning/90",
+        /* Lime. Reserved for starting work — see the accent rule. */
+        brand: "bg-brand text-brand-foreground hover:bg-brand/85",
+        special: "bg-special text-special-foreground hover:bg-special/90",
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         /**
@@ -55,12 +66,17 @@ const buttonVariants = cva(
          */
         menu: "w-full justify-start font-normal hover:bg-accent hover:text-accent-foreground",
       },
+      /* A pill needs more room at the ends than a rectangle does — the curve
+         eats the first and last few pixels, so the label sits closer to the
+         edge than it measures. Padding grows faster than height for that
+         reason, and an icon-led button gives a little back because a glyph
+         reads as its own margin. */
       size: {
-        default: "h-8 px-3 has-[>svg]:px-2.5",
-        sm: "h-7 gap-1.5 px-2.5 has-[>svg]:px-2",
-        xs: "h-6 gap-1 px-1.5 text-xs has-[>svg]:px-1",
-        lg: "h-10 px-3.5 has-[>svg]:px-3",
-        xl: "h-12 px-4 has-[>svg]:px-3.5",
+        default: "h-8 px-3.5 has-[>svg]:px-3",
+        sm: "h-7 gap-1.5 px-3 has-[>svg]:px-2.5",
+        xs: "h-6 gap-1 px-2.5 text-xs has-[>svg]:px-2",
+        lg: "h-10 px-4.5 has-[>svg]:px-4",
+        xl: "h-12 px-6 text-base has-[>svg]:px-5",
         icon: "size-8",
         "icon-sm": "size-7",
       },

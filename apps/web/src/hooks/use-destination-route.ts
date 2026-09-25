@@ -45,6 +45,7 @@ export const PROJECT_ROUTE = {
   view: "/$org/projects/$agentId/views/$viewId",
   outputFile: "/$org/projects/$agentId/outputs/file",
   outputDeck: "/$org/projects/$agentId/outputs/deck",
+  library: "/$org/projects/$agentId/library",
   libraryFile: "/$org/projects/$agentId/library/file",
   connectSources: "/$org/projects/$agentId/connect-sources",
   settings: "/$org/projects/$agentId/settings",
@@ -69,19 +70,9 @@ export function useLeafRoutePath(): string {
 
 /** Which side of the project scope a destination is bound to, for the two that
  *  are: `"project-only"` cannot be shown for the whole org, `"org-only"` cannot
- *  be narrowed to one project. */
+ *  be narrowed to one project. Only the CLASSIC sidebar asks — see below. */
 type ScopeBinding = "project-only" | "org-only";
 
-/** The destinations bound to one side of the scope — the ONE place that fact
- *  lives. A project is a filter, so most pages exist on both sides of it and
- *  this map names only the two that do not: Library lists the ORG's files, and
- *  a report is about one site. It is keyed by route path because the consumers
- *  are keyed by route path too: the sidebar drops the row a scope invalidates
- *  (`nav-destinations.tsx`), and `useExitProjectScope` must not leave you on a
- *  page the scope it just cleared was the only way to reach. Two hand-kept
- *  lists would drift the first time a destination is added; this one cannot,
- *  and its entries are typed `DestinationRoutePath`, so a route renamed in
- *  `DESTINATION_ROUTE` is a compile error here. */
 const SCOPE_BOUND_ROUTES: ReadonlyMap<string, ScopeBinding> = new Map<
   DestinationRoutePath,
   ScopeBinding
@@ -102,6 +93,14 @@ export function routeExistsInScope(
   if (binding === undefined) return true;
   return binding === "project-only" ? scopeId !== null : scopeId === null;
 }
+
+/**
+ * Under New Layout every destination exists on both sides of the scope, so
+ * nothing above is consulted: Library was the last exception — the org's files
+ * were one drive and a project had none — and a project owns its folder now
+ * (`layouts/library/project-folder.ts`), so both readings are real pages.
+ * Leaving a project un-narrows the page you are on rather than relocating you.
+ */
 
 /** The semantic view owned by the current route, used by the existing sidebar. */
 export function useActivePanelSegment(): string | undefined {

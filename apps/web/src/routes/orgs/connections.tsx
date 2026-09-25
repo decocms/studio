@@ -79,6 +79,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Container, Globe02, Plus, Terminal, XClose } from "@untitledui/icons";
+import {
+  ConnectionProjects,
+  projectsByConnection,
+} from "@/components/projects/connection-projects";
+import { scopableProjects } from "@/hooks/use-project-scope";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { track } from "@/lib/posthog-client";
@@ -173,6 +178,11 @@ function ConnectionResults({
 
   // Agents list (for Add to Agent dialog)
   const agents = useVirtualMCPs();
+  /** Which projects aggregate each connection, for the card footers. Read off
+   *  the list above — the org-level answer to "which storefront does this
+   *  credential feed", which is the question asked right before someone
+   *  revokes one. */
+  const projectsForConnection = projectsByConnection(scopableProjects(agents));
 
   // Apply UI filters (VIRTUAL already excluded server-side)
   const filteredConnections = connections.filter((c) => {
@@ -587,6 +597,13 @@ function ConnectionResults({
                       isSelected && "ring-2 ring-primary bg-primary/5",
                     )}
                     selected={selectionMode ? isSelected : undefined}
+                    footer={
+                      <ConnectionProjects
+                        projects={
+                          projectsForConnection.get(connection.id) ?? []
+                        }
+                      />
+                    }
                     headerActionsAlwaysVisible
                     headerActions={
                       <ConnectionCardHeaderActions

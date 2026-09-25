@@ -10,7 +10,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { DueFilter, TaskFilters } from "./task-filters-core";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
 
-export type Layout = "board" | "list";
+export type Layout = "board" | "list" | "feed";
 
 const DUE_FILTERS: DueFilter[] = ["overdue", "today", "week", "none"];
 
@@ -37,7 +37,10 @@ const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
 /** Anything unrecognized in the URL is dropped, not trusted. */
-export function parseBoardSearch(search: BoardSearch): {
+export function parseBoardSearch(
+  search: BoardSearch,
+  defaultLayout: Layout = "board",
+): {
   filters: TaskFilters;
   layout: Layout;
 } {
@@ -45,7 +48,12 @@ export function parseBoardSearch(search: BoardSearch): {
   const due = str(search.due);
   const tags = str(search.tags);
   return {
-    layout: search.view === "list" ? "list" : "board",
+    layout:
+      search.view === "list" ||
+      search.view === "feed" ||
+      search.view === "board"
+        ? search.view
+        : defaultLayout,
     filters: {
       search: str(search.q) ?? "",
       assignee: str(search.assignee),
@@ -63,9 +71,10 @@ export function parseBoardSearch(search: BoardSearch): {
 export function boardSearchParams(
   filters: TaskFilters,
   layout: Layout,
+  defaultLayout: Layout = "board",
 ): Record<keyof BoardSearch, string | undefined> {
   return {
-    view: layout === "list" ? "list" : undefined,
+    view: layout === defaultLayout ? undefined : layout,
     q: filters.search === "" ? undefined : filters.search,
     assignee: filters.assignee ?? undefined,
     priority: filters.priority ?? undefined,
@@ -89,18 +98,22 @@ export function visibleSelection(
   return new Set([...selection].filter((id) => visible.has(id)));
 }
 
-/** `useState`-shaped replacement for the board's filters + layout state. */
-export function useBoardSearch() {
+/** `useState`-shaped replacement for the board's filters + layout state.
+ *  `defaultLayout` is the landing view when the URL names none — Board
+ *  everywhere, except the project overview's inline tabs, where the board's
+ *  own horizontal columns are the wrong shape for a strip under a header;
+ *  Feed reads top-to-bottom like the rest of that page. */
+export function useBoardSearch(defaultLayout: Layout = "board") {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const { filters, layout } = parseBoardSearch(search);
+  const { filters, layout } = parseBoardSearch(search, defaultLayout);
 
   const write = (nextFilters: TaskFilters, nextLayout: Layout) =>
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...boardSearchParams(nextFilters, nextLayout),
+        ...boardSearchParams(nextFilters, nextLayout, defaultLayout),
       }),
       // Typing in the search box would otherwise push a history entry per key.
       replace: true,

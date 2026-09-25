@@ -66,6 +66,7 @@ import { resolveThreadSessionIdentity } from "./session-identity";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useAppTakeover } from "@/hooks/use-app-takeover";
 import {
   SandboxLifecycleProvider,
   overlayThreadSandboxMap,
@@ -505,6 +506,13 @@ function ThreadSessionContent({
 
   const entity = useVirtualMCP(virtualMcpId);
   const contentKey = useActivePanelTabId() ?? "overview";
+  /** A launched app takes the WHOLE screen (see `useAppTakeover`'s doc
+   *  comment) — the nav sidebar goes, so the chat panel has to as well.
+   *  Without this, `?sidepanel=true` carried over from wherever the app was
+   *  launched (a `Link` that doesn't clear search keeps it) reopens an empty
+   *  chat pane beside the app, which is the "sidebar that won't fully go
+   *  away" this guards against. */
+  const takeover = useAppTakeover();
 
   return (
     <>
@@ -514,15 +522,18 @@ function ThreadSessionContent({
       />
       <ChatLayout
         {...layout}
+        threadOpen={takeover ? false : layout.threadOpen}
         contentKey={contentKey}
         contentNavigation={
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />
         }
         contentActions={entity && <DevAgentControl virtualMcp={entity} />}
       >
-        <ChatLayout.Thread topbar={<ThreadTopbar />}>
-          <ActiveTaskBoundary />
-        </ChatLayout.Thread>
+        {!takeover && (
+          <ChatLayout.Thread topbar={<ThreadTopbar />}>
+            <ActiveTaskBoundary />
+          </ChatLayout.Thread>
+        )}
         <Outlet />
       </ChatLayout>
     </>

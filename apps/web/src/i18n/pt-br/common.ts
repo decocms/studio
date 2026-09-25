@@ -317,6 +317,7 @@ export const common = {
   "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "Lista",
   "common.taskBoard.boardView": "Quadro",
+  "common.taskBoard.feedView": "Feed",
   "common.openExternalFailed": "Não foi possível abrir este link no navegador.",
   "common.taskStatus.requiresAction": "Requer revisão",
   "common.taskStatus.failed": "Falhou",

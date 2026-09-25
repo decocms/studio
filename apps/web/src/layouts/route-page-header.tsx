@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
-import { useRouterState } from "@tanstack/react-router";
-import { LayoutLeft } from "@untitledui/icons";
+import { Link, useRouterState } from "@tanstack/react-router";
+import { LayoutLeft, XClose } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Page } from "@/components/page";
 
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
+import { useAppTakeover } from "@/hooks/use-app-takeover";
 import { useInSettings } from "@/hooks/use-in-settings";
 
 import { useScopeId } from "@/hooks/use-project-scope";
@@ -26,6 +28,7 @@ export function RoutePageHeader({
   const project = useVirtualMCPNonBlocking(scopeId);
   const inSettings = useInSettings();
   const { toggleSidebar } = useSidebar();
+  const takeover = useAppTakeover();
   const page = useRouterState({
     select: (state) =>
       state.matches.findLast((match) => match.staticData.pageTitle)?.staticData,
@@ -40,7 +43,14 @@ export function RoutePageHeader({
       ? projectTitle
       : t("sidebar.navDestinations.home")
     : t(page?.pageTitle ?? "page.view");
-
+  /** The crumb is the way out of an app, so it lands on the project as the
+   *  reader knows it: its one screen. Sending them to the scoped workspace
+   *  instead is how someone loses the sidebar and cannot get it back. */
+  const projectLink = {
+    to: "/$org/projects" as const,
+    params: { org: org.slug },
+    search: { project: scopeId ?? undefined },
+  };
   const breadcrumbs: BreadcrumbItem[] = [];
   if (inSettings) {
     breadcrumbs.push({
@@ -52,13 +62,21 @@ export function RoutePageHeader({
     breadcrumbs.push({
       key: "project",
       label: projectTitle,
-      link: {
-        to: "/$org/projects/$agentId",
-        params: { org: org.slug, agentId: scopeId },
-      },
+      link: projectLink,
     });
   }
   breadcrumbs.push({ key: "page", label: title });
+  /** An app took the whole screen (no nav sidebar beside it — see
+   *  `useAppTakeover`), so the breadcrumb crumb is its only way out. That is
+   *  one click too many to be the ONLY affordance: a launched app reads as a
+   *  window, and a window closes from its own corner. */
+  const closeAction = takeover && scopeId && (
+    <IconButton label={t("projects.flat.close")} asChild>
+      <Link {...projectLink}>
+        <XClose size={16} />
+      </Link>
+    </IconButton>
+  );
   return (
     <Page.Header
       leading={
@@ -72,6 +90,7 @@ export function RoutePageHeader({
       }
       breadcrumbs={breadcrumbs}
       actions={actions}
+      trailingActions={closeAction}
       navigation={navigation}
     />
   );

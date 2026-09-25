@@ -14,6 +14,12 @@
  * `tone` picks the palette: Finder blue for folders people make, graphite for
  * the system folders the product fills (uploads/outputs/skills), so "nobody
  * made this by hand" reads at a glance.
+ *
+ * `sheets` draws up to three pages peeking over the front body — the one thing
+ * a closed folder can honestly say about itself from a listing: it has
+ * something in it. Drawn between the back tab and the front body so they read
+ * as being INSIDE, and fanned rather than stacked so a full folder looks full
+ * at a glance instead of holding one thick page.
  */
 
 import { useId } from "react";
@@ -41,15 +47,22 @@ const TONES = {
 
 export type FolderTone = keyof typeof TONES;
 
+/** How far each page leans, in degrees. Three is the most that reads as a fan
+ *  rather than a mess at 32px, which is why `sheets` is clamped to it. */
+const SHEET_ANGLES = [-7, 0, 7] as const;
+
 export function FolderIcon({
   glyph: Glyph,
   readOnly,
   tone = "default",
+  sheets = 0,
   ...props
 }: {
   glyph?: ComponentType<SVGProps<SVGSVGElement>>;
   readOnly?: boolean;
   tone?: FolderTone;
+  /** Pages peeking out of the folder, 0 to 3. */
+  sheets?: number;
 } & SVGProps<SVGSVGElement>) {
   const colors = TONES[tone];
   // Gradient ids must be unique per instance — folder cards render many of
@@ -71,6 +84,24 @@ export function FolderIcon({
         d="M2.53738 2.55C1.13602 2.55 0 3.68602 0 5.08738V11.535H31.931V7.65326C31.931 6.23616 30.7822 5.08738 29.3651 5.08738H14.7681L13.8775 5.02542C13.3886 4.99141 12.9197 4.81809 12.5261 4.52596L10.7726 3.22419C10.1828 2.78638 9.46784 2.55 8.73334 2.55H2.53738Z"
         fill={`url(#${backId})`}
       />
+      {/* pages inside, peeking over the front body's top edge */}
+      {SHEET_ANGLES.slice(0, Math.min(Math.max(sheets, 0), 3)).map((angle) => (
+        <rect
+          key={angle}
+          x="9"
+          y="3.4"
+          width="14"
+          height="12"
+          rx="1.2"
+          /* Paper is paper in both themes, like the folder's own blues: a
+             `fill-background` sheet goes near-black in dark mode and reads as a
+             slot cut into the folder rather than as something inside it. */
+          fill="#F4F6F9"
+          stroke="#C9D2DC"
+          strokeWidth="0.7"
+          transform={`rotate(${angle} 16 12)`}
+        />
+      ))}
       {/* front body */}
       <rect
         y="8.72"

@@ -1,6 +1,6 @@
-/**
- * ReportsTab — what the sidebar's Reports destination opens for an org that has
- * no report yet (the route's own `reports` view).
+/** ReportsTab — what the sidebar's Reports destination opens, on both sides of
+ * the project scope: the INDEX at org scope (`ReportsIndex`, one row per
+ * project), and that project's report inside one.
  *
  * Reports used to be hidden until a diagnostic existed, which left no way to ask
  * for one from inside the product: the only entry was the public
@@ -43,6 +43,9 @@ import {
 import { parseSelfToolResult } from "@/routes/reports-onboarding/self-tool-result.ts";
 import { translateSiteError } from "@/routes/reports-onboarding/site-error.ts";
 import { PanelLoading } from "@/layouts/main-panel-boundary";
+import { ReportsIndex } from "@/components/projects/reports-index";
+import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
+import { readProjectProfile, storeHost } from "@/lib/project-profile.ts";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -51,12 +54,41 @@ const AppViewContent = lazy(() =>
 );
 
 export function ReportsTab() {
+  const scopeId = useScopeId();
+  const { project } = useProjectScope();
   const { diagnostic, isLoading, siteUrl, connectionId } =
     useReportsDiagnostic();
 
+  /** At ORG scope this destination is the index over every project's report —
+   *  a report belongs to a project now, and the org-wide view is the list of
+   *  them. Inside a project it is that project's report, below. */
+  if (!scopeId) {
+    return (
+      <Suspense fallback={<PanelLoading />}>
+        <ReportsIndex />
+      </Suspense>
+    );
+  }
+
   if (isLoading) return <PanelLoading />;
 
-  if (diagnostic) {
+  const projectSiteUrl = project ? readProjectProfile(project).storeUrl : null;
+
+  /**
+   * Whether the org's one diagnostic is about THIS project.
+   *
+   * The backend still keeps a single report per organization (see
+   * `use-project-reports.ts`), so without this check every project would render
+   * the same numbers under its own name — a storefront's funnel shown as the
+   * app's. A project that names no storefront keeps the old behaviour and shows
+   * the org's report, which is what every pre-projects repo import is.
+   */
+  const ownsDiagnostic =
+    !projectSiteUrl ||
+    !siteUrl ||
+    storeHost(projectSiteUrl) === storeHost(siteUrl);
+
+  if (diagnostic && ownsDiagnostic) {
     return (
       <Suspense fallback={<PanelLoading />}>
         <AppViewContent
@@ -69,11 +101,16 @@ export function ReportsTab() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+      {/* The project's own storefront seeds the form, so starting a report
+          from inside a project never asks for an address the project already
+          knows. */}
       <ErrorBoundary
-        fallback={() => <StartDiagnosticState claimedSiteUrl={siteUrl} />}
+        fallback={() => (
+          <StartDiagnosticState claimedSiteUrl={projectSiteUrl ?? siteUrl} />
+        )}
       >
         <Suspense fallback={<PanelLoading />}>
-          <StartDiagnostic claimedSiteUrl={siteUrl} />
+          <StartDiagnostic claimedSiteUrl={projectSiteUrl ?? siteUrl} />
         </Suspense>
       </ErrorBoundary>
     </div>

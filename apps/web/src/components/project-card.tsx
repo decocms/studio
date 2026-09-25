@@ -4,7 +4,6 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useDateFnsLocale } from "@/hooks/use-date-fns-locale.ts";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
 import {
@@ -33,21 +32,12 @@ export function ProjectCard({
   // which the backend gates on `org:manage` — not `agents:manage`. Match it so
   // the action isn't shown to users whose click would fail server-side.
 
-  /**
-   * Where this card lands: the agent's OWN chosen main view, the same
-   * `defaultMainView` the workspace resolves — so a Site Editor agent opens on
-   * the Site Editor rather than a generic default. An agent that names no view
-   * (or names Chat) still lands with no panel at all, exactly as before, so the
-   * card cannot force a panel open on an agent configured chat-first.
-   */
-  const landingPanel = landingTabIdFor(project.metadata?.ui?.layout);
-
   return (
     <Card className="relative transition-colors group overflow-hidden flex flex-col h-full hover:bg-muted/50">
       {/* Overlay button — pins agent to sidebar and navigates */}
       <button
         type="button"
-        onClick={() => navigateToAgent(project.id, { panel: landingPanel })}
+        onClick={() => navigateToAgent(project.id)}
         className="absolute inset-0 z-0"
         aria-label={project.title}
       />

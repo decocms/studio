@@ -27,6 +27,7 @@ import {
   type ThreadRuntime,
 } from "@decocms/shared/thread/session-runtime";
 import { writeThreadIntent } from "@/lib/thread-intent";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const NO_THREADS: Task[] = [];
 
@@ -57,6 +58,7 @@ export function useNavigateToAgent() {
   const manager = useOptionalThreadManager();
   /** Cold-entry base ("main"): no current branch to resolve a PR base from. */
   const baseBranch = useBaseBranch(undefined, null);
+  const projectFirstNav = useProjectFirstNav();
 
   /** The navigation proper, once the wanted runtime is known. */
   const go = (
@@ -64,6 +66,26 @@ export function useNavigateToAgent() {
     options: NavigateToAgentOptions | undefined,
     wantedRuntime: ThreadRuntime | undefined,
   ) => {
+    /** "Open this project" lands on its one screen — a project is not a scope
+     *  you enter. Naming a VIEW is a different ask ("open its settings", "open
+     *  this automation"), and those are destinations inside the scoped
+     *  workspace, so they keep the path below. Here because this is the single
+     *  funnel every "open this project" caller already goes through. */
+    if (projectFirstNav && !options?.panel) {
+      void navigate({
+        to: "/$org/projects",
+        params: { org: org.slug },
+        search: (prev: Record<string, unknown>) => ({
+          ...prev,
+          project: virtualMcpId,
+          virtualmcpid: undefined,
+          /** Home's own param. Search is spread forward, so leaving it on
+           *  would carry the Agents destination onto a project's screen. */
+          view: undefined,
+        }),
+      });
+      return;
+    }
     const tabId = options?.panel ?? "overview";
     /** Organization destinations do not belong to an agent session. Navigate
      * there without minting a thread whose identity the route cannot encode. */

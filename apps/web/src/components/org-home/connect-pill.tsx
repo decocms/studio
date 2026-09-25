@@ -31,9 +31,9 @@ const CLIENTS: {
   bg: string;
   fg: string;
 }[] = [
-  { name: "Claude", Icon: ClaudeCodeIcon, size: 14, bg: "#D97757", fg: "#fff" },
-  { name: "Cursor", Icon: CursorIcon, size: 12, bg: "#000", fg: "#fff" },
-  { name: "Codex", Icon: CodexIcon, size: 12, bg: "#4F46E5", fg: "#fff" },
+  { name: "Claude", Icon: ClaudeCodeIcon, size: 11, bg: "#D97757", fg: "#fff" },
+  { name: "Cursor", Icon: CursorIcon, size: 10, bg: "#000", fg: "#fff" },
+  { name: "Codex", Icon: CodexIcon, size: 10, bg: "#4F46E5", fg: "#fff" },
 ];
 
 export function ConnectPill() {
@@ -45,7 +45,11 @@ export function ConnectPill() {
       to="/$org/settings/connect"
       params={{ org: org.slug }}
       onClick={() => track("connect_clients_opened", { source: "org_home" })}
-      className="group hidden max-w-full md:inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-2.5 text-sm transition-colors hover:bg-accent/60"
+      /* `h-7` is Button's `sm`, which is what "New project" beside it in the
+         topbar uses — the two are one row of controls and a pill a third
+         taller reads as a different kind of thing. No wrapping at that
+         height: it would overflow a fixed box rather than grow. */
+      className="group hidden h-7 max-w-full md:inline-flex shrink-0 items-center justify-center gap-x-2 whitespace-nowrap rounded-full border border-border bg-card pl-3 pr-1.5 text-sm transition-colors hover:bg-accent/60"
     >
       <span className="font-medium text-foreground">
         {t("home.orgHome.connectPill")}
@@ -55,14 +59,14 @@ export function ConnectPill() {
           <span
             key={name}
             title={name}
-            className="flex size-6 items-center justify-center rounded-full"
+            className="flex size-5 items-center justify-center rounded-full"
             style={{ backgroundColor: bg, color: fg }}
           >
             <Icon size={size} />
           </span>
         ))}
       </span>
-      <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      <ArrowRight className="size-3 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>
   );
 }

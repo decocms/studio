@@ -1,5 +1,4 @@
 export const library = {
-  "library.library.title": "Library",
   "library.library.all": "All files",
   "library.library.documents": "Documents",
   "library.library.media": "Media",
@@ -52,7 +51,7 @@ export const library = {
   "library.brandPreview.voiceGuidelines": "Voice & guidelines",
   "library.brandPreview.voicePlaceholder":
     "Describe the brand voice, tone, do's and don'ts…",
-  "library.cards.actionsFor": "Actions for {filename}",
+  "library.cards.actionsFor": "Actions for {label}",
   "library.cards.brand": "Brand",
   "library.cards.browseFiles": "Browse files",
   "library.cards.delete": "Delete",
@@ -129,8 +128,6 @@ export const library = {
   "library.library.uploadedSingle": "Uploaded {filename}",
   "library.library.uploading": "Uploading…",
   "library.libraryViews.brands": "Brands",
-  "library.libraryViews.curatedSkillSetsReadOnly":
-    "Curated skill sets — read-only",
   "library.libraryViews.emptyFolder":
     "Empty folder — upload a file or create a folder to get started.",
   "library.libraryViews.emptyReadOnlySet":
@@ -142,9 +139,7 @@ export const library = {
   "library.libraryViews.noFilesMatch": 'No files match "{query}".',
   "library.libraryViews.noPublicSkillSetsConfigured":
     "No public skill sets are configured.",
-  "library.libraryViews.readOnly": "Read-only",
   "library.libraryViews.recentlyAdded": "Recently added",
-  "library.libraryViews.searchResults": "{count} result(s)",
   "library.libraryViews.skillSetsCount": "{count} sets",
   "library.libraryViews.skills": "Skills",
   "library.libraryViews.volumeOutputsDescription": "Agent run outputs",
@@ -158,4 +153,13 @@ export const library = {
   "library.previewContent.fileNotAvailable":
     "This file is no longer available.",
   "library.previewContent.openInNewTab": "Open in new tab",
+  "library.entries.folder": "Folder",
+  "library.entries.size": "Size",
+  "library.entries.location": "Location",
+  "library.entries.listView": "List view",
+  "library.entries.gridView": "Grid view",
+  "library.entries.emptyFolder": "Empty",
+  "library.entries.itemsCount": "{count} items",
+  "library.libraryViews.results": "Results",
+  "library.entries.itemCount": "1 item",
 } as const;

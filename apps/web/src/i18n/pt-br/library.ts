@@ -1,7 +1,6 @@
 import type { library as libraryEn } from "../en/library.ts";
 
 export const library = {
-  "library.library.title": "Biblioteca",
   "library.library.all": "Todos os arquivos",
   "library.library.documents": "Documentos",
   "library.library.media": "Mídia",
@@ -54,7 +53,7 @@ export const library = {
   "library.brandPreview.voiceGuidelines": "Voz & diretrizes",
   "library.brandPreview.voicePlaceholder":
     "Descreva a voz, tom da marca, deve e não deve fazer…",
-  "library.cards.actionsFor": "Ações para {filename}",
+  "library.cards.actionsFor": "Ações para {label}",
   "library.cards.brand": "Marca",
   "library.cards.browseFiles": "Procurar arquivos",
   "library.cards.delete": "Excluir",
@@ -135,8 +134,6 @@ export const library = {
   "library.library.uploadedSingle": "Enviado {filename}",
   "library.library.uploading": "Enviando…",
   "library.libraryViews.brands": "Marcas",
-  "library.libraryViews.curatedSkillSetsReadOnly":
-    "Conjuntos de skills curados — somente leitura",
   "library.libraryViews.emptyFolder":
     "Pasta vazia — envie um arquivo ou crie uma pasta para começar.",
   "library.libraryViews.emptyReadOnlySet":
@@ -149,9 +146,7 @@ export const library = {
     'Nenhum arquivo corresponde a "{query}".',
   "library.libraryViews.noPublicSkillSetsConfigured":
     "Nenhum conjunto de skills público configurado.",
-  "library.libraryViews.readOnly": "Somente leitura",
   "library.libraryViews.recentlyAdded": "Adicionado recentemente",
-  "library.libraryViews.searchResults": "{count} resultado(s)",
   "library.libraryViews.skillSetsCount": "{count} conjunto(s)",
   "library.libraryViews.skills": "Skills",
   "library.libraryViews.volumeOutputsDescription":
@@ -167,4 +162,13 @@ export const library = {
   "library.previewContent.fileNotAvailable":
     "Este arquivo não está mais disponível.",
   "library.previewContent.openInNewTab": "Abrir em nova aba",
+  "library.entries.folder": "Pasta",
+  "library.entries.size": "Tamanho",
+  "library.entries.location": "Local",
+  "library.entries.listView": "Ver em lista",
+  "library.entries.gridView": "Ver em grade",
+  "library.entries.emptyFolder": "Vazia",
+  "library.entries.itemsCount": "{count} itens",
+  "library.libraryViews.results": "Resultados",
+  "library.entries.itemCount": "1 item",
 } satisfies Record<keyof typeof libraryEn, string>;
