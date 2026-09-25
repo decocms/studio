@@ -53,11 +53,21 @@ API keys let external tools or automated systems access your organization withou
 
 **Best practice**: Give each API key only the permissions it actually needs. If a script only reads data, don't give it permission to delete things.
 
+## Billing & seats
+
+For organizations on an invoiced (contract) plan, access is billed per seat. The **Members** page shows a **Seat** column where an Owner or Admin can toggle team members on or off a paid seat.
+
+Toggling seats doesn't apply immediately — changes stage locally first. An apply bar shows the pending change count and the resulting paid-seat total; review it, then commit the batch to update billing for everyone at once.
+
+<Callout type="tip">
+  Self-serve, pay-as-you-go seat billing (with an in-product checkout) is rolling out — until it's available for your organization, the Seat column only appears for orgs on an invoiced plan.
+</Callout>
+
 ## Where to manage access
 
 You'll work with these settings in a few different places:
 
-- **Members page**: Invite teammates and assign roles
+- **Members page**: Invite teammates, assign roles, and (for invoiced orgs) manage seats
 - **Roles page** (**Settings → Roles**): Create and edit custom roles
 - **API Keys**: Managed via MCP management tools or the API (see [API Keys](/en/studio/api-keys))
 - **Agents page**: Control which tools and connections each agent can access (useful for limiting what AI assistants or automation can do)

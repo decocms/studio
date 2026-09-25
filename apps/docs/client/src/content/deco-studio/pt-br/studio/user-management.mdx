@@ -53,11 +53,21 @@ As API keys permitem que tools externas ou sistemas automatizados acessem sua or
 
 **Boa prática**: Dê a cada API key apenas as permissions de que ela realmente precisa. Se um script apenas lê dados, não dê a ele permissão para deletar coisas.
 
+## Cobrança e assentos (seats)
+
+Para organizações em um plano faturado (contrato), o acesso é cobrado por assento (seat). A página **Members** exibe uma coluna **Seat**, onde um Owner ou Admin pode ativar ou desativar um assento pago para cada membro do time.
+
+Ativar ou desativar assentos não se aplica imediatamente — as mudanças ficam pendentes localmente primeiro. Uma barra de aplicação mostra a quantidade de mudanças pendentes e o total de assentos pagos resultante; revise e depois confirme o lote para atualizar a cobrança de todos de uma vez.
+
+<Callout type="tip">
+  A cobrança self-service por assento (pay-as-you-go, com checkout no próprio produto) está em lançamento gradual — até que esteja disponível para a sua org, a coluna Seat só aparece para orgs em plano faturado.
+</Callout>
+
 ## Onde gerenciar o acesso
 
 Você vai trabalhar com essas configurações em alguns lugares diferentes:
 
-- **Página Members**: Convide colegas de time e atribua roles
+- **Página Members**: Convide colegas de time, atribua roles e (para orgs em plano faturado) gerencie assentos (seats)
 - **Página Roles** (**Settings → Roles**): Crie e edite roles personalizados
 - **API Keys**: Gerenciadas via tools de MCP management ou pela API (veja [API Keys](/pt-br/studio/api-keys))
 - **Página Agents**: Controle quais tools e connections cada agent pode acessar (útil para limitar o que assistentes de IA ou automations podem fazer)
