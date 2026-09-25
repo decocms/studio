@@ -443,7 +443,8 @@ interface AdminOrgProject {
   id: string;
   title: string;
   siteSlug: string;
-  analyticsSiteSlug: string | null;
+  /** The keys the admin API allows editing; absent ones are null. */
+  metadata: { analyticsSiteSlug: string | null };
 }
 
 /** Radix Select can't hold an empty value, so this stands for "no override". */
@@ -472,9 +473,9 @@ function ProjectAnalyticsSites({
   const mutation = useMutation({
     mutationFn: (vars: { project: AdminOrgProject; slug: string | null }) =>
       adminFetch(
-        `/api/_admin/orgs/${org.id}/projects/${encodeURIComponent(vars.project.id)}/analytics-site`,
+        `/api/_admin/orgs/${org.id}/projects/${encodeURIComponent(vars.project.id)}/metadata`,
         {
-          method: "PUT",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ analyticsSiteSlug: vars.slug }),
         },
@@ -523,7 +524,7 @@ function ProjectAnalyticsSites({
       ) : (
         <div className="max-h-[30vh] space-y-2 overflow-y-auto pr-1">
           {projects.map((project) => {
-            const current = project.analyticsSiteSlug;
+            const current = project.metadata.analyticsSiteSlug;
             const options = sites
               .map((site) => site.slug)
               .filter((slug) => slug !== project.siteSlug);

@@ -568,22 +568,19 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
   }
 
   /**
-   * Set or clear `metadata.analyticsSiteSlug` in one statement. The metadata
-   * row also carries `sandboxMap`, which sandbox starts rewrite concurrently;
-   * a read-merge-write here could drop an entry one of them just added.
+   * Set and remove top-level metadata keys in one statement. The row also
+   * carries `sandboxMap`, which sandbox starts rewrite concurrently; a
+   * read-merge-write here could drop an entry one of them just added.
    * Returns false when the project is not a VIRTUAL row of `organizationId`.
    */
-  async setAnalyticsSiteSlug(params: {
+  async patchMetadata(params: {
     id: string;
     organizationId: string;
-    slug: string | null;
+    set: Record<string, unknown>;
+    unset: string[];
     by: string;
   }): Promise<boolean> {
-    const current = sql`coalesce(metadata::jsonb, '{}'::jsonb)`;
-    const next =
-      params.slug === null
-        ? sql`${current} - 'analyticsSiteSlug'`
-        : sql`${current} || jsonb_build_object('analyticsSiteSlug', ${params.slug}::text)`;
+    const next = sql`(coalesce(metadata::jsonb, '{}'::jsonb) - ${params.unset}::text[]) || ${JSON.stringify(params.set)}::jsonb`;
     const result = await this.db
       .updateTable("connections")
       .set({

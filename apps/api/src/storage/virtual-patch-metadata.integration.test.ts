@@ -12,7 +12,7 @@ const ORG = "org_analytics_site";
 const OTHER_ORG = "org_analytics_site_other";
 const USER = "user_analytics_site";
 
-describe("VirtualMCPStorage analytics-site override", () => {
+describe("VirtualMCPStorage metadata patches", () => {
   let database: StudioDatabase;
   let storage: VirtualMCPStorage;
 
@@ -86,7 +86,7 @@ describe("VirtualMCPStorage analytics-site override", () => {
     await closeTestPgDatabase(database);
   });
 
-  test("sets the override without touching the rest of the metadata", async () => {
+  test("sets keys without touching the rest of the metadata", async () => {
     const metadata = {
       siteSlug: "acme-tanstack",
       sandboxMap: { u1: { main: { "agent-sandbox": { sandboxHandle: "h" } } } },
@@ -94,10 +94,11 @@ describe("VirtualMCPStorage analytics-site override", () => {
     };
     await insertProject("vir_set", ORG, metadata);
 
-    const updated = await storage.setAnalyticsSiteSlug({
+    const updated = await storage.patchMetadata({
       id: "vir_set",
       organizationId: ORG,
-      slug: "acme",
+      set: { analyticsSiteSlug: "acme" },
+      unset: [],
       by: USER,
     });
 
@@ -108,20 +109,40 @@ describe("VirtualMCPStorage analytics-site override", () => {
     });
   });
 
-  test("clearing removes only the override", async () => {
-    await insertProject("vir_clear", ORG, {
+  test("removes and sets in the same write", async () => {
+    await insertProject("vir_mixed", ORG, {
       siteSlug: "acme-tanstack",
       analyticsSiteSlug: "acme",
+      fastPreview: true,
     });
 
-    await storage.setAnalyticsSiteSlug({
-      id: "vir_clear",
+    await storage.patchMetadata({
+      id: "vir_mixed",
       organizationId: ORG,
-      slug: null,
+      set: { fastPreview: false },
+      unset: ["analyticsSiteSlug"],
       by: USER,
     });
 
-    expect(await readMetadata("vir_clear")).toEqual({
+    expect(await readMetadata("vir_mixed")).toEqual({
+      siteSlug: "acme-tanstack",
+      fastPreview: false,
+    });
+  });
+
+  test("removing an absent key leaves the metadata as it was", async () => {
+    await insertProject("vir_absent", ORG, { siteSlug: "acme-tanstack" });
+
+    const updated = await storage.patchMetadata({
+      id: "vir_absent",
+      organizationId: ORG,
+      set: {},
+      unset: ["analyticsSiteSlug"],
+      by: USER,
+    });
+
+    expect(updated).toBe(true);
+    expect(await readMetadata("vir_absent")).toEqual({
       siteSlug: "acme-tanstack",
     });
   });
@@ -129,10 +150,11 @@ describe("VirtualMCPStorage analytics-site override", () => {
   test("starts an object when the project has no metadata", async () => {
     await insertProject("vir_null", ORG, null);
 
-    await storage.setAnalyticsSiteSlug({
+    await storage.patchMetadata({
       id: "vir_null",
       organizationId: ORG,
-      slug: "acme",
+      set: { analyticsSiteSlug: "acme" },
+      unset: [],
       by: USER,
     });
 
@@ -144,10 +166,11 @@ describe("VirtualMCPStorage analytics-site override", () => {
   test("refuses a project of another organization", async () => {
     await insertProject("vir_foreign", OTHER_ORG, { siteSlug: "other" });
 
-    const updated = await storage.setAnalyticsSiteSlug({
+    const updated = await storage.patchMetadata({
       id: "vir_foreign",
       organizationId: ORG,
-      slug: "acme",
+      set: { analyticsSiteSlug: "acme" },
+      unset: [],
       by: USER,
     });
 
