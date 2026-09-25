@@ -80,9 +80,9 @@ async function rereadVirtualMcpOrThrow(
 export const REPORTS_SETUP = defineTool({
   name: "REPORTS_SETUP",
   description:
-    "Create or return the Reports connection and virtual MCP for the current organization.",
+    "Create or return the Deco Score connection and virtual MCP for the current organization.",
   annotations: {
-    title: "Set Up Reports",
+    title: "Set Up Deco Score",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

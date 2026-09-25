@@ -590,27 +590,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "REPORTS_SETUP",
-    description: "Set up Reports",
+    description: "Set up Deco Score",
     category: "Connections",
   },
   {
     name: "REPORTS_RUN",
-    description: "Run Reports",
+    description: "Run Deco Score",
     category: "Connections",
   },
   {
     name: "REPORTS_BIND",
-    description: "Bind Reports data source",
+    description: "Bind Deco Score data source",
     category: "Connections",
   },
   {
     name: "REPORTS_CONNECTION_STATUS",
-    description: "Read Reports connection status",
+    description: "Read Deco Score connection status",
     category: "Connections",
   },
   {
     name: "REPORTS_SET_REPOSITORY",
-    description: "Set the Reports repository",
+    description: "Set the Deco Score repository",
     category: "Connections",
   },
   {
@@ -1452,13 +1452,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_DISMISSED_LIST",
     description:
-      "List diagnostic findings dismissed by deleting their task board cards",
+      "List Deco Score findings dismissed by deleting their task board cards",
     category: "Task Board",
   },
   {
     name: "TASK_BOARD_DISMISSED_RESTORE",
     description:
-      "Un-dismiss diagnostic findings so the next report import pushes them again",
+      "Un-dismiss Deco Score findings so the next Deco Score import pushes them again",
     category: "Task Board",
   },
   {

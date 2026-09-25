@@ -81,11 +81,11 @@ export const routes = {
   "routes.reportsOnboarding.authCopy.verifying": "Verifying...",
   "routes.reportsOnboarding.authCopy.welcomeTitle": "Welcome to deco",
   "routes.reportsOnboarding.chooseOrg": "Choose an organization",
-  "routes.reportsOnboarding.commerceDiagnostic": "Commerce diagnostic",
+  "routes.reportsOnboarding.commerceDiagnostic": "Deco Score",
   "routes.reportsOnboarding.reportsBeingPrepared":
-    "Reports is being prepared for {url}.",
+    "Deco Score is being prepared for {url}.",
   "routes.reportsOnboarding.configurationFailed":
-    "Reports configuration failed.",
+    "Deco Score configuration failed.",
   "routes.reportsOnboarding.configurationWillContinueIn":
     "Commerce setup will continue in {orgName}.",
   "routes.reportsOnboarding.couldNotDetermineOrg":
@@ -97,7 +97,7 @@ export const routes = {
   "routes.reportsOnboarding.couldNotPrepareOrg":
     "Could not prepare an organization for commerce setup. Try again from this page or contact support.",
   "routes.reportsOnboarding.couldNotVerifyCommerceSetting":
-    "Unable to verify Reports configuration.",
+    "Unable to verify Deco Score configuration.",
   "routes.reportsOnboarding.createNewOrg": "Create new organization",
   "routes.reportsOnboarding.emailAccessMultipleOrgs":
     "Your email can access more than one organization. Choose where commerce setup should continue.",
@@ -110,7 +110,7 @@ export const routes = {
   "routes.reportsOnboarding.retryToConfigureCommerce":
     "Try again to continue commerce setup from this page.",
   "routes.reportsOnboarding.selectWhereCommerceContinues":
-    "Select where the commerce diagnostic should continue.",
+    "Select where the Deco Score should continue.",
   "routes.reportsOnboarding.siteUrl.enterUrl": "Enter a website URL.",
   "routes.reportsOnboarding.siteUrl.enterValidUrl":
     "Enter a valid website URL.",
@@ -118,7 +118,7 @@ export const routes = {
     "Use an HTTP or HTTPS website URL.",
   "routes.reportsOnboarding.siteUrlLabel": "Site URL",
   "routes.reportsOnboarding.siteUrlPlaceholder": "https://example.com",
-  "routes.reportsOnboarding.unlockDiagnostic": "Unlock your full diagnostic",
+  "routes.reportsOnboarding.unlockDiagnostic": "Unlock your full Deco Score",
   "routes.reportsOnboarding.loading.preparingWorkspace":
     "Preparing your commerce workspace...",
   "routes.reportsOnboarding.loading.preparing": "Preparing...",
@@ -129,16 +129,17 @@ export const routes = {
     "Schedule a meeting",
   "routes.reportsOnboarding.scheduleMeeting.expertAlt": "deco specialist",
   "routes.reportsOnboarding.connectModal.dialogTitle":
-    "Connect your tools to see the full diagnostic",
+    "Connect your tools to see the full Deco Score",
   "routes.reportsOnboarding.connectModal.loadError":
-    "Could not load integrations. You can continue and open the report anyway.",
+    "Could not load integrations. You can continue and open the Deco Score anyway.",
   "routes.reportsOnboarding.connectModal.continueButton": "Continue",
   "routes.reportsOnboarding.connectModal.couldNotGenerateReport":
-    "Could not generate the report for this site. Reload the page and try again.",
+    "Could not generate the Deco Score for this site. Reload the page and try again.",
   "routes.reportsOnboarding.connectModal.somethingWentWrong":
-    "Something went wrong generating your report. Try again in a moment.",
-  "routes.reportsOnboarding.connectModal.openingReport": "Opening report...",
-  "routes.reportsOnboarding.connectModal.viewDiagnostic": "View diagnostic",
+    "Something went wrong generating your Deco Score. Try again in a moment.",
+  "routes.reportsOnboarding.connectModal.openingReport":
+    "Opening Deco Score...",
+  "routes.reportsOnboarding.connectModal.viewDiagnostic": "View Deco Score",
   "routes.reportsOnboarding.connectModal.skip": "Skip",
   "routes.reportsOnboarding.connectModal.close": "Close",
   "routes.reportsOnboarding.connectModal.quote":
@@ -148,11 +149,11 @@ export const routes = {
   "routes.reportsOnboarding.connectModal.trustEncrypted": "Encrypted",
   "routes.reportsOnboarding.connectModal.trustNeverSold": "Never sold",
   "routes.reportsOnboarding.connectSourcesTab.title": "Connect data sources",
-  "routes.reportsOnboarding.connectSourcesTab.refresh": "Refresh report",
+  "routes.reportsOnboarding.connectSourcesTab.refresh": "Refresh Deco Score",
   "routes.reportsOnboarding.connectSourcesTab.refreshing":
-    "Refreshing report...",
+    "Refreshing Deco Score...",
   "routes.reportsOnboarding.companionSection.title":
-    "Connect your tools to see the full diagnostic",
+    "Connect your tools to see the full Deco Score",
   "routes.reportsOnboarding.companionSection.loadError":
     "Could not load companion integrations.",
   "routes.reportsOnboarding.companionSection.loadErrorDescription":
@@ -221,10 +222,10 @@ export const routes = {
   "routes.onboarding.step.extractingBrand": "Extracting brand context",
   "routes.onboarding.uploadOrgLogo": "Upload organization logo",
   "routes.onboarding.welcomeTitle": "Welcome to deco",
-  "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the report",
+  "routes.reports.failedToLoadReportAriaLabel": "Couldn't load the Deco Score",
   "routes.reports.failedToLoadReportDescription":
     "Check your connection and try again.",
-  "routes.reports.failedToLoadReportTitle": "Couldn't load this report.",
+  "routes.reports.failedToLoadReportTitle": "Couldn't load this Deco Score.",
   "routes.reports.retryButton": "Try again",
   "routes.resetPassword.passwordResetSuccessful": "Password reset successful",
   "routes.resetPassword.setNewPassword": "Set a new password",

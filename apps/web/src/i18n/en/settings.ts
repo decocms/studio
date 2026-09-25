@@ -621,8 +621,8 @@ export const settings = {
   "settings.planUsage.feature.model_choice": "Choose your model",
   "settings.planUsage.feature.trialChat": "Limited access to chat",
   "settings.planUsage.feature.credits": "Extra credits",
-  "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
-  "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
+  "settings.planUsage.feature.diagnostic": "Deco Score",
+  "settings.planUsage.feature.diagnostic_enriched": "Enriched Deco Score",
   "settings.plans.title": "Plans",
   "settings.plans.loadFailed": "Couldn't load the plans.",
   "settings.plans.currentPlan": "Current plan",
@@ -770,9 +770,9 @@ export const settings = {
   "settings.review.deliveryLanesDescription":
     "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
   "settings.review.autoAssignReportTasksTitle":
-    "Auto-assign report tasks to the Super Agent",
+    "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
-    "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
+    "Tasks created from the Deco Score are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
   "settings.taskPrompt.title": "System prompt",
   "settings.taskPrompt.fieldLabel": "Instructions",
