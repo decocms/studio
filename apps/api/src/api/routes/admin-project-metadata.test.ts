@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   authorizeProjectMetadataPatch,
   parseProjectMetadataPatch,
-  pickProjectMetadata,
+  selectSiteProjects,
 } from "./admin-project-metadata";
 
 describe("parseProjectMetadataPatch", () => {
@@ -78,14 +78,68 @@ describe("authorizeProjectMetadataPatch", () => {
   });
 });
 
-describe("pickProjectMetadata", () => {
-  it("returns only the editable keys, absent ones as null", () => {
+describe("selectSiteProjects", () => {
+  const owned = new Set(["acme", "acme-tanstack"]);
+
+  it("lists a project whose persisted site slug the org owns", () => {
     expect(
-      pickProjectMetadata({ siteSlug: "acme-tanstack", sandboxMap: {} }),
-    ).toEqual({ analyticsSiteSlug: null });
-    expect(pickProjectMetadata({ analyticsSiteSlug: "acme" })).toEqual({
-      analyticsSiteSlug: "acme",
-    });
-    expect(pickProjectMetadata(null)).toEqual({ analyticsSiteSlug: null });
+      selectSiteProjects(
+        [
+          {
+            id: "vir_1",
+            title: "Acme",
+            metadata: { siteSlug: "acme-tanstack", sandboxMap: {} },
+          },
+        ],
+        owned,
+      ),
+    ).toEqual([
+      {
+        id: "vir_1",
+        title: "Acme",
+        siteSlug: "acme-tanstack",
+        metadata: { analyticsSiteSlug: null },
+      },
+    ]);
+  });
+
+  it("lists a project imported before siteSlug was persisted, by its title", () => {
+    const [project] = selectSiteProjects(
+      [
+        {
+          id: "vir_2",
+          title: "Acme-Tanstack",
+          metadata: { fastPreview: true },
+        },
+      ],
+      owned,
+    );
+    expect(project?.siteSlug).toBe("acme-tanstack");
+  });
+
+  it("skips projects whose slug the org does not own", () => {
+    expect(
+      selectSiteProjects(
+        [
+          { id: "vir_3", title: "Connection Manager", metadata: null },
+          { id: "vir_4", title: "other", metadata: { siteSlug: "other" } },
+        ],
+        owned,
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps a project with an override even when its slug is unowned", () => {
+    const [project] = selectSiteProjects(
+      [
+        {
+          id: "vir_5",
+          title: "legacy",
+          metadata: { analyticsSiteSlug: "released" },
+        },
+      ],
+      owned,
+    );
+    expect(project?.metadata).toEqual({ analyticsSiteSlug: "released" });
   });
 });

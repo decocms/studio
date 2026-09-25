@@ -46,7 +46,7 @@ import { createAdminPromptRoutes } from "./admin-prompts";
 import {
   authorizeProjectMetadataPatch,
   parseProjectMetadataPatch,
-  pickProjectMetadata,
+  selectSiteProjects,
 } from "./admin-project-metadata";
 
 /**
@@ -733,21 +733,16 @@ export function createAdminRoutes(): Hono<Env> {
     if (!org) {
       return c.json({ error: "Organization not found" }, 404);
     }
-    const projects = (await new VirtualMCPStorage(db).list(orgId)).flatMap(
-      (project) => {
-        const siteSlug = project.metadata?.siteSlug;
-        if (typeof siteSlug !== "string" || !siteSlug) return [];
-        return [
-          {
-            id: project.id,
-            title: project.title,
-            siteSlug,
-            metadata: pickProjectMetadata(project.metadata),
-          },
-        ];
-      },
-    );
-    return c.json({ projects });
+    const [projects, sites] = await Promise.all([
+      new VirtualMCPStorage(db).list(orgId),
+      new OrgSiteStorage(db).listByOrg(orgId),
+    ]);
+    return c.json({
+      projects: selectSiteProjects(
+        projects,
+        new Set(sites.map((site) => site.slug)),
+      ),
+    });
   });
 
   app.patch("/orgs/:orgId/projects/:projectId/metadata", async (c) => {
