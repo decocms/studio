@@ -883,7 +883,9 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // Send periodic keepalive comments to detect dead connections
     const keepaliveInterval = setInterval(() => {
       stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        // Don't wait for onAbort, which may never fire for a half-closed socket.
         clearInterval(keepaliveInterval);
+        sseHub.remove(listenerKey, listenerId);
       });
     }, 30_000);
 
