@@ -1,6 +1,7 @@
-/** The always-visible org strip. Which orgs it draws is `railOrgs`. */
+/** The always-visible org strip. Which orgs it draws is `railOrgs`; how one
+ *  mark is drawn, labelled and marked as current is `RailItem`. */
 
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { Plus } from "@untitledui/icons";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -22,6 +23,7 @@ import {
 import { useRecentOrgs } from "@/hooks/use-recent-orgs";
 import { railOrgs } from "@/lib/recent-orgs";
 import { OrgSearch } from "./org-search";
+import { RailItem } from "./rail-item";
 import type { RecentApp } from "@/lib/recent-apps";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
@@ -34,41 +36,6 @@ interface RailOrg {
   logo?: string | null;
 }
 
-/**
- * The rail's one selection signal, shared by orgs and apps.
- *
- * A pill on the rail's left edge rather than a ring around the mark: a ring
- * has to sit OUTSIDE the icon, so it competes with the icon's own shape and
- * needs an offset colour that only works against one background. The pill
- * lives in the gutter, is the same for a square org logo and a tinted app
- * glyph, and can grow out of its hover state instead of appearing from
- * nowhere — which is the whole reason Discord's rail reads at a glance.
- */
-function RailItem({
-  active,
-  children,
-}: {
-  active: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div className="group/rail relative flex w-full shrink-0 justify-center">
-      <span
-        aria-hidden
-        className={cn(
-          "absolute top-1/2 left-0 w-1 -translate-y-1/2 rounded-r-full bg-foreground",
-          "transition-[height,opacity] duration-200 ease-[var(--ease-out-cubic)]",
-          "motion-reduce:transition-none",
-          active
-            ? "h-7 opacity-100"
-            : "h-2 opacity-0 group-hover/rail:opacity-60",
-        )}
-      />
-      {children}
-    </div>
-  );
-}
-
 function RailOrgButton({
   org,
   active,
@@ -79,7 +46,7 @@ function RailOrgButton({
   onSelect: () => void;
 }) {
   return (
-    <RailItem active={active}>
+    <RailItem active={active} label={org.name}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -108,8 +75,10 @@ function RailOrgButton({
  * One app you had open, under the orgs.
  *
  * It wears the launcher's own glyph and tint so the icon here and the tile it
- * came from read as the same door. The tooltip names the project as well as the
- * app, because two projects can have the same app and the mark alone cannot say
+ * came from read as the same door, and it is LABELLED with the app rather than
+ * the project: the label answers "where does this take me", which is the
+ * question the rail is for. The tooltip carries the project, because two
+ * projects can have the same app and neither the glyph nor the label can say
  * which one this is.
  */
 function RailAppButton({
@@ -128,7 +97,7 @@ function RailAppButton({
   if (!app) return null;
 
   return (
-    <RailItem active={active}>
+    <RailItem active={active} label={t(app.labelKey)}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Link
@@ -194,12 +163,16 @@ export function OrgRail() {
   return (
     <>
       <div
-        /* `pt-3` and not `pt-2`: the first org mark is 36px, so 12px of inset
+        /* `w-18` and not `w-14`: the marks did not grow, the labels under them
+          did, and 56px left "Storefront" breaking after "Store". 72px fits the
+          words the product actually uses at two lines.
+
+          `pt-3` and not `pt-2`: the first org mark is 36px, so 12px of inset
           centres it on y=30 — the line the sidebar's org name and the panel's
           breadcrumb already share. At 8px it sat 4px high, which reads as the
           whole rail being off rather than as one row being. */
         className={cn(
-          "flex w-14 shrink-0 flex-col items-center gap-2.5 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          "flex w-18 shrink-0 flex-col items-center gap-2 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           !takeover && "border-r border-sidebar-border",
         )}
         aria-label={t("sidebar.rail.ariaLabel")}
@@ -220,28 +193,32 @@ export function OrgRail() {
             onSelect={travelTo}
           />
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("sidebar.picker.newOrganization")}
-              onClick={() => setCreatingOrg(true)}
-              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              <Plus size={18} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            {t("sidebar.picker.newOrganization")}
-          </TooltipContent>
-        </Tooltip>
+        {/* Labelled "New", not "New organization": the label is a word under a
+            glyph, and the tooltip is where the full sentence goes. */}
+        <RailItem active={false} label={t("sidebar.rail.newOrgShort")}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("sidebar.picker.newOrganization")}
+                onClick={() => setCreatingOrg(true)}
+                className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                <Plus size={18} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {t("sidebar.picker.newOrganization")}
+            </TooltipContent>
+          </Tooltip>
+        </RailItem>
         {recent.length > 0 && (
           <>
             {/* A rule and not a gap: below it the marks stop meaning "an org
                 you belong to" and start meaning "a thing you had open", and
                 nothing else in the rail says so. */}
             <span
-              className="my-1 h-px w-6 shrink-0 bg-sidebar-border"
+              className="my-2 h-px w-6 shrink-0 bg-sidebar-border"
               aria-hidden
             />
             {recent.map((entry) => (

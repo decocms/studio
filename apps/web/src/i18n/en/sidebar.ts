@@ -48,6 +48,8 @@ export const sidebar = {
   "sidebar.rail.searchEmpty": "No organization matches that.",
   "sidebar.rail.searchMoreOrganizations": "Search organizations ({count} more)",
   "sidebar.rail.searchOrganizations": "Search organizations",
+  "sidebar.rail.searchShort": "Search",
+  "sidebar.rail.newOrgShort": "New",
   "sidebar.rail.searchPlaceholder": "Search by name or URL",
   "sidebar.showMoreButton.ariaLabel": "Show more tasks",
   "sidebar.showMoreButton.loading": "Loading…",

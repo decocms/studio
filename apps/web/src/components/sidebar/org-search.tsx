@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { OrgIcon } from "@/components/header/org-switcher";
+import { RailItem } from "./rail-item";
 import { useT } from "@/i18n/use-t.ts";
 
 export interface SearchableOrg {
@@ -48,23 +49,29 @@ export function OrgSearch({
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={t("sidebar.rail.searchOrganizations")}
-            onClick={() => setOpen(true)}
-            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <SearchLg size={18} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          {hiddenCount > 0
-            ? t("sidebar.rail.searchMoreOrganizations", { count: hiddenCount })
-            : t("sidebar.rail.searchOrganizations")}
-        </TooltipContent>
-      </Tooltip>
+      {/* One word under the glyph; the tooltip is where the count and the full
+          sentence go. */}
+      <RailItem active={false} label={t("sidebar.rail.searchShort")}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={t("sidebar.rail.searchOrganizations")}
+              onClick={() => setOpen(true)}
+              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <SearchLg size={18} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {hiddenCount > 0
+              ? t("sidebar.rail.searchMoreOrganizations", {
+                  count: hiddenCount,
+                })
+              : t("sidebar.rail.searchOrganizations")}
+          </TooltipContent>
+        </Tooltip>
+      </RailItem>
 
       <CommandDialog
         open={open}

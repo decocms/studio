@@ -18,10 +18,14 @@
  * Pure: the hook owns storage, this owns the rules.
  */
 
-/** How many marks the rail will draw before deferring to search. Seven leaves
- *  room under the orgs for search, "new org" and the recent apps without the
- *  rail needing a scrollbar of its own. */
-const RAIL_ORG_LIMIT = 7;
+/** How many marks the rail will draw before deferring to search.
+ *
+ *  Five, down from seven: each mark now carries its name underneath
+ *  (`components/sidebar/rail-item.tsx`), which is half again the height it was,
+ *  and seven orgs plus search, "new org" and four recent apps no longer fit a
+ *  laptop without the rail growing a scrollbar of its own. The number has
+ *  always been "what fits"; what fits changed. */
+const RAIL_ORG_LIMIT = 5;
 
 /** Newest first, one entry per slug — reopening an org MOVES it to the front
  *  rather than adding a second copy. Trimmed generously rather than to the
