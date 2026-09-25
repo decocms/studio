@@ -207,6 +207,30 @@ export class GitProviderAccountStorage {
       .execute();
   }
 
+  /**
+   * Add a repository to a partial grant — one Studio itself created through
+   * this account, so no one else has to authorize it. A whole-installation
+   * grant (NULL) already covers it and is left alone.
+   */
+  async grantRepository(
+    id: string,
+    organizationId: string,
+    repositoryId: number,
+  ): Promise<void> {
+    const entry = sql`jsonb_build_array(${repositoryId}::bigint)`;
+    await this.db
+      .updateTable("git_provider_accounts")
+      .set({
+        installation_repository_ids: sql`installation_repository_ids || ${entry}`,
+        updated_at: sql<Date>`GREATEST(${new Date()}, updated_at + interval '1 millisecond')`,
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("installation_repository_ids", "is not", null)
+      .where(sql<boolean>`NOT installation_repository_ids @> ${entry}`)
+      .execute();
+  }
+
   /** Repositories keep their row (`account_id` → NULL) and become anonymous clones. */
   async delete(id: string, organizationId: string): Promise<boolean> {
     const result = await this.db

@@ -119,6 +119,30 @@ export const common = {
     "Não foi possível criar o agente",
   "common.repositoryPicker.agentDescription": "Importado de {path}",
   "common.repositoryPicker.back": "Voltar",
+  "common.createSite.entry": "Criar novo site",
+  "common.createSite.entryHint": "Comece por um template, no seu GitHub",
+  "common.createSite.templateSection": "Escolha um template",
+  "common.createSite.templates.storefront.title": "Loja",
+  "common.createSite.templates.storefront.description":
+    "Loja virtual com páginas de produto, carrinho e CMS",
+  "common.createSite.templates.blog.title": "Blog",
+  "common.createSite.templates.blog.description":
+    "Blog com posts, categorias e CMS",
+  "common.createSite.accountSection": "Onde criar",
+  "common.createSite.accountHint":
+    "O repositório do site é criado nesta conta do GitHub.",
+  "common.createSite.noGithubAccount":
+    "Conecte uma conta do GitHub para criar um site nela.",
+  "common.createSite.nameLabel": "Nome do site",
+  "common.createSite.namePlaceholder": "meu-site",
+  "common.createSite.nameHint":
+    "Letras minúsculas, números e hífens. Cria o repositório privado {path}.",
+  "common.createSite.nameInvalid":
+    "Use letras minúsculas, números e hífens, começando e terminando com letra ou número.",
+  "common.createSite.create": "Criar site",
+  "common.createSite.created": "Site {name} criado",
+  "common.createSite.agentDescription":
+    "Criado a partir do template {template}",
   "common.githubRepoPicker.accountNotListed": "Conta não listada?",
   "common.githubRepoPicker.addRepo": "Adicionar repositório",
   "common.githubRepoPicker.addedRepo": "Adicionado {name}",

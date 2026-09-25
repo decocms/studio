@@ -179,6 +179,27 @@ export function useLinkRepository() {
   });
 }
 
+/** The account's grant gains the new repository, so accounts refresh too. */
+export function useCreateRepositoryFromTemplate() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      input: StudioToolIO["REPOSITORY_CREATE_FROM_TEMPLATE"]["input"],
+    ) =>
+      (await studio.call("REPOSITORY_CREATE_FROM_TEMPLATE", input)).repository,
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: KEYS.repositories(org.id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: KEYS.gitAccounts(org.id),
+      });
+    },
+  });
+}
+
 export function useUpdateRepository() {
   const { org } = useProjectContext();
   const studio = useStudioTools();

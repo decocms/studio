@@ -248,6 +248,22 @@ export function useIsDecoStaff(): boolean {
   return isDecoStaffEmail(session?.user?.email);
 }
 
+/**
+ * Whether New project offers "Create a new site". Staff and local dev always;
+ * external orgs through `site_create_enabled`. Product gating only — the tool
+ * still needs a connected GitHub account that may create repositories.
+ */
+export function useCreateSiteEnabled(): boolean {
+  const { data: session } = authClient.useSession();
+  const config = usePublicConfig();
+  const flag = useOrgFlag("site_create_enabled");
+  return (
+    config.auth.localMode === true ||
+    isDecoStaffEmail(session?.user?.email) ||
+    flag
+  );
+}
+
 /** The three control-plane views, each toggled by its own org flag. */
 export interface ControlPlaneViews {
   hosting: boolean;

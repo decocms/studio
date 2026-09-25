@@ -33,6 +33,8 @@
  *   GET   /repos/{o}/{r}/pulls?state&base&head        -> [ { number, html_url } ]
  *   POST  /repos/{o}/{r}/pulls                        -> { number, html_url }
  *   GET   /repos/{o}/{r}/compare/{base}...{head}      -> { ahead_by, behind_by, merge_base_commit, files, commits }
+ *   GET   /repos/{o}/{r}/commits                      -> [ { sha } ] (default-branch head)
+ *   POST  /repos/{o}/{r}/generate                     -> 201 new repo from this template (422 name taken)
  *
  * GitHub App endpoints (the git-provider account suite):
  *   GET   /user/installations                          -> { installations }
@@ -456,6 +458,50 @@ async function handleRepos(
       default_branch: repo.defaultBranch,
       owner: { login: repo.owner },
     });
+    return;
+  }
+
+  // POST /repos/{o}/{r}/generate — a repo-scoped token already 404'd above.
+  if (req.method === "POST" && rest.length === 1 && rest[0] === "generate") {
+    const body = JSON.parse((await readBody(req)) || "{}") as {
+      owner?: string;
+      name?: string;
+      private?: boolean;
+    };
+    if (!body.owner || !body.name) {
+      json(res, 422, { message: "owner and name are required" });
+      return;
+    }
+    if (repos.has(repoKey(body.owner, body.name))) {
+      json(res, 422, {
+        message: "Could not clone: Name already exists on this account",
+      });
+      return;
+    }
+    const head = repo.refs.get(repo.defaultBranch);
+    const created = seedRepo({
+      owner: body.owner,
+      repo: body.name,
+      branches: {
+        main: { files: head ? filesAtCommit(repo, head) : {} },
+      },
+    });
+    json(res, 201, {
+      id: created.id,
+      name: created.name,
+      full_name: repoKey(created.owner, created.name),
+      private: body.private ?? false,
+      html_url: `https://github.com/${repoKey(created.owner, created.name)}`,
+      default_branch: created.defaultBranch,
+      owner: { login: created.owner },
+    });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/commits
+  if (req.method === "GET" && rest.length === 1 && rest[0] === "commits") {
+    const head = repo.refs.get(repo.defaultBranch);
+    json(res, 200, head ? [{ sha: head }] : []);
     return;
   }
 
