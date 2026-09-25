@@ -19,6 +19,7 @@ export const experiments = {
   "experiments.dialog.addVariant": "Add variant",
   "experiments.dialog.create": "Create",
   "experiments.dialog.cancel": "Cancel",
+  "experiments.action.back": "Back to list",
   "experiments.action.delete": "Delete",
   "experiments.deleteConfirm":
     'Delete experiment "{key}"? This cannot be undone.',

@@ -21,6 +21,7 @@ export const experiments = {
   "experiments.dialog.addVariant": "Adicionar variante",
   "experiments.dialog.create": "Criar",
   "experiments.dialog.cancel": "Cancelar",
+  "experiments.action.back": "Voltar para a lista",
   "experiments.action.delete": "Excluir",
   "experiments.deleteConfirm":
     'Excluir o experimento "{key}"? Isso não pode ser desfeito.',

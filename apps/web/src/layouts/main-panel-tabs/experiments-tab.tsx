@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowLeft } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -348,7 +349,8 @@ function Detail({
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
-          ←
+          <ArrowLeft size={14} />
+          {t("experiments.action.back")}
         </Button>
         <span className="text-lg font-semibold">{experiment.name}</span>
         <Badge>{experiment.status}</Badge>
