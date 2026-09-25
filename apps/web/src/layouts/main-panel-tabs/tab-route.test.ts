@@ -214,6 +214,35 @@ describe("tabRouteTarget", () => {
       search: {},
     });
   });
+
+  test("a board target carries the card to open at either scope", () => {
+    expect(
+      tabRouteTarget({ ...base, tabId: "board", taskKey: "ACME-12" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/tasks/{-$taskKey}",
+      params: { ...base, taskKey: "ACME-12" },
+      search: {},
+    });
+    expect(
+      tabRouteTarget({
+        ...base,
+        tabId: "board",
+        taskKey: "ACME-12",
+        destinationScope: "organization",
+      }),
+    ).toEqual({
+      to: "/$org/tasks/{-$taskKey}",
+      params: { org: "acme", taskKey: "ACME-12" },
+      search: {},
+    });
+    expect(
+      tabRouteTarget({ ...base, tabId: "reports", taskKey: "ACME-12" }),
+    ).toEqual({
+      to: "/$org/projects/$agentId/reports",
+      params: base,
+      search: {},
+    });
+  });
 });
 
 describe("canonicalThreadRouteTarget", () => {
