@@ -2015,7 +2015,8 @@ export function isCapabilityEnabled(
   allowAll: boolean,
 ): boolean {
   if (allowAll) return true;
-  return cap.tools.every((tool) => enabledTools.includes(tool));
+  const enabledSet = new Set(enabledTools);
+  return cap.tools.every((tool) => enabledSet.has(tool));
 }
 
 /**
