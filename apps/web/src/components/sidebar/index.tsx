@@ -68,7 +68,7 @@ function ProjectBackRow({ onNavigate }: { onNavigate?: () => void }) {
 function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <ErrorBoundary>
-      <div className="flex flex-col classic:gap-1 compact:gap-6">
+      <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <NavDestinationsContent onNavigate={onNavigate} />
           <ProjectNav onNavigate={onNavigate} />

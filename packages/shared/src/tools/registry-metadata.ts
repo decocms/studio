@@ -222,6 +222,8 @@ const ALL_TOOL_NAMES = [
   "JIRA_ISSUE_TRANSITION",
   "JIRA_ATTACHMENT_DOWNLOAD",
   "JIRA_REMOTE_LINK_ADD",
+  "JIRA_ISSUE_CREATE",
+  "JIRA_ISSUE_SEARCH",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -1057,29 +1059,38 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_ISSUE_GET",
-    description: "Re-read the Jira issue a run is working on",
+    description: "Read a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_COMMENT_ADD",
-    description: "Comment on the Jira issue a run is working on",
+    description: "Comment on a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_ISSUE_TRANSITION",
-    description: "Move the Jira issue a run is working on to another status",
+    description: "Move a Jira issue on the board to another status",
     category: "Jira",
   },
   {
     name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
-      "Get a short-lived download URL for an attachment of the run's Jira issue",
+      "Get a short-lived download URL for an attachment of a Jira issue",
     category: "Jira",
   },
   {
     name: "JIRA_REMOTE_LINK_ADD",
-    description:
-      "Link a pull request or deploy preview on the run's Jira issue",
+    description: "Link a pull request or deploy preview on a Jira issue",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_CREATE",
+    description: "Create a Jira issue on the board from a run",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_SEARCH",
+    description: "Search the Jira board's issues with JQL from a run",
     category: "Jira",
   },
   {
@@ -1873,6 +1884,22 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "MEMBER_TAGS_SET",
     ],
   },
+  // Experiments
+  {
+    id: "experiments:manage",
+    label: "Manage experiments",
+    description: "Create, update, and delete A/B experiments, and view results",
+    section: "Experiments",
+    tools: [
+      "EXPERIMENT_LIST",
+      "EXPERIMENT_GET",
+      "EXPERIMENT_CREATE",
+      "EXPERIMENT_UPDATE",
+      "EXPERIMENT_DELETE",
+      "EXPERIMENT_RESULTS",
+    ],
+    dangerous: true,
+  },
   // Store & Registry
   {
     id: "registry:manage",
@@ -2004,7 +2031,8 @@ export function isCapabilityEnabled(
   allowAll: boolean,
 ): boolean {
   if (allowAll) return true;
-  return cap.tools.every((tool) => enabledTools.includes(tool));
+  const enabledSet = new Set(enabledTools);
+  return cap.tools.every((tool) => enabledSet.has(tool));
 }
 
 /**

@@ -123,9 +123,10 @@ describe("OnePagerReport", () => {
 
   test("links the Markdown mirror on Studio's own origin", () => {
     const { getByRole } = render(report());
+    // In the language the findings are in, so the copied prompt matches.
     expect(getByRole("link", { name: "Open .md" })).toHaveAttribute(
       "href",
-      "/report/example.com.md",
+      "/report/example.com.md?lang=en",
     );
   });
 

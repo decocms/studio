@@ -31,6 +31,27 @@ async function fetchReport(
 
 const TERMINAL = new Set(["complete", "errored", "terminated", "unknown"]);
 
+/** Pull `domain`/`distinctId` out of the POST /run body. `body` is whatever
+ *  `JSON.parse` produced — including `null` for a literal `null` body, which
+ *  is valid JSON but not an object — so this never assumes object shape. */
+export function parseRunBody(body: unknown): {
+  domain: string;
+  distinctId?: string;
+} {
+  const obj =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : {};
+  const domain = typeof obj.domain === "string" ? obj.domain.trim() : "";
+  const distinctId =
+    typeof obj.distinctId === "string" &&
+    obj.distinctId.trim() &&
+    obj.distinctId.length <= 200
+      ? obj.distinctId.trim()
+      : undefined;
+  return { domain, distinctId };
+}
+
 type ReportsEnv = {
   Variables: {
     reportUser?: { email: string };
@@ -84,21 +105,15 @@ app.get("/site/:domain", async (c) => {
  *  events attribute to the same person. */
 app.post("/run", async (c) => {
   const user = c.get("reportUser");
-  let body: { domain?: unknown; distinctId?: unknown };
+  let rawBody: unknown;
   try {
-    body = await c.req.json();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ error: "invalid JSON" }, 400);
   }
-  const domain = typeof body.domain === "string" ? body.domain.trim() : "";
+  const { domain, distinctId } = parseRunBody(rawBody);
   if (!domain) return c.json({ error: "domain is required" }, 400);
   const email = user?.email;
-  const distinctId =
-    typeof body.distinctId === "string" &&
-    body.distinctId.trim() &&
-    body.distinctId.length <= 200
-      ? body.distinctId.trim()
-      : undefined;
 
   try {
     const res = await engineFetch(`/api/v2/diagnostics/run`, {

@@ -353,9 +353,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
-  "settings.preferences.compactPageLayout": "Novo Layout",
-  "settings.preferences.compactPageLayoutDescription":
-    "Experimente a nova navegação, os cabeçalhos e os controles. Desative para voltar ao layout atual.",
+  "settings.preferences.newBlocksEditor": "Novo editor de blocos",
+  "settings.preferences.newBlocksEditorDescription":
+    "Experimente o editor de blocos redesenhado. O restante do Studio sempre usa o novo layout.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",

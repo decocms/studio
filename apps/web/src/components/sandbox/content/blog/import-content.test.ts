@@ -211,6 +211,10 @@ describe("parseImportedContent — untrusted markup", () => {
     ).toEqual([]);
   });
 
+  test("a Markdown image whose src is a script URL is dropped, not imported", () => {
+    expect(parseImportedContent("![x](javascript:alert)").sections).toEqual([]);
+  });
+
   test("ordinary links, emphasis and ampersands are untouched", () => {
     expect(
       htmlOf(

@@ -54,6 +54,6 @@ export function useTaskBoardAnalytics(
       params.from,
       params.to,
     ),
-    queryFn: () => studio.call(tool, params) as Promise<AnalyticsPayload>,
+    queryFn: () => studio.call(tool, params),
   });
 }

@@ -29,6 +29,7 @@ import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import { VirtualMCPStorage } from "@/storage/virtual";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
@@ -42,6 +43,11 @@ import { posthog } from "@/posthog";
 import { getSettings } from "@/settings";
 import type { Env } from "@/api/hono-env";
 import { createAdminPromptRoutes } from "./admin-prompts";
+import {
+  authorizeProjectMetadataPatch,
+  parseProjectMetadataPatch,
+  pickProjectMetadata,
+} from "./admin-project-metadata";
 
 /**
  * Mount path for the deployment-admin surface. Single source of truth: app.ts
@@ -694,12 +700,16 @@ export function createAdminRoutes(): Hono<Env> {
     if (!released) {
       return c.json({ error: "Site not found for this organization" }, 404);
     }
+    const clearedAnalyticsOverrides = await new VirtualMCPStorage(
+      db,
+    ).clearAnalyticsSiteSlugReferences(orgId, slug);
 
     auditAdminAction("org_site_release", {
       actor_user_id: actorId,
       ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
       organization_id: orgId,
       slug,
+      cleared_analytics_overrides: clearedAnalyticsOverrides,
     });
     posthog.capture({
       distinctId: actorId ?? orgId,
@@ -709,6 +719,105 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  // Site projects and the metadata keys `ADMIN_PROJECT_METADATA_FIELDS` allows editing.
+  app.get("/orgs/:orgId/projects", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const projects = (await new VirtualMCPStorage(db).list(orgId)).flatMap(
+      (project) => {
+        const siteSlug = project.metadata?.siteSlug;
+        if (typeof siteSlug !== "string" || !siteSlug) return [];
+        return [
+          {
+            id: project.id,
+            title: project.title,
+            siteSlug,
+            metadata: pickProjectMetadata(project.metadata),
+          },
+        ];
+      },
+    );
+    return c.json({ projects });
+  });
+
+  app.patch("/orgs/:orgId/projects/:projectId/metadata", async (c) => {
+    const orgId = c.req.param("orgId");
+    const projectId = c.req.param("projectId");
+    const patch = parseProjectMetadataPatch(
+      await c.req.json().catch(() => null),
+    );
+    if (!patch) {
+      return c.json({ error: "Invalid metadata patch" }, 400);
+    }
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const orgSites = new OrgSiteStorage(db);
+    const denied = await authorizeProjectMetadataPatch(patch, {
+      isSiteOwned: (slug) => orgSites.isOwnedBy(slug, orgId),
+    });
+    if (denied) {
+      return c.json({ error: denied }, 400);
+    }
+
+    const updated = await new VirtualMCPStorage(db).patchMetadata({
+      id: projectId,
+      organizationId: orgId,
+      set: patch.set,
+      unset: patch.unset,
+      by: actorId,
+    });
+    if (!updated) {
+      return c.json({ error: "Project not found for this organization" }, 404);
+    }
+
+    auditAdminAction("project_metadata_update", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      project_id: projectId,
+      set: patch.set,
+      unset: patch.unset,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_project_metadata_updated",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        project_id: projectId,
+        set: patch.set,
+        unset: patch.unset,
+      },
+    });
+
+    return c.json({ set: patch.set, unset: patch.unset });
   });
 
   // Billing notice pinned on an org: a `warn` banner, or a `block` that takes

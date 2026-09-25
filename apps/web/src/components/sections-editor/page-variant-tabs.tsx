@@ -15,7 +15,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import {
   DndContext,
@@ -155,7 +155,7 @@ function PageVariantRowContent({
   onDelete?: () => void;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   return (
     <>
       {compact ? (
@@ -266,7 +266,7 @@ function SortablePageVariantRow({
       animateLayoutChanges: () => false,
     });
 
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const style = {
     transform: CSS.Transform.toString(
       transform ? { ...transform, x: 0 } : null,
@@ -328,7 +328,7 @@ function PageVariantRowPreview({
   meta?: LiveMeta | null;
   matchers: Array<{ resolveType: string; iconName: string }>;
 }) {
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const effectiveRule = resolveEffectiveMatcherRule(
     variant.rule,
     decofile,
@@ -385,7 +385,7 @@ export function PageVariantTabs({
   onAdd: () => void;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const [entries, setEntries] = useState<VariantTabEntry[]>(() =>
     createEntries(variants),
   );

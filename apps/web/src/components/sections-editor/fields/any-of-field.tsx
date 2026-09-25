@@ -50,7 +50,7 @@ import { FieldLabel } from "./field-label";
 import type { FieldProps } from "./field-props";
 
 import { toast } from "sonner";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { EditorRowActionsTrigger, EditorRowLink } from "../editor-list-row";
 import {
   HEADER_SELECT_TRIGGER_CLASS,
@@ -122,7 +122,7 @@ function CollapsibleLoaderConfig({
   onMakeGlobal?: () => void;
 }) {
   const t = useT();
-  const DetachIcon = useCompactPageLayout() ? Cube01 : LayoutAlt01;
+  const DetachIcon = useNewBlocksEditor() ? Cube01 : LayoutAlt01;
   const contentId = `${path}-loader-config`;
 
   return (
@@ -209,7 +209,7 @@ export function AnyOfField({
   focused,
 }: FieldProps) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const baseRefs = (schema.anyOfRefs ?? []).filter((r) => r.resolveType !== "");
   const savedRef =
     decofile && value ? unwrapBlockReference(value, decofile) : null;

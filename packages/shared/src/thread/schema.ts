@@ -80,6 +80,12 @@ const ThreadMetadataSchema = z
       .describe(
         "Every Jira issue a 'jira' run may act on. One entry for a run on one issue; several for a run a person started on a batch, whose Jira tools take an issueKey to say which.",
       ),
+    jira_created_issue_keys: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "The Jira issues a 'jira' run created itself, so a repeated create returns the one it made.",
+      ),
   })
   .catchall(z.unknown());
 

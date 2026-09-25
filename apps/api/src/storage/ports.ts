@@ -82,6 +82,13 @@ export interface ThreadStoragePort {
     organizationId: string,
     repo: GithubRepo,
   ): Promise<GithubRepo[]>;
+  /** Record a Jira issue the run created. One guarded statement — see the
+   *  impl. */
+  recordJiraIssueCreated(
+    id: string,
+    organizationId: string,
+    issueKey: string,
+  ): Promise<string[]>;
 
   pinRuntimeIfUnset(
     id: string,

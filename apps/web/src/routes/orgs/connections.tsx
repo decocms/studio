@@ -1,4 +1,8 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import type { RegistryItem } from "@/components/store/types";
+import type { HttpConnectionParameters } from "@decocms/shared/sdk/types";
+import type { StdioConnectionParameters } from "@decocms/shared/sdk/types";
+import type { ConnectionProviderHint } from "@/utils/connection-form-helpers";
+import type { ListState } from "@/hooks/use-list-state";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
@@ -9,7 +13,7 @@ import { ConnectionCard } from "@/components/connections/connection-card.tsx";
 import { EmptyState } from "@/components/empty-state.tsx";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Page } from "@/components/page";
-import type { RegistryItem } from "@/components/store/types";
+
 import { DeleteConnectionDialogs } from "@/components/delete-connection-dialogs";
 import { useDeleteConnection } from "@/hooks/use-delete-connection";
 import { useCapability } from "@/hooks/use-capability";
@@ -83,10 +87,6 @@ import {
   type ConnectionFormData,
 } from "@/components/details/connection/settings-tab/schema";
 
-import type {
-  HttpConnectionParameters,
-  StdioConnectionParameters,
-} from "@decocms/shared/sdk/types";
 import { EnvVarsEditor } from "@/components/env-vars-editor";
 import {
   extractConnectionData,
@@ -95,7 +95,6 @@ import {
 import { authenticateAndPersistOAuth } from "@/lib/authenticate-and-persist-oauth";
 import { KEYS } from "@/lib/query-keys";
 import {
-  type ConnectionProviderHint,
   buildCustomStdioParameters,
   buildNpxParameters,
   inferHardcodedProviderHint,
@@ -128,7 +127,6 @@ type ConnectionStatusFilter = "ALL" | "active" | "inactive" | "error";
 // ---------------------------------------------------------------------------
 // ListState import type alias (re-exported for convenience)
 // ---------------------------------------------------------------------------
-import type { ListState } from "@/hooks/use-list-state";
 
 // ---------------------------------------------------------------------------
 // ConnectionResults props
@@ -675,7 +673,6 @@ function ConnectionResults({
 }
 
 function OrgMcpsContent() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const navigate = useNavigate();
@@ -953,11 +950,7 @@ function OrgMcpsContent() {
 
   const ctaButton = canManage ? (
     <div className="flex items-center gap-2">
-      <Button
-        size={compact ? "sm" : "default"}
-        variant={compact ? "default" : "outline"}
-        onClick={openCreateDialog}
-      >
+      <Button size="sm" variant="default" onClick={openCreateDialog}>
         <Plus size={14} className="sm:hidden" />
         <span className="hidden sm:inline">
           {t("orgs.connections.customConnection")}
@@ -1371,7 +1364,7 @@ function OrgMcpsContent() {
           {/* Title + Toolbar */}
           <Page.Container>
             <div className="flex flex-col gap-6">
-              <Page.Title actions={compact && ctaButton}>
+              <Page.Title actions={ctaButton}>
                 {t("orgs.connections.pageTitle")}
               </Page.Title>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1451,7 +1444,6 @@ function OrgMcpsContent() {
                     ]}
                   />
                 </div>
-                {!compact && ctaButton}
               </div>
               <CollectionTabs
                 placement="page"

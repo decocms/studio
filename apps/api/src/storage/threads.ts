@@ -100,6 +100,10 @@ export class OrgScopedThreadStorage {
     return this.inner.appendThreadGithubRepo(id, this.requireOrg(), repo);
   }
 
+  recordJiraIssueCreated(id: string, issueKey: string): Promise<string[]> {
+    return this.inner.recordJiraIssueCreated(id, this.requireOrg(), issueKey);
+  }
+
   pinRuntimeIfUnset(
     id: string,
     pin: ThreadRuntimePin,
@@ -514,6 +518,39 @@ export class SqlThreadStorage implements ThreadStoragePort {
       .returning(sql<GithubRepo[]>`metadata->'githubRepos'`.as("repos"))
       .executeTakeFirst();
     return row?.repos ?? [];
+  }
+
+  /**
+   * Add an issue to the thread's `jira_created_issue_keys`, returning the
+   * list: what `JIRA_ISSUE_CREATE` counts against its cap and checks before
+   * repeating itself.
+   *
+   * One UPDATE, not a read in JS and a write of the whole blob: the run's
+   * tool calls can overlap, and a read-modify-write would drop the slower
+   * one's key. Recording a key twice is a no-op.
+   */
+  async recordJiraIssueCreated(
+    id: string,
+    organizationId: string,
+    issueKey: string,
+  ): Promise<string[]> {
+    const entry = sql`jsonb_build_array(${issueKey}::text)`;
+    const keys = sql`coalesce(metadata->'jira_created_issue_keys', '[]'::jsonb)`;
+    const row = await this.db
+      .updateTable("threads")
+      .set({
+        metadata: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object(
+          'jira_created_issue_keys',
+          CASE WHEN ${keys} @> ${entry} THEN ${keys} ELSE ${keys} || ${entry} END
+        )`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .returning(sql<string[]>`metadata->'jira_created_issue_keys'`.as("keys"))
+      .executeTakeFirst();
+    if (!row) throw new Error(`Thread ${id} not found`);
+    return row.keys;
   }
 
   async pinRuntimeIfUnset(

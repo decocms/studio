@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowLeft } from "@untitledui/icons";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -126,7 +127,7 @@ function CreateDialog({
               <Input
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
-                placeholder="plp-ranking"
+                placeholder="Cross Sell Bag"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -241,7 +242,9 @@ function Results({
   if (!data?.available) {
     return (
       <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        {t("experiments.results.unavailable")}
+        {data?.reason === "no_site_data"
+          ? t("experiments.results.noSiteData", { site: data.analyticsSite })
+          : t("experiments.results.unavailable")}
       </div>
     );
   }
@@ -346,7 +349,8 @@ function Detail({
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
-          ←
+          <ArrowLeft size={14} />
+          {t("experiments.action.back")}
         </Button>
         <span className="text-lg font-semibold">{experiment.name}</span>
         <Badge>{experiment.status}</Badge>

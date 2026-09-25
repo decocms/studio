@@ -123,7 +123,7 @@ export async function createVirtualClientFrom(
   // Inclusion mode: use only the connections specified in virtual MCP
   const connectionIds = virtualMcp.connections.map((c) => c.connection_id);
 
-  // Load all connections in parallel
+  // Settled: one connection lookup failing must not drop every other connection's tools.
   const allConnections = await ctx.tracer.startActiveSpan(
     "studio.virtual_mcp.load_connections",
     {
@@ -133,24 +133,29 @@ export async function createVirtualClientFrom(
       },
     },
     async (span) => {
-      try {
-        const result = await Promise.all(
-          connectionIds.map((connId) =>
-            ctx.storage.connections.findById(connId),
-          ),
-        );
-        span.setStatus({ code: SpanStatusCode.OK });
-        return result;
-      } catch (err) {
+      const settled = await Promise.allSettled(
+        connectionIds.map((connId) => ctx.storage.connections.findById(connId)),
+      );
+      const failures = settled.filter(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
+      if (failures.length > 0) {
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: (err as Error).message,
+          message: `${failures.length}/${settled.length} connection lookups failed`,
         });
-        span.recordException(err as Error);
-        throw err;
-      } finally {
-        span.end();
+        for (const failure of failures) {
+          span.recordException(failure.reason as Error);
+          console.error(
+            `[virtual-mcp] failed to load a connection for virtual MCP ${virtualMcp.id ?? "decopilot"}:`,
+            failure.reason,
+          );
+        }
+      } else {
+        span.setStatus({ code: SpanStatusCode.OK });
       }
+      span.end();
+      return settled.map((r) => (r.status === "fulfilled" ? r.value : null));
     },
   );
 

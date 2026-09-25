@@ -404,7 +404,7 @@ function ShareButton({ report }: { report: OnePager }) {
 function AgentBar({ report }: { report: OnePager }) {
   const t = useT();
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  const markdownUrl = reportMarkdownPath(report.domain);
+  const markdownUrl = reportMarkdownPath(report.domain, report.lang);
 
   const copy = async () => {
     const prompt = fetch(markdownUrl).then(async (res) => {

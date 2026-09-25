@@ -1,22 +1,14 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import type { ProjectSettingsSectionKey } from "./sections";
 /** General is the default tab, including for unrecognized section links. */
 
 import { useSearch, useNavigate } from "@tanstack/react-router";
-import {
-  isProjectSettingsSectionKey,
-  type ProjectSettingsSectionKey,
-} from "./sections";
+import { isProjectSettingsSectionKey } from "./sections";
 
 export function useProjectSettingsSection() {
-  const compact = useCompactPageLayout();
   const navigate = useNavigate();
   const { section } = useSearch({ strict: false });
   return {
-    section: isProjectSettingsSectionKey(section)
-      ? section
-      : compact
-        ? "general"
-        : null,
+    section: isProjectSettingsSectionKey(section) ? section : "general",
     openSection: (next: ProjectSettingsSectionKey | null) =>
       navigate({
         to: ".",

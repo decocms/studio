@@ -236,8 +236,8 @@ export async function startJiraRunForIssue(
  * issues — landing the pull requests of a whole epic in order, say — where
  * one agent needs to see them all. The run is anchored on its own hidden item
  * (there is no one issue for it to hang off), its opening message digests
- * every issue, and its Jira tools take `issueKey` to act on any of them and
- * refuse any other. Issues that cannot be read are reported, not fatal: one
+ * every issue, and its Jira tools take `issueKey` to say which one they act
+ * on. Issues that cannot be read are reported, not fatal: one
  * bad key must not cost the rest their run.
  */
 export async function startJiraRunForIssues(

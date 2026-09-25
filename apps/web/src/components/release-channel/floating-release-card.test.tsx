@@ -1,7 +1,7 @@
 import { setupComponentTest } from "../../../test/setup";
 setupComponentTest();
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as tanstackRouter from "@tanstack/react-router";
@@ -17,8 +17,7 @@ const OLD_DATE = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
 type Cta =
   | { label: string; href: string }
   | { label: string; action: "download-app" }
-  | { label: string; action: "start-tour" }
-  | { label: string; action: "enable-new-layout" };
+  | { label: string; action: "start-tour" };
 
 function makeRelease(
   overrides: Partial<{ id: string; date: string; cta: Cta }> = {},
@@ -268,31 +267,6 @@ describe("FloatingReleaseCard", () => {
       inProject: true,
       onSiteEditor: true,
     });
-  });
-
-  /** The write goes through `useLocalStorage`'s async mutationFn, so the
-   *  assertion has to wait for it rather than read straight after the click. */
-  it("the enable-new-layout CTA turns the preference on in place, without navigating", async () => {
-    releasesRef.current = [
-      makeRelease({
-        id: "fresh",
-        cta: { label: "Try it now", action: "enable-new-layout" },
-      }),
-    ];
-    const { getByRole, queryByText } = render(<FloatingReleaseCard />, {
-      wrapper,
-    });
-
-    fireEvent.click(getByRole("button", { name: "Try it now" }));
-
-    await waitFor(() => {
-      const preferences = JSON.parse(
-        localStorage.getItem("studio:user:preferences") ?? "{}",
-      );
-      expect(preferences.compactPageLayout).toBe(true);
-    });
-    expect(navigateMock).not.toHaveBeenCalled();
-    expect(queryByText("Fresh Release")).toBeNull();
   });
 
   it("clicking the dismiss button marks the release as seen and unmounts the card", () => {

@@ -20,7 +20,7 @@
  * This is a FLOOR, not the fast path: the provider tool hook
  * (`capturePrForRun`) still links instantly when the run opens it that way.
  * This runs from the review sweeper, for a card that reached its review cycle
- * with nothing linked — which before this was the definition of a stranded card.
+ * with nothing linked or whose run finished In Progress without one.
  *
  * It reads through `ChangeRequestClient`, so a GitLab project is looked up the
  * same way: the shape-sniffing this used to need (a bare array, or one wrapped

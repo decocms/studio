@@ -22,7 +22,7 @@ export function useAutosave<T>(
   initial: T,
   save: (value: T) => void,
   opts?: { delay?: number; isSaving?: boolean },
-): readonly [T, (next: T) => void, (next: T) => void] {
+): readonly [T, (next: T) => void, (next: T) => void, boolean] {
   const delay = opts?.delay ?? AUTOSAVE_DELAY;
   const isSaving = opts?.isSaving ?? false;
   const [draft, setDraft] = useState<T>(initial);
@@ -62,5 +62,6 @@ export function useAutosave<T>(
     setPending(false);
   };
 
-  return [draft, update, sync] as const;
+  // 4th value: whether a debounced save is scheduled — a save indicator needs this alongside the mutation's own isPending, or it shows "Saved" mid-debounce.
+  return [draft, update, sync, pending] as const;
 }

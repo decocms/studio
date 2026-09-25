@@ -254,7 +254,7 @@ function FeedCard({
                 panel: landingTabIdFor(project.metadata?.ui?.layout),
               })
             }
-            className="flex min-w-0 cursor-pointer items-center gap-2 classic:rounded-md compact:rounded-lg text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
+            className="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg text-left text-sm font-medium text-foreground transition-colors hover:text-primary"
           >
             <ProjectIcon icon={project.icon} name={project.title} />
             <span className="truncate">{project.title}</span>

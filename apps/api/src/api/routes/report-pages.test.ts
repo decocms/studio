@@ -99,6 +99,13 @@ describe("GET /report/:domain.md", () => {
     );
   });
 
+  test("forwards the reader's language to the engine", async () => {
+    engineReplies(new Response("# Example\n", { status: 200 }));
+    await app.request("/example.com.md?lang=pt-BR");
+    const [url] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(/\/onepager\.md\?lang=pt-BR$/);
+  });
+
   test("answers 404 when nothing is published", async () => {
     engineReplies(new Response("not_found", { status: 404 }));
     const res = await app.request("/example.com.md");

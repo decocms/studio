@@ -5,7 +5,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
@@ -18,7 +18,7 @@ import { useT } from "@/i18n/use-t.ts";
  */
 export function MissingRequiredMarker({ className }: { className?: string }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
 
   if (compact) {
     return (

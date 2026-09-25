@@ -7,7 +7,7 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 
-test.use({ compactPageLayout: true });
+test.use({ newBlocksEditor: true });
 
 test.describe("compact page layout", () => {
   test.setTimeout(120_000);

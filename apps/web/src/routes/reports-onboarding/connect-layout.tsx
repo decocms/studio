@@ -119,7 +119,7 @@ export function ConnectFooterButton({
     <Button
       type="button"
       size="lg"
-      className="h-auto min-h-12 w-full whitespace-normal classic:rounded-lg py-3 text-center text-base font-medium leading-tight"
+      className="h-auto min-h-12 w-full whitespace-normal py-3 text-center text-base font-medium leading-tight"
       onClick={onClick}
       disabled={pending || !ready}
     >

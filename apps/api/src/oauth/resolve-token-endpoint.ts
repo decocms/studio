@@ -14,6 +14,19 @@ import {
 import { guardAgainstPrivateUrl } from "../mcp-clients/url-security";
 
 /**
+ * An unread response body keeps its connection out of the fetch keep-alive
+ * pool. Both metadata probes below are discarded on a non-ok response
+ * without ever being read, so drain them explicitly.
+ */
+async function drainBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // ignore — best-effort drain
+  }
+}
+
+/**
  * Resolve the origin's actual OAuth token endpoint from a connection URL.
  *
  * Discovery flow:
@@ -37,6 +50,8 @@ export async function resolveOriginTokenEndpoint(
           authorization_servers?: string[];
         };
         authServerUrl = data.authorization_servers?.[0];
+      } else {
+        await drainBody(resourceRes);
       }
     } catch {
       // Protected resource metadata not available, fall through
@@ -66,6 +81,8 @@ export async function resolveOriginTokenEndpoint(
           // not a valid URL — fall through to null
         }
       }
+    } else {
+      await drainBody(authRes);
     }
 
     return null;

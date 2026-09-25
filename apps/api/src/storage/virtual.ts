@@ -7,7 +7,7 @@
  * the connection_aggregations table.
  */
 
-import type { Kysely } from "kysely";
+import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
   getWellKnownBrandContextSetupVirtualMCP,
@@ -565,6 +565,59 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     }
 
     return virtualMcp;
+  }
+
+  /**
+   * Set and remove top-level metadata keys in one statement. The row also
+   * carries `sandboxMap`, which sandbox starts rewrite concurrently; a
+   * read-merge-write here could drop an entry one of them just added.
+   * Returns false when the project is not a VIRTUAL row of `organizationId`.
+   */
+  async patchMetadata(params: {
+    id: string;
+    organizationId: string;
+    set: Record<string, unknown>;
+    unset: string[];
+    by: string;
+  }): Promise<boolean> {
+    const next = sql`(coalesce(metadata::jsonb, '{}'::jsonb) - ${params.unset}::text[]) || ${JSON.stringify(params.set)}::jsonb`;
+    const result = await this.db
+      .updateTable("connections")
+      .set({
+        metadata: sql<string>`(${next})::text`,
+        updated_at: new Date().toISOString(),
+        updated_by: params.by,
+      })
+      .where("id", "=", params.id)
+      .where("organization_id", "=", params.organizationId)
+      .where("connection_type", "=", "VIRTUAL")
+      .where((eb) =>
+        eb.or([
+          eb("metadata", "is", null),
+          sql<boolean>`jsonb_typeof(metadata::jsonb) = 'object'`,
+        ]),
+      )
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows) > 0;
+  }
+
+  /** Drop every override in the org that points at `slug`, for when the org
+   *  releases that site and may no longer read its analytics. */
+  async clearAnalyticsSiteSlugReferences(
+    organizationId: string,
+    slug: string,
+  ): Promise<number> {
+    const result = await this.db
+      .updateTable("connections")
+      .set({
+        metadata: sql<string>`(metadata::jsonb - 'analyticsSiteSlug')::text`,
+        updated_at: new Date().toISOString(),
+      })
+      .where("organization_id", "=", organizationId)
+      .where("connection_type", "=", "VIRTUAL")
+      .where(sql<boolean>`metadata::jsonb ->> 'analyticsSiteSlug' = ${slug}`)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows);
   }
 
   async delete(id: string): Promise<void> {

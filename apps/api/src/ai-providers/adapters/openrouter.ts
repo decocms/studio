@@ -40,6 +40,22 @@ function fetchModelsWithRetry(
   );
 }
 
+/**
+ * OpenRouter's catalog occasionally lists a model missing the nested
+ * metadata mapV1Model relies on — skip it instead of crashing the whole
+ * listModels call over one bad entry.
+ */
+function isMappableModel(m: OpenRouterAPIModel): boolean {
+  return (
+    typeof m.id === "string" &&
+    !!m.architecture &&
+    Array.isArray(m.architecture.input_modalities) &&
+    Array.isArray(m.architecture.output_modalities) &&
+    !!m.top_provider &&
+    !!m.pricing
+  );
+}
+
 function mapV1Model(m: OpenRouterAPIModel): ModelInfo {
   const contextWindow = m.context_length ?? 0;
   const reportedMaxOut = m.top_provider.max_completion_tokens || null;
@@ -139,6 +155,7 @@ export const openrouterAdapter: ProviderAdapter = {
             data: OpenRouterAPIModel[];
           }>("OpenRouter decision models", res);
           return data
+            .filter(isMappableModel)
             .filter((model) =>
               model.architecture.output_modalities.includes("decisions"),
             )
@@ -153,7 +170,7 @@ export const openrouterAdapter: ProviderAdapter = {
         const { data } = await parseJsonResponse<{
           data: OpenRouterAPIModel[];
         }>("OpenRouter listModels", res);
-        return data.map(mapV1Model);
+        return data.filter(isMappableModel).map(mapV1Model);
       },
     };
   },

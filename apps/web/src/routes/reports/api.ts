@@ -56,7 +56,9 @@ export function resolveEmailLinkToken(
   );
 }
 
-/** The report as Markdown, served by the API at `/report/:domain.md`. */
-export function reportMarkdownPath(domain: string): string {
-  return `/report/${encodeURIComponent(domain)}.md`;
+/** The report as Markdown, served by the API at `/report/:domain.md`, in
+ *  `lang` (the language the page's findings are in). */
+export function reportMarkdownPath(domain: string, lang?: string): string {
+  const qs = lang ? `?${new URLSearchParams({ lang }).toString()}` : "";
+  return `/report/${encodeURIComponent(domain)}.md${qs}`;
 }

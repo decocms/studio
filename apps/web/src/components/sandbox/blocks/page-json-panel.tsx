@@ -11,7 +11,7 @@ import { useDebouncedSaveBlock } from "@/components/sections-editor/use-save-blo
 import { usePackagePath } from "@/components/sections-editor/use-package-path";
 import { decoBlockFilePath } from "@/components/sections-editor/deco-block-key";
 import { decoRepoPath } from "@/components/sections-editor/deco-repo-path";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
@@ -40,7 +40,7 @@ export function PageJsonPanel({
   ref?: Ref<PageJsonPanelHandle>;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const packagePath = usePackagePath(virtualMcpId);
   const blockFilePath = decoRepoPath(packagePath, decoBlockFilePath(pageKey));
   const { org } = useProjectContext();

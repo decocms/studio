@@ -218,7 +218,7 @@ function CreditsBalance({ enabled }: { enabled: boolean }) {
           type="button"
           onClick={() => refetch()}
           disabled={isFetching}
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 classic:rounded-md compact:rounded-lg hover:bg-muted/50"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors p-1 rounded-lg hover:bg-muted/50"
           aria-label={t("settings.decoCreditsHero.refreshBalance")}
         >
           <RefreshCw01 size={14} className={cn(isFetching && "animate-spin")} />

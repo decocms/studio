@@ -1,4 +1,5 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
+import type { ConnectionEntity } from "@/sdk";
 import { Page } from "@/components/page";
 import { MCPAppRenderer } from "@/mcp-apps/mcp-app-renderer";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -48,7 +49,7 @@ import {
   StopCircle,
 } from "@untitledui/icons";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import type { McpUiMessageRequest } from "@modelcontextprotocol/ext-apps";
+
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { DetailPanel } from "./detail-panel";
@@ -63,7 +64,6 @@ import {
   useMCPClient,
   useMCPToolsListQuery,
   useProjectContext,
-  type ConnectionEntity,
 } from "@/sdk";
 import { contentBlocksToTiptapDoc } from "@decocms/shared/mcp-apps/content-blocks";
 import { IntegrationIcon } from "@/components/integration-icon.tsx";
@@ -145,7 +145,6 @@ function ToolDetailsAuthenticated({
   siblings: ConnectionEntity[];
   onSelectInstance: (id: string) => void;
 }) {
-  const compact = useCompactPageLayout();
   const t = useT();
   // Read replayId from search params to check for prefilled input
   const { replayId } = useSearch({ strict: false }) as { replayId?: string };
@@ -746,13 +745,7 @@ function ToolDetailsAuthenticated({
               size="xl"
               className="shrink-0"
             />
-            {compact ? (
-              <Page.Title>{toolName}</Page.Title>
-            ) : (
-              <h1 className="text-xl font-semibold tracking-tight text-foreground leading-none truncate">
-                {toolName}
-              </h1>
-            )}
+            <Page.Title>{toolName}</Page.Title>
             {/* MCP Status */}
             <div className="flex items-center gap-2 px-2.5 py-1 bg-muted/50 rounded-md h-fit shrink-0">
               {toolsQuery.isSuccess ? (

@@ -35,6 +35,8 @@ interface ListOut {
 }
 interface ResultsOut {
   available: boolean;
+  reason: "not_configured" | "no_site_data" | null;
+  analyticsSite: string;
   results: unknown;
 }
 
@@ -106,6 +108,20 @@ test.describe("A/B experiments tenancy", () => {
     );
     expect(list.experiments.map((e) => e.key)).toEqual(["plp-ranking"]);
 
+    // A matcher block name (spaces, capitals) is a valid key — it is what the
+    // runtime records as the analytics prop.
+    const matcherKeyed = await callSelfMcpTool<CreateOut>(
+      ownerCtx,
+      owner.orgSlug,
+      "EXPERIMENT_CREATE",
+      { site, key: "Cross Sell Bag", name: "Cross sell", variants: VARIANTS },
+    );
+    expect(matcherKeyed.experiment.key).toBe("Cross Sell Bag");
+    await callSelfMcpTool(ownerCtx, owner.orgSlug, "EXPERIMENT_DELETE", {
+      site,
+      key: "Cross Sell Bag",
+    });
+
     // Duplicate key on the same site is rejected.
     await expect(
       callSelfMcpTool(ownerCtx, owner.orgSlug, "EXPERIMENT_CREATE", {
@@ -175,6 +191,8 @@ test.describe("A/B experiments tenancy", () => {
       { site, key: "plp-ranking" },
     );
     expect(results.available).toBe(false);
+    expect(results.reason).toBe("not_configured");
+    expect(results.analyticsSite).toBe(site);
     expect(results.results).toBeNull();
 
     // The results tool is also ownership-gated.

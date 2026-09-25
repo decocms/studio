@@ -47,7 +47,7 @@ async function createClonableAgent(
   return { agentId: agent.item.id, threadId: thread.item.id };
 }
 
-test.use({ compactPageLayout: true });
+test.use({ newBlocksEditor: true });
 
 test.describe("Blocks preview mode", () => {
   test.setTimeout(90_000);

@@ -19,7 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { Plus } from "@untitledui/icons";
 import { toast } from "sonner";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { AddListRow } from "../editor-list-row";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
@@ -146,7 +146,7 @@ export function ArrayField({
   sandbox,
 }: FieldProps) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const tooltipsEnabled = useFieldDescriptionTooltips(sandbox?.virtualMcpId);
   const { required: requiredProp, invalid: requiredInvalid } =
     useRequiredField();
@@ -574,7 +574,7 @@ export function ArrayField({
               items={entryIds}
               strategy={verticalListSortingStrategy}
             >
-              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border compact:card-shadow border-border/50 p-1.5">
+              <div className="min-w-0 overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/50 p-1.5">
                 {items.length > 0 &&
                   (() => {
                     // Compute base labels once for the whole list rather than per

@@ -42,10 +42,8 @@ const THREAD: TaskComment = {
  */
 export function TaskCommentsHarness({
   resolved = false,
-  conversation = true,
 }: {
   resolved?: boolean;
-  conversation?: boolean;
 }) {
   const [thread, setThread] = useState<TaskComment | null>({
     ...THREAD,
@@ -57,7 +55,6 @@ export function TaskCommentsHarness({
     <div className="flex w-[640px] flex-col gap-5 bg-background p-6">
       {thread && (
         <CommentThreadCard
-          conversation={conversation}
           thread={thread}
           me={ME}
           onDelete={(commentId) =>
