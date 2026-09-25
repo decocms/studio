@@ -182,11 +182,13 @@ export async function queryExperimentResults(
 
   const [goalCounts, tsDefault, tsVariant] = await Promise.all([
     Promise.all(
-      goals.map(async (goal) => ({
-        goal,
-        variant: await aggregate(goal, "true"),
-        default: await aggregate(goal, "false"),
-      })),
+      goals.map(async (goal) => {
+        const [variant, defaultCount] = await Promise.all([
+          aggregate(goal, "true"),
+          aggregate(goal, "false"),
+        ]);
+        return { goal, variant, default: defaultCount };
+      }),
     ),
     timeseries("false"),
     timeseries("true"),
