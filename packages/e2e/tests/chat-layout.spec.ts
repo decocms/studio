@@ -1,8 +1,6 @@
 import { expect, test } from "../fixtures/test";
 import { callSelfMcpTool, createHttpConnection } from "../fixtures/mcp-tools";
 
-test.use({ compactPageLayout: true });
-
 test.describe("chat layout composition", () => {
   test.setTimeout(120_000);
 

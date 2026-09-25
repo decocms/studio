@@ -1,4 +1,4 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import type { SecretInfo } from "@/hooks/use-secrets";
 import { Suspense, useState } from "react";
 import { AlertCircle, Lock01, Plus, User01, Users01 } from "@untitledui/icons";
 import { toast } from "sonner";
@@ -27,7 +27,6 @@ import { Page } from "@/components/page";
 import { SettingsPage } from "@/components/settings/settings-section";
 import { useT } from "@/i18n/use-t.ts";
 import {
-  type SecretInfo,
   type SecretScopeKind,
   useCreateSecret,
   useSecrets,
@@ -262,7 +261,6 @@ function CreateSecretDialog({ open, onOpenChange }: CreateSecretDialogProps) {
 }
 
 function SecretsContent() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const secrets = useSecrets();
   const [createOpen, setCreateOpen] = useState(false);
@@ -278,8 +276,8 @@ function SecretsContent() {
   if (secrets.length === 0) {
     return (
       <>
-        {compact && createAction}
-        <EmptyState action={!compact && createAction} />
+        {createAction}
+        <EmptyState action={false} />
         <CreateSecretDialog open={createOpen} onOpenChange={setCreateOpen} />
       </>
     );

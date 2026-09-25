@@ -1,7 +1,5 @@
 import { expect, test } from "../fixtures/test";
 
-test.use({ compactPageLayout: true });
-
 test.describe("shared application layout", () => {
   test.setTimeout(120_000);
 

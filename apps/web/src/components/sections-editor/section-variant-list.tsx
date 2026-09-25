@@ -42,7 +42,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { EditorRowActionsTrigger, editorRowClassName } from "./editor-list-row";
 
@@ -125,7 +125,7 @@ function VariantRowContent({
   onDelete?: () => void;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
 
   return (
     <>
@@ -233,7 +233,7 @@ function SortableVariantRow({
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useSortable({ id: entry.id, animateLayoutChanges: () => false });
 
@@ -298,7 +298,7 @@ export function SectionVariantList({
   onAdd: () => void;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const canDelete = variants.length > 1;
 
   const [entries, setEntries] = useState<SortableVariantEntry[]>(() =>

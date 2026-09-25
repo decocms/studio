@@ -130,35 +130,31 @@ test("deleting the root comment takes the whole thread with it", async ({
   ).toBeVisible();
 });
 
-for (const conversation of [false, true]) {
-  for (const resolved of [false, true]) {
-    test(`comments stay visible without resolve controls (conversation=${conversation}, resolved=${resolved})`, async ({
-      mount,
-      page,
-    }) => {
-      const component = await mount(
-        <TaskCommentsHarness conversation={conversation} resolved={resolved} />,
-      );
+for (const resolved of [false, true]) {
+  test(`comments stay visible without resolve controls (resolved=${resolved})`, async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(<TaskCommentsHarness resolved={resolved} />);
+    await expect(
+      component.getByText("Can you take this one and open a PR?"),
+    ).toBeVisible();
+    await expect(component.getByText(/^On it/)).toBeVisible();
+    await expect(
+      component.getByRole("button", { name: "Collapse", exact: true }),
+    ).toHaveCount(0);
+    for (const entry of [0, 1]) {
+      await component.getByLabel("Comment actions").nth(entry).click();
       await expect(
-        component.getByText("Can you take this one and open a PR?"),
+        page.getByRole("menuitem", { name: "Delete", exact: true }),
       ).toBeVisible();
-      await expect(component.getByText(/^On it/)).toBeVisible();
+      await expect(page.getByRole("menuitem")).toHaveCount(1);
       await expect(
-        component.getByRole("button", { name: "Collapse", exact: true }),
+        page.getByRole("menuitem", { name: /resolve/i }),
       ).toHaveCount(0);
-      for (const entry of [0, 1]) {
-        await component.getByLabel("Comment actions").nth(entry).click();
-        await expect(
-          page.getByRole("menuitem", { name: "Delete", exact: true }),
-        ).toBeVisible();
-        await expect(page.getByRole("menuitem")).toHaveCount(1);
-        await expect(
-          page.getByRole("menuitem", { name: /resolve/i }),
-        ).toHaveCount(0);
-        await page.keyboard.press("Escape");
-      }
-    });
-  }
+      await page.keyboard.press("Escape");
+    }
+  });
 }
 
 test("typing @ opens the member picker, and picking one inserts a chip", async ({

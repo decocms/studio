@@ -7,7 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
 /**
@@ -73,7 +73,7 @@ export function EditorRowToggle({
   /** The list's own pre-redesign toggle classes, used as-is in classic. */
   classicClassName?: string;
 }) {
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -111,7 +111,7 @@ export function EditorRowActionsTrigger({
   /** The list's own pre-redesign trigger classes, used as-is in classic. */
   classicClassName?: string;
 }) {
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   return (
     <DropdownMenuTrigger asChild>
       <Button

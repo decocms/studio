@@ -26,15 +26,15 @@ export interface AuthedPage {
 
 interface Fixtures {
   authedPage: AuthedPage;
-  compactPageLayout: boolean;
-  layoutPreferences: void;
+  newBlocksEditor: boolean;
+  editorPreferences: void;
 }
 
 export const test = base.extend<Fixtures>({
-  compactPageLayout: [false, { option: true }],
-  layoutPreferences: [
-    async ({ page, compactPageLayout }, use) => {
-      if (compactPageLayout) {
+  newBlocksEditor: [false, { option: true }],
+  editorPreferences: [
+    async ({ page, newBlocksEditor }, use) => {
+      if (newBlocksEditor) {
         await page.addInitScript(() => {
           const key = "studio:user:preferences";
           const preferences = JSON.parse(localStorage.getItem(key) ?? "{}");

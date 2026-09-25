@@ -48,7 +48,7 @@ export function NoCreditsEyebrow() {
         })
       }
       className={cn(
-        "inline-flex items-center gap-1.5 px-3 py-1 classic:rounded-full compact:rounded-lg cursor-pointer",
+        "inline-flex items-center gap-1.5 px-3 py-1 rounded-lg cursor-pointer",
         "bg-warning/10 border border-warning/20",
         "hover:bg-warning/15",
         "transition-colors duration-150",

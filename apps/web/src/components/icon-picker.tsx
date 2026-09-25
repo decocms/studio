@@ -339,7 +339,7 @@ function IconsTab({
         <button
           type="button"
           onClick={onRandom}
-          className="h-8 w-8 flex items-center justify-center classic:rounded-md compact:rounded-lg border border-border hover:bg-accent transition-colors shrink-0"
+          className="h-8 w-8 flex items-center justify-center rounded-lg border border-border hover:bg-accent transition-colors shrink-0"
           title={t("common.iconPicker.randomIcon")}
           aria-label={t("common.iconPicker.randomIcon")}
         >
@@ -364,7 +364,7 @@ function IconsTab({
                 type="button"
                 onClick={() => onSelectIcon(iconName)}
                 className={cn(
-                  "h-8 w-8 flex items-center justify-center classic:rounded-md compact:rounded-lg transition-colors cursor-pointer",
+                  "h-8 w-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer",
                   currentIconName === iconName
                     ? cn(color.bg, color.text)
                     : cn(color.text, "hover:bg-accent"),

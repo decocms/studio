@@ -1,10 +1,7 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import {
-  useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-} from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import type { RefObject } from "react";
+import { useRef } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 
 const SIDEBAR_MAX_WIDTH = 400;
@@ -29,8 +26,7 @@ export interface SidebarResize {
  * (and localStorage).
  */
 export function useSidebarResize(): SidebarResize {
-  const compact = useCompactPageLayout();
-  const minWidth = compact ? 224 : 240;
+  const minWidth = 224;
   const clamp = (w: number) =>
     Math.max(minWidth, Math.min(SIDEBAR_MAX_WIDTH, w));
   const [width, setWidth] = useLocalStorage<number>(STORAGE_KEY, (existing) =>

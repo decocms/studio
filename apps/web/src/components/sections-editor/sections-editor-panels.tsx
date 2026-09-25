@@ -46,7 +46,7 @@ import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
 import { formatMatcher } from "./format-matcher";
 import { validatePagePath } from "./page-path-utils";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 
 /**
@@ -507,7 +507,7 @@ export function PageHeaderInputs({
  */
 export function AddVariantButton({ onClick }: { onClick: () => void }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
 
   if (!compact) {
     return (

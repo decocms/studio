@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { GripVertical } from "lucide-react";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
@@ -141,7 +141,7 @@ function SectionRowContent({
   decofile: Record<string, unknown>;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const saved = section.isSavedBlock === true;
   const multivariate = section.isMultivariate === true;
   const imageSrc =
@@ -312,7 +312,7 @@ function SortableSectionItem({
   onDetach: () => void;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const isAsyncRender = raw
     ? isLazyResolveType(raw.__resolveType ?? "")
     : false;
@@ -616,7 +616,7 @@ export function SectionList({
   canAddSection?: boolean;
 }) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const [entries, setEntries] = useState<SectionEntry[]>(() =>
     createEntries(sections.length),
   );

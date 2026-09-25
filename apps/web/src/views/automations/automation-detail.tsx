@@ -559,7 +559,7 @@ export function SettingsTab({
               )}
               <button
                 type="button"
-                className="shrink-0 p-0.5 classic:rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity compact:rounded-lg"
+                className="shrink-0 p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground transition-opacity rounded-lg"
                 onClick={() => {
                   setShowCustomCron(false);
                   setCronInput("");
@@ -634,7 +634,7 @@ export function SettingsTab({
                     <Button
                       type="button"
                       variant="default"
-                      className="h-8 gap-1.5 classic:rounded-md px-3 text-sm font-medium"
+                      className="h-8 gap-1.5 px-3 text-sm font-medium"
                       onClick={handleRunClick}
                       disabled={!agentId}
                     >

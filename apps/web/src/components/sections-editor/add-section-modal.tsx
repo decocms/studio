@@ -8,7 +8,7 @@ import {
 } from "@decocms/ui/components/dialog.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import {
   extractSectionCatalog,
@@ -124,7 +124,7 @@ function LazySectionPreview({
 }) {
   const { ref, iframeActive } = useLazyPreviewVisible(scrollRootRef, slotId);
   const [iframeLoaded, setIframeLoaded] = useState(false);
-  const PlaceholderIcon = useCompactPageLayout() ? Cube01 : LayoutAlt01;
+  const PlaceholderIcon = useNewBlocksEditor() ? Cube01 : LayoutAlt01;
 
   return (
     <div
@@ -172,7 +172,7 @@ function SectionGalleryCard({
   scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: () => void;
 }) {
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   // A shared section says so with the globe, as it does everywhere else.
   const CardIcon = !compact
     ? LayoutAlt01
@@ -185,7 +185,7 @@ function SectionGalleryCard({
       type="button"
       onClick={onSelect}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-lg))] border bg-card text-left transition-colors compact:card-shadow",
+        "group flex flex-col overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-lg))] border bg-card text-left transition-colors card-shadow",
         "hover:border-primary/40 hover:bg-accent/30",
         entry.isSavedBlock &&
           "border-global-section/35 hover:bg-global-section/8",

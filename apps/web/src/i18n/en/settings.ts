@@ -344,9 +344,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.compactPageLayout": "New Layout",
-  "settings.preferences.compactPageLayoutDescription":
-    "Try the redesigned navigation, page headers, and controls. Turn it off to return to the current layout.",
+  "settings.preferences.newBlocksEditor": "New blocks editor",
+  "settings.preferences.newBlocksEditorDescription":
+    "Try the redesigned blocks editor. The rest of Studio always uses the new layout.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",

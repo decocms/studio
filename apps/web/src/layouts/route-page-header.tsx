@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
+import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
 import { useRouterState } from "@tanstack/react-router";
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { Page } from "@/components/page";
-import type { BreadcrumbItem } from "@/components/page/breadcrumb-model";
+
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { useInSettings } from "@/hooks/use-in-settings";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
@@ -19,7 +20,6 @@ export function RoutePageHeader({
   actions?: ReactNode;
   navigation?: ReactNode;
 }) {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const scopeId = useScopeId();
@@ -40,7 +40,7 @@ export function RoutePageHeader({
       ? projectTitle
       : t("sidebar.navDestinations.home")
     : t(page?.pageTitle ?? "page.view");
-  if (!compact) return null;
+
   const breadcrumbs: BreadcrumbItem[] = [];
   if (inSettings) {
     breadcrumbs.push({

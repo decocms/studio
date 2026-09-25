@@ -209,8 +209,8 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
-  const handleCompactLayoutChange = (checked: boolean) => {
-    track("preferences_compact_page_layout_toggled", { enabled: checked });
+  const handleBlocksEditorChange = (checked: boolean) => {
+    track("preferences_blocks_editor_toggled", { enabled: checked });
     setPreferences((prev) => ({ ...prev, compactPageLayout: checked }));
   };
 
@@ -336,7 +336,7 @@ function PreferencesSection() {
                   track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
                 }}
-                className="size-6 classic:rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer compact:rounded-lg"
+                className="size-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer rounded-lg"
               >
                 <Play size={11} />
               </button>
@@ -354,16 +354,16 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title={t("settings.preferences.compactPageLayout")}
-          description={t("settings.preferences.compactPageLayoutDescription")}
+          title={t("settings.preferences.newBlocksEditor")}
+          description={t("settings.preferences.newBlocksEditorDescription")}
           onClick={() =>
-            handleCompactLayoutChange(!preferences.compactPageLayout)
+            handleBlocksEditorChange(!preferences.compactPageLayout)
           }
           action={
             <Switch
-              aria-label={t("settings.preferences.compactPageLayout")}
+              aria-label={t("settings.preferences.newBlocksEditor")}
               checked={preferences.compactPageLayout}
-              onCheckedChange={handleCompactLayoutChange}
+              onCheckedChange={handleBlocksEditorChange}
             />
           }
         />

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import { isSeoEnabled, isSeoLazyRender } from "./seo-lazy-render";
 
@@ -25,7 +25,7 @@ export function SeoFormChrome({
   children,
 }: SeoFormChromeProps) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const enabled = isSeoEnabled(rawSeo);
   const asyncRender = isSeoLazyRender(rawSeo);
 

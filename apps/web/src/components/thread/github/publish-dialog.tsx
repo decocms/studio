@@ -1,6 +1,10 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
 import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import type { PublishTarget } from "./publish-flow.ts";
+import type { PrSummary } from "./use-pr-data.ts";
+import type { PublishPolicy } from "./sandbox-git-api.ts";
+import type { SandboxProxyRef } from "@/sdk/sandbox-url";
+import { SELF_MCP_ALIAS_ID, useMCPClient } from "@/sdk";
+
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";
@@ -31,9 +35,8 @@ import {
   reportPublishFailure,
   runPublishFlow,
   runSubmitForReviewFlow,
-  type PublishTarget,
 } from "./publish-flow.ts";
-import type { PrSummary } from "./use-pr-data.ts";
+
 import { useSandboxStart } from "@/components/sandbox/hooks/use-sandbox-start";
 import { publishToBaseLabel } from "./publish-label.ts";
 import { useResolvedPublishGate } from "@/components/sandbox/hooks/use-publish-gate.ts";
@@ -52,9 +55,8 @@ import {
   shouldUseBaseDiff,
   type GitDiffResult,
   type GitStatus,
-  type PublishPolicy,
 } from "./sandbox-git-api.ts";
-import type { SandboxProxyRef } from "@/sdk/sandbox-url";
+
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 
 export type PublishDialogIntent = "open-pr" | "publish-only";
@@ -724,10 +726,9 @@ function PublishButton({
   isPublishing: boolean;
   onPublish: () => void;
 }) {
-  const compact = useCompactPageLayout();
   const button = (
     <Button
-      variant={compact ? "default" : "brand"}
+      variant="default"
       type="button"
       className="w-full"
       onClick={onPublish}

@@ -7,8 +7,7 @@ import {
 } from "@decocms/ui/components/tooltip.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
 import { SidebarThreadButton } from "./thread-button";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import { useInSettings } from "@/hooks/use-in-settings";
+
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
 import { useT } from "@/i18n/use-t.ts";
 import { OrgProjectPicker } from "./org-project-picker";
@@ -16,15 +15,13 @@ import { OrgProjectPicker } from "./org-project-picker";
 const ICON_SIZE = 16;
 
 export function SidebarPickerHeader() {
-  const compact = useCompactPageLayout();
-  const inSettings = useInSettings();
   const collapsed = useSidebarCollapsed();
 
   return (
     <>
       <OrgProjectPicker collapsed={collapsed} />
-      {(compact || !inSettings) && <CollapseToggle />}
-      {compact && <SidebarThreadButton />}
+      <CollapseToggle />
+      <SidebarThreadButton />
     </>
   );
 }
@@ -44,7 +41,6 @@ export function SidebarPickerHeaderMobile({
 }: {
   onClose: () => void;
 }) {
-  const compact = useCompactPageLayout();
   const t = useT();
 
   return (
@@ -53,7 +49,7 @@ export function SidebarPickerHeaderMobile({
           behind it. */}
       <OrgProjectPicker onNavigate={onClose} />
       <div className="flex-1" />
-      {compact && <SidebarThreadButton />}
+      <SidebarThreadButton />
       <ToolbarIconButton
         onClick={onClose}
         aria-label={t("sidebar.header.closeSidebar")}
@@ -65,17 +61,10 @@ export function SidebarPickerHeaderMobile({
 }
 
 function CollapseToggle() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const collapsed = useSidebarCollapsed();
   const { toggleSidebar } = useSidebar();
-  const label = t(
-    compact
-      ? collapsed
-        ? "page.expandSidebar"
-        : "page.collapseSidebar"
-      : "sidebar.header.toggleSidebar",
-  );
+  const label = t(collapsed ? "page.expandSidebar" : "page.collapseSidebar");
 
   return (
     <Tooltip>
@@ -83,7 +72,7 @@ function CollapseToggle() {
         <ToolbarIconButton
           aria-label={label}
           onClick={toggleSidebar}
-          className="shrink-0 classic:rounded-lg classic:md:size-[34px] group-data-[state=collapsed]/sidebar:mx-auto compact:size-7 compact:group-data-[state=collapsed]/sidebar:size-8"
+          className="shrink-0 group-data-[state=collapsed]/sidebar:mx-auto size-7 group-data-[state=collapsed]/sidebar:size-8"
         >
           <LayoutLeft size={ICON_SIZE} />
         </ToolbarIconButton>

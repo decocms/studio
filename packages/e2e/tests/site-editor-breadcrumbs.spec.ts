@@ -8,9 +8,7 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, test } from "../fixtures/test";
 
-// RoutePageHeader renders nothing outside the compact layout, so the whole
-// composed trail this file asserts on only exists with the preference on.
-test.use({ compactPageLayout: true });
+test.use({ newBlocksEditor: true });
 
 async function createEditor(
   api: APIRequestContext,
@@ -122,8 +120,8 @@ async function createEditor(
   };
 }
 
-test.describe("Site Editor blocks editor, classic layout", () => {
-  test.use({ compactPageLayout: false });
+test.describe("Site Editor classic blocks editor", () => {
+  test.use({ newBlocksEditor: false });
 
   test("names the page once, in its own field", async ({
     authedPage: { page, orgSlug },
@@ -146,7 +144,7 @@ test.describe("Site Editor blocks editor, classic layout", () => {
       // Classic renders the trail in place rather than contributing it to a
       // page header, so at the page root a lone crumb would repeat the name
       // the panel already shows in its own field.
-      await expect(page.getByTestId("page-header")).toHaveCount(0);
+      await expect(page.getByTestId("page-header")).toBeVisible();
       await expect(blocks.getByRole("navigation")).toHaveCount(0);
       await expect(blocks.getByText("Home", { exact: true })).toHaveCount(0);
       // Drilling into a section gives the trail something to say, so it

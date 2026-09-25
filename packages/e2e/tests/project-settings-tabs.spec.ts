@@ -6,8 +6,6 @@ import {
   uniqueOwner,
 } from "../fixtures/fast-preview";
 
-test.use({ compactPageLayout: true });
-
 test.describe("project settings tabs", () => {
   test.setTimeout(120_000);
 

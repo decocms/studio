@@ -223,7 +223,7 @@ export function PublishChangeCard({
                 <button
                   type="button"
                   aria-label={t("thread.publishPopover.discard")}
-                  className="flex size-6 shrink-0 items-center justify-center classic:rounded text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50 compact:rounded-lg"
+                  className="flex size-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-destructive disabled:opacity-50 rounded-lg"
                   onClick={(e) => {
                     e.stopPropagation();
                     onConfirmingChange(true);

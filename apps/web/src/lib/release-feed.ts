@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import {
   CheckCircle,
   CpuChip01,
@@ -9,7 +10,7 @@ import {
   Users03,
   Zap,
 } from "@untitledui/icons";
-import type { ComponentType } from "react";
+
 import { isDesktopAppEnvironment } from "@/hooks/use-is-desktop-app";
 
 export interface ReleaseBullet {
@@ -24,12 +25,11 @@ export interface Release {
   title: string;
   eyebrow?: string;
   bullets: ReleaseBullet[];
-  /** `href` navigates; `action` is one of: download-app | start-tour | enable-new-layout. */
+  /** `href` navigates; `action` is one of: download-app | start-tour. */
   cta?:
     | { label: string; href: string }
     | { label: string; action: "download-app" }
-    | { label: string; action: "start-tour" }
-    | { label: string; action: "enable-new-layout" };
+    | { label: string; action: "start-tour" };
   learnMoreHref?: string;
 }
 
@@ -57,10 +57,10 @@ const ALL_RELEASES: Release[] = [
       {
         icon: LayersThree01,
         title: "Site editor redesigned",
-        body: "Every block wears the same icon and the same actions, the variant you are editing is named in the header beside the block it belongs to, and picking a section is now a search rather than a scroll.",
+        body: "Try the redesigned blocks editor from Profile & Preferences. Blocks share consistent actions, variants appear beside their block in the header, and section selection is searchable.",
       },
     ],
-    cta: { label: "Try it now", action: "enable-new-layout" },
+    cta: { label: "Take a tour", action: "start-tour" },
   },
   {
     id: "unified-workspace-layout",
