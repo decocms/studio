@@ -137,6 +137,7 @@ export class ThreadAnalyticsStorage {
       from threads t
       where ${orgIn(q.orgIds, "t.organization_id")}
         and (status in ('in_progress','requires_action') or updated_at >= ${hourAgo})
+        and ${q.kind ? sql`${kindOf("t")} = ${q.kind}` : sql`true`}
     `);
 
     return {
