@@ -69,6 +69,19 @@ describe("useAutosave re-seed guard", () => {
     expect(result.current[0]).toEqual(local);
   });
 
+  it("reports `pending` true while a debounced save is scheduled, false once `sync` clears it", () => {
+    const a = { v: "a" };
+    const { result } = renderAutosave({ initial: a, isSaving: false });
+
+    expect(result.current[3]).toBe(false);
+
+    act(() => result.current[1]({ v: "typing" }));
+    expect(result.current[3]).toBe(true);
+
+    act(() => result.current[2]({ v: "synced" }));
+    expect(result.current[3]).toBe(false);
+  });
+
   it("`sync` clears the pending timer so a later settled re-seed applies", () => {
     const a = { v: "a" };
     const b = { v: "b" };
