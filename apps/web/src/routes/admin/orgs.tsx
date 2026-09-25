@@ -439,6 +439,149 @@ class SiteConflictError extends Error {
   }
 }
 
+interface AdminOrgProject {
+  id: string;
+  title: string;
+  siteSlug: string;
+  analyticsSiteSlug: string | null;
+}
+
+/** Radix Select can't hold an empty value, so this stands for "no override". */
+const OWN_SITE_VALUE = "__own_site__";
+
+/** Pick, per site project, which owned site its Monitor and experiment
+ *  results read (`metadata.analyticsSiteSlug`). */
+function ProjectAnalyticsSites({
+  org,
+  sites,
+}: {
+  org: DeploymentAdminOrg;
+  sites: AdminOrgSite[];
+}) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError } = useQuery({
+    queryKey: KEYS.deploymentAdminOrgProjects(org.id),
+    queryFn: () =>
+      adminFetch<{ projects: AdminOrgProject[] }>(
+        `/api/_admin/orgs/${org.id}/projects`,
+      ),
+  });
+  const projects = data?.projects ?? [];
+
+  const mutation = useMutation({
+    mutationFn: (vars: { project: AdminOrgProject; slug: string | null }) =>
+      adminFetch(
+        `/api/_admin/orgs/${org.id}/projects/${encodeURIComponent(vars.project.id)}/analytics-site`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ analyticsSiteSlug: vars.slug }),
+        },
+      ),
+    onSuccess: (_result, { project, slug }) => {
+      toast.success(
+        slug
+          ? t("admin.orgs.analyticsSiteSaved", { project: project.title, slug })
+          : t("admin.orgs.analyticsSiteCleared", { project: project.title }),
+      );
+      queryClient.invalidateQueries({
+        queryKey: KEYS.deploymentAdminOrgProjects(org.id),
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("admin.orgs.failedSaveAnalyticsSite"),
+      );
+    },
+  });
+
+  const ownedSlugs = new Set(sites.map((site) => site.slug));
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <p className="text-sm font-medium text-foreground">
+        {t("admin.orgs.projectAnalytics")}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        {t("admin.orgs.projectAnalyticsDescription")}
+      </p>
+      {isError ? (
+        <p className="text-sm text-destructive">
+          {t("admin.orgs.failedLoadProjects")}
+        </p>
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground">
+          {t("admin.orgs.loading")}
+        </p>
+      ) : projects.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t("admin.orgs.noProjects")}
+        </p>
+      ) : (
+        <div className="max-h-[30vh] space-y-2 overflow-y-auto pr-1">
+          {projects.map((project) => {
+            const current = project.analyticsSiteSlug;
+            const options = sites
+              .map((site) => site.slug)
+              .filter((slug) => slug !== project.siteSlug);
+            return (
+              <div
+                key={project.id}
+                className="flex items-center justify-between gap-3 rounded-md border border-border p-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {project.title}
+                  </p>
+                  <code className="truncate text-xs text-muted-foreground">
+                    {project.siteSlug}
+                  </code>
+                </div>
+                <Select
+                  value={current ?? OWN_SITE_VALUE}
+                  disabled={mutation.isPending}
+                  onValueChange={(value) =>
+                    mutation.mutate({
+                      project,
+                      slug: value === OWN_SITE_VALUE ? null : value,
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-52 font-mono">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={OWN_SITE_VALUE}>
+                      {t("admin.orgs.analyticsOwnSite", {
+                        slug: project.siteSlug,
+                      })}
+                    </SelectItem>
+                    {options.map((slug) => (
+                      <SelectItem key={slug} value={slug}>
+                        {slug}
+                      </SelectItem>
+                    ))}
+                    {current && !ownedSlugs.has(current) ? (
+                      <SelectItem value={current} disabled>
+                        {t("admin.orgs.analyticsSiteNotOwned", {
+                          slug: current,
+                        })}
+                      </SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -525,6 +668,10 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
     onSuccess: (_result, slug) => {
       toast.success(t("admin.orgs.siteRemoved", { slug, org: org.name }));
       invalidate();
+      // Releasing a site also clears the project overrides that pointed at it.
+      queryClient.invalidateQueries({
+        queryKey: KEYS.deploymentAdminOrgProjects(org.id),
+      });
     },
     onError: (error) => {
       toast.error(
@@ -682,6 +829,10 @@ function SitesDialog({ org }: { org: DeploymentAdminOrg }) {
             </div>
           </div>
         )}
+
+        {open && !isLoading && !isError ? (
+          <ProjectAnalyticsSites org={org} sites={sites} />
+        ) : null}
 
         <DialogFooter>
           <Button

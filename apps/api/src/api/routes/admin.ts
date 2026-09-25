@@ -29,9 +29,11 @@ import { getDb } from "@/database";
 import { OrganizationSettingsStorage } from "@/storage/organization-settings";
 import { OrganizationNoticeStorage } from "@/storage/organization-notices";
 import { OrgSiteConflictError, OrgSiteStorage } from "@/storage/org-sites";
+import { VirtualMCPStorage } from "@/storage/virtual";
 import { OrgNoticeInputSchema } from "@decocms/shared/organization/notice";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import { invalidateOrgNoticeCache } from "@/core/org-notice-gate";
+import { z } from "zod";
 import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import {
   flagsResponse,
@@ -228,6 +230,16 @@ async function requireDeploymentAdmin(
   grantDeploymentAdmin(user.id);
   return next();
 }
+
+/** `null` clears the override, so analytics follow the project's own site. */
+const AnalyticsSiteBodySchema = z.object({
+  analyticsSiteSlug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .refine(isValidSiteSlug)
+    .nullable(),
+});
 
 export function createAdminRoutes(): Hono<Env> {
   const app = new Hono<Env>();
@@ -694,12 +706,16 @@ export function createAdminRoutes(): Hono<Env> {
     if (!released) {
       return c.json({ error: "Site not found for this organization" }, 404);
     }
+    const clearedAnalyticsOverrides = await new VirtualMCPStorage(
+      db,
+    ).clearAnalyticsSiteSlugReferences(orgId, slug);
 
     auditAdminAction("org_site_release", {
       actor_user_id: actorId,
       ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
       organization_id: orgId,
       slug,
+      cleared_analytics_overrides: clearedAnalyticsOverrides,
     });
     posthog.capture({
       distinctId: actorId ?? orgId,
@@ -709,6 +725,102 @@ export function createAdminRoutes(): Hono<Env> {
     });
 
     return c.json({ ok: true });
+  });
+
+  // Per-project `metadata.analyticsSiteSlug`: no org-facing UI edits it.
+  app.get("/orgs/:orgId/projects", async (c) => {
+    const orgId = c.req.param("orgId");
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+    const projects = (await new VirtualMCPStorage(db).list(orgId)).flatMap(
+      (project) => {
+        const siteSlug = project.metadata?.siteSlug;
+        if (typeof siteSlug !== "string" || !siteSlug) return [];
+        const analyticsSiteSlug = project.metadata?.analyticsSiteSlug;
+        return [
+          {
+            id: project.id,
+            title: project.title,
+            siteSlug,
+            analyticsSiteSlug:
+              typeof analyticsSiteSlug === "string" ? analyticsSiteSlug : null,
+          },
+        ];
+      },
+    );
+    return c.json({ projects });
+  });
+
+  app.put("/orgs/:orgId/projects/:projectId/analytics-site", async (c) => {
+    const orgId = c.req.param("orgId");
+    const projectId = c.req.param("projectId");
+    const parsed = AnalyticsSiteBodySchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!parsed.success) {
+      return c.json({ error: "Invalid body" }, 400);
+    }
+    const slug = parsed.data.analyticsSiteSlug;
+
+    const db = getDb().db;
+    const org = await db
+      .selectFrom("organization")
+      .select("id")
+      .where("id", "=", orgId)
+      .executeTakeFirst();
+    if (!org) {
+      return c.json({ error: "Organization not found" }, 404);
+    }
+
+    const { actorId: effectiveActorId, impersonatedBy } =
+      await getAuditActor(c);
+    const actorId = impersonatedBy ?? effectiveActorId;
+    if (!actorId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    // Analytics is keyed globally by slug; an unowned one is another tenant's.
+    if (slug && !(await new OrgSiteStorage(db).isOwnedBy(slug, orgId))) {
+      return c.json({ error: "site_not_owned" }, 400);
+    }
+
+    const updated = await new VirtualMCPStorage(db).setAnalyticsSiteSlug({
+      id: projectId,
+      organizationId: orgId,
+      slug,
+      by: actorId,
+    });
+    if (!updated) {
+      return c.json({ error: "Project not found for this organization" }, 404);
+    }
+
+    auditAdminAction("project_analytics_site_set", {
+      actor_user_id: actorId,
+      ...(impersonatedBy ? { impersonated_user_id: effectiveActorId } : {}),
+      organization_id: orgId,
+      project_id: projectId,
+      analytics_site_slug: slug,
+    });
+    posthog.capture({
+      distinctId: actorId,
+      event: "deployment_admin_project_analytics_site_set",
+      groups: { organization: orgId },
+      properties: {
+        actor_user_id: actorId,
+        organization_id: orgId,
+        project_id: projectId,
+        analytics_site_slug: slug,
+      },
+    });
+
+    return c.json({ analyticsSiteSlug: slug });
   });
 
   // Billing notice pinned on an org: a `warn` banner, or a `block` that takes
