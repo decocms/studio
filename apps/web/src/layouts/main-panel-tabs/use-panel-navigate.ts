@@ -66,6 +66,8 @@ export interface OpenPanelOptions {
   replace?: boolean;
   /** Route the view to another agent. */
   virtualmcpid?: string;
+  /** The card to open on the task board; ignored by every other view. */
+  taskKey?: string;
   /** Extra route-owned search applied before the view's own payload. */
   search?: (prev: Record<string, unknown>) => Record<string, unknown>;
 }
@@ -101,6 +103,7 @@ export function usePanelNavigate(): {
       agentId: opts?.virtualmcpid ?? routeAgentId,
       tabId,
       destinationScope,
+      taskKey: opts?.taskKey,
       search,
       replace: opts?.replace ?? true,
     });
