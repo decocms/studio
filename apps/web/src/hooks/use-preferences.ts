@@ -1,7 +1,8 @@
+import type { Locale } from "@/i18n/locale.ts";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
-import { detectLocale, VALID_LOCALES, type Locale } from "@/i18n/locale.ts";
-import type { TranslationKey } from "@/i18n/en/index.ts";
+import { detectLocale, VALID_LOCALES } from "@/i18n/locale.ts";
 
 export type ToolApprovalLevel = "auto" | "readonly";
 export type ThemeMode = "light" | "dark" | "system";
@@ -11,6 +12,7 @@ interface Preferences {
   enableSounds: boolean;
   theme: ThemeMode;
   language: Locale;
+  /** Blocks editor opt-in; retain the legacy storage key for existing preferences. */
   compactPageLayout: boolean;
   /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
@@ -108,7 +110,7 @@ export function usePreferences() {
   );
 }
 
-export function useCompactPageLayout(): boolean {
+export function useNewBlocksEditor(): boolean {
   const [preferences] = usePreferences();
   return preferences.compactPageLayout;
 }

@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import {
   SectionVariantList,
   type SectionVariantEntry,
@@ -95,7 +95,7 @@ export function MultivariateFieldWrapper({
   ...props
 }: MultivariateFieldWrapperProps) {
   const t = useT();
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const VariantIcon = compact ? LayersThree01 : Flag01;
   const { value, onChange, meta, path, label, focused, decofile } = props;
   const [selectedIndex, setSelectedIndex] = useState(0);

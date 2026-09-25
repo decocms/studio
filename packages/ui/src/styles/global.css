@@ -33,8 +33,6 @@
 @source "../components/**/*.tsx";
 
 @custom-variant dark (&:is(.dark *));
-@custom-variant compact (&:where([data-compact-layout="true"], [data-compact-layout="true"] *));
-@custom-variant classic (&:where(:root:not([data-compact-layout="true"]), :root:not([data-compact-layout="true"]) *));
 
 @utility no-scrollbar {
   @apply [scrollbar-width:none] [&::-webkit-scrollbar]:hidden;
@@ -408,7 +406,7 @@
   }
 }
 
-:root[data-compact-layout="true"] {
+:root {
   /* Three radii, by role: a button is a pill, a control (input, select,
      swatch) is generously rounded, and a surface (card, popover, drop zone)
      rounds a step further still because it is larger. One height goes with

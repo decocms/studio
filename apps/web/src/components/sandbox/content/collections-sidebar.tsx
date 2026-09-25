@@ -156,7 +156,7 @@ function AdvancedGroup({
     <Collapsible open={open} onOpenChange={setUserOpen}>
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 classic:rounded-md compact:rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+          "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
           "text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >
@@ -236,7 +236,7 @@ function CollectionRow({
       type="button"
       onClick={() => onSelect(id)}
       className={cn(
-        "flex w-full items-center gap-2 classic:rounded-md compact:rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
+        "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors cursor-pointer",
         indent && "pl-6",
         active
           ? "bg-accent text-accent-foreground"

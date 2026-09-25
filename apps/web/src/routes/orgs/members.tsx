@@ -1,3 +1,4 @@
+import type { TableColumn } from "@/components/collections/collection-table.tsx";
 import { Page } from "@/components/page";
 import { CollectionDisplayButton } from "@/components/collections/collection-display-button.tsx";
 import { SearchInput } from "@decocms/ui/components/search-input.tsx";
@@ -36,7 +37,7 @@ import { Avatar } from "@decocms/ui/components/avatar.tsx";
 import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Card } from "@decocms/ui/components/card.tsx";
-import type { TableColumn } from "@/components/collections/collection-table.tsx";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -384,7 +385,6 @@ function InvitationActionsDropdown({
 }
 
 function OrgMembersContent() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { data } = useMembers();
   const { data: invitations } = useInvitations();
@@ -750,11 +750,7 @@ function OrgMembersContent() {
   const ctaButton = (
     <Page.Actions>
       <InviteMemberDialog
-        trigger={
-          <Button size={compact ? "sm" : "default"}>
-            {t("orgs.members.inviteMember")}
-          </Button>
-        }
+        trigger={<Button size="sm">{t("orgs.members.inviteMember")}</Button>}
       />
     </Page.Actions>
   );
@@ -1031,4 +1027,3 @@ export default function OrgMembers() {
     </SettingsGroupPage>
   );
 }
-import { useCompactPageLayout } from "@/hooks/use-preferences";

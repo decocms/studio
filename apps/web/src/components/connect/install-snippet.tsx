@@ -107,7 +107,7 @@ export function InstallSnippet({
       type="button"
       onClick={() => handleCopy(snippet.code)}
       aria-labelledby={`${labelId} ${codeId}`}
-      className="group relative grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 classic:rounded-md compact:rounded-lg p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 rounded-lg p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span id={labelId} className="sr-only">
         {t("settings.connectClients.copy")}

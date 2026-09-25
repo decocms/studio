@@ -1,5 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";
@@ -207,7 +207,7 @@ export function SectionsEditor({
     useLiveMeta(previewFetchParams);
   // Classic keeps the breadcrumb shape it has always had; the merged
   // section-and-variant crumb is a compact-layout change.
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const sessionAgentId = task?.virtualMcpId;
   const agent = useVirtualMCPNonBlocking(
     sessionAgentId === virtualMcpId ? virtualMcpId : null,

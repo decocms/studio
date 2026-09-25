@@ -3,25 +3,18 @@
 Studio uses four components to separate the application frame, the optional
 chat arrangement, panel surfaces, and document content.
 
-## Compact layout preference
+## Default layout and blocks editor preference
 
-The compact presentation is opt-in through **Profile & Preferences → Consistent
-Layout (beta)**. `usePreferences().compactPageLayout` defaults to `false`
-and persists in this browser alongside theme and language. Changing it applies
-immediately; turning it off restores the classic presentation without changing
-project data, navigation URLs, or other preferences.
+The shared page headers, toolbars, sidebar, and controls are the default UI.
+They do not depend on a browser preference. Shared control defaults use CSS
+variables where callers need to override them through `className`.
 
-Components read `useCompactPageLayout()` when their structure differs between
-layouts. `ThemeProvider` sets `data-compact-layout` on the document root so
-`compact:` and `classic:` styles also cover dialogs and other portals. Shared
-control defaults use CSS variables where callers need to override them through
-`className`. Data hooks and mutation handlers are shared by both presentations.
-
-The compact headers and toolbars described below render only when opted in.
-Browser tests default to the classic layout; compact-specific specs use
-`test.use({ compactPageLayout: true })` from the shared Playwright fixture.
-
-![Browser-local compact layout preference in Profile & Preferences](assets/compact-layout-preference.png)
+Only the redesigned blocks editor remains opt-in through **Profile & Preferences
+→ New blocks editor**. Components in the editor read `useNewBlocksEditor()`.
+The preference retains the `compactPageLayout` storage key so existing opt-ins
+survive, and defaults to `false`. Switching it changes only the editor;
+navigation, page headers, and other application screens keep the default UI.
+Editor browser tests opt in with `test.use({ newBlocksEditor: true })`.
 
 ## Ownership and naming
 
@@ -334,7 +327,7 @@ root block, or closes the selection in Content. Pending page/SEO changes flush
 before the Content editor closes. These actions do not use browser history.
 
 The shared collapse rule is independent of routes and editor type:
-show trails of up to four items in full; otherwise keep the first and last two
+show trails of up to five items in full; otherwise keep the first and last two
 items and put everything between them in **one** ordered menu.
 The helper replaces one contiguous ancestor range with a menu entry and returns
 the complete ordered list for the renderer.

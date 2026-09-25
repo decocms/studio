@@ -115,7 +115,7 @@ function RangePicker({
                 setOpen(false);
               }}
               className={cn(
-                "classic:rounded-md compact:rounded-lg px-2 py-1 text-left text-xs transition-colors",
+                "rounded-lg px-2 py-1 text-left text-xs transition-colors",
                 value.range === p.key
                   ? "bg-muted text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -149,7 +149,7 @@ function RangePicker({
                 onChange({ ...value, range: "custom", since: cs, until: cu });
                 setOpen(false);
               }}
-              className="classic:rounded-md compact:rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
+              className="rounded-lg bg-foreground px-2 py-1 text-xs font-medium text-background disabled:opacity-40"
             >
               {t("mainPanelTabs.cdnTab.apply")}
             </button>
@@ -893,7 +893,7 @@ function PerformanceSection({
           type="button"
           onClick={() => setMetric(m)}
           className={cn(
-            "classic:rounded-md compact:rounded-lg px-2 py-0.5 text-xs font-medium transition-colors",
+            "rounded-lg px-2 py-0.5 text-xs font-medium transition-colors",
             metric === m
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -1481,7 +1481,7 @@ function AudienceSection({
           type="button"
           onClick={() => set(d)}
           className={cn(
-            "classic:rounded-md compact:rounded-lg px-2 py-0.5 text-xs font-medium transition-colors",
+            "rounded-lg px-2 py-0.5 text-xs font-medium transition-colors",
             active === d
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -1813,7 +1813,7 @@ export function CdnTab({ virtualMcpId }: { virtualMcpId: string }) {
               type="button"
               onClick={() => setSection(sec.id)}
               className={cn(
-                "classic:rounded-md compact:rounded-lg px-3 py-1 text-xs font-medium transition-colors",
+                "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
                 section === sec.id
                   ? "bg-muted text-foreground"
                   : "text-muted-foreground hover:text-foreground",

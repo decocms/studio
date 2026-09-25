@@ -920,7 +920,7 @@ export function ChatInput({
                           variant="ghost"
                           size="icon"
                           className={cn(
-                            "size-8 classic:rounded-lg transition-colors",
+                            "size-8 transition-colors",
                             voice.status === "permission-denied"
                               ? "text-destructive hover:text-destructive hover:bg-destructive/10"
                               : "text-muted-foreground hover:text-foreground",
@@ -956,8 +956,8 @@ export function ChatInput({
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
                           taskIntake
-                            ? "h-8 px-3 classic:rounded-lg transition-all"
-                            : "size-8 classic:rounded-lg transition-all",
+                            ? "h-8 px-3 transition-all"
+                            : "size-8 transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
                             "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",

@@ -385,7 +385,7 @@ export const EmailTagsInput = forwardRef<
                 size="icon"
                 aria-label={`Remove ${email}`}
                 className={cn(
-                  "h-4 w-4 classic:rounded-full transition-colors",
+                  "h-4 w-4 transition-colors",
                   getBadgeVariant(email) === "destructive"
                     ? "text-destructive hover:text-foreground"
                     : "text-muted-foreground hover:text-foreground",

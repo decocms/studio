@@ -1,4 +1,5 @@
-import { createContext, use, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { createContext, use } from "react";
 import {
   SidebarInset,
   SidebarLayout,
@@ -12,10 +13,7 @@ import {
 } from "@decocms/ui/components/sheet.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Panel } from "@/components/panel";
-import { LayoutLeft } from "@untitledui/icons";
-import { ToolbarIconButton } from "@/components/toolbar-icon-button";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import { useInSettings } from "@/hooks/use-in-settings";
+
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { SidebarThreadButtonProvider } from "@/components/sidebar/thread-button";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -43,8 +41,7 @@ function LayoutRoot({
   notice?: ReactNode;
 }) {
   const isMobile = useIsMobile();
-  const compact = useCompactPageLayout();
-  const inSettings = useInSettings();
+
   const [sidebarOpen, setSidebarOpen] = useLocalStorage<boolean>(
     LOCALSTORAGE_KEYS.sidebarOpen(),
     true,
@@ -53,10 +50,7 @@ function LayoutRoot({
 
   return (
     <LayoutContext value={{ isMobile, resize }}>
-      <SidebarProvider
-        open={(!compact && inSettings) || sidebarOpen}
-        onOpenChange={setSidebarOpen}
-      >
+      <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
           <SidebarLayout
@@ -66,7 +60,7 @@ function LayoutRoot({
               {
                 "--sidebar-width": `${resize.width}px`,
                 // The icon rail keeps its buttons the same size as the toolbar.
-                "--sidebar-width-icon": compact ? "3.25rem" : "3.125rem",
+                "--sidebar-width-icon": "3.25rem",
               } as Record<string, string>
             }
           >
@@ -124,31 +118,12 @@ function LayoutSidebar({
 }
 
 function LayoutContent({ children }: { children: ReactNode }) {
-  const compact = useCompactPageLayout();
-  const t = useT();
-  const { isMobile } = useLayout();
-  const { toggleSidebar } = useSidebar();
   return (
     <SidebarInset
       className="flex flex-col min-h-0"
       style={{ background: "transparent", containerType: "inline-size" }}
     >
       <Panel variant="plain" className="bg-sidebar">
-        {!compact && isMobile && (
-          <Panel.Topbar className="px-1 bg-sidebar">
-            <Panel.Topbar.Left className="shrink-0">
-              <ToolbarIconButton
-                onClick={toggleSidebar}
-                aria-label={t("layouts.shellControls.toggleSidebar")}
-              >
-                <LayoutLeft size={16} />
-              </ToolbarIconButton>
-            </Panel.Topbar.Left>
-            <Panel.Topbar.Center className="justify-start">
-              <Panel.Topbar.Center.Target />
-            </Panel.Topbar.Center>
-          </Panel.Topbar>
-        )}
         <div className="relative flex-1 min-h-0 flex flex-row">{children}</div>
       </Panel>
     </SidebarInset>

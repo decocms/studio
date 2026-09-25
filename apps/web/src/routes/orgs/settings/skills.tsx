@@ -1,4 +1,3 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
 /**
  * Settings → Build → Skills: an org-wide view of every skill available to the
  * org's agents (the same catalog `<available-skills>` surfaces at runtime —
@@ -207,7 +206,6 @@ function SkillsGrid({ children }: { children: React.ReactNode }) {
 }
 
 export default function SettingsSkillsPage() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const catalog = useOrgFsSkillCatalog();
@@ -393,7 +391,7 @@ export default function SettingsSkillsPage() {
           {/* Title, toolbar, chips and results are siblings of one gap-6
               column — the Connections page's rhythm. */}
           <div className="flex flex-col gap-6">
-            <Page.Title actions={compact && importButton}>
+            <Page.Title actions={importButton}>
               {t("settings.skills.pageTitle")}
             </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -409,7 +407,7 @@ export default function SettingsSkillsPage() {
                   }
                 }}
               />
-              {!compact && importButton}
+
               <input
                 ref={folderInputRef}
                 type="file"
@@ -479,7 +477,7 @@ export default function SettingsSkillsPage() {
                       ? t("settings.skills.noResultsDescription", { search })
                       : t("settings.skills.emptyDescription")
                   }
-                  actions={!compact && !search && importButton}
+                  actions={false}
                 />
               </div>
             ) : (

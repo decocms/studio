@@ -1,15 +1,16 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbSeparator,
-  BreadcrumbPage,
-} from "@decocms/ui/components/breadcrumb.tsx";
+import type { ReactNode } from "react";
+import type { TaskBoardItemType } from "./config";
+import type { TaskBoardItem } from "./config";
+import type { TaskBoardItemPr } from "./config";
+import type { TaskBoardItemPriority } from "./config";
+import type { TaskBoardItemStatus } from "./config";
+import type { TaskBoardItemThread } from "./config";
+import type { TaskBoardActivity } from "@/hooks/use-task-board-activity";
+import type { CommentAuthor } from "./task-comments";
+import type { TaskComment } from "./task-comments";
 import { useParams } from "@tanstack/react-router";
 import { taskSharePath } from "./task-route";
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import {
   Dialog,
@@ -98,7 +99,6 @@ import {
   PRIORITY_CONFIG,
   TASK_TYPE_CONFIG,
   TASK_TYPES,
-  type TaskBoardItemType,
   DEFAULT_TASK_TYPE,
   laneHeader,
   laneVisual,
@@ -110,11 +110,6 @@ import {
   isLiveAttempt,
   tagDotColor,
   type Member,
-  type TaskBoardItem,
-  type TaskBoardItemPr,
-  type TaskBoardItemPriority,
-  type TaskBoardItemStatus,
-  type TaskBoardItemThread,
 } from "./config";
 import { summarizeTaskCost } from "./task-cost";
 import {
@@ -130,10 +125,7 @@ import { SANDBOX_START_ERROR_CODES } from "@decocms/shared/sandbox-start-errors"
 import { toast } from "sonner";
 import { useTaskBoardItemPrs } from "@/hooks/use-task-board-item-prs";
 import { usePreviewProbe } from "@/hooks/use-preview-probe";
-import {
-  useTaskBoardActivity,
-  type TaskBoardActivity,
-} from "@/hooks/use-task-board-activity";
+import { useTaskBoardActivity } from "@/hooks/use-task-board-activity";
 import {
   useOrgFlag,
   useReviewerEnabled,
@@ -161,12 +153,7 @@ import { extractDescriptionLinks } from "./description-links";
 import { TaskThreadSheet } from "./task-thread-sheet";
 import { taskKey } from "@decocms/shared/task-key";
 import { authClient } from "@/lib/auth-client";
-import {
-  CommentThreadCard,
-  NewCommentComposer,
-  type CommentAuthor,
-  type TaskComment,
-} from "./task-comments";
+import { CommentThreadCard } from "./task-comments";
 import { useTaskBoardComments } from "@/hooks/use-task-board-comments";
 import { SubscribeToggle } from "./subscribe-button";
 import { TaskConversationFrame } from "./task-conversation-frame";
@@ -455,7 +442,6 @@ function TaskBoardItemEditor({
   onRerun,
   isSaving,
 }: TaskEditorProps) {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const { agentId } = useParams({ strict: false });
@@ -688,7 +674,7 @@ function TaskBoardItemEditor({
    *  its trail; a dialog has no header to give them to. */
   const actions = (
     <div className="flex items-center gap-2">
-      {compact && item && (
+      {item && (
         <Button
           variant="ghost"
           size="sm"
@@ -711,7 +697,7 @@ function TaskBoardItemEditor({
              prompt — it is a link for a person, so it lives here. */
         <IconButton
           asChild
-          variant={compact ? "secondary" : "ghost"}
+          variant="secondary"
           label={t("taskBoard.taskDialog.openInTrackerAriaLabel")}
         >
           <a href={item.externalUrl} target="_blank" rel="noreferrer">
@@ -722,7 +708,7 @@ function TaskBoardItemEditor({
       {item && (
         <>
           <IconButton
-            variant={compact ? "secondary" : "ghost"}
+            variant="secondary"
             label={t("taskBoard.taskDialog.shareAriaLabel")}
             onClick={() => {
               copyLink(
@@ -743,7 +729,7 @@ function TaskBoardItemEditor({
                   button itself, and IconButton would put a Tooltip root in
                   between, which silently swallows the trigger props. */}
               <Button
-                variant={compact ? "secondary" : "ghost"}
+                variant="secondary"
                 size="icon-sm"
                 aria-label={t("taskBoard.taskDialog.moreActionsAriaLabel")}
               >
@@ -815,7 +801,7 @@ function TaskBoardItemEditor({
       )}
       {chrome === "dialog" && (
         <IconButton
-          variant={compact ? "secondary" : "ghost"}
+          variant="secondary"
           label={t("taskBoard.taskDialog.closeAriaLabel")}
           onClick={close}
         >
@@ -832,7 +818,7 @@ function TaskBoardItemEditor({
    *  returns to is a search-param away. The key doubles as the trail's leaf, so
    *  a page shows no id chip. */
   const header =
-    compact && chrome === "page" ? (
+    chrome === "page" ? (
       <>
         <Page.Breadcrumbs
           after="page"
@@ -853,31 +839,7 @@ function TaskBoardItemEditor({
       <div className="flex shrink-0 items-center justify-between gap-2 px-6 pb-4 pt-6 sm:px-8">
         {/* Null only for a card written before the key backfill, which has
             no key to show. */}
-        {chrome === "page" ? (
-          <Breadcrumb className="-ml-2">
-            <BreadcrumbList className="text-[15px]">
-              <BreadcrumbItem>
-                {/* A button, not an anchor: leaving flushes a pending autosave
-                    and the board it returns to is a search-param away, not a
-                    document to link to. */}
-                <BreadcrumbLink
-                  asChild
-                  className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent"
-                >
-                  <button type="button" onClick={close}>
-                    {t("taskBoard.taskDetail.breadcrumbTasks")}
-                  </button>
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage className="px-2 py-1">
-                  {key ?? t("taskBoard.taskDetail.breadcrumbTask")}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        ) : key ? (
+        {key ? (
           <Button
             variant="ghost"
             size="sm"
@@ -914,14 +876,7 @@ function TaskBoardItemEditor({
       {/* Above the scroll area, so it never moves. The page centers it on the
           same column as the content below. */}
       {chrome === "page" ? (
-        <div
-          className={cn(
-            "mx-auto w-full",
-            compact ? "max-w-[1280px]" : "max-w-[1040px]",
-          )}
-        >
-          {header}
-        </div>
+        <div className={cn("mx-auto w-full", "max-w-[1280px]")}>{header}</div>
       ) : (
         header
       )}
@@ -930,26 +885,21 @@ function TaskBoardItemEditor({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          compact && item ? "overflow-hidden" : "overflow-y-auto",
+          item ? "overflow-hidden" : "overflow-y-auto",
         )}
       >
         <div
           className={cn(
             "flex flex-col",
-            compact ? "min-h-0 flex-1 lg:flex-row" : "sm:flex-row",
+            "min-h-0 flex-1 lg:flex-row",
             chrome === "page" && "mx-auto w-full",
-            chrome === "page" &&
-              (compact ? "max-w-[1280px]" : "max-w-[1040px]"),
+            chrome === "page" && "max-w-[1280px]",
           )}
         >
           {/* The original post and conversation share one reading column. */}
-          <TaskConversationFrame
-            enabled={compact}
-            item={item}
-            hidden={!!item && detailsOpen}
-          >
+          <TaskConversationFrame item={item} hidden={!!item && detailsOpen}>
             <div className="flex min-w-0 flex-col gap-2 px-5 py-6 sm:px-8">
-              {compact && item && (
+              {item && (
                 <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Avatar
                     url={creator?.user?.image ?? undefined}
@@ -986,7 +936,7 @@ function TaskBoardItemEditor({
                 </div>
               )}
               <div>
-                {compact && item && !editingPost ? (
+                {item && !editingPost ? (
                   <h1 className="text-2xl font-semibold leading-snug text-foreground">
                     {title}
                   </h1>
@@ -1018,7 +968,7 @@ function TaskBoardItemEditor({
                     )}
                   />
                 )}
-                {compact && item && tagIds.length > 0 && (
+                {item && tagIds.length > 0 && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {tagIds.map((id) => {
                       const tag = orgTags.find(
@@ -1078,7 +1028,7 @@ function TaskBoardItemEditor({
                         prompt context for the agent, and plain-text
                         descriptions written before this editor existed still
                         parse as-is. */}
-                      {compact && item && !editingPost ? (
+                      {item && !editingPost ? (
                         <MemoizedMarkdown
                           id={`task-post-${item.id}`}
                           text={description}
@@ -1137,13 +1087,6 @@ function TaskBoardItemEditor({
 
                 {item && (
                   <div className="flex flex-col gap-8">
-                    {!compact && (
-                      <LinksSection
-                        item={item}
-                        description={description}
-                        onOpenPreview={onOpenPreview}
-                      />
-                    )}
                     <ActivitySection
                       item={item}
                       members={members}
@@ -1162,10 +1105,8 @@ function TaskBoardItemEditor({
             data-testid="task-inspector"
             className={cn(
               "w-full flex-col gap-6 border-t border-border p-6",
-              compact
-                ? "min-h-0 flex-1 overflow-y-auto lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0"
-                : "flex sm:w-[280px] sm:shrink-0 sm:border-l sm:border-t-0",
-              compact && (item ? (detailsOpen ? "flex" : "hidden") : "flex"),
+              "min-h-0 flex-1 overflow-y-auto lg:flex lg:w-[320px] lg:flex-none lg:border-l lg:border-t-0",
+              item ? (detailsOpen ? "flex" : "hidden") : "flex",
             )}
           >
             {item && <ReviewsGroup item={item} />}
@@ -1526,7 +1467,7 @@ function TaskBoardItemEditor({
                               "taskBoard.taskDialog.removeTagAriaLabel",
                               { name: tag.name },
                             )}
-                            className="-mr-0.5 flex size-3.5 items-center justify-center classic:rounded-sm compact:rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
+                            className="-mr-0.5 flex size-3.5 items-center justify-center rounded-lg text-muted-foreground hover:bg-background hover:text-foreground"
                             onClick={() => {
                               patch({
                                 tagIds: tagIds.filter((id) => id !== tagId),
@@ -1542,7 +1483,7 @@ function TaskBoardItemEditor({
                       <button
                         type="button"
                         aria-label={t("taskBoard.taskDialog.addTagButton")}
-                        className="flex size-7 items-center justify-center classic:rounded-md compact:rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        className="flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       >
                         <Plus size={14} />
                       </button>
@@ -1608,7 +1549,7 @@ function TaskBoardItemEditor({
                 </DropdownMenuContent>
               </DropdownMenu>
             </PropertyGroup>
-            {compact && item && (
+            {item && (
               <LinksSection
                 item={item}
                 description={description}
@@ -1775,90 +1716,6 @@ function threadStatusStyle(
 /**
  * A linked run uses the same message surface as its reports and human comments.
  */
-function ClassicThreadActivityItem({
-  thread,
-  startedBy,
-  onOpen,
-}: {
-  thread: TaskBoardItemThread;
-  startedBy?: Member;
-  onOpen?: (thread: TaskBoardItemThread) => void;
-}) {
-  const t = useT();
-  const state = thread.status
-    ? threadStatusStyle({ ...thread, status: thread.status }, t)
-    : null;
-  const message = thread.lastMessage;
-  // The Super Agent and both reviewers run on the org agent, distinguished only
-  // by their thread title prefix — reflect that in the card's glyph/name.
-  const isReviewerThread = isReviewerThreadTitle(thread.title, "reviewer");
-
-  return (
-    <button
-      type="button"
-      disabled={!onOpen}
-      onClick={() => onOpen?.(thread)}
-      className="group flex w-full flex-col gap-2 rounded-xl bg-card p-4 text-left card-shadow transition-colors enabled:hover:bg-muted/60 disabled:cursor-default"
-    >
-      <div className="flex items-center gap-2">
-        {isReviewerThread ? (
-          <ReviewerIcon size={16} className="shrink-0" />
-        ) : (
-          <SuperAgentIcon size={16} className="shrink-0" />
-        )}
-        <span className="truncate text-sm font-medium text-foreground">
-          {thread.title || t("taskBoard.taskDialog.superAgentDefaultName")}
-        </span>
-        {startedBy && (
-          <>
-            <span className="shrink-0 text-sm text-muted-foreground/50">
-              {t("taskBoard.taskDialog.startedByLabel")}
-            </span>
-            <Avatar
-              url={startedBy.user?.image ?? undefined}
-              fallback={getInitials(startedBy.user?.name)}
-              shape="circle"
-              size="2xs"
-            />
-            <span className="truncate text-sm text-foreground">
-              {startedBy.user?.name ?? t("taskBoard.taskDialog.someoneLabel")}
-            </span>
-          </>
-        )}
-        {onOpen && (
-          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground/60 group-hover:text-foreground">
-            {t("taskBoard.taskDialog.openThreadHint")}
-            <ChevronRight size={14} />
-          </span>
-        )}
-      </div>
-      {state && (
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex shrink-0 items-center gap-1.5",
-              state.className,
-            )}
-          >
-            {/* A spinning status glyph is a loading indicator, so it is the
-                shared Spinner; the settled states keep their own icon. */}
-            {state.spin ? (
-              <Spinner className="size-[15px]" label={state.label} />
-            ) : (
-              <state.icon size={15} />
-            )}
-            <span className="text-sm">{state.label}</span>
-          </span>
-          {message && (
-            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-              {message}
-            </span>
-          )}
-        </div>
-      )}
-    </button>
-  );
-}
 
 function ThreadActivityItem({
   thread,
@@ -2386,11 +2243,11 @@ function LinksSection({
   const promote = usePromoteToProduction(item.id);
   const resolveConflict = useResolveConflict(item.id);
   const comments = useTaskBoardComments(item.id);
-  const conversation = useCompactPageLayout();
+
   const links = extractDescriptionLinks(
     [
       description,
-      ...(conversation ? comments.threads : []).flatMap((thread) => [
+      ...comments.threads.flatMap((thread) => [
         thread.body,
         ...thread.replies.map((reply) => reply.body),
       ]),
@@ -2551,7 +2408,7 @@ function ActivitySection({
   onOpenThread?: (thread: TaskBoardItemThread) => void;
 }) {
   const t = useT();
-  const conversation = useCompactPageLayout();
+
   const { data: activity } = useTaskBoardActivity(item.id);
   const { data: session } = authClient.useSession();
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
@@ -2571,9 +2428,7 @@ function ActivitySection({
     item.threads.find((thread) => thread.threadId === threadId);
   const openSourceRun = (threadId: string | null | undefined) => {
     const run = sourceRun(threadId);
-    return conversation && run && onOpenThread
-      ? () => onOpenThread(run)
-      : undefined;
+    return run && onOpenThread ? () => onOpenThread(run) : undefined;
   };
   const authorOf = (
     userId: string,
@@ -2581,8 +2436,7 @@ function ActivitySection({
   ): CommentAuthor => {
     if (userId === SUPER_AGENT_ASSIGNEE_ID) {
       const run = sourceRun(threadId);
-      const isReviewer =
-        conversation && !!run && isReviewerThreadTitle(run.title, "reviewer");
+      const isReviewer = !!run && isReviewerThreadTitle(run.title, "reviewer");
       return {
         id: userId,
         name: t(
@@ -2645,7 +2499,7 @@ function ActivitySection({
         comment,
       }),
     ),
-  ].sort((a, b) => (conversation ? a.at - b.at : b.at - a.at));
+  ].sort((a, b) => a.at - b.at);
 
   // Group consecutive timeline events so their avatars connect with a rail.
   const blocks: (
@@ -2673,8 +2527,7 @@ function ActivitySection({
     const last = blocks[blocks.length - 1];
     if (
       last?.type === "timeline" &&
-      (!conversation ||
-        blockDate(last).toDateString() === new Date(ev.at).toDateString())
+      blockDate(last).toDateString() === new Date(ev.at).toDateString()
     )
       last.items.push(ev.activity);
     else blocks.push({ type: "timeline", items: [ev.activity] });
@@ -2684,11 +2537,7 @@ function ActivitySection({
     <section className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">
-          {t(
-            conversation
-              ? "taskBoard.conversation.replies"
-              : "taskBoard.taskDialog.activityLabel",
-          )}
+          {t("taskBoard.conversation.replies")}
         </h2>
         <div className="flex items-center gap-1">
           <RunReviewerButton item={item} />
@@ -2696,23 +2545,6 @@ function ActivitySection({
         </div>
       </div>
       <div className="flex flex-col gap-5">
-        {!conversation && (
-          <NewCommentComposer
-            onSubmit={async (body) => {
-              try {
-                await comments.post.mutateAsync({ body });
-                return true;
-              } catch (error) {
-                toast.error(
-                  error instanceof Error
-                    ? error.message
-                    : t("taskBoard.conversation.sendFailed"),
-                );
-                return false;
-              }
-            }}
-          />
-        )}
         {blocks.map((block, i) => {
           const date = blockDate(block);
           const previous = blocks[i - 1];
@@ -2731,10 +2563,6 @@ function ActivitySection({
             if (block.type === "comment") {
               return (
                 <CommentThreadCard
-                  conversation={conversation}
-                  onReply={(body) =>
-                    comments.post.mutate({ body, parentId: block.comment.id })
-                  }
                   key={`comment-${block.comment.id}`}
                   thread={block.comment}
                   me={me}
@@ -2742,16 +2570,7 @@ function ActivitySection({
                 />
               );
             }
-            if (!conversation)
-              return (
-                <ClassicThreadActivityItem
-                  thread={block.thread}
-                  startedBy={members.find(
-                    (member) => member.userId === item.assignedBy,
-                  )}
-                  onOpen={onOpenThread}
-                />
-              );
+
             return (
               <ThreadActivityItem
                 key={`thread-${block.thread.threadId}`}
@@ -2768,7 +2587,7 @@ function ActivitySection({
                 : block.comment.id;
           return (
             <Fragment key={`${block.type}-${blockKey}`}>
-              {conversation && showDate && (
+              {showDate && (
                 <div className="flex items-center gap-3 py-2 text-xs font-medium text-muted-foreground">
                   <span className="h-px flex-1 bg-border" />
                   <time dateTime={date.toISOString()}>

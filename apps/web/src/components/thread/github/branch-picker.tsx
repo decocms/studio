@@ -484,7 +484,7 @@ export function BranchPicker({
               type="button"
               onClick={() => void create()}
               disabled={atReleaseCap}
-              className="flex w-full items-center gap-2 classic:rounded-md compact:rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             >
               <Plus className="h-4 w-4 shrink-0" />
               {t("thread.branchPicker.newVersion")}
@@ -497,7 +497,7 @@ export function BranchPicker({
             <button
               type="button"
               onClick={() => openAdvanced("branches")}
-              className="flex w-full items-center justify-between gap-2 classic:rounded-md compact:rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               {t("thread.branchPicker.advanced")}
               <ChevronRight className="h-4 w-4 shrink-0" />
@@ -614,7 +614,7 @@ function ReleaseRow({
     <div
       ref={rowRef}
       className={cn(
-        "group flex items-center classic:rounded-md compact:rounded-lg",
+        "group flex items-center rounded-lg",
         selected ? "bg-accent" : "hover:bg-accent/60",
       )}
     >
@@ -696,10 +696,7 @@ function LocalRow({
     }
   })();
   return (
-    <div
-      ref={rowRef}
-      className="group flex items-center classic:rounded-md compact:rounded-lg bg-accent"
-    >
+    <div ref={rowRef} className="group flex items-center rounded-lg bg-accent">
       <button
         type="button"
         aria-pressed

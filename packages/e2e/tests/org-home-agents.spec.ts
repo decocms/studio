@@ -47,8 +47,6 @@ async function createAgent(
   return agent.item.id;
 }
 
-test.use({ compactPageLayout: true });
-
 test.describe("org home — the agent roster", () => {
   test("lists the agents a person made and hides the Studio Pack managers", async ({
     authedPage: { page, orgSlug },

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { LayoutLeft } from "@untitledui/icons";
 import { useSidebar } from "@decocms/ui/components/sidebar.tsx";
 import { ToolbarIconButton } from "@/components/toolbar-icon-button";
@@ -9,7 +10,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -55,10 +55,8 @@ import {
 } from "@/components/thread/github/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
-import { PanelCollapseToggle } from "@/components/chat-layout/toggle-buttons";
-import { ChatLayout, useChatLayout } from "@/components/chat-layout";
+
+import { ChatLayout } from "@/components/chat-layout";
 import { ThreadsMenu } from "@/components/chat/threads-menu";
 import { NewChatCrumb } from "@/components/header/shell-breadcrumb";
 import { DevAgentControl } from "@/components/dev-agent/dev-agent-control";
@@ -469,16 +467,14 @@ function VmEventsBridge({
 // ---------------------------------------------------------------------------
 
 function ThreadTopbar() {
-  const compact = useCompactPageLayout();
-  const layout = useChatLayout();
   const t = useT();
   const { toggleSidebar } = useSidebar();
   const { virtualMcpId, taskId } = useChatTask();
   return (
-    <Panel.Topbar className="compact:border-b compact:border-border/60 compact:px-3">
+    <Panel.Topbar className="border-b border-border/60 px-3">
       <Panel.Topbar.Left>
         <ToolbarIconButton
-          className="classic:hidden md:hidden"
+          className="md:hidden"
           onClick={toggleSidebar}
           aria-label={t("layouts.shellControls.toggleSidebar")}
         >
@@ -486,18 +482,11 @@ function ThreadTopbar() {
         </ToolbarIconButton>
         <ThreadsMenu />
       </Panel.Topbar.Left>
-      <div className="classic:hidden min-w-0 md:hidden">
+      <div className="min-w-0 md:hidden">
         <MobileMainPanelTabSelect virtualMcpId={virtualMcpId} taskId={taskId} />
       </div>
       <Panel.Topbar.Right className="shrink-0">
         <NewChatCrumb />
-        {!compact && !layout.contentOpen && (
-          <PanelCollapseToggle
-            side="right"
-            open={layout.contentOpen}
-            onToggle={layout.toggleContent}
-          />
-        )}
       </Panel.Topbar.Right>
     </Panel.Topbar>
   );
@@ -513,21 +502,12 @@ function ThreadSessionContent({
   createNewTask: () => void;
 }) {
   const { virtualMcpId, taskId } = useChatTask();
-  const compact = useCompactPageLayout();
-  const isMobile = useIsMobile();
+
   const entity = useVirtualMCP(virtualMcpId);
   const contentKey = useActivePanelTabId() ?? "overview";
 
   return (
     <>
-      {!compact && isMobile && (
-        <Panel.Topbar.Center.Portal>
-          <MobileMainPanelTabSelect
-            virtualMcpId={virtualMcpId}
-            taskId={taskId}
-          />
-        </Panel.Topbar.Center.Portal>
-      )}
       <NewTaskBridge
         onNewTaskRef={onNewTaskRef}
         createNewTask={createNewTask}

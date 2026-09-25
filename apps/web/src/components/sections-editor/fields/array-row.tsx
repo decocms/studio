@@ -1,5 +1,5 @@
 import { GripVertical } from "lucide-react";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-preferences";
 import { EditorRowActionsTrigger, EditorRowToggle } from "../editor-list-row";
 import { Copy01, DotsGrid, Eye, EyeOff, Trash01 } from "@untitledui/icons";
 import {
@@ -57,7 +57,7 @@ export const ARRAY_ROW_THUMBNAIL_HEIGHT = "h-12";
 
 /** The drag handle both row shapes wear. */
 function RowGrip() {
-  const compact = useCompactPageLayout();
+  const compact = useNewBlocksEditor();
   const Icon = compact ? GripVertical : DotsGrid;
   return <Icon className="size-3.5 shrink-0 text-muted-foreground/40" />;
 }

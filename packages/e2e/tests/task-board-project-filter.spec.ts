@@ -2,8 +2,7 @@
  * The board's project filter — the control that used to say "Repo".
  *
  * A repository is how a project is identified on a card, so the board offers
- * one list: projects, named as you know them, with the repository they pin
- * underneath. This pins the three things a unit test cannot reach — what the
+ * one list: projects, named as you know them, grouped by repository. This pins the three things a unit test cannot reach — what the
  * picker RENDERS, what the URL carries, and that a link written before the
  * merge still narrows the board it lands on.
  *
@@ -92,7 +91,14 @@ const chip = (page: Page, label: string) =>
  *  lists the org's projects by name too, and this suite is about the board's
  *  control, not that one. */
 const option = (page: Page, label: string) =>
-  page.locator("[cmdk-list]").getByText(label, { exact: true });
+  page
+    .locator('[data-slot="popover-content"]')
+    .getByText(label, { exact: true });
+
+async function openProjectFilter(page: Page) {
+  await chip(page, "Filter").click();
+  await page.getByRole("option", { name: "Project", exact: true }).hover();
+}
 
 test.describe("task board project filter", () => {
   test("offers projects by name, merges a shared repository, and narrows the board", async ({
@@ -112,17 +118,13 @@ test.describe("task board project filter", () => {
     await openBoard(page, orgSlug);
     await expect(card(page, "Site work")).toBeVisible({ timeout: 30_000 });
 
-    await chip(page, "Project").click();
+    await openProjectFilter(page);
 
-    /** A project you recognize, not `owner/name` — the whole point of the
-     *  merge. The repository is the subtitle. */
+    /** A single-project repository uses the project name. */
     await expect(option(page, "Marketing Site")).toBeVisible();
 
-    /** Two projects, one repository, ONE row — titled with the repository and
-     *  naming both, rather than a row per project that select the same cards.
-     *  The map this replaced kept whichever project it iterated last. */
+    /** Projects sharing a repository form one selectable bucket. */
     await expect(option(page, mono)).toHaveCount(1);
-    await expect(option(page, "Storefront, Checkout")).toBeVisible();
 
     await option(page, "Marketing Site").click();
 
@@ -158,7 +160,7 @@ test.describe("task board project filter", () => {
     await openBoard(page, orgSlug);
     await expect(card(page, "Site work")).toBeVisible({ timeout: 30_000 });
 
-    await chip(page, "Project").click();
+    await openProjectFilter(page);
     await option(page, "No project").click();
 
     await expect(card(page, "Unfiled work")).toBeVisible();

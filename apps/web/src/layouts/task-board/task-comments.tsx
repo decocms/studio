@@ -1,6 +1,6 @@
 /**
  * Comments on a task — threads inside the activity feed, with one level of
- * replies. The new layout uses one composer; classic keeps inline replies.
+ * replies and a shared composer.
  *
  * Presentation only: the data and the mutations come from
  * `useTaskBoardComments`, and the dialog maps a comment's `authorId` to a
@@ -25,8 +25,6 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import { SuperAgentIcon } from "@/components/super-agent-icon";
 import { ReviewerIcon } from "@/components/reviewer-icon";
 import { getInitials } from "@/lib/get-initials";
-import { MemoizedMarkdown } from "@/components/chat/markdown";
-import { formatTimeAgo } from "@/lib/format-time";
 import { TaskMessage } from "./task-message";
 import { useT } from "@/i18n/use-t.ts";
 import {
@@ -62,28 +60,16 @@ export type TaskComment = {
 export function CommentThreadCard({
   thread,
   me,
-  conversation = true,
-  onReply,
   onDelete,
 }: {
   thread: TaskComment;
   me: CommentAuthor;
-  conversation?: boolean;
-  onReply?: (body: string) => void;
   /** `commentId` is the thread root's id when the root itself is deleted. */
   onDelete: (commentId: string) => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col",
-        conversation
-          ? "border-b border-border/50 pb-4"
-          : "rounded-xl bg-card card-shadow",
-      )}
-    >
+    <div className={cn("flex flex-col", "border-b border-border/50 pb-4")}>
       <CommentEntry
-        conversation={conversation}
         comment={thread}
         onDelete={canDelete(thread, me) ? () => onDelete(thread.id) : undefined}
       />
@@ -93,7 +79,6 @@ export function CommentThreadCard({
               replies reads as one exchange under the root comment. */}
           <Divider inset={i > 0} />
           <CommentEntry
-            conversation={conversation}
             comment={reply}
             onDelete={
               canDelete(reply, me) ? () => onDelete(reply.id) : undefined
@@ -102,12 +87,6 @@ export function CommentThreadCard({
           />
         </Fragment>
       ))}
-      {!conversation && onReply && (
-        <>
-          <Divider />
-          <CommentComposer replyAuthor={me} onSubmit={onReply} />
-        </>
-      )}
     </div>
   );
 }
@@ -133,44 +112,16 @@ function Divider({ inset }: { inset?: boolean }) {
  * reads as a conversation under the root comment, not as three equal posts.
  */
 function CommentEntry({
-  conversation,
   comment,
   isReply,
   onDelete,
 }: {
   comment: TaskComment;
-  conversation: boolean;
   isReply?: boolean;
   /** Omitted for a comment that isn't the current user's — the server
    *  rejects deleting someone else's comment, so don't offer it. */
   onDelete?: () => void;
 }) {
-  if (!conversation) {
-    return (
-      <div className="group flex flex-col gap-1.5 p-4">
-        <div className="flex items-center gap-2">
-          <AuthorGlyph author={comment.author} />
-          <span className="text-sm font-medium text-foreground">
-            {comment.author.name}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {formatTimeAgo(new Date(comment.createdAt))}
-          </span>
-          {onDelete && <CommentActionsMenu onDelete={onDelete} />}
-        </div>
-        <div
-          className={cn(
-            // One size per comment; the shared markdown pins its own 14px.
-            "text-sm leading-relaxed text-foreground [&_li]:text-sm [&_p]:text-sm",
-            // Avatar (24px) + gap (8px), so a reply's text starts at the name.
-            isReply && "pl-8",
-          )}
-        >
-          <MemoizedMarkdown id={comment.id} text={comment.body} />
-        </div>
-      </div>
-    );
-  }
   return (
     <TaskMessage
       id={comment.id}
@@ -200,7 +151,7 @@ function CommentActionsMenu({ onDelete }: { onDelete?: () => void }) {
         <button
           type="button"
           aria-label={t("taskBoard.taskDialog.commentActionsAriaLabel")}
-          className="ml-auto flex size-7 shrink-0 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+          className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
         >
           <DotsHorizontal size={16} />
         </button>
@@ -239,13 +190,7 @@ export function NewCommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
   return <CommentComposer onSubmit={onSubmit} />;
 }
 
-function CommentComposer({
-  onSubmit,
-  replyAuthor,
-}: {
-  onSubmit: SubmitComment;
-  replyAuthor?: CommentAuthor;
-}) {
+function CommentComposer({ onSubmit }: { onSubmit: SubmitComment }) {
   const t = useT();
   const ref = useRef<MentionInputHandle>(null);
   const [empty, setEmpty] = useState(true);
@@ -255,17 +200,10 @@ function CommentComposer({
   const textarea = (
     <MentionInput
       ref={ref}
-      placeholder={t(
-        replyAuthor
-          ? "taskBoard.taskDialog.commentReplyPlaceholder"
-          : "taskBoard.taskDialog.commentPlaceholder",
-      )}
+      placeholder={t("taskBoard.taskDialog.commentPlaceholder")}
       onSubmit={onSubmit}
       onEmptyChange={setEmpty}
-      className={cn(
-        "w-full [&_.tiptap]:outline-none",
-        !replyAuthor && "min-h-10",
-      )}
+      className={cn("w-full [&_.tiptap]:outline-none", "min-h-10")}
     />
   );
 
@@ -277,7 +215,7 @@ function CommentComposer({
       aria-label={t("taskBoard.taskDialog.commentSubmitAriaLabel")}
       // cursor-pointer: the composer around it sets cursor-text, which would
       // otherwise inherit onto the button.
-      className="flex size-7 shrink-0 cursor-pointer items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+      className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       <ArrowUp size={16} />
     </button>
@@ -291,20 +229,6 @@ function CommentComposer({
   // composer.
   const focusInput = () => ref.current?.focus();
 
-  if (replyAuthor)
-    return (
-      <div
-        data-testid="reply-composer"
-        onClick={focusInput}
-        className="relative flex cursor-text items-start gap-2 p-3"
-      >
-        <span className="mt-0.5 shrink-0">
-          <AuthorGlyph author={replyAuthor} />
-        </span>
-        <div className="min-w-0 flex-1 pt-0.5">{textarea}</div>
-        {actions}
-      </div>
-    );
   return (
     <div
       data-testid="new-comment-composer"
