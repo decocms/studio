@@ -521,17 +521,25 @@ func (m *TaskManager) Output(id string) (TaskOutput, bool) {
 	}, true
 }
 
-// Finished blocks until the task completes. Second return is false for an
-// unknown id.
-func (m *TaskManager) Finished(id string) (TaskResult, bool) {
+// Finished blocks until the task completes or cancel fires, whichever comes
+// first. Second return is false for an unknown id, and also for a wait cut
+// short by cancel — callers that need to tell the two apart already know the
+// id existed a moment earlier. A background task (e.g. a dev server) has no
+// TimeoutMs and can outlive the pod, so a caller with no cancel of its own
+// (nil channel, which never fires) must already be bounded some other way.
+func (m *TaskManager) Finished(id string, cancel <-chan struct{}) (TaskResult, bool) {
 	m.mu.Lock()
 	t, ok := m.tasks[id]
 	m.mu.Unlock()
 	if !ok {
 		return TaskResult{}, false
 	}
-	<-t.done
-	return t.result, true
+	select {
+	case <-t.done:
+		return t.result, true
+	case <-cancel:
+		return TaskResult{}, false
+	}
 }
 
 func (m *TaskManager) Subscribe(id string, fn func(OutputChunk)) (func(), bool) {
