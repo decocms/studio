@@ -1884,6 +1884,22 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "MEMBER_TAGS_SET",
     ],
   },
+  // Experiments
+  {
+    id: "experiments:manage",
+    label: "Manage experiments",
+    description: "Create, update, and delete A/B experiments, and view results",
+    section: "Experiments",
+    tools: [
+      "EXPERIMENT_LIST",
+      "EXPERIMENT_GET",
+      "EXPERIMENT_CREATE",
+      "EXPERIMENT_UPDATE",
+      "EXPERIMENT_DELETE",
+      "EXPERIMENT_RESULTS",
+    ],
+    dangerous: true,
+  },
   // Store & Registry
   {
     id: "registry:manage",
