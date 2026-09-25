@@ -116,7 +116,7 @@ test("an anonymous visitor reads a published report in full", async ({
   await expect(fix).toHaveAttribute("href", /fix=PERF-001/);
   await expect(page.getByRole("link", { name: "Open .md" })).toHaveAttribute(
     "href",
-    "/report/published.example.md",
+    "/report/published.example.md?lang=en",
   );
 });
 
