@@ -2774,6 +2774,10 @@ function describeActivity(
         ? t("taskBoard.taskDialog.activityDuplicateReportedTitled", { title })
         : t("taskBoard.taskDialog.activityDuplicateReported");
     }
+    case "finding_resolved":
+      return t("taskBoard.taskDialog.activityFindingResolved", {
+        url: String(d.url ?? ""),
+      });
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
       // Stored as a stringified Error, wire prefix and all.
