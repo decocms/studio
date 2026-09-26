@@ -91,6 +91,8 @@ export const taskBoard = {
     "filed this task again; it was already on the board",
   "taskBoard.taskDialog.activityDuplicateReportedTitled":
     'filed "{title}" again; this card already tracks it',
+  "taskBoard.taskDialog.activityFindingResolved":
+    "noted that the Deco Score check now passes on {url}",
   "taskBoard.taskDialog.activityMovedFromTo": "moved from {from} to {to}",
   "taskBoard.taskDialog.activityMovedTo": "moved to {to}",
   "taskBoard.taskDialog.activityRetryScheduled":

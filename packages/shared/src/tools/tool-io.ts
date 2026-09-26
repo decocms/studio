@@ -727,7 +727,8 @@ export interface StudioToolIO {
           | "review_verdict_requested"
           | "merge_conflict_resolution"
           | "type_changed"
-          | "duplicate_reported";
+          | "duplicate_reported"
+          | "finding_resolved";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;

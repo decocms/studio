@@ -95,6 +95,8 @@ export const taskBoard = {
     "abriu esta tarefa de novo; ela já estava no board",
   "taskBoard.taskDialog.activityDuplicateReportedTitled":
     'abriu "{title}" de novo; este card já cobre isso',
+  "taskBoard.taskDialog.activityFindingResolved":
+    "registrou que a verificação do Deco Score agora passa em {url}",
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
   "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
   "taskBoard.taskDialog.activityRetryScheduled":

@@ -241,6 +241,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "merge_failed",
   "type_changed",
   "duplicate_reported",
+  "finding_resolved",
 ] as const;
 
 export type TaskBoardActivityAction =

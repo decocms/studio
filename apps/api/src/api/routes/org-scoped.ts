@@ -34,6 +34,7 @@ import { createReportsShareRoutes } from "./reports-share";
 import { createInternalRepositoryRoutes } from "./internal-repositories";
 import { createOrganizationNoticeServiceRoutes } from "./organization-notices-service";
 import { createTaskBoardImportRoutes } from "./task-board-import";
+import { createTaskBoardResolveRoutes } from "./task-board-resolve";
 import { createObjectStorageRoutes } from "./object-storage";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createToolsRestRoutes } from "./tools-rest";
@@ -100,6 +101,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/", createGitProviderRoutes()); // /api/:org/git-providers/:type/connect
   app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
+  app.route("/", createTaskBoardResolveRoutes()); // /api/:org/internal/task-board/resolve, service-token call for cards whose Deco Score check passes
   app.route("/", createReportsShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
   app.route("/", createOrganizationNoticeServiceRoutes()); // /api/:org/internal/organization-notices
   app.route("/", createInternalRepositoryRoutes()); // /api/:org/internal/repositories/... — service-token repository reads
