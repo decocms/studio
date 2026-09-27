@@ -2933,6 +2933,15 @@ function isMachineActor(actorId: string | null): boolean {
   return !actorId || actorId === SUPER_AGENT_ASSIGNEE_ID;
 }
 
+/** The reports engine also logs with a null actor: a passing check's note and
+ *  the move to done it caused are the Deco Score's, not the Super Agent's. */
+function isDecoScoreEntry(a: TaskBoardActivity): boolean {
+  return (
+    a.action === "finding_resolved" ||
+    (a.action === "status_changed" && a.data.reason === "finding_resolved")
+  );
+}
+
 /** A run of consecutive timeline events, avatars joined by a vertical rail. */
 function TimelineBlock({
   items,
@@ -2944,17 +2953,28 @@ function TimelineBlock({
   const t = useT();
   const [expanded, setExpanded] = useState(false);
 
-  const actorName = (actorId: string | null) => {
-    if (isMachineActor(actorId)) {
+  const actorName = (a: TaskBoardActivity) => {
+    if (isDecoScoreEntry(a)) {
+      return t("taskBoard.taskDialog.createdBySystemLabel");
+    }
+    if (isMachineActor(a.actorId)) {
       return t("taskBoard.taskDialog.superAgentLabel");
     }
     return (
-      memberByUserId.get(actorId!)?.user?.name ??
+      memberByUserId.get(a.actorId!)?.user?.name ??
       t("taskBoard.taskDialog.someoneLabel")
     );
   };
 
-  const actorAvatar = (actorId: string | null): ReactNode => {
+  const actorAvatar = (a: TaskBoardActivity): ReactNode => {
+    const actorId = a.actorId;
+    if (isDecoScoreEntry(a)) {
+      return (
+        <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
+          <Lightning01 size={14} className="text-muted-foreground" />
+        </span>
+      );
+    }
     if (isMachineActor(actorId)) {
       return (
         <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
@@ -2988,9 +3008,9 @@ function TimelineBlock({
       )}
       {visible.map((a) => (
         <div key={a.id} className="relative flex items-center gap-2.5">
-          {actorAvatar(a.actorId)}
+          {actorAvatar(a)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
+            {actorName(a)} {describeActivity(a, t, memberByUserId)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}
