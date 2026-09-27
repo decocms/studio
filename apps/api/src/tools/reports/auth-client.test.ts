@@ -6,6 +6,7 @@ import {
   fetchReportsAuth,
   fetchReportsConnectionStatus,
   triggerReportsRun,
+  unlinkReportsSite,
 } from "./auth-client";
 
 describe("fetchReportsAuth", () => {
@@ -708,5 +709,89 @@ describe("fetchReportsConnectionStatus", () => {
     );
     expect(calls).toBe(1);
     expect(out).toEqual({ providers: {}, claimed: false });
+  });
+});
+
+describe("unlinkReportsSite", () => {
+  const options = (fetchImpl: typeof fetch) => ({
+    baseUrl: "https://commerce.example.test",
+    apiKey: "master-key",
+    fetchImpl,
+  });
+
+  test("POSTs /unlink for the site's hostname with the org id + bearer", async () => {
+    const captured: Array<{
+      method: string;
+      pathname: string;
+      authorization: string | null;
+      body: unknown;
+    }> = [];
+
+    const result = await unlinkReportsSite(
+      { siteUrl: "https://shop.example", orgId: "org_example" },
+      options(async (input, init) => {
+        const request = new Request(input, init);
+        captured.push({
+          method: request.method,
+          pathname: new URL(request.url).pathname,
+          authorization: request.headers.get("authorization"),
+          body: await request.json(),
+        });
+        return Response.json({ url: "shop.example", unlinked: true });
+      }),
+    );
+
+    expect(result).toEqual({ unlinked: true });
+    expect(captured).toEqual([
+      {
+        method: "POST",
+        pathname: "/api/v2/internal/diagnostics/shop.example/unlink",
+        authorization: "Bearer master-key",
+        body: { org_id: "org_example" },
+      },
+    ]);
+  });
+
+  test("passes the engine's no-op reason through", async () => {
+    const result = await unlinkReportsSite(
+      { siteUrl: "https://shop.example", orgId: "org_example" },
+      options(async () =>
+        Response.json({
+          url: "shop.example",
+          unlinked: false,
+          reason: "linked_to_other_org",
+        }),
+      ),
+    );
+
+    expect(result).toEqual({ unlinked: false, reason: "linked_to_other_org" });
+  });
+
+  test("throws on the 404 of an engine that predates /unlink", async () => {
+    await expect(
+      unlinkReportsSite(
+        { siteUrl: "https://shop.example", orgId: "org_example" },
+        options(async () => new Response("404 Not Found", { status: 404 })),
+      ),
+    ).rejects.toThrow("Reports unlink failed with status 404.");
+  });
+
+  test("resends the same request after a transient 503", async () => {
+    const bodies: unknown[] = [];
+    const result = await unlinkReportsSite(
+      { siteUrl: "https://shop.example", orgId: "org_example" },
+      options(async (input, init) => {
+        bodies.push(await new Request(input, init).json());
+        return bodies.length === 1
+          ? new Response("upstream down", { status: 503 })
+          : Response.json({ url: "shop.example", unlinked: true });
+      }),
+    );
+
+    expect(result).toEqual({ unlinked: true });
+    expect(bodies).toEqual([
+      { org_id: "org_example" },
+      { org_id: "org_example" },
+    ]);
   });
 });

@@ -17,6 +17,8 @@ const fetchAuthMock = mock(
 mock.module("./auth-client", () => ({
   fetchReportsAuth: fetchAuthMock,
   resolveReportsMcpUrl: () => "https://reports-stg.decocms.com/api/v2/mcp",
+  // A site switch releases the old site in the background (release.ts).
+  unlinkReportsSite: async () => ({ unlinked: true }),
 }));
 
 const { REPORTS_SETUP } = await import("./setup");
