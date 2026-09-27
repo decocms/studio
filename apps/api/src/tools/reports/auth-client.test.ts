@@ -5,6 +5,7 @@ import {
   reportsClaimMessagePtBr,
   fetchReportsAuth,
   fetchReportsConnectionStatus,
+  type ReportsAuthOptions,
   triggerReportsRun,
   unlinkReportsSite,
 } from "./auth-client";
@@ -713,7 +714,9 @@ describe("fetchReportsConnectionStatus", () => {
 });
 
 describe("unlinkReportsSite", () => {
-  const options = (fetchImpl: typeof fetch) => ({
+  const options = (
+    fetchImpl: NonNullable<ReportsAuthOptions["fetchImpl"]>,
+  ): ReportsAuthOptions => ({
     baseUrl: "https://commerce.example.test",
     apiKey: "master-key",
     fetchImpl,
