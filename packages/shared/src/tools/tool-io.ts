@@ -5049,6 +5049,20 @@ export interface StudioToolIO {
       };
     };
   };
+  EXPERIMENT_SUGGEST: {
+    input: { site: string; prompt: string };
+    output: {
+      key: string;
+      name: string;
+      hypothesis: string;
+      variants: {
+        id: string;
+        weight: number;
+        role: "control" | "treatment";
+        description: string;
+      }[];
+    };
+  };
   EXPERIMENT_UPDATE: {
     input: {
       site: string;

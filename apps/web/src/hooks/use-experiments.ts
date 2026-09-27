@@ -67,6 +67,24 @@ export function useCreateExperiment(site: string) {
   });
 }
 
+export type SuggestedExperiment = StudioToolOutput<"EXPERIMENT_SUGGEST">;
+
+/** Turns a plain-language prompt into a proposed experiment (key, name,
+ *  hypothesis, variants) — read-only, nothing is persisted until the caller
+ *  reviews the result and calls `useCreateExperiment`. */
+export function useSuggestExperiment(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (prompt: string) => {
+      return await studio.call("EXPERIMENT_SUGGEST", { site, prompt });
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : "Failed to suggest experiment",
+      ),
+  });
+}
+
 export function useUpdateExperiment(site: string) {
   const queryClient = useQueryClient();
   const { locator } = useProjectContext();

@@ -196,6 +196,7 @@ export const CORE_TOOLS = [
   ExperimentTools.EXPERIMENT_LIST,
   ExperimentTools.EXPERIMENT_GET,
   ExperimentTools.EXPERIMENT_CREATE,
+  ExperimentTools.EXPERIMENT_SUGGEST,
   ExperimentTools.EXPERIMENT_UPDATE,
   ExperimentTools.EXPERIMENT_DELETE,
   ExperimentTools.EXPERIMENT_RESULTS,

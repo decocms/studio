@@ -144,6 +144,7 @@ const ALL_TOOL_NAMES = [
   "EXPERIMENT_LIST",
   "EXPERIMENT_GET",
   "EXPERIMENT_CREATE",
+  "EXPERIMENT_SUGGEST",
   "EXPERIMENT_UPDATE",
   "EXPERIMENT_DELETE",
   "EXPERIMENT_RESULTS",
@@ -771,6 +772,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "EXPERIMENT_CREATE",
     description: "Create an A/B experiment",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_SUGGEST",
+    description: "Suggest an A/B experiment from a plain-language prompt",
     category: "Experiments",
   },
   {
@@ -1894,6 +1900,7 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "EXPERIMENT_LIST",
       "EXPERIMENT_GET",
       "EXPERIMENT_CREATE",
+      "EXPERIMENT_SUGGEST",
       "EXPERIMENT_UPDATE",
       "EXPERIMENT_DELETE",
       "EXPERIMENT_RESULTS",

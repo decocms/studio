@@ -7,7 +7,7 @@ import { assertOwnsSite } from "./ownership";
 export const EXPERIMENT_CREATE = defineTool({
   name: "EXPERIMENT_CREATE",
   description:
-    "Create a draft A/B experiment for a site. `key` must be unique for the site; weights must sum to 100. Does not publish — it stores the definition; wiring the traffic-split block into the decofile is a separate step.",
+    "Create a draft A/B experiment for a site. `key` must be unique for the site and match the identifier the site's `useExperiment(key)` call uses; weights must sum to 100. Does not publish — it stores the definition; registering the split with the deco-ab-testing Worker and wiring the site's build-time manifest is a separate step.",
   annotations: {
     title: "Create Experiment",
     readOnlyHint: false,
@@ -23,7 +23,7 @@ export const EXPERIMENT_CREATE = defineTool({
       .min(1)
       .max(120)
       .describe(
-        "The random matcher block's name (e.g. `Cross Sell Bag`) — the deco runtime records the split as `event:props:<that name>`, so results only populate when the key equals it.",
+        "The test's identifier (e.g. `valentine-banner`) — must exactly match the string the site's code passes to `useExperiment(key)` and the test name registered with the deco-ab-testing Worker. Results only populate when both agree with this key.",
       ),
     name: z.string().min(1),
     goals: z.array(z.string()).optional(),
