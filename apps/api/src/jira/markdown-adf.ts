@@ -629,6 +629,15 @@ function inlineNodes(
         i = code.next;
         continue;
       }
+    } else if (char === "@" && source[i + 1] === "[") {
+      const link = matchLink(source, i + 1);
+      const mention = link && mentionNode(link);
+      if (link && mention) {
+        flush();
+        out.push(mention);
+        i = link.next;
+        continue;
+      }
     } else if (char === "!" && source[i + 1] === "[") {
       const image = matchLink(source, i + 1);
       if (image) {
@@ -638,7 +647,21 @@ function inlineNodes(
         continue;
       }
     } else if (char === "[") {
+      const wiki = matchWikiMention(source, i);
+      if (wiki) {
+        flush();
+        out.push(wiki.node);
+        i = wiki.next;
+        continue;
+      }
       const link = matchLink(source, i);
+      const mention = link && mentionNode(link);
+      if (link && mention) {
+        flush();
+        out.push(mention);
+        i = link.next;
+        continue;
+      }
       if (link) {
         flush();
         out.push(...linkNodes(link, marks, ctx));
@@ -766,6 +789,39 @@ function matchLink(source: string, at: number): LinkMatch | null {
     label: source.slice(at + 1, labelEnd),
     href: titled?.[1] ?? target,
     next: hrefEnd + 1,
+  };
+}
+
+/** Jira Cloud account ids: `557058:1a2b-…`, `712020:…`, or a bare hex id. */
+const ACCOUNT_ID = /^[\w:-]{1,128}$/;
+
+/**
+ * `[Ana Souza](accountid:557058:…)` — the form a run reads mentions in (see
+ * `mentionMarkdown`) — as a real mention, which is what notifies the person.
+ * Typed as plain `@Ana`, a name is only text on the issue.
+ */
+function mentionNode(link: LinkMatch): AdfNode | null {
+  const match = /^accountid:(.+)$/i.exec(link.href.trim());
+  const id = match?.[1];
+  if (!id || !ACCOUNT_ID.test(id)) return null;
+  const name = link.label.replace(/\\(.)/g, "$1").replace(/^@/, "").trim();
+  return {
+    type: "mention",
+    attrs: { id, ...(name && name !== "unknown" ? { text: `@${name}` } : {}) },
+  };
+}
+
+/** Jira's own wiki form, `[~accountid:557058:…]`, which a model may know. */
+function matchWikiMention(
+  source: string,
+  at: number,
+): { node: AdfNode; next: number } | null {
+  const match = /^\[~accountid:([^\]\s|]+)\]/.exec(source.slice(at));
+  const id = match?.[1];
+  if (!match || !id || !ACCOUNT_ID.test(id)) return null;
+  return {
+    node: { type: "mention", attrs: { id } },
+    next: at + match[0].length,
   };
 }
 

@@ -683,3 +683,83 @@ describe("markdownToAdf bounds", () => {
     ]);
   });
 });
+
+describe("markdownToAdf mentions", () => {
+  const inline = (markdown: string) =>
+    (markdownToAdf(markdown).content[0] as { content: unknown[] }).content;
+
+  it("turns the form a run reads mentions in into a real mention", () => {
+    expect(
+      inline("oi @[Ana Souza](accountid:557058:abc-123), pode ver?"),
+    ).toEqual([
+      { type: "text", text: "oi " },
+      {
+        type: "mention",
+        attrs: { id: "557058:abc-123", text: "@Ana Souza" },
+      },
+      { type: "text", text: ", pode ver?" },
+    ]);
+  });
+
+  it("accepts it without the @, and Jira's own wiki form", () => {
+    expect(inline("[Ana](accountid:557058:abc-123)")).toEqual([
+      { type: "mention", attrs: { id: "557058:abc-123", text: "@Ana" } },
+    ]);
+    expect(inline("cc [~accountid:712020:e78f-69c8]")).toEqual([
+      { type: "text", text: "cc " },
+      { type: "mention", attrs: { id: "712020:e78f-69c8" } },
+    ]);
+  });
+
+  it("leaves the name to Jira when the run only knew the id", () => {
+    expect(inline("@[unknown](accountid:557058:abc)")).toEqual([
+      { type: "mention", attrs: { id: "557058:abc" } },
+    ]);
+  });
+
+  it("unescapes a display name that was escaped for markdown", () => {
+    expect(inline("@[Ana \\_Nick\\_ Souza](accountid:a1)")).toEqual([
+      { type: "mention", attrs: { id: "a1", text: "@Ana _Nick_ Souza" } },
+    ]);
+  });
+
+  it("keeps a plain @name, an ordinary link and code as they were", () => {
+    expect(inline("@thais")).toEqual([{ type: "text", text: "@thais" }]);
+    expect(inline("@[docs](https://example.com)")).toEqual([
+      { type: "text", text: "@" },
+      {
+        type: "text",
+        text: "docs",
+        marks: [{ type: "link", attrs: { href: "https://example.com" } }],
+      },
+    ]);
+    expect(inline("`[~accountid:557058:abc]`")).toEqual([
+      {
+        type: "text",
+        text: "[~accountid:557058:abc]",
+        marks: [{ type: "code" }],
+      },
+    ]);
+  });
+
+  it("refuses an id that is not an account id", () => {
+    expect(inline("@[x](accountid:a b)")).toEqual([
+      { type: "text", text: "@x" },
+    ]);
+    expect(inline("[~accountid:]")).toEqual([
+      { type: "text", text: "[~accountid:]" },
+    ]);
+  });
+
+  it("works inside a list item and a table cell", () => {
+    const doc = markdownToAdf(
+      "- cc @[Ana](accountid:a1)\n\n| quem |\n|---|\n| @[Bo](accountid:b2) |",
+    );
+    expect(JSON.stringify(doc)).toContain(
+      '{"type":"mention","attrs":{"id":"a1","text":"@Ana"}}',
+    );
+    expect(JSON.stringify(doc)).toContain(
+      '{"type":"mention","attrs":{"id":"b2","text":"@Bo"}}',
+    );
+  });
+});
