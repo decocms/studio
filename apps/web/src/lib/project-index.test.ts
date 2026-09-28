@@ -67,6 +67,50 @@ describe("normalizeRepo", () => {
 });
 
 describe("buildProjectIndex", () => {
+  test("attributes a task stamped with a repository-free project id", () => {
+    const card = task({ repo: BARE.id });
+    const feedIndex = buildProjectIndex([BARE]);
+    const boardIndex = buildProjectIndex([BARE], [card.repo]);
+
+    expect(projectForTask(card, feedIndex)?.id).toBe(BARE.id);
+    expect(projectForTask(card, boardIndex)?.id).toBe(BARE.id);
+    expect(taskMatchesProjectFilter(card, BARE.id, boardIndex)).toBe(true);
+    expect(boardIndex.entries).toHaveLength(1);
+    expect(entryForFilter(BARE.id, boardIndex)?.title).toBe(BARE.title);
+    expect(taskMatchesProjectFilter(task(), BARE.id, boardIndex)).toBe(false);
+    expect(taskMatchesProjectFilter(card, NO_PROJECT_FILTER, boardIndex)).toBe(
+      false,
+    );
+  });
+
+  test("keeps project-id stamps after a repository is attached", () => {
+    const index = buildProjectIndex([ALPHA], [ALPHA.id, "acme/alpha"]);
+    const card = task({ repo: ALPHA.id });
+    expect(index.entries).toHaveLength(1);
+    expect(projectForTask(card, index)?.id).toBe(ALPHA.id);
+    expect(taskMatchesProjectFilter(card, ALPHA.id, index)).toBe(true);
+    expect(taskMatchesProjectFilter(card, "acme/alpha", index)).toBe(true);
+  });
+
+  test("preserves exact project ids and thread precedence", () => {
+    const index = buildProjectIndex([BARE, ALPHA]);
+    expect(
+      projectForTask(task({ repo: BARE.id.toUpperCase() }), index),
+    ).toBeNull();
+    expect(
+      projectForTask(task({ repo: BARE.id, virtualMcpId: ALPHA.id }), index)
+        ?.id,
+    ).toBe(ALPHA.id);
+  });
+
+  test("a project-id stamp identifies one project sharing a repository", () => {
+    const index = buildProjectIndex([MONO_1, MONO_2], [MONO_2.id]);
+    expect(projectForTask(task({ repo: MONO_2.id }), index)?.id).toBe(
+      MONO_2.id,
+    );
+    expect(index.entries).toHaveLength(1);
+  });
+
   test("a project with a repository is one bucket, named after the project", () => {
     const index = buildProjectIndex([ALPHA]);
     expect(index.entries).toHaveLength(1);
@@ -194,7 +238,7 @@ describe("entryForTask", () => {
     );
   });
 
-  test("reaches a repo-less project only through its thread", () => {
+  test("reaches a repo-less project through its thread", () => {
     expect(entryForTask(task({ virtualMcpId: "vir_bare" }), index)?.id).toBe(
       "vir_bare",
     );
@@ -289,7 +333,7 @@ describe("taskMatchesProjectFilter", () => {
     ).toBe(true);
   });
 
-  test("a repo-less project's bucket matches by thread only", () => {
+  test("a repo-less project's bucket matches by thread", () => {
     expect(
       taskMatchesProjectFilter(
         task({ virtualMcpId: "vir_bare" }),
