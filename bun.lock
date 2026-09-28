@@ -20,7 +20,7 @@
     },
     "apps/api": {
       "name": "decocms",
-      "version": "4.393.2",
+      "version": "4.407.1",
       "bin": {
         "deco": "./dist/server/cli.js",
       },
@@ -113,7 +113,7 @@
     },
     "apps/native": {
       "name": "@decocms/native",
-      "version": "4.393.2",
+      "version": "4.407.1",
       "dependencies": {
         "@decocms/shared": "workspace:*",
       },
@@ -246,7 +246,7 @@
     },
     "packages/e2e": {
       "name": "@decocms/e2e",
-      "version": "1.85.2",
+      "version": "1.91.0",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -262,7 +262,7 @@
     },
     "packages/harness-runner": {
       "name": "@decocms/harness-runner",
-      "version": "0.9.6",
+      "version": "0.9.7",
       "bin": {
         "decocms-harness-runner": "./main.ts",
       },
@@ -315,7 +315,7 @@
     },
     "packages/sandbox": {
       "name": "@decocms/sandbox",
-      "version": "1.70.4",
+      "version": "1.72.1",
       "dependencies": {
         "@decocms/shared": "workspace:*",
         "@kubernetes/client-node": "^1.4.0",
@@ -328,9 +328,23 @@
         "typescript": "^7.0.2",
       },
     },
+    "packages/sandbox-controller": {
+      "name": "@decocms/sandbox-controller",
+      "version": "0.1.0",
+      "dependencies": {
+        "@kubernetes/client-node": "^1.4.0",
+        "@opentelemetry/api": "^1.9.0",
+        "zod": "4.3.6",
+      },
+      "devDependencies": {
+        "@decocms/sandbox": "workspace:*",
+        "tsup": "^8.5.0",
+        "typescript": "^5.9.3",
+      },
+    },
     "packages/shared": {
       "name": "@decocms/shared",
-      "version": "0.116.0",
+      "version": "0.123.0",
       "dependencies": {
         "@modelcontextprotocol/ext-apps": "^1.7.1",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -360,7 +374,7 @@
     },
     "packages/ui": {
       "name": "@decocms/ui",
-      "version": "1.19.0",
+      "version": "1.20.0",
       "dependencies": {
         "@radix-ui/react-accordion": "^1.2.3",
         "@radix-ui/react-alert-dialog": "^1.1.6",
@@ -736,6 +750,8 @@
     "@decocms/runtime": ["@decocms/runtime@workspace:packages/runtime"],
 
     "@decocms/sandbox": ["@decocms/sandbox@workspace:packages/sandbox"],
+
+    "@decocms/sandbox-controller": ["@decocms/sandbox-controller@workspace:packages/sandbox-controller"],
 
     "@decocms/shared": ["@decocms/shared@workspace:packages/shared"],
 
@@ -3890,6 +3906,8 @@
     "@decocms/better-auth/better-call": ["better-call@1.1.5", "", { "dependencies": { "@better-auth/utils": "^0.3.0", "@better-fetch/fetch": "^1.1.4", "rou3": "^0.7.10", "set-cookie-parser": "^2.7.1" }, "peerDependencies": { "zod": "^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-nQJ3S87v6wApbDwbZ++FrQiSiVxWvZdjaO+2v6lZJAG2WWggkB2CziUDjPciz3eAt9TqfRursIQMZIcpkBnvlw=="],
 
     "@decocms/native/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@decocms/sandbox-controller/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@decocms/studio-web/lucide-react": ["lucide-react@0.468.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc" } }, "sha512-6koYRhnM2N0GGZIdXzSeiNwguv1gt/FAjZOiPl76roBi3xKEXa4WmfpxgQwTTL4KipXjefrnf3oV4IsYhi4JFA=="],
 

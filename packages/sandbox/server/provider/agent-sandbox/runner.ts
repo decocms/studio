@@ -108,6 +108,13 @@ import {
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
+import {
+  PREVIEW_NOT_READY_HEADER,
+  PREVIEW_STRIP_REQUEST_HEADERS,
+  PREVIEW_STRIP_RESPONSE_HEADERS,
+} from "../shared/preview-proxy";
+
+export { PREVIEW_NOT_READY_HEADER };
 
 const LOG_LABEL = "AgentSandboxProvider";
 
@@ -126,14 +133,6 @@ function errMsg(err: unknown): string {
   }
   return String(err);
 }
-
-/**
- * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
- * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
- * The Studio edge (`apps/api/src/sandbox/preview-proxy.ts`) swaps these for an
- * auto-reloading "connecting" page on top-level document navigations.
- */
-export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
 
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
@@ -207,41 +206,6 @@ const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
  * slug(≤24) + 1 + hash(16) = 41 chars max — well under K8s's 63-char DNS
  * label cap.
  */
-
-/**
- * Headers stripped before re-issuing the preview proxy fetch. Hop-by-hop per
- * RFC 7230 + cookies (preview is per-handle, not per-user — no callee session
- * leak) + accept-encoding (Bun fetch auto-decompresses, so a downstream
- * content-encoding would mismatch the actual body).
- */
-const PREVIEW_STRIP_REQUEST_HEADERS = [
-  "cookie",
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "accept-encoding",
-  "content-length",
-  "upgrade",
-];
-
-/**
- * Stripped from the proxied response. content-encoding/length would mismatch
- * after Bun fetch auto-decompresses; CSP/X-Frame-Options the daemon already
- * rewrote — re-passing them defeats the iframe-embedding fix the daemon
- * installed.
- */
-const PREVIEW_STRIP_RESPONSE_HEADERS = [
-  "connection",
-  "keep-alive",
-  "transfer-encoding",
-  "content-encoding",
-  "content-length",
-];
 
 // Deterministic local-port range for port-forward listeners. Same
 // (handle, containerPort) pair → same host port across studio restarts, so
@@ -464,10 +428,11 @@ export interface AgentSandboxProviderOptions {
    * `opts.bufferMs` asks the minter to refresh the token when it has less than
    * that many ms of life left — the periodic refresher passes a large value to
    * keep long-lived sandboxes ahead of the ~55min expiry; recovery omits it.
+   * `opts.tenant` is the sandbox's tenant; absent for a tenant pool's pod.
    */
   mintCloneUrl?: (
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts?: { bufferMs?: number },
+    opts?: { bufferMs?: number; tenant?: EnsureOptions["tenant"] },
   ) => Promise<string | null>;
   /**
    * Re-mint a fresh `orgFsConfigJson` for a tenant. Same lifetime problem as
@@ -921,6 +886,21 @@ export class AgentSandboxProvider {
     // sandbox back to make any progress.
     const resurrected = await this.resurrectByHandle(handle);
     return resurrected ? resurrected.daemonUrl : null;
+  }
+
+  /**
+   * The daemon's address and bearer, resurrecting an evicted claim, for a
+   * remote caller that dials the daemon itself. Null when there is no such
+   * sandbox.
+   */
+  // ponytail: the address is this process's 127.0.0.1 port-forward, reachable
+  // only from the same host; in-cluster callers need the Service URL instead.
+  async daemonEndpoint(
+    handle: string,
+  ): Promise<{ url: string; token: string } | null> {
+    const rec =
+      (await this.getRecord(handle)) ?? (await this.resurrectByHandle(handle));
+    return rec ? { url: rec.daemonUrl, token: rec.token } : null;
   }
 
   /**
@@ -1722,14 +1702,11 @@ export class AgentSandboxProvider {
    */
   private async withFreshCloneUrl(
     repo: NonNullable<EnsureOptions["repo"]>,
-    bufferMs?: number,
+    opts: { bufferMs?: number; tenant?: EnsureOptions["tenant"] } = {},
   ): Promise<NonNullable<EnsureOptions["repo"]>> {
     if (!this.mintCloneUrl) return repo;
     try {
-      const fresh = await this.mintCloneUrl(
-        repo,
-        bufferMs !== undefined ? { bufferMs } : undefined,
-      );
+      const fresh = await this.mintCloneUrl(repo, opts);
       return fresh ? { ...repo, cloneUrl: fresh } : repo;
     } catch (err) {
       console.warn(
@@ -1755,7 +1732,13 @@ export class AgentSandboxProvider {
   ): Promise<EnsureOptions> {
     return {
       ...opts,
-      ...(opts.repo ? { repo: await this.withFreshCloneUrl(opts.repo) } : {}),
+      ...(opts.repo
+        ? {
+            repo: await this.withFreshCloneUrl(opts.repo, {
+              tenant: opts.tenant,
+            }),
+          }
+        : {}),
       ...(opts.orgFsConfigJson
         ? {
             orgFsConfigJson: await freshOrgFsConfigJson(
@@ -1842,10 +1825,11 @@ export class AgentSandboxProvider {
    * Optional accelerator: without a webhook the periodic refresh below still
    * picks the commits up within `tenantPoolRefreshMs`.
    */
-  markTenantPoolsDirty(repoFullName: string, ref: string): string[] {
+  /** Async so a remote provider can serve the same surface. */
+  markTenantPoolsDirty(repoFullName: string, ref: string): Promise<string[]> {
     const matched = poolsMatchingPush(this.tenantPools, repoFullName, ref);
     for (const pool of matched) this.dirtyPools.add(pool.name);
-    return matched.map((pool) => pool.name);
+    return Promise.resolve(matched.map((pool) => pool.name));
   }
 
   private async reconcileTenantPools(): Promise<void> {
@@ -2070,10 +2054,10 @@ export class AgentSandboxProvider {
         const repo = rec.ensureOpts?.repo;
         if (!repo) return;
         try {
-          const fresh = await this.withFreshCloneUrl(
-            repo,
-            CREDENTIAL_REFRESH_BUFFER_MS,
-          );
+          const fresh = await this.withFreshCloneUrl(repo, {
+            bufferMs: CREDENTIAL_REFRESH_BUFFER_MS,
+            tenant: rec.ensureOpts?.tenant,
+          });
           await this.refreshDaemonGitCredential(rec, {
             ...rec.ensureOpts,
             repo: fresh,

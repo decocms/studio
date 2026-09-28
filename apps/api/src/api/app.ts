@@ -126,6 +126,7 @@ import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { sandboxCallbackRoutes } from "@/sandbox/control-plane-callbacks";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
@@ -1486,6 +1487,8 @@ export async function createApp(options: CreateAppOptions = {}) {
   );
   // Git provider OAuth callbacks: the state, not the URL, carries org+user.
   app.route("/api/_git", gitProviderCallbackRoutes);
+  // The control plane re-minting sandbox credentials; bearer-authenticated.
+  app.route("/", sandboxCallbackRoutes());
 
   // Jira: the issue-event intake that starts runs, and the attachment grant
   // route those runs download through. Both authenticate by capability

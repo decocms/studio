@@ -54,6 +54,11 @@
       ]
     },
     "packages/typegen": {},
+    "packages/sandbox-controller": {
+      // Runtime dependencies of the bundled @decocms/sandbox code, which
+      // tsup leaves external; knip sees only this package's own imports.
+      "ignoreDependencies": ["@opentelemetry/api", "zod"]
+    },
     "packages/e2e": {
       // Standalone mock servers spawned by Playwright's `webServer` via a
       // `bun run fixtures/...` command string — knip can't trace a process

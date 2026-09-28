@@ -169,8 +169,13 @@ bun run lint
 Production deployments enable AgentSandbox with
 `STUDIO_AGENT_SANDBOX_ENABLED=true`. Hosted provisioning is disabled when the
 flag is absent or false. Native Studio uses `local-api` as its persisted
-runtime ownership marker and handles lifecycle locally; hosted routes always
-use the agent-sandbox provider.
+runtime ownership marker and handles lifecycle locally.
+
+Hosted routes run `AgentSandboxProvider` in-process by default. With
+`STUDIO_SANDBOX_CONTROL_PLANE_URL` and `STUDIO_SANDBOX_CONTROL_PLANE_TOKEN`
+set, they use `RemoteSandboxProvider` instead: the control plane runs the same
+provider (published as `@decocms/sandbox-controller`) and serves the contract
+in `server/provider/sandbox-api.ts`. Both satisfy `SandboxProvider`.
 
 ## Routing and preview traffic
 
