@@ -29,8 +29,9 @@ export function siteTemplate(id: SiteTemplateId): SiteTemplate {
 }
 
 /**
- * Name of the repository a new site is generated into: a lower-case slug, so
- * it also works as a hostname label. GitHub allows up to 100 characters.
+ * Name of the repository a new site is generated into: a lower-case slug, up
+ * to GitHub's 100 characters. Unique only per owner, so it is not a hosting
+ * slug — that one is global and capped at 48.
  */
 export const SiteRepoNameSchema = z
   .string()
