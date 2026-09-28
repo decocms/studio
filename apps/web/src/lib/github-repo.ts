@@ -11,8 +11,10 @@ import type { GithubRepo, VirtualMCPEntity } from "@decocms/shared/sdk/types";
  *  - `none`         — no clonable GitHub repo metadata.
  *  - `public-clone` — repo linked without a connection (public template clone).
  *                     Bootable, but no authenticated PR/check actions.
- *  - `attached`     — repo linked via a GitHub connection that is still a live
- *                     aggregation of this Virtual MCP. Full header actions.
+ *  - `attached`     — repo linked via a first-class repository
+ *                     (`repositoryId`), or via a GitHub connection that is
+ *                     still a live aggregation of this Virtual MCP. Full
+ *                     header actions.
  *  - `detached`     — repo was linked via a GitHub connection (has an
  *                     installationId or a stored connectionId) but that
  *                     connection is no longer aggregated. Recoverable: the UI
@@ -22,7 +24,7 @@ import type { GithubRepo, VirtualMCPEntity } from "@decocms/shared/sdk/types";
 export type GithubAttachment =
   | { status: "none" }
   | { status: "public-clone"; repo: GithubRepo }
-  | { status: "attached"; repo: GithubRepo; connectionId: string }
+  | { status: "attached"; repo: GithubRepo }
   | { status: "detached"; repo: GithubRepo };
 
 export function resolveGithubAttachment(
@@ -31,13 +33,14 @@ export function resolveGithubAttachment(
   const repo = virtualMcp?.metadata?.githubRepo;
   if (!repo?.url) return { status: "none" };
 
+  // Repository-backed projects carry no aggregated connection: the server
+  // resolves their credential from the repository row.
   const connectionId = repo.connectionId;
   const attached =
-    !!connectionId &&
-    !!virtualMcp?.connections?.some((c) => c.connection_id === connectionId);
-  if (attached) {
-    return { status: "attached", repo, connectionId: connectionId! };
-  }
+    !!repo.repositoryId ||
+    (!!connectionId &&
+      !!virtualMcp?.connections?.some((c) => c.connection_id === connectionId));
+  if (attached) return { status: "attached", repo };
 
   // Not currently aggregated. If the repo was ever linked with authenticated
   // credentials (installationId set at import, or a stale connectionId pointer),
