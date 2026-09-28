@@ -152,7 +152,31 @@ describe("resolveGithubAttachment", () => {
       ),
     );
     expect(r.status).toBe("attached");
-    if (r.status === "attached") expect(r.connectionId).toBe("c");
+  });
+
+  test("'attached' for a repository-backed project with no connection", () => {
+    expect(
+      resolveGithubAttachment(
+        withRepo({ url: "u", owner: "a", name: "b", repositoryId: "r" }),
+      ).status,
+    ).toBe("attached");
+  });
+
+  test("'attached' when a repository id outlives a stale connectionId", () => {
+    expect(
+      resolveGithubAttachment(
+        withRepo(
+          {
+            url: "u",
+            owner: "a",
+            name: "b",
+            repositoryId: "r",
+            connectionId: "gone",
+          },
+          [],
+        ),
+      ).status,
+    ).toBe("attached");
   });
 
   test("'detached' when a stored connectionId is no longer aggregated", () => {
