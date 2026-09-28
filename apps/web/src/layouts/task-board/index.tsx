@@ -1,4 +1,5 @@
 import { Page } from "@/components/page";
+import { launchableApps } from "@/components/projects/project-apps";
 import { Panel } from "@/components/panel";
 import { ThreadsView } from "@/views/forum/threads-view";
 import { TopicPage } from "@/views/forum/topic-page";
@@ -1466,7 +1467,15 @@ function TaskBoardBody({
           </Page.Actions>
           {inlineTabs ? (
             /* A full-bleed rule fences these tabs off from the apps launcher above, so they read as the control of the region below them. */
-            <div className="mt-2 border-t border-border">
+            <div
+              className={cn(
+                // Fenced off only when the apps row sits above; otherwise
+                // the topbar's own rule is right there and this doubles it.
+                scopedProject &&
+                  launchableApps(scopedProject).length > 0 &&
+                  "mt-2 border-t border-border",
+              )}
+            >
               {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
               <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
                 {layoutTabs}
