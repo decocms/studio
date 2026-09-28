@@ -35,7 +35,7 @@ import {
   useRepositories,
   useSearchProviderRepositories,
 } from "@/hooks/use-git-providers";
-import { useCreateSiteEnabled } from "@/hooks/use-organization-settings";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useT } from "@/i18n/use-t.ts";
 
 /** What a caller gets back: always a linked repository row. */
@@ -245,7 +245,8 @@ export function RepositoryPicker({
   const accounts = useGitAccounts();
   const link = useLinkRepository();
   const createRepository = useCreateRepositoryFromTemplate();
-  const createSiteEnabled = useCreateSiteEnabled() && allowCreateSite;
+  const createSiteEnabled =
+    useOrgFlag("site_create_enabled") && allowCreateSite;
   const [account, setAccount] = useState<GitAccount | null>(null);
   const [creatingSite, setCreatingSite] = useState(false);
   const [pendingPath, setPendingPath] = useState<string | null>(null);

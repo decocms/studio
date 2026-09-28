@@ -262,7 +262,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'The "Create a new site" option under New project: generates a GitHub repository from a site template in an account the org connected, and opens it as a project. Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org.',
+      'The "Create a new site" option under New project: generates a GitHub repository from a site template in an account the org connected, and opens it as a project. Off by default, for every org — deco.cx staff included.',
     ),
   delivery_lanes_enabled: z
     .boolean()
