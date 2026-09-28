@@ -299,22 +299,12 @@ export class BitbucketContentClient implements RepoContentClient {
     return this.defaultBranch;
   }
 
-  async getBranch(
-    branch: string,
-  ): Promise<{ sha: string; committedAt: string } | null> {
+  async getBranch(branch: string): Promise<{ sha: string } | null> {
     const json = await this.json<{
-      target?: { hash?: string | null; date?: string | null } | null;
+      target?: { hash?: string | null } | null;
     }>(`${this.repoBase}/refs/branches/${encodeRef(branch)}`);
-    const target = json?.target;
-    if (!target?.hash) return null;
-    if (!target.date) {
-      throw new GitProviderError({
-        provider: "bitbucket",
-        status: 502,
-        message: `Bitbucket branch ${branch} came back without a commit date`,
-      });
-    }
-    return { sha: target.hash, committedAt: target.date };
+    const hash = json?.target?.hash;
+    return hash ? { sha: hash } : null;
   }
 
   /**

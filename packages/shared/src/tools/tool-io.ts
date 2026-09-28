@@ -130,7 +130,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
           }
         | null
         | undefined;
@@ -206,7 +205,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -278,7 +276,6 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
           }
         | null
         | undefined;

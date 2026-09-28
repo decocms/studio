@@ -25,7 +25,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
@@ -294,6 +294,56 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const saving = useDecofileWriting(org.slug, virtualMcpId, branch ?? "");
 
   /**
+   * Only the tail of the publish — the branch switch that follows the merge.
+   *
+   * While the dialog is open it owns the progress UI for its own
+   * push → rebase → open PR → squash-merge sequence, and it sits over this
+   * button. Treating "dialog open" as publishing would label the button
+   * "Publishing…" the whole time the editor is still *reading* the diff and
+   * deciding, which is precisely what "Review & Publish" promises they get to
+   * do first.
+   */
+  const publishing = publishCompletion.isPending;
+
+  const button = selectCmsHeaderButton({
+    branch: branchMeta,
+    pr,
+    checks: checksQuery.data ?? [],
+    reviews: reviewsQuery.data ?? null,
+    publishing,
+    saving,
+    syncing: getLatest.isPending,
+    statusRetrying: statusQuery.isFetching && !!statusQuery.error,
+    statusError:
+      statusQuery.error instanceof Error
+        ? statusQuery.error.message
+        : statusQuery.error
+          ? String(statusQuery.error)
+          : null,
+    loading: Boolean(settling),
+    publishableChangeCount,
+    t,
+  });
+
+  /** Keyed by head so a failed sync isn't retried until the branch moves. */
+  const autoGetLatestKey =
+    button.autoRun &&
+    branchMeta.kind === "ready" &&
+    githubRepo &&
+    previewServerUrl
+      ? `${githubHeadBranch}@${branchMeta.headSha}`
+      : null;
+  const autoGetLatestRef = useRef<string | null>(null);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot sync once the branch status resolves; no render-time equivalent
+  useEffect(() => {
+    if (!autoGetLatestKey || !githubHeadBranch) return;
+    if (autoGetLatestRef.current === autoGetLatestKey) return;
+    // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the head so a re-render can't sync twice
+    autoGetLatestRef.current = autoGetLatestKey;
+    getLatest.mutate({ branch: githubHeadBranch, base: baseBranch });
+  }, [autoGetLatestKey, githubHeadBranch, baseBranch, getLatest]);
+
+  /**
    * Detached: repo linked via a GitHub connection that's no longer aggregated.
    * Render a reconnect pill instead of nothing so the user has a recovery path.
    */
@@ -347,38 +397,6 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    * spinner that resolves to nothing.
    */
   if (!branch) return null;
-
-  /**
-   * Only the tail of the publish — the branch switch that follows the merge.
-   *
-   * While the dialog is open it owns the progress UI for its own
-   * push → rebase → open PR → squash-merge sequence, and it sits over this
-   * button. Treating "dialog open" as publishing would label the button
-   * "Publishing…" the whole time the editor is still *reading* the diff and
-   * deciding, which is precisely what "Review & Publish" promises they get to
-   * do first.
-   */
-  const publishing = publishCompletion.isPending;
-
-  const button = selectCmsHeaderButton({
-    branch: branchMeta,
-    pr,
-    checks: checksQuery.data ?? [],
-    reviews: reviewsQuery.data ?? null,
-    publishing,
-    saving,
-    syncing: getLatest.isPending,
-    statusRetrying: statusQuery.isFetching && !!statusQuery.error,
-    statusError:
-      statusQuery.error instanceof Error
-        ? statusQuery.error.message
-        : statusQuery.error
-          ? String(statusQuery.error)
-          : null,
-    loading: Boolean(settling),
-    publishableChangeCount,
-    t,
-  });
 
   const dispatch = (action: CmsAction) => {
     switch (action) {
