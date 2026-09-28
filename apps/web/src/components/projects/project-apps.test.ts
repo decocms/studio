@@ -6,12 +6,28 @@ import { launchableApps } from "./project-apps";
  * shapes of a project can never disagree about what it has. A tile that opens a
  * view the project lacks is a dead end; a missing tile hides a whole surface.
  */
+const repository = { url: "https://github.com/acme/site" };
+
 describe("launchableApps", () => {
   test("a project with no saved preferences offers its defaults", () => {
-    expect(launchableApps({ metadata: null })).toEqual([
+    expect(launchableApps({ metadata: { repository } })).toEqual([
       "reports",
       "site-editor",
     ]);
+  });
+
+  /** A repo-less project (a forum channel) has no site to diagnose or edit,
+   *  so its defaults offer nothing and the apps row stays hidden. */
+  test("a project without a repo drops Deco Score and Site Editor", () => {
+    expect(launchableApps({ metadata: null })).toEqual([]);
+    expect(
+      launchableApps({
+        metadata: {
+          sidebarViews: ["reports", "site-editor", "analytics"],
+          sidebarViewsVersion: 1,
+        },
+      }),
+    ).toEqual(["analytics"]);
   });
 
   /** Overview and board are never tiles: the screen the tiles sit on IS those
@@ -33,6 +49,7 @@ describe("launchableApps", () => {
       metadata: {
         sidebarViews: ["overview", "board", "reports", "analytics"],
         sidebarViewsVersion: 1,
+        repository,
       },
     });
     expect(apps).toEqual(["reports", "analytics"]);
@@ -44,6 +61,7 @@ describe("launchableApps", () => {
         metadata: {
           sidebarViews: ["hosting", "site-editor", "experiments"],
           sidebarViewsVersion: 1,
+          repository,
         },
       }),
     ).toEqual(["site-editor", "hosting", "experiments"]);
