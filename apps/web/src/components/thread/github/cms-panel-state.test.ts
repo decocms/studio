@@ -590,6 +590,83 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
   });
 });
 
+describe("autoRun", () => {
+  test("behind base with nothing to publish → Get latest runs unprompted", () => {
+    const r = selectCmsHeaderButton(
+      input({ branch: ready({ behindBase: 4 }), publishableChangeCount: 0 }),
+    );
+    expect(r.action).toBe("get-latest");
+    expect(r.autoRun).toBe(true);
+  });
+
+  /** Commits of its own make the sync a merge, not a fast-forward — the editor clicks. */
+  test("ahead only by artifacts the manifest drops → manual Get latest", () => {
+    const r = selectCmsHeaderButton(
+      input({
+        branch: ready({ aheadOfBase: 2, behindBase: 1 }),
+        publishableChangeCount: 0,
+      }),
+    );
+    expect(r.action).toBe("get-latest");
+    expect(r.autoRun).toBe(false);
+  });
+
+  test("never auto-runs over the editor's own work, a PR, or a conflict", () => {
+    for (const r of [
+      selectCmsHeaderButton(input()),
+      selectCmsHeaderButton(
+        input({ branch: ready({ aheadOfBase: 2, behindBase: 1 }) }),
+      ),
+      selectCmsHeaderButton(
+        input({
+          branch: ready({ behindBase: 1, workingTreeDirty: true }),
+          publishableChangeCount: 0,
+        }),
+      ),
+      selectCmsHeaderButton(
+        input({
+          branch: ready({ aheadOfBase: 2, behindBase: 1 }),
+          pr: pr(),
+          reviews: reviews(),
+        }),
+      ),
+      selectCmsHeaderButton(
+        input({
+          branch: ready({ aheadOfBase: 2, behindBase: 1 }),
+          pr: pr(),
+          reviews: reviews({ mergeableState: "dirty" }),
+        }),
+      ),
+      selectCmsHeaderButton(
+        input({
+          branch: ready({
+            aheadOfBase: 2,
+            behindBase: 3,
+            headSha: "merged-sha",
+          }),
+          pr: pr({ state: "closed", merged: true, headSha: "merged-sha" }),
+        }),
+      ),
+    ]) {
+      expect(r.autoRun).toBeFalsy();
+    }
+  });
+
+  test("never auto-runs mid-write, mid-sync, or while loading", () => {
+    const behind = ready({ behindBase: 4 });
+    for (const over of [
+      { saving: true },
+      { syncing: true },
+      { publishing: true },
+      { loading: true },
+    ]) {
+      expect(
+        selectCmsHeaderButton(input({ branch: behind, ...over })).autoRun,
+      ).toBeFalsy();
+    }
+  });
+});
+
 describe("isCmsStateSettling", () => {
   const idle = { isPending: false, fetchStatus: "idle" };
   const inFlight = { isPending: true, fetchStatus: "fetching" };

@@ -51,6 +51,8 @@ export interface CmsHeaderButton {
   loading?: boolean;
   tooltip?: string;
   menu: CmsMenuItem[];
+  /** Safe to dispatch unprompted: a fast-forward, nothing of the branch's own at stake. */
+  autoRun?: boolean;
 }
 
 export interface SelectCmsHeaderButtonInput {
@@ -392,6 +394,7 @@ export function selectCmsHeaderButton(
       variant: "default",
       tooltip: t("thread.cmsActions.getLatestTooltip"),
       menu: [],
+      autoRun: branch.aheadOfBase === 0,
     };
   }
   return {
