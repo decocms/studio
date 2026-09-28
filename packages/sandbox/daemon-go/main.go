@@ -713,7 +713,11 @@ func (d *daemon) shutdown() {
 	d.dispatchReg.CancelAll()
 
 	cfg := d.store.Read()
-	if cfg != nil && cfg.Branch() != "" {
+	// A clone in flight or failed leaves a partial tree that is not the user's
+	// work; committing it would push a broken snapshot onto their branch.
+	phase := d.lifecycle.Current().Phase
+	treeIsOurs := phase != events.PhaseCloning && phase != events.PhaseCloneFailed
+	if cfg != nil && cfg.Branch() != "" && treeIsOurs {
 		publishStartedAt := time.Now()
 		release := d.treeLock.Acquire()
 		err := gitx.Publish(gitx.PublishDeps{
@@ -722,7 +726,8 @@ func (d *daemon) shutdown() {
 			GetOperator: d.operatorIdentity,
 			// "skip", not "throw": an invalid block must not abort the whole
 			// shutdown sync and lose the user's other valid work.
-			OnInvalidBlock: gitx.InvalidBlockSkip,
+			OnInvalidBlock:  gitx.InvalidBlockSkip,
+			RebaseOnDiverge: true,
 		}, "chore(daemon): sync all local changes to remote on shutdown")
 		release()
 		status := "done"
