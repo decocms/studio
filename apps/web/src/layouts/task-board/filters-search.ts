@@ -1,5 +1,5 @@
 /**
- * Task board view state (filters + layout) lives in the URL search params, so a
+ * Task board view state (filters, layout, list grouping) lives in the URL search params, so a
  * refresh, a back/forward, or a shared link keeps the board as you left it.
  *
  * ponytail: TanStack Router's search params already are the store — no zustand,
@@ -9,6 +9,7 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { DueFilter, TaskFilters } from "./task-filters-core";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
+import { isGroupBy, type GroupBy } from "./list-groups";
 
 export type Layout = "board" | "list";
 
@@ -17,6 +18,10 @@ const DUE_FILTERS: DueFilter[] = ["overdue", "today", "week", "none"];
 /** Search-param names, kept short since they show up in shared links. */
 type BoardSearch = {
   view?: string;
+  /** The list view's grouping criterion. */
+  group?: string;
+  /** A second criterion nested inside each group. */
+  subgroup?: string;
   q?: string;
   assignee?: string;
   priority?: string;
@@ -40,12 +45,22 @@ const str = (v: unknown): string | null =>
 export function parseBoardSearch(search: BoardSearch): {
   filters: TaskFilters;
   layout: Layout;
+  groupBy: GroupBy | null;
+  subgroupBy: GroupBy | null;
 } {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
+  const groupBy = isGroupBy(search.group) ? search.group : null;
   return {
     layout: search.view === "list" ? "list" : "board",
+    groupBy,
+    subgroupBy:
+      groupBy !== null &&
+      isGroupBy(search.subgroup) &&
+      search.subgroup !== groupBy
+        ? search.subgroup
+        : null,
     filters: {
       search: str(search.q) ?? "",
       assignee: str(search.assignee),
@@ -63,9 +78,13 @@ export function parseBoardSearch(search: BoardSearch): {
 export function boardSearchParams(
   filters: TaskFilters,
   layout: Layout,
+  groupBy: GroupBy | null,
+  subgroupBy: GroupBy | null,
 ): Record<keyof BoardSearch, string | undefined> {
   return {
     view: layout === "list" ? "list" : undefined,
+    group: groupBy ?? undefined,
+    subgroup: groupBy !== null ? (subgroupBy ?? undefined) : undefined,
     q: filters.search === "" ? undefined : filters.search,
     assignee: filters.assignee ?? undefined,
     priority: filters.priority ?? undefined,
@@ -89,18 +108,28 @@ export function visibleSelection(
   return new Set([...selection].filter((id) => visible.has(id)));
 }
 
-/** `useState`-shaped replacement for the board's filters + layout state. */
+/** `useState`-shaped replacement for the board's view state. */
 export function useBoardSearch() {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const { filters, layout } = parseBoardSearch(search);
+  const { filters, layout, groupBy, subgroupBy } = parseBoardSearch(search);
 
-  const write = (nextFilters: TaskFilters, nextLayout: Layout) =>
+  const write = (
+    nextFilters: TaskFilters,
+    nextLayout: Layout,
+    nextGroupBy: GroupBy | null,
+    nextSubgroupBy: GroupBy | null,
+  ) =>
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...boardSearchParams(nextFilters, nextLayout),
+        ...boardSearchParams(
+          nextFilters,
+          nextLayout,
+          nextGroupBy,
+          nextSubgroupBy,
+        ),
       }),
       // Typing in the search box would otherwise push a history entry per key.
       replace: true,
@@ -109,7 +138,19 @@ export function useBoardSearch() {
   return {
     filters,
     layout,
-    setFilters: (next: TaskFilters) => write(next, layout),
-    setLayout: (next: Layout) => write(filters, next),
+    groupBy,
+    subgroupBy,
+    setFilters: (next: TaskFilters) => write(next, layout, groupBy, subgroupBy),
+    setLayout: (next: Layout) => write(filters, next, groupBy, subgroupBy),
+    /** Picking the sub-group's criterion as the group swaps the two. */
+    setGroupBy: (next: GroupBy | null) =>
+      write(
+        filters,
+        layout,
+        next,
+        next !== null && next === subgroupBy ? groupBy : subgroupBy,
+      ),
+    setSubgroupBy: (next: GroupBy | null) =>
+      write(filters, layout, groupBy, next),
   };
 }
