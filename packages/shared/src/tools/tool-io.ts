@@ -129,6 +129,7 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
           }
@@ -205,6 +206,7 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
           }
@@ -277,6 +279,7 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
           }
@@ -7096,6 +7099,26 @@ export interface StudioToolIO {
   };
   REPOSITORY_LINK: {
     input: { url: string; accountId?: string | undefined };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_CREATE_FROM_TEMPLATE: {
+    input: { accountId: string; name: string; template: "storefront" | "blog" };
     output: {
       repository: {
         id: string;

@@ -260,6 +260,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LIST",
   "REPOSITORY_SEARCH",
   "REPOSITORY_LINK",
+  "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
@@ -1250,6 +1251,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPOSITORY_LINK",
     description: "Link a repository to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_CREATE_FROM_TEMPLATE",
+    description: "Create a site repository from a template and link it",
     category: "Git",
   },
   {
