@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@decocms/ui/components/tooltip.tsx";
 import { useT } from "@/i18n/use-t";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import {
   SectionVariantList,
   type SectionVariantEntry,

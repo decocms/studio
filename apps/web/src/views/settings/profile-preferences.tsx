@@ -209,11 +209,6 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
-  const handleBlocksEditorChange = (checked: boolean) => {
-    track("preferences_blocks_editor_toggled", { enabled: checked });
-    setPreferences((prev) => ({ ...prev, compactPageLayout: checked }));
-  };
-
   return (
     <SettingsSection title={t("settings.preferences.title")}>
       <SettingsCard>
@@ -351,20 +346,6 @@ function PreferencesSection() {
                 }}
               />
             </div>
-          }
-        />
-        <SettingsCardItem
-          title={t("settings.preferences.newBlocksEditor")}
-          description={t("settings.preferences.newBlocksEditorDescription")}
-          onClick={() =>
-            handleBlocksEditorChange(!preferences.compactPageLayout)
-          }
-          action={
-            <Switch
-              aria-label={t("settings.preferences.newBlocksEditor")}
-              checked={preferences.compactPageLayout}
-              onCheckedChange={handleBlocksEditorChange}
-            />
           }
         />
         <SettingsCardItem

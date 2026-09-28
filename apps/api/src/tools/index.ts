@@ -58,6 +58,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  OrganizationTools.ORGANIZATION_BLOCKS_EDITOR_SET,
   OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,

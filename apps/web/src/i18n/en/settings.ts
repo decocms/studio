@@ -344,9 +344,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.newBlocksEditor": "New blocks editor",
-  "settings.preferences.newBlocksEditorDescription":
-    "Try the redesigned blocks editor. The rest of Studio always uses the new layout.",
+  "settings.blocksEditor.title": "New blocks editor",
+  "settings.blocksEditor.description":
+    "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",

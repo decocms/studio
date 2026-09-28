@@ -233,6 +233,32 @@ export function useOrgFlag(flag: keyof OrgFlags): boolean {
   return data ?? DEFAULT_ON_FLAGS.has(flag);
 }
 
+/**
+ * Writer for the org's blocks editor. Not `useSetOrgFlag`: that goes through
+ * ORGANIZATION_SETTINGS_UPDATE (org:manage), while any member may switch the
+ * editor through the basic-usage ORGANIZATION_BLOCKS_EDITOR_SET.
+ */
+export function useSetNewBlocksEditor() {
+  const { org } = useProjectContext();
+  const studio = useStudioTools();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      studio.call("ORGANIZATION_BLOCKS_EDITOR_SET", { enabled }),
+    onSuccess: ({ enabled }) => {
+      queryClient.setQueryData(
+        KEYS.organizationSettings(org.id),
+        (prev: OrganizationSettings | undefined) =>
+          prev && {
+            ...prev,
+            flags: { ...prev.flags, new_blocks_editor: enabled },
+          },
+      );
+    },
+  });
+}
+
 /** deco.cx staff — the internal audience the in-flight surfaces open to first. */
 function isDecoStaffEmail(email: string | null | undefined): boolean {
   return !!email && email.trim().toLowerCase().endsWith("@deco.cx");

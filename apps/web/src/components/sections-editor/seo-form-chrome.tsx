@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Label } from "@decocms/ui/components/label.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { isSeoEnabled, isSeoLazyRender } from "./seo-lazy-render";
 

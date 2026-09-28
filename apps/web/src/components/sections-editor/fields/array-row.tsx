@@ -1,5 +1,5 @@
 import { GripVertical } from "lucide-react";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { EditorRowActionsTrigger, EditorRowToggle } from "../editor-list-row";
 import { Copy01, DotsGrid, Eye, EyeOff, Trash01 } from "@untitledui/icons";
 import {
