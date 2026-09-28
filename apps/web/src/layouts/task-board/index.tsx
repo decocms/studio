@@ -64,6 +64,7 @@ import {
   Lightning01,
   Plus,
   RefreshCw01,
+  User01,
   UserPlus01,
   X,
 } from "@untitledui/icons";
@@ -118,6 +119,7 @@ import {
   type TaskBoardItem,
   type TaskBoardItemStatus,
   type Member,
+  type OrgTag,
 } from "./config";
 import { useTags } from "@/hooks/use-tags";
 import {
@@ -147,16 +149,27 @@ import { EMPTY_FILTERS, taskMatchesFilters } from "./task-filters-core";
 import {
   AppliedFiltersBar,
   BoardSettingsButton,
+  GroupByButton,
   TaskFilterButton,
 } from "./view-controls";
+import {
+  groupLevels,
+  groupListItems,
+  NO_TAG_GROUP,
+  toggleCollapsed,
+  type ListGroup,
+} from "./list-groups";
+import { UNASSIGNED_FILTER } from "./task-filters-core";
 import { useBoardSearch, visibleSelection } from "./filters-search";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import {
   entryForFilter,
   filterAfterCreate,
+  NO_PROJECT_FILTER,
   stampableEntries,
+  type ProjectIndex,
 } from "@/lib/project-index";
-import { ProjectEntryRow } from "@/components/project-entry";
+import { ProjectEntryIcon, ProjectEntryRow } from "@/components/project-entry";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { Navigate, useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -905,7 +918,19 @@ function TaskBoardBody() {
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
-  const { filters, setFilters, layout, setLayout } = useBoardSearch();
+  const {
+    filters,
+    setFilters,
+    layout,
+    setLayout,
+    groupBy,
+    subgroupBy,
+    setGroupBy,
+    setSubgroupBy,
+  } = useBoardSearch();
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
@@ -1147,6 +1172,20 @@ function TaskBoardBody() {
     );
   }
 
+  const listRow = (item: TaskBoardItem) => (
+    <ListRow
+      key={item.id}
+      item={item}
+      assignee={
+        item.assigneeId ? memberByUserId.get(item.assigneeId) : undefined
+      }
+      assignedBy={
+        item.assignedBy ? memberByUserId.get(item.assignedBy) : undefined
+      }
+      onOpen={() => openTask(item)}
+    />
+  );
+
   /** The board itself — header, toolbar, lanes. Hoisted so wrapping it
    *  below does not reindent every line of it. */
   const boardContent = (
@@ -1185,6 +1224,14 @@ function TaskBoardBody() {
                         index={projectIndex}
                         onChange={handleFiltersChange}
                       />
+                      {layout === "list" && (
+                        <GroupByButton
+                          groupBy={groupBy}
+                          subgroupBy={subgroupBy}
+                          onGroupByChange={setGroupBy}
+                          onSubgroupByChange={setSubgroupBy}
+                        />
+                      )}
                       <BoardSettingsButton onClick={openBoardSettings} />
                     </div>
                   </>
@@ -1315,23 +1362,30 @@ function TaskBoardBody() {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-16 sm:px-8">
           <div className="mx-auto flex max-w-[820px] flex-col gap-2">
-            {visibleListItems.map((item) => (
-              <ListRow
-                key={item.id}
-                item={item}
-                assignee={
-                  item.assigneeId
-                    ? memberByUserId.get(item.assigneeId)
-                    : undefined
+            {groupBy === null ? (
+              visibleListItems.map(listRow)
+            ) : (
+              <ListGroupTree
+                groups={groupListItems(
+                  visibleListItems,
+                  groupLevels(groupBy, subgroupBy),
+                  {
+                    memberIds: members.map((m) => m.userId),
+                    tagIds: orgTags.map((tag) => tag.id),
+                    index: projectIndex,
+                  },
+                )}
+                depth={0}
+                collapsed={collapsedGroups}
+                onToggle={(path, siblingPaths, all) =>
+                  setCollapsedGroups((prev) =>
+                    toggleCollapsed(prev, path, siblingPaths, all),
+                  )
                 }
-                assignedBy={
-                  item.assignedBy
-                    ? memberByUserId.get(item.assignedBy)
-                    : undefined
-                }
-                onOpen={() => openTask(item)}
+                renderRow={listRow}
+                heading={{ memberByUserId, orgTags, index: projectIndex }}
               />
-            ))}
+            )}
           </div>
         </div>
       )}
@@ -2616,6 +2670,200 @@ function TaskCard({
       />
     </button>
   );
+}
+
+type GroupHeadingContext = {
+  memberByUserId: Map<string, Member>;
+  orgTags: OrgTag[];
+  index: ProjectIndex;
+};
+
+/**
+ * The list view's groups, Linear-style: a header bar per group with its task
+ * count, open until clicked shut, and sub-groups nested one step in.
+ */
+function ListGroupTree({
+  groups,
+  depth,
+  collapsed,
+  onToggle,
+  renderRow,
+  heading,
+}: {
+  groups: ListGroup[];
+  depth: number;
+  collapsed: ReadonlySet<string>;
+  onToggle: (path: string, siblingPaths: string[], all: boolean) => void;
+  renderRow: (item: TaskBoardItem) => ReactNode;
+  heading: GroupHeadingContext;
+}) {
+  const t = useT();
+  const siblingPaths = groups.map((group) => group.path);
+  return groups.map((group) => {
+    const open = !collapsed.has(group.path);
+    const { glyph, label } = listGroupHeading(group, { ...heading, t });
+    return (
+      <section
+        key={group.path}
+        data-list-group={group.path}
+        className="flex flex-col gap-2"
+      >
+        <Tooltip delayDuration={600}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={(event) =>
+                onToggle(group.path, siblingPaths, event.altKey)
+              }
+              className={cn(
+                "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors",
+                depth === 0
+                  ? "bg-muted/60 hover:bg-muted"
+                  : "ml-4 bg-muted/30 hover:bg-muted/60",
+              )}
+            >
+              <ChevronRight
+                size={14}
+                className={cn(
+                  "shrink-0 text-muted-foreground transition-transform",
+                  open && "rotate-90",
+                )}
+              />
+              <span className="flex size-4 shrink-0 items-center justify-center">
+                {glyph}
+              </span>
+              <span className="truncate">{label}</span>
+              <span className="text-muted-foreground">
+                {group.items.length}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" align="start">
+            {t("taskBoard.viewControls.groupToggleAllHint")}
+          </TooltipContent>
+        </Tooltip>
+        {open &&
+          (group.children ? (
+            <ListGroupTree
+              groups={group.children}
+              depth={depth + 1}
+              collapsed={collapsed}
+              onToggle={onToggle}
+              renderRow={renderRow}
+              heading={heading}
+            />
+          ) : (
+            <div className={cn("flex flex-col gap-2", depth > 0 && "ml-4")}>
+              {group.items.map(renderRow)}
+            </div>
+          ))}
+      </section>
+    );
+  });
+}
+
+function listGroupHeading(
+  group: ListGroup,
+  {
+    memberByUserId,
+    orgTags,
+    index,
+    t,
+  }: GroupHeadingContext & { t: ReturnType<typeof useT> },
+): { glyph: ReactNode; label: string } {
+  const { key, groupBy } = group;
+  switch (groupBy) {
+    case "status": {
+      const { label, visual } = laneHeader(key, t);
+      const Icon = visual.icon;
+      return {
+        glyph: (
+          <Icon size={15} className={cn("shrink-0", visual.iconClassName)} />
+        ),
+        label,
+      };
+    }
+    case "priority": {
+      const priority = PRIORITIES.find((p) => p === key);
+      if (!priority) return { glyph: null, label: key };
+      const config = PRIORITY_CONFIG[priority];
+      const Icon = config.icon;
+      return {
+        glyph: (
+          <Icon size={15} className={cn("shrink-0", config.iconClassName)} />
+        ),
+        label: t(config.labelKey),
+      };
+    }
+    case "assignee": {
+      if (key === SUPER_AGENT_ASSIGNEE_ID) {
+        return {
+          glyph: <SuperAgentIcon size={16} />,
+          label: t("taskBoard.taskFilters.assigneeSuperAgent"),
+        };
+      }
+      if (key === UNASSIGNED_FILTER) {
+        return {
+          glyph: (
+            <User01 size={15} className="shrink-0 text-muted-foreground" />
+          ),
+          label: t("taskBoard.taskFilters.assigneeUnassigned"),
+        };
+      }
+      const member = memberByUserId.get(key);
+      return {
+        glyph: (
+          <Avatar
+            url={member?.user?.image ?? undefined}
+            fallback={getInitials(member?.user?.name)}
+            shape="circle"
+            size="2xs"
+          />
+        ),
+        label: member?.user?.name ?? t("taskBoard.taskFilters.assigneeMember"),
+      };
+    }
+    case "tags": {
+      if (key === NO_TAG_GROUP) {
+        return {
+          glyph: (
+            <span className="size-2 shrink-0 rounded-full border border-muted-foreground/50" />
+          ),
+          label: t("taskBoard.viewControls.groupNoTags"),
+        };
+      }
+      const tag =
+        orgTags.find((candidate) => candidate.id === key) ??
+        group.items[0]?.tags.find((candidate) => candidate.id === key);
+      return {
+        glyph: (
+          <span
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: tagDotColor(tag?.color) }}
+          />
+        ),
+        label: tag?.name ?? key,
+      };
+    }
+    case "project": {
+      if (key === NO_PROJECT_FILTER) {
+        return {
+          glyph: <ProjectEntryIcon entry={undefined} />,
+          label: t("taskBoard.taskFilters.projectNone"),
+        };
+      }
+      const entry = index.byId.get(key);
+      return {
+        glyph: <ProjectEntryIcon entry={entry} />,
+        label: entry?.title ?? key,
+      };
+    }
+    default: {
+      const exhaustive: never = groupBy;
+      return exhaustive;
+    }
+  }
 }
 
 function ListRow({

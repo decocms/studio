@@ -25,6 +25,15 @@ import {
   CommandList,
 } from "@decocms/ui/components/command.tsx";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import {
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -38,6 +47,7 @@ import {
   FilterLines,
   Flag01,
   Plus,
+  Rows01,
   Settings02,
   Tag01,
   User01,
@@ -49,7 +59,7 @@ import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Separator } from "@decocms/ui/components/separator.tsx";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { getInitials } from "@/lib/get-initials";
 import {
   entryForFilter,
@@ -70,6 +80,7 @@ import {
   withFieldCleared,
   type FilterFieldId,
 } from "./filter-fields";
+import { GROUP_BY_OPTIONS, isGroupBy, type GroupBy } from "./list-groups";
 import {
   DUE_FILTERS,
   dueFilterLabelKey,
@@ -556,6 +567,93 @@ export function TaskFilterButton({
     />
   );
 }
+
+const NO_GROUPING = "none";
+
+/**
+ * The list view's "Group by" menu, Linear's shape: a grouping and, nested in
+ * each of its groups, an optional sub-grouping by a different criterion.
+ */
+export function GroupByButton({
+  groupBy,
+  subgroupBy,
+  onGroupByChange,
+  onSubgroupByChange,
+}: {
+  groupBy: GroupBy | null;
+  subgroupBy: GroupBy | null;
+  onGroupByChange: (next: GroupBy | null) => void;
+  onSubgroupByChange: (next: GroupBy | null) => void;
+}) {
+  const t = useT();
+  const toGroupBy = (next: string) => (isGroupBy(next) ? next : null);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t("taskBoard.viewControls.groupByLabel")}
+          tooltipSide="bottom"
+          variant="secondary"
+          aria-pressed={groupBy !== null}
+        >
+          <Rows01 />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel>
+          {t("taskBoard.viewControls.groupingLabel")}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={groupBy ?? NO_GROUPING}
+          onValueChange={(next) => onGroupByChange(toGroupBy(next))}
+        >
+          <DropdownMenuRadioItem value={NO_GROUPING}>
+            {t("taskBoard.viewControls.groupByNone")}
+          </DropdownMenuRadioItem>
+          {GROUP_BY_OPTIONS.map((option) => (
+            <DropdownMenuRadioItem key={option} value={option}>
+              {t(GROUP_BY_LABEL_KEYS[option])}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>
+          {t("taskBoard.viewControls.subgroupingLabel")}
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={subgroupBy ?? NO_GROUPING}
+          onValueChange={(next) => onSubgroupByChange(toGroupBy(next))}
+        >
+          <DropdownMenuRadioItem
+            value={NO_GROUPING}
+            disabled={groupBy === null}
+          >
+            {t("taskBoard.viewControls.groupByNone")}
+          </DropdownMenuRadioItem>
+          {GROUP_BY_OPTIONS.filter((option) => option !== groupBy).map(
+            (option) => (
+              <DropdownMenuRadioItem
+                key={option}
+                value={option}
+                disabled={groupBy === null}
+              >
+                {t(GROUP_BY_LABEL_KEYS[option])}
+              </DropdownMenuRadioItem>
+            ),
+          )}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const GROUP_BY_LABEL_KEYS: Record<GroupBy, TranslationKey> = {
+  status: "taskBoard.viewControls.groupByStatus",
+  assignee: "taskBoard.taskFilters.assigneeLabel",
+  priority: "taskBoard.taskFilters.priorityLabel",
+  tags: "taskBoard.taskFilters.tagsLabel",
+  project: "taskBoard.taskFilters.projectLabel",
+};
 
 /** The view row's display button — layout, then the board's own settings. */
 /** The values of ONE field, reached from the chip that already names it — so

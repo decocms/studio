@@ -16,14 +16,31 @@ const filters: TaskFilters = {
 };
 
 describe("board search params", () => {
-  test("round-trips filters and layout through the URL", () => {
-    const params = boardSearchParams(filters, "list");
-    expect(parseBoardSearch(params)).toEqual({ filters, layout: "list" });
+  test("round-trips filters, layout and grouping through the URL", () => {
+    const params = boardSearchParams(filters, "list", "assignee", "status");
+    expect(parseBoardSearch(params)).toEqual({
+      filters,
+      layout: "list",
+      groupBy: "assignee",
+      subgroupBy: "status",
+    });
+  });
+
+  test("a sub-group needs a different group above it", () => {
+    expect(parseBoardSearch({ subgroup: "status" }).subgroupBy).toBeNull();
+    expect(
+      parseBoardSearch({ group: "status", subgroup: "status" }).subgroupBy,
+    ).toBeNull();
+    expect(
+      boardSearchParams(EMPTY_FILTERS, "list", null, "status").subgroup,
+    ).toBeUndefined();
   });
 
   test("defaults are omitted from the URL", () => {
-    expect(boardSearchParams(EMPTY_FILTERS, "board")).toEqual({
+    expect(boardSearchParams(EMPTY_FILTERS, "board", null, null)).toEqual({
       view: undefined,
+      group: undefined,
+      subgroup: undefined,
       q: undefined,
       assignee: undefined,
       priority: undefined,
@@ -37,6 +54,8 @@ describe("board search params", () => {
     expect(parseBoardSearch({})).toEqual({
       filters: EMPTY_FILTERS,
       layout: "board",
+      groupBy: null,
+      subgroupBy: null,
     });
   });
 
@@ -44,11 +63,18 @@ describe("board search params", () => {
     expect(
       parseBoardSearch({
         view: "kanban",
+        group: "due",
+        subgroup: "due",
         priority: "critical",
         due: "yesterday",
         tags: ",,",
       }),
-    ).toEqual({ filters: EMPTY_FILTERS, layout: "board" });
+    ).toEqual({
+      filters: EMPTY_FILTERS,
+      layout: "board",
+      groupBy: null,
+      subgroupBy: null,
+    });
   });
 });
 
@@ -80,15 +106,24 @@ describe("the ambient project scope does not touch the board's filter", () => {
 describe("the ?repo= param carries a bucket id", () => {
   test("a project's bucket id is written to ?repo=", () => {
     expect(
-      boardSearchParams({ ...EMPTY_FILTERS, project: "acme/site" }, "board")
-        .repo,
+      boardSearchParams(
+        { ...EMPTY_FILTERS, project: "acme/site" },
+        "board",
+        null,
+        null,
+      ).repo,
     ).toBe("acme/site");
   });
 
   test("a repo-less project's id round-trips through it too", () => {
     expect(parseBoardSearch({ repo: "vir_x" }).filters.project).toBe("vir_x");
     expect(
-      boardSearchParams({ ...EMPTY_FILTERS, project: "vir_x" }, "board").repo,
+      boardSearchParams(
+        { ...EMPTY_FILTERS, project: "vir_x" },
+        "board",
+        null,
+        null,
+      ).repo,
     ).toBe("vir_x");
   });
 });
