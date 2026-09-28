@@ -4,6 +4,7 @@ export {
   AgentSandboxProvider,
   parseTenantPools,
   type ClaimPhase,
+  type PortForwarder,
 } from "@decocms/sandbox/provider/agent-sandbox";
 export type {
   EnsureOptions,
@@ -19,15 +20,19 @@ export * from "@decocms/sandbox/provider/sandbox-api";
 export * from "@decocms/sandbox/provider/sandbox-server";
 
 /**
- * A kubeconfig for `AgentSandboxProvider`, built with this package's own
- * client so a host on another client version can still pass one.
+ * A kubeconfig for `AgentSandboxProvider` pointing at `server` with no
+ * credentials: a local proxy that authenticates on the host's behalf. Built
+ * with this package's own client, whatever client version the host runs.
  */
-export function loadKubeConfig(opts: {
-  path: string;
-  context?: string;
-}): KubeConfig {
+export function kubeConfigForServer(server: string): KubeConfig {
   const kc = new KubeConfig();
-  kc.loadFromFile(opts.path);
-  if (opts.context) kc.setCurrentContext(opts.context);
+  kc.loadFromOptions({
+    // The client refuses plain http unless this is set; a loopback http
+    // proxy has no TLS to verify.
+    clusters: [{ name: "sandbox", server, skipTLSVerify: true }],
+    users: [{ name: "sandbox" }],
+    contexts: [{ name: "sandbox", cluster: "sandbox", user: "sandbox" }],
+    currentContext: "sandbox",
+  });
   return kc;
 }

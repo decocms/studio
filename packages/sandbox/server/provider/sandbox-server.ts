@@ -37,6 +37,16 @@ export interface SandboxToolDefinition<
   execute(input: z.infer<I>): Promise<z.infer<O>>;
 }
 
+/** The error and its causes: a remote caller sees nothing else. */
+function messageChain(err: unknown): string {
+  const parts: string[] = [];
+  for (let e = err, depth = 0; e && depth < 5; depth++) {
+    parts.push(e instanceof Error ? e.message : String(e));
+    e = e instanceof Error ? e.cause : undefined;
+  }
+  return parts.join(": ");
+}
+
 function tool<I extends z.ZodType, O extends z.ZodType>(
   def: SandboxToolDefinition<I, O>,
 ): SandboxToolDefinition<I, O> {
@@ -52,10 +62,7 @@ function tool<I extends z.ZodType, O extends z.ZodType>(
                 error: err.message,
                 status: err.status,
               }
-            : {
-                code: "internal",
-                error: err instanceof Error ? err.message : String(err),
-              };
+            : { code: "internal", error: messageChain(err) };
         throw new Error(JSON.stringify(body));
       }),
   };

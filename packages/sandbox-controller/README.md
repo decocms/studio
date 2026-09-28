@@ -25,7 +25,8 @@ which are private, and bundles it into one module with declarations.
 ## Responsibilities
 
 - Export `AgentSandboxProvider`, its option and state-store types, and
-  `loadKubeConfig`, which builds a kubeconfig with the package's own client.
+  `kubeConfigForServer`, a credential-less kubeconfig for a local proxy, built
+  with the package's own client.
 - Export the wire contract in `sandbox-api`: tool names and schemas, the watch
   route, and the credential callbacks into Studio.
 - Export host helpers: `sandboxTools` (framework-free tool definitions),
@@ -37,14 +38,17 @@ which are private, and bundles it into one module with declarations.
 ```ts
 import {
   AgentSandboxProvider,
-  loadKubeConfig,
+  kubeConfigForServer,
   sandboxTools,
   sandboxWatchResponse,
   studioCredentialMinters,
 } from "@decocms/sandbox-controller";
 
 const provider = new AgentSandboxProvider({
-  kubeConfig: loadKubeConfig({ path: "/etc/sandbox/kubeconfig" }),
+  // The host's local proxy to the cluster; it authenticates on its own.
+  kubeConfig: kubeConfigForServer("http://127.0.0.1:7777"),
+  // Reach daemons the host's way instead of an apiserver port-forward.
+  forwardPort: (pod, port) => openDaemonForward(pod, port),
   stateStore, // the host's RunnerStateStore
   ...studioCredentialMinters({ studioUrl, token }),
 });
@@ -67,7 +71,10 @@ Studio ──────── daemon and preview traffic ───────
 ```
 
 The host answers where a sandbox's daemon is and which bearer opens it; Studio
-dials the daemon itself. The same bearer authenticates both directions: Studio
+dials the daemon itself (`daemonAddress: "service"` answers the in-cluster
+Service URL). The control plane holds no cluster credential: its kube and
+daemon calls are sandbox ops its cluster's data-plane agent runs
+(`decocms/operator` `internal/agent/ops.go`). The same bearer authenticates both directions: Studio
 to the host's tools and watch route, and the host to Studio's
 `/api/sandbox-callbacks/*`. Studio still checks each callback's tenant against
 its own records before minting.
@@ -86,8 +93,8 @@ A local host can depend on the packed tarball with
 ## Boundaries
 
 - The host owns authorization: the tools carry no auth of their own.
-- The daemon address a local host returns is its own `127.0.0.1`
-  port-forward, reachable only from the same machine.
+- With the default `daemonAddress: "forward"`, the daemon address is the
+  host's own `127.0.0.1` forward, reachable only from the same machine.
 - The sources live in `packages/sandbox`; change them there.
 
 ## Related documentation

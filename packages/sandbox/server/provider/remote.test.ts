@@ -139,6 +139,17 @@ describe("RemoteSandboxProvider against the host tools", () => {
     ensureFails = null;
   });
 
+  it("surfaces the host error's causes, not only its outer message", async () => {
+    ensureFails = new Error("Failed to create SandboxClaim", {
+      cause: new Error("503: Service Unavailable"),
+    });
+    const err = await provider.ensure(ID).catch((e: unknown) => e);
+    expect(String(err)).toContain(
+      "Failed to create SandboxClaim: 503: Service Unavailable",
+    );
+    ensureFails = null;
+  });
+
   it("renews without graceMs and releases with it", async () => {
     calls.length = 0;
     await provider.renewTtl(HANDLE);

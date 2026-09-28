@@ -226,9 +226,10 @@ interface ForwardWebSocket {
   on: (event: "close" | "error", handler: (err?: unknown) => void) => void;
 }
 
-interface PortForwarder {
-  server: net.Server;
+/** A local port whose connections reach a pod's container port. */
+export interface PortForwarder {
   localPort: number;
+  close(): void;
 }
 
 interface RunnerTenant {
@@ -448,6 +449,21 @@ export interface AgentSandboxProviderOptions {
   mintOrgFsConfig?: (
     tenant: NonNullable<EnsureOptions["tenant"]>,
   ) => Promise<string | null>;
+  /**
+   * Replaces the apiserver port-forward to a pod's container port, for a
+   * host that reaches pods some other way (the control plane goes through
+   * its cluster agent). Must resolve to a 127.0.0.1 port.
+   */
+  forwardPort?: (
+    podName: string,
+    containerPort: number,
+    handle: string,
+  ) => Promise<PortForwarder>;
+  /**
+   * What `daemonEndpoint` answers: this process's local forward (default), or
+   * the in-cluster Service URL for a caller that runs inside the cluster.
+   */
+  daemonAddress?: "forward" | "service";
 }
 
 export class AgentSandboxProvider {
@@ -492,6 +508,8 @@ export class AgentSandboxProvider {
   private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
   /** See {@link AgentSandboxProviderOptions.mintOrgFsConfig}. */
   private readonly mintOrgFsConfig: AgentSandboxProviderOptions["mintOrgFsConfig"];
+  private readonly forwardPort: AgentSandboxProviderOptions["forwardPort"];
+  private readonly daemonAddress: "forward" | "service";
   /** See {@link AgentSandboxProviderOptions.tenantPools}. */
   private readonly tenantPools: readonly TenantPool[];
   private readonly tenantPoolRefreshMs: number;
@@ -537,6 +555,8 @@ export class AgentSandboxProvider {
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
     this.mintOrgFsConfig = opts.mintOrgFsConfig;
+    this.forwardPort = opts.forwardPort;
+    this.daemonAddress = opts.daemonAddress ?? "forward";
     this.tenantPools =
       this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
     if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
@@ -893,14 +913,17 @@ export class AgentSandboxProvider {
    * remote caller that dials the daemon itself. Null when there is no such
    * sandbox.
    */
-  // ponytail: the address is this process's 127.0.0.1 port-forward, reachable
-  // only from the same host; in-cluster callers need the Service URL instead.
   async daemonEndpoint(
     handle: string,
   ): Promise<{ url: string; token: string } | null> {
     const rec =
       (await this.getRecord(handle)) ?? (await this.resurrectByHandle(handle));
-    return rec ? { url: rec.daemonUrl, token: rec.token } : null;
+    if (!rec) return null;
+    const url =
+      this.daemonAddress === "service"
+        ? `http://${rec.adoptedSandboxName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`
+        : rec.daemonUrl;
+    return { url, token: rec.token };
   }
 
   /**
@@ -2720,6 +2743,9 @@ export class AgentSandboxProvider {
     // recreation (operator-driven): sandboxMap's cached previewUrl stays valid.
     handle: string = podName,
   ): Promise<PortForwarder> {
+    if (this.forwardPort) {
+      return this.forwardPort(podName, containerPort, handle);
+    }
     const startPort = deterministicLocalPort(handle, containerPort);
     return new Promise((resolve, reject) => {
       const tryBind = (port: number, attempt: number) => {
@@ -2754,7 +2780,18 @@ export class AgentSandboxProvider {
             reject(new Error("port-forward listener failed to bind"));
             return;
           }
-          resolve({ server, localPort: address.port });
+          const localPort = address.port;
+          resolve({
+            localPort,
+            close: () =>
+              server.close((err) => {
+                if (err) {
+                  console.warn(
+                    `[${LOG_LABEL}] port-forward close on :${localPort} errored: ${err.message}`,
+                  );
+                }
+              }),
+          });
         });
       };
       tryBind(startPort, 0);
@@ -2849,13 +2886,7 @@ export class AgentSandboxProvider {
   }
 
   private closeForwarder(forwarder: PortForwarder): void {
-    forwarder.server.close((err) => {
-      if (err) {
-        console.warn(
-          `[${LOG_LABEL}] port-forward close on :${forwarder.localPort} errored: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    });
+    forwarder.close();
   }
 
   close(): void {

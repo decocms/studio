@@ -1,4 +1,8 @@
-export { AgentSandboxProvider, PREVIEW_NOT_READY_HEADER } from "./runner";
+export {
+  AgentSandboxProvider,
+  PREVIEW_NOT_READY_HEADER,
+  type PortForwarder,
+} from "./runner";
 import type { AgentSandboxProvider } from "./runner";
 
 /** What Studio calls, served in-process or by `RemoteSandboxProvider`. */
