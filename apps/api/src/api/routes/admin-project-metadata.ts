@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { isValidSiteSlug } from "@decocms/shared/site-slug";
+import {
+  isValidSiteSlug,
+  resolveAgentSiteSlug,
+} from "@decocms/shared/site-slug";
 
 /** What a field's authorization may consult about the target organization. */
 export interface ProjectMetadataAuthContext {
@@ -94,4 +97,30 @@ export function pickProjectMetadata(
   return Object.fromEntries(
     FIELD_ENTRIES.map(([key]) => [key, metadata?.[key] ?? null]),
   ) as Record<ProjectMetadataKey, unknown>;
+}
+
+/**
+ * The org's site projects: those whose resolved slug it owns, the same test
+ * experiments use. A migrated project often carries its slug only as its title.
+ */
+export function listSiteProjects(
+  projects: {
+    id: string;
+    title: string;
+    metadata?: (Record<string, unknown> & { siteSlug?: string | null }) | null;
+  }[],
+  ownedSlugs: ReadonlySet<string>,
+) {
+  return projects.flatMap((project) => {
+    const siteSlug = resolveAgentSiteSlug(project);
+    if (!siteSlug || !ownedSlugs.has(siteSlug)) return [];
+    return [
+      {
+        id: project.id,
+        title: project.title,
+        siteSlug,
+        metadata: pickProjectMetadata(project.metadata),
+      },
+    ];
+  });
 }
