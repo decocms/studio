@@ -82,21 +82,6 @@ jobs:
       run:
         working-directory: apps/api
 
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
       NATS_URL: nats://localhost:4222
@@ -119,20 +104,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Start Postgres
+        uses: ./.github/actions/start-postgres
+
       - name: Setup Bun and install dependencies
         uses: ./.github/actions/setup-bun
 
+      - name: Pull NATS
+        uses: ./.github/actions/pull-image
+        with:
+          image: library/nats:2.14.2
+
       - name: Start NATS with JetStream
         run: |
-          # Pull explicitly with retry/backoff: the registry mirror occasionally
-          # answers `toomanyrequests: Rate exceeded`, and an inline pull inside
-          # `docker run` has no retry, so a transient 429 fails the whole job.
-          for attempt in 1 2 3 4 5; do
-            docker pull public.ecr.aws/docker/library/nats:2.14.2 && break
-            echo "docker pull public.ecr.aws/docker/library/nats:2.14.2 failed (attempt $attempt); retrying in $((attempt * 5))s"
-            sleep $((attempt * 5))
-          done
-          docker run -d --name nats -p 4222:4222 public.ecr.aws/docker/library/nats:2.14.2 -js
+          docker run -d --name nats -p 4222:4222 library/nats:2.14.2 -js
           for _ in $(seq 1 10); do
             if nc -z localhost 4222; then
               break
