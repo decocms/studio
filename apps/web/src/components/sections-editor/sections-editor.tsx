@@ -1,5 +1,5 @@
 import { useOptionalChatTask } from "@/components/chat/chat-context";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { BlockBreadcrumbs } from "./block-breadcrumbs";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useState, useRef } from "react";

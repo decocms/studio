@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { GripVertical } from "lucide-react";
 import { SORTABLE_DROP_ANIMATION } from "@/lib/dnd-drop-animation.ts";
 import { cn } from "@decocms/ui/lib/utils.ts";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {

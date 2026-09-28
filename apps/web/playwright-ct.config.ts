@@ -75,6 +75,11 @@ export default defineConfig({
             find: /^@\/sdk\/hooks\/use-virtual-mcp$/,
             replacement: stub("use-virtual-mcp.ts"),
           },
+          // Org flag read via useProjectContext(); specs pick the editor via the stub.
+          {
+            find: /^@\/hooks\/use-new-blocks-editor$/,
+            replacement: stub("use-new-blocks-editor.ts"),
+          },
           // General `@/* -> src/*` alias. MUST come after the stub aliases
           // above so Vite (first-match-wins) resolves those first. Matches
           // only `@/`-prefixed ids, so `@decocms/ui`, `@tanstack/*` etc. are

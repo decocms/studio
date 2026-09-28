@@ -353,9 +353,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Perfil atualizado com sucesso",
   "settings.profile.updateError": "Falha ao atualizar o perfil",
   "settings.preferences.title": "Preferências",
-  "settings.preferences.newBlocksEditor": "Novo editor de blocos",
-  "settings.preferences.newBlocksEditorDescription":
-    "Experimente o editor de blocos redesenhado. O restante do Studio sempre usa o novo layout.",
+  "settings.blocksEditor.title": "Novo editor de blocos",
+  "settings.blocksEditor.description":
+    "Vale para todos desta organização. O restante do Studio sempre usa o novo layout.",
   "settings.preferences.theme": "Tema",
   "settings.preferences.themeDescription": "Seu esquema de cores preferido.",
   "settings.preferences.themeLight": "Tema claro",

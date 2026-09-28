@@ -264,6 +264,12 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
     ),
+  new_blocks_editor: z
+    .boolean()
+    .optional()
+    .describe(
+      "Use the redesigned blocks editor for every member of the organization. Off by default — the classic editor stays until an admin opts the org in.",
+    ),
 });
 
 export type OrgFlags = z.infer<typeof OrgFlagsSchema>;

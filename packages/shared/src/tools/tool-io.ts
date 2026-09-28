@@ -130,6 +130,7 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | null
         | undefined;
@@ -205,6 +206,7 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -276,6 +278,7 @@ export interface StudioToolIO {
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | null
         | undefined;
@@ -284,6 +287,10 @@ export interface StudioToolIO {
         | null
         | undefined;
     };
+  };
+  ORGANIZATION_BLOCKS_EDITOR_SET: {
+    input: { enabled: boolean };
+    output: { enabled: boolean };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };

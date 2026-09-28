@@ -10,6 +10,7 @@ import {
   FileSearch02,
   GitBranch01,
   GitMerge,
+  LayoutAlt01,
   Rocket01,
   SearchLg,
   Terminal,
@@ -25,8 +26,11 @@ import {
   useCodingAgentExcludedMcps,
   useOrgFlag,
   useSetCodingAgentExcludedMcps,
+  useSetNewBlocksEditor,
   useSetOrgFlag,
 } from "@/hooks/use-organization-settings";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
+import { track } from "@/lib/posthog-client";
 import { useConnections, useProjectContext, WellKnownOrgMCPId } from "@/sdk";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Suspense, useState } from "react";
@@ -392,6 +396,40 @@ export function CodeAgentsSettings() {
           icon={<Terminal size={16} />}
           titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
           descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+/**
+ * Which blocks editor the org's members get. Not a `FlagToggle`: any member may
+ * switch it (ORGANIZATION_BLOCKS_EDITOR_SET), not only org:manage holders.
+ */
+export function BlocksEditorSettings() {
+  const t = useT();
+  const enabled = useNewBlocksEditor();
+  const setEnabled = useSetNewBlocksEditor();
+  return (
+    <SettingsSection title={t("sidebar.projectNav.siteEditor")}>
+      <SettingsCard>
+        <SettingsCardItem
+          icon={<LayoutAlt01 size={16} />}
+          title={t("settings.blocksEditor.title")}
+          description={t("settings.blocksEditor.description")}
+          action={
+            <Switch
+              checked={enabled}
+              disabled={setEnabled.isPending}
+              aria-label={t("settings.blocksEditor.title")}
+              onCheckedChange={(next) => {
+                track("preferences_blocks_editor_toggled", { enabled: next });
+                setEnabled.mutate(next, {
+                  onError: () => toast.error(t("settings.review.updateError")),
+                });
+              }}
+            />
+          }
         />
       </SettingsCard>
     </SettingsSection>

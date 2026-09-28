@@ -3,18 +3,22 @@
 Studio uses four components to separate the application frame, the optional
 chat arrangement, panel surfaces, and document content.
 
-## Default layout and blocks editor preference
+## Default layout and blocks editor flag
 
 The shared page headers, toolbars, sidebar, and controls are the default UI.
 They do not depend on a browser preference. Shared control defaults use CSS
 variables where callers need to override them through `className`.
 
-Only the redesigned blocks editor remains opt-in through **Profile & Preferences
-→ New blocks editor**. Components in the editor read `useNewBlocksEditor()`.
-The preference retains the `compactPageLayout` storage key so existing opt-ins
-survive, and defaults to `false`. Switching it changes only the editor;
+Only the redesigned blocks editor remains opt-in, per organization, through
+**Settings → General → New blocks editor** (the `new_blocks_editor` org flag,
+off by default). Any member may switch it, through the basic-usage
+`ORGANIZATION_BLOCKS_EDITOR_SET` tool; General shows plain members only that
+switch. Components in the editor read
+`useNewBlocksEditor()`. Switching it changes only the editor for every member;
 navigation, page headers, and other application screens keep the default UI.
-Editor browser tests opt in with `test.use({ newBlocksEditor: true })`.
+Editor browser tests opt in with `test.use({ newBlocksEditor: true })`, which
+sets the flag on the test's org. Component tests choose the editor through the
+`use-new-blocks-editor` stub.
 
 ## Ownership and naming
 

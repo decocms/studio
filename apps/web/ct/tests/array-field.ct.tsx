@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/experimental-ct-react";
 import type { Page } from "@playwright/test";
-import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys";
 import { SchemaFormHarness } from "../harness/schema-form-harness";
+import { NEW_BLOCKS_EDITOR_KEY } from "../harness/stubs/use-new-blocks-editor";
 import { sectionWithProps, TEST_RESOLVE_TYPE } from "../harness/fixtures";
 import {
   openRowActionsMenu,
@@ -203,8 +203,8 @@ test("add a boolean item appends the default false", async ({ mount }) => {
  */
 async function enableCompactLayout(page: Page) {
   await page.evaluate((key) => {
-    localStorage.setItem(key, JSON.stringify({ compactPageLayout: true }));
-  }, LOCALSTORAGE_KEYS.preferences());
+    localStorage.setItem(key, "true");
+  }, NEW_BLOCKS_EDITOR_KEY);
 }
 
 const BANNERS_WITH_THUMBNAILS = {
