@@ -1,5 +1,5 @@
 /**
- * Task board view state (filters, layout, list grouping) lives in the URL search params, so a
+ * Task board view state (filters, layout, list grouping and sorting) lives in the URL search params, so a
  * refresh, a back/forward, or a shared link keeps the board as you left it.
  *
  * ponytail: TanStack Router's search params already are the store — no zustand,
@@ -10,6 +10,12 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { DueFilter, TaskFilters } from "./task-filters-core";
 import { PRIORITIES, type TaskBoardItemPriority } from "./config";
 import { isGroupBy, type GroupBy } from "./list-groups";
+import {
+  defaultSortDirection,
+  isSortBy,
+  type SortBy,
+  type SortDirection,
+} from "./list-sort";
 
 export type Layout = "board" | "list";
 
@@ -22,6 +28,10 @@ type BoardSearch = {
   group?: string;
   /** A second criterion nested inside each group. */
   subgroup?: string;
+  /** The list view's sort criterion. */
+  sort?: string;
+  /** Written only when it differs from the criterion's default direction. */
+  dir?: string;
   q?: string;
   assignee?: string;
   priority?: string;
@@ -41,17 +51,22 @@ type BoardSearch = {
 const str = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-/** Anything unrecognized in the URL is dropped, not trusted. */
-export function parseBoardSearch(search: BoardSearch): {
+export type BoardView = {
   filters: TaskFilters;
   layout: Layout;
   groupBy: GroupBy | null;
   subgroupBy: GroupBy | null;
-} {
+  sortBy: SortBy | null;
+  sortDirection: SortDirection;
+};
+
+/** Anything unrecognized in the URL is dropped, not trusted. */
+export function parseBoardSearch(search: BoardSearch): BoardView {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
   const groupBy = isGroupBy(search.group) ? search.group : null;
+  const sortBy = isSortBy(search.sort) ? search.sort : null;
   return {
     layout: search.view === "list" ? "list" : "board",
     groupBy,
@@ -61,6 +76,13 @@ export function parseBoardSearch(search: BoardSearch): {
       search.subgroup !== groupBy
         ? search.subgroup
         : null,
+    sortBy,
+    sortDirection:
+      search.dir === "asc" || search.dir === "desc"
+        ? search.dir
+        : sortBy !== null
+          ? defaultSortDirection(sortBy)
+          : "asc",
     filters: {
       search: str(search.q) ?? "",
       assignee: str(search.assignee),
@@ -75,16 +97,23 @@ export function parseBoardSearch(search: BoardSearch): {
 }
 
 /** Defaults are written as `undefined` so they drop out of the URL entirely. */
-export function boardSearchParams(
-  filters: TaskFilters,
-  layout: Layout,
-  groupBy: GroupBy | null,
-  subgroupBy: GroupBy | null,
-): Record<keyof BoardSearch, string | undefined> {
+export function boardSearchParams({
+  filters,
+  layout,
+  groupBy,
+  subgroupBy,
+  sortBy,
+  sortDirection,
+}: BoardView): Record<keyof BoardSearch, string | undefined> {
   return {
     view: layout === "list" ? "list" : undefined,
     group: groupBy ?? undefined,
     subgroup: groupBy !== null ? (subgroupBy ?? undefined) : undefined,
+    sort: sortBy ?? undefined,
+    dir:
+      sortBy !== null && sortDirection !== defaultSortDirection(sortBy)
+        ? sortDirection
+        : undefined,
     q: filters.search === "" ? undefined : filters.search,
     assignee: filters.assignee ?? undefined,
     priority: filters.priority ?? undefined,
@@ -112,45 +141,38 @@ export function visibleSelection(
 export function useBoardSearch() {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const { filters, layout, groupBy, subgroupBy } = parseBoardSearch(search);
+  const view = parseBoardSearch(search);
+  const { groupBy, subgroupBy } = view;
 
-  const write = (
-    nextFilters: TaskFilters,
-    nextLayout: Layout,
-    nextGroupBy: GroupBy | null,
-    nextSubgroupBy: GroupBy | null,
-  ) =>
+  const write = (patch: Partial<BoardView>) =>
     navigate({
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...boardSearchParams(
-          nextFilters,
-          nextLayout,
-          nextGroupBy,
-          nextSubgroupBy,
-        ),
+        ...boardSearchParams({ ...view, ...patch }),
       }),
       // Typing in the search box would otherwise push a history entry per key.
       replace: true,
     });
 
   return {
-    filters,
-    layout,
-    groupBy,
-    subgroupBy,
-    setFilters: (next: TaskFilters) => write(next, layout, groupBy, subgroupBy),
-    setLayout: (next: Layout) => write(filters, next, groupBy, subgroupBy),
+    ...view,
+    setFilters: (filters: TaskFilters) => write({ filters }),
+    setLayout: (layout: Layout) => write({ layout }),
     /** Picking the sub-group's criterion as the group swaps the two. */
     setGroupBy: (next: GroupBy | null) =>
-      write(
-        filters,
-        layout,
-        next,
-        next !== null && next === subgroupBy ? groupBy : subgroupBy,
-      ),
-    setSubgroupBy: (next: GroupBy | null) =>
-      write(filters, layout, groupBy, next),
+      write({
+        groupBy: next,
+        subgroupBy: next !== null && next === subgroupBy ? groupBy : subgroupBy,
+      }),
+    setSubgroupBy: (next: GroupBy | null) => write({ subgroupBy: next }),
+    /** A new criterion starts in the direction it reads best in. */
+    setSortBy: (next: SortBy | null) =>
+      write({
+        sortBy: next,
+        sortDirection: next !== null ? defaultSortDirection(next) : "asc",
+      }),
+    setSortDirection: (sortDirection: SortDirection) =>
+      write({ sortDirection }),
   };
 }

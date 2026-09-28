@@ -1,10 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import {
   boardSearchParams,
+  type BoardView,
   parseBoardSearch,
   visibleSelection,
 } from "./filters-search";
 import { EMPTY_FILTERS, type TaskFilters } from "./task-filters-core";
+
+const EMPTY_VIEW: BoardView = {
+  filters: EMPTY_FILTERS,
+  layout: "board",
+  groupBy: null,
+  subgroupBy: null,
+  sortBy: null,
+  sortDirection: "asc",
+};
 
 const filters: TaskFilters = {
   search: "login",
@@ -16,14 +26,30 @@ const filters: TaskFilters = {
 };
 
 describe("board search params", () => {
-  test("round-trips filters, layout and grouping through the URL", () => {
-    const params = boardSearchParams(filters, "list", "assignee", "status");
-    expect(parseBoardSearch(params)).toEqual({
+  test("round-trips filters, layout, grouping and sorting through the URL", () => {
+    const view: BoardView = {
       filters,
       layout: "list",
       groupBy: "assignee",
       subgroupBy: "status",
+      sortBy: "due",
+      sortDirection: "desc",
+    };
+    expect(parseBoardSearch(boardSearchParams(view))).toEqual(view);
+  });
+
+  test("a sort's default direction stays out of the URL", () => {
+    const due = boardSearchParams({
+      ...EMPTY_VIEW,
+      sortBy: "due",
+      sortDirection: "asc",
     });
+    expect(due.sort).toBe("due");
+    expect(due.dir).toBeUndefined();
+    expect(parseBoardSearch({ sort: "priority" }).sortDirection).toBe("desc");
+    expect(
+      boardSearchParams({ ...EMPTY_VIEW, sortDirection: "desc" }).dir,
+    ).toBeUndefined();
   });
 
   test("a sub-group needs a different group above it", () => {
@@ -32,15 +58,18 @@ describe("board search params", () => {
       parseBoardSearch({ group: "status", subgroup: "status" }).subgroupBy,
     ).toBeNull();
     expect(
-      boardSearchParams(EMPTY_FILTERS, "list", null, "status").subgroup,
+      boardSearchParams({ ...EMPTY_VIEW, layout: "list", subgroupBy: "status" })
+        .subgroup,
     ).toBeUndefined();
   });
 
   test("defaults are omitted from the URL", () => {
-    expect(boardSearchParams(EMPTY_FILTERS, "board", null, null)).toEqual({
+    expect(boardSearchParams(EMPTY_VIEW)).toEqual({
       view: undefined,
       group: undefined,
       subgroup: undefined,
+      sort: undefined,
+      dir: undefined,
       q: undefined,
       assignee: undefined,
       priority: undefined,
@@ -51,12 +80,7 @@ describe("board search params", () => {
   });
 
   test("an empty URL is the empty state", () => {
-    expect(parseBoardSearch({})).toEqual({
-      filters: EMPTY_FILTERS,
-      layout: "board",
-      groupBy: null,
-      subgroupBy: null,
-    });
+    expect(parseBoardSearch({})).toEqual(EMPTY_VIEW);
   });
 
   test("unrecognized values are dropped, not trusted", () => {
@@ -65,16 +89,13 @@ describe("board search params", () => {
         view: "kanban",
         group: "due",
         subgroup: "due",
+        sort: "status",
+        dir: "sideways",
         priority: "critical",
         due: "yesterday",
         tags: ",,",
       }),
-    ).toEqual({
-      filters: EMPTY_FILTERS,
-      layout: "board",
-      groupBy: null,
-      subgroupBy: null,
-    });
+    ).toEqual(EMPTY_VIEW);
   });
 });
 
@@ -106,24 +127,20 @@ describe("the ambient project scope does not touch the board's filter", () => {
 describe("the ?repo= param carries a bucket id", () => {
   test("a project's bucket id is written to ?repo=", () => {
     expect(
-      boardSearchParams(
-        { ...EMPTY_FILTERS, project: "acme/site" },
-        "board",
-        null,
-        null,
-      ).repo,
+      boardSearchParams({
+        ...EMPTY_VIEW,
+        filters: { ...EMPTY_FILTERS, project: "acme/site" },
+      }).repo,
     ).toBe("acme/site");
   });
 
   test("a repo-less project's id round-trips through it too", () => {
     expect(parseBoardSearch({ repo: "vir_x" }).filters.project).toBe("vir_x");
     expect(
-      boardSearchParams(
-        { ...EMPTY_FILTERS, project: "vir_x" },
-        "board",
-        null,
-        null,
-      ).repo,
+      boardSearchParams({
+        ...EMPTY_VIEW,
+        filters: { ...EMPTY_FILTERS, project: "vir_x" },
+      }).repo,
     ).toBe("vir_x");
   });
 });
