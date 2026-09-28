@@ -534,7 +534,6 @@ function Gallery({ report }: { report: OnePager }) {
             onClick={() => setOpen(null)}
           />
           <figure>
-            <img src={current.src} alt={current.label} />
             <figcaption>
               {current.label}
               {current.href && (
@@ -556,6 +555,7 @@ function Gallery({ report }: { report: OnePager }) {
                 ✕
               </button>
             </figcaption>
+            <img src={current.src} alt={current.label} />
           </figure>
         </div>
       )}
