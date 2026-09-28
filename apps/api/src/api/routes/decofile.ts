@@ -475,35 +475,19 @@ export function createDecofileRoutes() {
     try {
       const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
-      // Null lastCommitAt == "no age, never auto-switch off this branch".
       if (baseBranch === scope.branch) {
-        return c.json({
-          baseBranch,
-          aheadBy: 0,
-          behindBy: 0,
-          lastCommitAt: null,
-        });
+        return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
       }
       try {
-        const [{ aheadBy, behindBy }, head] = await Promise.all([
-          client.compare(baseBranch, scope.branch),
-          client.getBranch(scope.branch),
-        ]);
-        return c.json({
+        const { aheadBy, behindBy } = await client.compare(
           baseBranch,
-          aheadBy,
-          behindBy,
-          lastCommitAt: head?.committedAt ?? null,
-        });
+          scope.branch,
+        );
+        return c.json({ baseBranch, aheadBy, behindBy });
       } catch (err) {
-        // A thread-minted branch not materialized yet has no drift and no age.
+        // A thread-minted branch not materialized yet has no drift.
         if (repoErrorStatus(err) === 404) {
-          return c.json({
-            baseBranch,
-            aheadBy: 0,
-            behindBy: 0,
-            lastCommitAt: null,
-          });
+          return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
         }
         throw err;
       }
