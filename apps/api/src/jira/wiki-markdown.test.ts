@@ -54,7 +54,7 @@ describe("wikiToMarkdown", () => {
     );
   });
 
-  it("resolves accountid mentions to display names", () => {
+  it("renders accountid mentions with the name and the id a run can mention back", () => {
     expect(
       wikiToMarkdown(
         "[~accountid:557058:abc-123] revisa com [~accountid:712020:def-456]",
@@ -63,12 +63,14 @@ describe("wikiToMarkdown", () => {
           ["712020:def-456", "Bruno Lima"],
         ]),
       ),
-    ).toBe("@Ana Souza revisa com @Bruno Lima");
+    ).toBe(
+      "@[Ana Souza](accountid:557058:abc-123) revisa com @[Bruno Lima](accountid:712020:def-456)",
+    );
   });
 
-  it("renders unknown account ids as @unknown, never the raw id", () => {
+  it("keeps the id of a mention whose name cannot be resolved", () => {
     expect(wikiToMarkdown("cc [~accountid:557058:abc-123]")).toBe(
-      "cc @unknown",
+      "cc @[unknown](accountid:557058:abc-123)",
     );
   });
 
@@ -99,16 +101,16 @@ describe("wikiToMarkdown", () => {
         "cc [~accountid:a] ok",
         new Map([["a", "Ana _Nick_ Souza"]]),
       ),
-    ).toBe("cc @Ana \\_Nick\\_ Souza ok");
+    ).toBe("cc @[Ana \\_Nick\\_ Souza](accountid:a) ok");
     expect(
       wikiToMarkdown("cc [~accountid:a]", new Map([["a", "Ana *Nick*"]])),
-    ).toBe("cc @Ana \\*Nick\\*");
+    ).toBe("cc @[Ana \\*Nick\\*](accountid:a)");
   });
 
   it("keeps a pipe in a display name from splitting a table cell", () => {
     expect(
       wikiToMarkdown("|[~accountid:c]|done|", new Map([["c", "Cid | Team"]])),
-    ).toBe("| @Cid \\| Team | done |");
+    ).toBe("| @[Cid \\| Team](accountid:c) | done |");
   });
 
   it("does not collect account ids it will never render", () => {
@@ -122,7 +124,7 @@ describe("wikiToMarkdown", () => {
   it("strips a source sentinel so it cannot forge a mention reference", () => {
     const nul = String.fromCharCode(0);
     expect(wikiToMarkdown(`a${nul}0${nul}b [~accountid:x]`)).toBe(
-      "a0b @unknown",
+      "a0b @[unknown](accountid:x)",
     );
   });
 

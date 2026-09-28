@@ -353,10 +353,10 @@ describe("jiraBodyToText mentions", () => {
     content: [{ type: "paragraph", content: [{ type: "mention", attrs }] }],
   });
 
-  it("uses the name ADF already carries, stripping its @", () => {
+  it("uses the name ADF already carries, with the id to mention them back", () => {
     expect(
       jiraBodyToText(mention({ id: "557058:abc-123", text: "@Ana Souza" })),
-    ).toBe("@Ana Souza");
+    ).toBe("@[Ana Souza](accountid:557058:abc-123)");
   });
 
   it("falls back to the resolved name when ADF carries none", () => {
@@ -365,12 +365,15 @@ describe("jiraBodyToText mentions", () => {
         mention({ id: "557058:abc-123" }),
         new Map([["557058:abc-123", "Ana Souza"]]),
       ),
-    ).toBe("@Ana Souza");
+    ).toBe("@[Ana Souza](accountid:557058:abc-123)");
   });
 
-  it("renders an unresolvable mention as @unknown", () => {
-    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe("@unknown");
+  it("keeps the id when the name is unknown, and says @unknown with neither", () => {
+    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe(
+      "@[unknown](accountid:557058:abc-123)",
+    );
     expect(jiraBodyToText(mention({ text: "  @  " }))).toBe("@unknown");
+    expect(jiraBodyToText(mention({ text: "@Ana" }))).toBe("@Ana");
   });
 
   it("collects only the account ids that need a lookup", () => {

@@ -267,10 +267,23 @@ function emphasis(
   return null;
 }
 
-/** What a mention renders as when the account id can't be resolved to a name:
- *  a deleted account, or a credential without "Browse users and groups". Still
- *  better than leaking the raw opaque id into a card. */
+/** What a mention renders as when it carries neither a name nor an account id. */
 export const UNKNOWN_MENTION = "@unknown";
+
+/**
+ * A mention as a run reads it: `@[Ana Souza](accountid:557058:1a2b…)`. The id
+ * is there so the run can mention that person back — `markdownToAdf` turns
+ * this exact form into a real mention — and the name so it reads as prose. A
+ * name that can't be resolved (a deleted account, a credential without
+ * "Browse users and groups") still keeps the id.
+ */
+export function mentionMarkdown(
+  accountId: string | undefined,
+  name: string | undefined,
+): string {
+  const label = name ? escapeMentionName(name) : "unknown";
+  return accountId ? `@[${label}](accountid:${accountId})` : `@${label}`;
+}
 
 /** A Cloud mention: `[~accountid:557058:1a2b…]`. The `accountid:` prefix is
  *  load-bearing — matching bare `[~token]` too would rewrite prose describing
@@ -281,7 +294,7 @@ const WIKI_MENTION = /\[~accountid:([^\]\s|]+)\]/g;
  *  an unescaped `Ana _Nick_ Souza` renders as italics, and a `|` splits a table
  *  cell. Escaped for the markdown the card renders; the wiki parser never sees
  *  the name at all (see `stashMentions`). */
-export function escapeMentionName(name: string): string {
+function escapeMentionName(name: string): string {
   return name.replace(/([\\`*_[\]|~])/g, "\\$1");
 }
 
@@ -317,9 +330,8 @@ function stashMentions(
   return wiki
     .replaceAll(SENTINEL, "")
     .replace(WIKI_MENTION, (_whole, id: string) => {
-      const name = names.get(id);
       const index = resolved.length;
-      resolved.push(name ? `@${escapeMentionName(name)}` : UNKNOWN_MENTION);
+      resolved.push(mentionMarkdown(id, names.get(id)));
       return `${SENTINEL}${index}${SENTINEL}`;
     });
 }

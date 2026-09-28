@@ -11,6 +11,8 @@ const base: IssueForPrompt = {
   url: "https://example.atlassian.net/browse/EX-12",
   summary: "Fix the checkout button",
   status: "Doing",
+  reporter: null,
+  assignee: null,
   description: "The button is green.\n\nMake it blue.",
   comments: [],
   attachments: [],
@@ -51,6 +53,17 @@ describe("renderIssueForPrompt", () => {
       ],
     });
     expect(text.indexOf("**Ana**")).toBeLessThan(text.indexOf("**Bo**"));
+  });
+
+  it("names the reporter and assignee in the form a run can mention", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      reporter: "@[Thaís](accountid:712020:abc)",
+      assignee: "@[Ana](accountid:557058:def)",
+    });
+    expect(text).toContain("Reporter: @[Thaís](accountid:712020:abc)");
+    expect(text).toContain("Assignee: @[Ana](accountid:557058:def)");
+    expect(renderIssueForPrompt(base)).not.toContain("Reporter:");
   });
 
   it("truncates a sprawling description rather than dropping it", () => {

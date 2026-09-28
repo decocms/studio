@@ -11,9 +11,11 @@
 import {
   collectMentionAccountIds,
   type JiraClient,
+  type JiraUser,
   jiraBodyToText,
   JiraUserDirectory,
 } from "./client";
+import { mentionMarkdown } from "./wiki-markdown";
 
 export interface IssueForPrompt {
   /** Jira's own issue id. The stable identity a link is keyed by — an issue's
@@ -23,6 +25,9 @@ export interface IssueForPrompt {
   url: string;
   summary: string;
   status: string;
+  /** People on the issue, rendered as mentions a run can copy. */
+  reporter: string | null;
+  assignee: string | null;
   description: string;
   comments: Array<{ author: string; created: string; body: string }>;
   attachments: Array<{ id: string; filename: string; size: number }>;
@@ -70,9 +75,11 @@ export async function loadIssueForPrompt(
     url: issueUrl(siteUrl, issue.key),
     summary: issue.fields.summary,
     status: issue.fields.status.name,
+    reporter: person(issue.fields.reporter),
+    assignee: person(issue.fields.assignee),
     description: jiraBodyToText(issue.fields.description, names).trim(),
     comments: comments.map((c) => ({
-      author: c.author?.displayName ?? "Unknown",
+      author: person(c.author) ?? "Unknown",
       created: c.created,
       body: jiraBodyToText(c.body, names).trim(),
     })),
@@ -83,6 +90,10 @@ export async function loadIssueForPrompt(
     })),
     links,
   };
+}
+
+function person(user: JiraUser | null | undefined): string | null {
+  return user ? mentionMarkdown(user.accountId, user.displayName) : null;
 }
 
 function clip(text: string, max: number): string {
@@ -99,6 +110,8 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
   const lines: string[] = [
     `# ${issue.key}: ${issue.summary}`,
     `Status: ${issue.status}`,
+    ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
+    ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
     `Link: ${issue.url}`,
     "",
     "## Description",
@@ -164,6 +177,8 @@ export function renderIssuesForPrompt(
       "",
       `## ${issue.key}: ${issue.summary}`,
       `Status: ${issue.status}`,
+      ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
+      ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
       `Link: ${issue.url}`,
     );
     if (issue.links.length > 0) {

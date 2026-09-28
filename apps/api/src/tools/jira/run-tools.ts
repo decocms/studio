@@ -136,7 +136,10 @@ export const JIRA_COMMENT_ADD = defineTool({
   description:
     "Post a comment on a Jira issue on the board. Markdown is " +
     "rendered as Jira rich text, tables included. Leave one when you finish: " +
-    "what you did, and any pull request link. To show evidence, write the " +
+    "what you did, and any pull request link. To mention someone so they are " +
+    "notified, write `@[Name](accountid:<id>)` — the form people appear in " +
+    "when you read an issue (reporter, assignee, comment authors, mentions); " +
+    "a plain `@name` is only text. To show evidence, write the " +
     "image to `org/output/<name>.png` in your working pod and reference it as " +
     "`![what it shows](org/output/<name>.png)` — it is uploaded to the issue " +
     "and rendered inline. Any other URL stays a plain link.",
@@ -343,7 +346,10 @@ export const JIRA_ISSUE_CREATE = defineTool({
       .string()
       .max(MAX_COMMENT_LENGTH)
       .optional()
-      .describe("Markdown, rendered as Jira rich text, tables included."),
+      .describe(
+        "Markdown, rendered as Jira rich text, tables included; " +
+          "`@[Name](accountid:<id>)` mentions someone.",
+      ),
     relatesTo: z
       .array(z.string().min(1))
       .max(100)
