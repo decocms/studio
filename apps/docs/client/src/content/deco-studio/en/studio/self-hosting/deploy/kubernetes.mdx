@@ -30,7 +30,7 @@ A production deployment uses four Helm releases:
 | `chart-deco-studio` | Once per Studio environment | Runs an nginx front door with two API containers per pod, queue workers, NATS, persistence, and optional observability components |
 | `sandbox-operator` | Once per Kubernetes cluster | Installs the upstream Kubernetes SIGs [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) controller and CRDs |
 | `sandbox-env` | Once per Studio environment | Installs the environment's `SandboxTemplate`, sentinel Secret, and optional warm pool, preview Gateway, and idle housekeeper |
-| `sandbox-controller` | Once per Studio environment | Serves the mTLS claim API Studio calls to start and stop sandboxes, holds the cluster RBAC for claims, owns `sandbox_runner_state` in Studio's database, and reconciles `SandboxVariant` image variants |
+| `sandbox-controller` | Once per Studio environment | Serves the MCP tools (over mTLS) Studio calls to start and stop sandboxes, holds the cluster RBAC for claims, keeps sandbox state in its own `sandbox_controller` schema, and reconciles `SandboxVariant` image variants |
 
 The operator is shared cluster infrastructure. Each `sandbox-env` release is isolated by `envName`, so production, staging, and other Studio releases can share the operator and the `agent-sandbox-system` namespace without resource-name collisions. Each environment also gets its own controller release, named after the release; exactly one release per namespace reconciles `SandboxVariant`s (`variants.enabled`), and the others only serve claims.
 
@@ -249,7 +249,7 @@ This creates `SandboxTemplate/studio-sandbox-production` (plus its `-medium` var
 
 ### 5. Install the sandbox controller
 
-The controller reads Studio's database, where it owns `sandbox_runner_state`. Give it the same `DATABASE_URL` in its own namespace:
+The controller keeps sandbox state in its own `sandbox_controller` schema, which it creates and migrates on start. It can share Studio's database; Studio never reads that schema. Give it a `DATABASE_URL` in its own namespace:
 
 ```bash
 kubectl -n agent-sandbox-system create secret generic sandbox-controller-db \

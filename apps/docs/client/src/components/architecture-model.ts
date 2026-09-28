@@ -196,7 +196,7 @@ const NODES: Record<string, Node> = {
     tag: "hono · role=api",
     replicas: true,
     role: "App server",
-    desc: "Hono server: HTTP routes, Better Auth, MCP proxy, access control. Enqueues hosted runs onto DBOS queues and tails NATS to stream output back to the UI. Hosted sandbox lifecycle goes through the sandbox controller's mTLS claim API; Studio holds no cluster RBAC. Does NOT run the agent loop. Stateless.",
+    desc: "Hono server: HTTP routes, Better Auth, MCP proxy, access control. Enqueues hosted runs onto DBOS queues and tails NATS to stream output back to the UI. Hosted sandbox lifecycle goes through the sandbox controller's MCP tools over mTLS; Studio holds no cluster RBAC or sandbox state. Does NOT run the agent loop. Stateless.",
     facts: [
       ["Runtime", "Hono / Bun"],
       ["Role", "enqueue + serve"],
@@ -281,7 +281,7 @@ const NODES: Record<string, Node> = {
     label: "DB",
     tag: "postgres",
     role: "System of record",
-    desc: "PostgreSQL via Kysely. Orgs, connections, vault, audit, threads + messages, sandbox_runner_state (written only by the sandbox controller) — plus the DBOS queues and workflow_status journal that make runs durable and recoverable.",
+    desc: "PostgreSQL via Kysely. Orgs, connections, vault, audit, threads + messages — plus the DBOS queues and workflow_status journal that make runs durable and recoverable.",
     facts: [
       ["Engine", "PostgreSQL"],
       ["ORM", "Kysely"],

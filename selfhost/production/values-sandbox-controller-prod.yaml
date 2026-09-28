@@ -30,7 +30,7 @@ claims:
   # credential re-mints.
   studioCallbackUrl: "https://studio.studio.svc:9443"
 
-  # The controller owns sandbox_runner_state in Studio's database.
+  # The controller creates and owns the sandbox_controller schema there.
   database:
     secretName: sandbox-controller-db
 

@@ -140,7 +140,6 @@ export async function startDevServer(
   const useInherit = noTui === true;
   const output = useInherit ? "inherit" : "pipe";
 
-  // After migrations: the controller owns a table they create.
   const controller = devController.endpoints
     ? Bun.spawn(controllerArgv(devController.endpoints), {
         cwd: repoRoot,

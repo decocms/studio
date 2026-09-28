@@ -16,17 +16,18 @@ import (
 // and vault credentials are minted from. An empty result means Studio
 // declined; the caller keeps what it has.
 type Studio interface {
-	MintCloneURL(ctx context.Context, repo protocol.EnsureRepo, bufferMs int64) (string, error)
+	MintCloneURL(ctx context.Context, repo protocol.EnsureRepo, tenant *protocol.Tenant, bufferMs int64) (string, error)
 	MintOrgFsConfig(ctx context.Context, tenant protocol.Tenant) (string, error)
 }
 
 // FreshCloneURL re-mints the repo's credential through Studio, falling back
 // to the one it has: a mint failure must not block provisioning or recovery.
-func FreshCloneURL(ctx context.Context, studio Studio, repo *protocol.EnsureRepo, buffer time.Duration) *protocol.EnsureRepo {
+// tenant is the sandbox's; nil for a warm-pool pod.
+func FreshCloneURL(ctx context.Context, studio Studio, repo *protocol.EnsureRepo, tenant *protocol.Tenant, buffer time.Duration) *protocol.EnsureRepo {
 	if repo == nil || studio == nil || (repo.ConnectionID == "" && repo.RepositoryID == "") {
 		return repo
 	}
-	fresh, err := studio.MintCloneURL(ctx, *repo, buffer.Milliseconds())
+	fresh, err := studio.MintCloneURL(ctx, *repo, tenant, buffer.Milliseconds())
 	if err != nil {
 		slog.Warn("clone credential re-mint failed", "err", err)
 		return repo
@@ -43,7 +44,7 @@ func FreshCloneURL(ctx context.Context, studio Studio, repo *protocol.EnsureRepo
 // the clone token (~55min) and the org-fs API key (deleted at expiry). Every
 // path that replays a persisted blob goes through here.
 func FreshCredentials(ctx context.Context, studio Studio, opts protocol.EnsureOptions) protocol.EnsureOptions {
-	opts.Repo = FreshCloneURL(ctx, studio, opts.Repo, 0)
+	opts.Repo = FreshCloneURL(ctx, studio, opts.Repo, opts.Tenant, 0)
 	if opts.OrgFsConfigJSON != "" && opts.Tenant != nil && studio != nil {
 		fresh, err := studio.MintOrgFsConfig(ctx, *opts.Tenant)
 		if err != nil {

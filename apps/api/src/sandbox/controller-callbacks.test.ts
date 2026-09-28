@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TenantPool } from "@decocms/sandbox/provider/tenant-pools";
-import type { CloneCredentialSource } from "@/storage/sandbox-runner-state";
 import {
+  type CloneCredentialSource,
   cloneUrlIdentity,
   createSandboxControllerCallbackApp,
   serveSandboxControllerCallbacks,
@@ -14,19 +14,23 @@ import {
 const CONNECTION = "conn_1";
 const REPOSITORY = "repo_1";
 const ACME_SITE = "https://x-access-token:ghs_old@github.com/acme/site.git";
-
-function row(repo: Record<string, string>) {
-  return { token: "t", ensureOpts: { repo: { userName: "u", ...repo } } };
-}
+const TENANT = { orgId: "org_1", userId: "user_1" };
 
 function setup(
   opts: {
-    states?: unknown[];
-    tenantStates?: unknown[];
+    /** `orgId:userId` pairs that are members; default the one TENANT. */
+    members?: string[];
+    /** Credential source id → owning org; default both owned by org_1. */
+    owners?: Record<string, string>;
     pools?: TenantPool[];
     mint?: SandboxControllerCallbackDeps["mintCloneUrl"];
   } = {},
 ) {
+  const members = opts.members ?? ["org_1:user_1"];
+  const owners = opts.owners ?? {
+    [CONNECTION]: "org_1",
+    [REPOSITORY]: "org_1",
+  };
   const sources: CloneCredentialSource[] = [];
   const mints: Array<
     Parameters<SandboxControllerCallbackDeps["mintCloneUrl"]>
@@ -34,11 +38,16 @@ function setup(
   const orgFsMints: Array<{ orgId: string; userId: string; orgSlug?: string }> =
     [];
   const app = createSandboxControllerCallbackApp({
-    statesByCloneSource: async (source) => {
+    recordedTenant: async ({ orgId, userId }) =>
+      members.includes(`${orgId}:${userId}`)
+        ? { orgId, userId, orgSlug: "acme" }
+        : null,
+    credentialOrg: async (source) => {
       sources.push(source);
-      return opts.states ?? [];
+      const key =
+        "repositoryId" in source ? source.repositoryId : source.connectionId;
+      return owners[key] ?? null;
     },
-    statesByTenant: async () => opts.tenantStates ?? [],
     tenantPools: opts.pools ?? [],
     mintCloneUrl:
       opts.mint ??
@@ -63,19 +72,22 @@ function setup(
 const CLONE = "/api/_sandbox-controller/clone-url";
 const ORG_FS = "/api/_sandbox-controller/org-fs-config";
 
+const pool: TenantPool = {
+  name: "tenant-acme",
+  orgId: "org_1",
+  repo: "Acme/Site",
+  connectionId: CONNECTION,
+  branch: "main",
+  workload: { runtime: "node" },
+};
+
 describe("clone-url callback", () => {
-  it("mints for a connection a live sandbox already clones with", async () => {
-    const { post, mints, sources } = setup({
-      states: [
-        row({
-          cloneUrl: "https://x-access-token:ghs_first@github.com/Acme/Site",
-          connectionId: CONNECTION,
-        }),
-      ],
-    });
+  it("mints for a connection of the tenant's org", async () => {
+    const { post, mints, sources } = setup();
     const res = await post(CLONE, {
       connectionId: CONNECTION,
       cloneUrl: ACME_SITE,
+      tenant: TENANT,
       bufferMs: 1_800_000,
     });
     expect(res.status).toBe(200);
@@ -95,32 +107,22 @@ describe("clone-url callback", () => {
     ]);
   });
 
-  it("verifies a first-class repository by its id, not the connection", async () => {
+  it("checks a first-class repository by its id, not the connection", async () => {
     const { post, sources } = setup({
-      states: [row({ cloneUrl: ACME_SITE, repositoryId: REPOSITORY })],
+      owners: { [REPOSITORY]: "org_1", conn_other: "org_2" },
     });
     const res = await post(CLONE, {
       repositoryId: REPOSITORY,
       connectionId: "conn_other",
       cloneUrl: ACME_SITE,
+      tenant: TENANT,
     });
     expect(res.status).toBe(200);
     expect(sources).toEqual([{ repositoryId: REPOSITORY }]);
   });
 
-  it("mints for a configured warm pool, which has no state row", async () => {
-    const { post } = setup({
-      pools: [
-        {
-          name: "tenant-acme",
-          orgId: "org_1",
-          repo: "Acme/Site",
-          connectionId: CONNECTION,
-          branch: "main",
-          workload: { runtime: "node" },
-        },
-      ],
-    });
+  it("mints for a configured warm pool, which has no tenant", async () => {
+    const { post } = setup({ pools: [pool] });
     const res = await post(CLONE, {
       connectionId: CONNECTION,
       cloneUrl: ACME_SITE,
@@ -130,52 +132,31 @@ describe("clone-url callback", () => {
 
   it.each([
     [
-      "a connection no sandbox uses",
-      [row({ cloneUrl: ACME_SITE, connectionId: "conn_other" })],
+      "a connection of another org",
+      { owners: { [CONNECTION]: "org_2" } },
+      TENANT,
     ],
+    ["a connection that does not exist", { owners: {} }, TENANT],
+    ["a user who is not a member", { members: [] }, TENANT],
     [
-      "another repository on the same connection",
-      [
-        row({
-          cloneUrl: "https://github.com/acme/other.git",
-          connectionId: CONNECTION,
-        }),
-      ],
+      "a member of another org naming this org's connection",
+      { members: ["org_2:user_1"] },
+      { orgId: "org_2", userId: "user_1" },
     ],
-    [
-      "the same repository on another host",
-      [
-        row({
-          cloneUrl: "https://gitlab.com/acme/site.git",
-          connectionId: CONNECTION,
-        }),
-      ],
-    ],
-    ["a row whose state does not parse", [{ ensureOpts: { repo: "nope" } }]],
-    ["no rows at all", []],
-  ])("refuses %s without minting", async (_label, states) => {
-    const { post, mints } = setup({ states });
+    ["no tenant and no pool", {}, undefined],
+  ])("refuses %s without minting", async (_label, opts, tenant) => {
+    const { post, mints } = setup(opts);
     const res = await post(CLONE, {
       connectionId: CONNECTION,
       cloneUrl: ACME_SITE,
+      ...(tenant ? { tenant } : {}),
     });
     expect(res.status).toBe(403);
     expect(mints).toEqual([]);
   });
 
   it("does not let a warm pool vouch for a repository id", async () => {
-    const { post } = setup({
-      pools: [
-        {
-          name: "tenant-acme",
-          orgId: "org_1",
-          repo: "acme/site",
-          connectionId: CONNECTION,
-          branch: "main",
-          workload: { runtime: "node" },
-        },
-      ],
-    });
+    const { post } = setup({ pools: [pool] });
     const res = await post(CLONE, {
       repositoryId: REPOSITORY,
       connectionId: CONNECTION,
@@ -203,11 +184,13 @@ describe("clone-url callback", () => {
       "an unparseable cloneUrl",
       { connectionId: CONNECTION, cloneUrl: "not a url" },
     ],
+    [
+      "a tenant without ids",
+      { connectionId: CONNECTION, cloneUrl: ACME_SITE, tenant: { orgId: "o" } },
+    ],
     ["a non-JSON body", "{nope"],
   ])("rejects %s", async (_label, body) => {
-    const { post, mints } = setup({
-      states: [row({ cloneUrl: ACME_SITE, connectionId: CONNECTION })],
-    });
+    const { post, mints } = setup();
     const res = await post(CLONE, body);
     expect(res.status).toBe(400);
     expect(mints).toEqual([]);
@@ -215,7 +198,6 @@ describe("clone-url callback", () => {
 
   it("answers null when the mint fails, so the controller keeps its URL", async () => {
     const { post } = setup({
-      states: [row({ cloneUrl: ACME_SITE, connectionId: CONNECTION })],
       mint: async () => {
         throw new Error("legacy token needs an org context");
       },
@@ -223,6 +205,7 @@ describe("clone-url callback", () => {
     const res = await post(CLONE, {
       connectionId: CONNECTION,
       cloneUrl: ACME_SITE,
+      tenant: TENANT,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cloneUrl: null });
@@ -230,44 +213,28 @@ describe("clone-url callback", () => {
 });
 
 describe("org-fs-config callback", () => {
-  const tenantRow = {
-    tenant: { orgId: "org_1", userId: "user_1", orgSlug: "acme" },
-    ensureOpts: { orgFsConfigJson: '{"token":"old"}' },
-  };
-
-  it("mints for the tenant the sandbox was provisioned for", async () => {
-    const { post, orgFsMints } = setup({ tenantStates: [tenantRow] });
+  it("mints for the tenant Studio records, slug included", async () => {
+    const { post, orgFsMints } = setup();
     const res = await post(ORG_FS, {
-      tenant: { orgId: "org_1", userId: "user_1", orgSlug: "someone-else" },
+      tenant: { ...TENANT, orgSlug: "someone-else" },
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ orgFsConfigJson: '{"token":"fresh"}' });
-    expect(orgFsMints).toEqual([
-      { orgId: "org_1", userId: "user_1", orgSlug: "acme" },
-    ]);
+    expect(orgFsMints).toEqual([{ ...TENANT, orgSlug: "acme" }]);
   });
 
   it.each([
-    ["no sandbox for the tenant", []],
-    [
-      "a sandbox without org-fs",
-      [{ tenant: { orgId: "org_1", userId: "user_1" }, ensureOpts: {} }],
-    ],
-    [
-      "a row for another user",
-      [{ ...tenantRow, tenant: { orgId: "org_1", userId: "user_2" } }],
-    ],
-  ])("refuses %s", async (_label, tenantStates) => {
-    const { post, orgFsMints } = setup({ tenantStates });
-    const res = await post(ORG_FS, {
-      tenant: { orgId: "org_1", userId: "user_1" },
-    });
+    ["a user who is not a member", { orgId: "org_1", userId: "user_2" }],
+    ["an org the user is not in", { orgId: "org_2", userId: "user_1" }],
+  ])("refuses %s", async (_label, tenant) => {
+    const { post, orgFsMints } = setup();
+    const res = await post(ORG_FS, { tenant });
     expect(res.status).toBe(403);
     expect(orgFsMints).toEqual([]);
   });
 
   it("rejects a tenant without ids", async () => {
-    const { post } = setup({ tenantStates: [tenantRow] });
+    const { post } = setup();
     expect((await post(ORG_FS, { tenant: { orgId: "org_1" } })).status).toBe(
       400,
     );
@@ -372,9 +339,7 @@ describe.skipIf(!haveOpenssl)("callback listener mTLS", () => {
       "subjectAltName=DNS:sandbox-controller\nextendedKeyUsage=clientAuth\n",
     );
 
-    const { app } = setup({
-      states: [row({ cloneUrl: ACME_SITE, connectionId: CONNECTION })],
-    });
+    const { app } = setup();
     server = serveSandboxControllerCallbacks({
       port: 0,
       hostname: "127.0.0.1",
@@ -396,7 +361,11 @@ describe.skipIf(!haveOpenssl)("callback listener mTLS", () => {
     fetch(`https://127.0.0.1:${server?.port}${CLONE}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ connectionId: CONNECTION, cloneUrl: ACME_SITE }),
+      body: JSON.stringify({
+        connectionId: CONNECTION,
+        cloneUrl: ACME_SITE,
+        tenant: TENANT,
+      }),
       tls: {
         ca: pem("installation-ca.crt"),
         ...(client

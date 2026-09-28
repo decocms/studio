@@ -114,11 +114,9 @@ export async function startSandboxControllerCallbacks(): Promise<{
   const [
     { createSandboxControllerCallbackApp, serveSandboxControllerCallbacks },
     { parseTenantPools },
-    { listStatesByCloneSource, listStatesByTenant },
   ] = await Promise.all([
     import("@/sandbox/controller-callbacks"),
     import("@decocms/sandbox/provider/tenant-pools"),
-    import("@/storage/sandbox-runner-state"),
   ]);
   const [cert, key, ca] = await Promise.all([
     Bun.file(controller.certPath).text(),
@@ -131,8 +129,31 @@ export async function startSandboxControllerCallbacks(): Promise<{
     new CredentialVault(getSettings().encryptionKey),
   );
   const app = createSandboxControllerCallbackApp({
-    statesByCloneSource: (source) => listStatesByCloneSource(db, source),
-    statesByTenant: (tenant) => listStatesByTenant(db, tenant),
+    recordedTenant: async ({ orgId, userId }) => {
+      const row = await db
+        .selectFrom("member")
+        .innerJoin("organization", "organization.id", "member.organizationId")
+        .select("organization.slug")
+        .where("member.organizationId", "=", orgId)
+        .where("member.userId", "=", userId)
+        .executeTakeFirst();
+      return row ? { orgId, userId, orgSlug: row.slug } : null;
+    },
+    credentialOrg: async (source) => {
+      const row =
+        "repositoryId" in source
+          ? await db
+              .selectFrom("repositories")
+              .select("organization_id")
+              .where("id", "=", source.repositoryId)
+              .executeTakeFirst()
+          : await db
+              .selectFrom("connections")
+              .select("organization_id")
+              .where("id", "=", source.connectionId)
+              .executeTakeFirst();
+      return row?.organization_id ?? null;
+    },
     tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
     mintCloneUrl: minters.mintCloneUrl,
     mintOrgFsConfig: minters.mintOrgFsConfig,

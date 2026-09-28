@@ -22,13 +22,9 @@ import (
 	"github.com/decocms/studio/packages/sandbox/controller-go/store"
 )
 
-// Name is the runtime recorded in sandbox_provider_kind, the value Studio's
-// in-process runner writes too.
+// Name is the runtime recorded on each sandbox row, the value Studio's
+// in-process runner wrote too (rows copied from sandbox_runner_state).
 const Name = "agent-sandbox"
-
-// Writer marks rows this controller wrote, so the in-process runner can refuse
-// a row it does not own during a mis-drained cutover.
-const Writer = "sandbox-controller"
 
 const (
 	defaultWorkdir = "/app"
@@ -185,7 +181,6 @@ type persisted struct {
 	Tenant       *protocol.Tenant        `json:"tenant"`
 	EnsureOpts   *protocol.EnsureOptions `json:"ensureOpts,omitempty"`
 	Image        *protocol.Image         `json:"image,omitempty"`
-	Writer       string                  `json:"writer,omitempty"`
 }
 
 // record is a sandbox the runner is serving right now.
@@ -210,7 +205,7 @@ func (rec *record) state() persisted {
 	return persisted{
 		AdoptedSandboxName: rec.adopted, Token: rec.token, Workdir: rec.workdir,
 		Workload: rec.workload, DaemonBootID: rec.bootID, Tenant: rec.tenant,
-		EnsureOpts: rec.opts, Image: &img, Writer: Writer,
+		EnsureOpts: rec.opts, Image: &img,
 	}
 }
 
@@ -236,8 +231,7 @@ func (r *Runner) ensureLocked(ctx context.Context, id protocol.SandboxID, handle
 			// likely expired; forward the fresh one.
 			r.refreshGitCredential(ctx, rec, opts)
 			r.relayOrgFs(ctx, rec.daemonURL, rec.token, opts.OrgFsConfigJSON)
-			// Stamp a row the in-process runner wrote, so its pods stop claiming it.
-			return r.finish(ctx, rec, !writtenByUs(row), true)
+			return r.finish(ctx, rec, false, true)
 		}
 		if err := r.store.Delete(ctx, id, Name); err != nil {
 			return nil, err
@@ -537,13 +531,6 @@ func (r *Runner) adopt(ctx context.Context, id protocol.SandboxID, handle string
 
 // rehydrate rebuilds a record from its row, or nil on any mismatch (the caller
 // drops the row and falls through).
-func writtenByUs(row *store.Record) bool {
-	var st struct {
-		Writer string `json:"writer"`
-	}
-	return json.Unmarshal(row.State, &st) == nil && st.Writer == Writer
-}
-
 func (r *Runner) rehydrate(ctx context.Context, id protocol.SandboxID, handle string, row *store.Record) *record {
 	var st persisted
 	if json.Unmarshal(row.State, &st) != nil || st.Token == "" || (st.AdoptedSandboxName == "" && st.PodName == "") {

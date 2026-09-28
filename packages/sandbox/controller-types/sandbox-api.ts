@@ -2,8 +2,8 @@
 // Do not edit; run `go generate ./...` in packages/sandbox/controller-go.
 
 /**
- * Package protocol is the controller's HTTP API: what Studio sends and reads,
- * and the callbacks the controller makes into Studio. The TypeScript types in
+ * Package protocol is the controller's claim API: MCP tools Studio calls, and
+ * the HTTP callbacks the controller makes into Studio. The TypeScript types in
  * packages/sandbox/controller-types/sandbox-api.ts are generated from this
  * file (cmd/tsgen), so a field changed here breaks Studio's build.
  *
@@ -11,41 +11,56 @@
  * TypeScript; a pointer without it is `T | null`.
  */
 
-/** POST: EnsureRequest → EnsureResponse. */
-export const PathSandboxes = "/sandboxes";
-
 /**
- * GET → StatusResponse (`?resurrect=1` to re-provision a reaped sandbox);
- * DELETE → 204, or 202 DrainingResponse.
+ * PathMCP serves the tools as stateless streamable HTTP. A failed call is a
+ * result with isError set and an ErrorResponse, as JSON, in its text content.
  */
-export const PathSandbox = "/sandboxes/{handle}";
+export const PathMCP = "/mcp";
 
-/** PATCH: LifetimeRequest → 204. */
-export const PathLifetime = "/sandboxes/{handle}/lifetime";
-
-/** POST: CredentialsRequest → 204. */
-export const PathCredentials = "/sandboxes/{handle}/credentials";
-
-/** GET → text/event-stream of Phase. */
-export const PathEvents = "/sandboxes/{handle}/events";
-
-/** GET → ImagesResponse. */
-export const PathImages = "/images";
-
-/** GET → RuntimesResponse. */
-export const PathRuntimes = "/runtimes";
-
-/**
- * GET → CapacityResponse. `?sandboxImage=<name>` judges the nodes that
- * image's variant schedules onto instead of the default image's.
- */
-export const PathCapacity = "/capacity";
-
-/** POST: TenantPoolsPushRequest → TenantPoolsPushResponse. */
-export const PathTenantPoolsPush = "/tenant-pools/push";
-
-/** GET → HealthzResponse. Needs a client certificate like every other route. */
+/** GET → HealthzResponse. Needs a client certificate like the tools. */
 export const PathHealthz = "/healthz";
+
+/** EnsureRequest → EnsureResponse, once the daemon is healthy and configured. */
+export const ToolEnsure = "SANDBOX_ENSURE";
+
+/** StatusRequest → StatusResponse. */
+export const ToolStatus = "SANDBOX_STATUS";
+
+/** HandleRequest → DeleteResponse. */
+export const ToolDelete = "SANDBOX_DELETE";
+
+/** LifetimeRequest → Empty. */
+export const ToolLifetime = "SANDBOX_LIFETIME";
+
+/** CredentialsRequest → Empty. */
+export const ToolCredentials = "SANDBOX_CREDENTIALS_ROTATE";
+
+/**
+ * HandleRequest → the terminal Phase. With a progress token, every phase,
+ * terminal included, is also a progress notification whose message is the
+ * Phase as JSON.
+ */
+export const ToolWatch = "SANDBOX_WATCH";
+
+/** Empty → ImagesResponse. */
+export const ToolImages = "SANDBOX_IMAGES";
+
+/** Empty → RuntimesResponse. */
+export const ToolRuntimes = "SANDBOX_RUNTIMES";
+
+/** CapacityRequest → CapacityResponse. */
+export const ToolCapacity = "SANDBOX_CAPACITY";
+
+/** TenantPoolsPushRequest → TenantPoolsPushResponse. */
+export const ToolTenantPoolsPush = "SANDBOX_TENANT_POOLS_PUSH";
+
+/** Empty is the input or output of a tool that takes or returns nothing. */
+export interface Empty {}
+
+/** HandleRequest names one sandbox by its claim handle. */
+export interface HandleRequest {
+  handle: string;
+}
 
 /**
  * SandboxID is Studio's tenant-scoped identity for a sandbox. The controller
@@ -63,13 +78,13 @@ export interface SandboxID {
 export type Capability =
   /** A preview URL is served for the sandbox. */
   | "preview"
-  /** GET /sandboxes/:handle/events reports the pre-ready phases, not only "ready". */
+  /** SANDBOX_WATCH reports the pre-ready phases, not only "ready". */
   | "lifecycle-phases"
   /** Claims may bind prewarmed pods. */
   | "warm-pool"
   /** lastTermination can say why the sandbox stopped (OOM, eviction). */
   | "termination-reason"
-  /** PATCH /sandboxes/:handle/lifetime moves shutdown. */
+  /** SANDBOX_LIFETIME moves shutdown. */
   | "ttl-extend"
   /** The runtime answers the capacity probe; without it, it always admits. */
   | "capacity";
@@ -179,7 +194,7 @@ export interface EnsureOptions {
   orgFsConfigJson?: string;
 }
 
-/** EnsureRequest is POST /sandboxes. */
+/** EnsureRequest is SANDBOX_ENSURE's input. */
 export interface EnsureRequest {
   id: SandboxID;
   /**
@@ -191,7 +206,8 @@ export interface EnsureRequest {
   opts?: EnsureOptions;
   /**
    * A named runtime is a hard constraint: unavailable, incapable or full is
-   * a 503, never a silent placement elsewhere, unless allowFallback.
+   * a no-runtime error, never a silent placement elsewhere, unless
+   * allowFallback.
    */
   runtime?: string;
   requires?: Array<Capability>;
@@ -253,9 +269,15 @@ export interface PodTermination {
 }
 
 /**
- * StatusResponse is GET /sandboxes/:handle. With `?resurrect=1` a sandbox
- * whose claim is gone is re-provisioned from its persisted options first.
+ * StatusRequest is SANDBOX_STATUS's input. With resurrect, a sandbox whose
+ * claim is gone is re-provisioned from its persisted options first: preview
+ * traffic, where a fetch is the only sign anyone is here.
  */
+export interface StatusRequest {
+  handle: string;
+  resurrect?: boolean;
+}
+
 export interface StatusResponse {
   handle: string;
   alive: boolean;
@@ -267,33 +289,39 @@ export interface StatusResponse {
   lastTermination: PodTermination | null;
 }
 
-/**
- * DrainingResponse is DELETE /sandboxes/:handle's 202: the claim is not gone
- * yet. It means retry, not success; a caller rebinding must not POST on it.
- */
-export interface DrainingResponse {
-  state: string;
+export type DeleteState =
+  | "deleted"
+  /**
+   * The claim outlived the controller's deadline and is not gone yet. It
+   * means retry, not success; a caller rebinding must not ensure on it.
+   */
+  | "draining";
+
+export interface DeleteResponse {
+  state: DeleteState;
 }
 
 /**
- * LifetimeRequest is PATCH /sandboxes/:handle/lifetime. Exactly one field:
- * extendToIdleWindow only moves shutdown later, graceMs only earlier.
+ * LifetimeRequest takes exactly one of extendToIdleWindow, which only moves
+ * shutdown later, and graceMs, which only moves it earlier.
  */
 export interface LifetimeRequest {
+  handle: string;
   extendToIdleWindow?: boolean;
   graceMs?: number;
 }
 
 /**
- * CredentialsRequest is POST /sandboxes/:handle/credentials: rotate the
- * primary checkout's clone credential in place (same repository, new token).
+ * CredentialsRequest rotates the primary checkout's clone credential in place
+ * (same repository, new token).
  */
 export interface CredentialsRequest {
+  handle: string;
   cloneUrl: string;
 }
 
 /**
- * TenantPoolsPushRequest is POST /tenant-pools/push: a GitHub push landed, so
+ * TenantPoolsPushRequest says a GitHub push landed, so
  * the tenant pools warmed on that repo and branch refresh their unbound pods
  * now instead of at their next periodic refresh.
  */
@@ -328,8 +356,8 @@ export type FailureReason =
   | "scheduling-timeout";
 
 /**
- * Phase is one event on GET /sandboxes/:handle/events (`data: <json>`). The
- * stream ends after "ready" or "failed".
+ * Phase is one lifecycle transition SANDBOX_WATCH reports; the watch ends
+ * after "ready" or "failed".
  */
 export interface Phase {
   kind: PhaseKind;
@@ -357,7 +385,7 @@ export interface RuntimeImages {
   images: Array<ImageInfo>;
 }
 
-/** ImagesResponse is GET /images. */
+/** ImagesResponse is SANDBOX_IMAGES's output. */
 export interface ImagesResponse {
   runtimes: Array<RuntimeImages>;
 }
@@ -369,7 +397,7 @@ export interface Capacity {
   observedAt: string;
 }
 
-/** RuntimeInfo is one entry of GET /runtimes. */
+/** RuntimeInfo is one entry of SANDBOX_RUNTIMES. */
 export interface RuntimeInfo {
   name: string;
   available: boolean;
@@ -380,14 +408,22 @@ export interface RuntimeInfo {
   capabilities: Array<Capability>;
 }
 
-/** RuntimesResponse is GET /runtimes. */
+/** RuntimesResponse is SANDBOX_RUNTIMES's output. */
 export interface RuntimesResponse {
   runtimes: Array<RuntimeInfo>;
 }
 
 /**
- * CapacityResponse is GET /capacity: Studio's admission gate. True when any
- * available runtime has room.
+ * CapacityRequest names the image whose variant's nodes to judge; absent is
+ * the default image.
+ */
+export interface CapacityRequest {
+  sandboxImage?: string;
+}
+
+/**
+ * CapacityResponse is Studio's admission gate: true when any available
+ * runtime has room.
  */
 export interface CapacityResponse {
   schedulable: boolean;
@@ -411,7 +447,7 @@ export type ErrorCode =
   | "handle-conflict"
   /** The recorded runtime is not in this build: the sandbox is left alone. */
   | "runtime-unreachable"
-  /** Nothing could place the sandbox (503); reasons has one entry per runtime. */
+  /** Nothing could place the sandbox; reasons has one entry per runtime. */
   | "no-runtime"
   /**
    * The pod's daemon rejected the bootstrap handshake; the claim was
@@ -429,7 +465,10 @@ export type ErrorCode =
   | "daemon-error"
   | "internal";
 
-/** ErrorResponse is every non-2xx body. */
+/**
+ * ErrorResponse is every failed tool call's text content, and every non-2xx
+ * callback body.
+ */
 export interface ErrorResponse {
   error: string;
   code: ErrorCode;
@@ -441,9 +480,9 @@ export interface ErrorResponse {
 
 /**
  * CloneURLPath is the controller's credential callback into Studio, over mTLS.
- * Studio must verify that the connection or repository belongs to a sandbox
- * row or a configured warm pool before minting: an unverified endpoint mints
- * a token for any connection in the deployment.
+ * Studio mints only for a connection or repository of the tenant's org, whose
+ * user is a member there, or for a configured warm pool: an unverified
+ * endpoint mints a token for any connection in the deployment.
  */
 export const CloneURLPath = "/api/_sandbox-controller/clone-url";
 
@@ -451,6 +490,8 @@ export interface CloneURLRequest {
   connectionId?: string;
   repositoryId?: string;
   cloneUrl: string;
+  /** The sandbox's tenant; absent only for a warm-pool pod, which has none. */
+  tenant?: Tenant;
   /** Re-mint when the current token has less than this much life left. */
   bufferMs?: number;
 }

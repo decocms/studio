@@ -116,7 +116,7 @@ sandbox-controller:
     studioCASecretName: sandbox-controller-tls
     # Studio's `sandbox-callbacks` Service port (sandboxController.callbackPort).
     studioCallbackUrl: "https://deco-studio.deco-studio.svc:9443"
-    # The controller owns sandbox_runner_state in Studio's database.
+    # The controller creates and owns the sandbox_controller schema there.
     database:
       secretName: sandbox-controller-db
     # Warm-pool mode: the pool pods' shared token (sandbox-env.sentinel.token).

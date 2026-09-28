@@ -1449,15 +1449,6 @@ export interface KVTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
-export interface SandboxProviderStateTable {
-  user_id: string;
-  project_ref: string;
-  sandbox_provider_kind: string;
-  handle: string;
-  state: JsonObject<Record<string, unknown>>;
-  updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
 // ============================================================================
 // Organization Domain Table Definition
 // ============================================================================
@@ -2501,6 +2492,4 @@ export interface Database {
   // Follow/inbox for the task board
   notification_subscriptions: NotificationSubscriptionTable;
   notifications: NotificationTable;
-
-  sandbox_runner_state: SandboxProviderStateTable;
 }

@@ -89,7 +89,7 @@ func (r *Runner) refreshOne(ctx context.Context, row store.Record) {
 		return
 	}
 	repo := st.EnsureOpts.Repo
-	fresh := daemonclient.FreshCloneURL(ctx, r.cfg.Studio, repo, credentialRefreshBuffer)
+	fresh := daemonclient.FreshCloneURL(ctx, r.cfg.Studio, repo, st.EnsureOpts.Tenant, credentialRefreshBuffer)
 	if fresh.CloneURL == repo.CloneURL {
 		return
 	}

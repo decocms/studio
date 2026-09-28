@@ -217,7 +217,7 @@ func (d *fakeDaemon) lastConfig(t *testing.T) configCall {
 
 type fakeStudio struct{ cloneURL string }
 
-func (s *fakeStudio) MintCloneURL(context.Context, protocol.EnsureRepo, int64) (string, error) {
+func (s *fakeStudio) MintCloneURL(context.Context, protocol.EnsureRepo, *protocol.Tenant, int64) (string, error) {
 	return s.cloneURL, nil
 }
 

@@ -30,7 +30,7 @@ Um deployment de produção usa quatro releases Helm:
 | `chart-deco-studio` | Uma vez por ambiente do Studio | Executa um front door nginx com dois containers de API por pod, workers de fila, NATS, persistência e componentes opcionais de observabilidade |
 | `sandbox-operator` | Uma vez por cluster Kubernetes | Instala o controller e os CRDs do [agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) do Kubernetes SIGs |
 | `sandbox-env` | Uma vez por ambiente do Studio | Instala o `SandboxTemplate`, o Secret sentinela e, opcionalmente, warm pool, Gateway de preview e housekeeper de recursos ociosos |
-| `sandbox-controller` | Uma vez por ambiente do Studio | Serve a claim API com mTLS que o Studio chama para iniciar e parar sandboxes, detém o RBAC do cluster para os claims, é dono do `sandbox_runner_state` no banco do Studio e reconcilia as variantes de imagem `SandboxVariant` |
+| `sandbox-controller` | Uma vez por ambiente do Studio | Serve as tools MCP (com mTLS) que o Studio chama para iniciar e parar sandboxes, detém o RBAC do cluster para os claims, guarda o estado das sandboxes no seu próprio schema `sandbox_controller` e reconcilia as variantes de imagem `SandboxVariant` |
 
 O operador é uma infraestrutura compartilhada no cluster. Cada release `sandbox-env` é isolada por `envName`, portanto produção, staging e outros ambientes do Studio podem compartilhar o operador e o namespace `agent-sandbox-system` sem colisões de nomes. Cada ambiente também tem sua própria release do controller, nomeada pela release; exatamente uma release por namespace reconcilia `SandboxVariant`s (`variants.enabled`), e as demais só servem claims.
 
@@ -249,7 +249,7 @@ Isso cria `SandboxTemplate/studio-sandbox-production` (mais sua variante `-mediu
 
 ### 5. Instale o sandbox controller
 
-O controller lê o banco do Studio, onde é dono do `sandbox_runner_state`. Entregue a ele o mesmo `DATABASE_URL` no namespace dele:
+O controller guarda o estado das sandboxes no seu próprio schema `sandbox_controller`, que ele cria e migra ao iniciar. Ele pode compartilhar o banco do Studio; o Studio nunca lê esse schema. Entregue a ele um `DATABASE_URL` no namespace dele:
 
 ```bash
 kubectl -n agent-sandbox-system create secret generic sandbox-controller-db \

@@ -98,10 +98,10 @@ func (c *Client) post(ctx context.Context, path string, body, out any) error {
 
 // MintCloneURL asks Studio for a fresh credential for the repository the
 // sandbox already has. "" when Studio declines.
-func (c *Client) MintCloneURL(ctx context.Context, repo protocol.EnsureRepo, bufferMs int64) (string, error) {
+func (c *Client) MintCloneURL(ctx context.Context, repo protocol.EnsureRepo, tenant *protocol.Tenant, bufferMs int64) (string, error) {
 	var out protocol.CloneURLResponse
 	err := c.post(ctx, protocol.CloneURLPath, protocol.CloneURLRequest{
-		ConnectionID: repo.ConnectionID, RepositoryID: repo.RepositoryID, CloneURL: repo.CloneURL, BufferMs: bufferMs,
+		ConnectionID: repo.ConnectionID, RepositoryID: repo.RepositoryID, CloneURL: repo.CloneURL, Tenant: tenant, BufferMs: bufferMs,
 	}, &out)
 	if err != nil || out.CloneURL == nil {
 		return "", err

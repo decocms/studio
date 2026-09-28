@@ -233,7 +233,7 @@ func (r *Runner) warmPoolPod(ctx context.Context, pool *TenantPool, pod warmPool
 	// No user: the daemon leaves `claimed` false for an identity-less config,
 	// which keeps the housekeeper's idle sweep off an unbound pod.
 	repo := &protocol.EnsureRepo{CloneURL: poolCloneURL(pool), ConnectionID: pool.ConnectionID, Branch: pool.Branch}
-	fresh := daemonclient.FreshCloneURL(ctx, r.cfg.Studio, repo, 0)
+	fresh := daemonclient.FreshCloneURL(ctx, r.cfg.Studio, repo, nil, 0)
 	if pool.ConnectionID != "" && fresh.CloneURL == repo.CloneURL {
 		// The anonymous URL would clone a private repo without credentials, or
 		// leave the pod on a remote the user cannot push to. The next tick retries.

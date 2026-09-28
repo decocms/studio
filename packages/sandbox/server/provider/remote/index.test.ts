@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import {
+  CallToolRequestSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { ConfigRequestError } from "../../daemon-client";
 import { computeHandle } from "../shared";
 import type { SandboxId } from "../types";
@@ -18,33 +24,21 @@ const id: SandboxId = {
 };
 const handle = computeHandle(id);
 
-type Handler = (req: Request) => Response | Promise<Response>;
 const servers: Array<{ stop: (force?: boolean) => unknown }> = [];
 
 afterEach(() => {
   for (const s of servers.splice(0)) s.stop(true);
 });
 
-type Seen = {
-  method: string;
-  url: string;
-  headers: Headers;
-  json: () => unknown;
-};
+type Seen = { headers: Headers; url: string };
 
-function serve(handler: Handler) {
+function serve(handler: (req: Request) => Response | Promise<Response>) {
   const seen: Seen[] = [];
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
-    fetch: async (req) => {
-      const text = await req.clone().text();
-      seen.push({
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        json: () => JSON.parse(text),
-      });
+    fetch: (req) => {
+      seen.push({ headers: req.headers, url: req.url });
       return handler(req);
     },
   });
@@ -59,6 +53,63 @@ function daemon(token: string) {
       ? Response.json({ ok: true, path: new URL(req.url).pathname })
       : Response.json({ error: "unauthorized" }, { status: 401 }),
   );
+}
+
+type Progress = (message: string) => Promise<void>;
+type Tool = (
+  args: Record<string, unknown>,
+  progress: Progress,
+) => CallToolResult | Promise<CallToolResult>;
+
+const ok = (value: unknown): CallToolResult => ({
+  content: [{ type: "text", text: JSON.stringify(value) }],
+  structuredContent: value as Record<string, unknown>,
+});
+
+const fail = (body: unknown): CallToolResult => ({
+  isError: true,
+  content: [{ type: "text", text: JSON.stringify(body) }],
+});
+
+/** A stateless MCP controller answering each tool with `tools[name]`. */
+function controller(
+  tools: Record<string, Tool>,
+  tls?: Bun.TLSOptions,
+): { url: string; calls: Array<{ tool: string; args: unknown }> } {
+  const calls: Array<{ tool: string; args: unknown }> = [];
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    ...(tls ? { tls } : {}),
+    fetch: async (req) => {
+      const mcp = new Server(
+        { name: "fake-controller", version: "0" },
+        { capabilities: { tools: {} } },
+      );
+      mcp.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+        const { name, arguments: args = {} } = request.params;
+        calls.push({ tool: name, args });
+        const tool = tools[name];
+        if (!tool) return fail({ error: `no tool ${name}`, code: "internal" });
+        let n = 0;
+        const token = request.params._meta?.progressToken;
+        return tool(args, async (message) => {
+          if (token === undefined) return;
+          await extra.sendNotification({
+            method: "notifications/progress",
+            params: { progressToken: token, progress: ++n, message },
+          });
+        });
+      });
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      await mcp.connect(transport);
+      return transport.handleRequest(req);
+    },
+  });
+  servers.push(server);
+  return { url: `http://127.0.0.1:${server.port}`, calls };
 }
 
 function ensureBody(daemonUrl: string, token: string) {
@@ -87,12 +138,17 @@ function statusBody(daemonUrl: string | null, token: string, alive = true) {
   };
 }
 
+const unknownHandle = () =>
+  fail({ error: "no sandbox", code: "unknown-handle" });
+
 const get = { method: "GET", headers: new Headers(), body: null };
 
 describe("RemoteSandboxProvider.ensure", () => {
-  it("posts the Studio-derived handle and dials the returned daemon directly", async () => {
+  it("sends the Studio-derived handle and dials the returned daemon directly", async () => {
     const d = daemon("tok");
-    const ctl = serve(() => Response.json(ensureBody(d.url, "tok")));
+    const ctl = controller({
+      SANDBOX_ENSURE: () => ok(ensureBody(d.url, "tok")),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
 
     const sandbox = await provider.ensure(id, {
@@ -107,28 +163,32 @@ describe("RemoteSandboxProvider.ensure", () => {
       previewUrl: `https://${handle}.preview.example.test/`,
       warmPoolAdopted: false,
     });
-    const sent = ctl.seen[0]!.json();
-    expect(ctl.seen[0]!.method).toBe("POST");
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/sandboxes");
-    expect(sent).toEqual({
-      id,
-      handle,
-      opts: { sandboxImage: "android", cloneOnly: true },
-    });
+    expect(ctl.calls).toEqual([
+      {
+        tool: "SANDBOX_ENSURE",
+        args: {
+          id,
+          handle,
+          opts: { sandboxImage: "android", cloneOnly: true },
+        },
+      },
+    ]);
 
     const res = await provider.proxyDaemonRequest(handle, "/_sandbox/x", get);
     expect(res.status).toBe(200);
     // The cached address served it; no status read.
-    expect(ctl.seen).toHaveLength(1);
+    expect(ctl.calls).toHaveLength(1);
   });
 
   it("surfaces a rejected bootstrap as the daemon's config error", async () => {
-    const ctl = serve(() =>
-      Response.json(
-        { error: "rotate refused", code: "bootstrap-rejected", status: 401 },
-        { status: 502 },
-      ),
-    );
+    const ctl = controller({
+      SANDBOX_ENSURE: () =>
+        fail({
+          error: "rotate refused",
+          code: "bootstrap-rejected",
+          status: 401,
+        }),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const err = await provider.ensure(id).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConfigRequestError);
@@ -136,16 +196,14 @@ describe("RemoteSandboxProvider.ensure", () => {
   });
 
   it("carries the controller's code and per-runtime reasons", async () => {
-    const ctl = serve(() =>
-      Response.json(
-        {
+    const ctl = controller({
+      SANDBOX_ENSURE: () =>
+        fail({
           error: "no runtime can place this sandbox",
           code: "no-runtime",
           reasons: { "agent-sandbox": "full" },
-        },
-        { status: 503 },
-      ),
-    );
+        }),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const err = await provider.ensure(id).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(SandboxControllerError);
@@ -158,40 +216,51 @@ describe("RemoteSandboxProvider.ensure", () => {
     ["a non-http daemon url", { daemon: { url: "file:///etc", token: "t" } }],
     ["a string warmPoolAdopted", { warmPoolAdopted: "yes" }],
     ["another handle", { handle: "someone-else" }],
-  ])("rejects a response with %s", async (_label, patch) => {
-    const ctl = serve(() =>
-      Response.json({ ...ensureBody("http://127.0.0.1:1", "t"), ...patch }),
-    );
+  ])("rejects a result with %s", async (_label, patch) => {
+    const ctl = controller({
+      SANDBOX_ENSURE: () =>
+        ok({ ...ensureBody("http://127.0.0.1:1", "t"), ...patch }),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await expect(provider.ensure(id)).rejects.toBeInstanceOf(
       SandboxControllerError,
     );
   });
 
-  it("rejects a non-JSON body", async () => {
+  it("words an error that is not an ErrorResponse", async () => {
+    const ctl = controller({
+      SANDBOX_ENSURE: () => ({
+        isError: true,
+        content: [{ type: "text", text: "validating arguments: boom" }],
+      }),
+    });
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    await expect(provider.ensure(id)).rejects.toThrow("validating arguments");
+  });
+
+  it("fails on a controller that does not speak MCP", async () => {
     const ctl = serve(() => new Response("<html>gateway</html>"));
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
-    await expect(provider.ensure(id)).rejects.toThrow("non-JSON");
+    await expect(provider.ensure(id)).rejects.toThrow();
   });
 });
 
 describe("RemoteSandboxProvider.proxyDaemonRequest", () => {
   it("re-reads the address on a 401 and retries once with the rotated token", async () => {
     const d = daemon("new");
-    const ctl = serve((req) =>
-      req.method === "POST"
-        ? Response.json(ensureBody(d.url, "old"))
-        : Response.json(statusBody(d.url, "new")),
-    );
+    const ctl = controller({
+      SANDBOX_ENSURE: () => ok(ensureBody(d.url, "old")),
+      SANDBOX_STATUS: () => ok(statusBody(d.url, "new")),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await provider.ensure(id);
 
     const res = await provider.proxyDaemonRequest(handle, "/_sandbox/x", get);
 
     expect(res.status).toBe(200);
-    const reads = ctl.seen.filter((r) => r.method === "GET");
-    expect(reads).toHaveLength(1);
-    expect(new URL(reads[0]!.url).search).toBe("?resurrect=1");
+    expect(ctl.calls.filter((c) => c.tool === "SANDBOX_STATUS")).toEqual([
+      { tool: "SANDBOX_STATUS", args: { handle, resurrect: true } },
+    ]);
     expect(d.seen.map((r) => r.headers.get("authorization"))).toEqual([
       "Bearer old",
       "Bearer new",
@@ -200,7 +269,9 @@ describe("RemoteSandboxProvider.proxyDaemonRequest", () => {
 
   it("returns the 401 when the controller still hands out the same token", async () => {
     const d = daemon("other");
-    const ctl = serve(() => Response.json(statusBody(d.url, "stale")));
+    const ctl = controller({
+      SANDBOX_STATUS: () => ok(statusBody(d.url, "stale")),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
 
     const res = await provider.proxyDaemonRequest(handle, "/_sandbox/x", get);
@@ -211,11 +282,10 @@ describe("RemoteSandboxProvider.proxyDaemonRequest", () => {
 
   it("does not retry a streamed body it has already consumed", async () => {
     const d = daemon("new");
-    const ctl = serve((req) =>
-      req.method === "POST"
-        ? Response.json(ensureBody(d.url, "old"))
-        : Response.json(statusBody(d.url, "new")),
-    );
+    const ctl = controller({
+      SANDBOX_ENSURE: () => ok(ensureBody(d.url, "old")),
+      SANDBOX_STATUS: () => ok(statusBody(d.url, "new")),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await provider.ensure(id);
 
@@ -235,12 +305,7 @@ describe("RemoteSandboxProvider.proxyDaemonRequest", () => {
   });
 
   it("answers 404 when the controller has no such sandbox", async () => {
-    const ctl = serve(() =>
-      Response.json(
-        { error: "no sandbox", code: "unknown-handle" },
-        { status: 404 },
-      ),
-    );
+    const ctl = controller({ SANDBOX_STATUS: unknownHandle });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const res = await provider.proxyDaemonRequest(handle, "/_sandbox/x", get);
     expect(res.status).toBe(404);
@@ -250,17 +315,14 @@ describe("RemoteSandboxProvider.proxyDaemonRequest", () => {
 
 describe("RemoteSandboxProvider.delete", () => {
   it("resolves once the controller has collected the sandbox", async () => {
-    const ctl = serve(() => new Response(null, { status: 204 }));
+    const ctl = controller({ SANDBOX_DELETE: () => ok({ state: "deleted" }) });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await provider.delete(handle);
-    expect(ctl.seen[0]!.method).toBe("DELETE");
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe(`/sandboxes/${handle}`);
+    expect(ctl.calls).toEqual([{ tool: "SANDBOX_DELETE", args: { handle } }]);
   });
 
-  it("treats 202 draining as retry, never as gone", async () => {
-    const ctl = serve(() =>
-      Response.json({ state: "draining" }, { status: 202 }),
-    );
+  it("treats draining as retry, never as gone", async () => {
+    const ctl = controller({ SANDBOX_DELETE: () => ok({ state: "draining" }) });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await expect(provider.delete(handle)).rejects.toBeInstanceOf(
       SandboxDrainingError,
@@ -268,32 +330,38 @@ describe("RemoteSandboxProvider.delete", () => {
   });
 
   it("treats an unknown handle as already gone", async () => {
-    const ctl = serve(() =>
-      Response.json({ error: "gone", code: "unknown-handle" }, { status: 404 }),
-    );
+    const ctl = controller({ SANDBOX_DELETE: unknownHandle });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await provider.delete(handle);
+  });
+
+  it("throws any other failure", async () => {
+    const ctl = controller({
+      SANDBOX_DELETE: () => fail({ error: "boom", code: "internal" }),
+    });
+    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    await expect(provider.delete(handle)).rejects.toBeInstanceOf(
+      SandboxControllerError,
+    );
   });
 });
 
 describe("RemoteSandboxProvider lifetime", () => {
-  it("renews and releases through PATCH lifetime", async () => {
-    const ctl = serve(() => new Response(null, { status: 204 }));
+  it("renews and releases through the lifetime tool", async () => {
+    const ctl = controller({ SANDBOX_LIFETIME: () => ok({}) });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await provider.renewTtl(handle);
     await provider.releaseAfter(handle, 120_000);
-    expect(ctl.seen.map((r) => r.method)).toEqual(["PATCH", "PATCH"]);
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe(
-      `/sandboxes/${handle}/lifetime`,
-    );
-    expect(ctl.seen[0]!.json()).toEqual({ extendToIdleWindow: true });
-    expect(ctl.seen[1]!.json()).toEqual({ graceMs: 120_000 });
+    expect(ctl.calls).toEqual([
+      { tool: "SANDBOX_LIFETIME", args: { handle, extendToIdleWindow: true } },
+      { tool: "SANDBOX_LIFETIME", args: { handle, graceMs: 120_000 } },
+    ]);
   });
 
   it("never throws: a missed renewal costs idle minutes, not a stream", async () => {
-    const ctl = serve(() =>
-      Response.json({ error: "boom", code: "internal" }, { status: 500 }),
-    );
+    const ctl = controller({
+      SANDBOX_LIFETIME: () => fail({ error: "boom", code: "internal" }),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await provider.renewTtl(handle);
     await provider.releaseAfter(handle, 1);
@@ -301,58 +369,49 @@ describe("RemoteSandboxProvider lifetime", () => {
 });
 
 describe("RemoteSandboxProvider.listSandboxImages", () => {
+  const images = (runtimes: unknown) =>
+    controller({ SANDBOX_IMAGES: () => ok({ runtimes }) });
+
   it("merges every runtime's variants into one sorted list", async () => {
-    const ctl = serve(() =>
-      Response.json({
-        runtimes: [
-          {
-            runtime: "agent-sandbox",
-            images: [
-              { name: "flutter", baseTag: "1.2.0" },
-              { name: "android" },
-            ],
-          },
-          { runtime: "docker", images: [{ name: "android" }] },
-        ],
-      }),
-    );
+    const ctl = images([
+      {
+        runtime: "agent-sandbox",
+        images: [{ name: "flutter", baseTag: "1.2.0" }, { name: "android" }],
+      },
+      { runtime: "docker", images: [{ name: "android" }] },
+    ]);
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     expect(await provider.listSandboxImages()).toEqual(["android", "flutter"]);
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/images");
+    expect(ctl.calls[0]!.tool).toBe("SANDBOX_IMAGES");
   });
 
   it("drops default and names a repository cannot store", async () => {
-    const ctl = serve(() =>
-      Response.json({
-        runtimes: [
-          {
-            runtime: "agent-sandbox",
-            images: [
-              { name: "default" },
-              { name: "Android" },
-              { name: "" },
-              { name: "x".repeat(40) },
-              { name: "android" },
-            ],
-          },
+    const ctl = images([
+      {
+        runtime: "agent-sandbox",
+        images: [
+          { name: "default" },
+          { name: "Android" },
+          { name: "" },
+          { name: "x".repeat(40) },
+          { name: "android" },
         ],
-      }),
-    );
+      },
+    ]);
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     expect(await provider.listSandboxImages()).toEqual(["android"]);
   });
 
   it("answers an empty list when no runtime is available", async () => {
-    const ctl = serve(() => Response.json({ runtimes: [] }));
-    const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
+    const provider = new RemoteSandboxProvider({ baseUrl: images([]).url });
     expect(await provider.listSandboxImages()).toEqual([]);
   });
 
   it.each([
-    ["an error status", () => new Response("nope", { status: 500 })],
-    ["a malformed body", () => Response.json({ runtimes: "all" })],
+    ["a failed call", () => fail({ error: "nope", code: "internal" })],
+    ["a malformed result", () => ok({ runtimes: "all" })],
   ])("throws on %s", async (_label, respond) => {
-    const ctl = serve(respond);
+    const ctl = controller({ SANDBOX_IMAGES: respond });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     await expect(provider.listSandboxImages()).rejects.toBeInstanceOf(
       SandboxControllerError,
@@ -361,25 +420,27 @@ describe("RemoteSandboxProvider.listSandboxImages", () => {
 });
 
 describe("RemoteSandboxProvider.markTenantPoolsDirty", () => {
-  it("posts the push and answers the pools the controller marked", async () => {
-    const ctl = serve(() => Response.json({ pools: ["tenant-acme-site-ci"] }));
+  it("sends the push and answers the pools the controller marked", async () => {
+    const ctl = controller({
+      SANDBOX_TENANT_POOLS_PUSH: () => ok({ pools: ["tenant-acme-site-ci"] }),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     expect(
       await provider.markTenantPoolsDirty("acme/site", "refs/heads/main"),
     ).toEqual(["tenant-acme-site-ci"]);
-    expect(ctl.seen[0]!.method).toBe("POST");
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/tenant-pools/push");
-    expect(ctl.seen[0]!.json()).toEqual({
-      repo: "acme/site",
-      ref: "refs/heads/main",
-    });
+    expect(ctl.calls).toEqual([
+      {
+        tool: "SANDBOX_TENANT_POOLS_PUSH",
+        args: { repo: "acme/site", ref: "refs/heads/main" },
+      },
+    ]);
   });
 
   it.each([
-    ["an error status", () => new Response("nope", { status: 500 })],
-    ["a malformed body", () => Response.json({ pools: "all" })],
+    ["a failed call", () => fail({ error: "nope", code: "internal" })],
+    ["a malformed result", () => ok({ pools: "all" })],
   ])("answers no pools on %s", async (_label, respond) => {
-    const ctl = serve(respond);
+    const ctl = controller({ SANDBOX_TENANT_POOLS_PUSH: respond });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     expect(
       await provider.markTenantPoolsDirty("acme/site", "refs/heads/main"),
@@ -389,7 +450,9 @@ describe("RemoteSandboxProvider.markTenantPoolsDirty", () => {
 
 describe("RemoteSandboxProvider.hasSchedulableCapacity", () => {
   it("reuses an answer for a few seconds and coalesces concurrent callers", async () => {
-    const ctl = serve(() => Response.json({ schedulable: false }));
+    const ctl = controller({
+      SANDBOX_CAPACITY: () => ok({ schedulable: false }),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const answers = await Promise.all([
       provider.hasSchedulableCapacity(),
@@ -397,35 +460,28 @@ describe("RemoteSandboxProvider.hasSchedulableCapacity", () => {
     ]);
     expect(answers).toEqual([false, false]);
     expect(await provider.hasSchedulableCapacity()).toBe(false);
-    expect(ctl.seen).toHaveLength(1);
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe("/capacity");
+    expect(ctl.calls).toHaveLength(1);
   });
 
   it.each([
-    ["an error status", () => new Response("nope", { status: 500 })],
-    ["a malformed body", () => Response.json({ schedulable: "maybe" })],
+    ["a failed call", () => fail({ error: "nope", code: "internal" })],
+    ["a malformed result", () => ok({ schedulable: "maybe" })],
   ])("admits on %s", async (_label, respond) => {
-    const ctl = serve(respond);
+    const ctl = controller({ SANDBOX_CAPACITY: respond });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     expect(await provider.hasSchedulableCapacity()).toBe(true);
   });
 });
 
 describe("RemoteSandboxProvider.watchClaimLifecycle", () => {
-  function sse(chunks: string[]) {
-    return serve(
-      () =>
-        new Response(
-          new ReadableStream({
-            start(c) {
-              for (const chunk of chunks)
-                c.enqueue(new TextEncoder().encode(chunk));
-              c.close();
-            },
-          }),
-          { headers: { "content-type": "text/event-stream" } },
-        ),
-    );
+  /** A watch that reports `phases` as progress, then returns `result`. */
+  function watching(phases: unknown[], result: CallToolResult) {
+    return controller({
+      SANDBOX_WATCH: async (_args, progress) => {
+        for (const p of phases) await progress(JSON.stringify(p));
+        return result;
+      },
+    });
   }
 
   async function collect(provider: RemoteSandboxProvider) {
@@ -435,48 +491,49 @@ describe("RemoteSandboxProvider.watchClaimLifecycle", () => {
     return out;
   }
 
-  it("parses phases split across chunks and skips keepalives", async () => {
-    const ctl = sse([
-      ": keepalive\n\n",
-      'data: {"kind":"claiming","since":10}\n\ndata: {"kind":"waiting-for-',
-      'capacity","since":10,"nodeClaim":"nc-1"}\n\n',
-      'data: {"kind":"ready"}\n\n',
-      'data: {"kind":"claiming","since":99}\n\n',
-    ]);
+  it("yields each progress phase and stops at ready", async () => {
+    const ctl = watching(
+      [
+        { kind: "claiming", since: 10 },
+        { kind: "waiting-for-capacity", since: 10, nodeClaim: "nc-1" },
+        { kind: "ready" },
+      ],
+      ok({ kind: "ready" }),
+    );
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     expect(await collect(provider)).toEqual([
       { kind: "claiming", since: 10 },
       { kind: "waiting-for-capacity", since: 10, nodeClaim: "nc-1" },
       { kind: "ready" },
     ]);
-    expect(new URL(ctl.seen[0]!.url).pathname).toBe(
-      `/sandboxes/${handle}/events`,
-    );
+    expect(ctl.calls).toEqual([{ tool: "SANDBOX_WATCH", args: { handle } }]);
   });
 
   it("ends on a failed phase with its reason", async () => {
-    const ctl = sse([
-      'data: {"kind":"failed","reason":"image-pull-backoff","message":"no tag"}\n\n',
-    ]);
+    const failed = {
+      kind: "failed",
+      reason: "image-pull-backoff",
+      message: "no tag",
+    };
+    const ctl = watching([failed], ok(failed));
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
-    expect(await collect(provider)).toEqual([
-      { kind: "failed", reason: "image-pull-backoff", message: "no tag" },
-    ]);
+    expect(await collect(provider)).toEqual([failed]);
   });
 
-  it("fails a stream that ends before a terminal phase", async () => {
-    const ctl = sse(['data: {"kind":"pulling-image","since":1}\n\n']);
+  it("fails a watch that ends before a terminal phase", async () => {
+    const ctl = watching(
+      [{ kind: "pulling-image", since: 1 }],
+      fail({ error: "ended early", code: "internal" }),
+    );
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const phases = await collect(provider);
     expect(phases.map((p) => p.kind)).toEqual(["pulling-image", "failed"]);
   });
 
   it("fails on an error answer instead of hanging", async () => {
-    const ctl = serve(() =>
-      Response.json(
-        { error: "runtime gone", code: "runtime-unreachable" },
-        { status: 503 },
-      ),
+    const ctl = watching(
+      [],
+      fail({ error: "runtime gone", code: "runtime-unreachable" }),
     );
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const phases = await collect(provider);
@@ -501,14 +558,16 @@ describe("RemoteSandboxProvider.proxyPreviewRequest", () => {
     const d = serve(
       (req) => new Response(`served ${new URL(req.url).pathname}`),
     );
-    const ctl = serve(() => Response.json(statusBody(d.url, "t")));
+    const ctl = controller({
+      SANDBOX_STATUS: () => ok(statusBody(d.url, "t")),
+    });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
 
-    const ok = await provider.proxyPreviewRequest(
+    const served = await provider.proxyPreviewRequest(
       handle,
       new Request("https://preview.example.test/app?x=1"),
     );
-    expect(await ok.text()).toBe("served /app");
+    expect(await served.text()).toBe("served /app");
     const refused = await provider.proxyPreviewRequest(
       handle,
       new Request("https://preview.example.test/_sandbox/exec", {
@@ -520,9 +579,7 @@ describe("RemoteSandboxProvider.proxyPreviewRequest", () => {
   });
 
   it("marks a missing sandbox as not ready", async () => {
-    const ctl = serve(() =>
-      Response.json({ error: "none", code: "unknown-handle" }, { status: 404 }),
-    );
+    const ctl = controller({ SANDBOX_STATUS: unknownHandle });
     const provider = new RemoteSandboxProvider({ baseUrl: ctl.url });
     const res = await provider.proxyPreviewRequest(
       handle,
@@ -605,20 +662,17 @@ describe("RemoteSandboxProvider mTLS", () => {
         );
         const pem = (f: string) => readFileSync(join(dir, f), "utf8");
 
-        const server = Bun.serve({
-          port: 0,
-          hostname: "127.0.0.1",
-          tls: {
+        const ctl = controller(
+          { SANDBOX_CAPACITY: () => ok({ schedulable: false }) },
+          {
             cert: pem("controller.crt"),
             key: pem("controller.key"),
             ca: pem("ca.crt"),
             requestCert: true,
             rejectUnauthorized: true,
           },
-          fetch: () => Response.json({ schedulable: false }),
-        });
-        servers.push(server);
-        const baseUrl = `https://127.0.0.1:${server.port}`;
+        );
+        const baseUrl = ctl.url.replace("http:", "https:");
 
         const withCert = new RemoteSandboxProvider({
           baseUrl,

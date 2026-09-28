@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -18,9 +17,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
@@ -101,55 +103,99 @@ func (f *fakeProvider) Close() {}
 
 var id = protocol.SandboxID{UserID: "u", ProjectRef: "agent:o:v:main"}
 
-func newServer(t *testing.T, p *fakeProvider) (*httptest.Server, *storetest.Memory) {
+func newServer(t *testing.T, p *fakeProvider) (*mcp.ClientSession, *storetest.Memory) {
 	st := storetest.NewMemory()
 	reg := runtime.NewRegistry(&runtime.Runtime{Name: "agent-sandbox", Priority: 10, Provider: p, Capabilities: []protocol.Capability{protocol.CapPreview, protocol.CapCapacity}})
-	srv := httptest.NewServer((&Server{Registry: reg, Store: st, DeleteDeadline: 50 * time.Millisecond, Heartbeat: time.Hour}).Handler())
+	srv := httptest.NewServer((&Server{Registry: reg, Store: st, DeleteDeadline: 50 * time.Millisecond}).Handler())
 	t.Cleanup(srv.Close)
-	return srv, st
+	return connect(t, srv.URL, nil), st
 }
 
-func do(t *testing.T, method, url string, body any) (*http.Response, string) {
+func connect(t *testing.T, base string, opts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
-	var r io.Reader
-	if body != nil {
-		b, _ := json.Marshal(body)
-		r = strings.NewReader(string(b))
-	}
-	req, _ := http.NewRequest(method, url, r)
-	res, err := http.DefaultClient.Do(req)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "studio-test"}, opts).
+		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: base + protocol.PathMCP}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
-	b, _ := io.ReadAll(res.Body)
-	return res, string(b)
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
 }
 
-func errorCode(t *testing.T, body string) protocol.ErrorCode {
-	var e protocol.ErrorResponse
-	if err := json.Unmarshal([]byte(body), &e); err != nil {
-		t.Fatalf("not an error body: %s", body)
+func call(t *testing.T, cs *mcp.ClientSession, tool string, args any) *mcp.CallToolResult {
+	t.Helper()
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil {
+		t.Fatalf("%s: %v", tool, err)
 	}
-	return e.Code
+	return res
+}
+
+// ok is a successful call's output as the server serialized it.
+func ok(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	if res.IsError || res.StructuredContent == nil {
+		t.Fatalf("call failed: %s", text(res))
+	}
+	return text(res)
+}
+
+func text(res *mcp.CallToolResult) string {
+	if len(res.Content) == 0 {
+		return ""
+	}
+	if tc, ok := res.Content[0].(*mcp.TextContent); ok {
+		return tc.Text
+	}
+	return ""
+}
+
+func failure(t *testing.T, res *mcp.CallToolResult) protocol.ErrorResponse {
+	t.Helper()
+	var e protocol.ErrorResponse
+	if !res.IsError || json.Unmarshal([]byte(text(res)), &e) != nil {
+		t.Fatalf("not an error result: isError=%v %s", res.IsError, text(res))
+	}
+	return e
+}
+
+func TestTools(t *testing.T) {
+	cs, _ := newServer(t, &fakeProvider{})
+	list, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range list.Tools {
+		names = append(names, tool.Name)
+	}
+	sort.Strings(names)
+	want := []string{protocol.ToolCapacity, protocol.ToolCredentials, protocol.ToolDelete, protocol.ToolEnsure, protocol.ToolImages,
+		protocol.ToolLifetime, protocol.ToolRuntimes, protocol.ToolStatus, protocol.ToolTenantPoolsPush, protocol.ToolWatch}
+	sort.Strings(want)
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Fatalf("tools = %v, want %v", names, want)
+	}
 }
 
 func TestEnsure(t *testing.T) {
 	p := &fakeProvider{}
-	srv, st := newServer(t, p)
-	res, body := do(t, "POST", srv.URL+"/sandboxes", protocol.EnsureRequest{ID: id, Handle: "main-abc", Opts: &protocol.EnsureOptions{SandboxImage: "android"}})
-	if res.StatusCode != 200 {
-		t.Fatalf("%d %s", res.StatusCode, body)
-	}
+	cs, st := newServer(t, p)
+	body := ok(t, call(t, cs, protocol.ToolEnsure, protocol.EnsureRequest{ID: id, Handle: "main-abc", Opts: &protocol.EnsureOptions{SandboxImage: "android"}}))
 	var out protocol.EnsureResponse
 	_ = json.Unmarshal([]byte(body), &out)
 	if out.Runtime != "agent-sandbox" || out.Daemon.Token != "tok" || out.Image.Served != "default" || !out.WarmPoolAdopted || len(out.Capabilities) != 2 {
 		t.Fatalf("response = %s", body)
 	}
 
+	t.Run("fields this build does not know are ignored", func(t *testing.T) {
+		args := map[string]any{"id": id, "handle": "main-abc", "fromANewerStudio": true, "opts": map[string]any{"alsoNew": 1}}
+		ok(t, call(t, cs, protocol.ToolEnsure, args))
+	})
+
 	t.Run("a live handle is returned as-is with runtimeMismatch", func(t *testing.T) {
 		_ = st.Put(context.Background(), id, "agent-sandbox", "main-abc", map[string]string{})
-		_, body := do(t, "POST", srv.URL+"/sandboxes", protocol.EnsureRequest{ID: id, Handle: "main-abc", Runtime: "docker"})
+		body := ok(t, call(t, cs, protocol.ToolEnsure, protocol.EnsureRequest{ID: id, Handle: "main-abc", Runtime: "docker"}))
 		if !strings.Contains(body, `"runtimeMismatch":"agent-sandbox"`) {
 			t.Fatalf("got %s", body)
 		}
@@ -157,107 +203,116 @@ func TestEnsure(t *testing.T) {
 
 	t.Run("a handle recorded for another id is a conflict", func(t *testing.T) {
 		other := protocol.SandboxID{UserID: "someone-else", ProjectRef: id.ProjectRef}
-		res, body := do(t, "POST", srv.URL+"/sandboxes", protocol.EnsureRequest{ID: other, Handle: "main-abc"})
-		if res.StatusCode != 409 || errorCode(t, body) != protocol.ErrHandleConflict {
-			t.Fatalf("%d %s", res.StatusCode, body)
+		if e := failure(t, call(t, cs, protocol.ToolEnsure, protocol.EnsureRequest{ID: other, Handle: "main-abc"})); e.Code != protocol.ErrHandleConflict {
+			t.Fatalf("%+v", e)
 		}
 	})
 
 	t.Run("a row on a runtime this build lacks is left alone", func(t *testing.T) {
 		gone := protocol.SandboxID{UserID: "u2", ProjectRef: "r"}
 		_ = st.Put(context.Background(), gone, "microvm", "vm-handle", map[string]string{})
-		res, body := do(t, "POST", srv.URL+"/sandboxes", protocol.EnsureRequest{ID: gone, Handle: "vm-handle"})
-		if res.StatusCode != 503 || errorCode(t, body) != protocol.ErrRuntimeUnreachable {
-			t.Fatalf("%d %s", res.StatusCode, body)
+		if e := failure(t, call(t, cs, protocol.ToolEnsure, protocol.EnsureRequest{ID: gone, Handle: "vm-handle"})); e.Code != protocol.ErrRuntimeUnreachable {
+			t.Fatalf("%+v", e)
 		}
 	})
 }
 
 func TestEnsureValidation(t *testing.T) {
-	srv, _ := newServer(t, &fakeProvider{})
-	for name, req := range map[string]any{
-		"missing id":          protocol.EnsureRequest{Handle: "h-1"},
-		"handle not a label":  protocol.EnsureRequest{ID: id, Handle: "Main_ABC"},
-		"handle too long":     protocol.EnsureRequest{ID: id, Handle: strings.Repeat("a", 64)},
-		"bad image":           protocol.EnsureRequest{ID: id, Handle: "h", Opts: &protocol.EnsureOptions{SandboxImage: "Android!"}},
-		"bad purpose":         protocol.EnsureRequest{ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Purpose: "batch"}},
-		"bad package manager": protocol.EnsureRequest{ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Workload: &protocol.Workload{Runtime: "node", PackageManager: "pip"}}},
-		"repo without url":    protocol.EnsureRequest{ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Repo: &protocol.EnsureRepo{}}},
-		"tenant without ids":  protocol.EnsureRequest{ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Tenant: &protocol.Tenant{}}},
-		"unknown capability":  protocol.EnsureRequest{ID: id, Handle: "h", Requires: []protocol.Capability{"gpu"}},
-		"not json":            "{",
-		"oversized":           map[string]string{"x": strings.Repeat("a", maxBody+1)},
+	cs, _ := newServer(t, &fakeProvider{})
+	for name, req := range map[string]protocol.EnsureRequest{
+		"missing id":          {Handle: "h-1"},
+		"handle not a label":  {ID: id, Handle: "Main_ABC"},
+		"handle too long":     {ID: id, Handle: strings.Repeat("a", 64)},
+		"bad image":           {ID: id, Handle: "h", Opts: &protocol.EnsureOptions{SandboxImage: "Android!"}},
+		"bad purpose":         {ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Purpose: "batch"}},
+		"bad package manager": {ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Workload: &protocol.Workload{Runtime: "node", PackageManager: "pip"}}},
+		"repo without url":    {ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Repo: &protocol.EnsureRepo{}}},
+		"tenant without ids":  {ID: id, Handle: "h", Opts: &protocol.EnsureOptions{Tenant: &protocol.Tenant{}}},
+		"unknown capability":  {ID: id, Handle: "h", Requires: []protocol.Capability{"gpu"}},
 	} {
-		res, body := do(t, "POST", srv.URL+"/sandboxes", req)
-		if res.StatusCode != 400 || errorCode(t, body) != protocol.ErrBadRequest {
-			t.Errorf("%s: %d %s", name, res.StatusCode, body)
+		if e := failure(t, call(t, cs, protocol.ToolEnsure, req)); e.Code != protocol.ErrBadRequest {
+			t.Errorf("%s: %+v", name, e)
 		}
+	}
+	// The schema rejects a missing required field before the handler runs.
+	if res := call(t, cs, protocol.ToolEnsure, map[string]any{"id": id}); !res.IsError {
+		t.Error("an ensure without a handle was accepted")
+	}
+	if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: protocol.ToolEnsure, Arguments: map[string]string{"x": strings.Repeat("a", maxBody+1)}}); err == nil {
+		t.Error("an oversized request was accepted")
 	}
 }
 
 func TestEnsureErrors(t *testing.T) {
 	for _, tc := range []struct {
-		err    error
-		status int
-		code   protocol.ErrorCode
+		err  error
+		code protocol.ErrorCode
 	}{
-		{&runtime.Error{Code: protocol.ErrBootstrapRejected, Message: "sandbox provisioning failed", Status: 401}, 502, protocol.ErrBootstrapRejected},
-		{&runtime.Error{Code: protocol.ErrClaimStalled, Message: "no progress"}, 504, protocol.ErrClaimStalled},
-		{&runtime.Error{Code: protocol.ErrClaimFailed, Message: "image pull"}, 502, protocol.ErrClaimFailed},
-		{io.ErrUnexpectedEOF, 500, protocol.ErrInternal},
+		{&runtime.Error{Code: protocol.ErrBootstrapRejected, Message: "sandbox provisioning failed", Status: 401}, protocol.ErrBootstrapRejected},
+		{&runtime.Error{Code: protocol.ErrClaimStalled, Message: "no progress"}, protocol.ErrClaimStalled},
+		{&runtime.Error{Code: protocol.ErrClaimFailed, Message: "image pull"}, protocol.ErrClaimFailed},
+		{io.ErrUnexpectedEOF, protocol.ErrInternal},
 	} {
-		srv, _ := newServer(t, &fakeProvider{ensureErr: tc.err})
-		res, body := do(t, "POST", srv.URL+"/sandboxes", protocol.EnsureRequest{ID: id, Handle: "h"})
-		if res.StatusCode != tc.status || errorCode(t, body) != tc.code {
-			t.Errorf("%v: %d %s", tc.err, res.StatusCode, body)
+		cs, _ := newServer(t, &fakeProvider{ensureErr: tc.err})
+		e := failure(t, call(t, cs, protocol.ToolEnsure, protocol.EnsureRequest{ID: id, Handle: "h"}))
+		if e.Code != tc.code {
+			t.Errorf("%v: %+v", tc.err, e)
 		}
-		if tc.code == protocol.ErrBootstrapRejected && !strings.Contains(body, `"status":401`) {
-			t.Errorf("the daemon's status is lost: %s", body)
+		if tc.code == protocol.ErrBootstrapRejected && (e.Status != 401 || e.Error != "sandbox provisioning failed") {
+			t.Errorf("the daemon's answer is lost: %+v", e)
 		}
 	}
+	if e := failure(t, call(t, connectEmpty(t), protocol.ToolEnsure, protocol.EnsureRequest{ID: id, Handle: "h"})); e.Code != protocol.ErrNoRuntime {
+		t.Errorf("no runtime: %+v", e)
+	}
+}
+
+func connectEmpty(t *testing.T) *mcp.ClientSession {
+	srv := httptest.NewServer((&Server{Registry: runtime.NewRegistry(), Store: storetest.NewMemory()}).Handler())
+	t.Cleanup(srv.Close)
+	return connect(t, srv.URL, nil)
 }
 
 func TestStatusResurrectsOnlyWhenAsked(t *testing.T) {
 	p := &fakeProvider{}
-	srv, _ := newServer(t, p)
-	_, body := do(t, "GET", srv.URL+"/sandboxes/h", nil)
+	cs, _ := newServer(t, p)
+	body := ok(t, call(t, cs, protocol.ToolStatus, protocol.StatusRequest{Handle: "h"}))
 	if p.resurrected || !strings.Contains(body, `"alive":false`) || !strings.Contains(body, `"oomKilled":true`) {
 		t.Fatalf("observation had a side effect or lost data: %s", body)
 	}
-	_, body = do(t, "GET", srv.URL+"/sandboxes/h?resurrect=1", nil)
+	body = ok(t, call(t, cs, protocol.ToolStatus, protocol.StatusRequest{Handle: "h", Resurrect: true}))
 	if !p.resurrected || !strings.Contains(body, `"alive":true`) {
 		t.Fatalf("got %s", body)
 	}
 }
 
 func TestDelete(t *testing.T) {
-	srv, _ := newServer(t, &fakeProvider{})
-	if res, _ := do(t, "DELETE", srv.URL+"/sandboxes/h", nil); res.StatusCode != 204 {
-		t.Fatalf("status %d", res.StatusCode)
+	cs, _ := newServer(t, &fakeProvider{})
+	if body := ok(t, call(t, cs, protocol.ToolDelete, protocol.HandleRequest{Handle: "h"})); body != `{"state":"deleted"}` {
+		t.Fatalf("got %s", body)
 	}
-	srv, _ = newServer(t, &fakeProvider{deleteBlock: true})
-	res, body := do(t, "DELETE", srv.URL+"/sandboxes/h", nil)
-	if res.StatusCode != 202 || !strings.Contains(body, `"state":"draining"`) {
-		t.Fatalf("%d %s", res.StatusCode, body)
+	cs, _ = newServer(t, &fakeProvider{deleteBlock: true})
+	if body := ok(t, call(t, cs, protocol.ToolDelete, protocol.HandleRequest{Handle: "h"})); body != `{"state":"draining"}` {
+		t.Fatalf("got %s", body)
 	}
 }
 
 func TestLifetime(t *testing.T) {
 	p := &fakeProvider{}
-	srv, _ := newServer(t, p)
+	cs, _ := newServer(t, p)
 	grace := int64(30_000)
 	for _, tc := range []struct {
-		body   any
-		status int
+		body    any
+		isError bool
 	}{
-		{protocol.LifetimeRequest{ExtendToIdleWindow: true}, 204},
-		{protocol.LifetimeRequest{GraceMs: &grace}, 204},
-		{protocol.LifetimeRequest{}, 400},
-		{protocol.LifetimeRequest{ExtendToIdleWindow: true, GraceMs: &grace}, 400},
-		{map[string]any{"graceMs": -1}, 400},
+		{protocol.LifetimeRequest{Handle: "h", ExtendToIdleWindow: true}, false},
+		{protocol.LifetimeRequest{Handle: "h", GraceMs: &grace}, false},
+		{protocol.LifetimeRequest{Handle: "h"}, true},
+		{protocol.LifetimeRequest{Handle: "h", ExtendToIdleWindow: true, GraceMs: &grace}, true},
+		{map[string]any{"handle": "h", "graceMs": -1}, true},
 	} {
-		if res, body := do(t, "PATCH", srv.URL+"/sandboxes/h/lifetime", tc.body); res.StatusCode != tc.status {
-			t.Errorf("%+v: %d %s", tc.body, res.StatusCode, body)
+		if res := call(t, cs, protocol.ToolLifetime, tc.body); res.IsError != tc.isError {
+			t.Errorf("%+v: %s", tc.body, text(res))
 		}
 	}
 	if p.renewed != 1 || len(p.released) != 1 || p.released[0] != 30*time.Second {
@@ -267,88 +322,101 @@ func TestLifetime(t *testing.T) {
 
 func TestCredentials(t *testing.T) {
 	p := &fakeProvider{}
-	srv, st := newServer(t, p)
-	res, body := do(t, "POST", srv.URL+"/sandboxes/h/credentials", protocol.CredentialsRequest{CloneURL: "https://x:t@github.com/a/b.git"})
-	if res.StatusCode != 404 || errorCode(t, body) != protocol.ErrUnknownHandle {
-		t.Fatalf("no row: %d %s", res.StatusCode, body)
+	cs, st := newServer(t, p)
+	req := protocol.CredentialsRequest{Handle: "h", CloneURL: "https://x:t@github.com/a/b.git"}
+	if e := failure(t, call(t, cs, protocol.ToolCredentials, req)); e.Code != protocol.ErrUnknownHandle {
+		t.Fatalf("no row: %+v", e)
 	}
 	_ = st.Put(context.Background(), id, "agent-sandbox", "h", map[string]string{})
-	if res, _ := do(t, "POST", srv.URL+"/sandboxes/h/credentials", protocol.CredentialsRequest{}); res.StatusCode != 400 {
-		t.Fatalf("empty cloneUrl: %d", res.StatusCode)
+	if e := failure(t, call(t, cs, protocol.ToolCredentials, protocol.CredentialsRequest{Handle: "h"})); e.Code != protocol.ErrBadRequest {
+		t.Fatalf("empty cloneUrl: %+v", e)
 	}
-	if res, _ := do(t, "POST", srv.URL+"/sandboxes/h/credentials", protocol.CredentialsRequest{CloneURL: "https://x:t@github.com/a/b.git"}); res.StatusCode != 204 || len(p.rotated) != 1 {
-		t.Fatalf("status %d rotated %v", res.StatusCode, p.rotated)
+	if ok(t, call(t, cs, protocol.ToolCredentials, req)); len(p.rotated) != 1 {
+		t.Fatalf("rotated %v", p.rotated)
 	}
 }
 
-func TestEvents(t *testing.T) {
+func TestWatch(t *testing.T) {
 	p := &fakeProvider{phases: []protocol.Phase{{Kind: protocol.PhaseClaiming, Since: 1}, {Kind: protocol.PhaseReady}}}
-	srv, _ := newServer(t, p)
-	res, err := http.Get(srv.URL + "/sandboxes/h/events")
+	st := storetest.NewMemory()
+	reg := runtime.NewRegistry(&runtime.Runtime{Name: "agent-sandbox", Priority: 10, Provider: p})
+	srv := httptest.NewServer((&Server{Registry: reg, Store: st}).Handler())
+	t.Cleanup(srv.Close)
+	notes := make(chan *mcp.ProgressNotificationParams, 8)
+	cs := connect(t, srv.URL, &mcp.ClientOptions{ProgressNotificationHandler: func(_ context.Context, req *mcp.ProgressNotificationClientRequest) {
+		notes <- req.Params
+	}})
+	params := &mcp.CallToolParams{Name: protocol.ToolWatch, Arguments: protocol.HandleRequest{Handle: "h"}}
+	params.SetProgressToken("watch-1")
+	res, err := cs.CallTool(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
-	if res.Header.Get("content-type") != "text/event-stream" {
-		t.Fatalf("content-type %s", res.Header.Get("content-type"))
+	if body := ok(t, res); body != `{"kind":"ready"}` {
+		t.Fatalf("result = %s", body)
 	}
-	var data []string
-	sc := bufio.NewScanner(res.Body)
-	for sc.Scan() {
-		if line := sc.Text(); strings.HasPrefix(line, "data: ") {
-			data = append(data, strings.TrimPrefix(line, "data: "))
+	// The Go client hands notifications to the handler asynchronously, so
+	// order comes from the progress counter.
+	progress := make([]string, 2)
+	for range 2 {
+		select {
+		case n := <-notes:
+			if i := int(n.Progress) - 1; i >= 0 && i < 2 {
+				progress[i] = n.Message
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("progress so far = %v", progress)
 		}
 	}
-	if len(data) != 2 || data[0] != `{"kind":"claiming","since":1}` || data[1] != `{"kind":"ready"}` {
-		t.Fatalf("events = %v", data)
+	if progress[0] != `{"kind":"claiming","since":1}` || progress[1] != `{"kind":"ready"}` {
+		t.Fatalf("progress = %v", progress)
+	}
+
+	p.phases = []protocol.Phase{{Kind: protocol.PhaseClaiming, Since: 1}}
+	if e := failure(t, call(t, cs, protocol.ToolWatch, protocol.HandleRequest{Handle: "h"})); e.Code != protocol.ErrInternal {
+		t.Fatalf("a watch that ends early = %+v", e)
 	}
 }
 
-func TestReadRoutes(t *testing.T) {
-	srv, _ := newServer(t, &fakeProvider{})
-	for path, want := range map[string]string{
-		"/healthz":  `{"ok":true}`,
-		"/capacity": `{"schedulable":true}`,
-		"/images":   `{"runtimes":[{"runtime":"agent-sandbox","images":[{"name":"android","baseTag":"1"}]}]}`,
+func TestReadTools(t *testing.T) {
+	cs, _ := newServer(t, &fakeProvider{})
+	for tool, want := range map[string]string{
+		protocol.ToolCapacity: `{"schedulable":true}`,
+		protocol.ToolImages:   `{"runtimes":[{"runtime":"agent-sandbox","images":[{"name":"android","baseTag":"1"}]}]}`,
 	} {
-		if _, body := do(t, "GET", srv.URL+path, nil); strings.TrimSpace(body) != want {
-			t.Errorf("%s = %s, want %s", path, body, want)
+		if body := ok(t, call(t, cs, tool, map[string]any{})); body != want {
+			t.Errorf("%s = %s, want %s", tool, body, want)
 		}
 	}
-	if _, body := do(t, "GET", srv.URL+"/runtimes", nil); !strings.Contains(body, `"name":"agent-sandbox","available":true`) || !strings.Contains(body, `"capacity":{"schedulable":true`) {
-		t.Errorf("/runtimes = %s", body)
-	}
-	// Exactly the spec's routes: the retired adopt route and anything else 404.
-	for _, r := range [][2]string{{"POST", "/sandboxes/h/adopt"}, {"GET", "/sandboxes"}, {"PUT", "/sandboxes/h"}} {
-		if res, _ := do(t, r[0], srv.URL+r[1], nil); res.StatusCode != 404 && res.StatusCode != 405 {
-			t.Errorf("%s %s = %d", r[0], r[1], res.StatusCode)
-		}
+	if body := ok(t, call(t, cs, protocol.ToolRuntimes, nil)); !strings.Contains(body, `"name":"agent-sandbox","available":true`) || !strings.Contains(body, `"capacity":{"schedulable":true`) {
+		t.Errorf("runtimes = %s", body)
 	}
 }
 
 func TestCapacityPerImage(t *testing.T) {
-	srv, _ := newServer(t, &fakeProvider{fullImages: map[string]bool{"android": true}})
-	for query, want := range map[string]string{
-		"":                           `{"schedulable":true}`,
-		"?sandboxImage=default":      `{"schedulable":true}`,
-		"?sandboxImage=android":      `{"schedulable":false}`,
-		"?sandboxImage=Not_An_Image": `"code":"bad-request"`,
+	cs, _ := newServer(t, &fakeProvider{fullImages: map[string]bool{"android": true}})
+	for image, want := range map[string]string{
+		"":             `{"schedulable":true}`,
+		"default":      `{"schedulable":true}`,
+		"android":      `{"schedulable":false}`,
+		"Not_An_Image": `"code":"bad-request"`,
 	} {
-		if _, body := do(t, "GET", srv.URL+"/capacity"+query, nil); !strings.Contains(body, want) {
-			t.Errorf("/capacity%s = %s, want %s", query, body, want)
+		res := call(t, cs, protocol.ToolCapacity, protocol.CapacityRequest{SandboxImage: image})
+		got := text(res)
+		if !strings.Contains(got, want) {
+			t.Errorf("capacity(%q) = %s, want %s", image, got, want)
 		}
 	}
 }
 
 func TestTenantPoolsPush(t *testing.T) {
 	p := &fakeProvider{}
-	srv, _ := newServer(t, p)
-	res, body := do(t, "POST", srv.URL+"/tenant-pools/push", map[string]any{"repo": "acme/site", "ref": "refs/heads/main"})
-	if res.StatusCode != 200 || strings.TrimSpace(body) != `{"pools":["tenant-acme"]}` || len(p.pushes) != 1 {
-		t.Fatalf("status=%d body=%s pushes=%v", res.StatusCode, body, p.pushes)
+	cs, _ := newServer(t, p)
+	if body := ok(t, call(t, cs, protocol.ToolTenantPoolsPush, protocol.TenantPoolsPushRequest{Repo: "acme/site", Ref: "refs/heads/main"})); body != `{"pools":["tenant-acme"]}` || len(p.pushes) != 1 {
+		t.Fatalf("body=%s pushes=%v", body, p.pushes)
 	}
-	if res, _ := do(t, "POST", srv.URL+"/tenant-pools/push", map[string]any{"repo": "acme/site"}); res.StatusCode != 400 {
-		t.Fatalf("a push without a ref = %d", res.StatusCode)
+	if res := call(t, cs, protocol.ToolTenantPoolsPush, map[string]any{"repo": "acme/site"}); !res.IsError {
+		t.Fatal("a push without a ref was accepted")
 	}
 }
 

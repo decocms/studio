@@ -3,12 +3,12 @@ package docker
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
@@ -23,55 +23,64 @@ func TestClaimAPIOnDocker(t *testing.T) {
 	)
 	srv := httptest.NewServer((&server.Server{Registry: registry, Store: h.store, DeleteDeadline: time.Second}).Handler())
 	t.Cleanup(srv.Close)
-	call := func(method, path, body string) (int, string) {
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "studio-test"}, nil).
+		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL + protocol.PathMCP}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	call := func(tool string, args any, out any) string {
 		t.Helper()
-		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
-		res, err := http.DefaultClient.Do(req)
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s: %v", tool, err)
 		}
-		defer res.Body.Close()
-		b, _ := io.ReadAll(res.Body)
-		return res.StatusCode, string(b)
+		text := res.Content[0].(*mcp.TextContent).Text
+		if res.IsError {
+			t.Fatalf("%s failed: %s", tool, text)
+		}
+		if out != nil {
+			_ = json.Unmarshal([]byte(text), out)
+		}
+		return text
 	}
 
-	status, body := call("GET", "/runtimes", "")
 	var runtimes protocol.RuntimesResponse
-	_ = json.Unmarshal([]byte(body), &runtimes)
-	if status != 200 || len(runtimes.Runtimes) != 2 || runtimes.Runtimes[1].Name != Name || !runtimes.Runtimes[1].Available || runtimes.Runtimes[0].Available {
-		t.Fatalf("/runtimes = %d %s", status, body)
+	body := call(protocol.ToolRuntimes, nil, &runtimes)
+	if len(runtimes.Runtimes) != 2 || runtimes.Runtimes[1].Name != Name || !runtimes.Runtimes[1].Available || runtimes.Runtimes[0].Available {
+		t.Fatalf("runtimes = %s", body)
 	}
-	if status, body := call("GET", "/images", ""); status != 200 || body != `{"runtimes":[{"runtime":"docker","images":[{"name":"android"}]}]}`+"\n" {
-		t.Fatalf("/images = %d %s", status, body)
+	if body := call(protocol.ToolImages, nil, nil); body != `{"runtimes":[{"runtime":"docker","images":[{"name":"android"}]}]}` {
+		t.Fatalf("images = %s", body)
 	}
-	if status, body := call("GET", "/capacity", ""); status != 200 || !strings.Contains(body, `"schedulable":true`) {
-		t.Fatalf("/capacity = %d %s", status, body)
+	if body := call(protocol.ToolCapacity, nil, nil); !strings.Contains(body, `"schedulable":true`) {
+		t.Fatalf("capacity = %s", body)
 	}
 
-	status, body = call("POST", "/sandboxes", `{"id":{"userId":"u_1","projectRef":"agent:org:vmcp:main"},"handle":"sb-1","opts":{"sandboxImage":"android"}}`)
 	var ensured protocol.EnsureResponse
-	_ = json.Unmarshal([]byte(body), &ensured)
-	if status != 200 || ensured.Runtime != Name || ensured.Image.Served != "android" || ensured.Daemon.URL == "" {
-		t.Fatalf("POST /sandboxes = %d %s", status, body)
+	body = call(protocol.ToolEnsure, protocol.EnsureRequest{
+		ID: protocol.SandboxID{UserID: "u_1", ProjectRef: "agent:org:vmcp:main"}, Handle: "sb-1",
+		Opts: &protocol.EnsureOptions{SandboxImage: "android"},
+	}, &ensured)
+	if ensured.Runtime != Name || ensured.Image.Served != "android" || ensured.Daemon.URL == "" {
+		t.Fatalf("ensure = %s", body)
 	}
 	if rec, _ := h.store.ByHandle(ctx, "sb-1"); rec == nil || rec.Runtime != Name {
 		t.Fatalf("row = %+v", rec)
 	}
 
-	status, body = call("GET", "/sandboxes/sb-1", "")
 	var got protocol.StatusResponse
-	_ = json.Unmarshal([]byte(body), &got)
-	if status != 200 || !got.Alive || got.Runtime != Name || got.Daemon == nil || got.LastTermination != nil {
-		t.Fatalf("GET /sandboxes/sb-1 = %d %s", status, body)
+	body = call(protocol.ToolStatus, protocol.StatusRequest{Handle: "sb-1"}, &got)
+	if !got.Alive || got.Runtime != Name || got.Daemon == nil || got.LastTermination != nil {
+		t.Fatalf("status = %s", body)
 	}
-	if status, body := call("PATCH", "/sandboxes/sb-1/lifetime", `{"graceMs":1000}`); status != 204 {
-		t.Fatalf("PATCH lifetime = %d %s", status, body)
-	}
-	if status, body := call("DELETE", "/sandboxes/sb-1", ""); status != 204 {
-		t.Fatalf("DELETE = %d %s", status, body)
+	grace := int64(1000)
+	call(protocol.ToolLifetime, protocol.LifetimeRequest{Handle: "sb-1", GraceMs: &grace}, nil)
+	if body := call(protocol.ToolDelete, protocol.HandleRequest{Handle: "sb-1"}, nil); body != `{"state":"deleted"}` {
+		t.Fatalf("delete = %s", body)
 	}
 	if h.engine.get("sb-1") != nil {
-		t.Fatal("container survived DELETE")
+		t.Fatal("container survived the delete")
 	}
 }
 

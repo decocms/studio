@@ -70,7 +70,7 @@ The set of queues a worker pod listens on is configured by env (`listenQueues`).
 
 | Component | Role |
 | --- | --- |
-| **DB** (PostgreSQL, via Kysely) | System of record: orgs, connections, credential vault, audit, threads + messages, and `sandbox_runner_state` (written only by the sandbox controller). It also holds the **DBOS queues and `workflow_status` journal** that make runs durable and recoverable. |
+| **DB** (PostgreSQL, via Kysely) | System of record: orgs, connections, credential vault, audit, threads + messages. It also holds the **DBOS queues and `workflow_status` journal** that make runs durable and recoverable. |
 | **NATS** | Live messaging infrastructure with three jobs: (1) the fenced JetStream run log (`decopilot.stream.<thread>`) used by `/stream` and the durable projector; (2) cross-pod run-cancellation broadcasts; (3) JetStream KV state shared by replicas for MCP list caches and connection circuit breakers. |
 
 ## The Decopilot run lifecycle
@@ -109,7 +109,7 @@ File and object-storage routes are the genuine "called by both" surface, and the
 
 ## Sandboxes
 
-Studio does not create hosted sandboxes itself. The API and the workers call the **sandbox controller**, a separate Go service in the sandbox namespace, over an mTLS claim API. The controller holds the Kubernetes RBAC, creates the `SandboxClaim`s, owns `sandbox_runner_state`, and answers where each sandbox's daemon is and which bearer opens it. Daemon and preview traffic then goes straight from Studio or the browser to the pod; it never passes through the controller. The controller calls back to Studio over mTLS to re-mint clone and org-fs credentials. It must never be reachable from the internet: a caller holding a certificate from its CA can start sandboxes with arbitrary environment variables. On a single machine without Kubernetes, the same controller serves sandboxes as Docker containers (its `docker` runtime).
+Studio does not create hosted sandboxes itself. The API and the workers call the **sandbox controller**, a separate Go service in the sandbox namespace, through MCP tools served over mTLS (`SANDBOX_ENSURE`, `SANDBOX_STATUS`, `SANDBOX_DELETE`, …). The controller holds the Kubernetes RBAC, creates the `SandboxClaim`s, keeps every sandbox's state in its own `sandbox_controller` schema, and answers where each sandbox's daemon is and which bearer opens it. Daemon and preview traffic then goes straight from Studio or the browser to the pod; it never passes through the controller. The controller calls back to Studio over mTLS to re-mint clone and org-fs credentials. It must never be reachable from the internet: a caller holding a certificate from its CA can start sandboxes with arbitrary environment variables. On a single machine without Kubernetes, the same controller serves sandboxes as Docker containers (its `docker` runtime).
 
 A hosted AgentSandbox clones the repo, runs the dev server, and exposes an in-pod **daemon**. Its HTTP surface splits in two:
 

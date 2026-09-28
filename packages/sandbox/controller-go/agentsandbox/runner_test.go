@@ -127,7 +127,7 @@ type fakeStudio struct {
 	mints           []protocol.EnsureRepo
 }
 
-func (s *fakeStudio) MintCloneURL(_ context.Context, repo protocol.EnsureRepo, _ int64) (string, error) {
+func (s *fakeStudio) MintCloneURL(_ context.Context, repo protocol.EnsureRepo, _ *protocol.Tenant, _ int64) (string, error) {
 	s.mints = append(s.mints, repo)
 	return s.cloneURL, nil
 }
@@ -310,7 +310,7 @@ func TestProvisionCold(t *testing.T) {
 		t.Errorf("route = %s", route.Patch)
 	}
 	st := h.persisted()
-	if st.Writer != Writer || st.Token != sb.Daemon.Token || st.AdoptedSandboxName != "main-abc" || st.Image.Served != "default" || st.EnsureOpts.OrgFsConfigJSON == "" {
+	if st.Token != sb.Daemon.Token || st.AdoptedSandboxName != "main-abc" || st.Image.Served != "default" || st.EnsureOpts.OrgFsConfigJSON == "" {
 		t.Fatalf("row = %+v", st)
 	}
 }
@@ -426,28 +426,6 @@ func TestResumeRotatesCredentialAndRenews(t *testing.T) {
 	}
 	if after := h.claim("main-abc").Spec.Lifecycle.ShutdownTime.Time; !after.After(before) {
 		t.Fatalf("shutdown not renewed: %v -> %v", before, after)
-	}
-}
-
-func TestResumeStampsARowTheInProcessRunnerWrote(t *testing.T) {
-	h := newHarness(t, Config{Namespace: ns})
-	h.daemon.token = strings.Repeat("a", 64)
-	if _, err := h.runner.Ensure(context.Background(), testID, "main-abc", protocol.EnsureOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	legacy := h.persisted()
-	legacy.Writer = ""
-	if err := h.store.Put(context.Background(), testID, Name, "main-abc", legacy); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := h.runner.Ensure(context.Background(), testID, "main-abc", protocol.EnsureOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if len(h.created) != 1 {
-		t.Fatalf("resume created %d claims", len(h.created))
-	}
-	if st := h.persisted(); st.Writer != Writer || st.Token != legacy.Token {
-		t.Fatalf("resumed row = writer %q token kept %v", st.Writer, st.Token == legacy.Token)
 	}
 }
 

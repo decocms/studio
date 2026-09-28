@@ -33,7 +33,7 @@ func TestCallbacks(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	fresh, err := c.MintCloneURL(ctx, protocol.EnsureRepo{CloneURL: "https://github.com/a/b.git", RepositoryID: "repo_1"}, 1800000)
+	fresh, err := c.MintCloneURL(ctx, protocol.EnsureRepo{CloneURL: "https://github.com/a/b.git", RepositoryID: "repo_1"}, nil, 1800000)
 	if err != nil || fresh != "https://x-access-token:fresh@github.com/a/b.git" {
 		t.Fatalf("fresh=%q err=%v", fresh, err)
 	}
@@ -42,11 +42,11 @@ func TestCallbacks(t *testing.T) {
 	}
 
 	answer = `{"cloneUrl":null}`
-	if fresh, err := c.MintCloneURL(ctx, protocol.EnsureRepo{CloneURL: "u", ConnectionID: "c"}, 0); err != nil || fresh != "" {
+	if fresh, err := c.MintCloneURL(ctx, protocol.EnsureRepo{CloneURL: "u", ConnectionID: "c"}, nil, 0); err != nil || fresh != "" {
 		t.Fatalf("a decline is empty, not an error: %q %v", fresh, err)
 	}
 	answer = "500"
-	if _, err := c.MintCloneURL(ctx, protocol.EnsureRepo{CloneURL: "u", ConnectionID: "c"}, 0); err == nil {
+	if _, err := c.MintCloneURL(ctx, protocol.EnsureRepo{CloneURL: "u", ConnectionID: "c"}, nil, 0); err == nil {
 		t.Fatal("a 500 is an error")
 	}
 

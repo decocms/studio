@@ -1,32 +1,41 @@
 /**
- * Hosted sandbox provider over the sandbox controller's HTTP API.
+ * Hosted sandbox provider over the sandbox controller's MCP tools.
  *
  * The controller answers where a sandbox's daemon is and which bearer opens
- * it; the daemon traffic itself goes straight from Studio to the pod, so
- * streaming bodies, SSE and preview websockets never take a second hop. Every
- * controller call is mTLS with Studio's client certificate.
+ * it, and keeps every sandbox's state in its own database; the daemon traffic
+ * itself goes straight from Studio to the pod, so streaming bodies, SSE and
+ * preview websockets never take a second hop. Every controller call is mTLS
+ * with Studio's client certificate.
  */
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Progress } from "@modelcontextprotocol/sdk/types.js";
 import type { z } from "zod";
 import {
   type SandboxImage,
   SandboxImageSchema,
 } from "@decocms/shared/git-providers";
 import type {
+  CapacityRequest,
   Daemon,
   EnsureRequest,
+  HandleRequest,
   LifetimeRequest,
   Phase,
+  StatusRequest,
   TenantPoolsPushRequest,
 } from "../../../controller-types/sandbox-api";
 import {
-  PathCapacity,
-  PathEvents,
-  PathImages,
-  PathLifetime,
-  PathSandbox,
-  PathSandboxes,
-  PathTenantPoolsPush,
+  PathMCP,
+  ToolCapacity,
+  ToolDelete,
+  ToolEnsure,
+  ToolImages,
+  ToolLifetime,
+  ToolStatus,
+  ToolTenantPoolsPush,
+  ToolWatch,
 } from "../../../controller-types/sandbox-api";
 import {
   ConfigRequestError,
@@ -50,7 +59,8 @@ import type {
 } from "../types";
 import {
   capacityResponseSchema,
-  drainingResponseSchema,
+  deleteResponseSchema,
+  emptySchema,
   ensureResponseSchema,
   errorResponseSchema,
   imagesResponseSchema,
@@ -70,10 +80,15 @@ export {
 
 const LOG_LABEL = "RemoteSandboxProvider";
 
-/** Bounds every controller call except ensure and events, which the controller bounds on progress. */
+/** Bounds every controller call except ensure and watch, which the controller bounds on progress. */
 const CONTROL_TIMEOUT_MS = 30_000;
-/** Above the controller's own DELETE deadline, after which it answers 202. */
+/** Above the controller's own delete deadline, after which it answers draining. */
 const DELETE_TIMEOUT_MS = 90_000;
+/**
+ * The MCP client always arms a request timeout; this one never fires. It is
+ * setTimeout's ceiling, since a larger delay fires at once.
+ */
+const UNBOUNDED_MS = 2 ** 31 - 1;
 /** Same reuse window as the in-process capacity probe. */
 const CAPACITY_TTL_MS = 3_000;
 /** A cached daemon address is re-read after this; a 401 or a dead url re-reads it sooner. */
@@ -90,10 +105,9 @@ export interface RemoteSandboxProviderOptions {
   tls?: { cert: string; key: string; ca: string };
 }
 
-/** A non-2xx controller answer, with the controller's error code. */
+/** A failed controller call, with the controller's error code. */
 export class SandboxControllerError extends Error {
   constructor(
-    readonly status: number,
     readonly code: string,
     message: string,
   ) {
@@ -102,7 +116,7 @@ export class SandboxControllerError extends Error {
   }
 }
 
-/** DELETE outlived the controller's deadline: retry, never treat it as gone. */
+/** A delete outlived the controller's deadline: retry, never treat it as gone. */
 export class SandboxDrainingError extends Error {
   constructor(readonly handle: string) {
     super(`sandbox ${handle} is still draining; retry the delete`);
@@ -110,132 +124,140 @@ export class SandboxDrainingError extends Error {
   }
 }
 
-type RequestOptions = {
-  method?: string;
-  body?: unknown;
-  query?: string;
+type CallOptions = {
+  /** Null leaves the call to the controller's own progress bound. */
   timeoutMs?: number | null;
   signal?: AbortSignal;
-  accept?: string;
+  onprogress?: (progress: Progress) => void;
 };
-
-function pathFor(template: string, handle: string): string {
-  return template.replace("{handle}", encodeURIComponent(handle));
-}
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** A failed call's text content as the error its ErrorResponse names. */
+function failure(tool: string, text: string): Error {
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    /* the SDK's own wording, e.g. a schema violation */
+  }
+  const parsed = errorResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return new SandboxControllerError(
+      "internal",
+      `sandbox controller ${tool} failed: ${text.slice(0, 300)}`,
+    );
+  }
+  const err = parsed.data;
+  // start.ts words this one for the agent: the pod refused the handshake,
+  // the claim was released, and a retry gets another pod.
+  if (err.code === "bootstrap-rejected") {
+    return new ConfigRequestError(err.status ?? 502, err.error);
+  }
+  const reasons = err.reasons
+    ? ` (${Object.entries(err.reasons)
+        .map(([rt, why]) => `${rt}: ${why}`)
+        .join("; ")})`
+    : "";
+  return new SandboxControllerError(
+    err.code,
+    `sandbox controller ${tool}: ${err.error}${reasons}`,
+  );
+}
+
+/** A sandbox the controller does not know reads as absent. */
+function nullWhenUnknown(err: unknown): null {
+  if (err instanceof SandboxControllerError && err.code === "unknown-handle") {
+    return null;
+  }
+  throw err;
+}
+
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  const first: unknown = content[0];
+  return typeof first === "object" &&
+    first !== null &&
+    "text" in first &&
+    typeof first.text === "string"
+    ? first.text
+    : "";
+}
+
 export class RemoteSandboxProvider implements HostedSandboxProvider {
-  private readonly base: string;
+  private readonly endpoint: URL;
   private readonly tls: RemoteSandboxProviderOptions["tls"];
+  private connecting: Promise<Client> | null = null;
   private readonly daemons = new Map<string, { daemon: Daemon; at: number }>();
   private capacity: { value: boolean; at: number } | null = null;
   private capacityInFlight: Promise<boolean> | null = null;
 
   constructor(opts: RemoteSandboxProviderOptions) {
-    const url = new URL(opts.baseUrl);
-    this.base = url.toString().replace(/\/$/, "");
+    this.endpoint = new URL(
+      PathMCP,
+      `${new URL(opts.baseUrl).toString().replace(/\/$/, "")}/`,
+    );
     this.tls = opts.tls;
   }
 
   // ---- Transport ------------------------------------------------------------
 
-  private async request(
-    path: string,
-    opts: RequestOptions = {},
-  ): Promise<Response> {
+  /**
+   * One client for every call: the controller is stateless, so the
+   * initialize handshake runs once and a controller restart costs nothing.
+   */
+  private client(): Promise<Client> {
+    this.connecting ??= (async () => {
+      const client = new Client({ name: "studio", version: "1.0.0" });
+      const tls = this.tls;
+      const transport = new StreamableHTTPClientTransport(this.endpoint, {
+        // Bun's own fetch timeout, off: ensure answers only once the daemon is
+        // ready, and a watch is long-lived. Calls are bounded by CallOptions.
+        fetch: (url, init) =>
+          fetch(url, {
+            ...init,
+            ...(tls ? { tls } : {}),
+            timeout: false,
+          } as BunFetchRequestInit),
+      });
+      await client.connect(transport, { timeout: CONTROL_TIMEOUT_MS });
+      return client;
+    })().catch((err: unknown) => {
+      this.connecting = null;
+      throw err;
+    });
+    return this.connecting;
+  }
+
+  /** Calls a tool and parses its output, or throws the error it names. */
+  private async call<T>(
+    tool: string,
+    args: object,
+    schema: z.ZodType<T>,
+    opts: CallOptions = {},
+  ): Promise<T> {
     const timeoutMs =
       opts.timeoutMs === undefined ? CONTROL_TIMEOUT_MS : opts.timeoutMs;
-    const signals = [
-      ...(opts.signal ? [opts.signal] : []),
-      ...(timeoutMs !== null ? [AbortSignal.timeout(timeoutMs)] : []),
-    ];
-    const headers = new Headers({ accept: opts.accept ?? "application/json" });
-    if (opts.body !== undefined)
-      headers.set("content-type", "application/json");
-    const init: BunFetchRequestInit & { timeout?: false } = {
-      method: opts.method ?? "GET",
-      headers,
-      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-      signal: signals.length > 0 ? AbortSignal.any(signals) : undefined,
-      ...(this.tls ? { tls: this.tls } : {}),
-      // Bun's own fetch timeout, off: ensure answers only once the daemon is
-      // ready, and the events stream is long-lived.
-      ...(timeoutMs === null ? { timeout: false } : {}),
-    };
-    return fetch(`${this.base}${path}${opts.query ?? ""}`, init);
-  }
-
-  /** Turns a non-2xx answer into the error its body names. */
-  private async failure(res: Response, what: string): Promise<Error> {
-    const text = await res.text().catch(() => "");
-    let body: unknown = null;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      /* not JSON */
-    }
-    const parsed = errorResponseSchema.safeParse(body);
-    if (!parsed.success) {
-      return new SandboxControllerError(
-        res.status,
-        "internal",
-        `sandbox controller ${what} returned ${res.status}: ${text.slice(0, 300)}`,
-      );
-    }
-    const err = parsed.data;
-    // start.ts words this one for the agent: the pod refused the handshake,
-    // the claim was released, and a retry gets another pod.
-    if (err.code === "bootstrap-rejected") {
-      return new ConfigRequestError(err.status ?? res.status, err.error);
-    }
-    const reasons = err.reasons
-      ? ` (${Object.entries(err.reasons)
-          .map(([rt, why]) => `${rt}: ${why}`)
-          .join("; ")})`
-      : "";
-    return new SandboxControllerError(
-      res.status,
-      err.code,
-      `sandbox controller ${what}: ${err.error}${reasons}`,
+    const result = await (await this.client()).callTool(
+      { name: tool, arguments: { ...args } },
+      undefined,
+      {
+        timeout: timeoutMs ?? UNBOUNDED_MS,
+        signal: opts.signal,
+        onprogress: opts.onprogress,
+      },
     );
-  }
-
-  private async parse<T>(
-    res: Response,
-    schema: z.ZodType<T>,
-    what: string,
-  ): Promise<T> {
-    const text = await res.text();
-    let body: unknown;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      throw new SandboxControllerError(
-        res.status,
-        "internal",
-        `sandbox controller ${what} returned a non-JSON body`,
-      );
-    }
-    const parsed = schema.safeParse(body);
+    if (result.isError) throw failure(tool, textOf(result.content));
+    const parsed = schema.safeParse(result.structuredContent);
     if (!parsed.success) {
       throw new SandboxControllerError(
-        res.status,
         "internal",
-        `sandbox controller ${what} returned a malformed body: ${parsed.error.message}`,
+        `sandbox controller ${tool} returned a malformed result: ${parsed.error.message}`,
       );
     }
     return parsed.data;
-  }
-
-  private async drain(res: Response): Promise<void> {
-    try {
-      await res.body?.cancel();
-    } catch {
-      /* ignore */
-    }
   }
 
   // ---- Daemon address cache -------------------------------------------------
@@ -260,21 +282,14 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
     this.daemons.set(handle, { daemon, at: Date.now() });
   }
 
-  /** GET /sandboxes/:handle; null when the controller has no such sandbox. */
+  /** Null when the controller has no such sandbox. */
   private async status(handle: string, resurrect = false) {
-    const what = `GET ${handle}`;
-    const res = await this.request(pathFor(PathSandbox, handle), {
-      query: resurrect ? "?resurrect=1" : "",
+    const args: StatusRequest = { handle, resurrect };
+    const status = await this.call(ToolStatus, args, statusResponseSchema, {
       // Resurrecting provisions; the controller bounds it on progress.
       timeoutMs: resurrect ? null : CONTROL_TIMEOUT_MS,
-    });
-    if (res.status === 404) {
-      await this.drain(res);
-      return null;
-    }
-    if (!res.ok) throw await this.failure(res, what);
-    const status = await this.parse(res, statusResponseSchema, what);
-    this.remember(handle, status.alive ? status.daemon : null);
+    }).catch(nullWhenUnknown);
+    this.remember(handle, status?.alive ? status.daemon : null);
     return status;
   }
 
@@ -307,18 +322,12 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
       );
     }
     const { image: _templatePinned, ...wireOpts } = opts;
-    const body: EnsureRequest = { id, handle, opts: wireOpts };
-    const what = `ensure ${handle}`;
-    const res = await this.request(PathSandboxes, {
-      method: "POST",
-      body,
+    const args: EnsureRequest = { id, handle, opts: wireOpts };
+    const out = await this.call(ToolEnsure, args, ensureResponseSchema, {
       timeoutMs: null,
     });
-    if (!res.ok) throw await this.failure(res, what);
-    const out = await this.parse(res, ensureResponseSchema, what);
     if (out.handle !== handle) {
       throw new SandboxControllerError(
-        res.status,
         "internal",
         `sandbox controller answered ensure ${handle} for ${out.handle}`,
       );
@@ -343,26 +352,17 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
   }
 
   /**
-   * Waits for the controller to collect the sandbox. A 202 means the claim
-   * outlived the controller's deadline and is still draining: that throws, so
-   * a caller rebinding never provisions a second daemon beside it.
+   * Waits for the controller to collect the sandbox. Draining means the claim
+   * outlived the controller's deadline: that throws, so a caller rebinding
+   * never provisions a second daemon beside it.
    */
   async delete(handle: string): Promise<void> {
     this.daemons.delete(handle);
-    const what = `DELETE ${handle}`;
-    const res = await this.request(pathFor(PathSandbox, handle), {
-      method: "DELETE",
+    const args: HandleRequest = { handle };
+    const out = await this.call(ToolDelete, args, deleteResponseSchema, {
       timeoutMs: DELETE_TIMEOUT_MS,
-    });
-    if (res.status === 204 || res.status === 404) {
-      await this.drain(res);
-      return;
-    }
-    if (res.status === 202) {
-      await this.parse(res, drainingResponseSchema, what);
-      throw new SandboxDrainingError(handle);
-    }
-    throw await this.failure(res, what);
+    }).catch(nullWhenUnknown);
+    if (out?.state === "draining") throw new SandboxDrainingError(handle);
   }
 
   async alive(handle: string): Promise<boolean> {
@@ -381,21 +381,10 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
    * Best-effort like the in-process runner's: a missed renewal or release
    * costs idle minutes, never a run, and a gone sandbox stays gone.
    */
-  private async lifetime(
-    handle: string,
-    body: LifetimeRequest,
-    what: string,
-  ): Promise<void> {
+  private async lifetime(args: LifetimeRequest, what: string): Promise<void> {
+    const { handle } = args;
     try {
-      const res = await this.request(pathFor(PathLifetime, handle), {
-        method: "PATCH",
-        body,
-      });
-      if (res.ok || res.status === 404) {
-        await this.drain(res);
-        return;
-      }
-      throw await this.failure(res, `${what} ${handle}`);
+      await this.call(ToolLifetime, args, emptySchema).catch(nullWhenUnknown);
     } catch (err) {
       console.warn(
         `[${LOG_LABEL}] ${what} failed for ${handle}: ${errMsg(err)}`,
@@ -404,13 +393,12 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
   }
 
   renewTtl(handle: string): Promise<void> {
-    return this.lifetime(handle, { extendToIdleWindow: true }, "TTL renew");
+    return this.lifetime({ handle, extendToIdleWindow: true }, "TTL renew");
   }
 
   releaseAfter(handle: string, graceMs: number): Promise<void> {
     return this.lifetime(
-      handle,
-      { graceMs: Math.max(0, Math.round(graceMs)) },
+      { handle, graceMs: Math.max(0, Math.round(graceMs)) },
       "release",
     );
   }
@@ -434,9 +422,8 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
   private async readCapacity(): Promise<boolean> {
     let value = true;
     try {
-      const res = await this.request(PathCapacity);
-      if (!res.ok) throw await this.failure(res, "capacity");
-      value = (await this.parse(res, capacityResponseSchema, "capacity"))
+      const args: CapacityRequest = {};
+      value = (await this.call(ToolCapacity, args, capacityResponseSchema))
         .schedulable;
     } catch (err) {
       console.warn(`[${LOG_LABEL}] capacity probe failed: ${errMsg(err)}`);
@@ -451,9 +438,7 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
    * repository cannot hold are dropped rather than offered.
    */
   async listSandboxImages(): Promise<SandboxImage[]> {
-    const res = await this.request(PathImages);
-    if (!res.ok) throw await this.failure(res, "images");
-    const { runtimes } = await this.parse(res, imagesResponseSchema, "images");
+    const { runtimes } = await this.call(ToolImages, {}, imagesResponseSchema);
     const names = new Set<SandboxImage>();
     for (const { images } of runtimes) {
       for (const { name } of images) {
@@ -483,15 +468,14 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
     repoFullName: string,
     ref: string,
   ): Promise<string[]> {
-    const body: TenantPoolsPushRequest = { repo: repoFullName, ref };
+    const args: TenantPoolsPushRequest = { repo: repoFullName, ref };
     try {
-      const res = await this.request(PathTenantPoolsPush, {
-        method: "POST",
-        body,
-      });
-      if (!res.ok) throw await this.failure(res, "tenant pool push");
       return (
-        await this.parse(res, tenantPoolsPushResponseSchema, "tenant pool push")
+        await this.call(
+          ToolTenantPoolsPush,
+          args,
+          tenantPoolsPushResponseSchema,
+        )
       ).pools;
     } catch (err) {
       console.warn(
@@ -503,6 +487,9 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
 
   close(): void {
     this.daemons.clear();
+    const connecting = this.connecting;
+    this.connecting = null;
+    void connecting?.then((client) => client.close()).catch(() => {});
   }
 
   // ---- Daemon traffic -------------------------------------------------------
@@ -537,7 +524,7 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
     if (!fresh || (fresh.token === daemon.token && fresh.url === daemon.url)) {
       return first;
     }
-    await this.drain(first);
+    await first.body?.cancel().catch(() => {});
     return fetchDaemon(fresh.url, fresh.token, path, init);
   }
 
@@ -630,65 +617,52 @@ export class RemoteSandboxProvider implements HostedSandboxProvider {
   // ---- Lifecycle phases -----------------------------------------------------
 
   /**
-   * SSE of the claim's pre-ready phases, ending after `ready` or `failed`. A
-   * stream that ends early, or a frame that does not parse, surfaces as a
-   * `failed` phase so a waiting UI never hangs.
+   * The claim's pre-ready phases, ending after `ready` or `failed`, from the
+   * watch tool's progress notifications. A watch that ends early, or a phase
+   * that does not parse, surfaces as a `failed` phase so a waiting UI never
+   * hangs.
    */
   async *watchClaimLifecycle(
     handle: string,
     signal?: AbortSignal,
   ): AsyncGenerator<ClaimPhase, void, unknown> {
-    let res: Response;
-    try {
-      res = await this.request(pathFor(PathEvents, handle), {
-        accept: "text/event-stream",
-        timeoutMs: null,
-        signal,
-      });
-    } catch (err) {
-      if (signal?.aborted) return;
-      yield failedPhase(`controller events unreachable: ${errMsg(err)}`);
-      return;
-    }
-    if (!res.ok || !res.body) {
-      const err = await this.failure(res, `events ${handle}`);
-      yield failedPhase(err.message);
-      return;
-    }
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buf = "";
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += value.replace(/\r\n/g, "\n");
-        for (
-          let sep = buf.indexOf("\n\n");
-          sep !== -1;
-          sep = buf.indexOf("\n\n")
-        ) {
-          const frame = buf.slice(0, sep);
-          buf = buf.slice(sep + 2);
-          const data = frame
-            .split("\n")
-            .filter((line) => line.startsWith("data:"))
-            .map((line) => line.slice(5).trimStart())
-            .join("\n");
-          if (!data) continue;
-          const phase = toClaimPhase(data);
-          yield phase;
-          if (phase.kind === "ready" || phase.kind === "failed") return;
+    const queue: ClaimPhase[] = [];
+    let wake: (() => void) | null = null;
+    let done = false;
+    const push = (phase: ClaimPhase) => {
+      queue.push(phase);
+      wake?.();
+    };
+    const args: HandleRequest = { handle };
+    this.call(ToolWatch, args, phaseSchema, {
+      timeoutMs: null,
+      signal,
+      onprogress: (progress) => push(toClaimPhase(progress.message ?? "")),
+    })
+      .catch((err: unknown) => {
+        if (!signal?.aborted) {
+          push(failedPhase(`controller watch failed: ${errMsg(err)}`));
         }
+      })
+      .finally(() => {
+        done = true;
+        wake?.();
+      });
+    while (true) {
+      const phase = queue.shift();
+      if (phase) {
+        yield phase;
+        if (phase.kind === "ready" || phase.kind === "failed") return;
+        continue;
       }
-    } catch (err) {
-      if (signal?.aborted) return;
-      yield failedPhase(`controller events stream broke: ${errMsg(err)}`);
-      return;
-    } finally {
-      await reader.cancel().catch(() => {});
+      if (done) break;
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+      });
+      wake = null;
     }
     if (!signal?.aborted) {
-      yield failedPhase("controller events stream ended before ready");
+      yield failedPhase("controller watch ended before ready");
     }
   }
 }
@@ -697,7 +671,7 @@ function failedPhase(message: string): ClaimPhase {
   return { kind: "failed", reason: "unknown", message };
 }
 
-/** One `data:` payload as the phase the lifecycle SSE route speaks. */
+/** One progress message as the phase the lifecycle SSE route speaks. */
 export function toClaimPhase(data: string): ClaimPhase {
   let json: unknown;
   try {

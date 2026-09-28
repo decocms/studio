@@ -86,7 +86,7 @@ export function threadIdFromBranch(
  * keys by the thread's creator, everything else by the caller.
  *
  * Sandbox identity is per-user in three places that must agree — the claim
- * handle (`computeClaimHandle`), `sandbox_runner_state`'s PK, and the
+ * handle (`computeClaimHandle`), the sandbox controller's row key, and the
  * `sandboxMap` key. Keyed by the CALLER, an org member opening a teammate's
  * thread got a SECOND sandbox: a private clone of the same git branch that
  * nobody can prompt (the chat is read-only for them) and whose shutdown

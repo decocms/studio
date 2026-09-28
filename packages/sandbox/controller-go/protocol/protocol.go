@@ -1,5 +1,5 @@
-// Package protocol is the controller's HTTP API: what Studio sends and reads,
-// and the callbacks the controller makes into Studio. The TypeScript types in
+// Package protocol is the controller's claim API: MCP tools Studio calls, and
+// the HTTP callbacks the controller makes into Studio. The TypeScript types in
 // packages/sandbox/controller-types/sandbox-api.ts are generated from this
 // file (cmd/tsgen), so a field changed here breaks Studio's build.
 //
@@ -7,40 +7,52 @@
 // TypeScript; a pointer without it is `T | null`.
 package protocol
 
-// The routes, in net/http pattern syntax: substitute the handle for
-// `{handle}`, URL-escaped.
+// PathMCP serves the tools as stateless streamable HTTP. A failed call is a
+// result with isError set and an ErrorResponse, as JSON, in its text content.
+const PathMCP = "/mcp"
 
-// POST: EnsureRequest → EnsureResponse.
-const PathSandboxes = "/sandboxes"
-
-// GET → StatusResponse (`?resurrect=1` to re-provision a reaped sandbox);
-// DELETE → 204, or 202 DrainingResponse.
-const PathSandbox = "/sandboxes/{handle}"
-
-// PATCH: LifetimeRequest → 204.
-const PathLifetime = "/sandboxes/{handle}/lifetime"
-
-// POST: CredentialsRequest → 204.
-const PathCredentials = "/sandboxes/{handle}/credentials"
-
-// GET → text/event-stream of Phase.
-const PathEvents = "/sandboxes/{handle}/events"
-
-// GET → ImagesResponse.
-const PathImages = "/images"
-
-// GET → RuntimesResponse.
-const PathRuntimes = "/runtimes"
-
-// GET → CapacityResponse. `?sandboxImage=<name>` judges the nodes that
-// image's variant schedules onto instead of the default image's.
-const PathCapacity = "/capacity"
-
-// POST: TenantPoolsPushRequest → TenantPoolsPushResponse.
-const PathTenantPoolsPush = "/tenant-pools/push"
-
-// GET → HealthzResponse. Needs a client certificate like every other route.
+// GET → HealthzResponse. Needs a client certificate like the tools.
 const PathHealthz = "/healthz"
+
+// EnsureRequest → EnsureResponse, once the daemon is healthy and configured.
+const ToolEnsure = "SANDBOX_ENSURE"
+
+// StatusRequest → StatusResponse.
+const ToolStatus = "SANDBOX_STATUS"
+
+// HandleRequest → DeleteResponse.
+const ToolDelete = "SANDBOX_DELETE"
+
+// LifetimeRequest → Empty.
+const ToolLifetime = "SANDBOX_LIFETIME"
+
+// CredentialsRequest → Empty.
+const ToolCredentials = "SANDBOX_CREDENTIALS_ROTATE"
+
+// HandleRequest → the terminal Phase. With a progress token, every phase,
+// terminal included, is also a progress notification whose message is the
+// Phase as JSON.
+const ToolWatch = "SANDBOX_WATCH"
+
+// Empty → ImagesResponse.
+const ToolImages = "SANDBOX_IMAGES"
+
+// Empty → RuntimesResponse.
+const ToolRuntimes = "SANDBOX_RUNTIMES"
+
+// CapacityRequest → CapacityResponse.
+const ToolCapacity = "SANDBOX_CAPACITY"
+
+// TenantPoolsPushRequest → TenantPoolsPushResponse.
+const ToolTenantPoolsPush = "SANDBOX_TENANT_POOLS_PUSH"
+
+// Empty is the input or output of a tool that takes or returns nothing.
+type Empty struct{}
+
+// HandleRequest names one sandbox by its claim handle.
+type HandleRequest struct {
+	Handle string `json:"handle"`
+}
 
 // SandboxID is Studio's tenant-scoped identity for a sandbox. The controller
 // never parses ProjectRef: it is an opaque key.
@@ -56,13 +68,13 @@ type Capability string
 const (
 	// A preview URL is served for the sandbox.
 	CapPreview Capability = "preview"
-	// GET /sandboxes/:handle/events reports the pre-ready phases, not only "ready".
+	// SANDBOX_WATCH reports the pre-ready phases, not only "ready".
 	CapLifecyclePhases Capability = "lifecycle-phases"
 	// Claims may bind prewarmed pods.
 	CapWarmPool Capability = "warm-pool"
 	// lastTermination can say why the sandbox stopped (OOM, eviction).
 	CapTerminationReason Capability = "termination-reason"
-	// PATCH /sandboxes/:handle/lifetime moves shutdown.
+	// SANDBOX_LIFETIME moves shutdown.
 	CapTTLExtend Capability = "ttl-extend"
 	// The runtime answers the capacity probe; without it, it always admits.
 	CapCapacity Capability = "capacity"
@@ -172,7 +184,7 @@ type EnsureOptions struct {
 	OrgFsConfigJSON string `json:"orgFsConfigJson,omitempty"`
 }
 
-// EnsureRequest is POST /sandboxes.
+// EnsureRequest is SANDBOX_ENSURE's input.
 type EnsureRequest struct {
 	ID SandboxID `json:"id"`
 	// Studio-derived claim name, so preview routing can recompute it without a
@@ -181,7 +193,8 @@ type EnsureRequest struct {
 	Handle string         `json:"handle"`
 	Opts   *EnsureOptions `json:"opts,omitempty"`
 	// A named runtime is a hard constraint: unavailable, incapable or full is
-	// a 503, never a silent placement elsewhere, unless allowFallback.
+	// a no-runtime error, never a silent placement elsewhere, unless
+	// allowFallback.
 	Runtime       string       `json:"runtime,omitempty"`
 	Requires      []Capability `json:"requires,omitempty"`
 	AllowFallback bool         `json:"allowFallback,omitempty"`
@@ -231,8 +244,14 @@ type PodTermination struct {
 	EvictionMessage string `json:"evictionMessage,omitempty"`
 }
 
-// StatusResponse is GET /sandboxes/:handle. With `?resurrect=1` a sandbox
-// whose claim is gone is re-provisioned from its persisted options first.
+// StatusRequest is SANDBOX_STATUS's input. With resurrect, a sandbox whose
+// claim is gone is re-provisioned from its persisted options first: preview
+// traffic, where a fetch is the only sign anyone is here.
+type StatusRequest struct {
+	Handle    string `json:"handle"`
+	Resurrect bool   `json:"resurrect,omitempty"`
+}
+
 type StatusResponse struct {
 	Handle          string          `json:"handle"`
 	Alive           bool            `json:"alive"`
@@ -244,26 +263,35 @@ type StatusResponse struct {
 	LastTermination *PodTermination `json:"lastTermination"`
 }
 
-// DrainingResponse is DELETE /sandboxes/:handle's 202: the claim is not gone
-// yet. It means retry, not success; a caller rebinding must not POST on it.
-type DrainingResponse struct {
-	State string `json:"state"`
+type DeleteState string
+
+const (
+	DeleteStateDeleted DeleteState = "deleted"
+	// The claim outlived the controller's deadline and is not gone yet. It
+	// means retry, not success; a caller rebinding must not ensure on it.
+	DeleteStateDraining DeleteState = "draining"
+)
+
+type DeleteResponse struct {
+	State DeleteState `json:"state"`
 }
 
-// LifetimeRequest is PATCH /sandboxes/:handle/lifetime. Exactly one field:
-// extendToIdleWindow only moves shutdown later, graceMs only earlier.
+// LifetimeRequest takes exactly one of extendToIdleWindow, which only moves
+// shutdown later, and graceMs, which only moves it earlier.
 type LifetimeRequest struct {
+	Handle             string `json:"handle"`
 	ExtendToIdleWindow bool   `json:"extendToIdleWindow,omitempty"`
 	GraceMs            *int64 `json:"graceMs,omitempty"`
 }
 
-// CredentialsRequest is POST /sandboxes/:handle/credentials: rotate the
-// primary checkout's clone credential in place (same repository, new token).
+// CredentialsRequest rotates the primary checkout's clone credential in place
+// (same repository, new token).
 type CredentialsRequest struct {
+	Handle   string `json:"handle"`
 	CloneURL string `json:"cloneUrl"`
 }
 
-// TenantPoolsPushRequest is POST /tenant-pools/push: a GitHub push landed, so
+// TenantPoolsPushRequest says a GitHub push landed, so
 // the tenant pools warmed on that repo and branch refresh their unbound pods
 // now instead of at their next periodic refresh.
 type TenantPoolsPushRequest struct {
@@ -300,8 +328,8 @@ const (
 	FailureSchedulingTimeout FailureReason = "scheduling-timeout"
 )
 
-// Phase is one event on GET /sandboxes/:handle/events (`data: <json>`). The
-// stream ends after "ready" or "failed".
+// Phase is one lifecycle transition SANDBOX_WATCH reports; the watch ends
+// after "ready" or "failed".
 type Phase struct {
 	Kind PhaseKind `json:"kind"`
 	// Epoch ms the watch started; absent on terminal phases.
@@ -328,7 +356,7 @@ type RuntimeImages struct {
 	Images  []ImageInfo `json:"images"`
 }
 
-// ImagesResponse is GET /images.
+// ImagesResponse is SANDBOX_IMAGES's output.
 type ImagesResponse struct {
 	Runtimes []RuntimeImages `json:"runtimes"`
 }
@@ -340,7 +368,7 @@ type Capacity struct {
 	ObservedAt string `json:"observedAt"`
 }
 
-// RuntimeInfo is one entry of GET /runtimes.
+// RuntimeInfo is one entry of SANDBOX_RUNTIMES.
 type RuntimeInfo struct {
 	Name      string `json:"name"`
 	Available bool   `json:"available"`
@@ -351,13 +379,19 @@ type RuntimeInfo struct {
 	Capabilities []Capability `json:"capabilities"`
 }
 
-// RuntimesResponse is GET /runtimes.
+// RuntimesResponse is SANDBOX_RUNTIMES's output.
 type RuntimesResponse struct {
 	Runtimes []RuntimeInfo `json:"runtimes"`
 }
 
-// CapacityResponse is GET /capacity: Studio's admission gate. True when any
-// available runtime has room.
+// CapacityRequest names the image whose variant's nodes to judge; absent is
+// the default image.
+type CapacityRequest struct {
+	SandboxImage string `json:"sandboxImage,omitempty"`
+}
+
+// CapacityResponse is Studio's admission gate: true when any available
+// runtime has room.
 type CapacityResponse struct {
 	Schedulable bool `json:"schedulable"`
 }
@@ -380,7 +414,7 @@ const (
 	ErrHandleConflict ErrorCode = "handle-conflict"
 	// The recorded runtime is not in this build: the sandbox is left alone.
 	ErrRuntimeUnreachable ErrorCode = "runtime-unreachable"
-	// Nothing could place the sandbox (503); reasons has one entry per runtime.
+	// Nothing could place the sandbox; reasons has one entry per runtime.
 	ErrNoRuntime ErrorCode = "no-runtime"
 	// The pod's daemon rejected the bootstrap handshake; the claim was
 	// released and a retry gets a different pod. status is the daemon's.
@@ -395,7 +429,8 @@ const (
 	ErrInternal ErrorCode = "internal"
 )
 
-// ErrorResponse is every non-2xx body.
+// ErrorResponse is every failed tool call's text content, and every non-2xx
+// callback body.
 type ErrorResponse struct {
 	Error string    `json:"error"`
 	Code  ErrorCode `json:"code"`
@@ -406,15 +441,17 @@ type ErrorResponse struct {
 }
 
 // CloneURLPath is the controller's credential callback into Studio, over mTLS.
-// Studio must verify that the connection or repository belongs to a sandbox
-// row or a configured warm pool before minting: an unverified endpoint mints
-// a token for any connection in the deployment.
+// Studio mints only for a connection or repository of the tenant's org, whose
+// user is a member there, or for a configured warm pool: an unverified
+// endpoint mints a token for any connection in the deployment.
 const CloneURLPath = "/api/_sandbox-controller/clone-url"
 
 type CloneURLRequest struct {
 	ConnectionID string `json:"connectionId,omitempty"`
 	RepositoryID string `json:"repositoryId,omitempty"`
 	CloneURL     string `json:"cloneUrl"`
+	// The sandbox's tenant; absent only for a warm-pool pod, which has none.
+	Tenant *Tenant `json:"tenant,omitempty"`
 	// Re-mint when the current token has less than this much life left.
 	BufferMs int64 `json:"bufferMs,omitempty"`
 }

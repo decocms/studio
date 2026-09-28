@@ -58,8 +58,8 @@ claims:
   studioCASecretName: ""
   studioCAKey: ca.crt
 
-  # Secret with the DATABASE_URL of Studio's database: the controller owns
-  # sandbox_runner_state there.
+  # Secret with a DATABASE_URL. The controller creates and migrates its own
+  # sandbox_controller schema there on start; Studio's database is fine.
   database:
     secretName: ""
     key: DATABASE_URL

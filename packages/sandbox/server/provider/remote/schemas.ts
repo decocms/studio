@@ -1,5 +1,5 @@
 /**
- * Runtime schemas for the sandbox controller's HTTP API. Each is pinned to the
+ * Runtime schemas for the sandbox controller's tool results and callbacks. Each is pinned to the
  * type generated from the Go protocol package, so a field changed there breaks
  * this file's typecheck instead of a response parse in production.
  */
@@ -10,7 +10,8 @@ import type {
   CapacityResponse,
   CloneURLRequest,
   Daemon,
-  DrainingResponse,
+  DeleteResponse,
+  Empty,
   EnsureResponse,
   ErrorCode,
   ErrorResponse,
@@ -85,9 +86,11 @@ export const statusResponseSchema: z.ZodType<StatusResponse> = z.object({
   lastTermination: podTerminationSchema.nullable(),
 });
 
-export const drainingResponseSchema: z.ZodType<DrainingResponse> = z.object({
-  state: z.string(),
+export const deleteResponseSchema: z.ZodType<DeleteResponse> = z.object({
+  state: z.enum(["deleted", "draining"]),
 });
+
+export const emptySchema: z.ZodType<Empty> = z.object({});
 
 export const capacityResponseSchema: z.ZodType<CapacityResponse> = z.object({
   schedulable: z.boolean(),
@@ -159,17 +162,6 @@ export const phaseSchema: z.ZodType<Phase> = z.object({
 
 // The callbacks the controller makes into Studio.
 
-export const cloneUrlRequestSchema: z.ZodType<CloneURLRequest> = z
-  .object({
-    connectionId: z.string().min(1).optional(),
-    repositoryId: z.string().min(1).optional(),
-    cloneUrl: z.string().min(1).max(4096),
-    bufferMs: z.number().int().nonnegative().optional(),
-  })
-  .refine((r) => r.connectionId !== undefined || r.repositoryId !== undefined, {
-    message: "connectionId or repositoryId is required",
-  });
-
 const tenantSchema: z.ZodType<Tenant> = z.object({
   orgId: z.string().min(1),
   userId: z.string().min(1),
@@ -178,6 +170,18 @@ const tenantSchema: z.ZodType<Tenant> = z.object({
   userEmail: z.string().optional(),
   userName: z.string().optional(),
 });
+
+export const cloneUrlRequestSchema: z.ZodType<CloneURLRequest> = z
+  .object({
+    connectionId: z.string().min(1).optional(),
+    repositoryId: z.string().min(1).optional(),
+    cloneUrl: z.string().min(1).max(4096),
+    tenant: tenantSchema.optional(),
+    bufferMs: z.number().int().nonnegative().optional(),
+  })
+  .refine((r) => r.connectionId !== undefined || r.repositoryId !== undefined, {
+    message: "connectionId or repositoryId is required",
+  });
 
 export const orgFsConfigRequestSchema: z.ZodType<OrgFsConfigRequest> = z.object(
   { tenant: tenantSchema },

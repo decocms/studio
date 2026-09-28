@@ -1,6 +1,6 @@
-// Package store owns sandbox_runner_state: one row per (user, projectRef,
-// runtime), the runtime recorded in sandbox_provider_kind. The state column is
-// a runtime-private JSON blob.
+// Package store owns the controller's schema: one sandboxes row per (user,
+// projectRef, runtime). The state column is a runtime-private JSON blob. The
+// controller is the schema's only reader and writer; Studio never queries it.
 package store
 
 import (
@@ -40,8 +40,7 @@ type Store interface {
 	Delete(ctx context.Context, id protocol.SandboxID, runtime string) error
 	DeleteByHandle(ctx context.Context, runtime, handle string) error
 	ListByRuntime(ctx context.Context, runtime string) ([]Record, error)
-	// WithLock serializes ensure for one sandbox across replicas, and against
-	// Studio's in-process runner, which takes the same key.
+	// WithLock serializes ensure for one sandbox across replicas.
 	WithLock(ctx context.Context, id protocol.SandboxID, runtime string, fn func(context.Context) error) error
 }
 
@@ -69,6 +68,7 @@ func (s *Postgres) exec(ctx context.Context) queryer {
 	return s.pool
 }
 
+// NewPostgres connects and brings the schema up to date before returning.
 func NewPostgres(ctx context.Context, dsn string) (*Postgres, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -78,12 +78,16 @@ func NewPostgres(ctx context.Context, dsn string) (*Postgres, error) {
 		pool.Close()
 		return nil, fmt.Errorf("database unreachable: %w", err)
 	}
+	if err := migrate(ctx, pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("migrating schema %s: %w", Schema, err)
+	}
 	return &Postgres{pool: pool}, nil
 }
 
 func (s *Postgres) Close() { s.pool.Close() }
 
-const selectCols = `user_id, project_ref, sandbox_provider_kind, handle, state, updated_at`
+const selectCols = `user_id, project_ref, runtime, handle, state, updated_at`
 
 func scan(row pgx.Row) (*Record, error) {
 	var r Record
@@ -98,21 +102,21 @@ func scan(row pgx.Row) (*Record, error) {
 
 func (s *Postgres) Get(ctx context.Context, id protocol.SandboxID, runtime string) (*Record, error) {
 	return scan(s.exec(ctx).QueryRow(ctx,
-		`select `+selectCols+` from sandbox_runner_state
-		 where user_id = $1 and project_ref = $2 and sandbox_provider_kind = $3`,
+		`select `+selectCols+` from sandbox_controller.sandboxes
+		 where user_id = $1 and project_ref = $2 and runtime = $3`,
 		id.UserID, id.ProjectRef, runtime))
 }
 
 func (s *Postgres) GetAnyRuntime(ctx context.Context, id protocol.SandboxID) (*Record, error) {
 	return scan(s.exec(ctx).QueryRow(ctx,
-		`select `+selectCols+` from sandbox_runner_state
+		`select `+selectCols+` from sandbox_controller.sandboxes
 		 where user_id = $1 and project_ref = $2 order by updated_at desc limit 1`,
 		id.UserID, id.ProjectRef))
 }
 
 func (s *Postgres) ByHandle(ctx context.Context, handle string) (*Record, error) {
 	return scan(s.exec(ctx).QueryRow(ctx,
-		`select `+selectCols+` from sandbox_runner_state where handle = $1`, handle))
+		`select `+selectCols+` from sandbox_controller.sandboxes where handle = $1`, handle))
 }
 
 func (s *Postgres) Put(ctx context.Context, id protocol.SandboxID, runtime, handle string, state any) error {
@@ -121,10 +125,10 @@ func (s *Postgres) Put(ctx context.Context, id protocol.SandboxID, runtime, hand
 		return err
 	}
 	_, err = s.exec(ctx).Exec(ctx,
-		`insert into sandbox_runner_state
-		   (user_id, project_ref, sandbox_provider_kind, handle, state, updated_at)
+		`insert into sandbox_controller.sandboxes
+		   (user_id, project_ref, runtime, handle, state, updated_at)
 		 values ($1, $2, $3, $4, $5, now())
-		 on conflict (user_id, project_ref, sandbox_provider_kind)
+		 on conflict (user_id, project_ref, runtime)
 		 do update set handle = excluded.handle, state = excluded.state, updated_at = now()`,
 		id.UserID, id.ProjectRef, runtime, handle, blob)
 	return err
@@ -132,22 +136,22 @@ func (s *Postgres) Put(ctx context.Context, id protocol.SandboxID, runtime, hand
 
 func (s *Postgres) Delete(ctx context.Context, id protocol.SandboxID, runtime string) error {
 	_, err := s.exec(ctx).Exec(ctx,
-		`delete from sandbox_runner_state
-		 where user_id = $1 and project_ref = $2 and sandbox_provider_kind = $3`,
+		`delete from sandbox_controller.sandboxes
+		 where user_id = $1 and project_ref = $2 and runtime = $3`,
 		id.UserID, id.ProjectRef, runtime)
 	return err
 }
 
 func (s *Postgres) DeleteByHandle(ctx context.Context, runtime, handle string) error {
 	_, err := s.exec(ctx).Exec(ctx,
-		`delete from sandbox_runner_state where sandbox_provider_kind = $1 and handle = $2`,
+		`delete from sandbox_controller.sandboxes where runtime = $1 and handle = $2`,
 		runtime, handle)
 	return err
 }
 
 func (s *Postgres) ListByRuntime(ctx context.Context, runtime string) ([]Record, error) {
 	rows, err := s.exec(ctx).Query(ctx,
-		`select `+selectCols+` from sandbox_runner_state where sandbox_provider_kind = $1`, runtime)
+		`select `+selectCols+` from sandbox_controller.sandboxes where runtime = $1`, runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -167,9 +171,7 @@ func (s *Postgres) ListByRuntime(ctx context.Context, runtime string) ([]Record,
 // running inside the lock, short enough that a stuck holder is visible.
 const LockWait = 90 * time.Second
 
-// LockKey hashes (userId, projectRef, runtime) into pg's signed bigint, byte
-// for byte what Studio's KyselySandboxProviderStateStore computes for
-// agent-sandbox, so the two writers exclude each other.
+// LockKey hashes (userId, projectRef, runtime) into pg's signed bigint.
 func LockKey(id protocol.SandboxID, runtime string) int64 {
 	h := sha256.New()
 	h.Write([]byte(id.UserID))

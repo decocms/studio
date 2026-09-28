@@ -15,7 +15,7 @@ import (
 type key struct{ user, ref, runtime string }
 
 // Memory enforces the table's two constraints: one row per (id, runtime) and
-// a unique handle.
+// a handle unique per runtime.
 type Memory struct {
 	mu    sync.Mutex
 	rows  map[key]store.Record
@@ -69,8 +69,8 @@ func (m *Memory) Put(_ context.Context, id protocol.SandboxID, runtime, handle s
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for kk, r := range m.rows {
-		if r.Handle == handle && kk != k(id, runtime) {
-			return fmt.Errorf("duplicate key value violates unique constraint sandbox_runner_state_handle_idx")
+		if r.Handle == handle && kk.runtime == runtime && kk != k(id, runtime) {
+			return fmt.Errorf("duplicate key value violates unique constraint sandboxes_handle_runtime")
 		}
 	}
 	m.rows[k(id, runtime)] = store.Record{ID: id, Handle: handle, Runtime: runtime, State: blob, UpdatedAt: time.Now()}

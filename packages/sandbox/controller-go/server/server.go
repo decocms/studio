@@ -1,5 +1,5 @@
-// Package server is the controller's claim API: JSON over HTTP, served only
-// over mTLS with a client certificate from the configured CA.
+// Package server is the controller's claim API: MCP tools over streamable
+// HTTP, served only over mTLS with a client certificate from the configured CA.
 package server
 
 import (
@@ -13,6 +13,9 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/decocms/studio/packages/sandbox/controller-go/protocol"
 	"github.com/decocms/studio/packages/sandbox/controller-go/runtime"
 	"github.com/decocms/studio/packages/sandbox/controller-go/store"
@@ -24,11 +27,9 @@ const maxBody = 1 << 20
 type Server struct {
 	Registry *runtime.Registry
 	Store    store.Store
-	// DeleteDeadline bounds DELETE: this is a request path, and an unbounded
-	// wait turns one stuck finalizer into a hung Studio request.
+	// DeleteDeadline bounds SANDBOX_DELETE: this is a request path, and an
+	// unbounded wait turns one stuck finalizer into a hung Studio request.
 	DeleteDeadline time.Duration
-	// Heartbeat is the SSE keepalive interval on /events.
-	Heartbeat time.Duration
 }
 
 // TLS requires a client certificate signed by clientCAFile: the one Studio
@@ -53,102 +54,134 @@ func TLS(certFile, keyFile, clientCAFile string) (*tls.Config, error) {
 	}, nil
 }
 
+// Handler serves the tools at PathMCP and a health check.
 func (s *Server) Handler() http.Handler {
+	tools := mcp.NewServer(&mcp.Implementation{Name: "sandbox-controller"}, nil)
+	addTool(tools, protocol.ToolEnsure, "Provision a sandbox, or return the live one, once its daemon is ready.", s.ensure)
+	addTool(tools, protocol.ToolStatus, "Whether a sandbox is alive, where its daemon is, and why it last stopped.", s.status)
+	addTool(tools, protocol.ToolDelete, "Delete a sandbox and wait for it to be gone.", s.delete)
+	addTool(tools, protocol.ToolLifetime, "Move a sandbox's idle shutdown.", s.lifetime)
+	addTool(tools, protocol.ToolCredentials, "Rotate a sandbox's clone credential in place.", s.credentials)
+	addTool(tools, protocol.ToolWatch, "Report a sandbox's lifecycle phases until ready or failed.", s.watch)
+	addTool(tools, protocol.ToolImages, "The sandbox images each available runtime serves.", s.images)
+	addTool(tools, protocol.ToolRuntimes, "Every runtime, its availability and capabilities.", s.runtimes)
+	addTool(tools, protocol.ToolCapacity, "Whether any available runtime has room for the image.", s.capacity)
+	addTool(tools, protocol.ToolTenantPoolsPush, "Refresh the tenant pools warmed on a pushed repo and branch now.", s.tenantPoolsPush)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+protocol.PathHealthz, func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, protocol.HealthzResponse{OK: true})
+		w.Header().Set("content-type", "application/json")
+		_ = json.NewEncoder(w).Encode(protocol.HealthzResponse{OK: true})
 	})
-	mux.HandleFunc("GET "+protocol.PathRuntimes, s.runtimes)
-	mux.HandleFunc("GET "+protocol.PathCapacity, s.capacity)
-	mux.HandleFunc("GET "+protocol.PathImages, s.images)
-	mux.HandleFunc("POST "+protocol.PathSandboxes, s.ensure)
-	mux.HandleFunc("GET "+protocol.PathSandbox, s.status)
-	mux.HandleFunc("DELETE "+protocol.PathSandbox, s.delete)
-	mux.HandleFunc("PATCH "+protocol.PathLifetime, s.lifetime)
-	mux.HandleFunc("POST "+protocol.PathCredentials, s.credentials)
-	mux.HandleFunc("GET "+protocol.PathEvents, s.events)
-	mux.HandleFunc("POST "+protocol.PathTenantPoolsPush, s.tenantPoolsPush)
-	return mux
+	mux.Handle(protocol.PathMCP, mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server { return tools },
+		&mcp.StreamableHTTPOptions{Stateless: true},
+	))
+	return http.MaxBytesHandler(mux, maxBody)
 }
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("content-type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+// toolError is a failure whose ErrorResponse is already worded.
+type toolError struct{ body protocol.ErrorResponse }
+
+func (e *toolError) Error() string { return e.body.Error }
+
+func fail(code protocol.ErrorCode, msg string) error {
+	return &toolError{protocol.ErrorResponse{Error: msg, Code: code}}
 }
 
-func writeError(w http.ResponseWriter, status int, code protocol.ErrorCode, msg string) {
-	writeJSON(w, status, protocol.ErrorResponse{Error: msg, Code: code})
-}
-
-var statusOf = map[protocol.ErrorCode]int{
-	protocol.ErrBadRequest:         http.StatusBadRequest,
-	protocol.ErrUnknownHandle:      http.StatusNotFound,
-	protocol.ErrHandleConflict:     http.StatusConflict,
-	protocol.ErrRuntimeUnreachable: http.StatusServiceUnavailable,
-	protocol.ErrNoRuntime:          http.StatusServiceUnavailable,
-	protocol.ErrBootstrapRejected:  http.StatusBadGateway,
-	protocol.ErrClaimFailed:        http.StatusBadGateway,
-	protocol.ErrClaimStalled:       http.StatusGatewayTimeout,
-	protocol.ErrDaemon:             http.StatusBadGateway,
-}
-
-func writeRuntimeError(w http.ResponseWriter, err error) {
-	code, re := runtime.CodeOf(err)
-	status, ok := statusOf[code]
-	if !ok {
-		status = http.StatusInternalServerError
+// errorResult carries the ErrorResponse as the text content, not as
+// structuredContent: clients validate that against the output schema.
+func errorResult(err error) *mcp.CallToolResult {
+	var te *toolError
+	body := protocol.ErrorResponse{Error: err.Error()}
+	if errors.As(err, &te) {
+		body = te.body
+	} else {
+		code, re := runtime.CodeOf(err)
+		body.Code = code
+		if re != nil {
+			body.Error, body.Status = re.Message, re.Status
+		}
 	}
-	body := protocol.ErrorResponse{Error: err.Error(), Code: code}
-	if re != nil {
-		body.Error, body.Status = re.Message, re.Status
-	}
-	writeJSON(w, status, body)
+	blob, _ := json.Marshal(body)
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: string(blob)}}}
 }
 
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(into); err != nil {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "invalid JSON body: "+err.Error())
-		return false
+// addTool registers fn with schemas inferred from In and Out. Inputs accept
+// unknown fields, as the JSON API did, so a newer Studio can talk to an older
+// controller during a rollout.
+func addTool[In, Out any](srv *mcp.Server, name, description string, fn func(context.Context, *mcp.CallToolRequest, In) (Out, error)) {
+	in, err := jsonschema.For[In](nil)
+	if err != nil {
+		panic(fmt.Sprintf("%s input schema: %v", name, err))
 	}
-	return true
+	openObjects(in)
+	out, err := jsonschema.For[Out](nil)
+	if err != nil {
+		panic(fmt.Sprintf("%s output schema: %v", name, err))
+	}
+	mcp.AddTool(srv, &mcp.Tool{Name: name, Description: description, InputSchema: in, OutputSchema: out},
+		func(ctx context.Context, req *mcp.CallToolRequest, args In) (*mcp.CallToolResult, any, error) {
+			v, err := fn(ctx, req, args)
+			if err != nil {
+				return errorResult(err), nil, nil
+			}
+			blob, err := json.Marshal(v)
+			if err != nil {
+				return nil, nil, err
+			}
+			return &mcp.CallToolResult{
+				StructuredContent: json.RawMessage(blob),
+				Content:           []mcp.Content{&mcp.TextContent{Text: string(blob)}},
+			}, nil, nil
+		})
 }
 
-func (s *Server) runtimes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, protocol.RuntimesResponse{Runtimes: s.Registry.Describe(r.Context())})
+func openObjects(s *jsonschema.Schema) {
+	if s == nil {
+		return
+	}
+	if s.Properties != nil {
+		s.AdditionalProperties = nil
+	}
+	for _, p := range s.Properties {
+		openObjects(p)
+	}
+	openObjects(s.Items)
+	openObjects(s.AdditionalProperties)
+}
+
+func (s *Server) runtimes(ctx context.Context, _ *mcp.CallToolRequest, _ protocol.Empty) (protocol.RuntimesResponse, error) {
+	return protocol.RuntimesResponse{Runtimes: s.Registry.Describe(ctx)}, nil
 }
 
 // capacity is Studio's admission gate: true when any available runtime has
-// room for the image. Per-runtime detail lives in /runtimes.
-func (s *Server) capacity(w http.ResponseWriter, r *http.Request) {
-	image := r.URL.Query().Get("sandboxImage")
-	if image != "" && !imagePattern.MatchString(image) {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "sandboxImage must match "+imagePattern.String())
-		return
+// room for the image. Per-runtime detail lives in SANDBOX_RUNTIMES.
+func (s *Server) capacity(ctx context.Context, _ *mcp.CallToolRequest, req protocol.CapacityRequest) (protocol.CapacityResponse, error) {
+	if req.SandboxImage != "" && !imagePattern.MatchString(req.SandboxImage) {
+		return protocol.CapacityResponse{}, fail(protocol.ErrBadRequest, "sandboxImage must match "+imagePattern.String())
 	}
-	out := protocol.CapacityResponse{}
 	for _, rt := range s.Registry.All() {
-		if ok, _ := s.Registry.Available(r.Context(), rt); ok && s.Registry.Schedulable(r.Context(), rt, image) {
-			out.Schedulable = true
-			break
+		if ok, _ := s.Registry.Available(ctx, rt); ok && s.Registry.Schedulable(ctx, rt, req.SandboxImage) {
+			return protocol.CapacityResponse{Schedulable: true}, nil
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return protocol.CapacityResponse{}, nil
 }
 
-func (s *Server) images(w http.ResponseWriter, r *http.Request) {
+func (s *Server) images(ctx context.Context, _ *mcp.CallToolRequest, _ protocol.Empty) (protocol.ImagesResponse, error) {
 	out := protocol.ImagesResponse{Runtimes: []protocol.RuntimeImages{}}
 	for _, rt := range s.Registry.All() {
-		if ok, _ := s.Registry.Available(r.Context(), rt); !ok {
+		if ok, _ := s.Registry.Available(ctx, rt); !ok {
 			continue
 		}
-		images := s.Registry.Images(r.Context(), rt)
+		images := s.Registry.Images(ctx, rt)
 		if images == nil {
 			images = []protocol.ImageInfo{}
 		}
 		out.Runtimes = append(out.Runtimes, protocol.RuntimeImages{Runtime: rt.Name, Images: images})
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
 // owner resolves the runtime a handle lives on. A recorded row wins, and one
@@ -175,14 +208,10 @@ func (s *Server) owner(ctx context.Context, handle string) (*runtime.Runtime, *s
 	return p.Runtime, nil, nil
 }
 
-func (s *Server) ensure(w http.ResponseWriter, r *http.Request) {
-	var req protocol.EnsureRequest
-	if !decode(w, r, &req) {
-		return
-	}
+func (s *Server) ensure(ctx context.Context, _ *mcp.CallToolRequest, req protocol.EnsureRequest) (protocol.EnsureResponse, error) {
+	var none protocol.EnsureResponse
 	if msg := validateEnsure(req); msg != "" {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, msg)
-		return
+		return none, fail(protocol.ErrBadRequest, msg)
 	}
 	opts := protocol.EnsureOptions{}
 	if req.Opts != nil {
@@ -190,26 +219,23 @@ func (s *Server) ensure(w http.ResponseWriter, r *http.Request) {
 	}
 	// Detached: a Studio request giving up must not abandon a claim mid-start
 	// (its retry joins it), and the ready wait is bounded on progress anyway.
-	ctx := context.WithoutCancel(r.Context())
+	ctx = context.WithoutCancel(ctx)
 
 	// Idempotent by handle. A live sandbox is returned as-is even when the
-	// request names another runtime: switching is DELETE + POST, never a side
-	// effect of a flipped flag.
+	// request names another runtime: switching is delete + ensure, never a
+	// side effect of a flipped flag.
 	byID, err := s.Store.GetAnyRuntime(ctx, req.ID)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
 	byHandle, err := s.Store.ByHandle(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
 	if byHandle != nil && byHandle.ID != req.ID {
 		// One claim name for two sandboxes. (One sandbox under a new name is the
 		// runtime's to reconcile: it drops the stale row and provisions.)
-		writeError(w, http.StatusConflict, protocol.ErrHandleConflict, "the handle is recorded for another sandbox id")
-		return
+		return none, fail(protocol.ErrHandleConflict, "the handle is recorded for another sandbox id")
 	}
 	existing := byID
 	if existing == nil {
@@ -218,17 +244,15 @@ func (s *Server) ensure(w http.ResponseWriter, r *http.Request) {
 	var chosen *runtime.Runtime
 	if existing != nil {
 		if chosen = s.Registry.Get(existing.Runtime); chosen == nil {
-			writeError(w, http.StatusServiceUnavailable, protocol.ErrRuntimeUnreachable,
+			return none, fail(protocol.ErrRuntimeUnreachable,
 				fmt.Sprintf("sandbox is recorded on runtime %q, which this controller does not run", existing.Runtime))
-			return
 		}
 	} else {
 		p := runtime.Place(ctx, s.Registry, req)
 		if p.Runtime == nil {
-			writeJSON(w, http.StatusServiceUnavailable, protocol.ErrorResponse{
+			return none, &toolError{protocol.ErrorResponse{
 				Error: "no runtime can place this sandbox", Code: protocol.ErrNoRuntime, Reasons: p.Reasons,
-			})
-			return
+			}}
 		}
 		chosen = p.Runtime
 	}
@@ -236,8 +260,7 @@ func (s *Server) ensure(w http.ResponseWriter, r *http.Request) {
 	sb, err := chosen.Provider.Ensure(ctx, req.ID, req.Handle, opts)
 	if err != nil {
 		slog.Error("ensure failed", "handle", req.Handle, "runtime", chosen.Name, "err", err)
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
 	resp := protocol.EnsureResponse{
 		Handle: sb.Handle, Workdir: sb.Workdir, PreviewURL: sb.PreviewURL, Daemon: sb.Daemon,
@@ -246,7 +269,7 @@ func (s *Server) ensure(w http.ResponseWriter, r *http.Request) {
 	if existing != nil && req.Runtime != "" && req.Runtime != existing.Runtime {
 		resp.RuntimeMismatch = existing.Runtime
 	}
-	writeJSON(w, http.StatusOK, resp)
+	return resp, nil
 }
 
 var (
@@ -317,189 +340,128 @@ func validateEnsure(req protocol.EnsureRequest) string {
 	return ""
 }
 
-func (s *Server) status(w http.ResponseWriter, r *http.Request) {
-	handle := r.PathValue("handle")
-	ctx := r.Context()
-	rt, _, err := s.owner(ctx, handle)
+func (s *Server) status(ctx context.Context, _ *mcp.CallToolRequest, req protocol.StatusRequest) (protocol.StatusResponse, error) {
+	var none protocol.StatusResponse
+	rt, _, err := s.owner(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
-	alive, err := rt.Provider.Alive(ctx, handle)
+	alive, err := rt.Provider.Alive(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
-	// Preview traffic, where a fetch is the only sign anyone is here. Opt-in:
-	// every other caller wants an observation, not a side effect.
-	if !alive && r.URL.Query().Get("resurrect") == "1" {
-		revived, err := rt.Provider.Resurrect(context.WithoutCancel(ctx), handle)
-		if err != nil {
-			writeRuntimeError(w, err)
-			return
+	if !alive && req.Resurrect {
+		if alive, err = rt.Provider.Resurrect(context.WithoutCancel(ctx), req.Handle); err != nil {
+			return none, err
 		}
-		alive = revived
 	}
-	desc, err := rt.Provider.Describe(ctx, handle)
+	desc, err := rt.Provider.Describe(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
-	termination, _ := rt.Provider.LastTermination(ctx, handle)
-	writeJSON(w, http.StatusOK, protocol.StatusResponse{
-		Handle: handle, Alive: alive, PreviewURL: desc.PreviewURL, Daemon: desc.Daemon, Runtime: rt.Name,
+	termination, _ := rt.Provider.LastTermination(ctx, req.Handle)
+	return protocol.StatusResponse{
+		Handle: req.Handle, Alive: alive, PreviewURL: desc.PreviewURL, Daemon: desc.Daemon, Runtime: rt.Name,
 		Image: desc.Image, Capabilities: rt.Capabilities, LastTermination: termination,
-	})
+	}, nil
 }
 
-// delete waits for the sandbox to be gone (204), up to DeleteDeadline (202
-// draining, which means retry, not success).
-func (s *Server) delete(w http.ResponseWriter, r *http.Request) {
-	handle := r.PathValue("handle")
-	rt, _, err := s.owner(r.Context(), handle)
+// delete waits for the sandbox to be gone, up to DeleteDeadline; past it the
+// answer is draining, which means retry, not success.
+func (s *Server) delete(ctx context.Context, _ *mcp.CallToolRequest, req protocol.HandleRequest) (protocol.DeleteResponse, error) {
+	rt, _, err := s.owner(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return protocol.DeleteResponse{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), s.DeleteDeadline)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.DeleteDeadline)
 	defer cancel()
-	if err := rt.Provider.Delete(ctx, handle); err != nil {
+	if err := rt.Provider.Delete(ctx, req.Handle); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			writeJSON(w, http.StatusAccepted, protocol.DrainingResponse{State: "draining"})
-			return
+			return protocol.DeleteResponse{State: protocol.DeleteStateDraining}, nil
 		}
-		writeRuntimeError(w, err)
-		return
+		return protocol.DeleteResponse{}, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return protocol.DeleteResponse{State: protocol.DeleteStateDeleted}, nil
 }
 
-func (s *Server) lifetime(w http.ResponseWriter, r *http.Request) {
-	handle := r.PathValue("handle")
-	var req protocol.LifetimeRequest
-	if !decode(w, r, &req) {
-		return
-	}
+func (s *Server) lifetime(ctx context.Context, _ *mcp.CallToolRequest, req protocol.LifetimeRequest) (protocol.Empty, error) {
+	var none protocol.Empty
 	if req.ExtendToIdleWindow == (req.GraceMs != nil) {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "exactly one of extendToIdleWindow or graceMs is required")
-		return
+		return none, fail(protocol.ErrBadRequest, "exactly one of extendToIdleWindow or graceMs is required")
 	}
 	if req.GraceMs != nil && *req.GraceMs < 0 {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "graceMs must not be negative")
-		return
+		return none, fail(protocol.ErrBadRequest, "graceMs must not be negative")
 	}
-	rt, _, err := s.owner(r.Context(), handle)
+	rt, _, err := s.owner(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
 	if req.GraceMs != nil {
-		err = rt.Provider.ReleaseAfter(r.Context(), handle, time.Duration(*req.GraceMs)*time.Millisecond)
-	} else {
-		err = rt.Provider.RenewTTL(r.Context(), handle)
+		return none, rt.Provider.ReleaseAfter(ctx, req.Handle, time.Duration(*req.GraceMs)*time.Millisecond)
 	}
-	if err != nil {
-		writeRuntimeError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return none, rt.Provider.RenewTTL(ctx, req.Handle)
 }
 
-func (s *Server) credentials(w http.ResponseWriter, r *http.Request) {
-	handle := r.PathValue("handle")
-	var req protocol.CredentialsRequest
-	if !decode(w, r, &req) {
-		return
-	}
+func (s *Server) credentials(ctx context.Context, _ *mcp.CallToolRequest, req protocol.CredentialsRequest) (protocol.Empty, error) {
+	var none protocol.Empty
 	if req.CloneURL == "" {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "cloneUrl is required")
-		return
+		return none, fail(protocol.ErrBadRequest, "cloneUrl is required")
 	}
-	rt, rec, err := s.owner(r.Context(), handle)
+	rt, rec, err := s.owner(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
 	if rec == nil {
-		writeError(w, http.StatusNotFound, protocol.ErrUnknownHandle, "no sandbox recorded under "+handle)
-		return
+		return none, fail(protocol.ErrUnknownHandle, "no sandbox recorded under "+req.Handle)
 	}
-	if err := rt.Provider.RotateCredential(r.Context(), handle, req.CloneURL); err != nil {
-		writeRuntimeError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	return none, rt.Provider.RotateCredential(ctx, req.Handle, req.CloneURL)
 }
 
-func (s *Server) tenantPoolsPush(w http.ResponseWriter, r *http.Request) {
-	var req protocol.TenantPoolsPushRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	if req.Repo == "" || req.Ref == "" {
-		writeError(w, http.StatusBadRequest, protocol.ErrBadRequest, "repo and ref are required")
-		return
-	}
+func (s *Server) tenantPoolsPush(_ context.Context, _ *mcp.CallToolRequest, req protocol.TenantPoolsPushRequest) (protocol.TenantPoolsPushResponse, error) {
 	out := protocol.TenantPoolsPushResponse{Pools: []string{}}
+	if req.Repo == "" || req.Ref == "" {
+		return out, fail(protocol.ErrBadRequest, "repo and ref are required")
+	}
 	for _, rt := range s.Registry.All() {
 		if pools, ok := rt.Provider.(runtime.TenantPools); ok {
 			out.Pools = append(out.Pools, pools.MarkTenantPoolsDirty(req.Repo, req.Ref)...)
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }
 
-// events is SSE: one `data: <Phase>` per transition, ending after a terminal
-// phase. Comments keep idle proxies from closing a long wait.
-func (s *Server) events(w http.ResponseWriter, r *http.Request) {
-	handle := r.PathValue("handle")
-	rt, _, err := s.owner(r.Context(), handle)
+// watch relays each phase as a progress notification when the caller sent a
+// progress token, and returns the terminal one.
+func (s *Server) watch(ctx context.Context, call *mcp.CallToolRequest, req protocol.HandleRequest) (protocol.Phase, error) {
+	var none protocol.Phase
+	rt, _, err := s.owner(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
-	phases, err := rt.Provider.Watch(r.Context(), handle)
+	phases, err := rt.Provider.Watch(ctx, req.Handle)
 	if err != nil {
-		writeRuntimeError(w, err)
-		return
+		return none, err
 	}
-	w.Header().Set("content-type", "text/event-stream")
-	w.Header().Set("cache-control", "no-cache")
-	w.WriteHeader(http.StatusOK)
-	flusher, _ := w.(http.Flusher)
-	flush := func() {
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
-	flush()
-	heartbeat := s.Heartbeat
-	if heartbeat <= 0 {
-		heartbeat = 15 * time.Second
-	}
-	tick := time.NewTicker(heartbeat)
-	defer tick.Stop()
-	for {
+	token := call.Params.GetProgressToken()
+	for n := 1; ; n++ {
 		select {
-		case <-r.Context().Done():
-			return
-		case <-tick.C:
-			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
-				return
-			}
-			flush()
+		case <-ctx.Done():
+			return none, ctx.Err()
 		case p, ok := <-phases:
 			if !ok {
-				return
+				return none, fail(protocol.ErrInternal, "the lifecycle watch ended before ready or failed")
 			}
-			blob, err := json.Marshal(p)
-			if err != nil {
-				continue
+			if token != nil {
+				blob, _ := json.Marshal(p)
+				if err := call.Session.NotifyProgress(ctx, &mcp.ProgressNotificationParams{
+					ProgressToken: token, Progress: float64(n), Message: string(blob),
+				}); err != nil {
+					return none, err
+				}
 			}
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", blob); err != nil {
-				return
+			if p.Kind == protocol.PhaseReady || p.Kind == protocol.PhaseFailed {
+				return p, nil
 			}
-			flush()
 		}
 	}
 }

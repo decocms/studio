@@ -10,14 +10,15 @@
  * certificate it signed is the controller's identity.
  *
  * Authorization is not scope. `buildCloneInfo` has no org check (correctly,
- * for its in-process callers), so before minting, each route verifies the
- * request names something a live sandbox already has. Without that, the
- * controller's certificate would mint a token for any connection in the
- * deployment.
+ * for its in-process callers), so before minting, each route checks the
+ * request against Studio's own records: the tenant's user is a member of its
+ * org, and the credential source belongs to that org (or to a configured warm
+ * pool). The controller keeps sandbox state in its own database, so the
+ * request's tenant is the controller's word; the org scope is what bounds a
+ * leaked controller certificate.
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import {
   CloneURLPath,
   cloneUrlRequestSchema,
@@ -28,42 +29,35 @@ import {
   repoKeyFromCloneUrl,
   type TenantPool,
 } from "@decocms/sandbox/provider/tenant-pools";
-import type { CloneCredentialSource } from "@/storage/sandbox-runner-state";
+
+/** Where a sandbox's primary clone credential is minted from. */
+export type CloneCredentialSource =
+  | { connectionId: string }
+  | { repositoryId: string };
+
+/** A tenant as Studio records it. */
+export interface RecordedTenant {
+  orgId: string;
+  userId: string;
+  orgSlug: string;
+}
 
 export interface SandboxControllerCallbackDeps {
-  statesByCloneSource(source: CloneCredentialSource): Promise<unknown[]>;
-  statesByTenant(tenant: { orgId: string; userId: string }): Promise<unknown[]>;
-  /** Warm-pool pods have no state row; their repo is declared in config. */
+  /** The tenant, when `userId` is a member of `orgId`; null otherwise. */
+  recordedTenant(tenant: {
+    orgId: string;
+    userId: string;
+  }): Promise<RecordedTenant | null>;
+  /** The org a connection or repository belongs to; null when there is none. */
+  credentialOrg(source: CloneCredentialSource): Promise<string | null>;
+  /** Warm-pool pods have no tenant; their repo is declared in config. */
   tenantPools: readonly TenantPool[];
   mintCloneUrl(
     repo: { cloneUrl: string; connectionId?: string; repositoryId?: string },
     opts: { bufferMs?: number },
   ): Promise<string | null>;
-  mintOrgFsConfig(tenant: {
-    orgId: string;
-    userId: string;
-    orgSlug?: string;
-  }): Promise<string | null>;
+  mintOrgFsConfig(tenant: RecordedTenant): Promise<string | null>;
 }
-
-const persistedRepoSchema = z.object({
-  ensureOpts: z.object({
-    repo: z.object({
-      cloneUrl: z.string(),
-      connectionId: z.string().optional(),
-      repositoryId: z.string().optional(),
-    }),
-  }),
-});
-
-const persistedTenantSchema = z.object({
-  tenant: z.object({
-    orgId: z.string(),
-    userId: z.string(),
-    orgSlug: z.string().optional(),
-  }),
-  ensureOpts: z.object({ orgFsConfigJson: z.string().min(1) }),
-});
 
 /**
  * The repository a clone URL points at, credential and `.git` aside, so a
@@ -96,25 +90,23 @@ export function createSandboxControllerCallbackApp(
     if (!parsed.success) {
       return c.json({ error: parsed.error.message }, 400);
     }
-    const { connectionId, repositoryId, cloneUrl, bufferMs } = parsed.data;
-    const identity = cloneUrlIdentity(cloneUrl);
-    if (!identity) return c.json({ error: "unparseable cloneUrl" }, 400);
-
-    // Verified against the same source the mint uses: a repository wins over
-    // a connection there, so it wins here.
+    const { connectionId, repositoryId, cloneUrl, tenant, bufferMs } =
+      parsed.data;
+    if (!cloneUrlIdentity(cloneUrl)) {
+      return c.json({ error: "unparseable cloneUrl" }, 400);
+    }
+    // The mint prefers a repository over a connection, so the check does too.
     const source: CloneCredentialSource = repositoryId
       ? { repositoryId }
       : { connectionId: connectionId ?? "" };
-    const states = await deps.statesByCloneSource(source);
-    const recorded = states.some((state) => {
-      const row = persistedRepoSchema.safeParse(state);
-      if (!row.success) return false;
-      const repo = row.data.ensureOpts.repo;
-      const sameSource = repositoryId
-        ? repo.repositoryId === repositoryId
-        : repo.connectionId === connectionId;
-      return sameSource && cloneUrlIdentity(repo.cloneUrl) === identity;
-    });
+    const inTenantOrg = async () => {
+      if (!tenant) return false;
+      const [member, org] = await Promise.all([
+        deps.recordedTenant(tenant),
+        deps.credentialOrg(source),
+      ]);
+      return member !== null && org === tenant.orgId;
+    };
     const poolKey = repoKeyFromCloneUrl(cloneUrl);
     const pooled =
       !repositoryId &&
@@ -124,9 +116,12 @@ export function createSandboxControllerCallbackApp(
           pool.connectionId === connectionId &&
           pool.repo.toLowerCase() === poolKey,
       );
-    if (!recorded && !pooled) {
+    if (!pooled && !(await inTenantOrg())) {
       return c.json(
-        { error: "no sandbox or warm pool uses that repository credential" },
+        {
+          error:
+            "that repository credential belongs to no warm pool and to no org the tenant's user is a member of",
+        },
         403,
       );
     }
@@ -153,20 +148,14 @@ export function createSandboxControllerCallbackApp(
     if (!parsed.success) {
       return c.json({ error: parsed.error.message }, 400);
     }
-    const { orgId, userId } = parsed.data.tenant;
-    const states = await deps.statesByTenant({ orgId, userId });
-    // The key is minted for the tenant the sandbox was provisioned for, not
-    // the one the request spells out: only the ids are trusted to match.
-    const tenant = states.flatMap((state) => {
-      const row = persistedTenantSchema.safeParse(state);
-      return row.success &&
-        row.data.tenant.orgId === orgId &&
-        row.data.tenant.userId === userId
-        ? [row.data.tenant]
-        : [];
-    })[0];
+    // Minted for the tenant Studio records (its slug included), not the one
+    // the request spells out: only the ids are the controller's word.
+    const tenant = await deps.recordedTenant(parsed.data.tenant);
     if (!tenant) {
-      return c.json({ error: "no sandbox mounts org-fs for that tenant" }, 403);
+      return c.json(
+        { error: "the tenant's user is not a member of its org" },
+        403,
+      );
     }
 
     try {
