@@ -69,7 +69,7 @@ export type TabRouteTarget =
   | { to: typeof DESTINATION_ROUTE.home; params: OrgParams; search: {} }
   | {
       to: typeof DESTINATION_ROUTE.tasks;
-      params: OrgParams & { taskKey: undefined };
+      params: OrgParams & { taskKey: string | undefined };
       search: {};
     }
   | { to: typeof DESTINATION_ROUTE.reports; params: OrgParams; search: {} }
@@ -78,7 +78,7 @@ export type TabRouteTarget =
   | { to: typeof PROJECT_ROUTE.root; params: AgentParams; search: {} }
   | {
       to: typeof PROJECT_ROUTE.tasks;
-      params: AgentParams & { taskKey: undefined };
+      params: AgentParams & { taskKey: string | undefined };
       search: {};
     }
   | { to: typeof PROJECT_ROUTE.reports; params: AgentParams; search: {} }
@@ -154,6 +154,8 @@ export interface NavigateToTabLocationOptions {
   agentId: string;
   /** Tasks and Reports exist at both organization and project scope. */
   destinationScope?: "organization" | "project";
+  /** The card to open on the task board; ignored by every other tab. */
+  taskKey?: string;
   /** Shared route search (thread/layout state). The target's own payload is
    * applied last, so a caller cannot accidentally overwrite its identity. */
   search?: TabRouteSearchWriter;
@@ -320,6 +322,8 @@ export function tabRouteTarget(input: {
   org: string;
   agentId: string;
   destinationScope?: "organization" | "project";
+  /** The card to open on the task board; ignored by every other tab. */
+  taskKey?: string;
 }): TabRouteTarget {
   const { org, agentId } = input;
   const params = { org, agentId };
@@ -331,7 +335,7 @@ export function tabRouteTarget(input: {
         return location.destination === "tasks"
           ? {
               to: DESTINATION_ROUTE.tasks,
-              params: { org, taskKey: undefined },
+              params: { org, taskKey: input.taskKey },
               search: {},
             }
           : { to: DESTINATION_ROUTE.reports, params: { org }, search: {} };
@@ -339,7 +343,7 @@ export function tabRouteTarget(input: {
       return location.destination === "tasks"
         ? {
             to: PROJECT_ROUTE.tasks,
-            params: { ...params, taskKey: undefined },
+            params: { ...params, taskKey: input.taskKey },
             search: {},
           }
         : { to: PROJECT_ROUTE.reports, params, search: {} };
