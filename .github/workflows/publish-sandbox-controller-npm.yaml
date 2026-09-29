@@ -4,11 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      # The package bundles these sources, so a change there is a change here.
+      # A change to a bundled source bumps this manifest too
+      # (scripts/release-changes.ts), so the bump commit lands here.
       - "packages/sandbox-controller/**"
-      - "packages/sandbox/server/**"
-      - "packages/shared/src/git-providers/**"
-      - "packages/shared/src/std/**"
   workflow_dispatch:
 
 permissions:

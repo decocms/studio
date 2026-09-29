@@ -19,9 +19,11 @@
     "pack": "bun run build && bun pm pack --filename $PWD/dist/sandbox-controller.tgz --quiet"
   },
   "dependencies": {
-    "@kubernetes/client-node": "^1.4.0",
+    "@kubernetes/client-node": "^1.4.0"
+  },
+  "peerDependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "zod": "4.3.6"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@decocms/sandbox": "workspace:*",
