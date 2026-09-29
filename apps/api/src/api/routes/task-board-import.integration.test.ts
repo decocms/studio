@@ -146,6 +146,42 @@ describe("Task Board Import Route", () => {
       .where("title", "=", title)
       .executeTakeFirstOrThrow();
 
+  /** Run `fn` with org_board's fast tier on a fake model that gives every call
+   *  `answer`. The key is not a Jev key, so the batch check asks this tier. */
+  const withFastModel = async <T>(
+    answer: string,
+    fn: () => T | Promise<T>,
+  ): Promise<T> => {
+    const model = serveFakeModel(answer);
+    try {
+      const key = await new AIProviderKeyStorage(
+        database.db,
+        new CredentialVault(getSettings().encryptionKey),
+      ).create({
+        providerId: "openai-compatible",
+        label: "Fake fast model",
+        apiKey: JSON.stringify({ baseUrl: `http://127.0.0.1:${model.port}` }),
+        organizationId: "org_board",
+        createdBy: "user_1",
+      });
+      await new OrganizationSettingsStorage(database.db).upsert("org_board", {
+        simple_mode: {
+          tiers: {
+            fast: { keyId: key.id, modelId: "fake-fast" },
+            smart: null,
+            thinking: null,
+            image: null,
+            web_search: null,
+            deep_research: null,
+          },
+        },
+      });
+      return await fn();
+    } finally {
+      await model.stop(true);
+    }
+  };
+
   it("rejects requests without the service token", async () => {
     const noToken = await app.fetch(post("org_board", null, BODY));
     expect(noToken.status).toBe(401);
@@ -875,7 +911,7 @@ describe("Task Board Import Route", () => {
       description: "LCP 4.2s.",
       by: "system",
     });
-    const model = serveFakeModel(
+    const res = await withFastModel(
       JSON.stringify({
         matches: [
           {
@@ -892,63 +928,37 @@ describe("Task Board Import Route", () => {
           },
         ],
       }),
-    );
-    try {
-      const key = await new AIProviderKeyStorage(
-        database.db,
-        new CredentialVault(getSettings().encryptionKey),
-      ).create({
-        providerId: "openai-compatible",
-        label: "Fake fast model",
-        apiKey: JSON.stringify({ baseUrl: `http://127.0.0.1:${model.port}` }),
-        organizationId: "org_board",
-        createdBy: "user_1",
-      });
-      await new OrganizationSettingsStorage(database.db).upsert("org_board", {
-        simple_mode: {
-          tiers: {
-            fast: { keyId: key.id, modelId: "fake-fast" },
-            smart: null,
-            thinking: null,
-            image: null,
-            web_search: null,
-            deep_research: null,
-          },
-        },
-      });
-
-      const res = await app.fetch(
-        post("org_board", "svc-secret", {
-          items: [
-            {
-              title: "Imagens da home sem texto alternativo",
-              description: "12 imagens sem alt.",
-            },
-            {
-              title: "Reduzir o tempo de carregamento da home",
-              description: "LCP 4.8s.",
-            },
-            { title: "Adicionar H1 na home" },
-          ],
-        }),
-      );
-      expect(await res.json()).toEqual({
-        created: 1,
-        updated: 2,
-        delegated: 0,
-        semantic_matches: 2,
-        items: [
-          entry(0, "semantic_match", { id: human.id, key_seq: human.keySeq }),
-          entry(1, "semantic_match", {
-            id: reports.id,
-            key_seq: reports.keySeq,
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Imagens da home sem texto alternativo",
+                description: "12 imagens sem alt.",
+              },
+              {
+                title: "Reduzir o tempo de carregamento da home",
+                description: "LCP 4.8s.",
+              },
+              { title: "Adicionar H1 na home" },
+            ],
           }),
-          entry(2, "created", await cardTitled("Adicionar H1 na home")),
-        ],
-      });
-    } finally {
-      await model.stop(true);
-    }
+        ),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 2,
+      delegated: 0,
+      semantic_matches: 2,
+      items: [
+        entry(0, "semantic_match", { id: human.id, key_seq: human.keySeq }),
+        entry(1, "semantic_match", {
+          id: reports.id,
+          key_seq: reports.keySeq,
+        }),
+        entry(2, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
 
     expect((await cardTitled(human.title)).description).toBe(
       "Escrito por uma pessoa.",
@@ -962,6 +972,108 @@ describe("Task Board Import Route", () => {
     expect(reported.map((r) => r.task_board_item_id).sort()).toEqual(
       [human.id, reports.id].sort(),
     );
+  });
+
+  /** The fake model's answer: item 1 repeats item 0. */
+  const REPEATS_FIRST = JSON.stringify({
+    matches: [
+      {
+        draft: 1,
+        duplicateOf: null,
+        sameAsDraft: 0,
+        confidence: "high",
+        reason: "Same change.",
+      },
+    ],
+  });
+
+  it("an item repeating an earlier one of the same request folds into that item's card", async () => {
+    const res = await withFastModel(REPEATS_FIRST, () =>
+      app.fetch(
+        post("org_board", "svc-secret", {
+          items: [
+            {
+              title: "Declarar o sitemap no robots.txt",
+              description: "Achado A.",
+            },
+            {
+              title: "Adicionar a linha Sitemap ao robots.txt",
+              description: "Achado B.",
+            },
+            { title: "Adicionar H1 na home" },
+          ],
+        }),
+      ),
+    );
+    const card = await cardTitled("Declarar o sitemap no robots.txt");
+    expect(await res.json()).toEqual({
+      created: 2,
+      updated: 1,
+      delegated: 0,
+      semantic_matches: 1,
+      items: [
+        entry(0, "created", card),
+        entry(1, "semantic_match", card),
+        entry(2, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+    // The card keeps the first item's content; the repeat goes on its timeline.
+    expect(card.description).toBe("Achado A.");
+    const reported = await database.db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id", "data"])
+      .where("action", "=", "duplicate_reported")
+      .execute();
+    expect(reported).toEqual([
+      {
+        task_board_item_id: card.id,
+        data: {
+          title: "Adicionar a linha Sitemap ao robots.txt",
+          reason: "Same change.",
+        },
+      },
+    ]);
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(2);
+  });
+
+  it("an item repeating a dismissed one of the same request is skipped with it", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Declarar o sitemap no robots.txt",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+
+    const res = await withFastModel(REPEATS_FIRST, () =>
+      app.fetch(
+        post("org_board", "svc-secret", {
+          items: [
+            { title: "Declarar o sitemap no robots.txt" },
+            { title: "Adicionar a linha Sitemap ao robots.txt" },
+          ],
+        }),
+      ),
+    );
+    const card = { id: dismissed.id, key_seq: dismissed.keySeq };
+    expect(await res.json()).toEqual({
+      created: 0,
+      updated: 0,
+      delegated: 0,
+      dismissed: 2,
+      items: [entry(0, "dismissed", card), entry(1, "dismissed", card)],
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(1);
   });
 
   it("a Super Agent delegation the task quota refuses reports quota_blocked for its card", async () => {
