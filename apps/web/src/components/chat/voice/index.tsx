@@ -17,6 +17,7 @@ import {
   type ChatLayoutState,
 } from "@/hooks/use-chat-layout-state";
 import { useT } from "@/i18n/use-t";
+import { readLanguage } from "@/hooks/use-preferences";
 import { useChatStream, useChatTask } from "../context";
 import { ChatHighlight } from "../highlight";
 import { QueueTray } from "../queue-tray";
@@ -65,6 +66,7 @@ function VoiceProvider({
     () =>
       new VoiceSession(
         `/api/${encodeURIComponent(org.slug)}/threads/${encodeURIComponent(taskId ?? "")}/voice/sessions`,
+        readLanguage() === "pt-BR" ? "pt" : "en",
       ),
   );
   useLayoutEffect(() => {
@@ -181,8 +183,24 @@ export function VoiceModePanel() {
           {status}
         </p>
         {snapshot.transcript && (
-          <p className="line-clamp-3 max-w-sm text-center text-sm">
+          <p
+            className="line-clamp-3 max-w-sm text-center text-sm"
+            data-voice-transcript
+          >
             {snapshot.transcript}
+          </p>
+        )}
+        {snapshot.response && (
+          <p
+            className="line-clamp-3 max-w-sm text-center text-sm text-muted-foreground"
+            data-voice-response
+          >
+            {snapshot.response}
+          </p>
+        )}
+        {snapshot.working && (
+          <p className="text-center text-xs text-muted-foreground">
+            {t("chat.voice.backgroundWork")}
           </p>
         )}
         {snapshot.phase === "error" && (

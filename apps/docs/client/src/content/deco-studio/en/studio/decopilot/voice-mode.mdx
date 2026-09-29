@@ -6,7 +6,10 @@ icon: Mic
 
 Voice mode replaces the web chat's messages and composer with a speaking orb.
 An adjacent page or site preview stays open. The selected agent, model, page
-context, tools, permissions, and message queue remain the same as in text chat.
+context, tools, permissions, and message queue remain the same for delegated work.
+An ElevenLabs realtime conversation handles speech while the selected Studio
+agent performs that work in the background. You can keep talking, ask about
+progress, or submit another request while a coding task runs.
 
 Coding agents keep running Claude Code in their existing sandbox. Voice mode
 does not change the chat's pinned runtime, checkout, preview, or Claude session.
@@ -17,12 +20,15 @@ restore normal response style. Decopilot chats use the same speech transport.
 Choose **Start voice mode** beside the composer and allow microphone access.
 **Back to chat** stops the microphone and playback. It preserves the chat and
 any running work. **Stop agent work** is a separate control. Speaking while a
-reply plays interrupts the audio; the new request joins the chat's normal queue.
+reply plays interrupts the audio. Complete work requests join the chat's normal
+queue; pauses, greetings, and progress questions do not start coding turns.
 Approvals, questions, errors, and queued requests remain visible in voice mode.
 
-Only the final text part of the current spoken turn is read aloud. A per-turn
-instruction asks the agent for a short, natural answer. Switching back to text
-restores normal response style for subsequent messages.
+The companion acknowledges accepted work without claiming it has finished. When
+the Studio agent finishes, its final text part is sent back to the companion,
+which announces the result during a quiet gap. A per-turn instruction asks the
+working agent for a short, natural answer. Switching back to text restores normal
+response style for subsequent messages.
 
 ## Deployment setup
 
@@ -32,16 +38,25 @@ Set these variables on every API replica:
 ELEVENLABS_API_KEY=<elevenlabs-api-key>
 ```
 
-The key needs Text to Speech and Speech to Text access. Keep it on the server.
-Browsers receive a single-use Scribe token and a signed Studio session token.
+The key needs ElevenAgents read and write access (`convai_read`, `convai_write`),
+plus Text to Speech and Speech to Text access for older browser sessions. Keep it
+on the server. Studio creates a private ElevenLabs agent for its voice configuration
+and reuses it across sessions. Browsers receive a conversation token and a signed
+Studio session token; they never receive the API key.
 The web app needs HTTPS for microphone access, except on localhost. No inbound
-provider callback or Speech Engine provisioning is required. API replicas must
+provider callback or manual agent provisioning is required. API replicas must
 share the same Studio authentication secret and NATS service.
 
 Then enable **Settings → General → Voice mode** for the organization. The
 `voice_mode` organization flag defaults off. It is separate from authentication:
 only the owning user can start a voice session for a writable, hosted chat.
 Native terminal chats and read-only chats do not offer this mode.
+
+For coding-agent project chats, `coding_agent_project_context` separately enables
+inheriting the project's repository and sandbox when the thread has no override.
+It defaults off and applies to text and voice. It fixes dispatches that otherwise
+start outside the existing checkout and repository tools that cannot find the
+project's running sandbox. No database migration is required.
 
 Optional variables:
 
@@ -53,21 +68,32 @@ Optional variables:
 ## Session behavior and limits
 
 The browser closes sessions after ten minutes, with one active session per
-user per organization. Server speech grants expire after ten minutes and allow
-up to 120 synthesis requests and 24,000 characters. An interrupted browser that
+user per organization. ElevenLabs also limits each conversation to ten minutes.
+Up to 40 work requests can be delegated in one session. An interrupted browser that
 cannot release its reservation may need to wait for that expiry before reconnecting.
-ElevenLabs bills speech usage to the deployment's account; Studio's model usage
+ElevenLabs bills the voice conversation, including its conversational model, to
+the deployment's account. The companion uses Gemini 2.5 Flash through ElevenLabs;
+no separate model key is needed. Studio's model usage
 accounting continues to cover the agent's model calls.
 
-Microphone audio travels directly from the browser to ElevenLabs Scribe Realtime.
-Voice activity detection commits the utterance after a pause. The browser submits
-it through the existing chat API and waits for the agent to finish. Studio then
-synthesizes the final answer with ElevenLabs v4 Turbo and plays it in the browser.
-Transcription and synthesis are independent so a long-running coding task does
-not hit the Speech Engine's response timeout.
+Microphone audio and streamed replies travel directly between the browser and
+ElevenLabs over WebRTC. ElevenLabs handles turn detection, interruption, Scribe
+transcription, and v4 Turbo synthesis. Client tools submit work through the existing
+chat API, read work status, or request cancellation when explicitly asked. They
+return after acceptance; long coding tasks do not hold a voice tool call open.
+Results arrive through Studio's existing chat stream and are supplied to the
+companion as context. The browser requests a spoken announcement when the user
+is quiet. Permission and approval checks stay in the normal Studio path.
 
-Transcripts and answers remain in the normal Studio chat history. Studio does
-not store audio; ElevenLabs' data retention policy applies to its service.
+Delegated requests and agent answers remain in the normal Studio chat history.
+Conversational remarks and progress questions stay in the voice session. Recent
+chat text and the current page context are supplied to the companion when voice
+starts. Studio does not store audio. The provisioned ElevenLabs agent disables
+audio recording and requests one-day transcript retention.
+
+During a rolling deployment, older browsers can continue using the original
+Scribe/TTS endpoints. Their signed speech grants retain the ten-minute limit,
+120 synthesis requests, and 24,000-character allowance.
 
 Leaving the chat, changing organizations, or disconnecting stops the voice
 session. Transport failures show an error with a path back to text. They do not
@@ -86,7 +112,11 @@ E2E_VOICE_LIVE=1 E2E_VOICE_WAV=/tmp/synthetic-utterance.wav \
 ```
 
 The live case uses the real speech service and an HTTP model stand-in, and
-checks that the voice instruction reaches the agent and the reply is spoken.
+checks that the companion responds while the working model is delayed, announces
+its result, and returns to text in the same chat. With `E2E_VOICE_FOLLOWUP=1`, use
+a WAV containing a work request followed by a progress question; the test also
+checks that the second spoken answer arrives before work completes without
+submitting another coding turn.
 
 The daemon suite also exercises the real Claude Code executable and SDK against
 an HTTP model stand-in. It starts in text, changes a file in voice mode, and

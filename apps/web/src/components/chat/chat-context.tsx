@@ -149,6 +149,7 @@ import {
 
 export interface ChatStreamContextValue {
   sendVoiceMessage?: (messageId: string, text: string) => Promise<boolean>;
+  voiceContext?: string;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
   sendMessage: (
@@ -1538,6 +1539,16 @@ export function ActiveTaskProvider({
   // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
+    voiceContext: voiceEnabled
+      ? [
+          contextPrompt,
+          ...Object.entries(appContexts).map(
+            ([source, text]) => `${source}: ${text}`,
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : undefined,
     sendVoiceMessage: async (messageId, text) => {
       if (sendInFlight.has(taskId)) return false;
       sendInFlight.add(taskId);

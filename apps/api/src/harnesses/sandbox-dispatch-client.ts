@@ -76,6 +76,7 @@ import {
 } from "@/api/routes/decopilot/run-status-stage";
 import {
   getThreadGithubRepo,
+  getCodingAgentProjectMetadata,
   syntheticBranchToGitRef,
   threadBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -289,7 +290,10 @@ export class SandboxDispatchClient {
   private async resolveWorkspace(
     threadId: string,
   ): Promise<HarnessStreamInput["workspace"]> {
-    const repo = await getThreadGithubRepo(this.ctx, threadId);
+    const repo =
+      (await getThreadGithubRepo(this.ctx, threadId)) ??
+      (await getCodingAgentProjectMetadata(this.ctx, this.virtualMcpId))
+        ?.githubRepo;
     if (!repo) {
       return this.branch === threadBranch(threadId)
         ? {

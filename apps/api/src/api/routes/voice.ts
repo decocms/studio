@@ -33,7 +33,22 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
     return { organizationId: organization.id, userId, threadId: taskId };
   }
   app.post("/threads/:threadId/voice/sessions", async (c) => {
-    return c.json(await sessions.create(await authorize(c)));
+    const scope = await authorize(c);
+    const body = z
+      .object({ mode: z.literal("conversation").optional() })
+      .strict()
+      .safeParse(
+        c.req.header("Content-Type")
+          ? await c.req.json().catch(() => null)
+          : {},
+      );
+    if (!body.success)
+      throw new HTTPException(400, {
+        message: "Invalid voice session request",
+      });
+    return c.json(
+      await sessions.create(scope, body.data.mode === "conversation"),
+    );
   });
   app.post("/threads/:threadId/voice/sessions/speech", async (c) => {
     const scope = await authorize(c);

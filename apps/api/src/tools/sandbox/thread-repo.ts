@@ -12,6 +12,7 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import type { Thread } from "@/storage/types";
+import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import type {
   GithubRepo,
   SandboxMap,
@@ -26,6 +27,23 @@ import {
   mergeSandboxMapEntry,
   readSandboxMap,
 } from "./sandbox-map";
+
+/** Match provisioning's project fallback without changing unflagged dispatches. */
+export async function getCodingAgentProjectMetadata(
+  ctx: StudioContext,
+  virtualMcpId: string | null | undefined,
+) {
+  const organizationId = ctx.storage.threads.getOrganizationId();
+  if (!organizationId || !virtualMcpId) return null;
+  const settings = await ctx.storage.organizationSettings.get(organizationId);
+  if (!orgFlagEnabled(settings?.flags, "coding_agent_project_context"))
+    return null;
+  const project = await ctx.storage.virtualMcps.findById(
+    virtualMcpId,
+    organizationId,
+  );
+  return project?.metadata ?? null;
+}
 
 /**
  * Per-thread sandbox branch for a loaded repo. Includes the repo's connection

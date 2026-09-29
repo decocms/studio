@@ -5,6 +5,7 @@ import { nanos, type NatsConnection } from "@nats-io/nats-core";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { VOICE_SESSION_TTL_MS } from "@decocms/shared/voice";
+import { sleep } from "@decocms/shared/std";
 import type { SpeechAdapter } from "@/ai-providers/voice/types";
 import { signVoiceGrant, verifyVoiceGrant, type VoiceClaims } from "./grant";
 
@@ -16,6 +17,10 @@ const ReservationSchema = z.object({
   requests: z.number().int().nonnegative(),
 });
 const codec = new TextEncoder();
+const AgentReservationSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("ready"), agentId: z.string() }),
+  z.object({ state: z.literal("creating"), expiresAt: z.number() }),
+]);
 function userKey(scope: Scope) {
   return `user.${createHash("sha256")
     .update(JSON.stringify([scope.organizationId, scope.userId]))
@@ -61,7 +66,54 @@ export class VoiceSessions {
     return this.deps.adapter;
   }
 
-  async create(scope: Scope) {
+  private async conversationAgent(): Promise<string> {
+    const adapter = this.adapter();
+    const kv = await this.kv();
+    const key = `agent.${adapter.conversationKey}`;
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+      const entry = await kv.get(key);
+      const value =
+        entry?.operation === "PUT"
+          ? AgentReservationSchema.parse(entry.json())
+          : null;
+      if (value?.state === "ready") return value.agentId;
+      if (value?.state === "creating" && value.expiresAt > Date.now()) {
+        await sleep(200);
+        continue;
+      }
+      const lease = codec.encode(
+        JSON.stringify({ state: "creating", expiresAt: Date.now() + 40_000 }),
+      );
+      let revision: number;
+      try {
+        revision =
+          entry && value
+            ? await kv.update(key, lease, entry.revision)
+            : await kv.create(key, lease);
+      } catch {
+        await sleep(200);
+        continue;
+      }
+      try {
+        const agentId = await adapter.ensureConversationAgent();
+        await kv.update(
+          key,
+          codec.encode(JSON.stringify({ state: "ready", agentId })),
+          revision,
+        );
+        return agentId;
+      } catch (error) {
+        await kv.delete(key, { previousSeq: revision }).catch(() => {});
+        throw error;
+      }
+    }
+    throw new HTTPException(503, {
+      message: "Voice conversation is starting; try again",
+    });
+  }
+
+  async create(scope: Scope, conversation = false) {
     const adapter = this.adapter();
     const claims: VoiceClaims = {
       ...scope,
@@ -94,6 +146,28 @@ export class VoiceSessions {
       });
     }
     try {
+      if (conversation) {
+        const agentId = await this.conversationAgent();
+        try {
+          const conversationToken =
+            await adapter.createConversationToken(agentId);
+          return { token, conversationToken, expiresAt: claims.expiresAt };
+        } catch (error) {
+          // A removed or inaccessible provider resource must not poison later sessions.
+          const key = `agent.${adapter.conversationKey}`;
+          const entry = await kv.get(key);
+          const value =
+            entry?.operation === "PUT"
+              ? AgentReservationSchema.parse(entry.json())
+              : null;
+          if (entry && value?.state === "ready" && value.agentId === agentId) {
+            await kv
+              .delete(key, { previousSeq: entry.revision })
+              .catch(() => {});
+          }
+          throw error;
+        }
+      }
       const transcriptionToken = await adapter.createTranscriptionToken();
       return { token, transcriptionToken, expiresAt: claims.expiresAt };
     } catch (error) {
