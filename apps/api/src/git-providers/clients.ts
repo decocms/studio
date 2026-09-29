@@ -24,7 +24,7 @@
 
 import { type RepositoryRecord, repoRefOf } from "@/storage/repositories";
 import { GithubProviderClient } from "./github/client";
-import type { GithubRepo } from "@decocms/shared/sdk/types";
+import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
   parseRepoUrl,
   type RepoRef,
@@ -205,32 +205,34 @@ export async function contentClientForTarget(
 }
 
 /**
- * A legacy `metadata.githubRepo` binding, as a target.
+ * A legacy `metadata.repository` binding, as a target.
  *
  * The URL is preferred over the `owner`/`name` pair because it carries the
  * host, and therefore the provider; the pair is the fallback for a binding
  * written before that was true, which is github.com by construction.
  */
-export function repoTargetForBinding(githubRepo: GithubRepo): RepoTarget {
+export function repoTargetForBinding(
+  repository: RepositoryBinding,
+): RepoTarget {
   return {
-    repositoryId: githubRepo.repositoryId,
+    repositoryId: repository.repositoryId,
     ref:
-      parseRepoUrl(githubRepo.url) ??
-      repoRefFromOwnerName(githubRepo.owner, githubRepo.name),
-    connectionId: githubRepo.connectionId,
+      parseRepoUrl(repository.url) ??
+      repoRefFromOwnerName(repository.owner, repository.name),
+    connectionId: repository.connectionId,
   };
 }
 
-/** {@link contentClientForTarget} for a project's legacy `githubRepo` binding. */
+/** {@link contentClientForTarget} for a project's legacy `repository` binding. */
 export function contentClientForProjectRepo(
   ctx: StudioContext,
   organizationId: string,
-  githubRepo: GithubRepo,
+  repository: RepositoryBinding,
 ): Promise<RepoContentClient> {
   return contentClientForTarget(
     ctx,
     organizationId,
-    repoTargetForBinding(githubRepo),
+    repoTargetForBinding(repository),
   );
 }
 

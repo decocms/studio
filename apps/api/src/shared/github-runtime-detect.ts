@@ -15,7 +15,7 @@ import { DownstreamTokenStorage } from "../storage/downstream-token";
 import type { Database } from "../storage/types";
 import type { PackageManager } from "@decocms/shared/runtime-defaults";
 
-/** Ordered: first match wins. Mirrors github-repo-picker.tsx's runtimeFiles. */
+/** Ordered: first match wins. Mirrors repository-import-picker.tsx's runtimeFiles. */
 const LOCKFILES: Array<{ path: string; pm: PackageManager }> = [
   { path: "deno.json", pm: "deno" },
   { path: "deno.jsonc", pm: "deno" },

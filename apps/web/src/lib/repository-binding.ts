@@ -1,14 +1,17 @@
-import type { GithubRepo, VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import type {
+  RepositoryBinding,
+  VirtualMCPEntity,
+} from "@decocms/shared/sdk/types";
 
 /**
- * The GitHub attachment status of a Virtual MCP, derived from a SINGLE source
+ * The repository attachment status of a Virtual MCP, derived from a SINGLE source
  * of truth: the repo metadata cross-checked against the live `connections`
  * (direct aggregations). Previously several call sites re-interpreted
- * `metadata.githubRepo` + `connections` independently, which let them disagree
+ * `metadata.repository` + `connections` independently, which let them disagree
  * — the header could vanish entirely when the two drifted. Every consumer now
- * goes through `resolveGithubAttachment`.
+ * goes through `resolveRepositoryAttachment`.
  *
- *  - `none`         — no clonable GitHub repo metadata.
+ *  - `none`         — no clonable repository metadata.
  *  - `public-clone` — repo linked without a connection (public template clone).
  *                     Bootable, but no authenticated PR/check actions.
  *  - `attached`     — repo linked via a first-class repository
@@ -21,16 +24,16 @@ import type { GithubRepo, VirtualMCPEntity } from "@decocms/shared/sdk/types";
  *                     surfaces a reconnect affordance instead of rendering
  *                     nothing.
  */
-export type GithubAttachment =
+export type RepositoryAttachment =
   | { status: "none" }
-  | { status: "public-clone"; repo: GithubRepo }
-  | { status: "attached"; repo: GithubRepo }
-  | { status: "detached"; repo: GithubRepo };
+  | { status: "public-clone"; repo: RepositoryBinding }
+  | { status: "attached"; repo: RepositoryBinding }
+  | { status: "detached"; repo: RepositoryBinding };
 
-export function resolveGithubAttachment(
+export function resolveRepositoryAttachment(
   virtualMcp: VirtualMCPEntity | null | undefined,
-): GithubAttachment {
-  const repo = virtualMcp?.metadata?.githubRepo;
+): RepositoryAttachment {
+  const repo = virtualMcp?.metadata?.repository;
   if (!repo?.url) return { status: "none" };
 
   // Repository-backed projects carry no aggregated connection: the server
@@ -52,17 +55,17 @@ export function resolveGithubAttachment(
 }
 
 /**
- * Returns the GitHub repo metadata when it's usable to boot a VM:
+ * Returns the repository metadata when it's usable to boot a VM:
  *  - `public-clone`: unauthenticated git clone.
  *  - `attached`: authenticated clone via the still-attached connection.
  *
  * Returns null for `detached` (the token source is gone) and `none`.
- * Built on `resolveGithubAttachment` so this never disagrees with the header.
+ * Built on `resolveRepositoryAttachment` so this never disagrees with the header.
  */
-export function getActiveGithubRepo(
+export function getActiveRepository(
   virtualMcp: VirtualMCPEntity | null | undefined,
-): GithubRepo | null {
-  const attachment = resolveGithubAttachment(virtualMcp);
+): RepositoryBinding | null {
+  const attachment = resolveRepositoryAttachment(virtualMcp);
   return attachment.status === "attached" ||
     attachment.status === "public-clone"
     ? attachment.repo
@@ -72,7 +75,7 @@ export function getActiveGithubRepo(
 /**
  * `owner/name` for a project, or null when it has no repository attached.
  *
- * Lives here, beside `resolveGithubAttachment` whose answer it reads, so the
+ * Lives here, beside `resolveRepositoryAttachment` whose answer it reads, so the
  * project index (`lib/project-index.ts`) can join on it without importing a
  * hook module. Deliberately non-null for `detached` and `public-clone` too: a
  * project whose connection was deleted still owns its work, and hiding its
@@ -82,7 +85,7 @@ export function getActiveGithubRepo(
 export function projectRepo(
   virtualMcp: VirtualMCPEntity | null | undefined,
 ): string | null {
-  const attachment = resolveGithubAttachment(virtualMcp);
+  const attachment = resolveRepositoryAttachment(virtualMcp);
   if (attachment.status === "none") return null;
   return `${attachment.repo.owner}/${attachment.repo.name}`;
 }
@@ -104,13 +107,13 @@ export interface RepoToolTarget {
 }
 
 export function repoToolTarget(
-  githubRepo: GithubRepo | null | undefined,
+  repository: RepositoryBinding | null | undefined,
 ): RepoToolTarget {
-  if (!githubRepo) return {};
+  if (!repository) return {};
   return {
-    repositoryId: githubRepo.repositoryId,
-    repoUrl: githubRepo.url,
-    connectionId: githubRepo.connectionId,
+    repositoryId: repository.repositoryId,
+    repoUrl: repository.url,
+    connectionId: repository.connectionId,
   };
 }
 

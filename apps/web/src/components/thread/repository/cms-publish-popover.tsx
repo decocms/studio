@@ -4,7 +4,7 @@
  * Loads in two beats — see {@link useCmsPublishState} for what each decides.
  */
 
-import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Dialog, DialogContent } from "@decocms/ui/components/dialog.tsx";

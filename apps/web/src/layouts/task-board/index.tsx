@@ -183,7 +183,7 @@ import { compactElapsed, feedRail } from "./feed-rail";
 import { useProjectIndex } from "@/hooks/use-project-index";
 import { useProjectScope } from "@/hooks/use-project-scope";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { projectRepo } from "@/lib/github-repo";
+import { projectRepo } from "@/lib/repository-binding";
 import { scopedBoardItems } from "./board-scope";
 import {
   entryForFilter,

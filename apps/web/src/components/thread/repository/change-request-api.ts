@@ -12,7 +12,7 @@
  */
 
 import { callStudioTool } from "@/lib/studio-tools";
-import type { RepoToolTarget } from "@/lib/github-repo";
+import type { RepoToolTarget } from "@/lib/repository-binding";
 import type { TFunction } from "@/i18n/use-t.ts";
 import {
   appendCoAuthorToPullRequestBody,

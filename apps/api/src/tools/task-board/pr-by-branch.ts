@@ -11,7 +11,7 @@
  * are only dispatched for a card with a linked PR.
  *
  * Studio already knows everything needed to look it up: the repository is bound
- * to the thread (`metadata.githubRepo`, written at dispatch or by
+ * to the thread (`metadata.repository`, written at dispatch or by
  * `TASK_ADD_REPO`) and the branch is derived, not chosen — the daemon checks out
  * `syntheticBranchToGitRef(<sandbox key>)`, and a live daemon's actual HEAD is
  * recorded on `metadata.headRef`. So one `readForBranch` answers it, from the
@@ -37,7 +37,7 @@ import {
 import type { TaskBoardItem } from "@/storage/types";
 import {
   flatSandboxRef,
-  getThreadGithubRepo,
+  getThreadRepository,
   getThreadHeadRef,
   resolveSandboxBranchForThread,
   syntheticBranchToGitRef,
@@ -94,7 +94,7 @@ export async function linkPrFromRunBranch(
       orgId,
     );
     for (const threadId of threadIds) {
-      const repo = await getThreadGithubRepo(ctx, threadId);
+      const repo = await getThreadRepository(ctx, threadId);
       if (!repo?.owner || !repo?.name) continue;
 
       const thread = await ctx.storage.threads.get(threadId);

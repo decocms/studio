@@ -16,7 +16,10 @@ import { useState, useRef } from "react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client.ts";
 import { coAuthorFromSessionUser } from "@/lib/co-author-identity.ts";
-import { repoToolTarget, resolveGithubAttachment } from "@/lib/github-repo.ts";
+import {
+  repoToolTarget,
+  resolveRepositoryAttachment,
+} from "@/lib/repository-binding.ts";
 import {
   branchUserLabel,
   generateBranchName,
@@ -28,7 +31,7 @@ import {
   ChangeRequestMergeRefused,
   mergeRefusalText,
   squashMergeChangeRequest,
-} from "./github-pr-api.ts";
+} from "./change-request-api.ts";
 import { useReleases } from "./use-releases";
 import { PublishDialog, type PublishDialogIntent } from "./publish-dialog.tsx";
 import {
@@ -127,12 +130,12 @@ function makeBranchLoadingButton(t: TFunction): HeaderButton {
  * One split button for the current branch + PR state — the same shape AND
  * language as Fast Preview's `CmsHeaderActions`: "Review & Publish" is the
  * primary happy path (publish dialog → PR → squash-merge), with
- * "Submit for review", "Get latest" and "View on GitHub" in the dropdown.
+ * "Submit for review", "Get latest" and "View on provider" in the dropdown.
  * The sandbox surface adds its agent states ("Fix checks", "Mark ready",
  * "Address feedback"), which dispatch chat prompts. Fast Preview swaps in
  * `CmsHeaderActions` at the mount point (`SiteEditorActions`), but this
  * component keeps its Fast Preview fallbacks for branch metadata since the
- * `/git/*` routes answer from the GitHub API server-side either way.
+ * `/git/*` routes answer through the provider API server-side either way.
  */
 export function HeaderActions({ virtualMcpId }: Props) {
   const t = useT();
@@ -148,11 +151,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
     useState<PublishDialogIntent>("open-pr");
   const [publishPolicyOverride, setPublishPolicyOverride] =
     useState<PublishPolicy | null>(null);
-  const [githubActionPending, setGithubActionPending] = useState(false);
+  const [changeRequestPending, setChangeRequestPending] = useState(false);
   const debugKeyRef = useRef("");
 
-  const attachment = resolveGithubAttachment(vm);
-  const githubRepo =
+  const attachment = resolveRepositoryAttachment(vm);
+  const repository =
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
@@ -196,7 +199,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   // is null but whose live daemon reports one would otherwise be stranded.
   const sandboxRouteBranch = branch ?? sandboxBranch ?? undefined;
 
-  const githubHeadBranch =
+  const headBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ??
     sandboxRouteBranch ??
     null;
@@ -204,29 +207,29 @@ export function HeaderActions({ virtualMcpId }: Props) {
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubHeadBranch,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
   });
   const pr = prQuery.data ?? null;
 
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubHeadBranch,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
   });
 
   const reviewsQuery = usePrReviews({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubHeadBranch,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
   });
 
   /** Git state comes solely from the daemon's `branch` SSE event, which applies the boot-dirty baseline filter a raw /git/status poll would miss. */
@@ -260,9 +263,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
       </WithTooltip>
     );
   }
-  if (!githubRepo) return null;
+  if (!repository) return null;
 
-  const button = githubHeadBranch
+  const button = headBranch
     ? selectHeaderButton({
         lifecycle,
         branch: effectiveBranchMeta,
@@ -292,7 +295,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         ? effectiveBranchMeta.aheadOfBase
         : null,
     lifecycle: lifecycle.phase,
-    githubHeadBranch,
+    headBranch,
     noReviewableDiff: hasNothingToReview(gitStatus),
   });
   // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- debug dedupe ref
@@ -306,7 +309,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
       chatBranch: branch,
       sandboxBranch,
       sandboxRouteBranch,
-      githubHeadBranch,
+      headBranch,
       branchMeta,
       effectiveBranchMeta,
       lifecyclePhase: lifecycle.phase,
@@ -342,11 +345,11 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const handleSquashMerge = async (pullNumber: number) => {
-    if (!githubRepo || githubActionPending) return;
-    setGithubActionPending(true);
+    if (!repository || changeRequestPending) return;
+    setChangeRequestPending(true);
     try {
       const coAuthor = coAuthorFromSessionUser(session?.user);
-      await squashMergeChangeRequest(org.slug, repoToolTarget(githubRepo), {
+      await squashMergeChangeRequest(org.slug, repoToolTarget(repository), {
         number: pullNumber,
         coAuthor,
       });
@@ -364,7 +367,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
             : t("thread.headerActions.failedToMergePullRequest"),
       );
     } finally {
-      setGithubActionPending(false);
+      setChangeRequestPending(false);
     }
   };
 
@@ -378,7 +381,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
   };
 
   const dispatch = (action: HeaderAction) => {
-    if (!githubHeadBranch) return;
+    if (!headBranch) return;
     switch (action) {
       case "publish":
         openDialog("publish-only", button.meta?.publishPolicyOverride ?? null);
@@ -391,9 +394,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         return;
       case "sync":
         if (isStreaming) return;
-        void send(
-          tpl.syncBranch({ branch: githubHeadBranch, base: baseBranch }),
-        );
+        void send(tpl.syncBranch({ branch: headBranch, base: baseBranch }));
         return;
       case "open-pr-page":
         if (pr?.htmlUrl) {
@@ -410,7 +411,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         return;
       case "rebase":
         if (isStreaming) return;
-        void send(tpl.rebaseOnBase({ branch: githubHeadBranch }));
+        void send(tpl.rebaseOnBase({ branch: headBranch }));
         return;
       case "fix-checks":
         if (isStreaming) return;
@@ -433,7 +434,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
     }
   };
 
-  const actionBusy = githubActionPending || isStreaming;
+  const actionBusy = changeRequestPending || isStreaming;
 
   return (
     <>
@@ -441,7 +442,7 @@ export function HeaderActions({ virtualMcpId }: Props) {
         t={t}
         button={button}
         actionBusy={actionBusy}
-        githubActionPending={githubActionPending}
+        changeRequestPending={changeRequestPending}
         savePending={decofileSaving}
         onAction={dispatch}
       />
@@ -454,9 +455,9 @@ export function HeaderActions({ virtualMcpId }: Props) {
           virtualMcpId={virtualMcpId}
           branch={sandboxRouteBranch}
           baseBranch={baseBranch}
-          repoTarget={repoToolTarget(githubRepo)}
-          owner={githubRepo.owner}
-          repo={githubRepo.name}
+          repoTarget={repoToolTarget(repository)}
+          owner={repository.owner}
+          repo={repository.name}
           previewUrl={previewUrl}
           publishPolicy={publishPolicyOverride ?? publishPolicy}
           dialogIntent={publishDialogIntent}
@@ -478,17 +479,17 @@ function HeaderButtonRenderer(props: {
   t: TFunction;
   button: HeaderButton;
   actionBusy: boolean;
-  githubActionPending: boolean;
+  changeRequestPending: boolean;
   savePending: boolean;
   onAction: (action: HeaderAction) => void;
 }) {
-  const { t, button, actionBusy, githubActionPending, savePending, onAction } =
+  const { t, button, actionBusy, changeRequestPending, savePending, onAction } =
     props;
   const action = button.action;
 
   const chatBlocksAction =
     actionBusy && action !== undefined && CHAT_ACTIONS.has(action);
-  const mergePending = githubActionPending && action === "merge";
+  const mergePending = changeRequestPending && action === "merge";
   const savingBlocksAction =
     savePending && action !== undefined && HEAD_ACTIONS.has(action);
   const disabled =
@@ -507,7 +508,7 @@ function HeaderButtonRenderer(props: {
   const items: SplitButtonMenuItem[] = button.menu.map((item) => {
     const itemChatBlocked = actionBusy && CHAT_ACTIONS.has(item.action);
     const itemHeadBlocked = savePending && HEAD_ACTIONS.has(item.action);
-    const itemMergeBlocked = item.action === "merge" && githubActionPending;
+    const itemMergeBlocked = item.action === "merge" && changeRequestPending;
     const itemTooltip = itemHeadBlocked
       ? t("thread.headerActions.saving")
       : itemChatBlocked

@@ -6,7 +6,7 @@
  * SYNTHETIC virtual MCP — `virtualMcps.findById` returns an in-memory object
  * with no `connections` row, so a repo can't be persisted on the agent and its
  * sandbox branch is the shared, repo-less `"ephemeral"`. Instead we bind the
- * repo to the THREAD (`threads.metadata.githubRepo` + a dedicated
+ * repo to the THREAD (`threads.metadata.repository` + a dedicated
  * `thread:<id>` branch — real, persisted columns). Sandbox provisioning
  * (`ensureSandbox`) and the fs-tool binding (`tools.ts`) both prefer the
  * thread's repo, so the thread gets its own repo-cloned sandbox. Only the
@@ -144,7 +144,7 @@ export async function createLoadRepoTool(opts: {
 }) {
   const { ctx, orgId, virtualMcpId, userId, threadId, writer, rebindFs } = opts;
   // Super-Agent-only. Every other agent either owns a repo already (repo-agents
-  // get it from `metadata.githubRepo`) or is deliberately scoped to one — letting
+  // get it from `metadata.repository`) or is deliberately scoped to one — letting
   // them re-point the thread at an arbitrary org repo mid-run isn't an override,
   // it's an escape from their configured scope.
   if (!isDecopilot(virtualMcpId)) return null;
@@ -204,7 +204,7 @@ export async function createLoadRepoTool(opts: {
        * credential from `repositoryId` when it is there and from the legacy
        * connection otherwise, so nothing is minted here.
        */
-      const githubRepo = {
+      const repository = {
         url: repo.webUrl,
         owner: repo.owner,
         name: repo.name,
@@ -219,7 +219,7 @@ export async function createLoadRepoTool(opts: {
       //    synthetic Decopilot agent). Merge into existing metadata.
       const thread = await ctx.storage.threads.get(threadId);
       await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread?.metadata ?? {}), githubRepo },
+        metadata: { ...(thread?.metadata ?? {}), repository },
         branch,
         updated_by: userId,
       });
@@ -253,7 +253,7 @@ export async function createLoadRepoTool(opts: {
         data: {
           previewUrl: entry.previewUrl ?? null,
           branch,
-          githubRepo,
+          repository,
           sandboxMap,
         },
       } as Parameters<UIMessageStreamWriter["write"]>[0]);

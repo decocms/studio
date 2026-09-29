@@ -16,7 +16,7 @@ function project(
     created_at: createdAt,
     metadata: repo
       ? {
-          githubRepo: {
+          repository: {
             url: `https://github.com/${repo}`,
             owner: repo.split("/")[0],
             name: repo.split("/")[1],

@@ -162,11 +162,11 @@ test("New project creates a site from a template in the chosen GitHub account an
     items: Array<{
       title: string;
       description: string | null;
-      metadata: { githubRepo?: { repositoryId: string } } | null;
+      metadata: { repository?: { repositoryId: string } } | null;
     }>;
   }>(request, orgSlug, "COLLECTION_VIRTUAL_MCP_LIST", {});
   const project = items.filter(
-    (item) => item.metadata?.githubRepo?.repositoryId === linked?.id,
+    (item) => item.metadata?.repository?.repositoryId === linked?.id,
   );
   expect(project).toHaveLength(1);
   expect(project[0]).toMatchObject({

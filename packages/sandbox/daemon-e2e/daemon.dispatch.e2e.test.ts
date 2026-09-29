@@ -61,10 +61,9 @@ const VALID_INPUT = {
   threadId: "thrd_e2e",
   userMessage: { role: "user" },
   harness: {},
-  // `cwd: "/repo"` is the only accepted path, and it obliges the repo it names.
+  // Only the working directory and branch are consumed by the runner.
   workspace: {
     cwd: "/repo",
-    repo: { owner: "o", name: "n", connectedGithub: false },
     branch: null,
   },
   models: { thinking: { id: "m", title: "M", credentialId: "c" } },

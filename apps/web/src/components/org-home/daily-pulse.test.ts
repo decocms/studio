@@ -180,7 +180,7 @@ describe("projectSummaries", () => {
       created_at: "2026-01-01T00:00:00Z",
       metadata: repo
         ? {
-            githubRepo: {
+            repository: {
               owner: repo.split("/")[0],
               name: repo.split("/")[1],
               url: `https://github.com/${repo}`,
@@ -321,7 +321,7 @@ describe("shippedSeries", () => {
     title: "p1",
     created_at: "2026-01-01T00:00:00Z",
     metadata: {
-      githubRepo: {
+      repository: {
         owner: "deco",
         name: "farm",
         url: "https://github.com/deco/farm",
@@ -443,7 +443,7 @@ describe("monthlyCost", () => {
       title: id,
       created_at: "2026-01-01T00:00:00Z",
       metadata: {
-        githubRepo: {
+        repository: {
           owner: repo.split("/")[0],
           name: repo.split("/")[1],
           url: `https://github.com/${repo}`,

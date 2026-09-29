@@ -1,4 +1,4 @@
-import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import type { PublishTarget } from "./publish-flow.ts";
 import type { PrSummary } from "./use-pr-data.ts";
 import type { PublishPolicy } from "./sandbox-git-api.ts";
@@ -265,7 +265,7 @@ function PublishDialogBody({
     })();
   }
 
-  const githubHeadBranch = readGitHeadBranch(gitStatus) ?? branch;
+  const headBranch = readGitHeadBranch(gitStatus) ?? branch;
   const publishLabel = publishToBaseLabel(baseBranch, t);
 
   const regenerateSuggestion = () => {
@@ -334,7 +334,7 @@ function PublishDialogBody({
     target: repoTarget,
     owner,
     repo,
-    headBranch: githubHeadBranch,
+    headBranch: headBranch,
     coAuthor,
     expectedHeadSha: headSha ?? undefined,
   };
@@ -344,7 +344,7 @@ function PublishDialogBody({
       title: publishTitle,
       body: publishBody,
       fallbackTitle: t("thread.publishDialog.changesFrom", {
-        branch: githubHeadBranch,
+        branch: headBranch,
       }),
     });
 

@@ -28,7 +28,7 @@
  */
 
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { projectRepo, resolveGithubAttachment } from "./github-repo";
+import { projectRepo, resolveRepositoryAttachment } from "./repository-binding";
 
 /** The repo field can also contain a project id written by existing clients. */
 export interface AttributableTask {
@@ -404,7 +404,8 @@ export function stampableEntries(index: ProjectIndex): ProjectIndexEntry[] {
       entry.repo !== null &&
       (entry.projects.length === 0 ||
         entry.projects.some(
-          (project) => resolveGithubAttachment(project).status !== "detached",
+          (project) =>
+            resolveRepositoryAttachment(project).status !== "detached",
         )),
   );
 }

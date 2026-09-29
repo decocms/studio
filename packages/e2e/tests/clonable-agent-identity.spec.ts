@@ -1,7 +1,7 @@
 /**
  * E2E: clonable agents (connected GitHub repo) allow editing their whole
  * identity — icon/logo, name and description — on the settings tab. A linked
- * repo is addressed by `metadata.githubRepo` and its site tenancy by
+ * repo is addressed by `metadata.repository` and its site tenancy by
  * `metadata.siteSlug`, so neither is keyed off the title and none of these
  * fields needs to be read-only.
  */
@@ -17,15 +17,15 @@ test.describe("clonable agent identity (settings tab)", () => {
 
     // Create a placeholder connection. Use the test studio server as a dummy URL
     // since tool validation now requires a reachable endpoint. We only need the
-    // connection ID to populate `agentHasConnectedGithub`; the URL itself is unused.
+    // connection ID to populate `agentHasConnectedRepository`; the URL itself is unused.
     const conn = await createHttpConnection(api, orgSlug, {
       title: "github-placeholder",
       url: "http://127.0.0.1:3000/",
     });
 
-    // Create the clonable agent: connections[] AND metadata.githubRepo
+    // Create the clonable agent: connections[] AND metadata.repository
     // both reference the same connection id — both halves are required
-    // for `getActiveGithubRepo` to return a non-null repo.
+    // for `getActiveRepository` to return a non-null repo.
     const agent = await callSelfMcpTool<{ item: { id: string } }>(
       api,
       orgSlug,
@@ -38,7 +38,7 @@ test.describe("clonable agent identity (settings tab)", () => {
           pinned: false,
           connections: [{ connection_id: conn.id }],
           metadata: {
-            githubRepo: {
+            repository: {
               url: "https://github.com/example/repo",
               owner: "example",
               name: "repo",
@@ -73,7 +73,7 @@ test.describe("clonable agent identity (settings tab)", () => {
     // <IconPicker> in apps/web/src/components/icon-picker.tsx.
     const iconButton = page.getByTestId("icon-picker-trigger");
 
-    // Under test: `disabled={hasGithubRepo}` locked each of these.
+    // Under test: `disabled={hasRepository}` locked each of these.
     await expect(iconButton).toBeEnabled();
     await expect(titleInput).toBeEnabled();
     const descriptionInput = page.getByPlaceholder("Add a description...");

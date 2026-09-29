@@ -59,7 +59,7 @@ async function createProject(
       ? {
           ...(options.clonable
             ? {
-                githubRepo: {
+                repository: {
                   url: "https://github.com/example/repo",
                   owner: "example",
                   name: "repo",

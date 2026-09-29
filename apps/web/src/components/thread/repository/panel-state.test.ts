@@ -431,7 +431,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Review & Publish");
     expect(menuKeys(r)).toEqual([
       "submit-for-review",
-      "view-on-github",
+      "view-change-request",
       "get-latest",
     ]);
   });
@@ -478,7 +478,7 @@ describe("selectHeaderButton", () => {
     expect(r.variant).toBe("brand");
     // PR cleared every header gate — the dialog must not re-gate by content.
     expect(r.meta?.publishPolicyOverride).toBe("open");
-    expect(menuKeys(r)).toEqual(["review", "view-on-github"]);
+    expect(menuKeys(r)).toEqual(["review", "view-change-request"]);
   });
 
   test("ahead of base + closed non-merged PR → Reopen PR", () => {
@@ -490,7 +490,7 @@ describe("selectHeaderButton", () => {
     );
     expect(r.label).toBe("Reopen PR");
     expect(r.action).toBe("reopen");
-    expect(menuKeys(r)).toEqual(["view-on-github"]);
+    expect(menuKeys(r)).toEqual(["view-change-request"]);
   });
 
   test("merged PR, branch at merge head → Up to date (disabled, GitHub link)", () => {
@@ -509,7 +509,7 @@ describe("selectHeaderButton", () => {
     expect(r.disabled).toBe(true);
     expect(r.variant).toBe("outline");
     expect(r.tooltip).toBe("PR #42 merged into main");
-    expect(menuKeys(r)).toEqual(["view-on-github"]);
+    expect(menuKeys(r)).toEqual(["view-change-request"]);
   });
 
   /** Publishing is done, so syncing this branch is not the next step. */
@@ -528,7 +528,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Up to date");
     expect(r.disabled).toBe(true);
     expect(r.tooltip).toBe("PR #42 merged into main");
-    expect(menuKeys(r)).toEqual(["view-on-github", "get-latest"]);
+    expect(menuKeys(r)).toEqual(["view-change-request", "get-latest"]);
   });
 
   test("merged PR, branch advanced past merge head → Continue (special)", () => {
@@ -546,7 +546,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Continue");
     expect(r.action).toBe("create-pr");
     expect(r.variant).toBe("special");
-    expect(menuKeys(r)).toEqual(["view-on-github"]);
+    expect(menuKeys(r)).toEqual(["view-change-request"]);
   });
 
   test("ahead of base + no PR → Review & Publish", () => {
@@ -567,8 +567,8 @@ describe("selectHeaderButton", () => {
     );
     expect(r.label).toBe("Get latest");
     expect(r.action).toBe("rebase");
-    expect(menuKeys(r)).toEqual(["resolve-on-github"]);
-    expect(menuItem(r, "resolve-on-github")?.action).toBe("open-pr-page");
+    expect(menuKeys(r)).toEqual(["resolve-on-provider"]);
+    expect(menuItem(r, "resolve-on-provider")?.action).toBe("open-pr-page");
   });
 
   test("PR open + settled failed check → Fix checks with failing list and Publish anyway", () => {
@@ -583,7 +583,7 @@ describe("selectHeaderButton", () => {
     expect(r.label).toBe("Fix checks");
     expect(r.action).toBe("fix-checks");
     expect(r.meta?.failingChecks).toEqual(["unit-test"]);
-    expect(menuKeys(r)).toEqual(["publish-anyway", "view-on-github"]);
+    expect(menuKeys(r)).toEqual(["publish-anyway", "view-change-request"]);
     expect(menuItem(r, "publish-anyway")?.action).toBe("merge");
     expect(menuItem(r, "publish-anyway")?.label).toBe("Publish anyway");
   });
@@ -655,7 +655,7 @@ describe("selectHeaderButton", () => {
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     expect(r.meta?.publishPolicyOverride).toBe("open");
-    expect(menuKeys(r)).toEqual(["review", "view-on-github"]);
+    expect(menuKeys(r)).toEqual(["review", "view-change-request"]);
     expect(menuItem(r, "review")?.action).toBe("review");
   });
 

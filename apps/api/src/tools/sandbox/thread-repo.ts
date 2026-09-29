@@ -4,7 +4,7 @@
  * The Decopilot super-agent (and other ephemeral agents) has no persistent
  * `connections` row — its `virtualMcps.findById` returns a synthetic object, so
  * a repo can't be persisted on the agent. `load_repo` instead binds the chosen
- * repo to the current THREAD (`threads.metadata.githubRepo` + `threads.branch`,
+ * repo to the current THREAD (`threads.metadata.repository` + `threads.branch`,
  * both real, persisted columns), and sandbox provisioning prefers the thread's
  * repo over the agent's. This is also the natural per-conversation override for
  * real repo-agents.
@@ -17,7 +17,7 @@ import {
   parseRepoUrl,
 } from "@decocms/shared/git-providers";
 import type {
-  GithubRepo,
+  RepositoryBinding,
   SandboxMap,
   SandboxRecord,
 } from "@decocms/shared/sdk";
@@ -93,7 +93,7 @@ export function flatSandboxRef(
 export async function sandboxGitRef(
   ctx: StudioContext,
   branch: string,
-  binding: GithubRepo | null,
+  binding: RepositoryBinding | null,
 ): Promise<string> {
   if (!binding) return syntheticBranchToGitRef(branch);
   return syntheticBranchToGitRef(branch, {
@@ -103,7 +103,7 @@ export async function sandboxGitRef(
 
 async function bindingProvider(
   ctx: StudioContext,
-  binding: GithubRepo,
+  binding: RepositoryBinding,
 ): Promise<GitProviderKind | null> {
   // Stored JSON: a binding written before `url` was required has none.
   const fromUrl =
@@ -213,7 +213,7 @@ export async function getThreadHeadRef(
 
 /**
  * Persist the branch a live daemon reports for this thread's sandbox. Merged
- * into existing metadata (never a blind overwrite — `githubRepo` and
+ * into existing metadata (never a blind overwrite — `repository` and
  * `sandboxMap` live in the same bag). No-op when the thread is gone or the ref
  * is already recorded, so the caller can fire this on every daemon connect.
  * Never throws: losing the hint only costs the next boot its restore.
@@ -242,13 +242,13 @@ export async function setThreadHeadRef(
  * re-point it at that one instead. Pure so the choice is testable without a DB.
  */
 export function repointedRepoBinding(
-  repo: GithubRepo,
+  repo: RepositoryBinding,
   connections: {
     id: string;
     status?: string;
     metadata: Record<string, unknown> | null;
   }[],
-): GithubRepo | null {
+): RepositoryBinding | null {
   const replacement = findReusableRepoConnection(
     connections,
     repo.owner,
@@ -280,21 +280,24 @@ export function repointedRepoBinding(
  * the first. Read on every provision so a recreated pod gets back every repo
  * the run had added, rather than only the primary.
  */
-export async function getThreadGithubRepos(
+export async function getThreadAdditionalRepositories(
   ctx: StudioContext,
   threadId: string | undefined | null,
-): Promise<GithubRepo[]> {
+): Promise<RepositoryBinding[]> {
   const meta = await getThreadMeta(ctx, threadId);
-  const repos = (meta as { githubRepos?: GithubRepo[] } | null)?.githubRepos;
+  const repos = (
+    meta as { additionalRepositories?: RepositoryBinding[] } | null
+  )?.additionalRepositories;
   return Array.isArray(repos) ? repos.filter((r) => r?.owner && r?.name) : [];
 }
 
-export async function getThreadGithubRepo(
+export async function getThreadRepository(
   ctx: StudioContext,
   threadId: string | undefined | null,
-): Promise<GithubRepo | null> {
+): Promise<RepositoryBinding | null> {
   const meta = await getThreadMeta(ctx, threadId);
-  const repo = (meta as { githubRepo?: GithubRepo } | null)?.githubRepo ?? null;
+  const repo =
+    (meta as { repository?: RepositoryBinding } | null)?.repository ?? null;
   if (!threadId || !meta || !repo?.connectionId) return repo;
 
   try {
@@ -309,7 +312,7 @@ export async function getThreadGithubRepo(
     const repointed = repointedRepoBinding(repo, items);
     if (!repointed) return repo;
     await ctx.storage.threads.update(threadId, {
-      metadata: { ...meta, githubRepo: repointed },
+      metadata: { ...meta, repository: repointed },
     });
     console.warn("[thread-repo] re-pointed thread at a live repo connection", {
       threadId,
@@ -328,7 +331,7 @@ export async function getThreadGithubRepo(
  * agree on.
  *
  * Two keying regimes:
- * - GitHub-linked agents (`githubRepo` set) need per-branch isolation so PR and
+ * - repository-linked agents (`repository` set) need per-branch isolation so PR and
  *   branch workflows don't trample each other, falling back to a synthetic
  *   `thread:<id>` branch when no explicit branch is supplied yet. A repo bound
  *   to the THREAD (`load_repo`) wins over the agent's and pins its own branch,
@@ -344,9 +347,9 @@ export async function getThreadGithubRepo(
 export function resolveSandboxBranch(args: {
   threadId: string;
   /** Repo bound to the thread by `load_repo`; wins over the agent's. */
-  threadRepo: GithubRepo | null;
-  /** Repo configured on the agent (`virtualMcp.metadata.githubRepo`). */
-  agentRepo?: GithubRepo | null;
+  threadRepo: RepositoryBinding | null;
+  /** Repo configured on the agent (`virtualMcp.metadata.repository`). */
+  agentRepo?: RepositoryBinding | null;
   /** Explicit branch for this run, when the caller has one. */
   runBranch?: string | null;
   /**
@@ -400,12 +403,12 @@ export async function resolveSandboxBranchForThread(
   ctx: StudioContext,
   args: {
     threadId: string;
-    agentRepo?: GithubRepo | null;
+    agentRepo?: RepositoryBinding | null;
     runBranch?: string | null;
   },
 ): Promise<string> {
   const [threadRepo, pinnedRef] = await Promise.all([
-    getThreadGithubRepo(ctx, args.threadId),
+    getThreadRepository(ctx, args.threadId),
     getThreadPinnedRef(ctx, args.threadId),
   ]);
   return resolveSandboxBranch({ ...args, threadRepo, pinnedRef });

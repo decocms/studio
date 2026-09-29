@@ -5,7 +5,7 @@ import { scopedProjectLacksSource } from "./nav-destinations-classic";
  *  hides three of the five rows, and the other two are org-only, so getting it
  *  wrong inside a project leaves a sidebar with no destinations at all. */
 describe("scopedProjectLacksSource", () => {
-  const repo = { metadata: { githubRepo: { url: "https://github.com/a/b" } } };
+  const repo = { metadata: { repository: { url: "https://github.com/a/b" } } };
 
   test("fails open above a project, and before one resolves", () => {
     expect(scopedProjectLacksSource(null, null)).toBe(false);

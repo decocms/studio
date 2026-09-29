@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  getActiveGithubRepo,
+  getActiveRepository,
   projectRepo,
-  resolveGithubAttachment,
-} from "./github-repo";
+  resolveRepositoryAttachment,
+} from "./repository-binding";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 
 const baseEntity: VirtualMCPEntity = {
@@ -21,21 +21,21 @@ const baseEntity: VirtualMCPEntity = {
   connections: [],
 };
 
-describe("getActiveGithubRepo", () => {
+describe("getActiveRepository", () => {
   test("returns null when virtualMcp is null", () => {
-    expect(getActiveGithubRepo(null)).toBeNull();
+    expect(getActiveRepository(null)).toBeNull();
   });
 
   test("returns null when virtualMcp is undefined", () => {
-    expect(getActiveGithubRepo(undefined)).toBeNull();
+    expect(getActiveRepository(undefined)).toBeNull();
   });
 
-  test("returns null when metadata has no githubRepo", () => {
-    expect(getActiveGithubRepo(baseEntity)).toBeNull();
+  test("returns null when metadata has no repository", () => {
+    expect(getActiveRepository(baseEntity)).toBeNull();
   });
 
   test("returns the repo when there is no connectionId (public-clone mode)", () => {
-    const githubRepo = {
+    const repository = {
       url: "https://github.com/owner/repo",
       owner: "owner",
       name: "repo",
@@ -44,10 +44,10 @@ describe("getActiveGithubRepo", () => {
       ...baseEntity,
       metadata: {
         instructions: null,
-        githubRepo,
+        repository,
       },
     };
-    expect(getActiveGithubRepo(entity)).toEqual(githubRepo);
+    expect(getActiveRepository(entity)).toEqual(repository);
   });
 
   test("returns null when connectionId is not in connections (stale)", () => {
@@ -55,7 +55,7 @@ describe("getActiveGithubRepo", () => {
       ...baseEntity,
       metadata: {
         instructions: null,
-        githubRepo: {
+        repository: {
           url: "https://github.com/owner/repo",
           owner: "owner",
           name: "repo",
@@ -72,11 +72,11 @@ describe("getActiveGithubRepo", () => {
         },
       ],
     };
-    expect(getActiveGithubRepo(entity)).toBeNull();
+    expect(getActiveRepository(entity)).toBeNull();
   });
 
-  test("returns githubRepo when connectionId matches a connection", () => {
-    const githubRepo = {
+  test("returns repository when connectionId matches a connection", () => {
+    const repository = {
       url: "https://github.com/owner/repo",
       owner: "owner",
       name: "repo",
@@ -87,7 +87,7 @@ describe("getActiveGithubRepo", () => {
       ...baseEntity,
       metadata: {
         instructions: null,
-        githubRepo,
+        repository,
       },
       connections: [
         {
@@ -104,17 +104,17 @@ describe("getActiveGithubRepo", () => {
         },
       ],
     };
-    expect(getActiveGithubRepo(entity)).toEqual(githubRepo);
+    expect(getActiveRepository(entity)).toEqual(repository);
   });
 });
 
-describe("resolveGithubAttachment", () => {
+describe("resolveRepositoryAttachment", () => {
   const withRepo = (
-    githubRepo: unknown,
+    repository: unknown,
     connectionIds: string[] = [],
   ): VirtualMCPEntity => ({
     ...baseEntity,
-    metadata: { instructions: null, githubRepo: githubRepo as never },
+    metadata: { instructions: null, repository: repository as never },
     connections: connectionIds.map((id) => ({
       connection_id: id,
       selected_tools: null,
@@ -124,22 +124,22 @@ describe("resolveGithubAttachment", () => {
   });
 
   test("'none' with no repo or no url", () => {
-    expect(resolveGithubAttachment(null).status).toBe("none");
-    expect(resolveGithubAttachment(baseEntity).status).toBe("none");
+    expect(resolveRepositoryAttachment(null).status).toBe("none");
+    expect(resolveRepositoryAttachment(baseEntity).status).toBe("none");
     expect(
-      resolveGithubAttachment(withRepo({ owner: "a", name: "b" })).status,
+      resolveRepositoryAttachment(withRepo({ owner: "a", name: "b" })).status,
     ).toBe("none");
   });
 
   test("'public-clone' for a template repo with no connection", () => {
     expect(
-      resolveGithubAttachment(withRepo({ url: "u", owner: "a", name: "b" }))
+      resolveRepositoryAttachment(withRepo({ url: "u", owner: "a", name: "b" }))
         .status,
     ).toBe("public-clone");
   });
 
   test("'attached' when the connectionId is a live aggregation", () => {
-    const r = resolveGithubAttachment(
+    const r = resolveRepositoryAttachment(
       withRepo(
         {
           url: "u",
@@ -156,7 +156,7 @@ describe("resolveGithubAttachment", () => {
 
   test("'attached' for a repository-backed project with no connection", () => {
     expect(
-      resolveGithubAttachment(
+      resolveRepositoryAttachment(
         withRepo({ url: "u", owner: "a", name: "b", repositoryId: "r" }),
       ).status,
     ).toBe("attached");
@@ -164,7 +164,7 @@ describe("resolveGithubAttachment", () => {
 
   test("'attached' when a repository id outlives a stale connectionId", () => {
     expect(
-      resolveGithubAttachment(
+      resolveRepositoryAttachment(
         withRepo(
           {
             url: "u",
@@ -181,7 +181,7 @@ describe("resolveGithubAttachment", () => {
 
   test("'detached' when a stored connectionId is no longer aggregated", () => {
     expect(
-      resolveGithubAttachment(
+      resolveRepositoryAttachment(
         withRepo({ url: "u", owner: "a", name: "b", connectionId: "c" }, [
           "other",
         ]),
@@ -191,7 +191,7 @@ describe("resolveGithubAttachment", () => {
 
   test("'detached' when the pointer is gone but installationId proves prior connection", () => {
     expect(
-      resolveGithubAttachment(
+      resolveRepositoryAttachment(
         withRepo({ url: "u", owner: "a", name: "b", installationId: 7 }, []),
       ).status,
     ).toBe("detached");
@@ -204,13 +204,13 @@ describe("resolveGithubAttachment", () => {
  * whose repo connection was torn down still OWNS its work, and dropping its
  * cards off the board is a worse answer than listing them under a project
  * whose runs happen to be unable to boot. This is why it is NOT
- * `getActiveGithubRepo`, which answers a different question (can we clone).
+ * `getActiveRepository`, which answers a different question (can we clone).
  */
 describe("projectRepo", () => {
-  const withRepo = (githubRepo: unknown, connectionIds: string[] = []) =>
+  const withRepo = (repository: unknown, connectionIds: string[] = []) =>
     ({
       ...baseEntity,
-      metadata: { instructions: null, githubRepo: githubRepo as never },
+      metadata: { instructions: null, repository: repository as never },
       connections: connectionIds.map((id) => ({
         connection_id: id,
         selected_tools: null,
@@ -238,9 +238,11 @@ describe("projectRepo", () => {
     });
     const publicClone = withRepo({ url: "u", owner: "acme", name: "site" });
 
-    expect(resolveGithubAttachment(attached).status).toBe("attached");
-    expect(resolveGithubAttachment(detached).status).toBe("detached");
-    expect(resolveGithubAttachment(publicClone).status).toBe("public-clone");
+    expect(resolveRepositoryAttachment(attached).status).toBe("attached");
+    expect(resolveRepositoryAttachment(detached).status).toBe("detached");
+    expect(resolveRepositoryAttachment(publicClone).status).toBe(
+      "public-clone",
+    );
     for (const entity of [attached, detached, publicClone]) {
       expect(projectRepo(entity)).toBe("acme/site");
     }

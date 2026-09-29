@@ -175,7 +175,7 @@ describe("selectCmsHeaderButton — 2. publishing", () => {
 });
 
 describe("selectCmsHeaderButton — 3. needs attention (conflicts)", () => {
-  test("open PR + dirty → Get latest with Resolve on GitHub menu", () => {
+  test("open PR + dirty → Get latest with Resolve on provider menu", () => {
     const r = selectCmsHeaderButton(
       input({
         branch: ready({ aheadOfBase: 2 }),
@@ -189,8 +189,8 @@ describe("selectCmsHeaderButton — 3. needs attention (conflicts)", () => {
     expect(r.tooltip).toBe("Bring in new changes from production");
     expect(r.menu).toEqual([
       {
-        key: "resolve-on-github",
-        label: "Resolve on GitHub",
+        key: "resolve-on-provider",
+        label: "Resolve on provider",
         action: "open-pr",
       },
     ]);
@@ -218,7 +218,7 @@ describe("selectCmsHeaderButton — 3. needs attention (conflicts)", () => {
         reviews: reviews({ mergeableState: "dirty" }),
       }),
     );
-    expect(menuKeys(r.menu)).toEqual(["resolve-on-github"]);
+    expect(menuKeys(r.menu)).toEqual(["resolve-on-provider"]);
   });
 });
 
@@ -236,7 +236,11 @@ describe("selectCmsHeaderButton — 4. waiting for approval", () => {
     expect(r.variant).toBe("outline");
     expect(r.disabled).toBeFalsy();
     expect(r.menu).toEqual([
-      { key: "view-on-github", label: "View on GitHub", action: "open-pr" },
+      {
+        key: "view-change-request",
+        label: "View on provider",
+        action: "open-pr",
+      },
     ]);
   });
 
@@ -337,7 +341,11 @@ describe("selectCmsHeaderButton — 5. ready to publish", () => {
     expect(r.action).toBe("publish");
     expect(r.variant).toBe("brand");
     expect(r.menu).toEqual([
-      { key: "view-on-github", label: "View on GitHub", action: "open-pr" },
+      {
+        key: "view-change-request",
+        label: "View on provider",
+        action: "open-pr",
+      },
     ]);
   });
 
@@ -524,7 +532,7 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
         reviews: reviews({ mergeableState: "blocked" }),
       }),
     );
-    expect(menuKeys(r.menu)).toEqual(["view-on-github", "get-latest"]);
+    expect(menuKeys(r.menu)).toEqual(["view-change-request", "get-latest"]);
   });
 
   test("state 5 (ready to publish) appends Get latest", () => {
@@ -535,7 +543,7 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
         reviews: reviews(),
       }),
     );
-    expect(menuKeys(r.menu)).toEqual(["view-on-github", "get-latest"]);
+    expect(menuKeys(r.menu)).toEqual(["view-change-request", "get-latest"]);
   });
 
   test("state 6 (draft) appends Get latest", () => {
@@ -586,7 +594,7 @@ describe("selectCmsHeaderButton — Get latest in every menu when behind", () =>
       }),
     );
     expect(r.variant).toBe("warning");
-    expect(menuKeys(r.menu)).toEqual(["view-on-github", "get-latest"]);
+    expect(menuKeys(r.menu)).toEqual(["view-change-request", "get-latest"]);
   });
 });
 

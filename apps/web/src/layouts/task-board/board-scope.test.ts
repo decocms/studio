@@ -9,7 +9,7 @@ function project(id: string, repo?: string): VirtualMCPEntity {
     created_at: "2026-01-01T00:00:00Z",
     metadata: repo
       ? {
-          githubRepo: {
+          repository: {
             url: `https://github.com/${repo}`,
             owner: repo.split("/")[0],
             name: repo.split("/")[1],

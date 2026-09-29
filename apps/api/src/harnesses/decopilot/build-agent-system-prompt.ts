@@ -25,7 +25,7 @@ import {
 } from "@/harnesses/lib/coding-workspace-prompt";
 import { buildOrgFilesystemPrompt } from "@/api/routes/decopilot/constants";
 import { sandboxIsDecoSite } from "./built-in-tools/agent-sandbox-fs";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   buildSystemMessages,
@@ -75,7 +75,7 @@ export interface BuildAgentSystemPromptOptions {
   virtualMcp: {
     id: string;
     instructions?: string;
-    repo?: GithubRepo;
+    repo?: RepositoryBinding;
     delegationTargetIds?: string[] | null;
   };
   kind: "agent" | "subagent";

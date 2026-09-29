@@ -20,8 +20,8 @@ import { authClient } from "@/lib/auth-client";
 import { useOptionalThreadManager } from "@/components/chat/store/hooks";
 import type { Task } from "@/components/chat/task/types";
 import { findAgentEntryThread } from "@/lib/reusable-new-chat";
-import { getActiveGithubRepo } from "@/lib/github-repo";
-import { useBaseBranch } from "@/components/thread/github/use-version-gate";
+import { getActiveRepository } from "@/lib/repository-binding";
+import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
 import {
   defaultThreadRuntime,
   type ThreadRuntime,
@@ -104,7 +104,7 @@ export function useNavigateToAgent() {
      *  none. `wantedRuntime` narrows which empty chat qualifies, so "open the
      *  CMS" cannot resume a sandbox session. */
     const target = (cachedAgents ?? []).find((a) => a.id === virtualMcpId);
-    const hasBranch = !!(target && getActiveGithubRepo(target));
+    const hasBranch = !!(target && getActiveRepository(target));
     /** An agent's entry thread (its last branch/version for a repo editor, its
      *  last conversation for a plain chat) can only be resolved from the TARGET
      *  project's thread list. The manager here is keyed on `${org}::${locator}`,

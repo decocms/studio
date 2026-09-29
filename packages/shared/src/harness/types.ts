@@ -86,7 +86,7 @@ export type HarnessWorkspace =
       repo?: {
         owner: string;
         name: string;
-        connectedGithub: boolean;
+        linked: boolean;
       };
       branch: string | null;
     }

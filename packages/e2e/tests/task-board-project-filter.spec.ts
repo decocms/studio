@@ -7,7 +7,7 @@
  * merge still narrows the board it lands on.
  *
  * No run is dispatched and no GitHub connection is created: buckets come from
- * each project's `metadata.githubRepo`, so this depends on no model tier, no
+ * each project's `metadata.repository`, so this depends on no model tier, no
  * provider, and no installation.
  */
 
@@ -46,7 +46,7 @@ async function seedProject(
         pinned: false,
         connections: [],
         metadata: {
-          githubRepo: { url: `https://github.com/${repo}`, owner, name },
+          repository: { url: `https://github.com/${repo}`, owner, name },
         },
       },
     },

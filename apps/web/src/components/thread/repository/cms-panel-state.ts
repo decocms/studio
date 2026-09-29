@@ -17,7 +17,7 @@ import type { PrReviewSignals } from "./use-pr-reviews.ts";
  * - `publish` — merge the PR (opening one first when there isn't one yet).
  * - `request-approval` — open the PR so a reviewer can approve it.
  * - `get-latest` — bring `base` into the working branch.
- * - `open-pr` — open the PR on GitHub in a new tab.
+ * - `open-pr` — open the change request on its provider in a new tab.
  */
 export type CmsAction =
   | "publish"
@@ -85,10 +85,10 @@ export interface SelectCmsHeaderButtonInput {
   t: TFunction;
 }
 
-function viewOnGithubItem(t: TFunction): CmsMenuItem {
+function viewChangeRequestItem(t: TFunction): CmsMenuItem {
   return {
-    key: "view-on-github",
-    label: t("thread.cmsActions.viewOnGithub"),
+    key: "view-change-request",
+    label: t("thread.cmsActions.viewOnProvider"),
     action: "open-pr",
   };
 }
@@ -321,8 +321,8 @@ export function selectCmsHeaderButton(
         tooltip: t("thread.cmsActions.getLatestTooltip"),
         menu: [
           {
-            key: "resolve-on-github",
-            label: t("thread.cmsActions.resolveOnGithub"),
+            key: "resolve-on-provider",
+            label: t("thread.cmsActions.resolveOnProvider"),
             action: "open-pr",
           },
         ],
@@ -336,7 +336,7 @@ export function selectCmsHeaderButton(
           label: t("thread.cmsActions.waitingForReview"),
           action: "open-pr",
           variant: "outline",
-          menu: withGetLatest([viewOnGithubItem(t)], branch, t),
+          menu: withGetLatest([viewChangeRequestItem(t)], branch, t),
         },
         checks,
         "loading",
@@ -350,7 +350,7 @@ export function selectCmsHeaderButton(
         label: t("thread.cmsActions.reviewAndPublish"),
         action: "publish",
         variant: "brand",
-        menu: withGetLatest([viewOnGithubItem(t)], branch, t),
+        menu: withGetLatest([viewChangeRequestItem(t)], branch, t),
       },
       checks,
       "none",

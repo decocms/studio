@@ -364,7 +364,7 @@ export async function triggerReportsRun(
     /** The repository, as an identity any provider can carry. */
     repository?: ReportsRepositoryRef;
     /** The legacy github.com `owner/name`, for the deprecation window. */
-    githubRepo?: string;
+    githubRepositoryPath?: string;
   },
   options: ReportsAuthOptions = {},
 ): Promise<{ triggered: boolean; reason?: string }> {
@@ -390,7 +390,9 @@ export async function triggerReportsRun(
     body: JSON.stringify({
       org_id: input.orgId,
       ...(input.repository ? { repository: toWire(input.repository) } : {}),
-      ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
+      ...(input.githubRepositoryPath
+        ? { github_repo: input.githubRepositoryPath }
+        : {}),
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });

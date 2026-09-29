@@ -74,7 +74,6 @@ describe("promptFromUserMessage", () => {
 describe("promptForRun", () => {
   const repoWorkspace = {
     cwd: "/repo",
-    repo: { owner: "o", name: "n", connectedGithub: true },
     branch: "thread-42",
   } as HarnessStreamInputWire["workspace"];
 
@@ -262,7 +261,6 @@ describe("buildOptions", () => {
     const opts = options({
       workspace: {
         cwd: "/app/repo",
-        repo: { owner: "o", name: "n", connectedGithub: true },
         branch: null,
       },
     });

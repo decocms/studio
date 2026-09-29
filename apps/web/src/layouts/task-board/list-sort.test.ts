@@ -14,7 +14,7 @@ const SITE = {
   title: "Acme Site",
   created_at: "2026-01-01T00:00:00Z",
   metadata: {
-    githubRepo: {
+    repository: {
       url: "https://github.com/acme/site",
       owner: "acme",
       name: "site",

@@ -31,7 +31,7 @@ function toRepo(repository: Repository): Repo {
   };
 }
 
-/** Keep the legacy metadata alongside the repository reference during rollout. */
+/** Bind the project to the selected repository and its provider URL. */
 export function agentPayload(
   repository: Pick<Repository, "id">,
   repo: Pick<Repo, "name" | "owner" | "url">,
@@ -43,7 +43,7 @@ export function agentPayload(
     pinned: false,
     icon: null,
     metadata: {
-      githubRepo: {
+      repository: {
         owner: repo.owner,
         name: repo.name,
         url: repo.url,
@@ -90,8 +90,8 @@ export function RepositoryImportPicker({
   const resolvedTitle =
     title ??
     (mode === "link"
-      ? t("common.githubRepoPicker.addRepo")
-      : t("common.githubRepoPicker.importFromGitHub"));
+      ? t("common.repositoryPicker.addRepo")
+      : t("common.repositoryPicker.importFromGitHub"));
 
   async function createAgent(
     { repository, createdFromTemplate }: RepositoryPickPayload,
@@ -136,12 +136,12 @@ export function RepositoryImportPicker({
       toast.success(
         payload.createdFromTemplate
           ? t("common.createSite.created", { name: repo.name })
-          : t("common.githubRepoPicker.importedRepo", { name: repo.name }),
+          : t("common.repositoryPicker.importedRepo", { name: repo.name }),
       );
       navigateToAgent(virtualMcpId);
     } else {
       toast.success(
-        t("common.githubRepoPicker.addedRepo", { name: repo.name }),
+        t("common.repositoryPicker.addedRepo", { name: repo.name }),
       );
     }
   }

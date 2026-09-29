@@ -30,7 +30,7 @@ import {
 } from "@/core/studio-context";
 import {
   cloneInfoForRepository,
-  findRepositoryForLegacyBinding,
+  findRepositoryForBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers";
 import {
@@ -140,7 +140,7 @@ const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
  *
  * Nothing else bounds `TASK_ADD_REPO`: the model can call it once per repo the
  * org has imported, and each call clones into the pod and appends to the
- * thread's `githubRepos` list forever (`appendThreadGithubRepo` never
+ * thread's `additionalRepositories` list forever (`appendThreadRepository` never
  * shrinks it). An org with a large connected-repo catalog would otherwise let
  * one run pile up an unbounded number of pod checkouts and an unbounded
  * `git.repositories` config payload pushed to the daemon on every add.
@@ -408,7 +408,7 @@ async function secondaryRepoConfigs(
   // Independent per-repo credential mints — run concurrently, not in series.
   const settled = await Promise.all(
     repos.map(async (repo, i) => {
-      const repository = await findRepositoryForLegacyBinding(
+      const repository = await findRepositoryForBinding(
         ctx.storage,
         organizationId,
         repo,
@@ -549,25 +549,25 @@ export const TASK_ADD_REPO = defineTool({
       );
     }
 
-    const githubRepo = (
+    const repository = (
       thread.metadata as {
-        githubRepo?: { owner?: string; name?: string };
+        repository?: { owner?: string; name?: string };
       } | null
-    )?.githubRepo;
+    )?.repository;
     const existingSecondaries =
       (
         thread.metadata as {
-          githubRepos?: { owner: string; name: string }[];
+          additionalRepositories?: { owner: string; name: string }[];
         } | null
-      )?.githubRepos ?? [];
+      )?.additionalRepositories ?? [];
 
     const isPrimaryRepo =
-      githubRepo &&
-      githubRepo.owner === repo.owner &&
-      githubRepo.name?.toLowerCase() === repo.name.toLowerCase();
+      repository &&
+      repository.owner === repo.owner &&
+      repository.name?.toLowerCase() === repo.name.toLowerCase();
 
     if (
-      githubRepo &&
+      repository &&
       (isPrimaryRepo ||
         secondaryRepoCapExceeded(existingSecondaries, {
           owner: repo.owner,
@@ -608,17 +608,17 @@ export const TASK_ADD_REPO = defineTool({
     // the shutdown git sync, a re-provision's credential refresh, the board's
     // PR extraction — so it has to be persisted, not just handed to the daemon.
     //
-    // The FIRST repo is the primary: `githubRepo` is what drives the sandbox's
+    // The FIRST repo is the primary: `repository` is what drives the sandbox's
     // package-manager probe, dev server and preview, and a second call must not
     // move that out from under a running dev server. Later ones accumulate in
-    // `githubRepos` and land as secondary checkouts.
-    const isPrimary = !githubRepo;
+    // `additionalRepositories` and land as secondary checkouts.
+    const isPrimary = !repository;
     const secondaries = isPrimary
       ? []
-      : await ctx.storage.threads.appendThreadGithubRepo(threadId, bound);
+      : await ctx.storage.threads.appendThreadRepository(threadId, bound);
     if (isPrimary) {
       await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread.metadata ?? {}), githubRepo: bound },
+        metadata: { ...(thread.metadata ?? {}), repository: bound },
         updated_by: userId,
       });
     }

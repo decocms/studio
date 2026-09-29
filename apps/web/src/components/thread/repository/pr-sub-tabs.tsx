@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { useProjectContext } from "@/sdk";
 import {
   Tabs,
@@ -79,7 +79,7 @@ export function PrSubTabs({
               href={pr.htmlUrl}
               target="_blank"
               rel="noreferrer"
-              aria-label={`Open PR #${pr.number} on GitHub`}
+              aria-label={`Open change request #${pr.number}`}
               className="inline-flex items-center gap-1 hover:text-foreground"
             >
               PR #{pr.number}

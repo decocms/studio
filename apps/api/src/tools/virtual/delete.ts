@@ -100,8 +100,8 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
     // self-expires within ~1h). Self-revoke the token first, then delete the
     // child (its downstream_tokens + now-unreferenced aggregation rows cascade).
     const childConnectionId = (
-      existing.metadata as { githubRepo?: { connectionId?: string } } | null
-    )?.githubRepo?.connectionId;
+      existing.metadata as { repository?: { connectionId?: string } } | null
+    )?.repository?.connectionId;
     if (childConnectionId) {
       try {
         const child = await ctx.storage.connections.findById(
@@ -119,7 +119,7 @@ export const COLLECTION_VIRTUAL_MCP_DELETE = defineTool({
         // Both checks run BEFORE the revoke. Relying on the ON DELETE RESTRICT
         // FK to stop the delete is not enough: the token would already have
         // been revoked by then, leaving a live connection with a dead grant.
-        //  - a thread pinned to it (`metadata.githubRepo.connectionId`, set by
+        //  - a thread pinned to it (`metadata.repository.connectionId`, set by
         //    `load_repo` / the repo picker) keeps working long after the agent
         //    that minted the connection is gone. Deleting it stranded 152
         //    prod threads on a sandbox that can never boot again.

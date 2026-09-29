@@ -18,7 +18,7 @@ import {
   hasRepoCredential,
   type RepoToolTarget,
   repoTargetKey,
-} from "@/lib/github-repo";
+} from "@/lib/repository-binding";
 import { KEYS } from "@/lib/query-keys";
 import type { CheckRunOutput } from "./check-run-output.ts";
 

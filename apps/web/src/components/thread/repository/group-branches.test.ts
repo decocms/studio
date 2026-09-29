@@ -35,7 +35,7 @@ describe("groupBranches", () => {
     expect(result).toEqual({ recent: [], yours: [], others: [] });
   });
 
-  test("github branches with no sandbox land in `others`", () => {
+  test("remote branches with no sandbox land in `others`", () => {
     const result = groupBranches({
       sandboxMap: undefined,
       userId: "u1",
