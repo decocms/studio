@@ -426,6 +426,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -500,6 +501,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -598,6 +600,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;

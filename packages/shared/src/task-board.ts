@@ -350,6 +350,25 @@ export function reviewCycleStart(
 }
 
 /**
+ * When a card entered its current lane: the latest `status_changed` into
+ * `status`, or `createdAt` for a card that has never moved. Null when the
+ * latest move went elsewhere, since an unlogged move since then leaves the
+ * answer unknown. `activity` must be oldest first.
+ */
+export function statusEnteredAt(
+  activity: ReviewCycleActivity[],
+  status: string,
+  createdAt: string,
+): string | null {
+  const moves = activity.filter((a) => a.action === "status_changed");
+  const last = moves.at(-1);
+  if (!last) return createdAt;
+  return (last.data as { to?: unknown } | null | undefined)?.to === status
+    ? last.occurredAt
+    : null;
+}
+
+/**
  * What every cycle-scoped reducer below needs: the card's own
  * `reviewCycleStartedAt` (see {@link reviewCycleStart}). It is a REQUIRED
  * field, not an optional one — a caller that forgets it would silently fall

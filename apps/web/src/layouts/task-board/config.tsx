@@ -430,6 +430,11 @@ export function dropLane({
   return status !== undefined && isColumnKey(status) ? status : null;
 }
 
+/** Whole days from `iso` to `now`; a clock running ahead of the server is 0. */
+export function daysSince(iso: string, now: number): number {
+  return Math.max(0, Math.floor((now - Date.parse(iso)) / 86_400_000));
+}
+
 export const PRIORITIES: TaskBoardItemPriority[] = [
   "none",
   "low",

@@ -57,7 +57,9 @@ import {
 import {
   AlertTriangle,
   Calendar,
+  Check,
   CheckCircle,
+  Clock,
   ChevronRight,
   DotsHorizontal,
   HelpCircle,
@@ -98,6 +100,7 @@ import {
   agentRunState,
   cardNeedsAttention,
   TASK_TYPE_CONFIG,
+  daysSince,
   dueDateUrgency,
   insertSortOrder,
   isTaskBlocked,
@@ -150,8 +153,10 @@ import {
   AppliedFiltersBar,
   BoardSettingsButton,
   GroupByButton,
+  SortByButton,
   TaskFilterButton,
 } from "./view-controls";
+import { sortListItems } from "./list-sort";
 import {
   groupLevels,
   groupListItems,
@@ -573,6 +578,41 @@ function PriorityPill({ priority }: { priority: TaskBoardItemPriority }) {
 }
 
 /** List-row due date. Cards use {@link FooterDueDate} instead. */
+/** How long the task has sat in its current status. */
+function StatusAgePill({
+  status: statusKey,
+  since,
+}: {
+  status: string;
+  since: string;
+}) {
+  const t = useT();
+  // Day granularity: the time the row mounted is close enough.
+  const [now] = useState(() => Date.now());
+  const days = daysSince(since, now);
+  const status = laneHeader(statusKey, t).label;
+  return (
+    <Tooltip delayDuration={400}>
+      <TooltipTrigger asChild>
+        <span className={PILL}>
+          <Clock size={FOOTER_GLYPH} />
+          {days === 0
+            ? t("taskBoard.taskBoard.statusAgeToday")
+            : t("taskBoard.taskBoard.statusAgeDays", { count: days })}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        {days === 0
+          ? t("taskBoard.taskBoard.statusAgeTodayHint", { status })
+          : t("taskBoard.taskBoard.statusAgeDaysHint", {
+              status,
+              count: days,
+            })}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function DueDatePill({ iso }: { iso: string }) {
   const { label, overdue } = formatDueDate(iso);
   return (
@@ -927,7 +967,23 @@ function TaskBoardBody() {
     subgroupBy,
     setGroupBy,
     setSubgroupBy,
+    sortBy,
+    sortDirection,
+    setSortBy,
+    setSortDirection,
   } = useBoardSearch();
+  const grouping = {
+    groupBy,
+    subgroupBy,
+    onGroupByChange: setGroupBy,
+    onSubgroupByChange: setSubgroupBy,
+  };
+  const sorting = {
+    sortBy,
+    sortDirection,
+    onSortByChange: setSortBy,
+    onSortDirectionChange: setSortDirection,
+  };
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -1082,11 +1138,22 @@ function TaskBoardBody() {
    *  assign — or a delete. */
   const selectedIds = visibleSelection(selection, visibleItems);
   // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
-  const visibleListItems = visibleItems.filter(
+  const shownListItems = visibleItems.filter(
     (item) =>
       !HIDDEN_STATUSES.includes(item.status) ||
       preferences.shownTaskBoardLanes.includes(item.status),
   );
+  // Sorted before grouping, so every group reads in the chosen order too.
+  const visibleListItems =
+    sortBy === null
+      ? shownListItems
+      : sortListItems(shownListItems, sortBy, sortDirection, {
+          memberNames: new Map(
+            members.map((m) => [m.userId, m.user?.name ?? m.userId]),
+          ),
+          superAgentName: t("taskBoard.taskFilters.assigneeSuperAgent"),
+          index: projectIndex,
+        });
 
   /**
    * Keep a newly created card visible: drop the project filter when the card
@@ -1183,6 +1250,9 @@ function TaskBoardBody() {
         item.assignedBy ? memberByUserId.get(item.assignedBy) : undefined
       }
       onOpen={() => openTask(item)}
+      onStatusChange={(status) =>
+        actions.update.mutate({ id: item.id, status })
+      }
     />
   );
 
@@ -1225,12 +1295,10 @@ function TaskBoardBody() {
                         onChange={handleFiltersChange}
                       />
                       {layout === "list" && (
-                        <GroupByButton
-                          groupBy={groupBy}
-                          subgroupBy={subgroupBy}
-                          onGroupByChange={setGroupBy}
-                          onSubgroupByChange={setSubgroupBy}
-                        />
+                        <>
+                          <GroupByButton {...grouping} />
+                          <SortByButton {...sorting} />
+                        </>
                       )}
                       <BoardSettingsButton onClick={openBoardSettings} />
                     </div>
@@ -1282,6 +1350,7 @@ function TaskBoardBody() {
           tags={orgTags}
           index={projectIndex}
           onChange={handleFiltersChange}
+          view={layout === "list" ? { grouping, sorting } : undefined}
         />
       </>
 
@@ -2678,10 +2747,7 @@ type GroupHeadingContext = {
   index: ProjectIndex;
 };
 
-/**
- * The list view's groups, Linear-style: a header bar per group with its task
- * count, open until clicked shut, and sub-groups nested one step in.
- */
+/** The list view's collapsible groups; contents hang off a guide line. */
 function ListGroupTree({
   groups,
   depth,
@@ -2720,7 +2786,7 @@ function ListGroupTree({
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors",
                 depth === 0
                   ? "bg-muted/60 hover:bg-muted"
-                  : "ml-4 bg-muted/30 hover:bg-muted/60",
+                  : "bg-muted/30 hover:bg-muted/60",
               )}
             >
               <ChevronRight
@@ -2743,21 +2809,23 @@ function ListGroupTree({
             {t("taskBoard.viewControls.groupToggleAllHint")}
           </TooltipContent>
         </Tooltip>
-        {open &&
-          (group.children ? (
-            <ListGroupTree
-              groups={group.children}
-              depth={depth + 1}
-              collapsed={collapsed}
-              onToggle={onToggle}
-              renderRow={renderRow}
-              heading={heading}
-            />
-          ) : (
-            <div className={cn("flex flex-col gap-2", depth > 0 && "ml-4")}>
-              {group.items.map(renderRow)}
-            </div>
-          ))}
+        {open && (
+          // The guide sits under the header's chevron (px-3 + half its 14px).
+          <div className="ml-[18px] flex flex-col gap-2 border-l-[1.5px] border-muted-foreground/30 pl-3">
+            {group.children ? (
+              <ListGroupTree
+                groups={group.children}
+                depth={depth + 1}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                renderRow={renderRow}
+                heading={heading}
+              />
+            ) : (
+              group.items.map(renderRow)
+            )}
+          </div>
+        )}
       </section>
     );
   });
@@ -2866,61 +2934,115 @@ function listGroupHeading(
   }
 }
 
+/** The row's status icon, which opens the statuses the task can move to. */
+function ListRowStatusMenu({
+  item,
+  onStatusChange,
+}: {
+  item: TaskBoardItem;
+  onStatusChange: (status: TaskBoardItemStatus) => void;
+}) {
+  const t = useT();
+  const deliveryEnabled = useOrgFlag("delivery_lanes_enabled");
+  const StatusIcon = laneVisual(item.status).icon;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={t("taskBoard.taskBoard.changeStatusLabel", {
+            status: laneHeader(item.status, t).label,
+          })}
+          className="shrink-0 rounded-md p-1 transition-colors hover:bg-accent"
+        >
+          <StatusIcon size={16} className={cn(statusIconClassName(item))} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        {moveTargets(deliveryEnabled).map((status) => {
+          const { label, visual } = laneHeader(status, t);
+          const Icon = visual.icon;
+          return (
+            <DropdownMenuItem
+              key={status}
+              className="gap-2"
+              onSelect={() => {
+                if (status !== item.status) onStatusChange(status);
+              }}
+            >
+              <Icon size={16} className={visual.iconClassName} />
+              {label}
+              {status === item.status && (
+                <Check size={14} className="ml-auto shrink-0" />
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ListRow({
   item,
   assignee,
   assignedBy,
   onOpen,
+  onStatusChange,
 }: {
   item: TaskBoardItem;
   assignee?: Member;
   assignedBy?: Member;
   onOpen: () => void;
+  onStatusChange: (status: TaskBoardItemStatus) => void;
 }) {
-  const StatusIcon = laneVisual(item.status).icon;
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 text-left card-shadow transition-colors hover:bg-accent/60"
-    >
-      <StatusIcon
-        size={16}
-        className={cn("shrink-0", statusIconClassName(item))}
-      />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-        {item.title}
-      </span>
-      {isTaskBlocked(item) && <BlockedBadge />}
-      {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
-      {item.priority !== "none" && (
-        <span className="hidden sm:inline-flex">
-          <PriorityPill priority={item.priority} />
+    <div className="flex items-center gap-2 rounded-xl bg-card pl-3 card-shadow transition-colors hover:bg-accent/60">
+      <ListRowStatusMenu item={item} onStatusChange={onStatusChange} />
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 py-3 pr-4 text-left"
+      >
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {item.title}
         </span>
-      )}
-      {item.dueDate && (
-        <span className="hidden sm:inline-flex">
-          <DueDatePill iso={item.dueDate} />
+        {isTaskBlocked(item) && <BlockedBadge />}
+        {isTaskHandedToHuman(item) && <HandedToHumanBadge />}
+        {item.statusSince && (
+          <span className="hidden sm:inline-flex">
+            <StatusAgePill status={item.status} since={item.statusSince} />
+          </span>
+        )}
+        {item.priority !== "none" && (
+          <span className="hidden sm:inline-flex">
+            <PriorityPill priority={item.priority} />
+          </span>
+        )}
+        {item.dueDate && (
+          <span className="hidden sm:inline-flex">
+            <DueDatePill iso={item.dueDate} />
+          </span>
+        )}
+        {item.tags.length > 0 && (
+          <span className="hidden items-center gap-1.5 sm:inline-flex">
+            {item.tags.slice(0, 2).map((tag) => (
+              <TagPill key={tag.id} tag={tag} />
+            ))}
+            {item.tags.length > 2 && (
+              <span className={PILL}>+{item.tags.length - 2}</span>
+            )}
+          </span>
+        )}
+        <AssigneeDisplay
+          item={item}
+          assignee={assignee}
+          assignedBy={assignedBy}
+        />
+        <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
+          {formatTimeAgo(new Date(item.createdAt))}
         </span>
-      )}
-      {item.tags.length > 0 && (
-        <span className="hidden items-center gap-1.5 sm:inline-flex">
-          {item.tags.slice(0, 2).map((tag) => (
-            <TagPill key={tag.id} tag={tag} />
-          ))}
-          {item.tags.length > 2 && (
-            <span className={PILL}>+{item.tags.length - 2}</span>
-          )}
-        </span>
-      )}
-      <AssigneeDisplay
-        item={item}
-        assignee={assignee}
-        assignedBy={assignedBy}
-      />
-      <span className="hidden shrink-0 text-[11px] text-muted-foreground/70 sm:inline">
-        {formatTimeAgo(new Date(item.createdAt))}
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }

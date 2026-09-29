@@ -25,6 +25,8 @@ export const taskBoardSearchShape = {
   view: z.string().optional(),
   group: z.string().optional(),
   subgroup: z.string().optional(),
+  sort: z.string().optional(),
+  dir: z.string().optional(),
   q: z.string().optional(),
   assignee: z.string().optional(),
   priority: z.string().optional(),

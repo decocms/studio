@@ -2029,6 +2029,8 @@ export interface TaskBoardItem {
   /** Each reviewer's standing verdict in the current review cycle, in
    *  `REVIEWER_KINDS` order. Reviewers that have not decided are absent. */
   reviewVerdicts: TaskBoardItemReviewVerdict[];
+  /** When the card entered its current status; null when the log cannot say. */
+  statusSince: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;
