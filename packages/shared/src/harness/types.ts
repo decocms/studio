@@ -87,6 +87,7 @@ export type HarnessWorkspace =
         owner: string;
         name: string;
         linked: boolean;
+        url?: string;
       };
       branch: string | null;
     }

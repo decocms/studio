@@ -306,7 +306,8 @@ export class SandboxDispatchClient {
       repo: {
         owner: repo.owner,
         name: repo.name,
-        linked: Boolean(repo.connectionId),
+        linked: Boolean(repo.repositoryId || repo.connectionId),
+        url: repo.url,
       },
       // The synthetic sandbox key is not a git ref; the daemon checks out its
       // derived branch, so that is the one the harness is standing on.

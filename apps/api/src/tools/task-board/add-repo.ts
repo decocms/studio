@@ -20,6 +20,8 @@
  * bare key this tool used to assume) misses the pod the agent loop is in.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import {
@@ -154,14 +156,12 @@ export const MAX_SECONDARY_REPOS = 20;
  * fills the cap.
  */
 export function secondaryRepoCapExceeded(
-  existing: { owner: string; name: string }[],
-  candidate: { owner: string; name: string },
+  existing: Pick<RepositoryBinding, "url" | "repositoryId">[],
+  candidate: Pick<RepositoryBinding, "url" | "repositoryId">,
   cap = MAX_SECONDARY_REPOS,
 ): boolean {
-  const key = (r: { owner: string; name: string }) =>
-    `${r.owner}/${r.name}`.toLowerCase();
-  const candidateKey = key(candidate);
-  if (existing.some((r) => key(r) === candidateKey)) return false;
+  if (existing.some((repo) => sameRepositoryBinding(repo, candidate)))
+    return false;
   return existing.length >= cap;
 }
 
@@ -391,6 +391,7 @@ async function secondaryRepoConfigs(
   ctx: StudioContext,
   organizationId: string,
   repos: {
+    url: string;
     owner: string;
     name: string;
     connectionId?: string;
@@ -551,28 +552,24 @@ export const TASK_ADD_REPO = defineTool({
 
     const repository = (
       thread.metadata as {
-        repository?: { owner?: string; name?: string };
+        repository?: RepositoryBinding;
       } | null
     )?.repository;
     const existingSecondaries =
       (
         thread.metadata as {
-          additionalRepositories?: { owner: string; name: string }[];
+          additionalRepositories?: RepositoryBinding[];
         } | null
       )?.additionalRepositories ?? [];
 
+    const candidate = { url: repo.webUrl, repositoryId: repo.repository?.id };
     const isPrimaryRepo =
-      repository &&
-      repository.owner === repo.owner &&
-      repository.name?.toLowerCase() === repo.name.toLowerCase();
+      repository && sameRepositoryBinding(repository, candidate);
 
     if (
       repository &&
       (isPrimaryRepo ||
-        secondaryRepoCapExceeded(existingSecondaries, {
-          owner: repo.owner,
-          name: repo.name,
-        }))
+        secondaryRepoCapExceeded(existingSecondaries, candidate))
     ) {
       return {
         success: false,
@@ -703,10 +700,7 @@ export const TASK_ADD_REPO = defineTool({
     // it, so the directory survives a pod restart.
     const secondaryDirName = isPrimary
       ? null
-      : secondaryRepoDirName(secondaries, {
-          owner: repo.owner,
-          name: repo.name,
-        });
+      : secondaryRepoDirName(secondaries, bound);
     const checkoutDir =
       isPrimary || !secondaryDirName
         ? "."

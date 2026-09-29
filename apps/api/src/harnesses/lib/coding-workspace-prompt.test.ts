@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildCodingWorkspacePrompt } from "./coding-workspace-prompt";
 
 describe("buildCodingWorkspacePrompt", () => {
-  test("renders repo, branch, cwd, and connected GitHub status", () => {
+  test("renders repo, branch, cwd, and repository link status", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "deco",
@@ -38,7 +38,7 @@ describe("buildCodingWorkspacePrompt", () => {
     expect(prompt).not.toContain("null");
   });
 
-  test("warns disconnected GitHub workspaces not to assume GitHub operations", () => {
+  test("warns disconnected repository workspaces not to assume remote operations", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "template",
@@ -50,11 +50,11 @@ describe("buildCodingWorkspacePrompt", () => {
 
     expect(prompt).toContain("Repository linked: no");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
-  test("warns template workspaces not to assume GitHub operations even when linked", () => {
+  test("warns template workspaces not to assume remote operations even when linked", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "template",
@@ -67,11 +67,11 @@ describe("buildCodingWorkspacePrompt", () => {
 
     expect(prompt).toContain("Repository linked: yes");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
-  test("warns local workspaces not to assume GitHub operations even without repo metadata", () => {
+  test("warns local workspaces not to assume remote operations even without repo metadata", () => {
     const prompt = buildCodingWorkspacePrompt({
       workspaceKind: "local",
       cwd: "/repo",
@@ -79,11 +79,11 @@ describe("buildCodingWorkspacePrompt", () => {
 
     expect(prompt).not.toContain("Repository linked:");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 
-  test("warns local workspaces not to assume GitHub operations even when linked", () => {
+  test("warns local workspaces not to assume remote operations even when linked", () => {
     const prompt = buildCodingWorkspacePrompt({
       repo: {
         owner: "local",
@@ -96,7 +96,7 @@ describe("buildCodingWorkspacePrompt", () => {
 
     expect(prompt).toContain("Repository linked: yes");
     expect(prompt).toContain(
-      "do not assume PR or GitHub operations are available",
+      "do not assume authenticated remote operations are available",
     );
   });
 

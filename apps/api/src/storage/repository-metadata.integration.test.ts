@@ -11,6 +11,7 @@ import { ConnectionStorage } from "./connection";
 import { VirtualMCPStorage } from "./virtual";
 import { SqlThreadStorage } from "./threads";
 import { RepositoryStorage } from "./repositories";
+import { findRepositoryForBinding } from "../git-providers/repository-binding";
 
 const org = "org_123";
 const user = "user_123";
@@ -193,6 +194,33 @@ describe("repository binding persistence", () => {
     }
   });
 
+  test("repository resolution uses the full host and path and never falls back from a foreign ID", async () => {
+    const path = "group/subgroup/project";
+    const local = await repositories.upsert({
+      organizationId: org,
+      ref: { provider: "gitlab", host: "git.example.net", path },
+    });
+    const foreign = await repositories.upsert({
+      organizationId: "org_456",
+      ref: { provider: "gitlab", host: "git.example.net", path },
+    });
+    const ref = { url: `https://git.example.net/${path}.git` };
+    expect(
+      (await findRepositoryForBinding({ repositories }, org, ref))?.id,
+    ).toBe(local.id);
+    expect(
+      await findRepositoryForBinding({ repositories }, org, {
+        ...ref,
+        repositoryId: foreign.id,
+      }),
+    ).toBeNull();
+    expect(
+      await findRepositoryForBinding({ repositories }, org, {
+        url: `https://github.com/${path}`,
+      }),
+    ).toBeNull();
+  });
+
   test("reads old rows and observes an old writer removing a binding", async () => {
     const project = await projects.create(org, user, {
       title: "Historical site",
@@ -265,5 +293,58 @@ describe("repository binding persistence", () => {
     expect((await threads.get(thread.id, org))?.metadata).toEqual({
       marker: 2,
     });
+  });
+
+  test("concurrent secondary checkouts with identical namespaces retain both hosts", async () => {
+    const thread = await threads.create({
+      organization_id: org,
+      created_by: user,
+      title: "Multi-provider task",
+    });
+    await Promise.all([
+      threads.appendThreadRepository(thread.id, org, binding("github.com")),
+      threads.appendThreadRepository(thread.id, org, binding("gitlab.com")),
+    ]);
+    const result = await threads.appendThreadRepository(thread.id, org, {
+      ...binding("gitlab.com"),
+      url: "https://gitlab.com/EXAMPLE/SITE.git",
+    });
+    expect(result).toHaveLength(2);
+    expect(result.map((repo) => new URL(repo.url).host).sort()).toEqual([
+      "github.com",
+      "gitlab.com",
+    ]);
+    expect((await threads.get(thread.id, org))?.metadata).toHaveProperty(
+      "additionalRepositories",
+    );
+  });
+
+  test("a foreign repository cannot mutate either persistence destination", async () => {
+    const thread = await threads.create({
+      organization_id: org,
+      created_by: user,
+      title: "Isolated task",
+    });
+    const foreign = await repositories.upsert({
+      organizationId: "org_456",
+      ref: { provider: "gitlab", host: "gitlab.com", path: "example/private" },
+    });
+    await expect(
+      threads.appendThreadRepository(thread.id, org, {
+        ...binding("gitlab.com"),
+        repositoryId: foreign.id,
+      }),
+    ).rejects.toThrow();
+    expect(
+      (await threads.get(thread.id, org))?.metadata.additionalRepositories,
+    ).toBeUndefined();
+    expect(
+      await database.db
+        .selectFrom("thread_repositories")
+        .selectAll()
+        .where("thread_id", "=", thread.id)
+        .where("organization_id", "=", org)
+        .execute(),
+    ).toHaveLength(0);
   });
 });

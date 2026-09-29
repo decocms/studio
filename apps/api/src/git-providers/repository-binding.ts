@@ -1,21 +1,16 @@
-import { repoRefFromOwnerName } from "@decocms/shared/git-providers";
-import type { RepositoryRecord } from "@/storage/repositories";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
+import { repositoryBindingRef } from "@decocms/shared/repository-binding";
 import type { GitProviderStoragePorts } from "./credentials";
+import type { RepositoryRecord } from "@/storage/repositories";
 
+/** Resolve a binding in its organization without assuming a provider host. */
 export async function findRepositoryForBinding(
   storage: Pick<GitProviderStoragePorts, "repositories">,
   organizationId: string,
-  binding: { owner: string; name: string; repositoryId?: string | null },
+  binding: Pick<RepositoryBinding, "url" | "repositoryId">,
 ): Promise<RepositoryRecord | null> {
-  if (binding.repositoryId) {
-    const byId = await storage.repositories.get(
-      binding.repositoryId,
-      organizationId,
-    );
-    if (byId) return byId;
-  }
-  return storage.repositories.findByRef(
-    organizationId,
-    repoRefFromOwnerName(binding.owner, binding.name),
-  );
+  if (binding.repositoryId)
+    return storage.repositories.get(binding.repositoryId, organizationId);
+  const ref = repositoryBindingRef(binding);
+  return ref ? storage.repositories.findByRef(organizationId, ref) : null;
 }
