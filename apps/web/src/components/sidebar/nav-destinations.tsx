@@ -73,7 +73,7 @@ function useNavDestinations(): NavDestination[] {
     },
     tasks: {
       key: "tasks",
-      label: t("sidebar.navDestinations.tasks"),
+      label: t("sidebar.navDestinations.spineTasks"),
       icon: <Columns03 size={16} />,
       isActive: leafPath === DESTINATION_ROUTE.tasks,
       trackAs: "board",

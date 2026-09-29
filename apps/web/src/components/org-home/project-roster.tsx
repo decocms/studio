@@ -91,6 +91,10 @@ function ProjectRosterItem({
     <HomeCardRow className="transition-colors hover:bg-accent/40">
       <button
         type="button"
+        /** The row's name is the project, not everything printed in it: the
+         *  rhythm, the count and the delta are context beside the title, and
+         *  reading them as part of the control's name says nothing useful. */
+        aria-label={project.title}
         onClick={() => {
           track("org_home_project_clicked");
           navigateToAgent(project.id);

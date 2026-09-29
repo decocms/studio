@@ -21,7 +21,8 @@ export const sidebar = {
   "sidebar.navDestinations.library": "Biblioteca",
   "sidebar.navDestinations.reports": "Deco Score",
   "sidebar.navDestinations.settings": "Configurações",
-  "sidebar.navDestinations.tasks": "Tarefas",
+  "sidebar.navDestinations.spineTasks": "Tarefas",
+  "sidebar.navDestinations.tasks": "Board",
   "sidebar.navDestinations.threadAnalytics": "Análise de chats",
   "sidebar.myThreadsSection.noChatsYet": "Nenhum chat ainda",
   "sidebar.myThreadsSection.noChatsMatchFilters":
