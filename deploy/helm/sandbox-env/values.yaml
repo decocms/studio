@@ -728,6 +728,11 @@ warmPool:
 #       size: 2                      # keep this many warm pods ready
 tenantPools: []
 
+# Let the runner account create, update and delete SandboxWarmPools in this
+# namespace, for a control plane that renders tenant pools itself and applies
+# them through sandbox ops running as this account. Off: pools are chart-owned.
+hostManagedTenantPools: false
+
 # ── node placeholder / "balloon" (optional) ────────────────────────────
 # Warm NODE capacity for the sandbox NodePool. warmPool warms *pods*; this
 # warms the *nodes under them*. Low-priority balloon pods hold ~`replicas`
