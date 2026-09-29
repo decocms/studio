@@ -108,10 +108,10 @@ import {
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
+import { proxyDaemonWithRetry } from "../shared/daemon-proxy";
 import {
   PREVIEW_NOT_READY_HEADER,
-  PREVIEW_STRIP_REQUEST_HEADERS,
-  PREVIEW_STRIP_RESPONSE_HEADERS,
+  proxyPreview,
 } from "../shared/preview-proxy";
 
 export { PREVIEW_NOT_READY_HEADER };
@@ -318,6 +318,9 @@ interface PersistedK8sState {
   [k: string]: unknown;
 }
 
+/** Who a re-mint is for, from the sandbox's persisted options. */
+export type MintScope = Pick<EnsureOptions, "tenant" | "callbackGrant">;
+
 export interface AgentSandboxProviderOptions {
   stateStore?: RunnerStateStore;
   previewUrlPattern?: string;
@@ -429,11 +432,12 @@ export interface AgentSandboxProviderOptions {
    * `opts.bufferMs` asks the minter to refresh the token when it has less than
    * that many ms of life left — the periodic refresher passes a large value to
    * keep long-lived sandboxes ahead of the ~55min expiry; recovery omits it.
-   * `opts.tenant` is the sandbox's tenant; absent for a tenant pool's pod.
+   * `opts.tenant` and `opts.callbackGrant` are the sandbox's; both absent for
+   * a tenant pool's pod.
    */
   mintCloneUrl?: (
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts?: { bufferMs?: number; tenant?: EnsureOptions["tenant"] },
+    opts?: MintScope & { bufferMs?: number },
   ) => Promise<string | null>;
   /**
    * Re-mint a fresh `orgFsConfigJson` for a tenant. Same lifetime problem as
@@ -448,6 +452,7 @@ export interface AgentSandboxProviderOptions {
    */
   mintOrgFsConfig?: (
     tenant: NonNullable<EnsureOptions["tenant"]>,
+    opts?: Pick<MintScope, "callbackGrant">,
   ) => Promise<string | null>;
   /**
    * Replaces the apiserver port-forward to a pod's container port, for a
@@ -761,54 +766,30 @@ export class AgentSandboxProvider {
     let activeRec = rec;
     const start = performance.now();
     let status = 0;
-    const canRetryBody = !(init.body instanceof ReadableStream);
+    const address = (r: K8sRecord) => {
+      activeRec = r;
+      return { url: r.daemonUrl, token: r.token };
+    };
     try {
-      let resp = await proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
-      // A 401 means the cached record is stale — the pool pod was recreated
-      // and no longer holds our token. Drop it and re-resolve; rehydrate
-      // re-bootstraps the fresh daemon. Then retry once. Retry only when the
-      // body is re-sendable: of the BodyInit variants only a ReadableStream is
-      // one-shot (consumed by the first fetch); strings, buffers,
-      // URLSearchParams, FormData and Blobs are re-read from memory on retry.
-      if (resp.status === 401 && canRetryBody) {
-        this.invalidateRecord(handle);
-        const fresh =
-          (await this.getRecord(handle).catch(() => null)) ??
-          (await this.resurrectByHandle(handle).catch(() => null));
-        if (fresh) {
-          // Drain the discarded 401 response so its connection is released.
-          try {
-            await resp.body?.cancel();
-          } catch {
-            /* ignore */
-          }
-          activeRec = fresh;
-          resp = await proxyDaemonRequest(
-            fresh.daemonUrl,
-            fresh.token,
-            path,
-            init,
-          );
-        }
-      }
-      status = resp.status;
-      return resp;
-    } catch (err) {
-      // Stale port-forward / dead pod after idle eviction — same recovery
-      // path as preview's fetch-retry arm.
-      if (!canRetryBody) throw err;
-      this.invalidateRecord(handle);
-      const fresh =
-        (await this.resurrectByHandle(handle)) ??
-        (await this.getRecord(handle).catch(() => null));
-      if (!fresh) throw err;
-      activeRec = fresh;
-      const resp = await proxyDaemonRequest(
-        fresh.daemonUrl,
-        fresh.token,
-        path,
-        init,
-      );
+      const resp = await proxyDaemonWithRetry(address(rec), path, init, {
+        // The cached record is stale: rehydrate re-bootstraps the fresh daemon.
+        unauthorized: async () => {
+          this.invalidateRecord(handle);
+          const fresh =
+            (await this.getRecord(handle).catch(() => null)) ??
+            (await this.resurrectByHandle(handle).catch(() => null));
+          return fresh ? address(fresh) : null;
+        },
+        // Stale port-forward / dead pod after idle eviction — same recovery
+        // path as preview's fetch-retry arm.
+        unreachable: async () => {
+          this.invalidateRecord(handle);
+          const fresh =
+            (await this.resurrectByHandle(handle)) ??
+            (await this.getRecord(handle).catch(() => null));
+          return fresh ? address(fresh) : null;
+        },
+      });
       status = resp.status;
       return resp;
     } finally {
@@ -955,23 +936,7 @@ export class AgentSandboxProvider {
     return handle;
   }
 
-  /**
-   * Reverse-proxies an inbound preview HTTP request to the sandbox's daemon.
-   * Unauthenticated by design — preview URLs are open the same way Vercel
-   * preview URLs are; the *handle* is the secret.
-   *
-   * `/_sandbox/*` access policy at the edge:
-   *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
-   *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
-   *     because the studio UI consumes them cross-origin from the preview
-   *     URL — that's the only path it has to live setup state. Stripping
-   *     them here would break the studio UI's setup tab and SSE event feed.
-   *   - **Non-GET** (POST/PUT/DELETE/etc) is rejected as defense-in-depth.
-   *     The daemon enforces bearer auth on the mutating endpoints
-   *     (read/write/edit/grep/glob/bash/exec/kill), but the only legitimate
-   *     caller for those is studio itself via the internal port-forward; the
-   *     preview surface should never see them.
-   */
+  /** See `proxyPreview`; recovery resurrects an evicted claim. */
   async proxyPreviewRequest(
     handle: string,
     request: Request,
@@ -985,119 +950,22 @@ export class AgentSandboxProvider {
     const cachedRec = this.records.get(handle) ?? null;
     let status = 0;
     try {
-      const upstreamBase = await this.resolvePreviewUpstreamUrl(handle);
-      if (!upstreamBase) {
-        status = 404;
-        const notReady = jsonResponse(404, { error: "sandbox not found" });
-        notReady.headers.set(PREVIEW_NOT_READY_HEADER, "1");
-        return notReady;
-      }
-
-      const reqUrl = new URL(request.url);
-      const isAdminPath =
-        reqUrl.pathname === "/_sandbox" ||
-        reqUrl.pathname.startsWith("/_sandbox/");
-      if (isAdminPath && request.method !== "GET") {
-        status = 404;
-        return jsonResponse(404, { error: "not found" });
-      }
-
-      const reqTarget = (base: string) =>
-        `${base}${reqUrl.pathname}${reqUrl.search}`;
-      const headers = new Headers(request.headers);
-      for (const h of PREVIEW_STRIP_REQUEST_HEADERS) headers.delete(h);
-
-      const hasBody = request.method !== "GET" && request.method !== "HEAD";
-      const init: RequestInit & { duplex?: string } = {
-        method: request.method,
-        headers,
-        body: hasBody ? request.body : undefined,
-        redirect: "manual",
-        signal: request.signal,
-        duplex: hasBody ? "half" : undefined,
-      };
-
-      let upstream: Response;
-      try {
-        upstream = await fetch(reqTarget(upstreamBase), init as RequestInit);
-      } catch (err) {
-        // Truncate to host+pathname — query strings can carry secrets
-        // (magic-link tokens, signed URLs) and would otherwise end up in
-        // studio stdout → kubectl logs → log aggregator.
-        const safeTarget = `${upstreamBase}${reqUrl.pathname}`;
-        console.warn(
-          `[${LOG_LABEL}] preview fetch to ${safeTarget} failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-
-        // Recover from operator-driven eviction (15-min idle TTL): the
-        // claim + Service are gone but our records cache (or the
-        // synthesized prod-mode URL) still pointed at the stale endpoint.
-        // Drop the cache and resurrect via state-store. Retry only for
-        // replay-safe methods — `init.body` is a stream that's been
-        // consumed by the failed fetch; replaying a POST would silently
-        // send an empty body. The browser/caller can retry the mutating
-        // request after this 502 surfaces; the resurrected sandbox will
-        // be ready for that next attempt.
-        if (request.method === "GET" || request.method === "HEAD") {
-          this.invalidateRecord(handle);
-          const resurrected = await this.resurrectByHandle(handle).catch(
-            () => null,
-          );
-          if (resurrected) {
-            const retryBase = await this.resolvePreviewUpstreamUrl(handle);
-            if (retryBase) {
-              try {
-                upstream = await fetch(
-                  reqTarget(retryBase),
-                  init as RequestInit,
-                );
-                const responseHeaders = new Headers();
-                for (const [k, v] of upstream.headers.entries()) {
-                  if (
-                    !PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())
-                  ) {
-                    responseHeaders.set(k, v);
-                  }
-                }
-                status = upstream.status;
-                return new Response(upstream.body, {
-                  status: upstream.status,
-                  statusText: upstream.statusText,
-                  headers: responseHeaders,
-                });
-              } catch (retryErr) {
-                console.warn(
-                  `[${LOG_LABEL}] preview fetch retry to ${safeTarget} failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
-                );
-              }
-            }
-          }
-        } else {
-          // Non-replay-safe method: still drop the stale cache so the next
-          // request goes through fresh validation.
-          this.invalidateRecord(handle);
-        }
-
-        status = 502;
-        const notReady502 = jsonResponse(502, {
-          error: "sandbox daemon unreachable",
-        });
-        notReady502.headers.set(PREVIEW_NOT_READY_HEADER, "1");
-        return notReady502;
-      }
-
-      const responseHeaders = new Headers();
-      for (const [k, v] of upstream.headers.entries()) {
-        if (!PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())) {
-          responseHeaders.set(k, v);
-        }
-      }
-      status = upstream.status;
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders,
-      });
+      const resp = await proxyPreview(
+        request,
+        {
+          base: () => this.resolvePreviewUpstreamUrl(handle),
+          invalidate: () => this.invalidateRecord(handle),
+          retryBase: async () => {
+            const resurrected = await this.resurrectByHandle(handle).catch(
+              () => null,
+            );
+            return resurrected ? this.resolvePreviewUpstreamUrl(handle) : null;
+          },
+        },
+        LOG_LABEL,
+      );
+      status = resp.status;
+      return resp;
     } finally {
       this.recordProxyDuration(
         "preview",
@@ -1140,10 +1008,24 @@ export class AgentSandboxProvider {
             rec.token,
             opts.orgFsConfigJson,
           );
+          // A rotated grant secret stops verifying the persisted grant; the
+          // caller's is current.
+          let regranted = false;
+          if (
+            opts.callbackGrant &&
+            rec.ensureOpts &&
+            rec.ensureOpts.callbackGrant !== opts.callbackGrant
+          ) {
+            rec.ensureOpts = {
+              ...rec.ensureOpts,
+              callbackGrant: opts.callbackGrant,
+            };
+            regranted = true;
+          }
           return this.finish(
             rec,
             ops,
-            /* persistNow */ false,
+            /* persistNow */ regranted,
             /* patchTtl */ true,
             "resume",
           );
@@ -1725,7 +1607,7 @@ export class AgentSandboxProvider {
    */
   private async withFreshCloneUrl(
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts: { bufferMs?: number; tenant?: EnsureOptions["tenant"] } = {},
+    opts: MintScope & { bufferMs?: number } = {},
   ): Promise<NonNullable<EnsureOptions["repo"]>> {
     if (!this.mintCloneUrl) return repo;
     try {
@@ -1759,6 +1641,7 @@ export class AgentSandboxProvider {
         ? {
             repo: await this.withFreshCloneUrl(opts.repo, {
               tenant: opts.tenant,
+              callbackGrant: opts.callbackGrant,
             }),
           }
         : {}),
@@ -2080,6 +1963,7 @@ export class AgentSandboxProvider {
           const fresh = await this.withFreshCloneUrl(repo, {
             bufferMs: CREDENTIAL_REFRESH_BUFFER_MS,
             tenant: rec.ensureOpts?.tenant,
+            callbackGrant: rec.ensureOpts?.callbackGrant,
           });
           await this.refreshDaemonGitCredential(rec, {
             ...rec.ensureOpts,
@@ -3019,23 +2903,6 @@ function deterministicLocalPort(handle: string, containerPort: number): number {
   return PORT_RANGE_START + (hash.readUInt32BE(0) % PORT_RANGE_SIZE);
 }
 
-// CORS headers on synthesized preview-proxy responses. The studio iframe
-// renders under the studio origin and fetches the preview origin cross-site
-// (SSE at `/_sandbox/events`, plus the EventSource probeMissing fetch);
-// without ACAO the browser blocks the response *and* hides the actual status,
-// so a 404 from us looks like an opaque CORS failure in devtools. The daemon
-// already sets ACAO on its own responses — these headers only fire on errors
-// we synthesize before reaching the daemon.
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-    },
-  });
-}
-
 // K8s label keys studio attaches. Centralized so writers (buildTenantLabels)
 // and the reader (readClaimTenant) can't drift.
 const LABEL_KEYS = {
@@ -3276,7 +3143,10 @@ export async function freshOrgFsConfigJson(
 ): Promise<string | undefined> {
   if (!mint || !opts.tenant) return opts.orgFsConfigJson;
   try {
-    return (await mint(opts.tenant)) ?? opts.orgFsConfigJson;
+    return (
+      (await mint(opts.tenant, { callbackGrant: opts.callbackGrant })) ??
+      opts.orgFsConfigJson
+    );
   } catch (err) {
     console.warn(
       `[${LOG_LABEL}] org-fs credential re-mint failed: ${
@@ -3316,6 +3186,8 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs
   // mounts a live sandbox had.
   if (opts.orgFsConfigJson) out.orgFsConfigJson = opts.orgFsConfigJson;
+  // Every re-mint a replay triggers presents it.
+  if (opts.callbackGrant) out.callbackGrant = opts.callbackGrant;
   return Object.keys(out).length > 0 ? out : null;
 }
 

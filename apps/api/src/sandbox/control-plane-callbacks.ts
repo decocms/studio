@@ -3,10 +3,12 @@
  * org-fs mount config, both of which need Studio's database and vault.
  *
  * The bearer proves the caller is this Studio's control plane. It is not
- * scope: `buildCloneInfo` has no org check, so before minting each route
- * checks the request against Studio's own records — the tenant's user is a
- * member of its org, and the credential belongs to that org (or to a
- * configured tenant pool). That is what bounds a leaked token.
+ * scope: `buildCloneInfo` has no org check. Scope is the callback grant
+ * Studio signed into the sandbox's ensure options (`callback-grant.ts`): a
+ * request mints only for the tenant and repos its grant names, and only while
+ * Studio's records still agree — the user is a member of the org and the
+ * credential belongs to it. Tenant-pool pods have no tenant and no grant;
+ * Studio's own pool config vouches for them.
  */
 
 import { timingSafeEqual } from "node:crypto";
@@ -23,6 +25,11 @@ import {
   SANDBOX_CALLBACK_PATHS,
 } from "@decocms/sandbox/provider/sandbox-api";
 import { CredentialVault } from "@/encryption/credential-vault";
+import {
+  type CallbackGrantScope,
+  grantCoversRepo,
+  verifyCallbackGrant,
+} from "@/sandbox/callback-grant";
 import { getDb } from "@/database";
 import { getSettings } from "@/settings";
 import { sandboxCredentialMinters } from "@/sandbox/credential-mint";
@@ -43,6 +50,8 @@ export interface RecordedTenant {
 
 export interface SandboxCallbackDeps {
   token: string;
+  /** Verify callback grants; the first also signs them. */
+  grantSecrets: readonly string[];
   /** The tenant, when `userId` is a member of `orgId`; null otherwise. */
   recordedTenant(tenant: {
     orgId: string;
@@ -72,6 +81,23 @@ function bearerMatches(c: Context, token: string): boolean {
   );
 }
 
+/** The grant's scope when it verifies and names the tenant the request does. */
+function grantedScope(
+  deps: SandboxCallbackDeps,
+  grant: string | undefined,
+  tenant: { orgId: string; userId: string } | undefined,
+): CallbackGrantScope | null {
+  if (!grant) return null;
+  const scope = verifyCallbackGrant(grant, deps.grantSecrets);
+  if (!scope) return null;
+  if (
+    tenant &&
+    (tenant.orgId !== scope.orgId || tenant.userId !== scope.userId)
+  )
+    return null;
+  return scope;
+}
+
 export function createSandboxCallbackApp(deps: SandboxCallbackDeps) {
   const app = new Hono();
 
@@ -83,7 +109,7 @@ export function createSandboxCallbackApp(deps: SandboxCallbackDeps) {
       await c.req.json().catch(() => null),
     );
     if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
-    const { connectionId, repositoryId, cloneUrl, tenant, bufferMs } =
+    const { connectionId, repositoryId, cloneUrl, tenant, bufferMs, grant } =
       parsed.data;
     // The mint prefers a repository over a connection, so the check does too.
     const source: CloneCredentialSource = repositoryId
@@ -98,19 +124,27 @@ export function createSandboxCallbackApp(deps: SandboxCallbackDeps) {
           pool.connectionId === connectionId &&
           pool.repo.toLowerCase() === poolKey,
       );
-    const inTenantOrg = async () => {
-      if (!tenant) return false;
+    const granted = async () => {
+      const scope = grantedScope(deps, grant, tenant);
+      if (!scope || !grantCoversRepo(scope, parsed.data)) return false;
       const [member, org] = await Promise.all([
-        deps.recordedTenant(tenant),
+        deps.recordedTenant(scope),
         deps.credentialOrg(source),
       ]);
-      return member !== null && org === tenant.orgId;
+      return member !== null && org === scope.orgId;
     };
-    if (!pooled && !(await inTenantOrg())) {
+    if (!pooled && !(await granted())) {
+      if (!tenant && !grant && !repositoryId) {
+        // Studio's pool config and the host's are separate settings; a pool
+        // the host runs that Studio does not list lands here on every mint.
+        console.warn(
+          `[sandbox-callbacks] refused a pool clone-url mint for ${poolKey ?? "an unrecognized repo"} (connection ${connectionId ?? "none"}): no pool in STUDIO_SANDBOX_TENANT_POOLS matches. Configure the same pools as the control plane's SANDBOX_TENANT_POOLS.`,
+        );
+      }
       return c.json(
         {
           error:
-            "that credential belongs to no tenant pool and to no org the tenant's user is a member of",
+            "that credential belongs to no tenant pool and to no repo this sandbox's grant covers",
         },
         403,
       );
@@ -136,15 +170,22 @@ export function createSandboxCallbackApp(deps: SandboxCallbackDeps) {
       await c.req.json().catch(() => null),
     );
     if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
-    // Minted for the tenant Studio records (its slug included): only the ids
-    // are the caller's word.
-    const tenant = await deps.recordedTenant(parsed.data.tenant);
+    const scope = grantedScope(deps, parsed.data.grant, parsed.data.tenant);
+    if (!scope) {
+      return c.json({ error: "no callback grant for that tenant" }, 403);
+    }
+    // Minted for the tenant Studio records, slug included.
+    const tenant = await deps.recordedTenant(scope);
     if (!tenant) {
       return c.json(
         { error: "the tenant's user is not a member of its org" },
         403,
       );
     }
+    // A new 7-day key each time: Better Auth keeps only key hashes, so an
+    // earlier key cannot be handed out again. Hosts call this only when they
+    // replay a sandbox's persisted options (pod recreated, claim resurrected),
+    // which is once per recovery, as the in-process runner does.
     try {
       return c.json({ orgFsConfigJson: await deps.mintOrgFsConfig(tenant) });
     } catch (err) {
@@ -207,6 +248,7 @@ export function sandboxCallbackRoutes() {
   );
   return createSandboxCallbackApp({
     token: controlPlane.token,
+    grantSecrets: controlPlane.grantSecrets,
     ...dbDeps(db),
     tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
     mintCloneUrl: minters.mintCloneUrl,

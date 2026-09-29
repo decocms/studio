@@ -24,16 +24,28 @@ export const SANDBOX_TOOLS = {
   tenantPoolsPush: "SANDBOX_TENANT_POOLS_PUSH",
 } as const;
 
-/** `GET <base>/api/sandbox/watch?handle=…`, one `data:` line per `ClaimPhase`. */
+/**
+ * `GET <base>/api/sandbox/watch?handle=…`, one `data:` line per `ClaimPhase`,
+ * and an SSE comment every `SANDBOX_WATCH_KEEPALIVE_MS` in between, so a
+ * client can tell a long phase (a cold image pull) from a lost host.
+ */
 export const SANDBOX_WATCH_PATH = "/api/sandbox/watch";
+export const SANDBOX_WATCH_KEEPALIVE_MS = 15_000;
 
-/** Studio routes the host calls, with the same bearer both ways. */
+/**
+ * Studio routes the host calls, with the same bearer both ways. The bearer
+ * only says the caller is the host; the `grant` Studio put in the sandbox's
+ * ensure options says which tenant and repos it may mint for.
+ */
 export const SANDBOX_CALLBACK_PATHS = {
   cloneUrl: "/api/sandbox-callbacks/clone-url",
   orgFsConfig: "/api/sandbox-callbacks/org-fs-config",
 } as const;
 
 const id = z.string().min(1).max(512);
+const GRANT_MAX = 16_384;
+/** Absent for a tenant pool's pod, which its pool config vouches for. */
+const grant = z.string().min(1).max(GRANT_MAX).optional();
 
 export const sandboxIdSchema = z.object({
   userId: id,
@@ -83,6 +95,7 @@ export const ensureOptionsSchema: z.ZodType<Omit<EnsureOptions, "image">> =
     env: z.record(z.string(), z.string()).optional(),
     tenant: tenantSchema.optional(),
     orgFsConfigJson: z.string().optional(),
+    callbackGrant: z.string().max(GRANT_MAX).optional(),
   });
 
 export const daemonSchema = z.object({
@@ -191,6 +204,7 @@ export const cloneUrlRequestSchema = z
     /** Absent for a tenant pool's pod. */
     tenant: tenantSchema.optional(),
     bufferMs: z.number().int().nonnegative().optional(),
+    grant,
   })
   .refine((r) => r.connectionId !== undefined || r.repositoryId !== undefined, {
     message: "connectionId or repositoryId is required",
@@ -199,7 +213,10 @@ export const cloneUrlResponseSchema = z.object({
   cloneUrl: z.string().nullable(),
 });
 
-export const orgFsConfigRequestSchema = z.object({ tenant: tenantSchema });
+export const orgFsConfigRequestSchema = z.object({
+  tenant: tenantSchema,
+  grant,
+});
 export const orgFsConfigResponseSchema = z.object({
   orgFsConfigJson: z.string().nullable(),
 });

@@ -1,10 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { z } from "zod";
 import { ConfigRequestError } from "../daemon-client";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
-import { RemoteSandboxProvider } from "./remote";
+import { RemoteSandboxProvider, SandboxHostError } from "./remote";
 import { SANDBOX_WATCH_PATH } from "./sandbox-api";
 import { sandboxTools, sandboxWatchResponse } from "./sandbox-server";
 import { computeHandle } from "./shared";
@@ -18,6 +18,10 @@ const HANDLE = computeHandle(ID);
 
 const calls: string[] = [];
 let ensureFails: Error | null = null;
+let ensureWaitMs = 0;
+let lastEnsureOpts: unknown = null;
+/** Replaces the watch route when set. */
+let watchRoute: ((req: Request) => Response) | null = null;
 const phases: ClaimPhase[] = [
   { kind: "claiming", since: 1 },
   { kind: "pulling-image", since: 2 },
@@ -25,8 +29,10 @@ const phases: ClaimPhase[] = [
 ];
 
 const fake = {
-  ensure: async () => {
+  ensure: async (_id: unknown, opts: unknown) => {
     calls.push("ensure");
+    lastEnsureOpts = opts;
+    if (ensureWaitMs) await Bun.sleep(ensureWaitMs);
     if (ensureFails) throw ensureFails;
     return {
       handle: HANDLE,
@@ -37,8 +43,11 @@ const fake = {
   },
   daemonEndpoint: async () => ({ url: "http://127.0.0.1:1", token: "d-tok" }),
   delete: async () => void calls.push("delete"),
-  alive: async () => true,
-  getPreviewUrl: async () => null,
+  alive: async () => {
+    calls.push("alive");
+    return true;
+  },
+  getPreviewUrl: async () => "https://preview.example.com/",
   lastTermination: async () => null,
   renewTtl: async () => void calls.push("renew"),
   releaseAfter: async (_h: string, ms: number) =>
@@ -96,6 +105,7 @@ beforeAll(() => {
       }
       const url = new URL(req.url);
       if (url.pathname === SANDBOX_WATCH_PATH) {
+        if (watchRoute) return watchRoute(req);
         return sandboxWatchResponse(
           fake,
           url.searchParams.get("handle") ?? "",
@@ -108,8 +118,39 @@ beforeAll(() => {
   provider = new RemoteSandboxProvider({
     baseUrl: `http://127.0.0.1:${host.port}`,
     token: TOKEN,
+    callbackGrant: (opts) =>
+      opts.tenant ? `grant:${opts.tenant.orgId}` : undefined,
+    stallMs: STALL_MS,
   });
 });
+
+afterEach(() => {
+  watchRoute = null;
+  ensureWaitMs = 0;
+  ensureFails = null;
+});
+
+const STALL_MS = 400;
+
+/** An SSE response the test writes by hand. */
+function sse(write: (send: (text: string) => void) => Promise<void>): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          await write((text) => controller.enqueue(encoder.encode(text)));
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+const data = (phase: ClaimPhase) => `data: ${JSON.stringify(phase)}\n\n`;
 
 afterAll(() => {
   provider.close();
@@ -184,5 +225,95 @@ describe("RemoteSandboxProvider against the host tools", () => {
     expect(seen).toEqual([
       { kind: "failed", reason: "unknown", message: "watch answered 401" },
     ]);
+  });
+
+  it("sends the grant it signs for the sandbox's tenant", async () => {
+    await provider.ensure(ID, { tenant: { orgId: "o1", userId: "u1" } });
+    expect(lastEnsureOpts).toEqual({
+      tenant: { orgId: "o1", userId: "u1" },
+      callbackGrant: "grant:o1",
+    });
+  });
+
+  it("waits out a long ensure while the host's watch keeps talking", async () => {
+    ensureWaitMs = STALL_MS * 3;
+    watchRoute = () =>
+      sse(async (send) => {
+        send(data({ kind: "pulling-image", since: 1 }));
+        for (let i = 0; i < 12; i++) {
+          await Bun.sleep(STALL_MS / 4);
+          send(": keepalive\n\n");
+        }
+      });
+    const sandbox = await provider.ensure(ID);
+    expect(sandbox.handle).toBe(HANDLE);
+  });
+
+  it("gives up on an ensure once the host goes silent", async () => {
+    ensureWaitMs = STALL_MS * 20;
+    watchRoute = () => sse(() => new Promise(() => {}));
+    const started = Date.now();
+    const err = await provider.ensure(ID).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SandboxHostError);
+    expect(String(err)).toContain("no progress");
+    expect(Date.now() - started).toBeLessThan(STALL_MS * 10);
+  });
+
+  it("answers the preview URL from the ensure it cached", async () => {
+    await provider.ensure(ID);
+    calls.length = 0;
+    expect(await provider.getPreviewUrl(HANDLE)).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("reconnects a dropped watch without repeating the phase it had", async () => {
+    let connections = 0;
+    watchRoute = () => {
+      connections++;
+      if (connections === 1) {
+        return sse(async (send) => {
+          send(data({ kind: "claiming", since: 1 }));
+          await Bun.sleep(20);
+          throw new Error("idle cut");
+        });
+      }
+      return sse(async (send) => {
+        send(data({ kind: "claiming", since: 1 }));
+        send(data({ kind: "ready" }));
+      });
+    };
+    const seen: ClaimPhase[] = [];
+    for await (const phase of provider.watchClaimLifecycle(HANDLE)) {
+      seen.push(phase);
+    }
+    expect(connections).toBe(2);
+    expect(seen).toEqual([{ kind: "claiming", since: 1 }, { kind: "ready" }]);
+  });
+
+  it("fails a watch only after the host stays unreachable", async () => {
+    watchRoute = () => new Response(null, { status: 503 });
+    const started = Date.now();
+    const seen: ClaimPhase[] = [];
+    for await (const phase of provider.watchClaimLifecycle(HANDLE)) {
+      seen.push(phase);
+    }
+    expect(Date.now() - started).toBeGreaterThanOrEqual(STALL_MS);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ kind: "failed" });
+  });
+
+  it("cuts a watch that goes silent and reconnects it", async () => {
+    let connections = 0;
+    watchRoute = () => {
+      connections++;
+      return connections === 1
+        ? sse(() => new Promise(() => {}))
+        : sse(async (send) => send(data({ kind: "ready" })));
+    };
+    const seen: ClaimPhase[] = [];
+    for await (const phase of provider.watchClaimLifecycle(HANDLE)) {
+      seen.push(phase);
+    }
+    expect(seen).toEqual([{ kind: "ready" }]);
   });
 });

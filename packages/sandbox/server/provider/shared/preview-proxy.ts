@@ -12,7 +12,7 @@ export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
  * leak) + accept-encoding (Bun fetch auto-decompresses, so a downstream
  * content-encoding would mismatch the actual body).
  */
-export const PREVIEW_STRIP_REQUEST_HEADERS = [
+const PREVIEW_STRIP_REQUEST_HEADERS = [
   "cookie",
   "host",
   "connection",
@@ -33,7 +33,7 @@ export const PREVIEW_STRIP_REQUEST_HEADERS = [
  * rewrote — re-passing them defeats the iframe-embedding fix the daemon
  * installed.
  */
-export const PREVIEW_STRIP_RESPONSE_HEADERS = [
+const PREVIEW_STRIP_RESPONSE_HEADERS = [
   "connection",
   "keep-alive",
   "transfer-encoding",
@@ -48,7 +48,7 @@ export const PREVIEW_STRIP_RESPONSE_HEADERS = [
 // so a 404 from us looks like an opaque CORS failure in devtools. The daemon
 // already sets ACAO on its own responses — these headers only fire on errors
 // we synthesize before reaching the daemon.
-export function previewJsonResponse(status: number, body: unknown): Response {
+function previewJsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -56,4 +56,105 @@ export function previewJsonResponse(status: number, body: unknown): Response {
       "access-control-allow-origin": "*",
     },
   });
+}
+
+function withoutStrippedHeaders(upstream: Response): Response {
+  const headers = new Headers();
+  for (const [k, v] of upstream.headers.entries()) {
+    if (!PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())) {
+      headers.set(k, v);
+    }
+  }
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
+}
+
+function notReady(status: 404 | 502, error: string): Response {
+  const res = previewJsonResponse(status, { error });
+  res.headers.set(PREVIEW_NOT_READY_HEADER, "1");
+  return res;
+}
+
+/**
+ * Reverse-proxies an inbound preview request to a sandbox's daemon.
+ * Unauthenticated by design — preview URLs are open the same way Vercel
+ * preview URLs are; the *handle* is the secret.
+ *
+ * `/_sandbox/*` access policy at the edge:
+ *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
+ *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
+ *     because the studio UI consumes them cross-origin from the preview
+ *     URL — that's the only path it has to live setup state.
+ *   - **Non-GET** is rejected as defense-in-depth. The daemon enforces bearer
+ *     auth on the mutating endpoints, but the only legitimate caller for those
+ *     is studio itself; the preview surface should never see them.
+ *
+ * A failed fetch usually means the address went stale (the operator evicted
+ * the claim on idle TTL): `invalidate` drops it, and a replay-safe request
+ * retries once at `retryBase`. A POST's body stream is consumed by the failed
+ * fetch, so replaying it would send it empty; the caller retries after the 502.
+ */
+export async function proxyPreview(
+  request: Request,
+  upstream: {
+    base(): Promise<string | null>;
+    invalidate(): void;
+    retryBase(): Promise<string | null>;
+  },
+  logLabel: string,
+): Promise<Response> {
+  const upstreamBase = await upstream.base();
+  if (!upstreamBase) return notReady(404, "sandbox not found");
+
+  const reqUrl = new URL(request.url);
+  const isAdminPath =
+    reqUrl.pathname === "/_sandbox" || reqUrl.pathname.startsWith("/_sandbox/");
+  if (isAdminPath && request.method !== "GET") {
+    return previewJsonResponse(404, { error: "not found" });
+  }
+
+  const target = (base: string) => `${base}${reqUrl.pathname}${reqUrl.search}`;
+  const headers = new Headers(request.headers);
+  for (const h of PREVIEW_STRIP_REQUEST_HEADERS) headers.delete(h);
+  const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  const init: RequestInit & { duplex?: string } = {
+    method: request.method,
+    headers,
+    body: hasBody ? request.body : undefined,
+    redirect: "manual",
+    signal: request.signal,
+    duplex: hasBody ? "half" : undefined,
+  };
+
+  try {
+    return withoutStrippedHeaders(
+      await fetch(target(upstreamBase), init as RequestInit),
+    );
+  } catch (err) {
+    // Host + pathname only: query strings can carry secrets (magic-link
+    // tokens, signed URLs) and would otherwise end up in the logs.
+    const safeTarget = `${upstreamBase}${reqUrl.pathname}`;
+    console.warn(
+      `[${logLabel}] preview fetch to ${safeTarget} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    upstream.invalidate();
+    if (request.method === "GET" || request.method === "HEAD") {
+      const retryBase = await upstream.retryBase();
+      if (retryBase) {
+        try {
+          return withoutStrippedHeaders(
+            await fetch(target(retryBase), init as RequestInit),
+          );
+        } catch (retryErr) {
+          console.warn(
+            `[${logLabel}] preview fetch retry to ${safeTarget} failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
+          );
+        }
+      }
+    }
+    return notReady(502, "sandbox daemon unreachable");
+  }
 }

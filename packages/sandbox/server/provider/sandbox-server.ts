@@ -7,6 +7,7 @@
 import type { z } from "zod";
 import { ConfigRequestError } from "../daemon-client";
 import type { AgentSandboxProvider } from "./agent-sandbox";
+import type { MintScope } from "./agent-sandbox/runner";
 import type { EnsureOptions } from "./types";
 import {
   capacityOutputSchema,
@@ -19,6 +20,7 @@ import {
   orgFsConfigResponseSchema,
   SANDBOX_CALLBACK_PATHS,
   SANDBOX_TOOLS,
+  SANDBOX_WATCH_KEEPALIVE_MS,
   statusInputSchema,
   statusOutputSchema,
   tenantPoolsPushInputSchema,
@@ -170,36 +172,57 @@ export function sandboxTools(
   ];
 }
 
-/** The watch route's body: one `data:` line per phase, closed after the terminal one. */
+/**
+ * The watch route's body: one `data:` line per phase, closed after the
+ * terminal one, with keepalive comments in between.
+ */
 export function sandboxWatchResponse(
   provider: Pick<AgentSandboxProvider, "watchClaimLifecycle">,
   handle: string,
   signal: AbortSignal,
 ): Response {
   const encoder = new TextEncoder();
+  let keepalive: ReturnType<typeof setInterval> | undefined;
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const send = (text: string) => {
+        try {
+          controller.enqueue(encoder.encode(text));
+        } catch {
+          /* the client went away; the abort ends the loop */
+        }
+      };
+      // Also flushes the headers before the first phase.
+      send(": connected\n\n");
+      keepalive = setInterval(
+        () => send(": keepalive\n\n"),
+        SANDBOX_WATCH_KEEPALIVE_MS,
+      );
       try {
         for await (const phase of provider.watchClaimLifecycle(
           handle,
           signal,
         )) {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(phase)}\n\n`),
-          );
+          send(`data: ${JSON.stringify(phase)}\n\n`);
         }
       } catch (err) {
         if (!signal.aborted) {
           const message = err instanceof Error ? err.message : String(err);
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ kind: "failed", reason: "unknown", message })}\n\n`,
-            ),
+          send(
+            `data: ${JSON.stringify({ kind: "failed", reason: "unknown", message })}\n\n`,
           );
         }
       } finally {
-        controller.close();
+        clearInterval(keepalive);
+        try {
+          controller.close();
+        } catch {
+          /* already cancelled */
+        }
       }
+    },
+    cancel() {
+      clearInterval(keepalive);
     },
   });
   return new Response(body, {
@@ -248,7 +271,7 @@ export function studioCredentialMinters(opts: {
   return {
     mintCloneUrl: async (
       repo: NonNullable<EnsureOptions["repo"]>,
-      mintOpts?: { bufferMs?: number; tenant?: EnsureOptions["tenant"] },
+      mintOpts?: MintScope & { bufferMs?: number },
     ) =>
       (
         await post(
@@ -259,15 +282,19 @@ export function studioCredentialMinters(opts: {
             repositoryId: repo.repositoryId,
             tenant: mintOpts?.tenant,
             bufferMs: mintOpts?.bufferMs,
+            grant: mintOpts?.callbackGrant,
           },
           cloneUrlResponseSchema,
         )
       )?.cloneUrl ?? null,
-    mintOrgFsConfig: async (tenant: NonNullable<EnsureOptions["tenant"]>) =>
+    mintOrgFsConfig: async (
+      tenant: NonNullable<EnsureOptions["tenant"]>,
+      mintOpts?: Pick<MintScope, "callbackGrant">,
+    ) =>
       (
         await post(
           SANDBOX_CALLBACK_PATHS.orgFsConfig,
-          { tenant },
+          { tenant, grant: mintOpts?.callbackGrant },
           orgFsConfigResponseSchema,
         )
       )?.orgFsConfigJson ?? null,

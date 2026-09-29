@@ -76,8 +76,18 @@ Service URL). The control plane holds no cluster credential: its kube and
 daemon calls are sandbox ops its cluster's data-plane agent runs
 (`decocms/operator` `internal/agent/ops.go`). The same bearer authenticates both directions: Studio
 to the host's tools and watch route, and the host to Studio's
-`/api/sandbox-callbacks/*`. Studio still checks each callback's tenant against
-its own records before minting.
+`/api/sandbox-callbacks/*`. The bearer grants no tenant: every
+`SANDBOX_ENSURE` carries `opts.callbackGrant`, which Studio signs over the
+sandbox's tenant and repos. The provider persists it inside the sandbox's
+state and hands it to the mint hooks, and `studioCredentialMinters` sends it as
+`grant`; Studio mints only what the grant names. Tenant-pool pods carry none:
+Studio authorizes them against its own `STUDIO_SANDBOX_TENANT_POOLS`, which
+must list the pools the host runs.
+
+The watch route writes an SSE keepalive comment every
+`SANDBOX_WATCH_KEEPALIVE_MS`. Studio reads the watch as the host's sign of
+life: it reconnects a dropped stream, and gives up on a provisioning call only
+after the host has been silent for four keepalives.
 
 ## Development
 
@@ -95,7 +105,11 @@ A local host can depend on the packed tarball with
 - The host owns authorization: the tools carry no auth of their own.
 - With the default `daemonAddress: "forward"`, the daemon address is the
   host's own `127.0.0.1` forward, reachable only from the same machine.
-- The sources live in `packages/sandbox`; change them there.
+- The sources live in `packages/sandbox`; change them there. A change to a
+  bundled source bumps this package's version on release, which publishes it.
+- `zod` and `@opentelemetry/api` are peer dependencies: the host's `zod`
+  parses the exported schemas, and the provider's meter options are
+  `@opentelemetry/api` types.
 
 ## Related documentation
 

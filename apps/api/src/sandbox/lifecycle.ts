@@ -13,6 +13,11 @@ import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state"
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
 import { sandboxCredentialMinters } from "@/sandbox/credential-mint";
+import {
+  grantScopeFor,
+  parseGrantSecrets,
+  signCallbackGrant,
+} from "@/sandbox/callback-grant";
 
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/api/src/index.ts` is wired
@@ -120,12 +125,14 @@ function readPreviewGateway(): { name: string; namespace: string } | undefined {
   return { name, namespace };
 }
 
+const MIN_GRANT_SECRET_LENGTH = 32;
+
 /**
  * The control plane that runs sandboxes for this Studio. Both set: Studio asks
  * it for sandboxes; both unset: Studio runs them in-process.
  */
 export function readControlPlaneSandboxConfig():
-  | { url: string; token: string }
+  | { url: string; token: string; grantSecrets: string[] }
   | undefined {
   const url = process.env.STUDIO_SANDBOX_CONTROL_PLANE_URL?.trim();
   const token = process.env.STUDIO_SANDBOX_CONTROL_PLANE_TOKEN?.trim();
@@ -135,7 +142,18 @@ export function readControlPlaneSandboxConfig():
       "STUDIO_SANDBOX_CONTROL_PLANE_URL and STUDIO_SANDBOX_CONTROL_PLANE_TOKEN must both be set, or both unset.",
     );
   }
-  return { url, token };
+  const grantSecrets = parseGrantSecrets(
+    process.env.STUDIO_SANDBOX_CALLBACK_GRANT_SECRETS,
+  );
+  if (
+    grantSecrets.length === 0 ||
+    grantSecrets.some((s) => s.length < MIN_GRANT_SECRET_LENGTH)
+  ) {
+    throw new Error(
+      `STUDIO_SANDBOX_CALLBACK_GRANT_SECRETS must be set with the control plane: comma-separated secrets of at least ${MIN_GRANT_SECRET_LENGTH} characters, the first signing.`,
+    );
+  }
+  return { url, token, grantSecrets };
 }
 
 async function instantiate(
@@ -149,6 +167,12 @@ async function instantiate(
     return new RemoteSandboxProvider({
       baseUrl: controlPlane.url,
       token: controlPlane.token,
+      callbackGrant: (opts) => {
+        const scope = grantScopeFor(opts);
+        return scope
+          ? signCallbackGrant(scope, controlPlane.grantSecrets)
+          : undefined;
+      },
     });
   }
   const stateStore = new KyselySandboxProviderStateStore(db);

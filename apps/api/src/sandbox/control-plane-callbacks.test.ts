@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { TenantPool } from "@decocms/sandbox/provider/agent-sandbox";
+import { type CallbackGrantScope, signCallbackGrant } from "./callback-grant";
 import {
   type CloneCredentialSource,
   createSandboxCallbackApp,
@@ -11,6 +12,26 @@ const REPOSITORY = "repo_1";
 const ACME_SITE = "https://x-access-token:ghs_old@github.com/acme/site.git";
 const TENANT = { orgId: "org_1", userId: "user_1" };
 const TOKEN = "cp-token";
+const SECRET = "s".repeat(32);
+
+function grantFor(
+  scope: Partial<CallbackGrantScope> = {},
+  secrets: string[] = [SECRET],
+): string {
+  return signCallbackGrant(
+    {
+      v: 1,
+      ...TENANT,
+      repos: [
+        { connectionId: CONNECTION, repo: "acme/site" },
+        { repositoryId: REPOSITORY },
+      ],
+      ...scope,
+    },
+    secrets,
+  );
+}
+const GRANT = grantFor();
 
 function setup(
   opts: {
@@ -20,6 +41,7 @@ function setup(
     owners?: Record<string, string>;
     pools?: TenantPool[];
     mint?: SandboxCallbackDeps["mintCloneUrl"];
+    secrets?: string[];
   } = {},
 ) {
   const members = opts.members ?? ["org_1:user_1"];
@@ -33,6 +55,7 @@ function setup(
     [];
   const app = createSandboxCallbackApp({
     token: TOKEN,
+    grantSecrets: opts.secrets ?? [SECRET],
     recordedTenant: async ({ orgId, userId }) =>
       members.includes(`${orgId}:${userId}`)
         ? { orgId, userId, orgSlug: "acme" }
@@ -103,6 +126,7 @@ describe("clone-url callback", () => {
       cloneUrl: ACME_SITE,
       tenant: TENANT,
       bufferMs: 1_800_000,
+      grant: GRANT,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -130,6 +154,7 @@ describe("clone-url callback", () => {
       connectionId: "conn_other",
       cloneUrl: ACME_SITE,
       tenant: TENANT,
+      grant: GRANT,
     });
     expect(res.status).toBe(200);
     expect(sources).toEqual([{ repositoryId: REPOSITORY }]);
@@ -157,16 +182,102 @@ describe("clone-url callback", () => {
       { members: ["org_2:user_1"] },
       { orgId: "org_2", userId: "user_1" },
     ],
-    ["no tenant and no pool", {}, undefined],
   ])("refuses %s without minting", async (_label, opts, tenant) => {
     const { post, mints } = setup(opts);
     const res = await post(CLONE, {
       connectionId: CONNECTION,
       cloneUrl: ACME_SITE,
-      ...(tenant ? { tenant } : {}),
+      tenant,
+      grant: grantFor(tenant),
     });
     expect(res.status).toBe(403);
     expect(mints).toEqual([]);
+  });
+
+  it.each([
+    ["no tenant, no grant and no pool", {}],
+    ["a tenant but no grant", { tenant: TENANT }],
+    [
+      "a grant signed with another secret",
+      { tenant: TENANT, grant: grantFor({}, ["x".repeat(32)]) },
+    ],
+    [
+      "a grant whose scope was edited after signing",
+      {
+        tenant: TENANT,
+        grant: `${Buffer.from(
+          JSON.stringify({ v: 1, orgId: "org_1", userId: "user_1", repos: [] }),
+        ).toString("base64url")}.${GRANT.split(".")[1]}`,
+      },
+    ],
+    ["a grant that is not one", { tenant: TENANT, grant: "nope" }],
+    [
+      "a grant for another repo on the same connection",
+      {
+        tenant: TENANT,
+        grant: grantFor({
+          repos: [{ connectionId: CONNECTION, repo: "acme/other" }],
+        }),
+      },
+    ],
+    [
+      "a grant for the same repo on another connection",
+      {
+        tenant: TENANT,
+        grant: grantFor({
+          repos: [{ connectionId: "conn_other", repo: "acme/site" }],
+        }),
+      },
+    ],
+    [
+      "a grant for another tenant",
+      { tenant: TENANT, grant: grantFor({ userId: "user_2" }) },
+    ],
+  ])("refuses %s without minting", async (_label, body) => {
+    const { post, mints, sources } = setup();
+    const res = await post(CLONE, {
+      connectionId: CONNECTION,
+      cloneUrl: ACME_SITE,
+      ...body,
+    });
+    expect(res.status).toBe(403);
+    expect([...mints, ...sources]).toEqual([]);
+  });
+
+  it("refuses a repository id the grant does not name", async () => {
+    const { post, mints } = setup({ owners: { repo_2: "org_1" } });
+    const res = await post(CLONE, {
+      repositoryId: "repo_2",
+      cloneUrl: ACME_SITE,
+      tenant: TENANT,
+      grant: GRANT,
+    });
+    expect(res.status).toBe(403);
+    expect(mints).toEqual([]);
+  });
+
+  it("reads the tenant from the grant when the request names none", async () => {
+    const { post } = setup();
+    const res = await post(CLONE, {
+      connectionId: CONNECTION,
+      cloneUrl: ACME_SITE,
+      grant: GRANT,
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("verifies a grant from a secret still in rotation, not after it leaves", async () => {
+    const old = "o".repeat(32);
+    const body = {
+      connectionId: CONNECTION,
+      cloneUrl: ACME_SITE,
+      tenant: TENANT,
+      grant: grantFor({}, [old]),
+    };
+    const rotating = setup({ secrets: [SECRET, old] });
+    expect((await rotating.post(CLONE, body)).status).toBe(200);
+    const rotated = setup({ secrets: [SECRET] });
+    expect((await rotated.post(CLONE, body)).status).toBe(403);
   });
 
   it("does not let a warm pool vouch for a repository id", async () => {
@@ -203,6 +314,14 @@ describe("clone-url callback", () => {
       { connectionId: CONNECTION, cloneUrl: ACME_SITE, tenant: { orgId: "o" } },
     ],
     ["a non-JSON body", "{nope"],
+    [
+      "an oversized grant",
+      {
+        connectionId: CONNECTION,
+        cloneUrl: ACME_SITE,
+        grant: "g".repeat(20_000),
+      },
+    ],
   ])("rejects %s", async (_label, body) => {
     const { post, mints } = setup();
     const res = await post(CLONE, body);
@@ -220,6 +339,7 @@ describe("clone-url callback", () => {
       connectionId: CONNECTION,
       cloneUrl: ACME_SITE,
       tenant: TENANT,
+      grant: GRANT,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cloneUrl: null });
@@ -231,6 +351,7 @@ describe("org-fs-config callback", () => {
     const { post, orgFsMints } = setup();
     const res = await post(ORG_FS, {
       tenant: { ...TENANT, orgSlug: "someone-else" },
+      grant: GRANT,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ orgFsConfigJson: '{"token":"fresh"}' });
@@ -242,7 +363,20 @@ describe("org-fs-config callback", () => {
     ["an org the user is not in", { orgId: "org_2", userId: "user_1" }],
   ])("refuses %s", async (_label, tenant) => {
     const { post, orgFsMints } = setup();
-    const res = await post(ORG_FS, { tenant });
+    const res = await post(ORG_FS, { tenant, grant: grantFor(tenant) });
+    expect(res.status).toBe(403);
+    expect(orgFsMints).toEqual([]);
+  });
+
+  it.each([
+    ["no grant", {}],
+    ["a forged grant", { grant: grantFor({}, ["x".repeat(32)]) }],
+    ["a grant for another tenant", { grant: grantFor({ orgId: "org_2" }) }],
+  ])("refuses %s", async (_label, body) => {
+    const { post, orgFsMints } = setup({
+      members: ["org_1:user_1", "org_2:user_1"],
+    });
+    const res = await post(ORG_FS, { tenant: TENANT, ...body });
     expect(res.status).toBe(403);
     expect(orgFsMints).toEqual([]);
   });
