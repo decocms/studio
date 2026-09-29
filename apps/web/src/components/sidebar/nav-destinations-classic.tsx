@@ -29,6 +29,7 @@ import { useProjectContext } from "@/sdk";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { useThreadAnalyticsOrgs } from "@/hooks/use-thread-analytics";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import { wasCreatedAsProject } from "@/lib/project-profile.ts";
 import {
   DESTINATION_ROUTE,
   PROJECT_ROUTE,
@@ -83,11 +84,17 @@ type NavDestinationKey = (typeof NAV_DESTINATION_KEYS_CLASSIC)[number];
  * and would empty the unscoped org sidebar outright. Only a RESOLVED project
  * that has no source hides them.
  */
-function scopedProjectLacksSource(
+export function scopedProjectLacksSource(
   scopeId: string | null,
   project: { metadata?: unknown } | null,
 ): boolean {
   if (!scopeId || !project) return false;
+  /* A project is a project before it has code. This gate was written when the
+   * only sourceless thing in scope was a decopilot-only agent, which has no
+   * overview, board or report to reach; the projects flow now makes real
+   * projects with no repository, and dropping every row left them with a
+   * sidebar of nothing but the way out. */
+  if (wasCreatedAsProject(project)) return false;
   return !agentHasClonableSource(project.metadata);
 }
 
