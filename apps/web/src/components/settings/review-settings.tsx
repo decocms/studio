@@ -10,6 +10,7 @@ import {
   FileSearch02,
   GitBranch01,
   GitMerge,
+  Microphone01,
   LayoutAlt01,
   Rocket01,
   SearchLg,
@@ -396,6 +397,22 @@ export function CodeAgentsSettings() {
           icon={<Terminal size={16} />}
           titleKey="settings.agentTools.codingAgentsClaudeCodeTitle"
           descriptionKey="settings.agentTools.codingAgentsClaudeCodeDescription"
+        />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+export function VoiceModeSettings() {
+  const t = useT();
+  return (
+    <SettingsSection title={t("settings.voice.title")}>
+      <SettingsCard>
+        <FlagToggle
+          flag="voice_mode"
+          icon={<Microphone01 size={16} />}
+          titleKey="settings.voice.title"
+          descriptionKey="settings.voice.description"
         />
       </SettingsCard>
     </SettingsSection>

@@ -1,6 +1,9 @@
 import type { settings as settingsEn } from "../en/settings.ts";
 
 export const settings = {
+  "settings.voice.title": "Modo voz",
+  "settings.voice.description":
+    "Permite conversar por voz com os agentes nos chats. Requer a configuração da ElevenLabs nesta instalação do Studio.",
   "settings.title": "Perfil e preferências",
   "settings.nav.organization": "Organização",
   "settings.nav.build": "Construir",

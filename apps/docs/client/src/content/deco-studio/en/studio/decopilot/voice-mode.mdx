@@ -1,0 +1,101 @@
+---
+title: Voice mode
+description: Talk to the current Studio agent while keeping the same chat and preview
+icon: Mic
+---
+
+Voice mode replaces the web chat's messages and composer with a speaking orb.
+An adjacent page or site preview stays open. The selected agent, model, page
+context, tools, permissions, and message queue remain the same as in text chat.
+
+Coding agents keep running Claude Code in their existing sandbox. Voice mode
+does not change the chat's pinned runtime, checkout, preview, or Claude session.
+The voice response style travels with each turn because Claude Code restores
+the original system prompt when resuming a session. Text turns explicitly
+restore normal response style. Decopilot chats use the same speech transport.
+
+Choose **Start voice mode** beside the composer and allow microphone access.
+**Back to chat** stops the microphone and playback. It preserves the chat and
+any running work. **Stop agent work** is a separate control. Speaking while a
+reply plays interrupts the audio; the new request joins the chat's normal queue.
+Approvals, questions, errors, and queued requests remain visible in voice mode.
+
+Only the final text part of the current spoken turn is read aloud. A per-turn
+instruction asks the agent for a short, natural answer. Switching back to text
+restores normal response style for subsequent messages.
+
+## Deployment setup
+
+Set these variables on every API replica:
+
+```bash
+ELEVENLABS_API_KEY=<elevenlabs-api-key>
+```
+
+The key needs Text to Speech and Speech to Text access. Keep it on the server.
+Browsers receive a single-use Scribe token and a signed Studio session token.
+The web app needs HTTPS for microphone access, except on localhost. No inbound
+provider callback or Speech Engine provisioning is required. API replicas must
+share the same Studio authentication secret and NATS service.
+
+Then enable **Settings → General → Voice mode** for the organization. The
+`voice_mode` organization flag defaults off. It is separate from authentication:
+only the owning user can start a voice session for a writable, hosted chat.
+Native terminal chats and read-only chats do not offer this mode.
+
+Optional variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ELEVENLABS_VOICE_MODEL` | `eleven_v4_turbo` | Speech synthesis model |
+| `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice |
+
+## Session behavior and limits
+
+The browser closes sessions after ten minutes, with one active session per
+user per organization. Server speech grants expire after ten minutes and allow
+up to 120 synthesis requests and 24,000 characters. An interrupted browser that
+cannot release its reservation may need to wait for that expiry before reconnecting.
+ElevenLabs bills speech usage to the deployment's account; Studio's model usage
+accounting continues to cover the agent's model calls.
+
+Microphone audio travels directly from the browser to ElevenLabs Scribe Realtime.
+Voice activity detection commits the utterance after a pause. The browser submits
+it through the existing chat API and waits for the agent to finish. Studio then
+synthesizes the final answer with ElevenLabs v4 Turbo and plays it in the browser.
+Transcription and synthesis are independent so a long-running coding task does
+not hit the Speech Engine's response timeout.
+
+Transcripts and answers remain in the normal Studio chat history. Studio does
+not store audio; ElevenLabs' data retention policy applies to its service.
+
+Leaving the chat, changing organizations, or disconnecting stops the voice
+session. Transport failures show an error with a path back to text. They do not
+automatically resend a request whose acceptance is uncertain. Check the chat
+before repeating it. Stopping playback leaves the agent's work running.
+
+## Verification
+
+The regular `voice-mode.spec.ts` browser suite checks access gates, the default
+flag, and switching back to a preserved draft. Its optional live case requires
+an API server configured with ElevenLabs and a synthetic WAV input:
+
+```bash
+E2E_VOICE_LIVE=1 E2E_VOICE_WAV=/tmp/synthetic-utterance.wav \
+  bun run --cwd=packages/e2e test:e2e -- tests/voice-mode.spec.ts
+```
+
+The live case uses the real speech service and an HTTP model stand-in, and
+checks that the voice instruction reaches the agent and the reply is spoken.
+
+The daemon suite also exercises the real Claude Code executable and SDK against
+an HTTP model stand-in. It starts in text, changes a file in voice mode, and
+returns to text while checking the same Claude session and conversation history:
+
+```bash
+DAEMON_E2E_CLAUDE_VOICE=1 \
+  bun test packages/sandbox/daemon-e2e/daemon.voice-claude.e2e.test.ts
+```
+
+Build the Go daemon first, as described in the sandbox package README. Set
+`DAEMON_E2E_CMD` to use a daemon binary at another path.
