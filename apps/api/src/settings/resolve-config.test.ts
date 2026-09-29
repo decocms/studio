@@ -52,20 +52,6 @@ describe("resolveConfig sandbox sticky head ref", () => {
   });
 });
 
-describe("resolveConfig flat GitLab sandbox refs", () => {
-  it("defaults to disabled when unset", () => {
-    const result = resolveConfig(flags, {});
-    expect(result.settings.sandboxFlatGitlabRefsEnabled).toBe(false);
-  });
-
-  it("enables via SANDBOX_FLAT_GITLAB_REFS=true", () => {
-    const result = resolveConfig(flags, {
-      SANDBOX_FLAT_GITLAB_REFS: "true",
-    });
-    expect(result.settings.sandboxFlatGitlabRefsEnabled).toBe(true);
-  });
-});
-
 describe("resolveConfig NATS connection", () => {
   it("preserves an external URL and generic credentials file", () => {
     const result = resolveConfig(flags, {
