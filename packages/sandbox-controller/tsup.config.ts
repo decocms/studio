@@ -10,5 +10,10 @@ export default defineConfig({
   clean: true,
   dts: { resolve: true },
   noExternal: [/^@decocms\//],
-  external: ["@kubernetes/client-node", "@opentelemetry/api", "zod"],
+  external: [
+    "@kubernetes/client-node",
+    "@opentelemetry/api",
+    "postgres",
+    "zod",
+  ],
 });

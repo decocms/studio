@@ -27,6 +27,9 @@ which are private, and bundles it into one module with declarations.
 - Export `AgentSandboxProvider`, its option and state-store types, and
   `kubeConfigForServer`, a credential-less kubeconfig for a local proxy, built
   with the package's own client.
+- Export `postgresRunnerStateStore`, a Postgres `RunnerStateStore` in the
+  library's own `sandbox_controller` schema, and `migrateRunnerStateStore`,
+  which creates and upgrades that schema.
 - Export the wire contract in `sandbox-api`: tool names and schemas, and the
   watch route.
 - Export host helpers: `sandboxTools` (framework-free tool definitions),
@@ -40,11 +43,17 @@ which are private, and bundles it into one module with declarations.
 import {
   AgentSandboxProvider,
   kubeConfigForServer,
+  migrateRunnerStateStore,
+  postgresRunnerStateStore,
   PushedCredentials,
   pushedCredentialOptions,
   sandboxTools,
   sandboxWatchResponse,
 } from "@decocms/sandbox-controller";
+
+// At boot, before the store serves a call. The store opens its own pool.
+await migrateRunnerStateStore({ url: databaseUrl });
+const stateStore = postgresRunnerStateStore({ url: databaseUrl });
 
 // Memory only: a restart forgets it until Studio's next push.
 const credentials = new PushedCredentials();
@@ -54,7 +63,7 @@ const provider = new AgentSandboxProvider({
   kubeConfig: kubeConfigForServer("http://127.0.0.1:7777"),
   // Reach daemons the host's way instead of an apiserver port-forward.
   forwardPort: (pod, port) => openDaemonForward(pod, port),
-  stateStore, // the host's RunnerStateStore
+  stateStore,
   // Mint hooks that read the store, and `persistCredentials: false`.
   ...pushedCredentialOptions(credentials),
 });
@@ -93,6 +102,19 @@ state keeps no clone token, submodule token or org-fs config; recovery takes
 them from the store. After a host restart, a sandbox recovered before the next
 push has no credential until that push, at most 10 minutes later.
 
+The state store keeps one row per sandbox in `sandbox_controller.runner_state`,
+with the same semantics as Studio's in-process store. `withLock` serializes
+provisioning of one sandbox across replicas with a transaction-scoped
+advisory lock keyed by user and project ref; a caller that waits longer than
+90 seconds (`lockWaitMs`) gets a retryable "sandbox advisory lock busy" error.
+Each lock holder keeps a connection for the whole provisioning, so the store
+opens its own pool of `maxConnections` (default 4) instead of sharing the
+host's; `close()` ends it. The host runs `migrateRunnerStateStore` at boot;
+the store never migrates on its own. Migrating is idempotent and holds an
+advisory lock, so every replica can run it at once. Applied versions are
+recorded in `sandbox_controller.migrations`. `state` embeds short-lived
+credentials; never log it.
+
 The watch route writes an SSE keepalive comment every
 `SANDBOX_WATCH_KEEPALIVE_MS`. Studio reads the watch as the host's sign of
 life: it reconnects a dropped stream, and gives up on a provisioning call only
@@ -104,6 +126,8 @@ after the host has been silent for four keepalives.
 bun run --cwd=packages/sandbox-controller build   # dist/index.js + index.d.ts
 bun run --cwd=packages/sandbox-controller pack    # dist/sandbox-controller.tgz
 bun test packages/sandbox/server/provider/remote.test.ts
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres \
+  bun test packages/sandbox/server/provider/postgres-state-store.integration.test.ts
 ```
 
 A local host can depend on the packed tarball with
@@ -116,9 +140,10 @@ A local host can depend on the packed tarball with
   host's own `127.0.0.1` forward, reachable only from the same machine.
 - The sources live in `packages/sandbox`; change them there. A change to a
   bundled source bumps this package's version on release, which publishes it.
-- `zod` and `@opentelemetry/api` are peer dependencies: the host's `zod`
-  parses the exported schemas, and the provider's meter options are
-  `@opentelemetry/api` types.
+- `zod`, `@opentelemetry/api` and `postgres` are peer dependencies: the
+  host's `zod` parses the exported schemas, the provider's meter options are
+  `@opentelemetry/api` types, and the state store runs on the host's
+  `postgres`.
 
 ## Related documentation
 
