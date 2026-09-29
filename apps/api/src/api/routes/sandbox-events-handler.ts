@@ -23,8 +23,8 @@ import {
 import {
   getThreadSandboxMap,
   removeThreadSandboxMapEntry,
-  resolveSandboxGitRef,
   setThreadHeadRef,
+  syntheticBranchToGitRef,
   threadIdFromBranch,
 } from "../../tools/sandbox/thread-repo";
 import {
@@ -181,7 +181,6 @@ export function handleVmEvents(c: Context<Env>, args: VmEventsHandlerArgs) {
         runner,
         claimName,
         branch,
-        virtualMcpId,
         threadId,
         signal: abortCtl.signal,
       });
@@ -219,12 +218,10 @@ async function recordDaemonHeadRef(args: {
   runner: AgentSandboxProvider;
   claimName: string;
   branch: string;
-  virtualMcpId: string;
   threadId: string | null;
   signal: AbortSignal;
 }): Promise<void> {
-  const { ctx, runner, claimName, branch, virtualMcpId, threadId, signal } =
-    args;
+  const { ctx, runner, claimName, branch, threadId, signal } = args;
   if (!threadId || !branch.startsWith("thread:")) return;
   try {
     const res = await runner.proxyDaemonRequest(
@@ -248,7 +245,11 @@ async function recordDaemonHeadRef(args: {
     const status = JSON.parse(body) as DaemonHeadStatus;
     const headRef = pickRecordableHeadRef({
       status,
-      requestedRef: await resolveSandboxGitRef(ctx, { branch, virtualMcpId }),
+      // Both forms, so telling which one this sandbox booted on costs no lookup.
+      requestedRefs: [
+        syntheticBranchToGitRef(branch),
+        syntheticBranchToGitRef(branch, { flat: true }),
+      ],
     });
     if (!headRef) return;
     await setThreadHeadRef(ctx, threadId, headRef);

@@ -11,10 +11,12 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import { findRepositoryForLegacyBinding } from "@/git-providers";
 import { getSettings } from "@/settings";
 import type { Thread } from "@/storage/types";
-import type { GitProviderKind } from "@decocms/shared/git-providers";
+import {
+  type GitProviderKind,
+  parseRepoUrl,
+} from "@decocms/shared/git-providers";
 import type {
   GithubRepo,
   SandboxMap,
@@ -88,51 +90,40 @@ export function flatSandboxRef(
 }
 
 /**
- * {@link syntheticBranchToGitRef} for a caller that holds only the key, in the
- * form the sandbox booted on. The repository that decides it is the one
- * SANDBOX_START clones: the thread's binding, else its agent's. Never throws; a
- * repository it cannot resolve keeps the slash form.
+ * {@link syntheticBranchToGitRef} for the sandbox that clones `binding`, for a
+ * caller holding the binding but not its repository row. The URL names the
+ * provider of every public host; only a self-hosted one costs a lookup, by
+ * primary key. Never throws: an unreadable row keeps the slash form.
  */
-export async function resolveSandboxGitRef(
+export async function sandboxGitRef(
   ctx: StudioContext,
-  args: { branch: string; virtualMcpId: string },
+  branch: string,
+  binding: GithubRepo | null,
 ): Promise<string> {
-  const { branch, virtualMcpId } = args;
-  if (!getSettings().sandboxFlatGitlabRefsEnabled) {
+  if (!binding || !getSettings().sandboxFlatGitlabRefsEnabled) {
     return syntheticBranchToGitRef(branch);
   }
-  try {
-    const orgId = ctx.storage.threads.getOrganizationId();
-    if (!orgId) return syntheticBranchToGitRef(branch);
-    const binding =
-      (await getThreadGithubRepo(ctx, threadIdFromBranch(branch))) ??
-      (await agentGithubRepo(ctx, virtualMcpId, orgId));
-    const repository = binding
-      ? await findRepositoryForLegacyBinding(ctx.storage, orgId, binding)
-      : null;
-    return syntheticBranchToGitRef(branch, {
-      flat: flatSandboxRef(repository?.provider),
-    });
-  } catch (err) {
-    console.warn("[thread-repo] could not resolve the sandbox's repository", {
-      branch,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return syntheticBranchToGitRef(branch);
-  }
+  return syntheticBranchToGitRef(branch, {
+    flat: flatSandboxRef(await bindingProvider(ctx, binding)),
+  });
 }
 
-/** The agent's own repo binding, when the agent belongs to `orgId`. */
-async function agentGithubRepo(
+async function bindingProvider(
   ctx: StudioContext,
-  virtualMcpId: string,
-  orgId: string,
-): Promise<GithubRepo | null> {
-  const agent = await ctx.storage.virtualMcps.findById(virtualMcpId, orgId);
-  if (!agent || agent.organization_id !== orgId) return null;
-  const repo = (agent.metadata as { githubRepo?: GithubRepo | null } | null)
-    ?.githubRepo;
-  return repo?.owner && repo?.name ? repo : null;
+  binding: GithubRepo,
+): Promise<GitProviderKind | null> {
+  // Stored JSON: a binding written before `url` was required has none.
+  const fromUrl =
+    typeof binding.url === "string"
+      ? parseRepoUrl(binding.url)?.provider
+      : undefined;
+  if (fromUrl) return fromUrl;
+  const orgId = ctx.storage.threads.getOrganizationId();
+  if (!binding.repositoryId || !orgId) return null;
+  const repository = await ctx.storage.repositories
+    .get(binding.repositoryId, orgId)
+    .catch(() => null);
+  return repository?.provider ?? null;
 }
 
 /**
