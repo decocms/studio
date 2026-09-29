@@ -324,8 +324,7 @@ describe("acceptBatchDuplicates", () => {
       offered,
     );
     expect([...out.keys()]).toEqual([0]);
-    expect(out.get(0)?.item).toBe(offered[1]!);
-    expect(out.get(0)?.reason).toBe("same");
+    expect(out.get(0)).toEqual({ item: offered[1]!, reason: "same" });
   });
 
   it("ignores unknown draft indexes, unoffered ids, and a null verdict", () => {
@@ -375,7 +374,55 @@ describe("acceptBatchDuplicates", () => {
       drafts,
       offered,
     );
-    expect(out.get(0)?.item).toBe(offered[0]!);
+    expect(out.get(0)).toEqual({ item: offered[0]!, reason: "first" });
+  });
+
+  it("maps a confident repeat of an earlier offered draft, and nothing else", () => {
+    const repeat = (
+      draft: number,
+      sameAsDraft: number,
+      confidence: "high" | "medium" = "high",
+    ) =>
+      acceptBatchDuplicates(
+        {
+          matches: [
+            {
+              draft,
+              duplicateOf: null,
+              sameAsDraft,
+              confidence,
+              reason: "same",
+            },
+          ],
+        },
+        [...drafts, { index: 3, title: "d" }],
+        offered,
+      );
+    expect(repeat(1, 0).get(1)).toEqual({ draft: 0, reason: "same" });
+    // A later draft, the draft itself, one never offered, a guess.
+    expect(repeat(0, 1).size).toBe(0);
+    expect(repeat(1, 1).size).toBe(0);
+    expect(repeat(3, 2).size).toBe(0);
+    expect(repeat(1, 0, "medium").size).toBe(0);
+  });
+
+  it("prefers an offered card over an earlier draft", () => {
+    const out = acceptBatchDuplicates(
+      {
+        matches: [
+          {
+            draft: 1,
+            duplicateOf: offered[0]!.id,
+            sameAsDraft: 0,
+            confidence: "high",
+            reason: "same",
+          },
+        ],
+      },
+      drafts,
+      offered,
+    );
+    expect(out.get(1)).toEqual({ item: offered[0]!, reason: "same" });
   });
 });
 
@@ -395,6 +442,12 @@ describe("buildBatchDuplicatePrompt", () => {
     );
     expect(prompt).toContain("- draft 3 (acme/web): Login broken — on Safari");
     expect(prompt).toContain(`- [${c.id}] (todo) Fix login`);
+  });
+
+  it("says so when the board has no open cards", () => {
+    expect(buildBatchDuplicatePrompt([{ index: 0, title: "a" }], [])).toContain(
+      "Existing open cards:\n(none)",
+    );
   });
 });
 
@@ -478,7 +531,9 @@ describe("decision model duplicate checks", () => {
     ]);
   });
   it("accepts a high-probability offered card", () => {
-    expect(accept("card_0", 0.99)?.get(0)?.item.id).toBe("billing");
+    expect(accept("card_0", 0.99)?.get(0)).toMatchObject({
+      item: { id: "billing" },
+    });
   });
   it("accepts a confident no-match without suppressing a task", () => {
     expect(accept("none", 0.99)?.size).toBe(0);
@@ -491,6 +546,53 @@ describe("decision model duplicate checks", () => {
   it("rejects fabricated and cross-repository ids even at high confidence", () => {
     expect(accept("invented", 1)).toBeNull();
     expect(accept("card_1", 1)).toBeNull();
+  });
+  it("offers each draft the earlier drafts in its scope, never a later one", () => {
+    const { questions } = buildDuplicateDecisions(
+      [
+        { index: 0, title: "Fix duplicate charges", repo: "acme/billing" },
+        { index: 2, title: "Stop charging twice" },
+        { index: 3, title: "Refund double charges", repo: "acme/other" },
+      ],
+      [],
+    );
+    expect(Object.keys(questions.draft_0!.criteria)).toEqual(["none"]);
+    expect(Object.keys(questions.draft_2!.criteria)).toEqual([
+      "none",
+      "draft_0",
+    ]);
+    expect(Object.keys(questions.draft_3!.criteria)).toEqual([
+      "none",
+      "draft_2",
+    ]);
+  });
+  it("maps a confident repeat to the earlier draft and falls back on a later one", () => {
+    const batch = [
+      { index: 0, title: "Declare the sitemap in robots.txt" },
+      { index: 1, title: "Add a Sitemap line to robots.txt" },
+    ];
+    const { questions } = buildDuplicateDecisions(batch, []);
+    const decide = (first: string, second: string) =>
+      acceptDecisionDuplicates(
+        {
+          draft_0: {
+            type: "choice",
+            choice: first,
+            probabilities: { [first]: 0.99 },
+          },
+          draft_1: {
+            type: "choice",
+            choice: second,
+            probabilities: { [second]: 0.99 },
+          },
+        },
+        questions,
+        batch,
+        [],
+      );
+    expect(decide("none", "draft_0")?.get(1)).toMatchObject({ draft: 0 });
+    expect(decide("none", "draft_0")?.has(0)).toBe(false);
+    expect(decide("draft_1", "none")).toBeNull();
   });
   it("falls back for the entire batch if any draft lacks an answer", () => {
     const batch = [...drafts, { index: 2, title: "Another finding" }];
