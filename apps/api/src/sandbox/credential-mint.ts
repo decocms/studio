@@ -1,7 +1,7 @@
 /**
  * Re-mints the two short-lived credentials a sandbox's persisted options
- * embed. Shared by the in-process runner (autonomous recovery) and the
- * control plane's callbacks, which need Studio's database and vault to mint.
+ * embed. Shared by the in-process runner (autonomous recovery) and the push
+ * that keeps a control plane's sandboxes supplied (`dbos-credential-push.ts`).
  */
 
 import type { Kysely } from "kysely";

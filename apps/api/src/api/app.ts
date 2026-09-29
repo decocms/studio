@@ -126,6 +126,7 @@ import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { registerSandboxCredentialPushWorkflow } from "@/sandbox/dbos-credential-push";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
@@ -1931,6 +1932,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
+  registerSandboxCredentialPushWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
