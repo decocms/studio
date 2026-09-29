@@ -79,6 +79,23 @@ describe("release change classification", () => {
     ]);
   });
 
+  test("a change to a bundled source also bumps sandbox-controller", () => {
+    expect(
+      releaseManifestCandidates([
+        "packages/sandbox/server/provider/remote.ts",
+        "packages/shared/src/std/delay.ts",
+        "packages/shared/src/index.ts",
+      ]),
+    ).toEqual([
+      "packages/sandbox-controller/package.json",
+      "packages/sandbox/package.json",
+      "packages/shared/package.json",
+    ]);
+    expect(
+      releaseManifestCandidates(["packages/sandbox/daemon-go/main.go"]),
+    ).toEqual(["packages/sandbox/package.json"]);
+  });
+
   test("maps release inputs to sorted, deduplicated manifests", () => {
     const files = [
       "packages/ui/src/button.tsx",

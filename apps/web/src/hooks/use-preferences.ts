@@ -12,8 +12,6 @@ interface Preferences {
   enableSounds: boolean;
   theme: ThemeMode;
   language: Locale;
-  /** Blocks editor opt-in; retain the legacy storage key for existing preferences. */
-  compactPageLayout: boolean;
   /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
@@ -30,7 +28,6 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  compactPageLayout: false,
   shownTaskBoardLanes: [],
   projectFirstNav: false,
 };
@@ -91,11 +88,13 @@ export function usePreferences() {
     LOCALSTORAGE_KEYS.preferences(),
     (existing) => {
       const merged = { ...DEFAULT_PREFERENCES, ...existing };
-      // Remove the retired shortcut from existing browser preferences.
+      // Remove retired settings (the blocks editor is now an org flag).
       if ("showProjectSettingsGear" in merged) {
         delete merged.showProjectSettingsGear;
       }
-      merged.compactPageLayout = merged.compactPageLayout === true;
+      if ("compactPageLayout" in merged) {
+        delete merged.compactPageLayout;
+      }
       if (!VALID_TOOL_APPROVAL_LEVELS.includes(merged.toolApprovalLevel)) {
         merged.toolApprovalLevel = "auto";
       }
@@ -112,11 +111,6 @@ export function usePreferences() {
       return merged;
     },
   );
-}
-
-export function useNewBlocksEditor(): boolean {
-  const [preferences] = usePreferences();
-  return preferences.compactPageLayout;
 }
 
 export function useProjectFirstNav(): boolean {

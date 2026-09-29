@@ -29,6 +29,8 @@
  * hosted live path.
  */
 
+import { VOICE_MODE_PROMPT } from "@decocms/shared/voice";
+import { withVoiceResponseStyle } from "@/voice/prompt";
 import {
   applySubsidizedBilling,
   resolveSubsidizedPayer,
@@ -346,6 +348,7 @@ export interface AgentConfig {
 }
 
 export interface DispatchRunInput {
+  voiceMode?: boolean;
   messages: ChatMessage[];
   /** CLIENT request shape (root credentialId). `prepareRun` normalizes it
    *  into the per-slot harness/wire `ModelsConfig` before dispatch. */
@@ -404,6 +407,7 @@ export interface DispatchRunInput {
 }
 
 export interface FrozenRunSnapshot {
+  voiceMode?: boolean;
   models: ClientModelsConfig;
   agent: AgentConfig;
   temperature: number;
@@ -527,6 +531,7 @@ export function buildDurableDispatchInput(
       ? { resumedFromBackground: input.resumedFromBackground }
       : {}),
     mode: input.mode,
+    ...(input.voiceMode !== undefined ? { voiceMode: input.voiceMode } : {}),
     ...(input.windowSize !== undefined ? { windowSize: input.windowSize } : {}),
     ...(input.triggerId !== undefined ? { triggerId: input.triggerId } : {}),
     ...(input.runMetadata !== undefined
@@ -1309,6 +1314,13 @@ async function prepareRun(
     }
 
     ensureModelCompatibility(input.models, [wireUserMessage]);
+    if (input.voiceMode) {
+      systemMessages.push({
+        id: `voice-${materializedRequestMessage.id}`,
+        role: "system",
+        parts: [{ type: "text", text: VOICE_MODE_PROMPT }],
+      });
+    }
     const decopilotMessages = await loadDecopilotContext({
       ctx,
       threadId: mem.thread.id,
@@ -1360,7 +1372,10 @@ async function prepareRun(
 
     const wireHarnessInput: WireHarnessInput = {
       threadId: mem.thread.id,
-      userMessage: wireUserMessage,
+      userMessage:
+        sandboxHosted && input.voiceMode !== undefined
+          ? withVoiceResponseStyle(wireUserMessage, input.voiceMode === true)
+          : wireUserMessage,
       harness: { sessionId: undefined },
       workspace,
       models,

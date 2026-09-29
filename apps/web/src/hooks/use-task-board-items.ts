@@ -167,7 +167,16 @@ export function useTaskBoardItemActions() {
           ? {
               ...prev,
               items: prev.items.map((item) =>
-                item.id === input.id ? { ...item, ...input } : item,
+                item.id === input.id
+                  ? {
+                      ...item,
+                      ...input,
+                      ...(input.status !== undefined &&
+                        input.status !== item.status && {
+                          statusSince: new Date().toISOString(),
+                        }),
+                    }
+                  : item,
               ),
             }
           : prev,

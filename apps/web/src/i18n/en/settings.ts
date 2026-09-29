@@ -1,4 +1,7 @@
 export const settings = {
+  "settings.voice.title": "Voice mode",
+  "settings.voice.description":
+    "Let members talk to agents in chats. Requires ElevenLabs to be configured on this Studio deployment.",
   "settings.title": "Profile & Preferences",
   "settings.nav.organization": "Organization",
   "settings.nav.build": "Build",
@@ -344,9 +347,9 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.newBlocksEditor": "New blocks editor",
-  "settings.preferences.newBlocksEditorDescription":
-    "Try the redesigned blocks editor. The rest of Studio always uses the new layout.",
+  "settings.blocksEditor.title": "New blocks editor",
+  "settings.blocksEditor.description":
+    "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
   "settings.preferences.projectFirstNav": "Project-first navigation",
   "settings.preferences.projectFirstNavDescription":
     "Try the org rail, project launcher and the Today/Agents home.",
@@ -624,8 +627,8 @@ export const settings = {
   "settings.planUsage.feature.model_choice": "Choose your model",
   "settings.planUsage.feature.trialChat": "Limited access to chat",
   "settings.planUsage.feature.credits": "Extra credits",
-  "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
-  "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
+  "settings.planUsage.feature.diagnostic": "Deco Score",
+  "settings.planUsage.feature.diagnostic_enriched": "Enriched Deco Score",
   "settings.plans.title": "Plans",
   "settings.plans.loadFailed": "Couldn't load the plans.",
   "settings.plans.currentPlan": "Current plan",
@@ -773,9 +776,9 @@ export const settings = {
   "settings.review.deliveryLanesDescription":
     "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
   "settings.review.autoAssignReportTasksTitle":
-    "Auto-assign report tasks to the Super Agent",
+    "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
-    "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
+    "Tasks created from the Deco Score are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
   "settings.taskPrompt.title": "System prompt",
   "settings.taskPrompt.fieldLabel": "Instructions",

@@ -46,13 +46,14 @@ import {
 import { resolveSubmoduleCredentials } from "@/tools/sandbox/resolve-submodule-creds";
 import { resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
+  flatSandboxRef,
   getThreadSandboxMap,
   resolveSandboxBranchForThread,
   resolveSandboxUserId,
   syntheticBranchToGitRef,
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   secondaryRepoDirNames,
   secondaryRepoDirName,
@@ -166,7 +167,7 @@ export function secondaryRepoCapExceeded(
 
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
-  provider: AgentSandboxProvider,
+  provider: SandboxProvider,
   handle: string,
   threadId: string,
   command: string,
@@ -633,7 +634,9 @@ export const TASK_ADD_REPO = defineTool({
      */
     const gitRef = pickGitBranch({
       branch,
-      derivedRef: syntheticBranchToGitRef(branch),
+      derivedRef: syntheticBranchToGitRef(branch, {
+        flat: flatSandboxRef(repo.provider),
+      }),
       recordedHeadRef: null,
       sticky: false,
     });

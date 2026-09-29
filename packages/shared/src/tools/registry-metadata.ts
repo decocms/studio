@@ -57,6 +57,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
+  "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
   "BRAND_CONTEXT_LIST",
   "BRAND_CONTEXT_GET",
@@ -259,6 +260,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LIST",
   "REPOSITORY_SEARCH",
   "REPOSITORY_LINK",
+  "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
@@ -376,6 +378,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_SETTINGS_UPDATE",
     description: "Update organization settings",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_BLOCKS_EDITOR_SET",
+    description: "Switch the organization's blocks editor",
     category: "Organizations",
   },
   {
@@ -590,27 +597,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "REPORTS_SETUP",
-    description: "Set up Reports",
+    description: "Set up Deco Score",
     category: "Connections",
   },
   {
     name: "REPORTS_RUN",
-    description: "Run Reports",
+    description: "Run Deco Score",
     category: "Connections",
   },
   {
     name: "REPORTS_BIND",
-    description: "Bind Reports data source",
+    description: "Bind Deco Score data source",
     category: "Connections",
   },
   {
     name: "REPORTS_CONNECTION_STATUS",
-    description: "Read Reports connection status",
+    description: "Read Deco Score connection status",
     category: "Connections",
   },
   {
     name: "REPORTS_SET_REPOSITORY",
-    description: "Set the Reports repository",
+    description: "Set the Deco Score repository",
     category: "Connections",
   },
   {
@@ -1247,6 +1254,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
     category: "Git",
   },
   {
+    name: "REPOSITORY_CREATE_FROM_TEMPLATE",
+    description: "Create a site repository from a template and link it",
+    category: "Git",
+  },
+  {
     name: "REPOSITORY_SEARCH_BRANCHES",
     description:
       "Search a repository's branches by name substring, on either provider",
@@ -1452,13 +1464,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_DISMISSED_LIST",
     description:
-      "List diagnostic findings dismissed by deleting their task board cards",
+      "List Deco Score findings dismissed by deleting their task board cards",
     category: "Task Board",
   },
   {
     name: "TASK_BOARD_DISMISSED_RESTORE",
     description:
-      "Un-dismiss diagnostic findings so the next report import pushes them again",
+      "Un-dismiss Deco Score findings so the next Deco Score import pushes them again",
     category: "Task Board",
   },
   {
@@ -1637,6 +1649,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "BRAND_CONTEXT_LIST",
       // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
       "ORGANIZATION_HAS_SITE",
+      // Any member picks the org's blocks editor; writes only that one flag.
+      "ORGANIZATION_BLOCKS_EDITOR_SET",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless

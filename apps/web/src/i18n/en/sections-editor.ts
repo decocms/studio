@@ -182,6 +182,15 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "Link URL",
   "sectionsEditor.richTextLinkControl.urlInputPlaceholder":
     "Paste or type a link…",
+  "sectionsEditor.secretField.encryptButton": "Encrypt",
+  "sectionsEditor.secretField.encryptFailedMessage":
+    "Couldn't encrypt this secret with the site's key, so it was not saved. Check that the site is online and try again.",
+  "sectionsEditor.secretField.encryptingMessage":
+    "Encrypting with the site's key…",
+  "sectionsEditor.secretField.pendingMessage":
+    "Not saved yet. Press Enter to encrypt and save.",
+  "sectionsEditor.secretField.plaintextStoredMessage":
+    "The stored value is not encrypted and won't work. Enter the secret again to encrypt it.",
   "sectionsEditor.secretField.leaveBlankPlaceholder":
     "Leave blank to keep current value",
   "sectionsEditor.secretField.secretNamePlaceholder": "Secret name",

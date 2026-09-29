@@ -65,6 +65,7 @@ export { Store };
 // ─── Request options (wire payload alongside `messages`) ─────────────────────
 
 export interface RequestOptions {
+  voiceMode?: boolean;
   tier: SimpleModeTier;
   mode: ChatMode;
   toolApprovalLevel: ToolApprovalLevel;

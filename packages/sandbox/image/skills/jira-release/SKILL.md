@@ -75,7 +75,13 @@ report the delta.
 - Push, and open ONE pull request to the main branch, titled
   `release: <site> YYYY-MM-DD`. Its body tables each issue with its pull
   request, and says it is not to be merged until the release is approved.
-- Wait for the preview the pull request gets, and open it once.
+- Wait for the preview the pull request gets, and open it once. A deploy bot may
+  post it as a comment, but a release branch often gets none: the preview is
+  then the GitHub deployment on the head commit —
+  `gh api "repos/<owner>/<repo>/deployments?sha=<head>"`, and the
+  `environment_url` of that deployment's latest status. Poll that, not the
+  comments, and not `gh pr checks`, which a run's token may not be allowed to
+  read.
 
 ### The tracking issue
 

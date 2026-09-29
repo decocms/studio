@@ -36,7 +36,7 @@ describe("commerce onboarding loading state", () => {
     const { getByText, container } = render(<CompanionMcpsSectionSkeleton />);
 
     expect(
-      getByText("Connect your tools to see the full diagnostic"),
+      getByText("Connect your tools to see the full Deco Score"),
     ).toBeInTheDocument();
     // 4 skeleton cards × 4 pulse nodes each (icon, title, benefit line, action)
     expect(container.querySelectorAll(".animate-pulse")).toHaveLength(16);

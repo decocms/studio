@@ -33,9 +33,9 @@ export async function fetchPublicOnePager(
 /** The same report as Markdown, for agents. Null when nothing is published. */
 export async function fetchPublicOnePagerMarkdown(
   domain: string,
-  opts: { signal?: AbortSignal } = {},
+  opts: { lang?: string; signal?: AbortSignal } = {},
 ): Promise<string | null> {
-  const res = await fetch(onePagerUrl(domain, ".md"), {
+  const res = await fetch(onePagerUrl(domain, ".md", opts.lang), {
     headers: { Accept: "text/markdown" },
     signal: opts.signal,
   });

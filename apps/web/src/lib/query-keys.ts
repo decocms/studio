@@ -675,6 +675,9 @@ export const KEYS = {
   // An org's owned site slugs (org_sites) in the deployment-admin editor.
   deploymentAdminOrgSites: (orgId: string) =>
     ["deployment-admin", "orgs", orgId, "sites"] as const,
+  // An org's site projects and their analytics-site override.
+  deploymentAdminOrgProjects: (orgId: string) =>
+    ["deployment-admin", "orgs", orgId, "projects"] as const,
 
   // Brand context (scoped by organization)
   defaultBrand: (organizationId: string) =>
@@ -757,8 +760,6 @@ export const KEYS = {
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
-  // Branch drift + head-commit age for the CMS staleness check.
-  decofileStatus: (cacheKey: string) => ["decofile-status", cacheKey] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,

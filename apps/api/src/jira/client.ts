@@ -16,7 +16,7 @@ import { getSettings } from "@/settings";
 import { type AdfMedia, markdownToAdf } from "./markdown-adf";
 import {
   collectWikiMentionAccountIds,
-  escapeMentionName,
+  mentionMarkdown,
   UNKNOWN_MENTION,
   wikiToMarkdown,
 } from "./wiki-markdown";
@@ -87,9 +87,14 @@ export interface JiraChangelogHistory {
   items: Array<{ field: string; toString?: string | null; to?: string | null }>;
 }
 
+export interface JiraUser {
+  accountId: string;
+  displayName: string;
+}
+
 export interface JiraComment {
   id: string;
-  author: { accountId: string; displayName: string } | null;
+  author: JiraUser | null;
   /** Atlassian Document Format tree. */
   body: unknown;
   created: string;
@@ -533,10 +538,12 @@ export class JiraClient {
       status: { name: string };
       description: unknown;
       attachment?: JiraAttachment[];
+      reporter?: JiraUser | null;
+      assignee?: JiraUser | null;
     };
   }> {
     return this.request(
-      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=summary,status,description,attachment`,
+      `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=summary,status,description,attachment,reporter,assignee`,
     );
   }
 
@@ -944,11 +951,10 @@ function mentionText(
   attrs: MentionAttrs | undefined,
   names: ReadonlyMap<string, string>,
 ): string {
-  const label = mentionLabel(attrs);
-  if (label) return `@${escapeMentionName(label)}`;
-  const id = typeof attrs?.id === "string" ? attrs.id : "";
-  const name = id ? names.get(id) : undefined;
-  return name ? `@${escapeMentionName(name)}` : UNKNOWN_MENTION;
+  const id = typeof attrs?.id === "string" && attrs.id !== "" ? attrs.id : "";
+  const name = mentionLabel(attrs) ?? (id ? names.get(id) : undefined);
+  if (!id && !name) return UNKNOWN_MENTION;
+  return mentionMarkdown(id || undefined, name);
 }
 
 /** Account ids in a body that a name lookup has to resolve, so a run can batch

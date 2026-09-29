@@ -19,7 +19,7 @@ export const sidebar = {
   "sidebar.navDestinations.agents": "Agentes",
   "sidebar.navDestinations.home": "Início",
   "sidebar.navDestinations.library": "Biblioteca",
-  "sidebar.navDestinations.reports": "Relatórios",
+  "sidebar.navDestinations.reports": "Deco Score",
   "sidebar.navDestinations.settings": "Configurações",
   "sidebar.navDestinations.tasks": "Tarefas",
   "sidebar.navDestinations.threadAnalytics": "Análise de chats",

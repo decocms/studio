@@ -544,12 +544,8 @@ export class GithubContentClient implements RepoContentClient {
     return this.defaultBranch;
   }
 
-  async getBranch(
-    branch: string,
-  ): Promise<{ sha: string; committedAt: string } | null> {
-    const { status, json } = await this.call<{
-      commit?: { sha: string; commit: { committer: { date: string } } };
-    }>(
+  async getBranch(branch: string): Promise<{ sha: string } | null> {
+    const { status, json } = await this.call<{ commit?: { sha: string } }>(
       "GET",
       `${this.repoBase}/branches/${encodeRepoFilePath(branch)}`,
       undefined,
@@ -558,10 +554,7 @@ export class GithubContentClient implements RepoContentClient {
       },
     );
     if (status === 404 || !json?.commit) return null;
-    return {
-      sha: json.commit.sha,
-      committedAt: json.commit.commit.committer.date,
-    };
+    return { sha: json.commit.sha };
   }
 
   /**

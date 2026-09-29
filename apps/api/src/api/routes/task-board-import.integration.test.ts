@@ -13,7 +13,10 @@ import {
   resetTestPgDatabase,
   seedCommonTestPgFixtures,
 } from "../../database/test-db-pg";
+import { CredentialVault } from "../../encryption/credential-vault";
 import { getSettings, setGlobalSettings } from "../../settings";
+import { AIProviderKeyStorage } from "../../storage/ai-provider-keys";
+import { OrganizationSettingsStorage } from "../../storage/organization-settings";
 import { TaskBoardStorage } from "../../storage/task-board";
 import { createApp } from "../app";
 
@@ -44,6 +47,44 @@ const BODY = {
   ],
   source: { url: "shop.com" },
 };
+
+/** The reply entry expected for the item at `index` that landed on `card`. */
+const entry = (
+  index: number,
+  outcome: string,
+  card: { id: string; key_seq: number },
+) => ({ index, outcome, id: card.id, key_seq: card.key_seq });
+
+/**
+ * An OpenAI-compatible server standing in for the org's fast model, so the
+ * semantic pass runs for real: tier resolution, the provider adapter, the HTTP
+ * call, and the parse and gate on the answer. Every chat completion gets
+ * `answer` as its text. Every other path returns 404, including the model
+ * list, and tier resolution tolerates that. Answering the model list would
+ * make the provider factory fetch OpenRouter's catalog over the network.
+ */
+const serveFakeModel = (answer: string) =>
+  Bun.serve({
+    port: 0,
+    fetch(req) {
+      if (new URL(req.url).pathname !== "/v1/chat/completions") {
+        return new Response("not found", { status: 404 });
+      }
+      return Response.json({
+        id: "chatcmpl-test",
+        created: 0,
+        model: "fake-fast",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: answer },
+            finish_reason: "stop",
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+    },
+  });
 
 describe("Task Board Import Route", () => {
   let database: StudioDatabase;
@@ -96,6 +137,15 @@ describe("Task Board Import Route", () => {
     }
   });
 
+  /** The org's card with exactly this title. */
+  const cardTitled = (title: string, org = "org_board") =>
+    database.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", org)
+      .where("title", "=", title)
+      .executeTakeFirstOrThrow();
+
   it("rejects requests without the service token", async () => {
     const noToken = await app.fetch(post("org_board", null, BODY));
     expect(noToken.status).toBe(401);
@@ -113,6 +163,7 @@ describe("Task Board Import Route", () => {
       created: 2,
       updated: 0,
       delegated: 0,
+      items: expect.any(Array),
     });
 
     const settings = await database.db
@@ -123,18 +174,23 @@ describe("Task Board Import Route", () => {
     expect(settings).toBeUndefined();
   });
 
-  it("rejects an invalid body", async () => {
+  it("rejects an empty batch instead of answering with an empty items list", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", { items: [] }));
     expect(res.status).toBe(400);
+    expect(await res.json()).not.toHaveProperty("items");
   });
 
   it("creates triage items as the system principal, resolving the org by id", async () => {
     const res = await app.fetch(post("org_board", "svc-secret", BODY));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({
+    expect(await res.json()).toEqual({
       created: 2,
       updated: 0,
       delegated: 0,
+      items: [
+        entry(0, "created", await cardTitled("Adicionar H1 na home")),
+        entry(1, "created", await cardTitled("Liberar o GPTBot no WAF")),
+      ],
     });
 
     const rows = await database.db
@@ -173,10 +229,14 @@ describe("Task Board Import Route", () => {
     expect(res.status).toBe(200);
     // The enqueue itself is best-effort (no model configured in tests) — the
     // delegation must still land on the row.
-    await expect(res.json()).resolves.toEqual({
+    expect(await res.json()).toEqual({
       created: 2,
       updated: 0,
       delegated: 1,
+      items: [
+        entry(0, "created", await cardTitled("Adicionar sinônimos à busca")),
+        entry(1, "created", await cardTitled("Tarefa comum")),
+      ],
     });
 
     const rows = await database.db
@@ -226,14 +286,16 @@ describe("Task Board Import Route", () => {
       source: { url: "shop.com", run_id: "run_double_fire" },
     };
     const first = await app.fetch(post("org_board", "svc-secret", body));
-    await expect(first.json()).resolves.toEqual({
+    expect(await first.json()).toEqual({
       created: 1,
       updated: 0,
       delegated: 0,
+      items: [entry(0, "created", await cardTitled("Adicionar H1 na home"))],
     });
 
     // The success page and the webhook fire the SAME import seconds apart —
-    // the second one must not double the board.
+    // the second one must not double the board. It wrote nothing, so it has
+    // no per-item outcomes to report and omits `items`.
     const replay = await app.fetch(post("org_board", "svc-secret", body));
     await expect(replay.json()).resolves.toEqual({
       created: 0,
@@ -265,10 +327,12 @@ describe("Task Board Import Route", () => {
         source: { url: "shop.com", run_id: "run_1" },
       }),
     );
+    const card = await cardTitled("Liberar o GPTBot no WAF");
     await expect(run1.json()).resolves.toEqual({
       created: 1,
       updated: 0,
       delegated: 0,
+      items: [entry(0, "created", card)],
     });
 
     // A month later the diagnostic re-runs, finds the same issue with fresh
@@ -291,6 +355,7 @@ describe("Task Board Import Route", () => {
       created: 0,
       updated: 1,
       delegated: 0,
+      items: [entry(0, "updated", card)],
     });
 
     const rows = await database.db
@@ -329,6 +394,7 @@ describe("Task Board Import Route", () => {
       created: 1,
       updated: 0,
       delegated: 0,
+      items: expect.any(Array),
     });
 
     const storage = new TaskBoardStorage(database.db);
@@ -404,11 +470,7 @@ describe("Task Board Import Route", () => {
         source: { url: "shop.com", run_id: "run_b" },
       }),
     );
-    await expect(regression.json()).resolves.toEqual({
-      created: 1,
-      updated: 0,
-      delegated: 0,
-    });
+    const replyBody = await regression.json();
 
     const rows = await database.db
       .selectFrom("task_board_items")
@@ -418,6 +480,14 @@ describe("Task Board Import Route", () => {
       .execute();
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.status).sort()).toEqual(["done", "triage"]);
+    // The reply names the fresh card, not the done one.
+    const fresh = rows.find((r) => r.status === "triage")!;
+    expect(replyBody).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      items: [entry(0, "created", fresh)],
+    });
     // Both carry the key — identity survives the lifecycle.
     expect(rows.every((r) => r.external_key === key)).toBe(true);
   });
@@ -433,7 +503,7 @@ describe("Task Board Import Route", () => {
     );
     const created = await database.db
       .selectFrom("task_board_items")
-      .select(["id"])
+      .select(["id", "key_seq"])
       .where("organization_id", "=", "org_board")
       .where("external_key", "=", key)
       .executeTakeFirstOrThrow();
@@ -455,6 +525,7 @@ describe("Task Board Import Route", () => {
       updated: 0,
       delegated: 0,
       dismissed: 1,
+      items: [entry(0, "dismissed", created)],
     });
     // Dismissed, not dropped — same row, so a restore brings back the card.
     expect(
@@ -481,6 +552,7 @@ describe("Task Board Import Route", () => {
       created: 0,
       updated: 1,
       delegated: 0,
+      items: [entry(0, "updated", created)],
     });
     expect(
       await database.db
@@ -526,10 +598,14 @@ describe("Task Board Import Route", () => {
         source: { url: "shop.com", run_id: "run_o2" },
       }),
     );
+    // Its reply names its own new card, never the other org's dismissed one.
+    const otherCard = await cardTitled("Adicionar H1 na home", "org_other");
+    expect(otherCard.id).not.toBe(created.id);
     await expect(other.json()).resolves.toEqual({
       created: 1,
       updated: 0,
       delegated: 0,
+      items: [entry(0, "created", otherCard)],
     });
   });
   it("records the repository the finding was written against", async () => {
@@ -665,6 +741,7 @@ describe("Task Board Import Route", () => {
       created: 1,
       updated: 0,
       delegated: 0,
+      items: expect.any(Array),
     });
   });
 
@@ -679,10 +756,18 @@ describe("Task Board Import Route", () => {
     );
     expect(res.status).toBe(200);
     // No provider is configured for org_board, so nothing folds: two cards.
-    await expect(res.json()).resolves.toEqual({
+    expect(await res.json()).toEqual({
       created: 2,
       updated: 0,
       delegated: 0,
+      items: [
+        entry(0, "created", await cardTitled("Imagens sem alt text na home")),
+        entry(
+          1,
+          "created",
+          await cardTitled("Imagens da home sem texto alternativo"),
+        ),
+      ],
     });
   });
 
@@ -701,6 +786,7 @@ describe("Task Board Import Route", () => {
       created: 0,
       updated: 1,
       delegated: 0,
+      items: [entry(0, "updated", await cardTitled("LCP acima de 4s"))],
     });
     const rows = await database.db
       .selectFrom("task_board_items")
@@ -714,5 +800,202 @@ describe("Task Board Import Route", () => {
       .where("action", "=", "duplicate_reported")
       .execute();
     expect(activity).toHaveLength(0);
+  });
+
+  it("a title repeated in one request folds into the card its first item created", async () => {
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "Adicionar H1 na home", description: "v1" },
+          { title: "  adicionar h1 NA home", description: "v2" },
+        ],
+      }),
+    );
+    const card = await cardTitled("Adicionar H1 na home");
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 1,
+      delegated: 0,
+      items: [entry(0, "created", card), entry(1, "updated", card)],
+    });
+    expect(card.description).toBe("v2");
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
+  it("a keyless item whose title was dismissed names the dismissed card", async () => {
+    await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [{ title: "Liberar o GPTBot no WAF" }],
+      }),
+    );
+    const dismissed = await cardTitled("Liberar o GPTBot no WAF");
+    await new TaskBoardStorage(database.db).delete(
+      dismissed.id,
+      "org_board",
+      "user_1",
+    );
+
+    // The skipped item keeps its own position; the next one is not shifted up.
+    const res = await app.fetch(
+      post("org_board", "svc-secret", {
+        items: [
+          { title: "liberar o gptbot no WAF" },
+          { title: "Adicionar H1 na home" },
+        ],
+      }),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      dismissed: 1,
+      items: [
+        entry(0, "dismissed", dismissed),
+        entry(1, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+  });
+
+  it("a semantic match names the matched card, and refreshes it only when reports owns it", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const human = await storage.create({
+      organizationId: "org_board",
+      title: "Escrever alt text para as imagens da home",
+      description: "Escrito por uma pessoa.",
+      by: "user_1",
+    });
+    const reports = await storage.create({
+      organizationId: "org_board",
+      title: "LCP alto na home",
+      description: "LCP 4.2s.",
+      by: "system",
+    });
+    const model = serveFakeModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: human.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+          {
+            draft: 1,
+            duplicateOf: reports.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+        ],
+      }),
+    );
+    try {
+      const key = await new AIProviderKeyStorage(
+        database.db,
+        new CredentialVault(getSettings().encryptionKey),
+      ).create({
+        providerId: "openai-compatible",
+        label: "Fake fast model",
+        apiKey: JSON.stringify({ baseUrl: `http://127.0.0.1:${model.port}` }),
+        organizationId: "org_board",
+        createdBy: "user_1",
+      });
+      await new OrganizationSettingsStorage(database.db).upsert("org_board", {
+        simple_mode: {
+          tiers: {
+            fast: { keyId: key.id, modelId: "fake-fast" },
+            smart: null,
+            thinking: null,
+            image: null,
+            web_search: null,
+            deep_research: null,
+          },
+        },
+      });
+
+      const res = await app.fetch(
+        post("org_board", "svc-secret", {
+          items: [
+            {
+              title: "Imagens da home sem texto alternativo",
+              description: "12 imagens sem alt.",
+            },
+            {
+              title: "Reduzir o tempo de carregamento da home",
+              description: "LCP 4.8s.",
+            },
+            { title: "Adicionar H1 na home" },
+          ],
+        }),
+      );
+      expect(await res.json()).toEqual({
+        created: 1,
+        updated: 2,
+        delegated: 0,
+        semantic_matches: 2,
+        items: [
+          entry(0, "semantic_match", { id: human.id, key_seq: human.keySeq }),
+          entry(1, "semantic_match", {
+            id: reports.id,
+            key_seq: reports.keySeq,
+          }),
+          entry(2, "created", await cardTitled("Adicionar H1 na home")),
+        ],
+      });
+    } finally {
+      await model.stop(true);
+    }
+
+    expect((await cardTitled(human.title)).description).toBe(
+      "Escrito por uma pessoa.",
+    );
+    expect((await cardTitled(reports.title)).description).toBe("LCP 4.8s.");
+    const reported = await database.db
+      .selectFrom("task_board_activity")
+      .select(["task_board_item_id"])
+      .where("action", "=", "duplicate_reported")
+      .execute();
+    expect(reported.map((r) => r.task_board_item_id).sort()).toEqual(
+      [human.id, reports.id].sort(),
+    );
+  });
+
+  it("a Super Agent delegation the task quota refuses reports quota_blocked for its card", async () => {
+    const settings = getSettings();
+    // With no free executions, the claim at dispatch throws TaskQuotaError.
+    setGlobalSettings({
+      ...settings,
+      taskQuotaEnforced: true,
+      freeTaskExecutions: 0,
+    });
+    try {
+      const res = await app.fetch(
+        post("org_board", "svc-secret", {
+          items: [
+            { title: "Adicionar sinônimos à busca", assigneeId: "super-agent" },
+            { title: "Tarefa comum" },
+          ],
+        }),
+      );
+      const blocked = await cardTitled("Adicionar sinônimos à busca");
+      expect(await res.json()).toEqual({
+        created: 2,
+        updated: 0,
+        delegated: 0,
+        quota_blocked: 1,
+        items: [
+          entry(0, "quota_blocked", blocked),
+          entry(1, "created", await cardTitled("Tarefa comum")),
+        ],
+      });
+      // Unassigned, so the card does not look delegated with no run behind it.
+      expect(blocked.assignee_id).toBeNull();
+    } finally {
+      setGlobalSettings(settings);
+    }
   });
 });

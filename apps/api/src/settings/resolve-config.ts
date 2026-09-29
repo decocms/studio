@@ -239,6 +239,9 @@ export function resolveConfig(
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
+    elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
+    elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
+    elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),
@@ -397,6 +400,7 @@ export function resolveConfig(
     ),
     agentSandboxEnabled: toBool(envVars.STUDIO_AGENT_SANDBOX_ENABLED),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
+    sandboxFlatGitlabRefsEnabled: toBool(envVars.SANDBOX_FLAT_GITLAB_REFS),
     taskBoardRerunReusesPrBranch: toBoolWithDefault(
       envVars.TASK_BOARD_RERUN_REUSES_PR_BRANCH,
       true,

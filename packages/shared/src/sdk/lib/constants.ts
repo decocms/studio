@@ -293,8 +293,8 @@ export function getWellKnownReportsConnection(
 ): ConnectionCreateData {
   return {
     id: WellKnownOrgMCPId.REPORTS(orgId),
-    title: "Store Report",
-    description: "Your store's report and diagnostics",
+    title: "Deco Score",
+    description: "Your store's Deco Score",
     connection_type: "HTTP",
     connection_url: connectionUrl,
     icon: REPORTS_ICON,
@@ -317,8 +317,8 @@ export function getWellKnownReportVirtualMCP(
   connectionId = WellKnownOrgMCPId.REPORTS(orgId),
 ): VirtualMCPCreateData {
   return {
-    title: "Report Agent",
-    description: "Ask anything about your store's report",
+    title: "Deco Score Agent",
+    description: "Ask anything about your store's Deco Score",
     icon: REPORTS_ICON,
     status: "active",
     pinned: true,
@@ -330,7 +330,7 @@ export function getWellKnownReportVirtualMCP(
           {
             connectionId,
             toolName: REPORTS_TOOL_NAME,
-            label: "Report",
+            label: "Deco Score",
             icon: REPORTS_ICON,
           },
         ],

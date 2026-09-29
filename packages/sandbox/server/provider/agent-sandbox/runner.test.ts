@@ -5,7 +5,71 @@ import {
   freshOrgFsConfigJson,
   laterShutdown,
   stripEnsureOpts,
+  withoutCredentials,
 } from "./runner";
+
+describe("withoutCredentials", () => {
+  const CLONE_TOKEN = "ghs_clonetoken123";
+  const SUBMODULE_TOKEN = "ghp_submodule456";
+  const API_KEY = "orgfs_apikey789";
+  const repo = (path: string) => ({
+    cloneUrl: `https://x-access-token:${CLONE_TOKEN}@github.com/acme/${path}.git`,
+    connectionId: "c1",
+    userName: "u",
+    userEmail: "e",
+    submoduleCredentials: [{ host: "github.com", token: SUBMODULE_TOKEN }],
+    credentialExpiresAt: 1_700_000_000_000,
+  });
+  const opts: EnsureOptions = {
+    tenant: { orgId: "o1", userId: "u1" },
+    repo: repo("site"),
+    extraRepos: [repo("docs")],
+    orgFsConfigJson: JSON.stringify({ token: API_KEY }),
+  };
+
+  it("writes no clone token, submodule token or API key into the state bytes", () => {
+    const state = {
+      token: "daemon-bearer",
+      ...withoutCredentials(opts, false),
+    };
+    const bytes = JSON.stringify(state);
+    for (const secret of [
+      CLONE_TOKEN,
+      SUBMODULE_TOKEN,
+      API_KEY,
+      "x-access-token",
+    ]) {
+      expect(bytes).not.toContain(secret);
+    }
+    expect(state.ensureOpts.repo?.cloneUrl).toBe(
+      "https://github.com/acme/site.git",
+    );
+    expect(state.ensureOpts.extraRepos?.[0]?.cloneUrl).toBe(
+      "https://github.com/acme/docs.git",
+    );
+    expect(state.orgFsRedacted).toBe(true);
+    // Its URL is stripped, so the credential's expiry means nothing there.
+    expect(state.ensureOpts.repo?.credentialExpiresAt).toBeUndefined();
+  });
+
+  it("remembers an org-fs mount it already redacted", () => {
+    const { orgFsConfigJson: _gone, ...rest } = opts;
+    expect(withoutCredentials(rest, true).orgFsRedacted).toBe(true);
+    expect(withoutCredentials({ tenant: opts.tenant }, false)).toEqual({
+      ensureOpts: { tenant: opts.tenant },
+    });
+  });
+
+  it("drops a repo whose clone URL it cannot parse", () => {
+    const bytes = JSON.stringify(
+      withoutCredentials(
+        { repo: { ...repo("x"), cloneUrl: `not a url ${CLONE_TOKEN}` } },
+        false,
+      ),
+    );
+    expect(bytes).not.toContain(CLONE_TOKEN);
+  });
+});
 
 describe("stripEnsureOpts", () => {
   it("retains orgFsConfigJson so resurrection replays org-fs mounts", () => {

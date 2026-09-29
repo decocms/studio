@@ -107,6 +107,11 @@ export interface EnsureRepo {
    * been using.
    */
   directoryName?: string;
+  /**
+   * When the credential in `cloneUrl` expires (epoch ms); absent when there is
+   * none or it is unknown. A host keeps the credential for recovery until then.
+   */
+  credentialExpiresAt?: number;
 }
 
 export interface EnsureOptions {

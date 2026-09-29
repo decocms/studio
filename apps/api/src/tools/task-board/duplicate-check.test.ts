@@ -52,6 +52,7 @@ function card(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "user_1",
     createdAt: new Date(2026, 0, 1, 0, 0, seq).toISOString(),
     updatedBy: "user_1",

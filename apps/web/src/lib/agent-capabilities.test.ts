@@ -146,6 +146,23 @@ describe("agentShowsGithubHeaderActions", () => {
     ).toBe(true);
   });
 
+  it("returns true for a repository-backed project with no aggregated connection", () => {
+    expect(
+      agentShowsGithubHeaderActions({
+        connections: [],
+        metadata: {
+          instructions: null,
+          githubRepo: {
+            url: "https://github.com/acme/app",
+            owner: "acme",
+            name: "app",
+            repositoryId: "repo_1",
+          },
+        },
+      } as any),
+    ).toBe(true);
+  });
+
   it("returns true for a detached imported repo (so the header can offer reconnect)", () => {
     expect(
       agentShowsGithubHeaderActions({

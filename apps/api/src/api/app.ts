@@ -99,6 +99,8 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { ElevenLabsSpeechAdapter } from "@/ai-providers/voice/elevenlabs";
+import { VoiceSessions } from "@/voice/sessions";
 import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
@@ -126,6 +128,7 @@ import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { registerSandboxCredentialPushWorkflow } from "@/sandbox/dbos-credential-push";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
@@ -1931,6 +1934,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
+  registerSandboxCredentialPushWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2302,7 +2306,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
+  const voiceSettings = getSettings();
+  const voiceSessions = new VoiceSessions({
+    adapter: voiceSettings.elevenlabsApiKey
+      ? new ElevenLabsSpeechAdapter({
+          apiKey: voiceSettings.elevenlabsApiKey,
+          model: voiceSettings.elevenlabsVoiceModel,
+          voiceId: voiceSettings.elevenlabsVoiceId,
+        })
+      : null,
+    secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
+    getConnection: () => natsProvider?.getConnection() ?? null,
+  });
   const orgScopedApi = createOrgScopedApi({
+    voiceSessions,
     kvStorage,
     runRegistry,
     streamBuffer,

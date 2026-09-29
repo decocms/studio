@@ -31,6 +31,7 @@ import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
   reviewCycleVerdicts,
+  statusEnteredAt,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
@@ -391,8 +392,9 @@ export class TaskBoardStorage {
       return insert(trx);
     });
 
-    // Freshly created — no linked threads yet.
-    return this.itemFromDbRow(row);
+    // Freshly created — no linked threads yet, and in its first lane since now.
+    const item = this.itemFromDbRow(row);
+    return { ...item, statusSince: item.createdAt };
   }
 
   async update(
@@ -1985,7 +1987,7 @@ export class TaskBoardStorage {
       Promise.all([
         this.attachThreads(db, items, organizationId),
         this.attachTags(db, items),
-        this.attachReviewVerdicts(db, items),
+        this.attachActivityFields(db, items),
       ]),
     );
   }
@@ -2163,7 +2165,8 @@ export class TaskBoardStorage {
    * `status_changed` rows come along because that reducer needs the cycle
    * boundary — without them a stale approval reads as current forever.
    */
-  private async attachReviewVerdicts(
+  /** Review verdicts and `statusSince`, both read off one activity scan. */
+  private async attachActivityFields(
     db: Kysely<Database>,
     items: TaskBoardItem[],
   ): Promise<void> {
@@ -2198,6 +2201,7 @@ export class TaskBoardStorage {
 
     for (const item of items) {
       const activity = byItem.get(item.id) ?? [];
+      item.statusSince = statusEnteredAt(activity, item.status, item.createdAt);
       const cycleStartedAt = item.reviewCycleStartedAt;
       const verdicts = reviewCycleVerdicts(activity, { cycleStartedAt });
       const verifiedApprovals = reviewCycleVerdicts(activity, {
@@ -2632,6 +2636,7 @@ export class TaskBoardStorage {
       threads: [],
       tags: [],
       reviewVerdicts: [],
+      statusSince: null,
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

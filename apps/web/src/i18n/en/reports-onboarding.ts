@@ -122,7 +122,7 @@ export const reportsOnboarding = {
   "reportsOnboarding.saBinding.remediation.noMatch.gsc.1":
     "Check that you picked the Search Console property for this store.",
   "reportsOnboarding.saBinding.remediation.noMatch.gsc.2":
-    "The address has to cover the same domain as the diagnostic.",
+    "The address has to cover the same domain as the Deco Score.",
   "reportsOnboarding.saBinding.remediation.alreadyBound.title":
     "This resource is already linked to another store.",
   "reportsOnboarding.saBinding.remediation.alreadyBound.1":

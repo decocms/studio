@@ -155,6 +155,7 @@ export type DefaultHomeAgentsConfig = z.infer<
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  voice_mode: z.boolean().optional(),
   home_task_intake_enabled: z
     .boolean()
     .optional()
@@ -171,7 +172,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Curated commerce (reports) look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
+      "Curated Deco Score look: hides agent navigation, the home Customize button, and the Settings/Automations tabs. Defaulted on for orgs created by commerce onboarding.",
     ),
   reviewer_enabled: z
     .boolean()
@@ -226,7 +227,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "When a report import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
+      "When a Deco Score import creates a task board item without an assignee, delegate it to the Super Agent automatically instead of leaving it unassigned.",
     ),
   hosting_enabled: z
     .boolean()
@@ -258,17 +259,23 @@ export const OrgFlagsSchema = z.object({
     .describe(
       "Per-site Monitor tab (CDN Performance + Audience from the stats-lake warehouse). Off by default. deco.cx staff and local dev always see it; this flag is the per-client lever to open it to one external org. Its own deployment-wide switch `MONITOR_GA` opens it to every org at once (independent of the control-plane trio).",
     ),
+  site_create_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      'The "Create a new site" option under New project: generates a GitHub repository from a site template in an account the org connected, and opens it as a project. Off by default, for every org — deco.cx staff included.',
+    ),
   delivery_lanes_enabled: z
     .boolean()
     .optional()
     .describe(
       "Board lanes for shipping: Approved, Merged and Post-deploy Validation sit between In Review and Done, and a merged pull request lands on Merged instead of Done. For teams whose release process continues after the merge. Off by default — with it off the board and the state machine behave exactly as if the lanes did not exist.",
     ),
-  cms_auto_fresh_branch: z
+  new_blocks_editor: z
     .boolean()
     .optional()
     .describe(
-      "When a user opens the CMS on a branch whose last commit is older than the staleness window (2 days), move the session to a freshly minted branch cut from the default branch. The stale branch is left intact on GitHub. Off by default.",
+      "Use the redesigned blocks editor for every member of the organization. Off by default — the classic editor stays until an admin opts the org in.",
     ),
 });
 

@@ -463,7 +463,17 @@ async function validate(
     branch,
     toolApprovalLevel,
     mode,
+    voiceMode,
   } = await validateRequest(c);
+
+  if (voiceMode) {
+    const settings = await ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    if (!orgFlagEnabled(settings?.flags, "voice_mode")) {
+      throw new HTTPException(403, { message: "Voice mode is disabled" });
+    }
+  }
 
   const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
   if (threadIdParam && bodyThreadId && bodyThreadId !== threadIdParam) {
@@ -547,6 +557,7 @@ async function validate(
 
   return {
     messages: [...systemMessages, requestMessage],
+    voiceMode,
     models,
     agent,
     temperature,

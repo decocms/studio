@@ -30,7 +30,7 @@
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { projectRepo, resolveGithubAttachment } from "./github-repo";
 
-/** A card, as everything here reads one: its stamped repo and its runs. */
+/** The repo field can also contain a project id written by existing clients. */
 export interface AttributableTask {
   repo?: string | null;
   threads?: readonly { virtualMcpId?: string | null }[];
@@ -66,8 +66,7 @@ export function normalizeRepo(label: string | null | undefined): string {
  * 158 dropped its one-parent trigger).
  *
  * `kind: "project"` — keyed by the `vir_…` id, for a project with no repository.
- * Only a linked thread can put a card here, since `task_board_items.repo` has
- * nothing to point at.
+ * Cards reach it through a linked thread or a project id stored in `repo`.
  */
 export interface ProjectIndexEntry {
   /** The value the board's `?repo=` param carries for this bucket. */
@@ -171,7 +170,8 @@ export function buildProjectIndex(
 
   for (const label of extraRepos) {
     const trimmed = (label ?? "").trim();
-    if (trimmed) repoEntry(trimmed);
+    // A project-id stamp must not create a second bucket with the same id.
+    if (trimmed && !byProject.has(trimmed)) repoEntry(trimmed);
   }
 
   for (const entry of byRepo.values()) {
@@ -199,11 +199,8 @@ export function buildProjectIndex(
 /**
  * Which bucket a card belongs to, or null when nothing says.
  *
- * Threads first, then `repo` — the precedence the org home and the sidebar
- * already used, kept so replacing their two copies with this one changes
- * nothing but the collision. A run names the project it ran in, which is the
- * only link that survives a card whose project pins no repository; `repo` is
- * what a card nobody has run yet still carries.
+ * Threads take precedence. Then resolve `repo` as an exact project id before
+ * trying a case-insensitive repository name.
  */
 export function entryForTask(
   task: AttributableTask,
@@ -215,6 +212,8 @@ export function entryForTask(
       : undefined;
     if (found) return found;
   }
+  const project = index.byProject.get((task.repo ?? "").trim());
+  if (project) return project;
   const repo = normalizeRepo(task.repo);
   return (repo ? index.byRepo.get(repo) : undefined) ?? null;
 }
@@ -239,6 +238,8 @@ export function projectsForTask(
       : undefined;
     if (named) return [named];
   }
+  const stamped = entry.projects.find((p) => p.id === task.repo?.trim());
+  if (stamped) return [stamped];
   return entry.projects;
 }
 

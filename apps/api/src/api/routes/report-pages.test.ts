@@ -16,7 +16,7 @@ describe("buildReportHead — dynamic report SEO", () => {
   test("title carries brand + real score", () => {
     const head = buildReportHead("nike.com", SEO);
     const title = attr(head, /<title>([^<]*)<\/title>/);
-    expect(title).toBe("Nike commerce report — 68/100 · decocms");
+    expect(title).toBe("Nike Deco Score — 68/100 · decocms");
     // og + twitter mirror the primary tags.
     expect(attr(head, /property="og:title" content="([^"]*)"/)).toBe(title);
     expect(attr(head, /name="twitter:title" content="([^"]*)"/)).toBe(title);
@@ -42,7 +42,7 @@ describe("buildReportHead — dynamic report SEO", () => {
     );
     // Domain-derived brand + generic score-less title.
     expect(attr(head, /<title>([^<]*)<\/title>/)).toBe(
-      "Nike commerce report · decocms",
+      "Nike Deco Score · decocms",
     );
   });
 
@@ -97,6 +97,13 @@ describe("GET /report/:domain.md", () => {
     expect(String(url)).toMatch(
       /\/api\/v2\/public\/diagnostics\/example\.com\/onepager\.md$/,
     );
+  });
+
+  test("forwards the reader's language to the engine", async () => {
+    engineReplies(new Response("# Example\n", { status: 200 }));
+    await app.request("/example.com.md?lang=pt-BR");
+    const [url] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(/\/onepager\.md\?lang=pt-BR$/);
   });
 
   test("answers 404 when nothing is published", async () => {

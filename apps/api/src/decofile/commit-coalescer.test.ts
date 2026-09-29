@@ -68,7 +68,7 @@ function fakeClient(opts: FakeOpts) {
   const client: RepoContentClient = {
     repo: REPO,
     getDefaultBranch: async () => "main",
-    getBranch: async () => ({ sha: "head1", committedAt: "2026-01-01" }),
+    getBranch: async () => ({ sha: "head1" }),
     searchBranches: async (): Promise<BranchPage> => ({
       branches: [],
       totalCount: 0,

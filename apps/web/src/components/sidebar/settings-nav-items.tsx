@@ -100,7 +100,6 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: t("settings.nav.general"),
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
-          requires: "org:manage",
         },
         {
           key: "billing",

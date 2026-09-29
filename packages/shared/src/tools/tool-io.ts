@@ -112,6 +112,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -129,8 +130,9 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | null
         | undefined;
@@ -188,6 +190,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -205,8 +208,9 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -260,6 +264,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -277,8 +282,9 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | null
         | undefined;
@@ -287,6 +293,10 @@ export interface StudioToolIO {
         | null
         | undefined;
     };
+  };
+  ORGANIZATION_BLOCKS_EDITOR_SET: {
+    input: { enabled: boolean };
+    output: { enabled: boolean };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
@@ -416,6 +426,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -490,6 +501,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -588,6 +600,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -7092,6 +7105,26 @@ export interface StudioToolIO {
   };
   REPOSITORY_LINK: {
     input: { url: string; accountId?: string | undefined };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
+  REPOSITORY_CREATE_FROM_TEMPLATE: {
+    input: { accountId: string; name: string; template: "storefront" | "blog" };
     output: {
       repository: {
         id: string;

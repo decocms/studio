@@ -17,7 +17,7 @@ export const sidebar = {
   "sidebar.navDestinations.agents": "Agents",
   "sidebar.navDestinations.home": "Home",
   "sidebar.navDestinations.library": "Library",
-  "sidebar.navDestinations.reports": "Reports",
+  "sidebar.navDestinations.reports": "Deco Score",
   "sidebar.navDestinations.settings": "Settings",
   "sidebar.navDestinations.tasks": "Tasks",
   "sidebar.navDestinations.threadAnalytics": "Chats analytics",

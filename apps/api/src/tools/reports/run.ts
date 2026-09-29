@@ -60,9 +60,9 @@ export function resolveRunRepository(configurationState: unknown): {
 export const REPORTS_RUN = defineTool({
   name: "REPORTS_RUN",
   description:
-    "Trigger the Reports diagnostic run for the current organization's store. Call once the data sources (GA4/GSC/VTEX) are connected — this run resolves credentials and produces the enriched report.",
+    "Trigger the Deco Score run for the current organization's store. Call once the data sources (GA4/GSC/VTEX) are connected — this run resolves credentials and produces the enriched Deco Score.",
   annotations: {
-    title: "Run Reports",
+    title: "Run Deco Score",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

@@ -46,7 +46,7 @@ import { SeoFormFields } from "./seo-form-fields";
 import { parsePageVariants, type PageVariant } from "./page-variants";
 import { formatMatcher } from "./format-matcher";
 import { validatePagePath } from "./page-path-utils";
-import { useNewBlocksEditor } from "@/hooks/use-preferences";
+import { useNewBlocksEditor } from "@/hooks/use-new-blocks-editor";
 import { useT } from "@/i18n/use-t.ts";
 
 /**

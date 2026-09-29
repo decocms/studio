@@ -49,6 +49,20 @@ const ids = (entries: { task: TaskBoardItem }[]) =>
   entries.map((e) => e.task.id);
 
 describe("buildFeed", () => {
+  it("shows project-id-stamped tasks without a repository or linked chat", () => {
+    const standalone = project("p_standalone", "Operations");
+    const cards = [
+      task("assigned", "2026-03-01T00:00:00Z", {
+        repo: standalone.id,
+        status: "todo",
+      }),
+      task("unassigned", "2026-03-02T00:00:00Z", {}),
+    ];
+    const index = buildProjectIndex([standalone]);
+    expect(ids(buildFeed(index, cards, null))).toEqual(["assigned"]);
+    expect(ids(buildFeed(index, cards, standalone.id))).toEqual(["assigned"]);
+  });
+
   it("interleaves projects into one chronological stack", () => {
     const feed = buildFeed(
       buildProjectIndex([A, B]),

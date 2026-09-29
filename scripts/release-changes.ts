@@ -14,6 +14,15 @@ const NATIVE_MANIFEST = "apps/native/package.json";
 // Tags the sandbox image and, via release-tagging.yaml's CHART_IMAGE_LOCKSTEP,
 // the sandbox-env chart's image.tag.
 const SANDBOX_MANIFEST = "packages/sandbox/package.json";
+// @decocms/sandbox-controller bundles these sources and publishes on a version
+// its registry does not have yet (publish-sandbox-controller-npm.yaml, whose
+// trigger paths list the same directories).
+const SANDBOX_CONTROLLER_MANIFEST = "packages/sandbox-controller/package.json";
+const SANDBOX_CONTROLLER_SOURCES = [
+  "packages/sandbox/server/",
+  "packages/shared/src/git-providers/",
+  "packages/shared/src/std/",
+];
 
 export type DeployScope = "both" | "server" | "web" | "none";
 
@@ -73,6 +82,10 @@ export function releaseManifestCandidates(files: readonly string[]): string[] {
     // prod sandbox pods that way.
     if (file.startsWith("packages/harness-runner/")) {
       manifests.add(SANDBOX_MANIFEST);
+    }
+
+    if (SANDBOX_CONTROLLER_SOURCES.some((dir) => file.startsWith(dir))) {
+      manifests.add(SANDBOX_CONTROLLER_MANIFEST);
     }
 
     const packageMatch = /^packages\/([^/]+)\//.exec(file);
