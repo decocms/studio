@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import type { SpeechAdapter } from "./types";
 import { voiceConversationConfig } from "./conversation-config";
 
@@ -16,9 +16,7 @@ export class ElevenLabsSpeechAdapter implements SpeechAdapter {
     this.configurationKey = createHash("sha256")
       .update(JSON.stringify(voiceConversationConfig(config)))
       .digest("hex");
-    this.conversationKey = createHash("sha256")
-      .update(config.apiKey)
-      .update("\0")
+    this.conversationKey = createHmac("sha256", config.apiKey)
       .update(this.configurationKey)
       .digest("hex");
   }
