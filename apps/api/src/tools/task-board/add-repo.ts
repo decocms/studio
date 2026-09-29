@@ -46,10 +46,11 @@ import {
   ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
 import { resolveSubmoduleCredentials } from "@/tools/sandbox/resolve-submodule-creds";
-import { resolveVm } from "@/tools/sandbox/sandbox-map";
+import { readSandboxMap, resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
   flatSandboxRef,
   getThreadSandboxMap,
+  getCodingAgentProjectMetadata,
   resolveSandboxBranchForThread,
   resolveSandboxUserId,
   syntheticBranchToGitRef,
@@ -98,14 +99,26 @@ async function waitForSandboxRecord(
   threadId: string,
   sandboxUserId: string,
   branch: string,
+  projectId?: string | null,
 ): Promise<ReturnType<typeof resolveVm>> {
   return retry(
     async () => {
-      const record = resolveVm(
+      const threadRecord = resolveVm(
         await getThreadSandboxMap(ctx, threadId),
         sandboxUserId,
         branch,
       );
+      const record =
+        threadRecord ??
+        (projectId
+          ? resolveVm(
+              readSandboxMap(
+                await getCodingAgentProjectMetadata(ctx, projectId),
+              ),
+              sandboxUserId,
+              branch,
+            )
+          : null);
       if (!record) throw new Error("sandbox record not written yet");
       return record;
     },
@@ -450,8 +463,8 @@ export const TASK_ADD_REPO = defineTool({
   name: "TASK_ADD_REPO",
   description:
     "Clone one of this organization's repositories into your working directory. " +
-    "Your working directory is EMPTY until you call this — do not look for " +
-    "files, and do not run git, before it returns. Call it once, with the " +
+    "If your workspace already names a repository, use that checkout directly. " +
+    "For a workspace without a repository, call this once with the " +
     "repository the task is about; it waits for the checkout and returns the " +
     "repository root listing, so you can start reading files immediately after. " +
     "`git` and the repository's CLI (`gh` for GitHub, `glab` for GitLab; Bitbucket has " +
@@ -512,6 +525,9 @@ export const TASK_ADD_REPO = defineTool({
 
     const thread = await ctx.storage.threads.get(threadId);
     if (!thread) throw new Error(`Thread not found: ${threadId}`);
+    const project = thread.metadata?.repository
+      ? null
+      : await getCodingAgentProjectMetadata(ctx, thread.virtual_mcp_id);
 
     /**
      * The sandbox key, from the one derivation every sandbox consumer shares —
@@ -534,14 +550,15 @@ export const TASK_ADD_REPO = defineTool({
       // in this column does not match the bare key, so it falls through to the
       // same derivation as before.
       runBranch: thread.branch,
+      agentRepo: project?.repository,
     });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
-    const provider = await getAgentSandboxProvider(ctx);
     const record = await waitForSandboxRecord(
       ctx,
       threadId,
       sandboxUserId,
       branch,
+      project?.repository ? thread.virtual_mcp_id : null,
     );
     if (!record) {
       throw new Error(
@@ -550,11 +567,12 @@ export const TASK_ADD_REPO = defineTool({
       );
     }
 
-    const repository = (
-      thread.metadata as {
-        repository?: RepositoryBinding;
-      } | null
-    )?.repository;
+    const repository =
+      (
+        thread.metadata as {
+          repository?: RepositoryBinding;
+        } | null
+      )?.repository ?? project?.repository;
     const existingSecondaries =
       (
         thread.metadata as {
@@ -585,6 +603,7 @@ export const TASK_ADD_REPO = defineTool({
     // Fresh credential BEFORE anything is written: a clone URL is only useful
     // with a live token behind it, and this is the failure worth reporting
     // as "could not add the repo" rather than half-binding one.
+    const provider = await getAgentSandboxProvider(ctx);
     const { cloneUrl, gitUserName, gitUserEmail } = await cloneInfoForChoice(
       ctx,
       organization.id,

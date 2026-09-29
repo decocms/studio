@@ -156,6 +156,7 @@ export type DefaultHomeAgentsConfig = z.infer<
  */
 export const OrgFlagsSchema = z.object({
   voice_mode: z.boolean().optional(),
+  coding_agent_project_context: z.boolean().optional(),
   home_task_intake_enabled: z
     .boolean()
     .optional()

@@ -77,6 +77,7 @@ import {
 } from "@/api/routes/decopilot/run-status-stage";
 import {
   getThreadRepository,
+  getCodingAgentProjectMetadata,
   sandboxGitRef,
   threadBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -291,7 +292,10 @@ export class SandboxDispatchClient {
     threadId: string,
     agent: Promise<VirtualMCPEntity | null>,
   ): Promise<HarnessStreamInput["workspace"]> {
-    const repo = await getThreadRepository(this.ctx, threadId);
+    const repo =
+      (await getThreadRepository(this.ctx, threadId)) ??
+      (await getCodingAgentProjectMetadata(this.ctx, this.virtualMcpId, agent))
+        ?.repository;
     if (!repo) {
       if (this.branch !== threadBranch(threadId)) return { cwd: null };
       // SANDBOX_START clones the agent's repo when the thread has none.
