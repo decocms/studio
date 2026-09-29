@@ -41,13 +41,13 @@ import { Button } from "@decocms/ui/components/button.tsx";
 import { EmptyState } from "@/components/empty-state";
 import { useChatLayoutState } from "@/hooks/use-chat-layout-state";
 import { useRefreshViewedThreadMetadata } from "@/hooks/use-refresh-viewed-thread-metadata";
-import { getActiveGithubRepo } from "@/lib/github-repo";
-import { useBaseBranch } from "@/components/thread/github/use-version-gate";
+import { getActiveRepository } from "@/lib/repository-binding";
+import { useBaseBranch } from "@/components/thread/repository/use-version-gate";
 import {
   nextDraftName,
   nextReleaseColor,
   useReleases,
-} from "@/components/thread/github/use-releases";
+} from "@/components/thread/repository/use-releases";
 import { useT } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 
@@ -200,12 +200,12 @@ function NewTaskBridge({
 
 function VmEventsBridge({
   virtualMcpId,
-  hasActiveGithubRepo,
+  hasActiveRepository,
   sandboxMap,
   children,
 }: {
   virtualMcpId: string;
-  hasActiveGithubRepo: boolean;
+  hasActiveRepository: boolean;
   sandboxMap: SandboxMap | undefined;
   children: ReactNode;
 }) {
@@ -234,8 +234,8 @@ function VmEventsBridge({
     ownerId: activeTask?.created_by,
     branch: currentBranch,
   });
-  const effectiveHasGithubRepo =
-    hasActiveGithubRepo || agentHasClonableSource(activeTask?.metadata);
+  const effectiveHasRepository =
+    hasActiveRepository || agentHasClonableSource(activeTask?.metadata);
 
   // Assign a branch to a loaded repo-backed thread that has none, so the
   // branch-gated auto-start can run for it. Only reachable when the repo was
@@ -251,7 +251,7 @@ function VmEventsBridge({
     shouldAdoptBranch({
       threadLoaded: !!activeTask,
       isOwner: !!userId && activeTask?.created_by === userId,
-      hasActiveGithubRepo: effectiveHasGithubRepo,
+      hasActiveRepository: effectiveHasRepository,
       branch: currentBranch ?? null,
       // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- read-only dedup probe; recorded inside the effect after firing
       attempted: adoptedBranchForThreadRef.current === (activeTask?.id ?? null),
@@ -399,7 +399,7 @@ function VmEventsBridge({
         virtualMcpId={virtualMcpId}
         branch={currentBranch ?? null}
         userId={userId ?? null}
-        hasActiveGithubRepo={effectiveHasGithubRepo}
+        hasActiveRepository={effectiveHasRepository}
         vmEntry={vmEntry}
         threadId={activeTask?.id ?? null}
       >
@@ -541,7 +541,7 @@ function ThreadSessionProvider() {
   // Fetch entity (Suspense-based — resolved before render)
   const entity = useVirtualMCP(virtualMcpId);
 
-  const hasActiveGithubRepo = !!(entity && getActiveGithubRepo(entity));
+  const hasActiveRepository = !!(entity && getActiveRepository(entity));
   const baseBranch = useBaseBranch(entity, null);
 
   // Ensure the thread row exists for this URL before rendering the chat. On
@@ -555,7 +555,7 @@ function ThreadSessionProvider() {
     generatedDraftBranch,
   );
 
-  // Read-only teammate threads: pull the current metadata (githubRepo /
+  // Read-only teammate threads: pull the current metadata (repository /
   // sandboxMap bound by load_repo after the panel snapshot) so the preview
   // doesn't render "no source" / miss the owner's sandbox. No-op for own
   // threads. Must run before the early returns (Rules of Hooks).
@@ -660,11 +660,11 @@ function ThreadSessionProvider() {
       virtualMcpId,
       session?.user?.id,
       defaultThreadRuntime(entity.metadata),
-      hasActiveGithubRepo,
+      hasActiveRepository,
       { baseBranch },
     );
     const threadId =
-      entry?.id ?? (hasActiveGithubRepo ? generatedThreadId : null);
+      entry?.id ?? (hasActiveRepository ? generatedThreadId : null);
     if (threadId) {
       return (
         <Navigate
@@ -749,7 +749,7 @@ function ThreadSessionProvider() {
         <ChatVoiceProvider layout={layout}>
           <VmEventsBridge
             virtualMcpId={virtualMcpId}
-            hasActiveGithubRepo={hasActiveGithubRepo}
+            hasActiveRepository={hasActiveRepository}
             sandboxMap={entity.metadata?.sandboxMap}
           >
             <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>

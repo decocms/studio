@@ -1,5 +1,5 @@
 import { useProjectContext } from "@/sdk";
-import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { MemoizedMarkdown } from "../../chat/markdown.tsx";
 import { CommentsAccordion } from "./comments-accordion.tsx";
 import { decodeHtmlEntities } from "./decode-html-entities.ts";

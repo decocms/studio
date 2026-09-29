@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import {
   repointedRepoBinding,
   resolveSandboxBranch,
@@ -76,8 +76,8 @@ test("a thread-bound repo wins and pins its own branch", () => {
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "main",
     }),
   ).toBe("thread:t1/conn_a");
@@ -97,7 +97,7 @@ test("a repo-agent uses the run's branch when it has one", () => {
     resolveSandboxBranch({
       threadId: "t1",
       threadRepo: null,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "feature/x",
     }),
   ).toBe("feature/x");
@@ -108,7 +108,7 @@ test("a repo-agent with no branch yet falls back to a per-thread branch", () => 
     resolveSandboxBranch({
       threadId: "t1",
       threadRepo: null,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
     }),
   ).toBe("thread:t1");
   // Null and undefined must behave identically — the callers supply both.
@@ -116,14 +116,14 @@ test("a repo-agent with no branch yet falls back to a per-thread branch", () => 
     resolveSandboxBranch({
       threadId: "t1",
       threadRepo: null,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: null,
     }),
   ).toBe("thread:t1");
 });
 
 test("different threads of one repo-agent never share a branch", () => {
-  const agentRepo = { connectionId: "conn_b" } as GithubRepo;
+  const agentRepo = { connectionId: "conn_b" } as RepositoryBinding;
   expect(
     resolveSandboxBranch({ threadId: "t1", threadRepo: null, agentRepo }),
   ).not.toBe(
@@ -138,7 +138,7 @@ test("the bare thread key survives a repo bound mid-run", () => {
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
       runBranch: "thread:t1",
     }),
   ).toBe("thread:t1");
@@ -148,7 +148,7 @@ test("only the bare key pins — load_repo's repo-scoped key still switches", ()
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_b" } as GithubRepo,
+      threadRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "thread:t1/conn_a",
     }),
   ).toBe("thread:t1/conn_b");
@@ -156,7 +156,7 @@ test("only the bare key pins — load_repo's repo-scoped key still switches", ()
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
       runBranch: "thread:t2",
     }),
   ).toBe("thread:t1/conn_a");
@@ -181,8 +181,8 @@ test("a pinned ref wins over a thread-bound repo's derived branch", () => {
   expect(
     resolveSandboxBranch({
       threadId: "t1",
-      threadRepo: { connectionId: "conn_a" } as GithubRepo,
-      agentRepo: { connectionId: "conn_b" } as GithubRepo,
+      threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
+      agentRepo: { connectionId: "conn_b" } as RepositoryBinding,
       runBranch: "main",
       pinnedRef: "sandbox/thread-older-conn_a",
     }),
@@ -212,14 +212,14 @@ test("an absent pinned ref changes nothing", () => {
     expect(
       resolveSandboxBranch({
         threadId: "t1",
-        threadRepo: { connectionId: "conn_a" } as GithubRepo,
+        threadRepo: { connectionId: "conn_a" } as RepositoryBinding,
         pinnedRef,
       }),
     ).toBe("thread:t1/conn_a");
   }
 });
 
-const DEAD_REPO: GithubRepo = {
+const DEAD_REPO: RepositoryBinding = {
   url: "https://github.com/acme/storefront",
   owner: "acme",
   name: "storefront",

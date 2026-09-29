@@ -441,7 +441,7 @@ export async function* runDecopilotStream(
   //   - `additionalSystemMessages` → per-request inline <system> blocks
   const vmMetadata = runContext?.virtualMcp.metadata as
     | {
-        githubRepo?: import("@decocms/shared/sdk").GithubRepo | null;
+        repository?: import("@decocms/shared/sdk").RepositoryBinding | null;
         subAgents?: string[] | null;
       }
     | undefined;
@@ -451,14 +451,14 @@ export async function* runDecopilotStream(
           repo: input.workspace.repo,
           branch: input.workspace.branch,
           cwd: input.workspace.cwd,
-          workspaceKind: "github" as const,
+          workspaceKind: "repository" as const,
         }
       : undefined;
   const handle: AssembledEngineHandle = await runEngine({
     kind: runContext?.isSubagent ? "subagent" : "agent",
     virtualMcp: {
       id: input.agent.id,
-      repo: vmMetadata?.githubRepo ?? undefined,
+      repo: vmMetadata?.repository ?? undefined,
       delegationTargetIds: vmMetadata?.subAgents,
     },
     mcpClient: tools.passthroughClient,

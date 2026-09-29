@@ -272,7 +272,7 @@ describe("triggerReportsRun", () => {
       {
         siteUrl: "https://example.com",
         orgId: "org_123",
-        githubRepo: "deco-sites/fila-store",
+        githubRepositoryPath: "example-org/example-store",
       },
       {
         baseUrl: "https://commerce.example.test",
@@ -289,7 +289,7 @@ describe("triggerReportsRun", () => {
     );
     expect(body).toEqual({
       org_id: "org_123",
-      github_repo: "deco-sites/fila-store",
+      github_repo: "example-org/example-store",
     });
   });
 
@@ -346,7 +346,7 @@ describe("triggerReportsRun", () => {
           host: "github.com",
           path: "acme/storefront",
         },
-        githubRepo: "acme/storefront",
+        githubRepositoryPath: "acme/storefront",
       },
       {
         baseUrl: "https://commerce.example.test",

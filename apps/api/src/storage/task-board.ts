@@ -5,6 +5,7 @@
  * many-to-many link between a task and the agent threads run for it.
  */
 
+import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
@@ -188,7 +189,7 @@ export function shouldAdvanceToReview(
   return used.some((t) => t.status === "completed");
 }
 
-/** True when the thread has a repo bound (`metadata.githubRepo.url`) — mirrors
+/** True when the thread has a repo bound (`metadata.repository.url`) — mirrors
  *  the web `agentHasClonableSource`, inlined to avoid importing web code. */
 function threadHasClonableRepo(metadata: unknown): boolean {
   const meta =
@@ -202,8 +203,7 @@ function threadHasClonableRepo(metadata: unknown): boolean {
         })()
       : metadata;
   if (!meta || typeof meta !== "object") return false;
-  const url = (meta as { githubRepo?: { url?: unknown } | null }).githubRepo
-    ?.url;
+  const url = readRepositoryMetadata(meta)?.repository?.url;
   return typeof url === "string" && url.length > 0;
 }
 

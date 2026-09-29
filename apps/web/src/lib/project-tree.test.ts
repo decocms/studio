@@ -13,7 +13,7 @@ function project(
     title,
     created_at: "2026-01-01T00:00:00Z",
     metadata: opts.repo
-      ? { githubRepo: { url: `https://github.com/${opts.repo}`, owner, name } }
+      ? { repository: { url: `https://github.com/${opts.repo}`, owner, name } }
       : {},
   } as unknown as VirtualMCPEntity;
 }
@@ -73,7 +73,7 @@ describe("buildProjectTree", () => {
     const bare = {
       id: "a",
       title: "Half-connected",
-      metadata: { githubRepo: { url: "", owner: "", name: "" } },
+      metadata: { repository: { url: "", owner: "", name: "" } },
     } as unknown as VirtualMCPEntity;
 
     const tree = buildProjectTree([

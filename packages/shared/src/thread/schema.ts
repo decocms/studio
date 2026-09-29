@@ -122,7 +122,9 @@ export const ThreadEntitySchema = z.object({
     .string()
     .nullable()
     .optional()
-    .describe("Git branch this thread is pinned to (GitHub-linked vms only)"),
+    .describe(
+      "Git branch this thread is pinned to (repository-linked projects only)",
+    ),
   harness_id: z
     .string()
     .nullable()
@@ -161,7 +163,7 @@ export const ThreadCreateDataSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
+      "Preferred branch. Used only when the vMCP has a repository; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
     ),
   runtime: z
     .enum(THREAD_RUNTIMES)

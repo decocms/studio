@@ -62,7 +62,7 @@ export interface SandboxFsHooksLifecycle {
   /**
    * When true, the call wrapper retries once on `DaemonUnreachableError` (after
    * invalidating the handle). Enabled for ephemeral agents (no server-button UI
-   * to restart from); disabled for GitHub-linked agents where the user may have
+   * to restart from); disabled for repository-linked agents where the user may have
    * paused the sandbox intentionally.
    */
   canAutoRestart: boolean;

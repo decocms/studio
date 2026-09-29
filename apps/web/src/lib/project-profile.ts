@@ -120,7 +120,7 @@ export function normalizeStoreUrl(raw: string): string | null {
  *  Behaviour reads these; `platform` gates nothing. */
 export function hasRepository(project: ProjectLike): boolean {
   const metadata = isRecord(project.metadata) ? project.metadata : {};
-  const repo = isRecord(metadata.githubRepo) ? metadata.githubRepo : null;
+  const repo = isRecord(metadata.repository) ? metadata.repository : null;
   return !!repo && typeof repo.url === "string" && repo.url.length > 0;
 }
 

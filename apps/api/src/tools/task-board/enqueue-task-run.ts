@@ -233,7 +233,7 @@ export async function enqueueAgentRunForTask(
     ...(opts.pinnedRef ? { pinnedRef: opts.pinnedRef } : {}),
     ...(opts.repo
       ? {
-          githubRepo: {
+          repository: {
             url: opts.repo.url,
             owner: opts.repo.owner,
             name: opts.repo.name,

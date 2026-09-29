@@ -1,5 +1,5 @@
 import { useProjectContext } from "@/sdk";
-import type { RepoToolTarget } from "@/lib/github-repo.ts";
+import type { RepoToolTarget } from "@/lib/repository-binding.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Markdown } from "@decocms/ui/components/markdown.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";

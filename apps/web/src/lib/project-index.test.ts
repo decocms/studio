@@ -28,7 +28,7 @@ function project(
     created_at: createdAt,
     metadata: repo
       ? {
-          githubRepo: {
+          repository: {
             url: `https://github.com/${repo}`,
             owner: repo.split("/")[0],
             name: repo.split("/")[1],
@@ -618,7 +618,7 @@ describe("stampableEntries", () => {
       title: "Detached",
       created_at: "2026-01-01T00:00:00Z",
       metadata: {
-        githubRepo: {
+        repository: {
           url: "https://github.com/acme/gone",
           owner: "acme",
           name: "gone",

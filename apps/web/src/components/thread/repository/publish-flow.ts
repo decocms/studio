@@ -8,14 +8,14 @@
 
 import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
 import type { SandboxProxyRef } from "@/sdk/sandbox-url";
-import type { RepoToolTarget } from "@/lib/github-repo";
+import type { RepoToolTarget } from "@/lib/repository-binding";
 import { toast } from "sonner";
 import type { TFunction } from "@/i18n/use-t.ts";
 import {
   openChangeRequestForBranch,
   squashMergeChangeRequest,
   type CreatedPullRequest,
-} from "./github-pr-api.ts";
+} from "./change-request-api.ts";
 import {
   fetchGitStatus,
   publishGitChanges,
@@ -79,7 +79,7 @@ export interface PublishTarget {
   target: RepoToolTarget;
   owner: string;
   repo: string;
-  /** Branch name on GitHub; the sandbox's HEAD can differ from `branch`. */
+  /** Branch name on the remote; the sandbox's HEAD can differ from `branch`. */
   headBranch: string;
   coAuthor?: CoAuthorIdentity;
   /**
@@ -328,7 +328,7 @@ export function notifySubmittedForReview(
     t("thread.publishDialog.submittedForReview", { prNumber: pr.number }),
     {
       action: {
-        label: t("thread.publishDialog.viewOnGithub"),
+        label: t("thread.publishDialog.viewOnProvider"),
         onClick: () => window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
       },
     },

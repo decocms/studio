@@ -83,10 +83,10 @@ import { useProjectSettingsSection } from "./settings/use-settings-section";
 import { ALL_ITEMS_SELECTED } from "./selection-utils";
 import { VirtualMcpFormSchema, type VirtualMcpFormData } from "./types";
 import { VirtualMCPShareModal } from "./virtual-mcp-share-modal";
-import { getActiveGithubRepo } from "@/lib/github-repo";
+import { getActiveRepository } from "@/lib/repository-binding";
 import {
   agentHasClonableSource,
-  agentHasConnectedGithub,
+  agentHasConnectedRepository,
 } from "@/lib/agent-capabilities";
 import { DevAgentSetup } from "@/components/dev-agent/dev-agent-setup.tsx";
 import { EnvVarsField } from "@/components/sandbox/runtime-card/env-vars-field";
@@ -371,7 +371,7 @@ function VirtualMcpDetailViewWithData({
   const connections = form.watch("connections");
 
   // GitHub repo connected (real auth) — instructions become read-only
-  const hasGithubRepo = agentHasConnectedGithub(virtualMcp);
+  const hasRepository = agentHasConnectedRepository(virtualMcp);
 
   // Gates the Content editing block — same condition LayoutTabContent uses to
   // gate Preview/Content as a main-view option (a Start Website template or a
@@ -385,12 +385,12 @@ function VirtualMcpDetailViewWithData({
     resolveCmsMode(form.watch("metadata.ui.layout")) === "off";
 
   // Repo info for the Runtime card (display-only — loose check is intentional)
-  const githubRepoForRuntimeCard = getActiveGithubRepo(virtualMcp);
-  const runtimeCardRepo = githubRepoForRuntimeCard
+  const repositoryForRuntimeCard = getActiveRepository(virtualMcp);
+  const runtimeCardRepo = repositoryForRuntimeCard
     ? {
-        owner: githubRepoForRuntimeCard.owner,
-        name: githubRepoForRuntimeCard.name,
-        url: githubRepoForRuntimeCard.url,
+        owner: repositoryForRuntimeCard.owner,
+        name: repositoryForRuntimeCard.name,
+        url: repositoryForRuntimeCard.url,
       }
     : null;
 
@@ -1145,7 +1145,7 @@ function VirtualMcpDetailViewWithData({
                         <FieldDescriptionTooltipsField control={form.control} />
                       </SettingsCardRow>
                     )}
-                    {!cmsOff && hasGithubRepo && (
+                    {!cmsOff && hasRepository && (
                       <SettingsCardRow>
                         <PublishPolicyField
                           control={form.control}
@@ -1377,7 +1377,7 @@ export function VirtualMcpDetailView({
   return (
     <VirtualMcpDetailViewWithData
       // Re-seed the form on agent switch, not just on GitHub-repo change.
-      key={`${virtualMcp.id}:${getActiveGithubRepo(virtualMcp)?.connectionId ?? ""}`}
+      key={`${virtualMcp.id}:${getActiveRepository(virtualMcp)?.connectionId ?? ""}`}
       virtualMcp={virtualMcp}
     />
   );

@@ -25,7 +25,7 @@ import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useProjectReports } from "@/hooks/use-project-reports";
 import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t.ts";
-import { projectRepo } from "@/lib/github-repo";
+import { projectRepo } from "@/lib/repository-binding";
 import {
   readProjectProfile,
   storeHost,

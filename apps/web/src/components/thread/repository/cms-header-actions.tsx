@@ -31,7 +31,10 @@ import { GitPullRequest, RefreshCw01, Rocket02 } from "@untitledui/icons";
 import { GitHubIcon } from "@/components/icons/github-icon.tsx";
 import { useT } from "@/i18n/use-t";
 import { track } from "@/lib/posthog-client";
-import { repoToolTarget, resolveGithubAttachment } from "@/lib/github-repo.ts";
+import {
+  repoToolTarget,
+  resolveRepositoryAttachment,
+} from "@/lib/repository-binding.ts";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -74,9 +77,9 @@ interface Props {
   virtualMcpId: string;
 }
 
-/** `open-pr` covers both the GitHub links; `key` separates them from each other. */
+/** `open-pr` covers both the change-request links; `key` separates them from each other. */
 function actionIcon(action: CmsAction, key?: string) {
-  if (action === "open-pr" || key === "resolve-on-github") {
+  if (action === "open-pr" || key === "resolve-on-provider") {
     return <GitHubIcon size={16} />;
   }
   if (action === "publish") return <Rocket02 className="size-4" />;
@@ -108,8 +111,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const openSurface = (mode: CmsPublishMode) =>
     setSurface({ open: true, mode });
 
-  const attachment = resolveGithubAttachment(vm);
-  const githubRepo =
+  const attachment = resolveRepositoryAttachment(vm);
+  const repository =
     attachment.status === "attached" || attachment.status === "public-clone"
       ? attachment.repo
       : null;
@@ -134,7 +137,7 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
       : null,
   );
 
-  /** Poll-free on purpose: every call forwards to GitHub; save hooks invalidate
+  /** Poll-free on purpose: every call forwards to the provider; save hooks invalidate
    *  this key. Shared verbatim with the publish popover, which reads the
    *  changed-file manifest off the same entry — hence one options factory. */
   const statusQuery = useQuery({
@@ -176,17 +179,17 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
     ? summarizePublishManifest({ files: status.changedFiles }).count
     : null;
 
-  const githubHeadBranch =
+  const headBranch =
     (branchMeta.kind === "ready" ? branchMeta.branch : null) ?? branch ?? null;
   const baseBranch = branchMeta.kind === "ready" ? branchMeta.base : "main";
 
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubHeadBranch,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
   });
   const pr = prQuery.data ?? null;
 
@@ -195,28 +198,28 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const lastPublishedQuery = useLastPublishedPr({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
     base: baseBranch,
   });
 
   const checksQuery = useChecks({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubHeadBranch,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
   });
 
   const reviewsQuery = usePrReviews({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubHeadBranch,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: headBranch,
   });
 
   const settling = isCmsStateSettling({
@@ -329,19 +332,19 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
   const autoGetLatestKey =
     button.autoRun &&
     branchMeta.kind === "ready" &&
-    githubRepo &&
+    repository &&
     previewServerUrl
-      ? `${githubHeadBranch}@${branchMeta.headSha}`
+      ? `${headBranch}@${branchMeta.headSha}`
       : null;
   const autoGetLatestRef = useRef<string | null>(null);
   // oxlint-disable-next-line ban-use-effect/ban-use-effect -- one-shot sync once the branch status resolves; no render-time equivalent
   useEffect(() => {
-    if (!autoGetLatestKey || !githubHeadBranch) return;
+    if (!autoGetLatestKey || !headBranch) return;
     if (autoGetLatestRef.current === autoGetLatestKey) return;
     // oxlint-disable-next-line ban-ref-current-assignment/ban-ref-current-assignment -- record the head so a re-render can't sync twice
     autoGetLatestRef.current = autoGetLatestKey;
-    getLatest.mutate({ branch: githubHeadBranch, base: baseBranch });
-  }, [autoGetLatestKey, githubHeadBranch, baseBranch, getLatest]);
+    getLatest.mutate({ branch: headBranch, base: baseBranch });
+  }, [autoGetLatestKey, headBranch, baseBranch, getLatest]);
 
   /**
    * Detached: repo linked via a GitHub connection that's no longer aggregated.
@@ -375,10 +378,10 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
    * one irreversible action on a project that in fact needs nothing.
    */
   if (!vm) return null;
-  if (!githubRepo || !previewServerUrl) {
+  if (!repository || !previewServerUrl) {
     return (
       <CmsUnavailable
-        reason={githubRepo ? "noPreviewServer" : "noRepo"}
+        reason={repository ? "noPreviewServer" : "noRepo"}
         onStartCodingSession={
           branch
             ? () => {
@@ -407,8 +410,8 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
         openSurface("review");
         return;
       case "get-latest":
-        if (!githubHeadBranch || getLatest.isPending) return;
-        getLatest.mutate({ branch: githubHeadBranch, base: baseBranch });
+        if (!headBranch || getLatest.isPending) return;
+        getLatest.mutate({ branch: headBranch, base: baseBranch });
         return;
       case "retry-status":
         void statusQuery.refetch();
@@ -460,9 +463,9 @@ export function CmsHeaderActions({ virtualMcpId }: Props) {
           virtualMcpId={virtualMcpId}
           branch={branch}
           baseBranch={baseBranch}
-          repoTarget={repoToolTarget(githubRepo)}
-          owner={githubRepo.owner}
-          repo={githubRepo.name}
+          repoTarget={repoToolTarget(repository)}
+          owner={repository.owner}
+          repo={repository.name}
           publishPolicy={normalizePublishPolicy(vm?.metadata?.publishPolicy)}
           draftPreviewUrl={draftPreview.url}
           destinationHost={draftPreview.host}

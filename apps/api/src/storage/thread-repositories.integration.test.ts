@@ -1,5 +1,5 @@
 /**
- * Real-Postgres coverage for `appendThreadGithubRepo`.
+ * Real-Postgres coverage for `appendThreadRepository`.
  *
  * The append is written as one UPDATE rather than a read in JS followed by a
  * write, because the model can fire two `TASK_ADD_REPO` calls at once and a
@@ -27,7 +27,7 @@ const repo = (owner: string, name: string) => ({
   connectionId: `conn_${name}`,
 });
 
-describe("appendThreadGithubRepo", () => {
+describe("appendThreadRepository", () => {
   let database: StudioDatabase;
   let threads: SqlThreadStorage;
 
@@ -68,9 +68,9 @@ describe("appendThreadGithubRepo", () => {
   it("accumulates repos instead of replacing the last one", async () => {
     const id = await newThread("thr_accumulate");
     expect(
-      await threads.appendThreadGithubRepo(id, ORG, repo("acme", "web")),
+      await threads.appendThreadRepository(id, ORG, repo("acme", "web")),
     ).toHaveLength(1);
-    const both = await threads.appendThreadGithubRepo(
+    const both = await threads.appendThreadRepository(
       id,
       ORG,
       repo("acme", "checkout"),
@@ -80,8 +80,8 @@ describe("appendThreadGithubRepo", () => {
 
   it("treats re-adding the same repo as a no-op, not a duplicate", async () => {
     const id = await newThread("thr_dedupe");
-    await threads.appendThreadGithubRepo(id, ORG, repo("acme", "web"));
-    const again = await threads.appendThreadGithubRepo(
+    await threads.appendThreadRepository(id, ORG, repo("acme", "web"));
+    const again = await threads.appendThreadRepository(
       id,
       ORG,
       repo("ACME", "Web"),
@@ -92,12 +92,13 @@ describe("appendThreadGithubRepo", () => {
   it("loses nothing when two adds land at once", async () => {
     const id = await newThread("thr_race");
     await Promise.all([
-      threads.appendThreadGithubRepo(id, ORG, repo("acme", "web")),
-      threads.appendThreadGithubRepo(id, ORG, repo("acme", "checkout")),
-      threads.appendThreadGithubRepo(id, ORG, repo("acme", "design")),
+      threads.appendThreadRepository(id, ORG, repo("acme", "web")),
+      threads.appendThreadRepository(id, ORG, repo("acme", "checkout")),
+      threads.appendThreadRepository(id, ORG, repo("acme", "design")),
     ]);
     const row = await database.db
       .selectFrom("threads")
+      // Compatibility: assert the physical array older API replicas still read.
       .select(sql<{ name: string }[]>`metadata->'githubRepos'`.as("repos"))
       .where("id", "=", id)
       .executeTakeFirstOrThrow();
@@ -111,7 +112,7 @@ describe("appendThreadGithubRepo", () => {
   it("leaves the rest of the thread's metadata alone", async () => {
     const id = await newThread("thr_metadata");
     await threads.update(id, ORG, { metadata: { read_only: true } });
-    await threads.appendThreadGithubRepo(id, ORG, repo("acme", "web"));
+    await threads.appendThreadRepository(id, ORG, repo("acme", "web"));
     const thread = await threads.get(id, ORG);
     expect(thread?.metadata).toMatchObject({ read_only: true });
   });
@@ -119,7 +120,7 @@ describe("appendThreadGithubRepo", () => {
   it("returns nothing for a thread in another org", async () => {
     const id = await newThread("thr_other_org");
     expect(
-      await threads.appendThreadGithubRepo(
+      await threads.appendThreadRepository(
         id,
         "org_someone_else",
         repo("a", "b"),

@@ -7,7 +7,7 @@ export interface GroupBranchesArgs {
   sandboxMap: SandboxMap | undefined;
   /** Current user id — used to derive "your branches". */
   userId: string;
-  /** Branch names from github-mcp-server's list_branches (+ optional author). */
+  /** Branch names from the repository provider (+ optional author). */
   rawBranches: { name: string; author?: string | null }[];
   /** Epoch ms "now" — injected so the 7-day cutoff is testable/deterministic. */
   now: number;
@@ -24,7 +24,7 @@ export interface GroupedBranches {
  * - `recent`: any branch with sandbox activity in the last 7 days (across ALL
  *   users), most-recent-first, carrying `contributors` + `lastActiveAt`.
  * - `yours`: the current user's sandbox branches, minus recent ones.
- * - `others`: github branches, minus your-sandbox and recent ones.
+ * - `others`: remote branches, minus your-sandbox and recent ones.
  *
  * Precedence is recent > yours > others, so a branch appears in exactly one
  * group. Pure/deterministic given `now`; the hook injects `Date.now()`.

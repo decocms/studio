@@ -189,11 +189,11 @@ export function resolveSubtaskCodingWorkspace(
     repo: {
       owner: targetRef.repo.owner,
       name: targetRef.repo.name,
-      connectedGithub: Boolean(targetRef.repo.connectionId),
+      linked: Boolean(targetRef.repo.connectionId),
     },
     branch: parentWorkspace?.branch,
     cwd: parentWorkspace?.cwd,
-    workspaceKind: "github",
+    workspaceKind: "repository",
   };
 }
 

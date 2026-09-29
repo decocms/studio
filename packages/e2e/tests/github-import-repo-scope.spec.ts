@@ -341,7 +341,7 @@ test.describe("GitHub import repo-scoped connections", () => {
     const childId = child.item.id;
     expect(childId).toBeTruthy();
 
-    // The agent, wired to the child connection. metadata.githubRepo.connectionId
+    // The agent, wired to the child connection. metadata.repository.connectionId
     // is what the delete handler reads to find the child to tear down.
     const agent = await callSelfMcpTool<{ item: { id: string } }>(
       ctx,
@@ -351,7 +351,7 @@ test.describe("GitHub import repo-scoped connections", () => {
         data: {
           title: `widget ${Date.now()}`,
           metadata: {
-            githubRepo: {
+            repository: {
               owner: "acme",
               name: "widget",
               url: "https://github.com/acme/widget",
@@ -490,7 +490,7 @@ test.describe("GitHub import repo-scoped connections", () => {
         data: {
           title: `shared-consumer ${Date.now()}`,
           metadata: {
-            githubRepo: {
+            repository: {
               owner: "acme",
               name: "shared",
               url: "https://github.com/acme/shared",
@@ -589,7 +589,7 @@ test.describe("GitHub import repo-scoped connections", () => {
           data: {
             title: `${label} ${Date.now()}`,
             metadata: {
-              githubRepo: {
+              repository: {
                 owner: "acme",
                 name: "two-agents",
                 url: "https://github.com/acme/two-agents",

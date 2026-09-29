@@ -140,11 +140,11 @@ test("home imports an already linked GitLab repository as an agent without a Git
   const { items } = await callSelfMcpTool<{
     items: Array<{
       title: string;
-      metadata: { githubRepo?: { repositoryId: string } } | null;
+      metadata: { repository?: { repositoryId: string } } | null;
     }>;
   }>(page.request, orgSlug, "COLLECTION_VIRTUAL_MCP_LIST", {});
   const imported = items.filter(
-    (item) => item.metadata?.githubRepo?.repositoryId === repository.id,
+    (item) => item.metadata?.repository?.repositoryId === repository.id,
   );
   expect(imported).toHaveLength(1);
   expect(imported[0]?.title).toBe("import-project");

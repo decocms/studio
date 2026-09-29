@@ -27,7 +27,7 @@ async function createClonableAgent(
         pinned: false,
         connections: [{ connection_id: connection.id }],
         metadata: {
-          githubRepo: {
+          repository: {
             url: "https://github.com/example/repo",
             owner: "example",
             name: "repo",

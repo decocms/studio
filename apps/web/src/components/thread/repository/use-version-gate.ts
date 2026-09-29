@@ -1,5 +1,5 @@
 import { useProjectContext } from "@/sdk";
-import { getActiveGithubRepo, repoToolTarget } from "@/lib/github-repo";
+import { getActiveRepository, repoToolTarget } from "@/lib/repository-binding";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { usePrByBranch } from "./use-pr-data.ts";
 
@@ -12,7 +12,7 @@ export function useBaseBranch(
   currentBranch: string | null | undefined,
 ): string {
   const { org } = useProjectContext();
-  const repo = getActiveGithubRepo(virtualMcp);
+  const repo = getActiveRepository(virtualMcp);
   return (
     usePrByBranch({
       orgId: org.id,

@@ -2,11 +2,11 @@ export interface CodingWorkspacePromptInput {
   repo?: {
     owner: string;
     name: string;
-    connectedGithub: boolean;
+    linked: boolean;
   };
   branch?: string | null;
   cwd?: string | null;
-  workspaceKind?: "github" | "template" | "local" | "unknown";
+  workspaceKind?: "repository" | "template" | "local" | "unknown";
   /**
    * Whether the attached workspace is a Deco CMS site (its checkout contains a
    * `.deco/` directory). Gates the {@link DECO_CMS_CONTENT_RULES} block — the
@@ -45,9 +45,9 @@ export function buildCodingWorkspacePrompt(
     ? `${input.repo.owner}/${input.repo.name}`
     : undefined;
   const linked =
-    input?.repo?.connectedGithub === undefined
+    input?.repo?.linked === undefined
       ? undefined
-      : input.repo.connectedGithub
+      : input.repo.linked
         ? "yes"
         : "no";
 
@@ -55,11 +55,11 @@ export function buildCodingWorkspacePrompt(
     line("Repository", repo),
     line("Branch", input?.branch),
     line("Working directory", input?.cwd),
-    line("GitHub linked", linked),
+    line("Repository linked", linked),
   ].filter((item): item is string => item !== null);
 
-  const githubCaution =
-    input?.repo?.connectedGithub === false ||
+  const remoteCaution =
+    input?.repo?.linked === false ||
     input?.workspaceKind === "template" ||
     input?.workspaceKind === "local"
       ? "\n\nIf the workspace is template/local-only and has no linked GitHub repo, do not assume PR or GitHub operations are available."
@@ -78,7 +78,7 @@ The preview hot-reloads from the working tree, so your edits are immediately vis
 Cite files as \`path:line\` when explaining code.
 Do not re-clone the repository; it is already available in the workspace.
 Use git CLI for local working tree, branch, history, rebase, commit, and push operations.
-Use GitHub tools only for PR, review, comment, issue, or remote repository operations when available.${githubCaution}${
+Use GitHub tools only for PR, review, comment, issue, or remote repository operations when available.${remoteCaution}${
     input?.isDecoSite ? `\n\n${DECO_CMS_CONTENT_RULES}` : ""
   }
 </coding-workspace>`;

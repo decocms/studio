@@ -10,9 +10,9 @@ import type { VirtualMCPStoragePort } from "../../storage/ports";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ThreadEntity } from "@decocms/shared/thread/schema";
 
-/** Shape of the `githubRepo` field on a virtual MCP's `metadata` column. */
-export type GithubRepoMeta = {
-  githubRepo?: {
+/** Shape of the `repository` field on a virtual MCP's `metadata` column. */
+export type RepositoryMetadata = {
+  repository?: {
     owner: string;
     name: string;
     connectionId?: string;

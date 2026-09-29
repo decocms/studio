@@ -25,7 +25,7 @@ const defineField = <T>(field: ProjectMetadataField<T>) =>
 /**
  * Project metadata keys a deployment admin may edit, for settings no
  * org-facing UI exposes. Keys with invariants a single-key write can't keep —
- * `siteSlug` (asset tenancy), `sandboxMap`, `githubRepo` (dual-written with
+ * `siteSlug` (asset tenancy), `sandboxMap`, `repository` (dual-written with
  * `repository_id`), `runtime` (secret references) — must never be listed.
  */
 const ADMIN_PROJECT_METADATA_FIELDS = {

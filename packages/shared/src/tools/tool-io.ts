@@ -2566,7 +2566,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -2833,7 +2833,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
@@ -3024,7 +3024,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3252,7 +3252,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3471,7 +3471,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3690,7 +3690,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
@@ -3889,7 +3889,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -4106,7 +4106,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -5434,7 +5434,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;

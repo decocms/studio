@@ -31,7 +31,7 @@ function idleClaimCopy(kind: ClaimPhase["kind"]): string | undefined {
  * - `sync` / `rebase` — bring `base` into the working branch (chat prompts;
  *   both surface as "Get latest").
  * - `review` — ask the chat agent for a read-only review pass.
- * - `open-pr-page` — open the PR on GitHub in a new tab.
+ * - `open-pr-page` — open the change request on its provider in a new tab.
  * - `reopen` / `fix-checks` / `mark-ready` / `resolve-comments` — chat
  *   prompts (see message-templates).
  */
@@ -146,22 +146,22 @@ export function isPrStateActivelyLoading(query: {
   return query.isPending && query.fetchStatus !== "idle";
 }
 
-function viewOnGithubItem(t: TFunction): HeaderMenuItem {
+function viewChangeRequestItem(t: TFunction): HeaderMenuItem {
   return {
-    key: "view-on-github",
-    label: t("thread.cmsActions.viewOnGithub"),
+    key: "view-change-request",
+    label: t("thread.cmsActions.viewOnProvider"),
     action: "open-pr-page",
   };
 }
 
-/** Appends "View on GitHub" when there is a PR page to open. */
+/** Appends "View on provider" when there is a PR page to open. */
 function withPrLink(
   menu: HeaderMenuItem[],
   pr: PrSummary | null,
   t: TFunction,
 ): HeaderMenuItem[] {
   if (!pr) return menu;
-  return [...menu, viewOnGithubItem(t)];
+  return [...menu, viewChangeRequestItem(t)];
 }
 
 /** Appends "Get latest" when the branch is behind and it isn't already the primary. */
@@ -423,8 +423,8 @@ export function selectHeaderButton(
         tooltip: t("thread.cmsActions.getLatestTooltip"),
         menu: [
           {
-            key: "resolve-on-github",
-            label: t("thread.cmsActions.resolveOnGithub"),
+            key: "resolve-on-provider",
+            label: t("thread.cmsActions.resolveOnProvider"),
             action: "open-pr-page",
           },
         ],

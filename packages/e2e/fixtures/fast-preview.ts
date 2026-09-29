@@ -164,7 +164,7 @@ export async function createFastPreviewProject(
           fastPreview: true,
           previewServerUrl:
             params.previewServerUrl ?? `https://${repo}.example.com`,
-          githubRepo: {
+          repository: {
             owner,
             name: repo,
             url: `https://github.com/${owner}/${repo}`,

@@ -2,11 +2,11 @@ import { Outlet } from "@tanstack/react-router";
 import { Separator } from "@decocms/ui/components/separator.tsx";
 import { ChatModeRow } from "@/components/chat/pills/chat-mode-row";
 import { useOptionalChatTask } from "@/components/chat/context";
-import { CmsHeaderActions } from "@/components/thread/github/cms-header-actions";
-import { HeaderActions } from "@/components/thread/github/header-actions";
+import { CmsHeaderActions } from "@/components/thread/repository/cms-header-actions";
+import { HeaderActions } from "@/components/thread/repository/header-actions";
 import {
   agentHasClonableSource,
-  agentShowsGithubHeaderActions,
+  agentShowsRepositoryHeaderActions,
 } from "@/lib/agent-capabilities";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
 import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
@@ -29,7 +29,7 @@ function SiteEditorActions() {
       <div className="flex min-w-0 shrink items-center justify-end">
         <ChatModeRow virtualMcp={entity} currentBranch={currentBranch} />
       </div>
-      {!localPreviewUrl && agentShowsGithubHeaderActions(entity) && (
+      {!localPreviewUrl && agentShowsRepositoryHeaderActions(entity) && (
         <>
           <Separator
             orientation="vertical"

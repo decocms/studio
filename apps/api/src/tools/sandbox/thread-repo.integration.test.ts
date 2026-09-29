@@ -7,7 +7,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { StudioContext } from "@/core/studio-context";
 import { RepositoryStorage } from "@/storage/repositories";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import {
   buildThreadTestContext,
   type ThreadTestEnv,
@@ -21,9 +21,9 @@ const SLASH = "sandbox/thread-thrd_1-conn_a";
 describe("sandboxGitRef", () => {
   let env: ThreadTestEnv;
   let ctx: StudioContext;
-  let selfHostedGitlab: GithubRepo;
-  let selfHostedGithub: GithubRepo;
-  let foreignGitlab: GithubRepo;
+  let selfHostedGitlab: RepositoryBinding;
+  let selfHostedGithub: RepositoryBinding;
+  let foreignGitlab: RepositoryBinding;
 
   beforeAll(async () => {
     env = await buildThreadTestContext();
@@ -99,9 +99,9 @@ describe("sandboxGitRef", () => {
 
   test("a binding stored without a URL still resolves by its row", async () => {
     const { url: _url, ...withoutUrl } = selfHostedGitlab;
-    expect(await sandboxGitRef(ctx, BRANCH, withoutUrl as GithubRepo)).toBe(
-      FLAT,
-    );
+    expect(
+      await sandboxGitRef(ctx, BRANCH, withoutUrl as RepositoryBinding),
+    ).toBe(FLAT);
   });
 
   test("another organization's repository row is not read", async () => {

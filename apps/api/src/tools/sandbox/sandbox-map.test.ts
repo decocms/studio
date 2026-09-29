@@ -31,7 +31,7 @@ describe("readSandboxMap", () => {
   });
 
   test("returns empty object when sandboxMap key is missing", () => {
-    expect(readSandboxMap({ githubRepo: null })).toEqual({});
+    expect(readSandboxMap({ repository: null })).toEqual({});
   });
 
   test("returns the sandboxMap when present", () => {

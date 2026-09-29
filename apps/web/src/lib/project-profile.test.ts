@@ -14,20 +14,21 @@ import {
 describe("readProjectProfile", () => {
   test("a legacy production URL stands in for an unset store URL", () => {
     expect(
-      readProjectProfile({ metadata: { productionUrl: "https://farm.com.br" } })
-        .storeUrl,
-    ).toBe("https://farm.com.br");
+      readProjectProfile({
+        metadata: { productionUrl: "https://store.example" },
+      }).storeUrl,
+    ).toBe("https://store.example");
   });
 
   test("an explicit store URL wins over the legacy one", () => {
     expect(
       readProjectProfile({
         metadata: {
-          productionUrl: "https://preview.farm.com.br",
-          project: { storeUrl: "https://farm.com.br" },
+          productionUrl: "https://preview.store.example",
+          project: { storeUrl: "https://store.example" },
         },
       }).storeUrl,
-    ).toBe("https://farm.com.br");
+    ).toBe("https://store.example");
   });
 
   test("a project that names nothing reads as nothing", () => {
@@ -38,30 +39,32 @@ describe("readProjectProfile", () => {
 describe("withProjectProfile", () => {
   test("keeps every metadata key it was not asked to change", () => {
     const next = withProjectProfile(
-      { githubRepo: { owner: "deco" }, instructions: "hi" },
-      { storeUrl: "https://farm.com.br" },
+      { repository: { owner: "example" }, instructions: "hi" },
+      { storeUrl: "https://store.example" },
     );
-    expect(next.githubRepo).toEqual({ owner: "deco" });
+    expect(next.repository).toEqual({ owner: "example" });
     expect(next.instructions).toBe("hi");
-    expect(next.project).toEqual({ storeUrl: "https://farm.com.br" });
+    expect(next.project).toEqual({ storeUrl: "https://store.example" });
   });
 
   test("merges into an existing profile rather than replacing it", () => {
     const next = withProjectProfile(
-      { project: { storeUrl: "https://old.com.br" } },
-      { storeUrl: "https://farm.com.br" },
+      { project: { storeUrl: "https://old.example" } },
+      { storeUrl: "https://store.example" },
     );
-    expect(next.project).toEqual({ storeUrl: "https://farm.com.br" });
+    expect(next.project).toEqual({ storeUrl: "https://store.example" });
   });
 });
 
 describe("storeHost", () => {
   test("drops the scheme, the www and the path", () => {
-    expect(storeHost("https://www.farm.com.br/feminino")).toBe("farm.com.br");
+    expect(storeHost("https://www.store.example/feminino")).toBe(
+      "store.example",
+    );
   });
 
   test("accepts a bare host", () => {
-    expect(storeHost("farm.com.br")).toBe("farm.com.br");
+    expect(storeHost("store.example")).toBe("store.example");
   });
 
   test("is null for nothing and for garbage", () => {
@@ -73,21 +76,23 @@ describe("storeHost", () => {
 
 describe("normalizeStoreUrl", () => {
   test("adds the scheme a person did not type", () => {
-    expect(normalizeStoreUrl("farm.com.br")).toBe("https://farm.com.br");
+    expect(normalizeStoreUrl("store.example")).toBe("https://store.example");
   });
 
   test("keeps an explicit scheme and drops the path", () => {
-    expect(normalizeStoreUrl("http://farm.com.br/feminino?x=1")).toBe(
-      "http://farm.com.br",
+    expect(normalizeStoreUrl("http://store.example/feminino?x=1")).toBe(
+      "http://store.example",
     );
   });
 
   test("trims", () => {
-    expect(normalizeStoreUrl("  farm.com.br  ")).toBe("https://farm.com.br");
+    expect(normalizeStoreUrl("  store.example  ")).toBe(
+      "https://store.example",
+    );
   });
 
   test("rejects a host with no dot, so a typed word is not an address", () => {
-    expect(normalizeStoreUrl("farm")).toBe(null);
+    expect(normalizeStoreUrl("store")).toBe(null);
     expect(normalizeStoreUrl("localhost")).toBe(null);
   });
 
@@ -101,32 +106,32 @@ describe("normalizeStoreUrl", () => {
 describe("capabilities are derived, never declared", () => {
   test("a repository counts only when it can actually be cloned", () => {
     expect(
-      hasRepository({ metadata: { githubRepo: { url: "https://x/y" } } }),
+      hasRepository({ metadata: { repository: { url: "https://x/y" } } }),
     ).toBe(true);
-    expect(hasRepository({ metadata: { githubRepo: { url: "" } } })).toBe(
+    expect(hasRepository({ metadata: { repository: { url: "" } } })).toBe(
       false,
     );
-    expect(hasRepository({ metadata: { githubRepo: {} } })).toBe(false);
+    expect(hasRepository({ metadata: { repository: {} } })).toBe(false);
     expect(hasRepository({ metadata: {} })).toBe(false);
   });
 
   test("a storefront is an address, including the legacy one", () => {
     expect(
-      hasStorefront({ metadata: { project: { storeUrl: "farm.com.br" } } }),
+      hasStorefront({ metadata: { project: { storeUrl: "store.example" } } }),
     ).toBe(true);
-    expect(hasStorefront({ metadata: { productionUrl: "farm.com.br" } })).toBe(
-      true,
-    );
+    expect(
+      hasStorefront({ metadata: { productionUrl: "store.example" } }),
+    ).toBe(true);
     expect(hasStorefront({ metadata: {} })).toBe(false);
   });
 
   test("substance is a repo, an address or a connection", () => {
     expect(
-      projectHasSubstance({ metadata: { githubRepo: { url: "https://x/y" } } }),
+      projectHasSubstance({ metadata: { repository: { url: "https://x/y" } } }),
     ).toBe(true);
     expect(
       projectHasSubstance({
-        metadata: { project: { storeUrl: "farm.com.br" } },
+        metadata: { project: { storeUrl: "store.example" } },
       }),
     ).toBe(true);
     expect(
@@ -173,12 +178,12 @@ describe("platformFromConnections", () => {
   test("matches inside a named instance and inside a slug", () => {
     expect(
       platformFromConnections({ connections: [{ connection_id: "c1" }] }, [
-        conn("c1", "VTEX Farm produção"),
+        conn("c1", "VTEX Example production"),
       ]),
     ).toBe("vtex");
     expect(
       platformFromConnections({ connections: [{ connection_id: "c1" }] }, [
-        conn("c1", null, "deco-shopify-br"),
+        conn("c1", null, "example-shopify-br"),
       ]),
     ).toBe("shopify");
   });

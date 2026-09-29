@@ -47,7 +47,7 @@ import {
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
@@ -1464,9 +1464,9 @@ async function prepareRun(
               interactive: Boolean(
                 (
                   effectiveVirtualMcp.metadata as {
-                    githubRepo?: GithubRepo | null;
+                    repository?: RepositoryBinding | null;
                   } | null
-                )?.githubRepo?.url,
+                )?.repository?.url,
               ),
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
@@ -1485,9 +1485,9 @@ async function prepareRun(
                 threadId: mem.thread.id,
                 agentRepo: (
                   effectiveVirtualMcp.metadata as {
-                    githubRepo?: GithubRepo | null;
+                    repository?: RepositoryBinding | null;
                   } | null
-                )?.githubRepo,
+                )?.repository,
                 runBranch: input.branch,
               }),
               // The already-resolved thinking-slot credential becomes the

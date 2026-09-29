@@ -48,7 +48,7 @@ export function releaseDotClass(color: string | undefined): string {
 
 type ItemData = { item: VirtualMCPEntity | null };
 
-/** Curated branch-backed release list at `metadata.releases`; discard drops only the entry, leaving the branch on GitHub. */
+/** Curated branch-backed release list at `metadata.releases`; discard drops only the entry, leaving the remote branch. */
 export function useReleases(virtualMcpId: string) {
   const vm = useVirtualMCP(virtualMcpId);
   const actions = useVirtualMCPActions();

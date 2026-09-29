@@ -8,7 +8,7 @@
  * project's Fast Preview capability picks the default. Immutable afterwards —
  * see `update.ts`.
  *
- * Branch resolution (only meaningful when the vMCP has a githubRepo):
+ * Branch resolution (only meaningful when the vMCP has a repository):
  * honor `data.branch`, else the most-recently-touched `sandboxMap[userId]`
  * branch (warm sandbox), else `generateBranchName` (`<user-slug>-<timestamp>`).
  * A `runtime: "sandbox"` coding session deliberately shares the caller's
@@ -20,7 +20,7 @@
  * invisible here and step 3 mints a sibling branch; the frontend must never
  * auto-start without a branch (see `shouldAutoStart`).
  *
- * Threads created on a vMCP without a githubRepo always get `branch = null`.
+ * Threads created on a vMCP without a repository always get `branch = null`.
  *
  * Idempotent on `id` collisions (storage uses INSERT … ON CONFLICT DO NOTHING).
  */
@@ -36,7 +36,7 @@ import {
 import {
   normalizeThreadForResponse,
   requireOwnedVirtualMcp,
-  type GithubRepoMeta,
+  type RepositoryMetadata,
 } from "./helpers";
 import {
   ThreadCreateDataSchema,
@@ -125,12 +125,12 @@ export const COLLECTION_THREADS_CREATE = defineTool({
     );
 
     const metadata = vmcp.metadata as
-      | (GithubRepoMeta & SandboxMapMeta & VmcpRuntimeMetadata)
+      | (RepositoryMetadata & SandboxMapMeta & VmcpRuntimeMetadata)
       | null
       | undefined;
-    const githubRepo = metadata?.githubRepo;
+    const repository = metadata?.repository;
     let branch: string | null = null;
-    if (githubRepo) {
+    if (repository) {
       branch =
         data.branch ??
         pickWarmBranchFromSandboxMap(metadata?.sandboxMap, userId) ??

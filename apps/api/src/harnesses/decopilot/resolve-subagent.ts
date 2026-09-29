@@ -7,7 +7,7 @@
  * connection; no Virtual MCP row is created. Both paths enforce organization
  * scope + active status and return the same runtime target shape.
  */
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import {
   createConnectionClient,
@@ -22,7 +22,7 @@ export interface ResolvedSubagent {
   targetRef: {
     id: string;
     instructions: string | undefined;
-    repo: GithubRepo | undefined;
+    repo: RepositoryBinding | undefined;
   };
 }
 
@@ -67,7 +67,7 @@ export async function resolveSubagent(
       targetRef: {
         id: effectiveVirtualMcp.id,
         instructions: mcpClient.getInstructions(),
-        repo: effectiveVirtualMcp.metadata?.githubRepo ?? undefined,
+        repo: effectiveVirtualMcp.metadata?.repository ?? undefined,
       },
     };
   }

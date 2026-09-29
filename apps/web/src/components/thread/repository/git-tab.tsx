@@ -1,7 +1,7 @@
 /**
- * GitTab — PR management panel for GitHub-linked virtualmcps.
+ * GitTab — PR management panel for repository-linked projects.
  *
- * Replaces the "Instructions" tab when the vm has metadata.githubRepo set.
+ * Replaces the "Instructions" tab when the vm has metadata.repository set.
  * Renders one of four states based on the branch's PR status:
  *   A) No commits / no branch selected — empty-state with hint
  *   B) Commits exist, no PR — "Create PR" CTA
@@ -9,7 +9,7 @@
  *   D) PR merged/closed — read-only summary
  *
  * All action buttons call `sendMessage` with a natural-language prompt from
- * message-templates.ts. The LLM executes the action via its GitHub tools.
+ * message-templates.ts. The LLM executes the action via its git tools.
  */
 
 import { useProjectContext, useVirtualMCP } from "@/sdk";
@@ -17,7 +17,7 @@ import {
   hasRepoCredential,
   type RepoToolTarget,
   repoToolTarget,
-} from "@/lib/github-repo.ts";
+} from "@/lib/repository-binding.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { GitBranch01, LinkExternal01 } from "@untitledui/icons";
 import { useT } from "@/i18n/use-t.ts";
@@ -57,14 +57,14 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
   const vm = useVirtualMCP(virtualMcpId);
   const { currentBranch: branch } = useChatTask();
 
-  const githubRepo = vm?.metadata?.githubRepo ?? null;
-  const target = repoToolTarget(githubRepo);
+  const repository = vm?.metadata?.repository ?? null;
+  const target = repoToolTarget(repository);
 
   /**
    * A repository row is enough on its own — a GitLab project never has a
    * connection, so gating on one here is what kept this tab dark for it.
    */
-  if (!githubRepo || !hasRepoCredential(target)) {
+  if (!repository || !hasRepoCredential(target)) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">
         {t("thread.gitTab.notLinkedToGithub")}
@@ -92,8 +92,8 @@ export function GitTab({ virtualMcpId }: { virtualMcpId: string }) {
       orgSlug={org.slug}
       virtualMcpId={virtualMcpId}
       target={target}
-      owner={githubRepo.owner}
-      repo={githubRepo.name}
+      owner={repository.owner}
+      repo={repository.name}
       branch={branch}
     />
   );

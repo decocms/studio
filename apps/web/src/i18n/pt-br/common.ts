@@ -15,7 +15,7 @@ export const common = {
   "common.accountPopover.enableSounds": "Ativar sons",
   "common.accountPopover.failedToStopImpersonation":
     "Falha ao parar de representar",
-  "common.accountPopover.githubRepo": "decocms/studio",
+  "common.accountPopover.repository": "decocms/studio",
   "common.accountPopover.homepage": "Página inicial",
   "common.accountPopover.impersonating": "Representando",
   "common.accountPopover.lightTheme": "Tema claro",
@@ -143,56 +143,56 @@ export const common = {
   "common.createSite.created": "Site {name} criado",
   "common.createSite.agentDescription":
     "Criado a partir do template {template}",
-  "common.githubRepoPicker.accountNotListed": "Conta não listada?",
-  "common.githubRepoPicker.addRepo": "Adicionar repositório",
-  "common.githubRepoPicker.addedRepo": "Adicionado {name}",
-  "common.githubRepoPicker.authenticatingGitHub": "Autenticando com GitHub",
-  "common.githubRepoPicker.backToAccounts": "Voltar às contas",
-  "common.githubRepoPicker.changeConnection": "Alterar conexão",
-  "common.githubRepoPicker.checkAgain": "Verificar novamente",
-  "common.githubRepoPicker.chooseRepositories": "Escolher repositórios",
-  "common.githubRepoPicker.completeOAuthFlow":
+  "common.repositoryPicker.accountNotListed": "Conta não listada?",
+  "common.repositoryPicker.addRepo": "Adicionar repositório",
+  "common.repositoryPicker.addedRepo": "Adicionado {name}",
+  "common.repositoryPicker.authenticatingGitHub": "Autenticando com GitHub",
+  "common.repositoryPicker.backToAccounts": "Voltar às contas",
+  "common.repositoryPicker.changeConnection": "Alterar conexão",
+  "common.repositoryPicker.checkAgain": "Verificar novamente",
+  "common.repositoryPicker.chooseRepositories": "Escolher repositórios",
+  "common.repositoryPicker.completeOAuthFlow":
     "Complete o fluxo OAuth no seu navegador",
-  "common.githubRepoPicker.connectionExpiredMessage":
+  "common.repositoryPicker.connectionExpiredMessage":
     "Sua conexão com o GitHub pode ter expirado. Reconecte para restaurar o acesso.",
-  "common.githubRepoPicker.connectionFailed": "Conexão falhou",
-  "common.githubRepoPicker.failedImport":
+  "common.repositoryPicker.connectionFailed": "Conexão falhou",
+  "common.repositoryPicker.failedImport":
     "Falha ao importar repositório: {error}",
-  "common.githubRepoPicker.failedImportFork":
+  "common.repositoryPicker.failedImportFork":
     "Não foi possível importar o fork {name}. Se ele não estiver compartilhado com o aplicativo GitHub, adicione-o em GitHub → Settings → Installations e tente novamente.",
-  "common.githubRepoPicker.failedLoadAccounts":
+  "common.repositoryPicker.failedLoadAccounts":
     "Falha ao carregar contas do GitHub",
-  "common.githubRepoPicker.failedReconnect":
+  "common.repositoryPicker.failedReconnect":
     "Falha ao reconectar GitHub: {error}",
-  "common.githubRepoPicker.forkBadge": "Fork",
-  "common.githubRepoPicker.githubConnected": "GitHub conectado",
-  "common.githubRepoPicker.importFromGitHub": "Importar reposit\u00f3rio",
-  "common.githubRepoPicker.importedRepo": "Importado {name}",
-  "common.githubRepoPicker.installGitHubApp": "Instalar o aplicativo GitHub",
-  "common.githubRepoPicker.installingGitHubConnection":
+  "common.repositoryPicker.forkBadge": "Fork",
+  "common.repositoryPicker.githubConnected": "GitHub conectado",
+  "common.repositoryPicker.importFromGitHub": "Importar reposit\u00f3rio",
+  "common.repositoryPicker.importedRepo": "Importado {name}",
+  "common.repositoryPicker.installGitHubApp": "Instalar o aplicativo GitHub",
+  "common.repositoryPicker.installingGitHubConnection":
     "Instalando a conexão com GitHub...",
-  "common.githubRepoPicker.noRepositoriesFound":
+  "common.repositoryPicker.noRepositoriesFound":
     "Nenhum repositório encontrado",
-  "common.githubRepoPicker.noRepositoriesShared":
+  "common.repositoryPicker.noRepositoriesShared":
     "Ainda não há repositórios compartilhados com a Deco. Escolha no GitHub o que deseja compartilhar e volte aqui para continuar.",
-  "common.githubRepoPicker.personalAccount": "Conta pessoal",
-  "common.githubRepoPicker.private": "Privado",
-  "common.githubRepoPicker.public": "Público",
-  "common.githubRepoPicker.reconnectGitHub": "Reconectar GitHub",
-  "common.githubRepoPicker.repositoryAccessNote":
+  "common.repositoryPicker.personalAccount": "Conta pessoal",
+  "common.repositoryPicker.private": "Privado",
+  "common.repositoryPicker.public": "Público",
+  "common.repositoryPicker.reconnectGitHub": "Reconectar GitHub",
+  "common.repositoryPicker.repositoryAccessNote":
     "Você decide exatamente o que a Deco pode acessar. Escolher “todos os repositórios” é opcional.",
-  "common.githubRepoPicker.searchRepositories": "Pesquisar repositórios...",
-  "common.githubRepoPicker.select": "Selecionar",
-  "common.githubRepoPicker.selectConnection": "Selecione uma conexão",
-  "common.githubRepoPicker.settingUpGitHub": "Configurando GitHub",
-  "common.githubRepoPicker.setupRepositoriesTitle":
+  "common.repositoryPicker.searchRepositories": "Pesquisar repositórios...",
+  "common.repositoryPicker.select": "Selecionar",
+  "common.repositoryPicker.selectConnection": "Selecione uma conexão",
+  "common.repositoryPicker.settingUpGitHub": "Configurando GitHub",
+  "common.repositoryPicker.setupRepositoriesTitle":
     "Permita que a Deco veja seus repositórios",
-  "common.githubRepoPicker.somethingWentWrong":
+  "common.repositoryPicker.somethingWentWrong":
     "Algo deu errado ao conectar ao GitHub.",
-  "common.githubRepoPicker.tryAgain": "Tentar novamente",
-  "common.githubRepoPicker.tryDifferentSearchTerm":
+  "common.repositoryPicker.tryAgain": "Tentar novamente",
+  "common.repositoryPicker.tryDifferentSearchTerm":
     "Tente um termo de pesquisa diferente",
-  "common.githubRepoPicker.unknownError": "Erro desconhecido",
+  "common.repositoryPicker.unknownError": "Erro desconhecido",
   "common.iconPicker.apply": "Aplicar",
   "common.iconPicker.changeColor": "Alterar cor",
   "common.iconPicker.failedToReadImage": "Falha ao ler arquivo de imagem",

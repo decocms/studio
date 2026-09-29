@@ -24,7 +24,7 @@ import type {
   UIMessageChunk,
   UIMessageStreamWriter,
 } from "ai";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { ConnectionsBlockTool } from "./connections-block";
 import type { PendingImage } from "./built-in-tools/vm-tools/types";
 import type { ModelsConfig } from "../types";
@@ -93,7 +93,7 @@ export interface RunEngineArgs {
   kind: "agent" | "subagent";
   virtualMcp: {
     id: string;
-    repo?: GithubRepo;
+    repo?: RepositoryBinding;
     delegationTargetIds?: string[] | null;
   };
   mcpClient: Client;

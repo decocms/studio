@@ -74,7 +74,7 @@ import {
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import {
   GitPushAuthError,
-  parseGithubRepoFromMetadata,
+  parseRepositoryBinding,
   refreshSandboxGitCredentials,
 } from "../../tools/sandbox/sync-git-credentials";
 
@@ -382,19 +382,16 @@ function requireRunner(c: Context<VmEnv>): SandboxProvider | Response {
 async function fastPreviewGitClient(c: Context<VmEnv>) {
   const { virtualMcpMetadata, connectionIds } = c.get("vmClaim");
   const ctx = c.var.studioContext;
-  const githubRepo = parseGithubRepoFromMetadata(
-    virtualMcpMetadata,
-    connectionIds,
-  );
-  if (!githubRepo) {
+  const repository = parseRepositoryBinding(virtualMcpMetadata, connectionIds);
+  if (!repository) {
     throw new GitProviderError({
       provider: "github",
       status: 404,
-      message: "Project has no GitHub repository",
+      message: "Project has no repository",
     });
   }
   const organization = requireOrganization(ctx);
-  return contentClientForProjectRepo(ctx, organization.id, githubRepo);
+  return contentClientForProjectRepo(ctx, organization.id, repository);
 }
 
 function fastPreviewGitError(c: Context<VmEnv>, err: unknown): Response {
@@ -995,16 +992,16 @@ export const createSandboxRoutes = () => {
     return withClaimGitLock(claimName, async () => {
       try {
         await patchSandboxOperator(ctx, runner, claimName);
-        const githubRepo = parseGithubRepoFromMetadata(
+        const repository = parseRepositoryBinding(
           virtualMcpMetadata,
           connectionIds,
         );
-        if (githubRepo) {
+        if (repository) {
           await refreshSandboxGitCredentials(
             ctx,
             runner,
             claimName,
-            githubRepo,
+            repository,
           );
         }
       } catch (err) {

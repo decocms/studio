@@ -134,7 +134,7 @@ async function createProject(
         status: "active",
         connections: [{ connection_id: connection.id }],
         metadata: {
-          githubRepo: {
+          repository: {
             url: "https://github.com/example/commerce-report-banner",
             owner: "example",
             name: "commerce-report-banner",

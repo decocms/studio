@@ -13,7 +13,7 @@
  * agent's to tear down.
  *
  * Pure module (no DB / network / node deps) so both the server
- * (oauth/github-mint) and the web import flow (github-repo-picker) can import it.
+ * (oauth/github-mint) and the web import flow (repository-import-picker) can import it.
  */
 
 /**

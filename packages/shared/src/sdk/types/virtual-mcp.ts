@@ -455,10 +455,10 @@ const RuntimeMetadataSchema = z.object({
 export type RuntimeMetadata = z.infer<typeof RuntimeMetadataSchema>;
 
 /**
- * GitHub repository linked to a virtual MCP
+ * Repository linked to a project or thread, across git providers.
  */
-const GithubRepoSchema = z.object({
-  url: z.string().describe("GitHub repository URL"),
+export const RepositoryBindingSchema = z.object({
+  url: z.string().describe("Repository URL, including its provider host"),
   owner: z.string().describe("Repository owner"),
   name: z.string().describe("Repository name"),
   installationId: z
@@ -481,7 +481,7 @@ const GithubRepoSchema = z.object({
     ),
 });
 
-export type GithubRepo = z.infer<typeof GithubRepoSchema>;
+export type RepositoryBinding = z.infer<typeof RepositoryBindingSchema>;
 
 const SandboxMapOwnerKindSchema = z.enum(["agent-sandbox", "local-api"]);
 
@@ -830,9 +830,9 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
     ),
-  githubRepo: GithubRepoSchema.nullable()
+  repository: RepositoryBindingSchema.nullable()
     .optional()
-    .describe("Linked GitHub repository"),
+    .describe("Linked repository"),
   runtime: RuntimeMetadataSchema.nullable()
     .optional()
     .describe(

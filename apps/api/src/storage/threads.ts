@@ -5,10 +5,14 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
+import {
+  readRepositoryMetadata,
+  writeRepositoryMetadata,
+} from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { DEFAULT_THREAD_TITLE } from "@/api/routes/decopilot/constants";
 import type {
   ThreadCreateData,
@@ -96,8 +100,11 @@ export class OrgScopedThreadStorage {
     return this.inner.update(id, this.requireOrg(), data);
   }
 
-  appendThreadGithubRepo(id: string, repo: GithubRepo): Promise<GithubRepo[]> {
-    return this.inner.appendThreadGithubRepo(id, this.requireOrg(), repo);
+  appendThreadRepository(
+    id: string,
+    repo: RepositoryBinding,
+  ): Promise<RepositoryBinding[]> {
+    return this.inner.appendThreadRepository(id, this.requireOrg(), repo);
   }
 
   recordJiraIssueCreated(id: string, issueKey: string): Promise<string[]> {
@@ -334,7 +341,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
         ? { message_storage_version: data.message_storage_version }
         : {}),
       ...(data.metadata !== undefined
-        ? { metadata: JSON.stringify(data.metadata) }
+        ? { metadata: JSON.stringify(writeRepositoryMetadata(data.metadata)) }
         : {}),
     };
 
@@ -421,7 +428,9 @@ export class SqlThreadStorage implements ThreadStoragePort {
       updateData.failure_kind = data.failure_kind;
     }
     if (data.metadata !== undefined) {
-      updateData.metadata = JSON.stringify(data.metadata);
+      updateData.metadata = JSON.stringify(
+        writeRepositoryMetadata(data.metadata),
+      );
     }
     if (data.branch !== undefined) {
       updateData.branch = data.branch;
@@ -447,30 +456,13 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return thread;
   }
 
-  /**
-   * Add a repository to the thread's extra checkouts, returning the whole set.
-   *
-   * DUAL-WRITE while migration 205 expands: the row in `thread_repositories`
-   * is the binding, and the `metadata.githubRepos` array is kept in step
-   * because a pod running the previous release still reads only the array.
-   * The array write goes away with the fallback read, not before.
-   *
-   * The array append happens inside one UPDATE rather than as a read in JS
-   * followed by a write: the model can fire two `TASK_ADD_REPO` calls at once,
-   * and a read-modify-write loses the slower one — with the pod already
-   * holding the checkout the lost entry describes, so nothing looks wrong
-   * until the pod is recreated without it. The table gets that for free from
-   * its primary key, which is most of why it exists.
-   *
-   * Re-adding a repo the thread already has is a no-op, not a duplicate
-   * directory: keyed on the repository row where there is one, and on
-   * `owner/name` in the array.
-   */
-  async appendThreadGithubRepo(
+  /** Append a secondary checkout using the existing atomic JSON update. */
+  async appendThreadRepository(
     id: string,
     organizationId: string,
-    repo: GithubRepo,
-  ): Promise<GithubRepo[]> {
+    repo: RepositoryBinding,
+  ): Promise<RepositoryBinding[]> {
+    const stored = writeRepositoryMetadata({ additionalRepositories: [repo] });
     /**
      * Only a repo Studio has a row for can be referenced. One that has none
      * (a legacy binding a reader has not stamped yet) still lands in the
@@ -489,6 +481,7 @@ export class SqlThreadStorage implements ThreadStoragePort {
         )
         .execute();
     }
+    // Database compatibility: the atomic append still targets the stored key.
     const key = `${repo.owner}/${repo.name}`.toLowerCase();
     const row = await this.db
       .updateTable("threads")
@@ -508,16 +501,16 @@ export class SqlThreadStorage implements ThreadStoragePort {
                        ) <> ${key}
               ),
               '[]'::jsonb
-            ) || ${JSON.stringify([repo])}::jsonb
+            ) || ${JSON.stringify(stored?.githubRepos)}::jsonb
           )
         `,
         updated_at: new Date(),
       })
       .where("id", "=", id)
       .where("organization_id", "=", organizationId)
-      .returning(sql<GithubRepo[]>`metadata->'githubRepos'`.as("repos"))
+      .returning("metadata")
       .executeTakeFirst();
-    return row?.repos ?? [];
+    return readRepositoryMetadata(row?.metadata)?.additionalRepositories ?? [];
   }
 
   /**
@@ -1302,6 +1295,8 @@ export class SqlThreadStorage implements ThreadStoragePort {
         metadata = row.metadata;
       }
     }
+
+    metadata = readRepositoryMetadata(metadata) ?? {};
 
     return {
       id: row.id,

@@ -87,7 +87,7 @@ const A = {
   id: "p_a",
   title: "alpha",
   metadata: {
-    githubRepo: {
+    repository: {
       url: "https://github.com/acme/alpha",
       owner: "acme",
       name: "alpha",
@@ -141,7 +141,7 @@ describe("tasksNeedingMeByProject", () => {
         id,
         title,
         metadata: {
-          githubRepo: {
+          repository: {
             url: "https://github.com/acme/mono",
             owner: "acme",
             name: "mono",

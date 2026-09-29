@@ -33,7 +33,7 @@ import type {
 } from "./types";
 import type { UserModelPreferences } from "@decocms/shared/organization/schema";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 
 export type ThreadUpdateData = Omit<Partial<Thread>, "harness_id"> & {
   /**
@@ -77,11 +77,11 @@ export interface ThreadStoragePort {
    * predicate is the lock: concurrent native and hosted starts cannot
    * overwrite whichever runtime won first.
    */
-  appendThreadGithubRepo(
+  appendThreadRepository(
     id: string,
     organizationId: string,
-    repo: GithubRepo,
-  ): Promise<GithubRepo[]>;
+    repo: RepositoryBinding,
+  ): Promise<RepositoryBinding[]>;
   /** Record a Jira issue the run created. One guarded statement — see the
    *  impl. */
   recordJiraIssueCreated(

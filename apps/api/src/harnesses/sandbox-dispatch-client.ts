@@ -76,7 +76,7 @@ import {
   type RunStatusStreamBuffer,
 } from "@/api/routes/decopilot/run-status-stage";
 import {
-  getThreadGithubRepo,
+  getThreadRepository,
   sandboxGitRef,
   threadBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -291,11 +291,11 @@ export class SandboxDispatchClient {
     threadId: string,
     agent: Promise<VirtualMCPEntity | null>,
   ): Promise<HarnessStreamInput["workspace"]> {
-    const repo = await getThreadGithubRepo(this.ctx, threadId);
+    const repo = await getThreadRepository(this.ctx, threadId);
     if (!repo) {
       if (this.branch !== threadBranch(threadId)) return { cwd: null };
       // SANDBOX_START clones the agent's repo when the thread has none.
-      const agentRepo = (await agent)?.metadata?.githubRepo ?? null;
+      const agentRepo = (await agent)?.metadata?.repository ?? null;
       return {
         cwd: SANDBOX_REPO_CWD,
         branch: await sandboxGitRef(this.ctx, this.branch, agentRepo),
@@ -306,7 +306,7 @@ export class SandboxDispatchClient {
       repo: {
         owner: repo.owner,
         name: repo.name,
-        connectedGithub: Boolean(repo.connectionId),
+        linked: Boolean(repo.connectionId),
       },
       // The synthetic sandbox key is not a git ref; the daemon checks out its
       // derived branch, so that is the one the harness is standing on.
@@ -902,11 +902,18 @@ export async function pushSandboxEnv(
 
 /**
  * `signal` is an AbortSignal and the run context is attached out-of-band; both
- * are dropped here. Everything else on `HarnessStreamInput` is the wire shape.
+ * are dropped here. The runner only consumes the workspace directory and branch;
+ * repository facts belong to the in-process prompt, not the daemon contract.
  */
 function toWireInput(input: HarnessStreamInput): unknown {
-  const { signal: _signal, ...wire } = input;
-  return wire;
+  const { signal: _signal, workspace, ...wire } = input;
+  return {
+    ...wire,
+    workspace:
+      workspace.cwd === null
+        ? { cwd: null }
+        : { cwd: workspace.cwd, branch: workspace.branch },
+  };
 }
 
 /**
