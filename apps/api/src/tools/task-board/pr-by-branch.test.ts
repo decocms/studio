@@ -24,4 +24,16 @@ describe("candidateHeadRefs", () => {
       "sandbox/thread-abc",
     ]);
   });
+
+  test("derives the flat ref when the repository needs it", () => {
+    expect(
+      candidateHeadRefs("thread:abc/conn", "fix/real", { flat: true }),
+    ).toEqual(["fix/real", "sandbox-thread-abc-conn"]);
+  });
+
+  test("keeps a real git ref as-is in the flat form too", () => {
+    expect(candidateHeadRefs("fix/foo", null, { flat: true })).toEqual([
+      "fix/foo",
+    ]);
+  });
 });

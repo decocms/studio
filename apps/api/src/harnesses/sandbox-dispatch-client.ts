@@ -76,7 +76,7 @@ import {
 } from "@/api/routes/decopilot/run-status-stage";
 import {
   getThreadGithubRepo,
-  syntheticBranchToGitRef,
+  resolveSandboxGitRef,
   threadBranch,
 } from "@/tools/sandbox/thread-repo";
 
@@ -290,12 +290,14 @@ export class SandboxDispatchClient {
     threadId: string,
   ): Promise<HarnessStreamInput["workspace"]> {
     const repo = await getThreadGithubRepo(this.ctx, threadId);
+    const gitRef = () =>
+      resolveSandboxGitRef(this.ctx, {
+        branch: this.branch,
+        virtualMcpId: this.virtualMcpId,
+      });
     if (!repo) {
       return this.branch === threadBranch(threadId)
-        ? {
-            cwd: SANDBOX_REPO_CWD,
-            branch: syntheticBranchToGitRef(this.branch),
-          }
+        ? { cwd: SANDBOX_REPO_CWD, branch: await gitRef() }
         : { cwd: null };
     }
     return {
@@ -307,9 +309,7 @@ export class SandboxDispatchClient {
       },
       // The synthetic sandbox key is not a git ref; the daemon checks out its
       // derived branch, so that is the one the harness is standing on.
-      branch: this.branch.startsWith("thread:")
-        ? syntheticBranchToGitRef(this.branch)
-        : this.branch,
+      branch: this.branch.startsWith("thread:") ? await gitRef() : this.branch,
     };
   }
 

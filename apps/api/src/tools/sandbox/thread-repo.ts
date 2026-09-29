@@ -11,7 +11,10 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { findRepositoryForLegacyBinding } from "@/git-providers";
+import { getSettings } from "@/settings";
 import type { Thread } from "@/storage/types";
+import type { GitProviderKind } from "@decocms/shared/git-providers";
 import type {
   GithubRepo,
   SandboxMap,
@@ -60,10 +63,76 @@ export function threadBranch(
  * Deterministic (same synthetic key → same ref) so a reboot restores the same
  * branch. Only `thread:*` keys reach git: `ephemeral` sandboxes have no repo.
  *   thread:abc/conn_1 → sandbox/thread-abc-conn_1
+ *
+ * `flat` drops the slash: `sandbox-thread-abc-conn_1`. A GitLab project can
+ * protect every branch whose name contains a slash, with push set to No one,
+ * which refuses the push for every role. See {@link flatSandboxRef}.
  */
-export function syntheticBranchToGitRef(branch: string): string {
+export function syntheticBranchToGitRef(
+  branch: string,
+  opts: { flat?: boolean } = {},
+): string {
   const body = branch.replace(/^thread:/, "").replace(/\//g, "-");
-  return `sandbox/thread-${body}`;
+  return opts.flat ? `sandbox-thread-${body}` : `sandbox/thread-${body}`;
+}
+
+/**
+ * Whether a sandbox on `provider`'s repository boots on the flat ref. GitLab
+ * only, behind SANDBOX_FLAT_GITLAB_REFS: a sandbox's ref is the branch it
+ * clones, restores and pushes.
+ */
+export function flatSandboxRef(
+  provider: GitProviderKind | null | undefined,
+): boolean {
+  return provider === "gitlab" && getSettings().sandboxFlatGitlabRefsEnabled;
+}
+
+/**
+ * {@link syntheticBranchToGitRef} for a caller that holds only the key, in the
+ * form the sandbox booted on. The repository that decides it is the one
+ * SANDBOX_START clones: the thread's binding, else its agent's. Never throws; a
+ * repository it cannot resolve keeps the slash form.
+ */
+export async function resolveSandboxGitRef(
+  ctx: StudioContext,
+  args: { branch: string; virtualMcpId: string },
+): Promise<string> {
+  const { branch, virtualMcpId } = args;
+  if (!getSettings().sandboxFlatGitlabRefsEnabled) {
+    return syntheticBranchToGitRef(branch);
+  }
+  try {
+    const orgId = ctx.storage.threads.getOrganizationId();
+    if (!orgId) return syntheticBranchToGitRef(branch);
+    const binding =
+      (await getThreadGithubRepo(ctx, threadIdFromBranch(branch))) ??
+      (await agentGithubRepo(ctx, virtualMcpId, orgId));
+    const repository = binding
+      ? await findRepositoryForLegacyBinding(ctx.storage, orgId, binding)
+      : null;
+    return syntheticBranchToGitRef(branch, {
+      flat: flatSandboxRef(repository?.provider),
+    });
+  } catch (err) {
+    console.warn("[thread-repo] could not resolve the sandbox's repository", {
+      branch,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return syntheticBranchToGitRef(branch);
+  }
+}
+
+/** The agent's own repo binding, when the agent belongs to `orgId`. */
+async function agentGithubRepo(
+  ctx: StudioContext,
+  virtualMcpId: string,
+  orgId: string,
+): Promise<GithubRepo | null> {
+  const agent = await ctx.storage.virtualMcps.findById(virtualMcpId, orgId);
+  if (!agent || agent.organization_id !== orgId) return null;
+  const repo = (agent.metadata as { githubRepo?: GithubRepo | null } | null)
+    ?.githubRepo;
+  return repo?.owner && repo?.name ? repo : null;
 }
 
 /**

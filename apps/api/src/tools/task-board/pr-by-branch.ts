@@ -36,6 +36,7 @@ import {
 } from "@/git-providers";
 import type { TaskBoardItem } from "@/storage/types";
 import {
+  flatSandboxRef,
   getThreadGithubRepo,
   getThreadHeadRef,
   resolveSandboxBranchForThread,
@@ -49,16 +50,18 @@ import { invalidatePrCards } from "./prs-get";
  * Two, because the daemon's checkout and the thread's record can legitimately
  * disagree: `headRef` is what a live daemon last reported (so it survives a
  * re-run that landed on a real PR branch), while the derived ref is what a
- * synthetic sandbox key clones onto. Deduped, and a non-synthetic key is
- * already a git ref — `syntheticBranchToGitRef` would mangle it, so it is used
- * as-is. Pure, so the derivation is unit-tested.
+ * synthetic sandbox key clones onto, in the form `opts` names for the
+ * repository's provider. Deduped, and a non-synthetic key is already a git
+ * ref — `syntheticBranchToGitRef` would mangle it, so it is used as-is. Pure,
+ * so the derivation is unit-tested.
  */
 export function candidateHeadRefs(
   branch: string,
   recordedHeadRef: string | null,
+  opts: { flat?: boolean } = {},
 ): string[] {
   const derived = branch.startsWith("thread:")
-    ? syntheticBranchToGitRef(branch)
+    ? syntheticBranchToGitRef(branch, opts)
     : branch;
   return [
     ...new Set([recordedHeadRef, derived].filter((r): r is string => !!r)),
@@ -99,10 +102,6 @@ export async function linkPrFromRunBranch(
         threadId,
         runBranch: thread?.branch,
       });
-      const refs = candidateHeadRefs(
-        branch,
-        await getThreadHeadRef(ctx, threadId),
-      );
       const client = await changeRequestClientForTarget(
         ctx,
         orgId,
@@ -115,6 +114,11 @@ export async function linkPrFromRunBranch(
         );
         continue;
       }
+      const refs = candidateHeadRefs(
+        branch,
+        await getThreadHeadRef(ctx, threadId),
+        { flat: flatSandboxRef(client.repo.provider) },
+      );
 
       for (const ref of refs) {
         /**
