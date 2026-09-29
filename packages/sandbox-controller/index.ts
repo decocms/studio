@@ -6,6 +6,12 @@ export {
   type ClaimPhase,
   type PortForwarder,
 } from "@decocms/sandbox/provider/agent-sandbox";
+export {
+  migrateRunnerStateStore,
+  postgresRunnerStateStore,
+  type PostgresRunnerStateStore,
+  type PostgresRunnerStateStoreOptions,
+} from "@decocms/sandbox/provider/postgres-state-store";
 export type {
   EnsureOptions,
   RunnerStatePut,

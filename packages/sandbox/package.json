@@ -15,6 +15,7 @@
     "./shared": "./shared.ts",
     "./provider": "./server/provider/index.ts",
     "./provider/agent-sandbox": "./server/provider/agent-sandbox/index.ts",
+    "./provider/postgres-state-store": "./server/provider/postgres-state-store.ts",
     "./provider/remote": "./server/provider/remote.ts",
     "./provider/sandbox-api": "./server/provider/sandbox-api.ts",
     "./provider/sandbox-server": "./server/provider/sandbox-server.ts",
@@ -34,6 +35,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "postgres": "^3.4.5",
     "typescript": "^7.0.2"
   }
 }
