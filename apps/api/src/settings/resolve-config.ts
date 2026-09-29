@@ -400,7 +400,6 @@ export function resolveConfig(
     ),
     agentSandboxEnabled: toBool(envVars.STUDIO_AGENT_SANDBOX_ENABLED),
     sandboxStickyHeadRefEnabled: toBool(envVars.SANDBOX_STICKY_HEAD_REF),
-    sandboxFlatGitlabRefsEnabled: toBool(envVars.SANDBOX_FLAT_GITLAB_REFS),
     taskBoardRerunReusesPrBranch: toBoolWithDefault(
       envVars.TASK_BOARD_RERUN_REUSES_PR_BRANCH,
       true,

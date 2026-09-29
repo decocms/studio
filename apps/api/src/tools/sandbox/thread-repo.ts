@@ -11,7 +11,6 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
-import { getSettings } from "@/settings";
 import type { Thread } from "@/storage/types";
 import {
   type GitProviderKind,
@@ -78,15 +77,11 @@ export function syntheticBranchToGitRef(
   return opts.flat ? `sandbox-thread-${body}` : `sandbox/thread-${body}`;
 }
 
-/**
- * Whether a sandbox on `provider`'s repository boots on the flat ref. GitLab
- * only, behind SANDBOX_FLAT_GITLAB_REFS: a sandbox's ref is the branch it
- * clones, restores and pushes.
- */
+/** Whether a sandbox on `provider`'s repository boots on the flat ref. */
 export function flatSandboxRef(
   provider: GitProviderKind | null | undefined,
 ): boolean {
-  return provider === "gitlab" && getSettings().sandboxFlatGitlabRefsEnabled;
+  return provider === "gitlab";
 }
 
 /**
@@ -100,9 +95,7 @@ export async function sandboxGitRef(
   branch: string,
   binding: GithubRepo | null,
 ): Promise<string> {
-  if (!binding || !getSettings().sandboxFlatGitlabRefsEnabled) {
-    return syntheticBranchToGitRef(branch);
-  }
+  if (!binding) return syntheticBranchToGitRef(branch);
   return syntheticBranchToGitRef(branch, {
     flat: flatSandboxRef(await bindingProvider(ctx, binding)),
   });
