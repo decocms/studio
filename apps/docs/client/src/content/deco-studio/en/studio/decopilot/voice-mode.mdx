@@ -52,12 +52,6 @@ Then enable **Settings → General → Voice mode** for the organization. The
 only the owning user can start a voice session for a writable, hosted chat.
 Native terminal chats and read-only chats do not offer this mode.
 
-For coding-agent project chats, `coding_agent_project_context` separately enables
-inheriting the project's repository and sandbox when the thread has no override.
-It defaults off and applies to text and voice. It fixes dispatches that otherwise
-start outside the existing checkout and repository tools that cannot find the
-project's running sandbox. No database migration is required.
-
 Optional variables:
 
 | Variable | Default | Purpose |

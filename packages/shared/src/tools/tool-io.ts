@@ -113,7 +113,6 @@ export interface StudioToolIO {
       flags?:
         | {
             voice_mode?: boolean | undefined;
-            coding_agent_project_context?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -192,7 +191,6 @@ export interface StudioToolIO {
       flags?:
         | {
             voice_mode?: boolean | undefined;
-            coding_agent_project_context?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -267,7 +265,6 @@ export interface StudioToolIO {
       flags?:
         | {
             voice_mode?: boolean | undefined;
-            coding_agent_project_context?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -2488,15 +2485,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -2552,10 +2549,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -2752,18 +2749,18 @@ export interface StudioToolIO {
                           cms?:
                             | "off"
                             | "manual"
-                            | "on"
                             | "auto"
+                            | "on"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
                                 | "automations"
                                 | "overview"
+                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
-                                | "assets"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -2819,10 +2816,10 @@ export interface StudioToolIO {
                 | (
                     | "automations"
                     | "overview"
+                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
-                    | "assets"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -2946,15 +2943,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3010,10 +3007,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3174,15 +3171,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3238,10 +3235,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3393,15 +3390,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3457,10 +3454,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3609,18 +3606,18 @@ export interface StudioToolIO {
                           cms?:
                             | "off"
                             | "manual"
-                            | "on"
                             | "auto"
+                            | "on"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
                                 | "automations"
                                 | "overview"
+                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
-                                | "assets"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -3676,10 +3673,10 @@ export interface StudioToolIO {
                 | (
                     | "automations"
                     | "overview"
+                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
-                    | "assets"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -3811,15 +3808,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3875,10 +3872,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -4028,15 +4025,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -4092,10 +4089,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -5356,15 +5353,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
+                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
+                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
-                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -5420,10 +5417,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
+                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
-                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
