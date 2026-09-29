@@ -94,6 +94,88 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   }
 });
 
+for (const flag of ["absent", "false"] as const) {
+  test(`ordinary text chat stays unchanged with voice_mode ${flag}`, async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const api = page.context().request;
+    const model = await startModel();
+    const voiceRequests: string[] = [];
+    page.on("request", (request) => {
+      if (
+        request.url().includes("elevenlabs") ||
+        request.url().includes("/voice/sessions")
+      )
+        voiceRequests.push(request.url());
+    });
+    try {
+      await configureModel(api, orgSlug, model.url);
+      if (flag === "false") await setVoiceFlag(api, orgSlug, false);
+      const settings = await callSelfMcpTool<{
+        flags: { voice_mode?: boolean } | null;
+      }>(api, orgSlug, "ORGANIZATION_SETTINGS_GET", {});
+      expect(settings.flags?.voice_mode).toBe(
+        flag === "false" ? false : undefined,
+      );
+      const { threadId, agentId } = await createThread(api, orgSlug);
+      await page.goto(
+        `/${orgSlug}/${threadId}?virtualmcpid=${agentId}&sidepanel=true`,
+      );
+      const input = page.locator('[data-chat-input="true"]');
+      await expect(input).toBeVisible({ timeout: 60_000 });
+      await expect(
+        page.getByRole("button", { name: "Start voice mode" }),
+      ).toHaveCount(0);
+      const turn = page.waitForRequest(
+        (request) =>
+          request.method() === "POST" &&
+          request.url().endsWith(`/threads/${threadId}/messages`),
+      );
+      await input.fill("Reply to this ordinary text message");
+      await input.press("Enter");
+      const request = await turn;
+      expect(request.postDataJSON()).not.toHaveProperty("voiceMode");
+      await expect(
+        page.getByText("Mensagem de voz recebida.", { exact: true }).last(),
+      ).toBeVisible({ timeout: 30_000 });
+      expect(model.prompts.length).toBeGreaterThan(0);
+      expect(model.prompts.join("\n")).not.toContain(
+        "This turn is a spoken conversation",
+      );
+      expect(model.prompts.join("\n")).not.toContain(
+        "Voice-only style instructions",
+      );
+      await input.fill("Keep my ordinary draft");
+      await page.reload();
+      await expect(input).toHaveText("Keep my ordinary draft", {
+        timeout: 60_000,
+      });
+      await expect(
+        page.getByRole("region", { name: "Voice conversation" }),
+      ).toHaveCount(0);
+      expect(voiceRequests).toEqual([]);
+      expect(
+        (
+          await api.post(`/api/${orgSlug}/threads/${threadId}/voice/sessions`)
+        ).status(),
+      ).toBe(403);
+      expect(
+        (
+          await api.post(
+            `/api/${orgSlug}/threads/${threadId}/voice/sessions/speech`,
+            {
+              data: { token: "invalid", text: "Hello" },
+            },
+          )
+        ).status(),
+      ).toBe(403);
+    } finally {
+      await model.close();
+    }
+  });
+}
+
 for (const harnessId of ["decopilot", "claude-code"]) {
   test(`voice UI preserves a draft on ${harnessId} when entering and leaving`, async ({
     authedPage,
