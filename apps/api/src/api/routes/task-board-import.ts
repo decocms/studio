@@ -60,6 +60,18 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *
  * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
  *
+ * The reply carries counts and `items`. The counts are `created`, `updated`
+ * and `delegated`, plus `dismissed`, `semantic_matches` and `quota_blocked`
+ * when they are not zero. `items` has one `{ index, outcome, id, key_seq }`
+ * entry per request item, in request order, and `id` and `key_seq` name the
+ * card the item created, refreshed, matched or was blocked by. `outcome` is
+ * the most specific label, so every `semantic_match` is also counted in
+ * `updated` and every `quota_blocked` in `created`. A `semantic_match` reads
+ * the same whether the import refreshed a reports card or left a human's card
+ * alone. A `quota_blocked` card exists, but the task quota refused its Super
+ * Agent delegation, so the import unassigned it. A replayed run_id wrote
+ * nothing and replies without `items`.
+ *
  * An item may carry `tags` — org tag NAMES the sender owns (the reports sync
  * labels every card `Report` plus the finding's domain, e.g. `SEO`, `GEO`,
  * `Performance`), so the board can filter a report's backlog by area. Names
@@ -87,6 +99,23 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
 type Variables = {
   studioContext: StudioContext;
 };
+
+type ImportItemOutcome =
+  | "created"
+  | "updated"
+  | "semantic_match"
+  | "dismissed"
+  | "quota_blocked";
+
+/** One entry of the reply's `items`; see the module note. */
+interface ImportItemResult {
+  index: number;
+  outcome: ImportItemOutcome;
+  id: string;
+  key_seq: number;
+}
+
+type CardRef = Pick<ImportItemResult, "id" | "key_seq">;
 
 /**
  * Finding identity for an item that carries no `externalKey`: the title with
@@ -291,16 +320,16 @@ export const createTaskBoardImportRoutes = () => {
       // suppress the finding.
       const keys = items.flatMap((i) => i.externalKey ?? []);
       const openByKey = new Map<string, string>();
-      const dismissed = new Set<string>();
+      const dismissedByKey = new Map<string, CardRef>();
 
       // Title-keyed fallback for items with no externalKey. Scoped to the org's
       // non-done cards and only paid for when some item actually lacks a key.
       const openByTitle = new Map<string, string>();
-      const dismissedTitles = new Set<string>();
+      const dismissedByTitle = new Map<string, CardRef>();
       if (items.some((i) => !i.externalKey)) {
         const rows = await trx
           .selectFrom("task_board_items")
-          .select(["id", "title", "status", "dismissed_at"])
+          .select(["id", "key_seq", "title", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
           .where((eb) =>
             eb.or([
@@ -311,8 +340,9 @@ export const createTaskBoardImportRoutes = () => {
           .execute();
         for (const row of rows) {
           const key = normalizeTitleKey(row.title);
-          if (row.dismissed_at) dismissedTitles.add(key);
-          else if (row.status !== "done" && !openByTitle.has(key)) {
+          if (row.dismissed_at) {
+            dismissedByTitle.set(key, { id: row.id, key_seq: row.key_seq });
+          } else if (row.status !== "done" && !openByTitle.has(key)) {
             openByTitle.set(key, row.id);
           }
         }
@@ -321,7 +351,7 @@ export const createTaskBoardImportRoutes = () => {
       if (keys.length > 0) {
         const rows = await trx
           .selectFrom("task_board_items")
-          .select(["id", "external_key", "status", "dismissed_at"])
+          .select(["id", "key_seq", "external_key", "status", "dismissed_at"])
           .where("organization_id", "=", organizationId)
           .where("external_key", "in", keys)
           .where((eb) =>
@@ -334,8 +364,12 @@ export const createTaskBoardImportRoutes = () => {
         for (const row of rows) {
           if (!row.external_key) continue;
           // Dismissal wins over an open card with the same key.
-          if (row.dismissed_at) dismissed.add(row.external_key);
-          else if (row.status !== "done")
+          if (row.dismissed_at) {
+            dismissedByKey.set(row.external_key, {
+              id: row.id,
+              key_seq: row.key_seq,
+            });
+          } else if (row.status !== "done")
             openByKey.set(row.external_key, row.id);
         }
       }
@@ -386,18 +420,16 @@ export const createTaskBoardImportRoutes = () => {
         return (await storage.getById(row.id, organizationId)) ?? row;
       };
       const touched: TaskBoardItem[] = [];
-      const delegations: TaskBoardItem[] = [];
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-      let semanticMatches = 0;
+      const delegations: { row: TaskBoardItem; result: ImportItemResult }[] =
+        [];
+      const results: ImportItemResult[] = [];
       for (const [index, item] of items.entries()) {
         const titleKey = normalizeTitleKey(item.title);
-        const isDismissed = item.externalKey
-          ? dismissed.has(item.externalKey)
-          : dismissedTitles.has(titleKey);
-        if (isDismissed) {
-          skipped++;
+        const dismissedCard = item.externalKey
+          ? dismissedByKey.get(item.externalKey)
+          : dismissedByTitle.get(titleKey);
+        if (dismissedCard) {
+          results.push({ index, outcome: "dismissed", ...dismissedCard });
           continue;
         }
         const existingId = item.externalKey
@@ -424,7 +456,12 @@ export const createTaskBoardImportRoutes = () => {
             "system",
           );
           touched.push(await withTags(row, item.tags));
-          updated++;
+          results.push({
+            index,
+            outcome: "updated",
+            id: row.id,
+            key_seq: row.keySeq,
+          });
           continue;
         }
         const match = item.externalKey ? undefined : semantic.get(index);
@@ -452,8 +489,12 @@ export const createTaskBoardImportRoutes = () => {
           });
           openByTitle.set(titleKey, match.item.id);
           touched.push(await withTags(row, item.tags));
-          updated++;
-          semanticMatches++;
+          results.push({
+            index,
+            outcome: "semantic_match",
+            id: row.id,
+            key_seq: row.keySeq,
+          });
           continue;
         }
         const toSuperAgent = item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
@@ -481,17 +522,16 @@ export const createTaskBoardImportRoutes = () => {
         if (item.externalKey) openByKey.set(item.externalKey, row.id);
         else openByTitle.set(titleKey, row.id);
         touched.push(await withTags(row, item.tags));
-        created++;
-        if (toSuperAgent) delegations.push(row);
+        const result: ImportItemResult = {
+          index,
+          outcome: "created",
+          id: row.id,
+          key_seq: row.keySeq,
+        };
+        results.push(result);
+        if (toSuperAgent) delegations.push({ row, result });
       }
-      return {
-        touched,
-        delegations,
-        created,
-        updated,
-        skipped,
-        semanticMatches,
-      };
+      return { touched, delegations, results };
     });
 
     if (!outcome)
@@ -505,14 +545,13 @@ export const createTaskBoardImportRoutes = () => {
     // no run behind it: un-assign it (the user sees the paywall when they
     // delegate it themselves) and report it apart from the ones that ran.
     let delegated = 0;
-    let quotaBlocked = 0;
-    for (const row of outcome.delegations) {
+    for (const { row, result } of outcome.delegations) {
       try {
         await reactToSuperAgentDelegation(ctx, row);
         delegated++;
       } catch (err) {
         if (!(err instanceof TaskQuotaError)) throw err;
-        quotaBlocked++;
+        result.outcome = "quota_blocked";
         await new TaskBoardStorage(ctx.db)
           .update(row.id, organizationId, { assigneeId: null }, "system")
           .then((updated) => emitTaskBoardUpdated(organizationId, updated))
@@ -522,17 +561,27 @@ export const createTaskBoardImportRoutes = () => {
       }
     }
 
+    const count = (...kinds: ImportItemOutcome[]) =>
+      outcome.results.filter((r) => kinds.includes(r.outcome)).length;
+    const counts = {
+      created: count("created", "quota_blocked"),
+      updated: count("updated", "semantic_match"),
+      dismissed: count("dismissed"),
+      semanticMatches: count("semantic_match"),
+      quotaBlocked: count("quota_blocked"),
+    };
+
     // Receiver's counterpart to the engine's diagnostic_tasks_pushed — join on run_id, never sum.
     captureOrgEvent({
       event: "task_board_import_landed",
       organizationId,
       properties: {
-        created: outcome.created,
-        updated: outcome.updated,
-        skipped: outcome.skipped,
-        semantic_matches: outcome.semanticMatches,
+        created: counts.created,
+        updated: counts.updated,
+        skipped: counts.dismissed,
+        semantic_matches: counts.semanticMatches,
         delegated,
-        quota_blocked: quotaBlocked,
+        quota_blocked: counts.quotaBlocked,
         ...(runId ? { run_id: runId } : {}),
         ...(parsed.data.source?.url
           ? { source_url: parsed.data.source.url }
@@ -541,16 +590,17 @@ export const createTaskBoardImportRoutes = () => {
     });
 
     return c.json({
-      created: outcome.created,
-      updated: outcome.updated,
+      created: counts.created,
+      updated: counts.updated,
       delegated,
       // Report the skips — a silent one reads as "imported everything".
-      ...(outcome.skipped > 0 && { dismissed: outcome.skipped }),
+      ...(counts.dismissed > 0 && { dismissed: counts.dismissed }),
       // How many of `updated` were folded by the model rather than an exact key.
-      ...(outcome.semanticMatches > 0 && {
-        semantic_matches: outcome.semanticMatches,
+      ...(counts.semanticMatches > 0 && {
+        semantic_matches: counts.semanticMatches,
       }),
-      ...(quotaBlocked > 0 && { quota_blocked: quotaBlocked }),
+      ...(counts.quotaBlocked > 0 && { quota_blocked: counts.quotaBlocked }),
+      items: outcome.results,
     });
   });
 

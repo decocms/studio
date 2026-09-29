@@ -3,6 +3,7 @@ import { OrganizationForm } from "@/components/settings/organization-form";
 import {
   BlocksEditorSettings,
   CodeAgentsSettings,
+  VoiceModeSettings,
 } from "@/components/settings/review-settings";
 import { DomainSettings } from "@/components/settings/domain-settings";
 import { DeleteOrganizationSection } from "@/components/settings/delete-organization-section";
@@ -32,6 +33,7 @@ export function OrgGeneralPage() {
               <>
                 <OrganizationForm />
                 <CodeAgentsSettings />
+                <VoiceModeSettings />
               </>
             )}
             <BlocksEditorSettings />

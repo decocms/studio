@@ -63,6 +63,7 @@ import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
 import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
+  flatSandboxRef,
   getThreadGithubRepo,
   getThreadGithubRepos,
   getThreadHeadRef,
@@ -641,7 +642,9 @@ async function provisionSandbox(params: StartParams): Promise<{
     const stickyHeadRef = getSettings().sandboxStickyHeadRefEnabled;
     const gitBranch = pickGitBranch({
       branch,
-      derivedRef: syntheticBranchToGitRef(branch),
+      derivedRef: syntheticBranchToGitRef(branch, {
+        flat: flatSandboxRef(repository?.provider),
+      }),
       recordedHeadRef: stickyHeadRef
         ? await getThreadHeadRef(ctx, threadIdFromBranch(branch))
         : null,

@@ -82,6 +82,7 @@ import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
+import { VoiceModeToggle } from "./voice";
 import { resolveComposerAction } from "./composer-action";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
@@ -908,6 +909,7 @@ export function ChatInput({
                     {/* Right Actions (model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
                       <TierTrigger />
+                      <VoiceModeToggle />
 
                       {/* Microphone button — always enabled; the composer has
                           no disabled state, only a streaming state reflected by

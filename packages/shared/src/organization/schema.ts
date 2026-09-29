@@ -155,6 +155,7 @@ export type DefaultHomeAgentsConfig = z.infer<
  * gets its own column instead.
  */
 export const OrgFlagsSchema = z.object({
+  voice_mode: z.boolean().optional(),
   home_task_intake_enabled: z
     .boolean()
     .optional()

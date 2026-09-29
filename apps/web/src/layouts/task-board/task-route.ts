@@ -6,7 +6,7 @@
  * board can resolve. Keeping them in one module is what keeps that true.
  */
 
-import { taskKey } from "@decocms/shared/task-key";
+import { parseTaskKeySeq, taskKey } from "@decocms/shared/task-key";
 import { matchesTaskKey } from "@/layouts/task-board/task-filters-core";
 
 /** A card, as far as its URL is concerned. */
@@ -60,4 +60,27 @@ export function findTaskByKeyOrId<T extends TaskRouteItem>(
     items.find((item) => matchesTaskKey(raw, item.keySeq)) ??
     items.find((item) => item.id === raw)
   );
+}
+
+/** A raw card id, as `generatePrefixedId("board")` mints it. */
+const BOARD_ID = /^board_[\w-]+$/;
+
+/** Far longer than any key or id the board mints. `parseTaskKeySeq` accepts
+ *  any run of digits, so the key pattern alone does not bound the length. */
+const MAX_SEGMENT_LENGTH = 64;
+
+/**
+ * `term`, trimmed, when it is shaped like a segment `findTaskByKeyOrId`
+ * resolves: a key (`DECO-01`, `deco-1`, `1`) or a raw card id. Null for
+ * anything else. Whether the card exists is left to the board.
+ *
+ * For a segment that arrives from outside the app, such as an MCP app's
+ * navigate request, so a route is only built from a card address.
+ */
+export function parseTaskRouteSegment(term: string): string | null {
+  const segment = term.trim();
+  if (segment.length > MAX_SEGMENT_LENGTH) return null;
+  return parseTaskKeySeq(segment) !== null || BOARD_ID.test(segment)
+    ? segment
+    : null;
 }

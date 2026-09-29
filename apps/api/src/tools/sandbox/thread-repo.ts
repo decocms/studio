@@ -11,7 +11,12 @@
  */
 
 import type { StudioContext } from "@/core/studio-context";
+import { getSettings } from "@/settings";
 import type { Thread } from "@/storage/types";
+import {
+  type GitProviderKind,
+  parseRepoUrl,
+} from "@decocms/shared/git-providers";
 import type {
   GithubRepo,
   SandboxMap,
@@ -60,10 +65,65 @@ export function threadBranch(
  * Deterministic (same synthetic key → same ref) so a reboot restores the same
  * branch. Only `thread:*` keys reach git: `ephemeral` sandboxes have no repo.
  *   thread:abc/conn_1 → sandbox/thread-abc-conn_1
+ *
+ * `flat` drops the slash: `sandbox-thread-abc-conn_1`. A GitLab project can
+ * protect every branch whose name contains a slash, with push set to No one,
+ * which refuses the push for every role. See {@link flatSandboxRef}.
  */
-export function syntheticBranchToGitRef(branch: string): string {
+export function syntheticBranchToGitRef(
+  branch: string,
+  opts: { flat?: boolean } = {},
+): string {
   const body = branch.replace(/^thread:/, "").replace(/\//g, "-");
-  return `sandbox/thread-${body}`;
+  return opts.flat ? `sandbox-thread-${body}` : `sandbox/thread-${body}`;
+}
+
+/**
+ * Whether a sandbox on `provider`'s repository boots on the flat ref. GitLab
+ * only, behind SANDBOX_FLAT_GITLAB_REFS: a sandbox's ref is the branch it
+ * clones, restores and pushes.
+ */
+export function flatSandboxRef(
+  provider: GitProviderKind | null | undefined,
+): boolean {
+  return provider === "gitlab" && getSettings().sandboxFlatGitlabRefsEnabled;
+}
+
+/**
+ * {@link syntheticBranchToGitRef} for the sandbox that clones `binding`, for a
+ * caller holding the binding but not its repository row. The URL names the
+ * provider of every public host; only a self-hosted one costs a lookup, by
+ * primary key. Never throws: an unreadable row keeps the slash form.
+ */
+export async function sandboxGitRef(
+  ctx: StudioContext,
+  branch: string,
+  binding: GithubRepo | null,
+): Promise<string> {
+  if (!binding || !getSettings().sandboxFlatGitlabRefsEnabled) {
+    return syntheticBranchToGitRef(branch);
+  }
+  return syntheticBranchToGitRef(branch, {
+    flat: flatSandboxRef(await bindingProvider(ctx, binding)),
+  });
+}
+
+async function bindingProvider(
+  ctx: StudioContext,
+  binding: GithubRepo,
+): Promise<GitProviderKind | null> {
+  // Stored JSON: a binding written before `url` was required has none.
+  const fromUrl =
+    typeof binding.url === "string"
+      ? parseRepoUrl(binding.url)?.provider
+      : undefined;
+  if (fromUrl) return fromUrl;
+  const orgId = ctx.storage.threads.getOrganizationId();
+  if (!binding.repositoryId || !orgId) return null;
+  const repository = await ctx.storage.repositories
+    .get(binding.repositoryId, orgId)
+    .catch(() => null);
+  return repository?.provider ?? null;
 }
 
 /**

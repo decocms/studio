@@ -40,6 +40,7 @@ export const StreamRequestSchema = z
       })
       .loose(),
     stream: z.boolean().optional(),
+    voiceMode: z.boolean().optional(),
     temperature: z.number().default(0.5),
     thread_id: z.string().optional(),
     /**

@@ -1,4 +1,7 @@
 export const settings = {
+  "settings.voice.title": "Voice mode",
+  "settings.voice.description":
+    "Let members talk to agents in chats. Requires ElevenLabs to be configured on this Studio deployment.",
   "settings.title": "Profile & Preferences",
   "settings.nav.organization": "Organization",
   "settings.nav.build": "Build",

@@ -245,7 +245,11 @@ async function recordDaemonHeadRef(args: {
     const status = JSON.parse(body) as DaemonHeadStatus;
     const headRef = pickRecordableHeadRef({
       status,
-      requestedRef: syntheticBranchToGitRef(branch),
+      // Both forms, so telling which one this sandbox booted on costs no lookup.
+      requestedRefs: [
+        syntheticBranchToGitRef(branch),
+        syntheticBranchToGitRef(branch, { flat: true }),
+      ],
     });
     if (!headRef) return;
     await setThreadHeadRef(ctx, threadId, headRef);

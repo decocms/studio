@@ -14,6 +14,7 @@ import {
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { Chat, useChatTask } from "@/components/chat/index";
 import { ChatSidePanel } from "@/components/chat/side-panel-chat";
+import { ChatVoiceProvider } from "@/components/chat/voice";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { isModKey } from "@/lib/keyboard-shortcuts";
 import { AlertCircle } from "@untitledui/icons";
@@ -732,21 +733,23 @@ function ThreadSessionProvider() {
         virtualMcpId={virtualMcpId}
         task={ensureState.status === "ready" ? ensureState.task : null}
       >
-        <VmEventsBridge
-          virtualMcpId={virtualMcpId}
-          hasActiveGithubRepo={hasActiveGithubRepo}
-          sandboxMap={entity.metadata?.sandboxMap}
-        >
-          <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>
-            <MainPanelBoundary>
-              <ThreadSessionContent
-                layout={layout}
-                onNewTaskRef={onNewTask}
-                createNewTask={createNewTask}
-              />
-            </MainPanelBoundary>
-          </ActiveTaskRuntimeProvider>
-        </VmEventsBridge>
+        <ChatVoiceProvider layout={layout}>
+          <VmEventsBridge
+            virtualMcpId={virtualMcpId}
+            hasActiveGithubRepo={hasActiveGithubRepo}
+            sandboxMap={entity.metadata?.sandboxMap}
+          >
+            <ActiveTaskRuntimeProvider key={providerKey} threadId={threadId}>
+              <MainPanelBoundary>
+                <ThreadSessionContent
+                  layout={layout}
+                  onNewTaskRef={onNewTask}
+                  createNewTask={createNewTask}
+                />
+              </MainPanelBoundary>
+            </ActiveTaskRuntimeProvider>
+          </VmEventsBridge>
+        </ChatVoiceProvider>
       </Chat.Provider>
     </div>
   );

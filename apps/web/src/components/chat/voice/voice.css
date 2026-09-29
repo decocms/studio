@@ -1,0 +1,40 @@
+.studio-voice-orb {
+  width: clamp(110px, 45cqw, 180px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 25%,
+    var(--color-background),
+    var(--color-primary) 50%,
+    var(--color-foreground)
+  );
+  box-shadow: 0 0 45px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  transition:
+    transform 100ms ease-out,
+    opacity 200ms;
+  animation: studio-voice-breathe 4s ease-in-out infinite;
+}
+.studio-voice-orb[data-phase="speaking"] {
+  animation-duration: 900ms;
+}
+.studio-voice-orb[data-phase="working"],
+.studio-voice-orb[data-phase="connecting"] {
+  animation-duration: 1.8s;
+}
+.studio-voice-orb[data-muted="true"],
+.studio-voice-orb[data-phase="error"] {
+  opacity: 0.4;
+  animation: none;
+}
+@keyframes studio-voice-breathe {
+  50% {
+    border-radius: 45% 55% 53% 47% / 52% 43% 57% 48%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-voice-orb {
+    animation: none;
+    transition: none;
+    transform: none !important;
+  }
+}
