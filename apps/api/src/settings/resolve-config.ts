@@ -246,10 +246,9 @@ export function resolveConfig(
     ),
     dataDir,
     voiceConversationProvider: voiceProvider,
-    openaiRealtimeApiKey: envVars.OPENAI_REALTIME_API_KEY,
-    openaiRealtimeModel:
-      envVars.OPENAI_REALTIME_MODEL?.trim() || "gpt-realtime-2.1",
-    openaiRealtimeVoice: envVars.OPENAI_REALTIME_VOICE?.trim() || "marin",
+    openaiLiveApiKey: envVars.OPENAI_LIVE_API_KEY,
+    openaiLiveModel: envVars.OPENAI_LIVE_MODEL?.trim() || "gpt-live-1",
+    openaiLiveVoice: envVars.OPENAI_LIVE_VOICE?.trim() || "marin",
     elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
     elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
     elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",

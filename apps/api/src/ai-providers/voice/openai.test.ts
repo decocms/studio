@@ -1,34 +1,22 @@
 import { expect, test } from "bun:test";
 import { openAIConversationConfig } from "./openai";
-import { voiceConversationConfig } from "./conversation-config";
 import { resolveConfig } from "../../settings/resolve-config";
 import { VoiceSessionSchema } from "@decocms/shared/voice";
 
 const flags = { port: "", home: "", localMode: false, skipMigrations: false };
 
-test("OpenAI session configuration preserves the same delegation contract as ElevenLabs", () => {
-  const openai = openAIConversationConfig({
-    model: "gpt-realtime-2.1",
+test("OpenAI Live delegates to the existing agent without registering Realtime tools", () => {
+  const config = openAIConversationConfig({
+    model: "gpt-live-1",
     voice: "marin",
     language: "pt",
   });
-  const elevenlabs = voiceConversationConfig({
-    model: "speech-example",
-    voiceId: "voice-example",
-    conversationModel: "conversation-example",
-  });
-  expect(
-    openai.session.tools.map(({ name, parameters }) => ({ name, parameters })),
-  ).toEqual(
-    elevenlabs.conversation_config.agent.prompt.tools.map(
-      ({ name, parameters }) => ({ name, parameters }),
-    ),
-  );
-  expect(openai.session.instructions).toContain("Portuguese");
-  expect(openai.session.audio.input.turn_detection.interrupt_response).toBe(
-    true,
-  );
-  expect(openai.expires_after.seconds).toBe(60);
+  expect(config.delegation).toEqual({ type: "client" });
+  expect(config.instructions).toContain("Portuguese");
+  expect(config.instructions).toContain("Claude Code");
+  expect(config).not.toHaveProperty("tools");
+  expect(config).not.toHaveProperty("type");
+  expect(config.store).toBe(false);
 });
 
 test("provider selection is explicit and rejects unsupported values", () => {
@@ -37,13 +25,13 @@ test("provider selection is explicit and rejects unsupported values", () => {
   );
   const { settings } = resolveConfig(flags, {
     VOICE_CONVERSATION_PROVIDER: "openai",
-    OPENAI_REALTIME_API_KEY: "synthetic-key",
-    OPENAI_REALTIME_MODEL: " model-example ",
-    OPENAI_REALTIME_VOICE: "cedar",
+    OPENAI_LIVE_API_KEY: "synthetic-key",
+    OPENAI_LIVE_MODEL: " model-example ",
+    OPENAI_LIVE_VOICE: "cedar",
   });
   expect(settings.voiceConversationProvider).toBe("openai");
-  expect(settings.openaiRealtimeModel).toBe("model-example");
-  expect(settings.openaiRealtimeVoice).toBe("cedar");
+  expect(settings.openaiLiveModel).toBe("model-example");
+  expect(settings.openaiLiveVoice).toBe("cedar");
   expect(settings.elevenlabsApiKey).toBeUndefined();
   expect(() =>
     resolveConfig(flags, { VOICE_CONVERSATION_PROVIDER: "unknown" }),
@@ -62,13 +50,13 @@ test("bootstrap accepts both providers and legacy ElevenLabs responses without m
     VoiceSessionSchema.parse({
       ...grant,
       provider: "openai",
-      clientSecret: "synthetic-openai-token",
+      transport: "webrtc",
       conversationToken: "wrong-provider-token",
     }),
   ).toEqual({
     ...grant,
     provider: "openai",
-    clientSecret: "synthetic-openai-token",
+    transport: "webrtc",
   });
   expect(
     VoiceSessionSchema.safeParse({

@@ -8,6 +8,11 @@ export interface SpeechAdapter {
 
 /** Providers own speech; Studio owns work, permissions, and history. */
 export interface ConversationAdapter {
+  negotiate?(input: {
+    sdp: string;
+    language: "en" | "pt";
+    safetyIdentifier: string;
+  }): Promise<{ sdp: string }>;
   createSession(input: {
     language: "en" | "pt";
     safetyIdentifier: string;

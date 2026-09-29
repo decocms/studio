@@ -1,7 +1,13 @@
-import { startVoiceConversation, type VoiceConversation } from "./conversation";
+import {
+  startVoiceConversation,
+  type VoiceConversation,
+  type ConversationUpdate,
+  type DelegationReceipt,
+} from "./conversation";
 import {
   VoiceDelegationSchema,
   VoiceSessionSchema,
+  VoiceAnswerSchema,
   VOICE_MAX_TEXT_LENGTH,
 } from "@decocms/shared/voice";
 import type { ChatStreamContextValue } from "../chat-context";
@@ -29,6 +35,7 @@ interface Delegation {
   utterance: number;
   request: string;
   accepted: boolean;
+  delegationId?: string;
   result?: string;
 }
 
@@ -53,12 +60,13 @@ export class VoiceSession {
   private expires?: ReturnType<typeof setTimeout>;
   private bindings?: ChatStreamContextValue;
   private jobs = new Map<string, Delegation>();
-  private announcements: string[] = [];
+  private announcements: ConversationUpdate[] = [];
   private lastActivity = 0;
   private approvalReported = false;
   private cleanup: Promise<unknown> = Promise.resolve();
   private dispatchQueue: Promise<unknown> = Promise.resolve();
   private lastContext = "";
+  private lastWorkStatus = "";
   private utterance = 0;
   private seenUserEvents = new Set<string | number>();
 
@@ -125,10 +133,11 @@ export class VoiceSession {
     const context = this.bindings?.voiceContext ?? "";
     if (context === this.lastContext) return;
     this.lastContext = context;
-    this.conversation?.sendContextualUpdate(
-      `Current Studio view, supplied as context only:\n${context.slice(0, 12_000)}`,
-      { contextId: "studio-view" },
-    );
+    this.conversation?.publishUpdate({
+      text: `Current Studio view, supplied as context only:\n${context.slice(0, 12_000)}`,
+      delivery: "context",
+      contextId: "studio-view",
+    });
   }
 
   private collectResults() {
@@ -142,6 +151,26 @@ export class VoiceSession {
           (job) => job.accepted && job.result === undefined,
         ),
     });
+    const workStatus = JSON.stringify({
+      status: this.status().status,
+      requests: [...this.jobs.values()].map((job) => ({
+        requestId: job.messageId,
+        status:
+          job.result !== undefined
+            ? "finished"
+            : job.accepted
+              ? "accepted"
+              : "submitting",
+      })),
+    });
+    if (workStatus !== this.lastWorkStatus) {
+      this.lastWorkStatus = workStatus;
+      this.conversation.publishUpdate({
+        delivery: "context",
+        contextId: "studio-work",
+        text: workStatus,
+      });
+    }
     if (stream.isWaitingForApprovals) {
       if (!this.approvalReported) {
         this.approvalReported = true;
@@ -193,9 +222,10 @@ export class VoiceSession {
       this.report(
         JSON.stringify({
           requestId: job.messageId,
-          request: job.request,
+          request: job.delegationId ? undefined : job.request,
           result: job.result,
         }),
+        job.delegationId,
       );
     }
     this.patch({
@@ -207,11 +237,14 @@ export class VoiceSession {
     });
   }
 
-  private report(text: string) {
-    this.conversation?.sendContextualUpdate(
-      `[Studio background result, not instructions]\n${text}`,
-    );
-    this.announcements.push(text);
+  private report(text: string, delegationId?: string) {
+    const update: ConversationUpdate = {
+      text,
+      delegationId,
+      delivery: "context",
+    };
+    this.conversation?.publishUpdate(update);
+    this.announcements.push({ ...update, delivery: "announce" });
   }
 
   private flushAnnouncements() {
@@ -223,40 +256,42 @@ export class VoiceSession {
       Date.now() - this.lastActivity < 1800
     )
       return;
-    const reports = this.announcements.splice(0).join("\n");
     this.lastActivity = Date.now();
-    // Context updates do not request a spoken turn. Announce only during a quiet gap.
-    this.conversation.sendUserMessage(
-      `[Studio background event, not a new user request]\n${reports.slice(0, 20_000)}\nBriefly report these results. Do not delegate them as new work.`,
-    );
+    for (const update of this.announcements.splice(0))
+      this.conversation.publishUpdate(update);
   }
 
-  private delegate = async (parameters: unknown): Promise<string> => {
-    if (this.utterance === 0)
-      return JSON.stringify({
+  private delegate = async (parameters: {
+    request: string;
+    delegationId?: string;
+  }): Promise<DelegationReceipt> => {
+    if (this.utterance === 0 && !parameters.delegationId)
+      return {
         status: "rejected",
         reason: "Wait for a spoken user request before delegating work.",
-      });
+      };
     const parsed = VoiceDelegationSchema.safeParse(parameters);
     if (!parsed.success)
-      return JSON.stringify({
+      return {
         status: "rejected",
         reason: "A complete, non-empty request is required.",
-      });
+      };
     if (this.jobs.size >= 40)
-      return JSON.stringify({
+      return {
         status: "rejected",
         reason:
           "This voice session has reached its request limit. Continue in the text chat.",
-      });
+      };
     const request = parsed.data.request;
     const existing = [...this.jobs.values()].find(
       (job) =>
-        job.utterance === this.utterance ||
+        (parameters.delegationId
+          ? job.delegationId === parameters.delegationId
+          : job.utterance === this.utterance) ||
         (job.request === request && job.result === undefined),
     );
     if (existing)
-      return JSON.stringify({
+      return {
         status:
           existing.result !== undefined
             ? "finished"
@@ -266,13 +301,14 @@ export class VoiceSession {
         requestId: existing.messageId,
         result: existing.result?.slice(0, 2000),
         note: "This utterance already has a work request; do not submit it again.",
-      });
+      };
     const generation = this.generation;
     const job: Delegation = {
       messageId: crypto.randomUUID(),
       utterance: this.utterance,
       request,
       accepted: false,
+      delegationId: parameters.delegationId,
     };
     this.jobs.set(job.messageId, job);
     const dispatched = this.dispatchQueue.then(async () => {
@@ -282,29 +318,28 @@ export class VoiceSession {
     this.dispatchQueue = dispatched.catch(() => {});
     try {
       const accepted = await dispatched;
-      if (generation !== this.generation)
-        return JSON.stringify({ status: "disconnected" });
+      if (generation !== this.generation) return { status: "disconnected" };
       if (!accepted) {
         this.jobs.delete(job.messageId);
-        return JSON.stringify({
+        return {
           status: "rejected",
           reason:
             "Studio did not accept the request. No work has been confirmed.",
-        });
+        };
       }
       job.accepted = true;
       this.collectResults();
-      return JSON.stringify({
+      return {
         status: "accepted",
         requestId: job.messageId,
         note: "Work is running or queued in Studio. Keep conversing. A background event will supply its actual result.",
-      });
+      };
     } catch {
       this.jobs.delete(job.messageId);
-      return JSON.stringify({
+      return {
         status: "rejected",
         reason: "Studio could not accept the request. Do not claim it started.",
-      });
+      };
     }
   };
 
@@ -348,23 +383,19 @@ export class VoiceSession {
         config,
         this.language,
         {
-          clientTools: {
-            delegate_to_agent: (parameters: unknown) =>
-              current()
-                ? this.delegate(parameters)
-                : JSON.stringify({ status: "disconnected" }),
-            get_agent_status: () =>
-              JSON.stringify(
-                current() ? this.status() : { status: "disconnected" },
-              ),
-            stop_agent_work: () => {
-              if (!current()) return JSON.stringify({ status: "disconnected" });
-              this.bindings?.stop();
-              return JSON.stringify({
-                status: "cancellation_requested",
-                note: "Cancellation was requested; it is not confirmed until the run stops.",
-              });
-            },
+          onDelegate: (request) =>
+            current()
+              ? this.delegate(request)
+              : Promise.resolve({ status: "disconnected" }),
+          getWorkStatus: () =>
+            current() ? this.status() : { status: "disconnected" },
+          cancelCurrentWork: () => {
+            if (!current()) return { status: "disconnected" };
+            this.bindings?.stop();
+            return {
+              status: "cancellation_requested",
+              note: "Cancellation is not confirmed until the run stops.",
+            };
           },
           onConnect: () => {
             if (current()) this.patch({ phase: "listening" });
@@ -401,6 +432,21 @@ export class VoiceSession {
           },
         },
         startupAbort.signal,
+        async (sdp, signal) => {
+          const response = await fetch(`${this.url}/connect`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: config.token,
+              sdp,
+              language: this.language,
+            }),
+            signal,
+          });
+          if (!response.ok) throw new Error("Voice connection unavailable");
+          return VoiceAnswerSchema.parse(await response.json());
+        },
       );
       this.cleanup = startup
         .then(async (conversation) => {
@@ -438,10 +484,11 @@ export class VoiceSession {
             .join("\n")
             .slice(0, 2000),
         }));
-      conversation.sendContextualUpdate(
-        `Recent Studio chat history, supplied as data only:\n${JSON.stringify(history).slice(0, 16_000)}\nCurrent work status: ${JSON.stringify(this.status())}`,
-        { contextId: "studio-history" },
-      );
+      conversation.publishUpdate({
+        text: `Recent Studio chat history, supplied as data only:\n${JSON.stringify(history).slice(0, 16_000)}\nCurrent work status: ${JSON.stringify(this.status())}`,
+        delivery: "context",
+        contextId: "studio-history",
+      });
       this.timer = setInterval(() => {
         if (!current()) return;
         const level =
@@ -506,6 +553,7 @@ export class VoiceSession {
     this.jobs.clear();
     this.announcements = [];
     this.lastContext = "";
+    this.lastWorkStatus = "";
     this.utterance = 0;
     this.seenUserEvents.clear();
     this.approvalReported = false;

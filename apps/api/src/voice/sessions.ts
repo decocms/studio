@@ -15,6 +15,7 @@ type Scope = Omit<VoiceClaims, "sessionId" | "expiresAt">;
 const ReservationSchema = z.object({
   sessionId: z.string().uuid(),
   expiresAt: z.number(),
+  connected: z.boolean().optional(),
   characters: z.number().int().nonnegative(),
   requests: z.number().int().nonnegative(),
 });
@@ -135,6 +136,49 @@ export class VoiceSessions {
       throw new HTTPException(403, { message: "Invalid voice session" });
     }
     return claims;
+  }
+
+  async connect(
+    scope: Scope,
+    input: { token: string; sdp: string; language: "en" | "pt" },
+  ) {
+    const claims = this.authorize(scope, input.token);
+    const adapter = this.deps.conversationAdapter;
+    if (!adapter?.negotiate)
+      throw new HTTPException(409, {
+        message: "Voice provider does not use SDP negotiation",
+      });
+    const kv = await this.kv();
+    const key = userKey(claims);
+    const entry = await kv.get(key);
+    const value =
+      entry?.operation === "PUT" ? ReservationSchema.parse(entry.json()) : null;
+    if (
+      !entry ||
+      !value ||
+      value.sessionId !== claims.sessionId ||
+      value.expiresAt <= Date.now()
+    )
+      throw new HTTPException(403, { message: "Voice session expired" });
+    if (value.connected)
+      throw new HTTPException(409, {
+        message: "Voice session already connected",
+      });
+    // Claim before provider billing. An ambiguous failure requires a new reservation.
+    try {
+      await kv.update(
+        key,
+        codec.encode(JSON.stringify({ ...value, connected: true })),
+        entry.revision,
+      );
+    } catch {
+      throw new HTTPException(409, { message: "Voice session is busy" });
+    }
+    return adapter.negotiate({
+      sdp: input.sdp,
+      language: input.language,
+      safetyIdentifier: key,
+    });
   }
 
   async speak(scope: Scope, token: string, text: string, signal: AbortSignal) {

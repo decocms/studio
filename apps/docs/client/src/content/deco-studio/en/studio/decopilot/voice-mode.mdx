@@ -21,7 +21,7 @@ Choose **Start voice mode** beside the composer and allow microphone access.
 **Back to chat** stops the microphone and playback. It preserves the chat and
 any running work. **Stop agent work** is a separate control. Speaking while a
 reply plays interrupts the audio. Complete work requests join the chat's normal
-queue; pauses, greetings, and progress questions do not start coding turns.
+queue; pauses and greetings do not start coding turns. ElevenLabs can answer current-chat status locally; GPT-Live delegates fresh status questions to the working agent.
 Approvals, questions, errors, and queued requests remain visible in voice mode.
 
 The companion acknowledges accepted work without claiming it has finished. When
@@ -39,11 +39,30 @@ independent tasks, and then ask about their progress while discussing another to
 The Super Agent must have access to the relevant integrations. GA4 can answer
 analytics questions; fulfillment or order status requires a connected order system.
 
-The companion's status tool tracks requests in the current chat, not all task-board
+The ElevenLabs companion's status tool tracks requests in the current chat, not all task-board
 items. Fresh status for independent tasks is another request to the Super Agent.
-Automatic voice announcements for every independent task-board update are not
-implemented. Work in the current chat uses its existing queue, so a fresh lookup
+If the agent creates tasks 1, 2, and 3 during this call, their creation can be
+announced from the chat result. Their later completion is not yet pushed into
+voice automatically; ask the Super Agent for fresh status. Work in the current chat uses its existing queue, so a fresh lookup
 can wait behind an active turn even while the voice conversation remains responsive.
+
+## Shared conversation interface
+
+Both browser adapters implement `publishUpdate`, microphone controls, volume,
+and session close, and report requests through `onDelegate`. Updates distinguish
+quiet context from spoken announcements and can carry a delegation ID. This lets
+Studio deliver several tasks' progress or results independently and out of order.
+OpenAI maps these to Live thinking/commentary appends; ElevenLabs maps them to
+contextual updates and explicitly labeled background messages. Provider tool names
+and event schemas stay inside the adapters.
+
+The intended subscription scope is tasks started or explicitly discussed in this
+call. An unrelated task finishing elsewhere should remain silent. The interface
+can carry these updates, but the current producer observes the active chat only.
+The remaining implementation gap is recording the relevant task IDs and filtering
+the existing task-board push events to that set. Re-entering voice would also need
+to restore the chosen task set. A task-creation turn finishing does not establish
+that the created tasks finished.
 
 ## Deployment setup
 
@@ -67,11 +86,12 @@ To use OpenAI instead, configure:
 
 ```bash
 VOICE_CONVERSATION_PROVIDER=openai
-OPENAI_REALTIME_API_KEY=<openai-api-key>
+OPENAI_LIVE_API_KEY=<openai-api-key>
 ```
 
-The OpenAI adapter uses the Realtime API directly, with short-lived client secrets
-and browser WebRTC. It does not require an ElevenLabs key. Keep the ElevenLabs key
+The OpenAI adapter uses GPT-Live with client delegation and browser WebRTC.
+Studio negotiates the SDP offer on its authenticated API using a single-use
+session reservation. The browser receives an SDP answer, not an OpenAI credential. It does not require an ElevenLabs key. Keep the ElevenLabs key
 during a rolling deployment if older browsers still use the transcription/synthesis
 endpoints. The long-lived OpenAI key stays on the API server. Provider selection
 never falls back silently to the other provider when credentials are missing.
@@ -86,8 +106,8 @@ Optional variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VOICE_CONVERSATION_PROVIDER` | `elevenlabs` | `elevenlabs` or `openai` |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | OpenAI Realtime model |
-| `OPENAI_REALTIME_VOICE` | `marin` | OpenAI Realtime voice |
+| `OPENAI_LIVE_MODEL` | `gpt-live-1` | OpenAI Live model |
+| `OPENAI_LIVE_VOICE` | `marin` | OpenAI Live voice |
 | `ELEVENLABS_VOICE_MODEL` | `eleven_v4_turbo` | Speech synthesis model |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice |
 | `ELEVENLABS_CONVERSATION_MODEL` | `gemini-2.5-flash` | Conversational LLM model ID supported by ElevenLabs |
@@ -102,21 +122,27 @@ the selected coding agent or its model. Unset or blank values use the default.
 
 The browser closes sessions after ten minutes, with one active session per
 user per organization. ElevenLabs also enforces that limit at the provider. For
-OpenAI, ten minutes is a Studio browser limit, not a provider-enforced session limit;
-client-secret expiration limits when a connection can start, not its duration.
+OpenAI, ten minutes is a Studio browser limit, not a provider-enforced session limit.
 Up to 40 work requests can be delegated in one session. An interrupted browser that
 cannot release its reservation may need to wait for that expiry before reconnecting.
 The selected voice provider bills the conversation to the deployment's account.
 ElevenLabs defaults to Gemini 2.5 Flash for conversation, with no separate model key.
-OpenAI uses its configured Realtime model for speech-to-speech conversation.
+OpenAI uses its configured Live model for speech-to-speech conversation.
 Studio's model usage accounting continues to cover the working agent's model calls.
 
 Microphone audio and streamed replies travel directly between the browser and
 the selected provider over WebRTC. ElevenLabs uses Scribe transcription and its
-configured speech synthesis model. OpenAI uses semantic voice activity detection
-and native audio responses; input transcription supplies the visible transcript. Client tools submit work through the existing
-chat API, read work status, or request cancellation when explicitly asked. They
-return after acceptance; long coding tasks do not hold a voice tool call open.
+configured speech synthesis model. GPT-Live handles simultaneous listening and
+speaking, and emits transcript fragments and delegation IDs. Its adapter assembles
+new spoken requests with earlier conversational context and submits them through
+the same chat API. A delegation event is required; transcript fragments alone never
+start work. A short settling window allows delayed fragments to arrive, but provider
+transcripts have no completed-turn marker, so this needs evaluation with real audio.
+ElevenLabs client tools submit requests, read current-chat status, and request cancellation.
+GPT-Live delegates status and cancellation requests to the working agent, so those
+requests can wait behind active work. The visible Stop agent work control remains
+available to cancel the current run immediately. Neither provider waits for long
+coding tasks before continuing the spoken conversation.
 Results arrive through Studio's existing chat stream and are supplied to the
 companion as context. The browser requests a spoken announcement when the user
 is quiet. Permission and approval checks stay in the normal Studio path.
@@ -151,10 +177,11 @@ E2E_VOICE_LIVE=1 E2E_VOICE_WAV=/tmp/synthetic-utterance.wav \
 
 The live case uses the real speech service and an HTTP model stand-in, and
 checks that the companion responds while the working model is delayed, announces
-its result, and returns to text in the same chat. With `E2E_VOICE_FOLLOWUP=1`, use
+its result, and returns to text in the same chat. For ElevenLabs, with `E2E_VOICE_FOLLOWUP=1`, use
 a WAV containing a work request followed by a progress question; the test also
 checks that the second spoken answer arrives before work completes without
-submitting another coding turn.
+submitting another coding turn. GPT-Live delegates fresh status requests, so that
+optional assertion is not a provider-parity check.
 
 The daemon suite also exercises the real Claude Code executable and SDK against
 an HTTP model stand-in. It starts in text, changes a file in voice mode, and

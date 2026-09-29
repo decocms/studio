@@ -21,9 +21,9 @@ export interface Settings {
 
   // Voice
   voiceConversationProvider: "elevenlabs" | "openai";
-  openaiRealtimeApiKey: string | undefined;
-  openaiRealtimeModel: string;
-  openaiRealtimeVoice: string;
+  openaiLiveApiKey: string | undefined;
+  openaiLiveModel: string;
+  openaiLiveVoice: string;
   elevenlabsApiKey: string | undefined;
   elevenlabsVoiceId: string;
   elevenlabsVoiceModel: string;

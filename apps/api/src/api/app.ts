@@ -2317,11 +2317,11 @@ export async function createApp(options: CreateAppOptions = {}) {
     : null;
   const conversationAdapter =
     voiceSettings.voiceConversationProvider === "openai"
-      ? voiceSettings.openaiRealtimeApiKey
+      ? voiceSettings.openaiLiveApiKey
         ? new OpenAIConversationAdapter({
-            apiKey: voiceSettings.openaiRealtimeApiKey,
-            model: voiceSettings.openaiRealtimeModel,
-            voice: voiceSettings.openaiRealtimeVoice,
+            apiKey: voiceSettings.openaiLiveApiKey,
+            model: voiceSettings.openaiLiveModel,
+            voice: voiceSettings.openaiLiveVoice,
           })
         : null
       : speechAdapter

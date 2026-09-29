@@ -74,6 +74,13 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   const path = `/api/${orgSlug}/threads/${threadId}/voice/sessions`;
   expect((await api.post(path)).status()).toBe(403);
   expect(
+    (
+      await api.post(`${path}/connect`, {
+        data: { token: "invalid", sdp: "v=0" },
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
     (await api.post(path, { data: { mode: "conversation" } })).status(),
   ).toBe(403);
   const voiceTurn = await api.post(
@@ -90,12 +97,27 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   const outsider = await newApiContext(playwright);
   try {
     expect((await outsider.post(path)).status()).toBe(401);
+    expect((await outsider.post(`${path}/connect`)).status()).toBe(401);
     await signUpViaApi(outsider);
     expect((await outsider.post(path)).status()).toBe(403);
+    expect((await outsider.post(`${path}/connect`)).status()).toBe(403);
   } finally {
     await outsider.dispose();
   }
   await setVoiceFlag(api, orgSlug, true);
+  for (const data of [
+    { token: "invalid", sdp: "" },
+    { token: "invalid", sdp: "x".repeat(100_001) },
+    { token: "invalid", sdp: "v=0", provider: "openai" },
+  ])
+    expect((await api.post(`${path}/connect`, { data })).status()).toBe(400);
+  expect(
+    (
+      await api.post(`${path}/connect`, {
+        data: { token: "invalid", sdp: "v=0" },
+      })
+    ).status(),
+  ).toBe(403);
   for (const data of [
     { mode: "unknown" },
     { mode: "conversation", language: "unsupported" },
@@ -105,6 +127,68 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   ]) {
     expect((await api.post(path, { data })).status()).toBe(400);
   }
+});
+
+test("OpenAI reservations remain scoped and revocation prevents SDP negotiation", async ({
+  authedPage,
+}) => {
+  test.skip(
+    process.env.E2E_VOICE_OPENAI_RESERVATIONS !== "1",
+    "Requires the OpenAI deployment configuration; no provider call is made.",
+  );
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  await setVoiceFlag(api, orgSlug, true);
+  const first = await createThread(api, orgSlug);
+  const second = await createThread(api, orgSlug);
+  const path = `/api/${orgSlug}/threads/${first.threadId}/voice/sessions`;
+  const response = await api.post(path, { data: { mode: "conversation" } });
+  expect(response.status()).toBe(200);
+  const session = await response.json();
+  expect(session).toMatchObject({ provider: "openai", transport: "webrtc" });
+  expect(session).not.toHaveProperty("clientSecret");
+  try {
+    expect(
+      (await api.post(path, { data: { mode: "conversation" } })).status(),
+    ).toBe(409);
+    expect(
+      (
+        await api.post(
+          `/api/${orgSlug}/threads/${second.threadId}/voice/sessions/connect`,
+          {
+            data: { token: session.token, sdp: "v=0" },
+          },
+        )
+      ).status(),
+    ).toBe(403);
+    await setVoiceFlag(api, orgSlug, false);
+    expect(
+      (
+        await api.post(`${path}/connect`, {
+          data: { token: session.token, sdp: "v=0" },
+        })
+      ).status(),
+    ).toBe(403);
+  } finally {
+    expect(
+      (await api.delete(path, { data: { token: session.token } })).status(),
+    ).toBe(204);
+  }
+  await setVoiceFlag(api, orgSlug, true);
+  expect(
+    (
+      await api.post(`${path}/connect`, {
+        data: { token: session.token, sdp: "v=0" },
+      })
+    ).status(),
+  ).toBe(403);
+  const replacement = await api.post(path, { data: { mode: "conversation" } });
+  expect(replacement.status()).toBe(200);
+  const next = await replacement.json();
+  expect(next.token).not.toBe(session.token);
+  expect(
+    (await api.delete(path, { data: { token: next.token } })).status(),
+  ).toBe(204);
 });
 
 for (const flag of ["absent", "false"] as const) {
@@ -118,7 +202,7 @@ for (const flag of ["absent", "false"] as const) {
     page.on("request", (request) => {
       if (
         request.url().includes("elevenlabs") ||
-        request.url().includes("api.openai.com/v1/realtime") ||
+        request.url().includes("api.openai.com/v1/") ||
         request.url().includes("/voice/sessions")
       )
         voiceRequests.push(request.url());

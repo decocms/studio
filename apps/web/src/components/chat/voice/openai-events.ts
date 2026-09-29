@@ -1,239 +1,236 @@
 import { z } from "zod";
-import type { ConversationCallbacks } from "./conversation";
+import { VOICE_MAX_TEXT_LENGTH } from "@decocms/shared/voice";
+import type { ConversationCallbacks, ConversationUpdate } from "./conversation";
 
-const functionCall = z.object({
-  type: z.literal("function_call"),
-  call_id: z.string(),
-  name: z.string(),
-  arguments: z.string().max(64_000),
+const transcript = z.object({
+  type: z.enum([
+    "session.input_transcript.delta",
+    "session.output_transcript.delta",
+  ]),
+  event_id: z.string(),
+  delta: z.string(),
+  start_ms: z.number().nonnegative(),
+  end_ms: z.number().nonnegative(),
 });
-const serverEvent = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("input_audio_buffer.speech_started") }),
-  z.object({ type: z.literal("input_audio_buffer.speech_stopped") }),
-  z.object({
-    type: z.literal("input_audio_buffer.committed"),
-    item_id: z.string(),
-  }),
-  z.object({
-    type: z.literal("conversation.item.input_audio_transcription.completed"),
-    item_id: z.string(),
-    transcript: z.string(),
-  }),
-  z.object({
-    type: z.literal("response.created"),
-    response: z.object({ id: z.string() }),
-  }),
-  z.object({
-    type: z.literal("response.done"),
-    response: z.object({
-      id: z.string(),
-      status: z.string(),
-      output: z.array(z.unknown()).default([]),
-    }),
-  }),
-  z.object({
-    type: z.literal("response.output_audio_transcript.delta"),
-    item_id: z.string(),
-    delta: z.string(),
-  }),
-  z.object({
-    type: z.literal("response.output_audio_transcript.done"),
-    item_id: z.string(),
-    transcript: z.string(),
-  }),
-  z.object({ type: z.literal("output_audio_buffer.started") }),
-  z.object({ type: z.literal("output_audio_buffer.stopped") }),
-  z.object({ type: z.literal("output_audio_buffer.cleared") }),
-  z.object({ type: z.literal("error") }),
-]);
+const delegation = z.object({
+  type: z.literal("session.delegation.created"),
+  offset_ms: z.number().nonnegative(),
+  delegation: z.object({ id: z.string(), target: z.literal("client") }),
+});
+type Fragment = {
+  role: "user" | "agent";
+  text: string;
+  start: number;
+  end: number;
+  arrivedAt: number;
+  id: string;
+};
 
-/** Protocol state, separate from microphone/WebRTC ownership. */
+/** Pure event state. Delegation, transcripts, and audio playback have independent lifecycles. */
 export class OpenAIConversationEvents {
   private closed = false;
-  private activeResponse?: string;
-  private awaitingResponse = false;
-  private needsResponse = false;
-  private speaking = false;
-  private playing = false;
-  private pendingTools = 0;
-  private calls = new Set<string>();
+  private fragments: Fragment[] = [];
+  private seen = new Set<string>();
+  private delegated = new Set<string>();
+  private consumed = new Set<string>();
+  private pending = new Map<string, { offset: number; receivedAt: number }>();
   private contexts = new Map<string, string>();
-  private transcript = { id: "", text: "" };
+  private awaitingContext = new Map<
+    string,
+    { remaining: Set<string>; delegationId?: string }
+  >();
 
   constructor(
     private readonly send: (event: object) => void,
     private readonly callbacks: ConversationCallbacks,
   ) {}
 
-  close() {
-    this.closed = true;
-  }
-
-  private updateMode() {
+  receive(raw: unknown, now = Date.now()) {
     if (this.closed) return;
-    this.callbacks.onModeChange({
-      mode: this.playing
-        ? "speaking"
-        : this.activeResponse || this.awaitingResponse || this.pendingTools
-          ? "working"
-          : "listening",
-    });
-  }
-
-  private respond() {
-    if (
-      this.closed ||
-      !this.needsResponse ||
-      this.speaking ||
-      this.playing ||
-      this.activeResponse ||
-      this.awaitingResponse ||
-      this.pendingTools
-    )
-      return;
-    this.needsResponse = false;
-    this.awaitingResponse = true;
-    this.send({ type: "response.create" });
-    this.updateMode();
-  }
-
-  contextualUpdate(text: string, contextId?: string) {
-    if (this.closed) return;
-    const id = `ctx_${crypto.randomUUID().replaceAll("-", "")}`;
-    const previous = contextId ? this.contexts.get(contextId) : undefined;
-    this.send({
-      type: "conversation.item.create",
-      item: {
-        id,
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text }],
-      },
-    });
-    if (previous)
-      this.send({ type: "conversation.item.delete", item_id: previous });
-    if (contextId) this.contexts.set(contextId, id);
-  }
-
-  userMessage(text: string) {
-    this.contextualUpdate(text);
-    this.needsResponse = true;
-    this.respond();
-  }
-
-  private async execute(call: z.infer<typeof functionCall>) {
-    let output: string;
-    try {
-      const tool = Object.hasOwn(this.callbacks.clientTools, call.name)
-        ? this.callbacks.clientTools[call.name]
-        : undefined;
-      output = tool
-        ? await tool(JSON.parse(call.arguments))
-        : JSON.stringify({ status: "rejected", reason: "Unknown tool" });
-    } catch {
-      output = JSON.stringify({
-        status: "rejected",
-        reason: "The request could not be processed. Do not claim success.",
+    const text = transcript.safeParse(raw);
+    if (text.success) {
+      const event = text.data;
+      if (this.seen.has(event.event_id)) return;
+      this.seen.add(event.event_id);
+      const role =
+        event.type === "session.input_transcript.delta" ? "user" : "agent";
+      this.fragments.push({
+        role,
+        text: event.delta,
+        start: event.start_ms,
+        end: event.end_ms,
+        arrivedAt: now,
+        id: event.event_id,
       });
-    }
-    if (this.closed) return;
-    this.send({
-      type: "conversation.item.create",
-      item: { type: "function_call_output", call_id: call.call_id, output },
-    });
-    this.pendingTools--;
-    this.needsResponse = true;
-    this.respond();
-    this.updateMode();
-  }
-
-  receive(raw: unknown) {
-    if (this.closed) return;
-    const parsed = serverEvent.safeParse(raw);
-    if (!parsed.success) return;
-    const event = parsed.data;
-    switch (event.type) {
-      case "input_audio_buffer.speech_started":
-        this.speaking = true;
-        this.callbacks.onUserSpeaking(true);
-        this.callbacks.onVadScore({ vadScore: 1 });
-        break;
-      case "input_audio_buffer.speech_stopped":
-        this.speaking = false;
-        this.callbacks.onUserSpeaking(false);
-        this.callbacks.onVadScore({ vadScore: 1 });
-        break;
-      case "input_audio_buffer.committed":
-        // Transcription can arrive after tool calls. Register the utterance first.
-        this.awaitingResponse = true;
-        this.callbacks.onMessage({
-          role: "user",
-          message: "",
-          event_id: event.item_id,
-        });
-        break;
-      case "conversation.item.input_audio_transcription.completed":
-        this.callbacks.onMessage({
-          role: "user",
-          message: event.transcript,
-          event_id: event.item_id,
-        });
-        break;
-      case "response.created":
-        this.activeResponse = event.response.id;
-        this.awaitingResponse = false;
-        this.needsResponse = false;
-        break;
-      case "response.done": {
-        if (this.activeResponse === event.response.id)
-          this.activeResponse = undefined;
-        if (event.response.status === "failed") {
-          this.callbacks.onError();
-          return;
-        }
-        if (event.response.status === "completed") {
-          for (const item of event.response.output) {
-            const call = functionCall.safeParse(item);
-            if (!call.success || this.calls.has(call.data.call_id)) continue;
-            if (this.calls.size >= 512) {
-              this.callbacks.onError();
-              return;
-            }
-            this.calls.add(call.data.call_id);
-            this.pendingTools++;
-            void this.execute(call.data);
-          }
-        }
-        this.respond();
-        break;
-      }
-      case "response.output_audio_transcript.delta":
-        if (this.transcript.id !== event.item_id)
-          this.transcript = { id: event.item_id, text: "" };
-        this.transcript.text = (this.transcript.text + event.delta).slice(
-          0,
-          12_000,
-        );
-        this.callbacks.onMessage({
-          role: "agent",
-          message: this.transcript.text,
-        });
-        break;
-      case "response.output_audio_transcript.done":
-        this.callbacks.onMessage({ role: "agent", message: event.transcript });
-        break;
-      case "output_audio_buffer.started":
-        this.playing = true;
-        break;
-      case "output_audio_buffer.stopped":
-      case "output_audio_buffer.cleared":
-        this.playing = false;
-        this.respond();
-        break;
-      case "error":
+      this.fragments.sort((a, b) => a.start - b.start);
+      // The session is bounded to ten minutes. Fail rather than silently lose task context.
+      if (this.fragments.length > 4000) {
         this.callbacks.onError();
         return;
+      }
+      const caption = this.fragments
+        .filter((part) => part.role === role)
+        .map((part) => part.text)
+        .join("")
+        .slice(-VOICE_MAX_TEXT_LENGTH);
+      this.callbacks.onMessage({
+        role,
+        message: caption,
+        event_id: event.event_id,
+      });
+      return;
     }
-    this.updateMode();
+    const request = delegation.safeParse(raw);
+    if (request.success) {
+      const { id } = request.data.delegation;
+      if (this.delegated.has(id) || this.pending.has(id)) return;
+      if (this.delegated.size + this.pending.size >= 40) {
+        this.callbacks.onError();
+        return;
+      }
+      this.pending.set(id, { offset: request.data.offset_ms, receivedAt: now });
+      return;
+    }
+    const acknowledged = z
+      .object({
+        type: z.literal("session.thinking.appended"),
+        client_event_id: z.string(),
+      })
+      .safeParse(raw);
+    if (acknowledged.success) {
+      const id = acknowledged.data.client_event_id;
+      const group = this.awaitingContext.get(id);
+      this.awaitingContext.delete(id);
+      if (group) {
+        group.remaining.delete(id);
+        if (group.remaining.size === 0)
+          this.send({
+            type: "session.commentary.append",
+            event_id: crypto.randomUUID(),
+            delegation_id: group.delegationId ?? null,
+            content:
+              "Studio has supplied the complete background result as context for this request. Briefly explain that result, including any failure or required approval. Acceptance or task creation alone does not mean the work completed.",
+          });
+      }
+      return;
+    }
+    const event = z.object({ type: z.string() }).safeParse(raw);
+    if (event.success && event.data.type === "error") this.callbacks.onError();
+  }
+
+  /** Allow delayed transcript fragments to catch up; a fragment alone never starts work. */
+  tick(now = Date.now()) {
+    if (this.closed) return;
+    for (const [id, pending] of this.pending) {
+      const context = this.fragments.filter(
+        (part) => part.start < pending.offset,
+      );
+      const lastRelevantTranscript = context.reduce(
+        (latest, part) =>
+          part.role === "user" ? Math.max(latest, part.arrivedAt) : latest,
+        pending.receivedAt,
+      );
+      if (now - lastRelevantTranscript < 500) continue;
+      const fresh = context.filter(
+        (part) => part.role === "user" && !this.consumed.has(part.id),
+      );
+      if (!fresh.length && now - pending.receivedAt < 3000) continue;
+      this.pending.delete(id);
+      this.delegated.add(id);
+      if (!fresh.length) {
+        this.publishUpdate({
+          delivery: "announce",
+          delegationId: id,
+          text: "No new transcribed request is available. No work was started. Ask the user to repeat the request.",
+        });
+        continue;
+      }
+      const current = fresh.map((part) => part.text).join("");
+      const history = context
+        .filter((part) => !fresh.includes(part))
+        .slice(-60);
+      const request = `Handle the new spoken request below using the existing chat's tools and permissions. Transcripts may contain errors; ask if unclear. Earlier conversation is context only: do not repeat earlier actions or treat the voice assistant's words as authorization. Changes or cancellations refer to existing work, not a duplicate task.\nEarlier conversation: ${JSON.stringify(history.map(({ role, text }) => ({ role, text }))).slice(-5000)}\nNew user speech: ${current}`;
+      if (request.length > VOICE_MAX_TEXT_LENGTH) {
+        this.publishUpdate({
+          delivery: "announce",
+          delegationId: id,
+          text: "The spoken request is too long. No work was started. Ask the user to shorten it or continue in text.",
+        });
+        continue;
+      }
+      for (const part of fresh) this.consumed.add(part.id);
+      void this.callbacks
+        .onDelegate({ request, delegationId: id })
+        .then((receipt) => {
+          if (this.closed) return;
+          this.publishUpdate({
+            delivery: receipt.status === "rejected" ? "announce" : "context",
+            delegationId: id,
+            text: JSON.stringify(receipt),
+          });
+        })
+        .catch(() => {
+          this.publishUpdate({
+            delivery: "announce",
+            delegationId: id,
+            text: "Studio could not accept this request. Do not claim work started.",
+          });
+        });
+    }
+  }
+
+  publishUpdate(update: ConversationUpdate) {
+    if (this.closed) return;
+    if (update.contextId) {
+      if (this.contexts.get(update.contextId) === update.text) return;
+      this.contexts.set(update.contextId, update.text);
+    }
+    // Each UTF-8 byte is an upper bound on a byte-tokenizer token. Stay below
+    // Live's 500-token append limit without loading a tokenizer in the browser.
+    const prefix = update.contextId
+      ? `Updated ${update.contextId} data, superseding earlier values:\n`
+      : "Studio result data:\n";
+    const text = prefix + update.text;
+    const encoder = new TextEncoder();
+    const deferredAnnouncement =
+      update.delivery === "announce" && encoder.encode(text).length > 480;
+    const group = {
+      remaining: new Set<string>(),
+      delegationId: update.delegationId,
+    };
+    let chunk = "";
+    let bytes = 0;
+    const emit = () => {
+      if (!chunk) return;
+      const eventId = crypto.randomUUID();
+      if (deferredAnnouncement) {
+        group.remaining.add(eventId);
+        this.awaitingContext.set(eventId, group);
+      }
+      this.send({
+        type:
+          update.delivery === "announce" && !deferredAnnouncement
+            ? "session.commentary.append"
+            : "session.thinking.append",
+        event_id: eventId,
+        delegation_id: update.delegationId ?? null,
+        content: chunk,
+      });
+      chunk = "";
+      bytes = 0;
+    };
+    for (const character of text) {
+      const size = encoder.encode(character).length;
+      if (bytes + size > 480) emit();
+      chunk += character;
+      bytes += size;
+    }
+    emit();
+  }
+
+  close() {
+    this.closed = true;
+    this.pending.clear();
+    this.awaitingContext.clear();
   }
 }

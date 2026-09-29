@@ -2,7 +2,7 @@ import type { ConversationCallbacks, VoiceConversation } from "./conversation";
 import { OpenAIConversationEvents } from "./openai-events";
 
 export async function startOpenAIConversation(
-  clientSecret: string,
+  negotiate: (sdp: string, signal: AbortSignal) => Promise<{ sdp: string }>,
   callbacks: ConversationCallbacks,
   signal: AbortSignal,
 ): Promise<VoiceConversation> {
@@ -16,6 +16,17 @@ export async function startOpenAIConversation(
   let analyser: AnalyserNode | undefined;
   let samples: Uint8Array<ArrayBuffer> | undefined;
   let closed = false;
+  let started = false;
+  let ending: Promise<void> | undefined;
+  let tick: ReturnType<typeof setInterval> | undefined;
+  let lastOutput = 0;
+  let lastInput = 0;
+  let inputAnalyser: AnalyserNode | undefined;
+  let inputSamples: Uint8Array<ArrayBuffer> | undefined;
+  let muted = false;
+  const finished = Promise.withResolvers<void>();
+  const connected = Promise.withResolvers<void>();
+  void connected.promise.catch(() => {});
   const events = new OpenAIConversationEvents((event) => {
     if (!closed && channel.readyState === "open")
       channel.send(JSON.stringify(event));
@@ -24,6 +35,7 @@ export async function startOpenAIConversation(
     if (closed) return;
     closed = true;
     events.close();
+    clearInterval(tick);
     signal.removeEventListener("abort", abort);
     channel.close();
     peer.close();
@@ -38,27 +50,34 @@ export async function startOpenAIConversation(
   };
   signal.addEventListener("abort", abort, { once: true });
   const startupSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
-  const ready = new Promise<void>((resolve, reject) => {
-    const aborted = () => reject(startupSignal.reason);
-    const opened = () => {
-      startupSignal.removeEventListener("abort", aborted);
-      resolve();
-    };
-    startupSignal.addEventListener("abort", aborted, { once: true });
-    channel.addEventListener("open", opened, { once: true });
-  });
+  const ready = connected.promise;
+  const startupAborted = () => connected.reject(startupSignal.reason);
+  startupSignal.addEventListener("abort", startupAborted, { once: true });
   // SDP or microphone setup can fail before the channel opens.
   void ready.catch(() => {});
   channel.onmessage = ({ data }) => {
     if (closed || typeof data !== "string") return;
     try {
-      events.receive(JSON.parse(data));
+      const event: unknown = JSON.parse(data);
+      if (typeof event === "object" && event !== null && "type" in event) {
+        if (event.type === "session.started") {
+          started = true;
+          connected.resolve();
+        }
+        if (event.type === "session.closed") {
+          finished.resolve();
+          if (!ending) callbacks.onDisconnect();
+        }
+      }
+      if (!ending) events.receive(event);
     } catch {
       callbacks.onError();
     }
   };
   channel.onclose = () => {
-    if (!closed) callbacks.onDisconnect();
+    connected.reject(new Error("Voice connection closed"));
+    finished.resolve();
+    if (!closed && !ending) callbacks.onDisconnect();
   };
   peer.onconnectionstatechange = () => {
     if (
@@ -79,6 +98,13 @@ export async function startOpenAIConversation(
     void audioContext.resume().catch(() => callbacks.onError());
     void audio.play().catch(() => callbacks.onError());
   };
+  function outputVolume() {
+    if (!analyser || !samples || closed) return 0;
+    analyser.getByteTimeDomainData(samples);
+    let sum = 0;
+    for (const value of samples) sum += ((value - 128) / 128) ** 2;
+    return Math.min(1, Math.sqrt(sum / samples.length) * 4);
+  }
   try {
     const pendingMicrophone = navigator.mediaDevices
       .getUserMedia({
@@ -106,47 +132,96 @@ export async function startOpenAIConversation(
         ),
       ),
     ]);
+    audioContext ??= new AudioContext();
+    inputAnalyser = audioContext.createAnalyser();
+    inputAnalyser.fftSize = 256;
+    inputSamples = new Uint8Array(inputAnalyser.fftSize);
+    audioContext.createMediaStreamSource(stream).connect(inputAnalyser);
+    await audioContext.resume();
     for (const track of stream.getAudioTracks()) peer.addTrack(track, stream);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
     startupSignal.throwIfAborted();
-    const response = await fetch("https://api.openai.com/v1/realtime/calls", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${clientSecret}`,
-        "Content-Type": "application/sdp",
-      },
-      body: offer.sdp,
-      signal: startupSignal,
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error("Voice connection unavailable");
+    if (peer.iceGatheringState !== "complete") {
+      await new Promise<void>((resolve, reject) => {
+        const changed = () => {
+          if (peer.iceGatheringState === "complete") {
+            cleanup();
+            resolve();
+          }
+        };
+        const aborted = () => {
+          cleanup();
+          reject(startupSignal.reason);
+        };
+        const cleanup = () => {
+          peer.removeEventListener("icegatheringstatechange", changed);
+          startupSignal.removeEventListener("abort", aborted);
+        };
+        peer.addEventListener("icegatheringstatechange", changed);
+        startupSignal.addEventListener("abort", aborted, { once: true });
+        changed();
+        if (startupSignal.aborted) aborted();
+      });
     }
-    await peer.setRemoteDescription({
-      type: "answer",
-      sdp: await response.text(),
-    });
+    const sdp = peer.localDescription?.sdp;
+    if (!sdp) throw new Error("Missing voice offer");
+    const answer = await negotiate(sdp, startupSignal);
+    await peer.setRemoteDescription({ type: "answer", sdp: answer.sdp });
     await ready;
     signal.throwIfAborted();
+    startupSignal.removeEventListener("abort", startupAborted);
+    signal.removeEventListener("abort", abort);
     callbacks.onConnect();
+    tick = setInterval(() => {
+      if (closed || ending) return;
+      events.tick();
+      if (inputAnalyser && inputSamples && !muted) {
+        inputAnalyser.getByteTimeDomainData(inputSamples);
+        const energy =
+          inputSamples.reduce(
+            (sum, value) => sum + ((value - 128) / 128) ** 2,
+            0,
+          ) / inputSamples.length;
+        if (Math.sqrt(energy) > 0.025) lastInput = Date.now();
+      }
+      callbacks.onUserSpeaking(!muted && Date.now() - lastInput < 400);
+      const volume = outputVolume();
+      if (volume > 0.02) lastOutput = Date.now();
+      callbacks.onModeChange({
+        mode: Date.now() - lastOutput < 400 ? "speaking" : "listening",
+      });
+    }, 100);
     return {
-      endSession: close,
-      sendContextualUpdate: (text, options) =>
-        events.contextualUpdate(text, options?.contextId),
-      sendUserMessage: (text) => events.userMessage(text),
-      setMicMuted: (muted) => {
+      endSession: () => {
+        ending ??= (async () => {
+          events.close();
+          // Stop recording immediately while the provider finalizes usage.
+          for (const track of microphone?.getTracks() ?? []) track.stop();
+          audio.pause();
+          if (started && channel.readyState === "open") {
+            channel.send(JSON.stringify({ type: "session.close" }));
+            let timeout: ReturnType<typeof setTimeout> | undefined;
+            await Promise.race([
+              finished.promise,
+              new Promise<void>((resolve) => {
+                timeout = setTimeout(resolve, 3000);
+              }),
+            ]);
+            clearTimeout(timeout);
+          }
+          await close();
+        })();
+        return ending;
+      },
+      publishUpdate: (update) => events.publishUpdate(update),
+      setMicMuted: (value) => {
+        muted = value;
         for (const track of microphone?.getAudioTracks() ?? [])
           track.enabled = !muted;
         if (muted) callbacks.onUserSpeaking(false);
       },
-      getOutputVolume: () => {
-        if (!analyser || !samples || closed) return 0;
-        analyser.getByteTimeDomainData(samples);
-        let sum = 0;
-        for (const value of samples) sum += ((value - 128) / 128) ** 2;
-        return Math.min(1, Math.sqrt(sum / samples.length) * 4);
-      },
+      getOutputVolume: outputVolume,
     };
   } catch (error) {
     await close();

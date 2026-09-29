@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { VoiceSpeechSchema } from "@decocms/shared/voice";
+import { VoiceSpeechSchema, VoiceConnectSchema } from "@decocms/shared/voice";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
@@ -56,6 +56,17 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
         body.data.language,
       ),
     );
+  });
+  app.post("/threads/:threadId/voice/sessions/connect", async (c) => {
+    const scope = await authorize(c);
+    const body = VoiceConnectSchema.safeParse(
+      await c.req.json().catch(() => null),
+    );
+    if (!body.success)
+      throw new HTTPException(400, {
+        message: "Invalid voice connection request",
+      });
+    return c.json(await sessions.connect(scope, body.data));
   });
   app.post("/threads/:threadId/voice/sessions/speech", async (c) => {
     const scope = await authorize(c);
