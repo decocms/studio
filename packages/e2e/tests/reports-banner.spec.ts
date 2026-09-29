@@ -17,8 +17,9 @@
  *   1. Org without the CD connection → no banner, home intact.
  *   2. Completed diagnostic → "ready" banner; click navigates to the
  *      report app at its canonical project URL.
- *   3. Live run → "generating" banner.
- *   4. CD connection whose MCP is unreachable → no banner, home intact.
+ *   3. A store's first run → "generating" banner.
+ *   4. A refresh of a finished report → still the "ready" banner.
+ *   5. CD connection whose MCP is unreachable → no banner, home intact.
  */
 
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -230,7 +231,7 @@ test.describe("commerce report banner", () => {
     }
   });
 
-  test("live run shows the generating banner", async ({ authedPage }) => {
+  test("first run shows the generating banner", async ({ authedPage }) => {
     const { page, orgSlug } = authedPage;
     const request = page.context().request;
     const orgId = await findOrgId(request, orgSlug);
@@ -249,6 +250,37 @@ test.describe("commerce report banner", () => {
       await expect(
         page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
       ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+    } finally {
+      await mcp.stop();
+    }
+  });
+
+  test("a refresh of a finished report keeps the ready banner", async ({
+    authedPage,
+  }) => {
+    const { page, orgSlug } = authedPage;
+    const request = page.context().request;
+    const orgId = await findOrgId(request, orgSlug);
+    const projectId = await createProject(request, orgSlug);
+
+    // The daily recompute: a run is in flight on a store that already has a
+    // finished report, which stays readable meanwhile.
+    const mcp = await startDiagnosticMcp({
+      url: SITE_URL,
+      scope: "private",
+      scanned_at: "2026-07-10T12:00:00.000Z",
+      run_in_progress: true,
+    });
+    try {
+      await createCdConnection(request, orgSlug, orgId, mcp.url);
+      await waitForHome(page, orgSlug, projectId);
+
+      await expect(
+        page.getByRole("button", { name: new RegExp(READY_TITLE) }),
+      ).toBeVisible({ timeout: HOME_TIMEOUT_MS });
+      await expect(
+        page.getByRole("button", { name: new RegExp(GENERATING_TITLE) }),
+      ).toHaveCount(0);
     } finally {
       await mcp.stop();
     }
