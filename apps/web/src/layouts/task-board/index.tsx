@@ -123,7 +123,7 @@ import {
   useOrgFlag,
   useReviewerEnabled,
 } from "@/hooks/use-organization-settings";
-import { usePreferences } from "@/hooks/use-preferences";
+import { usePreferences, useProjectFirstNav } from "@/hooks/use-preferences";
 import {
   TaskBoardItemDetail,
   TaskBoardItemDialog,
@@ -173,7 +173,11 @@ import {
   type ListGroup,
 } from "./list-groups";
 import { UNASSIGNED_FILTER } from "./task-filters-core";
-import { useBoardSearch, visibleSelection } from "./filters-search";
+import {
+  enabledLayout,
+  useBoardSearch,
+  visibleSelection,
+} from "./filters-search";
 import { feedEventKind, groupFeedByDay, type FeedEventKind } from "./feed";
 import { compactElapsed, feedRail } from "./feed-rail";
 import { useProjectIndex } from "@/hooks/use-project-index";
@@ -1022,11 +1026,16 @@ function TaskBoardBody({
   const members = (membersData?.data?.members ?? []) as Member[];
   const memberByUserId = new Map(members.map((m) => [m.userId, m]));
 
+  /** The feed is part of project-first navigation, so it is the flag's to
+   *  offer. With the flag off there is no Feed tab and no way to reach one, so
+   *  a `?view=feed` link shared from a colleague who HAS the flag has to land
+   *  on the board rather than on a view with no tab to leave it by. */
+  const feedEnabled = useProjectFirstNav();
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const {
     filters,
     setFilters,
-    layout,
+    layout: urlLayout,
     setLayout,
     groupBy,
     subgroupBy,
@@ -1036,7 +1045,8 @@ function TaskBoardBody({
     sortDirection,
     setSortBy,
     setSortDirection,
-  } = useBoardSearch(inlineTabs ? "feed" : "board");
+  } = useBoardSearch(inlineTabs && feedEnabled ? "feed" : "board");
+  const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
     subgroupBy,
@@ -1315,22 +1325,24 @@ function TaskBoardBody({
     return <Navigate to="." {...taskAddress(canonicalKey)} replace />;
   }
 
-  /** Board / List / Feed. One definition for both placements — see
-   *  `inlineTabs`. */
+  /** Board / List, and Feed behind the flag. One definition for both
+   *  placements — see `inlineTabs`. */
   const layoutTabs = (
     <Page.Tabs>
-      <Page.Tab
-        active={layout === "feed"}
-        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
-          label: t("common.taskBoard.feedView"),
-        })}
-        onClick={() => {
-          setLayout("feed");
-          clearSelection();
-        }}
-      >
-        {t("common.taskBoard.feedView")}
-      </Page.Tab>
+      {feedEnabled && (
+        <Page.Tab
+          active={layout === "feed"}
+          aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+            label: t("common.taskBoard.feedView"),
+          })}
+          onClick={() => {
+            setLayout("feed");
+            clearSelection();
+          }}
+        >
+          {t("common.taskBoard.feedView")}
+        </Page.Tab>
+      )}
       <Page.Tab
         active={layout === "board"}
         aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {

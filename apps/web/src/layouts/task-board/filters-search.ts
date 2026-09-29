@@ -130,6 +130,17 @@ export function boardSearchParams(
 }
 
 /**
+ * The layout a reader is actually allowed to be in.
+ *
+ * Feed is behind project-first navigation, so a `?view=feed` link shared by
+ * someone who has the flag must not strand a reader who does not on a view
+ * their tabs cannot leave.
+ */
+export function enabledLayout(layout: Layout, feedEnabled: boolean): Layout {
+  return layout === "feed" && !feedEnabled ? "board" : layout;
+}
+
+/**
  * The selection a bulk action is allowed to touch: only cards currently on
  * screen. The project scope is not the board's own control — it can change
  * under a live selection — so a stale id must never reach an update or a

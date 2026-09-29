@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   boardSearchParams,
+  enabledLayout,
   type BoardView,
   parseBoardSearch,
   visibleSelection,
@@ -179,5 +180,24 @@ describe("visibleSelection", () => {
 
   test("an empty board selects nothing", () => {
     expect(visibleSelection(new Set(["a"]), [])).toEqual(new Set());
+  });
+});
+
+/** Feed ships behind project-first navigation, and the tab that leaves it does
+ *  too — so the URL alone must not put a reader there. */
+describe("enabledLayout", () => {
+  test("keeps the feed for a reader who has it", () => {
+    expect(enabledLayout("feed", true)).toBe("feed");
+  });
+
+  test("sends a reader without it to the board, not to a view with no tabs", () => {
+    expect(enabledLayout("feed", false)).toBe("board");
+  });
+
+  test("leaves the two unflagged layouts alone either way", () => {
+    for (const enabled of [true, false]) {
+      expect(enabledLayout("board", enabled)).toBe("board");
+      expect(enabledLayout("list", enabled)).toBe("list");
+    }
   });
 });
