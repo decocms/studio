@@ -239,6 +239,11 @@ export interface Settings {
    *  Off by default — see `sandbox/head-ref.ts` for the boot-path change this
    *  gates and why it ships behind its own flag. */
   sandboxStickyHeadRefEnabled: boolean;
+  /** GitLab threads' sandboxes boot on `sandbox-thread-<id>` instead of
+   *  `sandbox/thread-<id>` (SANDBOX_FLAT_GITLAB_REFS). Off by default: the ref
+   *  is the branch a sandbox clones, restores and pushes. See
+   *  `syntheticBranchToGitRef` for why GitLab needs it. */
+  sandboxFlatGitlabRefsEnabled: boolean;
   /** A task re-run pushes to the existing pull request's branch instead of
    *  forking a new one (TASK_BOARD_RERUN_REUSES_PR_BRANCH). ON by default —
    *  forking is what makes a reviewer reject the fork as obsolete against

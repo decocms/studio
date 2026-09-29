@@ -46,6 +46,7 @@ import {
 import { resolveSubmoduleCredentials } from "@/tools/sandbox/resolve-submodule-creds";
 import { readSandboxMap, resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
+  flatSandboxRef,
   getThreadSandboxMap,
   getCodingAgentProjectMetadata,
   resolveSandboxBranchForThread,
@@ -652,7 +653,9 @@ export const TASK_ADD_REPO = defineTool({
      */
     const gitRef = pickGitBranch({
       branch,
-      derivedRef: syntheticBranchToGitRef(branch),
+      derivedRef: syntheticBranchToGitRef(branch, {
+        flat: flatSandboxRef(repo.provider),
+      }),
       recordedHeadRef: null,
       sticky: false,
     });
