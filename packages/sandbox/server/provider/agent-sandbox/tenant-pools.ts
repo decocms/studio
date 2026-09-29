@@ -22,6 +22,7 @@ export const tenantPoolSchema = z.object({
    */
   name: z
     .string()
+    .max(63)
     .regex(
       /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/,
       "pool name must be a DNS label (lowercase alphanumeric and '-')",
