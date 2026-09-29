@@ -2,6 +2,11 @@
   "name": "@decocms/sandbox-controller",
   "version": "0.3.1",
   "description": "Runs Studio agent sandboxes on Kubernetes, and serves them to a remote Studio.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/decocms/studio",
+    "directory": "packages/sandbox-controller"
+  },
   "license": "MIT",
   "type": "module",
   "files": [
