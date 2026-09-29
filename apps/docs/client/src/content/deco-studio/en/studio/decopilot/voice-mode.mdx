@@ -58,6 +58,13 @@ Optional variables:
 | --- | --- | --- |
 | `ELEVENLABS_VOICE_MODEL` | `eleven_v4_turbo` | Speech synthesis model |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice |
+| `ELEVENLABS_CONVERSATION_MODEL` | `gemini-2.5-flash` | Conversational LLM model ID supported by ElevenLabs |
+
+The conversational model is a deployment setting, with no model selector in the
+product. Set the same value on every API replica and restart them to apply it to
+new voice sessions. Changing it selects a separate provisioned ElevenLabs agent;
+existing voice sessions continue with their original model. It does not change
+the selected coding agent or its model. Unset or blank values use the default.
 
 ## Session behavior and limits
 
@@ -66,7 +73,7 @@ user per organization. ElevenLabs also limits each conversation to ten minutes.
 Up to 40 work requests can be delegated in one session. An interrupted browser that
 cannot release its reservation may need to wait for that expiry before reconnecting.
 ElevenLabs bills the voice conversation, including its conversational model, to
-the deployment's account. The companion uses Gemini 2.5 Flash through ElevenLabs;
+the deployment's account. The companion defaults to Gemini 2.5 Flash through ElevenLabs;
 no separate model key is needed. Studio's model usage
 accounting continues to cover the agent's model calls.
 

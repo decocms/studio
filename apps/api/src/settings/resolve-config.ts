@@ -242,6 +242,8 @@ export function resolveConfig(
     elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
     elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
     elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",
+    elevenlabsConversationModel:
+      envVars.ELEVENLABS_CONVERSATION_MODEL?.trim() || "gemini-2.5-flash",
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),

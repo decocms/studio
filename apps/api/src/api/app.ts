@@ -2310,6 +2310,7 @@ export async function createApp(options: CreateAppOptions = {}) {
       ? new ElevenLabsSpeechAdapter({
           apiKey: voiceSettings.elevenlabsApiKey,
           model: voiceSettings.elevenlabsVoiceModel,
+          conversationModel: voiceSettings.elevenlabsConversationModel,
           voiceId: voiceSettings.elevenlabsVoiceId,
         })
       : null,

@@ -6,6 +6,7 @@ test("conversation caches are isolated by provider credentials and configuration
     apiKey: "synthetic-account-a",
     voiceId: "voice-example",
     model: "model-example",
+    conversationModel: "conversation-model-example",
   };
   const identity = new ElevenLabsSpeechAdapter(config).conversationKey;
   expect(new ElevenLabsSpeechAdapter({ ...config }).conversationKey).toBe(
@@ -15,6 +16,7 @@ test("conversation caches are isolated by provider credentials and configuration
     { apiKey: "synthetic-account-b" },
     { voiceId: "voice-other" },
     { model: "model-other" },
+    { conversationModel: "conversation-model-other" },
   ]) {
     expect(
       new ElevenLabsSpeechAdapter({ ...config, ...change }).conversationKey,

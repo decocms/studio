@@ -6,6 +6,7 @@ import {
 export function voiceConversationConfig(config: {
   voiceId: string;
   model: string;
+  conversationModel: string;
 }) {
   return {
     conversation_config: {
@@ -14,7 +15,7 @@ export function voiceConversationConfig(config: {
         language: "en",
         prompt: {
           prompt: VOICE_COMPANION_PROMPT,
-          llm: "gemini-2.5-flash",
+          llm: config.conversationModel,
           thinking_budget: 0,
           max_tokens: 512,
           tools: [

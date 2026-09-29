@@ -23,6 +23,7 @@ export interface Settings {
   elevenlabsApiKey: string | undefined;
   elevenlabsVoiceId: string;
   elevenlabsVoiceModel: string;
+  elevenlabsConversationModel: string;
 
   // Database
   databaseUrl: string;

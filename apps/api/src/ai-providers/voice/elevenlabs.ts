@@ -11,6 +11,7 @@ export class ElevenLabsSpeechAdapter implements SpeechAdapter {
       apiKey: string;
       voiceId: string;
       model: string;
+      conversationModel: string;
     },
   ) {
     this.configurationKey = createHash("sha256")
