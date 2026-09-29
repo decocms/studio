@@ -1,11 +1,8 @@
-/** Today — the org's daily brief, and the org's other destination is `AgentsPage`.
+/** Today — the org's daily brief; `AgentsPage` is its other destination.
  *
- *  A storefront team opens this to learn what the agents did overnight, whether
- *  anything broke, and what is stopped waiting on them, so the page answers
- *  those three before it lists projects, which are navigation. Everything below
- *  the headline derives from the ONE board query it already makes, plus the
- *  automation list for the schedules card; the report banner hides itself when
- *  it has nothing. */
+ *  It answers what ran, what broke and what is stopped on you before it lists
+ *  projects. Everything below the headline derives from the ONE board query it
+ *  already makes, plus the automation list for the schedules card. */
 
 import { usePreferences } from "@/hooks/use-preferences";
 import { ChatInput } from "@/components/chat/input";
@@ -71,8 +68,8 @@ const GREETING_KEYS = {
   { named: TranslationKey; bare: TranslationKey }
 >;
 
-/** Holds the dashboard's height while both reads settle. Deliberately not a
- *  skeleton of the rows: their number is the thing we are waiting to learn. */
+/** Holds the height while both reads settle. Not a row skeleton: their number
+ *  is what we are waiting to learn. */
 function OrgHomeBodyFallback() {
   return (
     <div className="flex min-h-64 items-center justify-center">
@@ -92,14 +89,12 @@ function OrgHomeBody({
 }) {
   const { org } = useProjectContext();
   const { data: session } = authClient.useSession();
-  /** Both SUSPEND, so this renders once with the answer to both. The page size
-   *  is raised off the collection default (100) because the roster's "see all"
-   *  gate counts projects: a truncated read would hide the link. */
+  /** Both suspend, so this renders once with the answer to both. Page size is
+   *  raised off the default because the roster's "see all" gate counts. */
   const all = useVirtualMCPs({ pageSize: 1000 });
   const tasks = useOrgTasksSuspense();
-  /** Non-blocking, and read above the empty-state return so the hook order is
-   *  the same on both branches. The card says nothing until it lands rather
-   *  than claiming a zero, which reads as "you have none". */
+  /** Non-blocking, read above the empty-state return so hook order matches on
+   *  both branches. Says nothing until it lands rather than claiming zero. */
   const automations = useAutomations().data;
 
   const projects = scopableProjects(all).filter((p) => p.id !== org.id);
@@ -118,10 +113,8 @@ function OrgHomeBody({
     ]),
   );
   const cost = monthlyCost(index, tasks);
-  /** One line per top spender in the cost drill-down — same limit as the
-   *  design system's fixed `--chart-1..5` categorical ramp. Month-to-date, same
-   *  window as `cost` itself: the card's headline and its chart are one claim,
-   *  not two windows wearing one label. */
+  /** Capped at the design system's `--chart-1..5` ramp. Month-to-date, the
+   *  same window as `cost`, so headline and chart are one claim. */
   const costSeriesByProject = new Map(
     cost.byProject
       .slice(0, 5)
@@ -184,9 +177,6 @@ function OrgHomeBody({
               }
             />
             <AgentsRunning agents={runningAgents(tasks)} orgSlug={org.slug} />
-            {/* The store's own diagnostic. Self-hiding and failure-proof, so it
-                costs nothing for the orgs without one. */}
-            <ReportBanner />
           </>
         }
       />
@@ -195,9 +185,13 @@ function OrgHomeBody({
           this branch. The connect pill is never satisfied by anything the page
           can see, so above the brief it becomes permanent furniture; on an org
           with no projects yet it competes with the one invitation that matters.
-          Each sits at the natural width of its own content. */}
+          Full width, not the aside: a narrow column stranded the report card
+          off to one side whenever the board had nothing on it. */}
       <footer className="flex flex-col gap-4 pt-3">
         <TrainingCard />
+        {/* The store's own diagnostic. Self-hiding and failure-proof, so it
+            costs nothing for the orgs without one. */}
+        <ReportBanner />
       </footer>
     </div>
   );
@@ -211,15 +205,12 @@ export function TodayPage() {
 
   const { granted: canManageProjects } = useCapability("agents:manage");
 
-  /** Read at render, so it is right on every navigation to the home and never
-   *  needs a timer. It does not tick over midnight; nobody watches it. */
+  /** Read at render rather than on a timer; it does not tick over midnight. */
   const now = new Date();
   const name = firstName(session?.user?.name);
   const greetingKeys = GREETING_KEYS[greetingSlot(now.getHours())];
-  /** The date is the eyebrow; the greeting opens the sentence under it, the
-   *  way a brief reads. Computed at render, so it is right on every
-   *  navigation and never needs a timer. Just the date, no "Daily brief · Org"
-   *  trailer, which was noise nobody was reading. */
+  /** The date is the eyebrow; the greeting opens the sentence under it.
+   *  Computed at render rather than on a timer. */
   const eyebrow = briefDate(preferences.language, now);
   const greetingLine = name
     ? t(greetingKeys.named, { name })
@@ -233,8 +224,7 @@ export function TodayPage() {
       <Page.Content>
         <Page.Container
           width="wide"
-          /** `min-h-full` so the empty state has a height to centre itself in;
-           *  a populated home simply overflows it as usual. */
+          /** `min-h-full` gives the empty state a height to centre in. */
           className="flex min-h-full flex-col gap-10"
         >
           {taskIntakeEnabled && (

@@ -1,22 +1,10 @@
 /**
- * The org home with nothing in it.
+ * The org home with nothing in it — an invitation, not a notice that a list is
+ * empty. The drawing is the creation dialog's own vocabulary, so someone who
+ * clicks through meets the same three objects again as cards.
  *
- * This is the first thing a new org sees, and for most of them the only screen
- * they see before they decide whether this product is for them. So it is not a
- * notice that a list is empty — it is the invitation, with the one control that
- * matters and nothing else competing for the click.
- *
- * The drawing carries it: a storefront, an app and a price tag, which is
- * exactly the vocabulary the creation dialog opens with. Someone who clicks
- * through finds the same three objects again as cards, which is the whole point
- * of drawing them here rather than reaching for a generic box-with-a-plus.
- *
- * It centres itself in whatever space it is given rather than sitting at the
- * top of an empty column: with nothing else on the page there is no reading
- * order for it to lead, and pinned to the top it reads as the first item of a
- * list that never arrives. `flex-1` does that exactly wherever the parent is a
- * flex column with a height; the `min-h` is the floor for the parents that are
- * not, so it can never collapse to the height of its own art.
+ * `flex-1` centres it wherever the parent is a flex column with a height; the
+ * `min-h` is the floor for the parents that are not.
  */
 
 import { EmptyProjectsArt } from "@/components/projects/project-art";

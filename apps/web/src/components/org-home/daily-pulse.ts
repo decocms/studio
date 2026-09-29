@@ -1,13 +1,6 @@
 /**
- * The numbers an operator opens Studio to check.
- *
- * A storefront team does not come here to browse a list of projects — they come
- * to find out what the agents did overnight, whether anything broke, and what is
- * stopped waiting on them. All three answers are already in the board the home
- * loads, so this module reads them out of it and nothing new is fetched.
- *
- * Pure, and exported for its test: every one of these numbers is a claim about
- * someone's store, and a count that is quietly wrong is worse than no count.
+ * The org home's numbers, read out of the board payload it already loads.
+ * Nothing here fetches; all of it is pure so the counts can be tested.
  */
 
 import {
@@ -27,14 +20,7 @@ const SHIPPED = new Set<TaskBoardItem["status"]>(["done", "merged"]);
 /** Lanes where nothing more will happen, so the card is not "open". */
 const CLOSED = new Set<TaskBoardItem["status"]>(["done", "merged", "archived"]);
 
-/**
- * The two counts the brief's sentence is made of.
- *
- * It used to carry four, plus each one's value a week earlier, for a strip of
- * numbers under the headline. The strip is gone: the sentence already says what
- * shipped and what broke, and a row restating both in digits was the same news
- * twice. Nothing reads the rest, so nothing computes it.
- */
+/** The two counts the brief's sentence is made of. */
 export interface DailyPulse {
   /** Reached `done` or `merged` inside the window. */
   shipped: number;
@@ -44,14 +30,8 @@ export interface DailyPulse {
 
 const WINDOW_MS = PULSE_WINDOW_DAYS * 86_400_000;
 
-/**
- * Whether a timestamp falls inside the window ending now.
- *
- * Ages are clamped at zero so a run that finished this instant counts, and so
- * does one whose timestamp is slightly in the future — clock skew between a
- * sandbox and this browser is routine, and an unclamped age put those outside
- * every window.
- */
+/** Age is clamped at zero so sandbox/browser clock skew cannot push a
+ *  just-finished run outside the window. */
 function withinWindow(iso: string | null | undefined, now: number): boolean {
   if (!iso) return false;
   const at = Date.parse(iso);
@@ -80,19 +60,9 @@ export function dailyPulse(
   return { shipped, failed };
 }
 
-/**
- * The cards stopped waiting on a person, OLDEST first.
- *
- * A queue, not a feed. The card that has been waiting longest is the one most
- * likely to have been forgotten, and sorting newest-first buries it under
- * whatever arrived this morning — which is how a hand-off nobody caught stays
- * uncaught.
- *
- * Three ways in, and the two that are not "assigned to me" are the ones worth
- * having: a run that called `user_ask` is stopped until someone answers, and a
- * card parked In Review with no assignee is a hand-off nobody caught. Neither
- * shows up in an assignee filter, which is exactly why they get missed.
- */
+/** Cards stopped on a person, OLDEST first — a queue, not a feed. Blocked and
+ *  handed-to-human cards are here because neither shows in an assignee
+ *  filter. */
 export function tasksNeedingMe(
   tasks: readonly TaskBoardItem[],
   userId: string | undefined,
@@ -106,10 +76,8 @@ export function tasksNeedingMe(
     .sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""));
 }
 
-/** Why a card is in the list, so the row can say it rather than just list it.
- *  No `userId`: `tasksNeedingMe` already decided the card belongs here, so
- *  anything that is neither a question nor an unowned review is here because it
- *  is assigned to the reader. */
+/** Why a card is in the list. No `userId`: `tasksNeedingMe` already decided,
+ *  so anything else is here because it is assigned to the reader. */
 export type AttentionReason = "answer" | "review" | "assigned";
 
 export function attentionReason(task: TaskBoardItem): AttentionReason {
@@ -118,20 +86,8 @@ export function attentionReason(task: TaskBoardItem): AttentionReason {
   return "assigned";
 }
 
-/**
- * One project's week, for the org home's roster.
- *
- * The org home is navigation, so each row has to answer "is there anything for
- * me in here" before you click it. Four counts is not that answer — it is the
- * same reading work, done five times down a column. So the row gets ONE
- * headline, ranked by how much it wants you: something stopped on you beats
- * something that broke, which beats something that shipped, which beats a
- * queue that is merely open.
- *
- * Pure, and exported for its test: the ranking IS the feature, and a row that
- * says "3 shipped" while a run is waiting on an answer is a row that cost
- * someone their morning.
- */
+/** One project's week as ONE headline, ranked waiting › failed › shipped ›
+ *  open. The ranking is the feature, hence the test. */
 export type ProjectHeadlineKind =
   | "waiting"
   | "failed"
@@ -209,13 +165,8 @@ export function projectSummaries(
   return summaries;
 }
 
-/**
- * The runs happening right now, newest first.
- *
- * A dashboard that only reports finished work reads as a log. This is the one
- * section that says the product is doing something while you look at it, and it
- * is free: `in_progress` threads are already in the board payload.
- */
+/** The runs happening right now, newest first — `in_progress` threads already
+ *  in the board payload. */
 export interface RunningAgent {
   threadId: string;
   taskId: string;
@@ -242,17 +193,9 @@ export function runningAgents(tasks: readonly TaskBoardItem[]): RunningAgent[] {
   return running.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-/**
- * Cards shipped per day for one project, oldest day first.
- *
- * The shape a sparkline draws. Deliberately NOT a business metric: a project
- * does not declare a goal anywhere in this product, and inventing a field to
- * hold one is the mistake `project-profile.ts` exists to prevent. What a
- * project provably has is a delivery rhythm, and a flat line on a storefront
- * that used to ship every day is a real thing to notice.
- */
-/** How wide a project's rhythm line is. Two weeks: one is too short to have a
- *  shape, and a month compresses a daily bar into noise at 56 pixels. */
+/** Cards shipped per day for one project, oldest first — delivery rhythm, not
+ *  a business metric (see `project-profile.ts`). */
+/** Two weeks: one has no shape, a month is noise at 56px. */
 export const RHYTHM_DAYS = 14;
 
 export function shippedSeries(
@@ -274,14 +217,8 @@ export function shippedSeries(
   return series;
 }
 
-/**
- * Runs today, and how many are still going.
- *
- * "Today" and not the seven-day window on purpose: this is the number an
- * operator checks to know whether the machine is running right now, and a
- * weekly total answers a different question. Both come off threads the board
- * already carries, so neither adds a read.
- */
+/** Runs today, and how many are still going. Today rather than the seven-day
+ *  window: this answers "is the machine running right now". */
 export interface RunsToday {
   runs: number;
   live: number;
@@ -324,11 +261,8 @@ export function runsSeries(
   return series;
 }
 
-/** The 1st of `now`'s calendar month at local midnight, and how many calendar
- *  days stand between it and `now` (inclusive) — the one window definition
- *  {@link monthlyCost} and the cost drill-down's daily series both bucket
- *  against, so a headline reading "this month" and the chart under it are
- *  never quietly two different windows. */
+/** The one month-to-date window {@link monthlyCost} and the cost chart both
+ *  bucket against, so headline and chart cannot drift apart. */
 function monthToDateWindow(now: number): { since: number; days: number } {
   const start = new Date(now);
   start.setDate(1);
@@ -378,21 +312,13 @@ export function costSeriesForProjectMonthToDate(
   return series;
 }
 
-/**
- * What the agents have cost this calendar month, and which projects spent it.
- *
- * Calendar month rather than a rolling window because that is the unit a bill
- * arrives in, and someone checking spend is checking it against an invoice.
- * A provider that reports no cost contributes a run but no dollars, so the
- * total can be zero while the runs are not — which is true, and better than
- * inventing an estimate.
- */
+/** Agent spend this calendar month — the unit a bill arrives in. A provider
+ *  that reports no cost adds a run but no dollars. */
 export interface MonthlyCost {
   total: number;
   /** Per project id, highest first. Only projects that spent anything. */
   byProject: { projectId: string; usd: number }[];
-  /** Dollars per card shipped this month, or null when nothing shipped — a
-   *  ratio with a zero denominator is not a number anyone should read. */
+  /** Dollars per card shipped, or null when nothing shipped. */
   perShipped: number | null;
 }
 

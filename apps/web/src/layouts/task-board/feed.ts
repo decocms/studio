@@ -1,19 +1,9 @@
 /**
- * The board read as a feed: what happened, newest first, grouped by the day it
- * happened on.
+ * The board read as a feed: what moved, newest first, grouped by local day.
  *
- * Board and List both answer "what is there"; neither answers "what moved since
- * I last looked", which is the question anyone opening the board in the morning
- * actually has. A lane sorts by hand-dragged position and a list by filter, so
- * the single most recent thing in the org can sit anywhere on either — a feed
- * puts it first, and the day header is what turns a stack of rows into a
- * reading order.
- *
- * Built from the cards the board already loaded, so the view costs no request.
- * The per-card activity log (`TASK_BOARD_ACTIVITY_LIST`) is per ITEM — a feed
- * over it would be one request per card — so the event a row reports is derived
- * from the card's current state instead: the last thing that happened to a card
- * is, by definition, the state it is in now.
+ * Built from the cards the board already loaded, so it costs no request. The
+ * per-card activity log is per ITEM, so a row's event is derived from the
+ * card's current state instead.
  */
 
 import { DELIVERY_LANES } from "@decocms/shared/task-board";
@@ -24,11 +14,8 @@ import {
   type TaskBoardItem,
 } from "./config";
 
-/**
- * What a row says happened. Ordered by urgency in {@link feedEventKind}, not by
- * this declaration — a card can be several of these at once (a failed run on a
- * card in review), and the one worth reading is the one someone has to act on.
- */
+/** What a row says happened. {@link feedEventKind} orders these by urgency, not
+ *  this declaration: a card can be several at once. */
 export type FeedEventKind =
   | "blocked"
   | "running"
@@ -40,12 +27,8 @@ export type FeedEventKind =
   | "created"
   | "updated";
 
-/**
- * How close the two timestamps have to be for a card to read as "created"
- * rather than "updated". They are written by one statement but not always in
- * the same millisecond, and a card created and immediately stamped with a
- * project is still, to a reader, a card that was just created.
- */
+/** How close `createdAt` and `updatedAt` must be for a card to read as
+ *  created rather than updated — one statement, not one millisecond. */
 const CREATED_WINDOW_MS = 5_000;
 
 export function feedEventKind(item: TaskBoardItem): FeedEventKind {
@@ -55,8 +38,7 @@ export function feedEventKind(item: TaskBoardItem): FeedEventKind {
   if (run === "failed") return "failed";
   if (isTaskHandedToHuman(item)) return "handed";
   if (item.status === "done") return "done";
-  /** Approved / Merged / Validating are each news, and each different news —
-   *  the row names the event and lets the lane pill say which one. */
+  /** The row names the event; the lane pill says which one. */
   if ((DELIVERY_LANES as string[]).includes(item.status)) return "delivered";
   if (item.status === "in_review") return "review";
   const age = Date.parse(item.updatedAt) - Date.parse(item.createdAt);
@@ -75,8 +57,8 @@ export interface FeedDay {
   items: TaskBoardItem[];
 }
 
-/** Local calendar day, NOT `toISOString()` — that is UTC, so everything after
- *  21:00 in São Paulo lands in tomorrow's group. */
+/** Local calendar day, NOT `toISOString()`: UTC puts everything after 21:00 in
+ *  São Paulo in tomorrow's group. */
 function dayKey(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
@@ -89,14 +71,9 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((startOf(a) - startOf(b)) / 86_400_000);
 }
 
-/**
- * Cards newest-first, bucketed into the local day they last moved on.
- *
- * `now` is passed rather than read so "today" is decided by the caller — and so
- * the test can say what day it is. A card with an unparseable `updatedAt` is
- * dropped rather than grouped under the epoch: a feed is a claim about when,
- * and a row that cannot make that claim has nothing to say here.
- */
+/** Cards newest-first, bucketed by local day. `now` is passed so the caller
+ *  (and the test) decides what day it is; an unparseable `updatedAt` drops the
+ *  card rather than grouping it under the epoch. */
 export function groupFeedByDay(
   items: readonly TaskBoardItem[],
   now: Date,

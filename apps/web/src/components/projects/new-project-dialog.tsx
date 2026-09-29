@@ -1,4 +1,5 @@
-/** Import an existing codebase, or start an empty project folder to connect later. Repository picks hand off to `RepositoryImportPicker` rather than nesting a dialog in a dialog. */
+/** Import a codebase, or start an empty project folder. Repository picks hand
+ *  off to `RepositoryImportPicker` rather than nesting a dialog in one. */
 
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -31,15 +32,9 @@ interface PathMeta {
   titleKey: TranslationKey;
   hintKey: TranslationKey;
   art: (props: { className?: string }) => ReactNode;
-  /**
-   * The card's hue, from the design system's CATEGORICAL palette.
-   *
-   * `chart-*` rather than `success` / `warning`: those are status, and a
-   * storefront is not a healthier thing to make than a report. These four say
-   * only "different intent", which is the whole job, and they are the same
-   * values in both themes. Written as whole class names because Tailwind reads
-   * source text and cannot see an interpolated one.
-   */
+  /** From the CATEGORICAL palette, not `success`/`warning`: a storefront is not
+   *  a healthier thing to make than a report. Whole class names, because
+   *  Tailwind cannot see an interpolated one. */
   plate: string;
   art_: string;
 }
@@ -282,8 +277,7 @@ export function NewProjectDialog({
   );
 }
 
-/** The one control that opens the dialog, so every surface that offers to make
- *  a project offers the same thing. The dialog itself is mounted once by the
+/** The one control that opens the dialog; the dialog is mounted once by the
  *  shell — see `new-project-store.ts`. */
 export function NewProjectButton({
   source,

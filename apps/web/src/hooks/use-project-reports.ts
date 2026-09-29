@@ -1,28 +1,10 @@
 /**
  * Which report belongs to which project.
  *
- * The product is moving to N reports over N projects — an org like Hite runs a
- * Wake store and a Shopify store off different analytics accounts, and one
- * report per organization cannot describe both. The UI here is written for
- * that world. The BACKEND is not there yet: a diagnostic still lives on one
- * well-known per-org connection (`WellKnownOrgMCPId.REPORTS`), so exactly one
- * of an org's projects can have one at a time.
- *
- * This module is the seam between the two, and it is deliberately the ONLY
- * place that knows the difference:
- *
- *   - `projectReportConnectionId` answers "which connection holds this
- *     project's report". Today it reads a per-project override if one has been
- *     written and falls back to the org connection. The day reports become
- *     per-project, that override is the only thing that has to start being
- *     written — every screen that renders a report already asks this function.
- *   - `useProjectReports` attributes the ONE org diagnostic to the project it
- *     is actually about, by matching the claimed site against each project's
- *     store URL. Every other project reads "not run", which is true.
- *
- * Attribution by host rather than by "the first project" is the part worth
- * keeping: it is right under the current backend AND under the future one, so
- * the fallback can be deleted without rewriting the rule.
+ * The UI is written for N reports over N projects; the backend still keeps one
+ * diagnostic per org (`WellKnownOrgMCPId.REPORTS`). This module is the only
+ * place that knows the difference, so the server side can ship by writing the
+ * per-project override and nothing here changes.
  */
 
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
@@ -49,13 +31,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * The connection a project's report lives on.
- *
- * `metadata.project.reportConnectionId` is the per-project pointer. Nothing
- * writes it yet — it is read first on purpose, so the server side of this can
- * ship by writing it and nothing in the UI has to change.
- */
+/** The per-project pointer, falling back to the org connection. Nothing writes
+ *  it yet. */
 export function projectReportConnectionId(
   orgId: string,
   project: ProjectWithReportPointer,
@@ -68,13 +45,8 @@ export function projectReportConnectionId(
     : WellKnownOrgMCPId.REPORTS(orgId);
 }
 
-/**
- * Which project a diagnostic describes, by the host it was run against.
- *
- * Pure and exported for its test: the alternative — handing the org's one
- * report to whichever project sorts first — puts a stranger's numbers under a
- * project's name, which is worse than showing no report at all.
- */
+/** Which project a diagnostic describes, by the host it ran against — never by
+ *  sort order, which would put a stranger's numbers under a project's name. */
 export function projectForReportSite(
   projects: readonly VirtualMCPEntity[],
   siteUrl: string | null,
@@ -108,8 +80,7 @@ export function useProjectReports(
 
   const byProject = new Map<string, ProjectReport>();
   const owner = projectForReportSite(projects, siteUrl);
-  /** The banner's vocabulary says "generating"; a row says "running". Mapped
-   *  here rather than renamed there, so the banner's PostHog series keeps its
+  /** Mapped rather than renamed at the banner, so its PostHog series keeps its
    *  values. */
   const derived = deriveReportBannerStatus(diagnostic);
   const status: ProjectReportStatus =

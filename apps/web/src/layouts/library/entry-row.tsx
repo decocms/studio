@@ -1,13 +1,6 @@
 /**
- * The Library's files table.
- *
- * The design system's `Table` — which is where the card surface, the sticky
- * header and the row rules come from. This file adds only what a FILE table
- * needs on top of it: the type mark, the sort controls, and the columns that
- * drop as the panel narrows.
- *
- * Columns drop from the right in the order they cost the least: size, then
- * type, then the timestamp. The name never drops.
+ * The Library's files table, on the design system's `Table`. Columns drop from
+ * the right — size, then type, then timestamp. The name never drops.
  */
 
 import type { ReactNode } from "react";
@@ -41,9 +34,8 @@ const COL = {
   menu: "w-10",
 } as const;
 
-/** A tinted square for the folders the product understands. The gradient
- *  folder is for folders; a skill and a brand are not one, and drawing them as
- *  one would promise a listing where a preview opens. */
+/** A tinted square for skills and brands: the gradient folder would promise a
+ *  listing where a preview opens. */
 function EntryMark({ kind, name }: { kind: LibraryEntryKind; name: string }) {
   if (kind === "folder") return <FolderIcon className="size-5 shrink-0" />;
   if (kind === "skill" || kind === "brand") {
@@ -57,8 +49,7 @@ function EntryMark({ kind, name }: { kind: LibraryEntryKind; name: string }) {
   return <FileTypeIcon filename={name} className="h-5 w-4 shrink-0" />;
 }
 
-/** What the Type column says. A folder's type is what it IS to the product,
- *  which is the only reading of "type" that tells you anything about one. */
+/** What the Type column says. */
 function typeLabel(entry: LibraryEntry, t: TFunction): string {
   if (entry.kind === "file") return describeFileType(entry.name);
   if (entry.kind === "skill") return t("library.cards.skill");
@@ -146,9 +137,8 @@ function SortButton({
 }: {
   label: string;
   active: boolean;
-  /** Which way this column orders, so the arrow states the order rather than
-   *  just marking the column. Name reads A to Z; the rest read biggest and
-   *  newest first, which is what someone asking for them means. */
+  /** Name reads A to Z; the rest read biggest and newest first, so the arrow
+   *  states the order rather than just marking the column. */
   descending?: boolean;
   className?: string;
   onClick: () => void;
@@ -171,15 +161,8 @@ function SortButton({
 }
 
 /**
- * The files table: its sortable header and its rows.
- *
- * One component rather than two, because the header's columns only line up
- * with the rows' if they read the same widths inside the same container — and
- * a caller that renders one without the other has a table whose columns lie.
- *
- * Each column sorts one way, the way someone asking for it means. A second
- * click reversing it would double the states to explain for an ordering nobody
- * asks a file manager for.
+ * Header and rows in one component: their columns only line up if they read the
+ * same widths inside the same container. Each column sorts one way.
  */
 export function EntryList({
   sort,
@@ -189,8 +172,7 @@ export function EntryList({
 }: {
   sort: LibrarySort;
   onSort: (sort: LibrarySort) => void;
-  /** The second column's heading — "Type", or "Location" in a cross-volume
-   *  feed, where every row already knows what it is and not where it lives. */
+  /** "Type", or "Location" in a cross-volume feed. */
   typeLabel: string;
   children: ReactNode;
 }) {

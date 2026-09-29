@@ -1,20 +1,11 @@
 /**
- * What is stopped waiting on a person, across every project.
+ * What is stopped waiting on a person, across every project — the first and
+ * densest block. A `user_ask` run and an unowned review both miss an assignee
+ * filter, which is why they get missed.
  *
- * The single reason to open this page in the morning, so it is the first block
- * and the densest one. An agent that called `user_ask` is frozen until someone
- * answers; a card parked in review with nobody holding it is a hand-off that
- * fell on the floor. Neither shows up in an assignee filter, which is why both
- * get missed.
- *
- * Every row states what it can prove about itself — a verified review, a
- * preview that exists, what the runs cost — because a queue that gives only
- * titles makes you open each card to find the one that is a click from done.
- * All of it comes off the board payload the page already loads.
- *
- * When there is nothing, the block says so in a line instead of disappearing:
- * "nothing is waiting on you" is the answer the reader came for, and a page
- * that silently omits it sends them to the board to make sure.
+ * Every row states what it can prove about itself, off the board payload the
+ * page already loads. With nothing to show it says so in a line rather than
+ * disappearing.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -44,12 +35,8 @@ import { HomeCard, HomeCardRow } from "./section";
 /** Rows shown before the block defers to the board. */
 const MAX_ROWS = 5;
 
-/**
- * The kind of ask, which is what lets someone triage the queue without reading
- * it — and the verb on the button, so the row names its own next move rather
- * than offering a generic "open". A question is the only one of the three
- * actually BLOCKING something, so it is the only one that spends colour.
- */
+/** The kind of ask, and the verb on its button. A question is the only one
+ *  actually blocking, so it is the only one that spends colour. */
 const REASON: Record<
   AttentionReason,
   {

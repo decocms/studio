@@ -49,9 +49,7 @@ export function OrgSearch({
 
   return (
     <>
-      {/* One word under the glyph; the tooltip is where the count and the full
-          sentence go. */}
-      <RailItem active={false} label={t("sidebar.rail.searchShort")}>
+      <RailItem active={false}>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -85,8 +83,7 @@ export function OrgSearch({
           {orgs.map((org) => (
             <CommandItem
               key={org.id}
-              /* The slug is searchable too — it is what appears in the URL,
-                 so it is often what someone half-remembers. */
+              /* The slug is searchable too: it is what appears in the URL. */
               value={`${org.name} ${org.slug}`}
               onSelect={() => {
                 setOpen(false);

@@ -14,8 +14,7 @@ const buttonVariants = cva(
     "relative inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap",
     /* A pill at every size, in every layout — see `--studio-button-radius`. */
     "rounded-[var(--studio-button-radius)] text-sm font-medium",
-    /* Colour and shadow ease; the press is instant, because a button that
-       takes 150ms to look pressed feels like it missed the click. */
+    /* Colour and shadow ease; the press is instant (`active:transition-none`). */
     "transition-[background-color,box-shadow,color,opacity] duration-150 ease-[var(--ease-out-cubic)]",
     "active:scale-[0.98] active:transition-none motion-reduce:active:scale-100",
     "focus-ring",
@@ -26,8 +25,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /* The one filled button on a screen. Ink, so it is unmistakably the
-           thing to press, and nothing else on the page is this dark. */
+        /* The one filled button on a screen: ink, and nothing else is this dark. */
         default: "bg-primary text-primary-foreground hover:bg-primary/85",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive/70",
@@ -66,11 +64,7 @@ const buttonVariants = cva(
          */
         menu: "w-full justify-start font-normal hover:bg-accent hover:text-accent-foreground",
       },
-      /* A pill needs more room at the ends than a rectangle does — the curve
-         eats the first and last few pixels, so the label sits closer to the
-         edge than it measures. Padding grows faster than height for that
-         reason, and an icon-led button gives a little back because a glyph
-         reads as its own margin. */
+      /* A pill's curve eats the end pixels, so padding grows faster than height; an icon-led button gives some back. */
       size: {
         default: "h-8 px-3.5 has-[>svg]:px-3",
         sm: "h-7 gap-1.5 px-3 has-[>svg]:px-2.5",

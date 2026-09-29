@@ -46,6 +46,7 @@ import { PanelLoading } from "@/layouts/main-panel-boundary";
 import { ReportsIndex } from "@/components/projects/reports-index";
 import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
 import { readProjectProfile, storeHost } from "@/lib/project-profile.ts";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 const AppViewContent = lazy(() =>
   import("@/routes/project-app-view").then((m) => ({
@@ -54,15 +55,15 @@ const AppViewContent = lazy(() =>
 );
 
 export function ReportsTab() {
+  const projectFirstNav = useProjectFirstNav();
   const scopeId = useScopeId();
   const { project } = useProjectScope();
   const { diagnostic, isLoading, siteUrl, connectionId } =
     useReportsDiagnostic();
 
-  /** At ORG scope this destination is the index over every project's report —
-   *  a report belongs to a project now, and the org-wide view is the list of
-   *  them. Inside a project it is that project's report, below. */
-  if (!scopeId) {
+  /** At ORG scope this is the index over every project's report; inside a
+   *  project it is that project's own, below. */
+  if (projectFirstNav && !scopeId) {
     return (
       <Suspense fallback={<PanelLoading />}>
         <ReportsIndex />
@@ -72,17 +73,13 @@ export function ReportsTab() {
 
   if (isLoading) return <PanelLoading />;
 
-  const projectSiteUrl = project ? readProjectProfile(project).storeUrl : null;
+  const projectSiteUrl =
+    projectFirstNav && project ? readProjectProfile(project).storeUrl : null;
 
-  /**
-   * Whether the org's one diagnostic is about THIS project.
-   *
-   * The backend still keeps a single report per organization (see
-   * `use-project-reports.ts`), so without this check every project would render
-   * the same numbers under its own name — a storefront's funnel shown as the
-   * app's. A project that names no storefront keeps the old behaviour and shows
-   * the org's report, which is what every pre-projects repo import is.
-   */
+  /** Whether the org's one diagnostic is about THIS project: the backend still
+   *  keeps one per org (`use-project-reports.ts`), so without this every
+   *  project would render the same numbers under its own name. A project that
+   *  names no storefront keeps the old behaviour. */
   const ownsDiagnostic =
     !projectSiteUrl ||
     !siteUrl ||

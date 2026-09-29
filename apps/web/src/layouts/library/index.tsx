@@ -1,16 +1,12 @@
 /**
  * Library — the org filesystem, as the drive of a computer.
  *
- * The product is one machine: an organization is the drive, and a project is a
- * folder in it (`project-folder.ts`). So this page is rooted rather than
- * absolute — `root` is the top of the tree it shows, the org's home folder for
- * the org destination and one project's folder inside a project. Everything
- * else follows from that: the breadcrumb starts there, search narrows under it,
- * and nothing above it is reachable by walking up.
+ * Rooted rather than absolute: `root` is the top of the tree, the org's home
+ * folder or one project's (`project-folder.ts`). The breadcrumb starts there,
+ * search narrows under it, and nothing above it is reachable by walking up.
  *
- * `?path=` holds the browse location, `?preview=` the open file, `?layout=` and
- * `?sort=` how the files are drawn — all four in the URL, so a folder, a file
- * and the way someone likes to read them are linkable and survive a reload.
+ * `?path=`, `?preview=`, `?layout=` and `?sort=` are all in the URL, so a
+ * folder, a file and how someone reads them survive a reload.
  */
 
 import { useRef, useState } from "react";
@@ -185,9 +181,8 @@ export function LibraryPage({
     onOpenBrandOverride ??
     ((brandPath: string) => openPreview("brand", brandPath));
 
-  /** Search follows the location: the whole tree at its root, this folder's
-   *  subtree below it. `volume === null` is the public-sets listing, which has
-   *  no single volume to scope to and so stays global. */
+  /** Search follows the location. `volume === null` is the public-sets
+   *  listing, which has no single volume to scope to. */
   const [searchText, setSearchText] = useState("");
   const searchQuery = useDebouncedValue(searchText.trim(), 300);
   const searchScope =
@@ -233,8 +228,8 @@ export function LibraryPage({
   // get their own hook instance bound to the pending entry's volume.
   const { remove } = useOrgFsMutations(pendingDelete?.volume ?? "uploads");
 
-  /** Reserved names belong to the DRIVE's root, not to every root: a project
-   *  folder may hold its own `uploads` with nothing to collide with. */
+  /** Reserved names belong to the DRIVE's root: a project folder may hold its
+   *  own `uploads` with nothing to collide with. */
   const isDriveRoot = location.isHomeRoot && root === HOME_MOUNT_PATH;
 
   async function handleUpload(files: FileList | null) {
@@ -409,11 +404,8 @@ export function LibraryPage({
     queryClient.invalidateQueries({ queryKey: KEYS.orgFsPublicSets(org.id) });
   }
 
-  // Right-clicking empty space creates a folder here. This listens on the whole
-  // page, so anything interactive has to opt out first: entry rows that own a
-  // rename menu call preventDefault, and everything else (the search box, the
-  // toolbar, the rows with no menu of their own) keeps its native menu — a
-  // right-click meant for "paste" must never become "new folder".
+  /** Right-click on empty space makes a folder. Listens page-wide, so anything
+   *  with its own menu opts out with `preventDefault`. */
   function handleContextMenuEmpty(e: React.MouseEvent) {
     if (e.defaultPrevented || !browseVolume) return;
     if (
@@ -427,16 +419,13 @@ export function LibraryPage({
     setNewFolderOpen(true);
   }
 
-  /** Refresh, layout, new folder, upload — the controls both chromes show, in
-   *  one place so they cannot drift into two different Libraries again. */
+  /** The controls both chromes show, in one place so they cannot drift. */
   const controls = (
     <>
       <IconButton
         label={t("library.library.refresh")}
         tooltipSide="bottom"
-        /* `secondary`, like the search toggle it sits beside and the New
-           folder button after it: a ghost icon in a row of outlined pills
-           reads as a different class of control than it is. */
+        /* `secondary`, like the controls either side of it. */
         variant="secondary"
         onClick={refresh}
       >
@@ -527,7 +516,8 @@ export function LibraryPage({
         after="page"
         parent={{
           onSelect: () => onOpenDir(root),
-          /** A rooted library names its own root; only spread when there IS one, so an empty label doesn't erase the route's own. */
+          /** Only spread when there IS one, so an empty label does not erase
+           *  the route's own. */
           ...(rootLabel ? { label: rootLabel } : {}),
         }}
         items={breadcrumbs}

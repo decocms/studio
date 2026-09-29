@@ -1,18 +1,10 @@
 /**
- * Whether the New project dialog is open — module-scope state, read with
+ * Whether the New project dialog is open — module-scope state read with
  * `useSyncExternalStore`, exactly like `command-palette-store.ts`.
  *
- * Creating a project is offered from four places that cannot share a parent:
- * the org home, the sidebar's project list, the org/project picker popover, and
- * the Reports and Settings indexes. The picker is the one that forces this:
- * it lives inside a popover, so a dialog it rendered would unmount with the
- * popover the moment the item was clicked.
- *
- * A store beats a context here for the same reason it does for the palette — a
- * context whose value is `[open, setOpen]` re-renders every consumer under the
- * shell on each toggle, and `openNewProjectDialog()` is a plain function any
- * module can call without being under a provider at all. The dialog itself is
- * mounted once, by the shell, and gated so it costs nothing while closed.
+ * Creating a project is offered from places that cannot share a parent, and the
+ * picker forces the store: it lives in a popover, so a dialog it rendered would
+ * unmount with the popover the moment the item was clicked.
  */
 
 import { useSyncExternalStore } from "react";

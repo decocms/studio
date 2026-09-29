@@ -7,18 +7,20 @@
  * it says you are still browsing when you are working.
  *
  * The breadcrumb stays and is the way back — the project's own crumb is already
- * the parent of every one of these routes.
+ * the parent of every one of these routes. Project-first nav only.
  */
 
 import { useRouterState } from "@tanstack/react-router";
 import { LAUNCHABLE_VIEW_IDS } from "@/components/projects/project-apps";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 export function useAppTakeover(): boolean {
+  const projectFirstNav = useProjectFirstNav();
   const mainView = useRouterState({
     select: (state) =>
       state.matches.findLast((match) => match.staticData.mainView)?.staticData
         .mainView,
   });
-  if (!mainView) return false;
+  if (!projectFirstNav || !mainView) return false;
   return (LAUNCHABLE_VIEW_IDS as readonly string[]).includes(mainView);
 }

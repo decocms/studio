@@ -212,9 +212,7 @@ const PILL =
 const META =
   "inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground";
 
-/** A lane's own controls: shown when the pointer is over the lane, or the
- *  control has focus or its menu open. Always-on, every column headline
- *  carried two grey glyphs that said nothing until they were wanted. */
+/** A lane's own controls: revealed on hover, focus, or an open menu. */
 const LANE_ACTION =
   "flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-[color,background-color,opacity] hover:bg-muted hover:text-foreground group-hover/lane:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
 
@@ -531,9 +529,8 @@ function CardFooter({
   assignee?: Member;
   assignedBy?: Member;
   members?: Member[];
-  /** Facts a board card gets from its surroundings and a feed post cannot:
-   *  which project it belongs to, which lane it is in, what it has cost. They
-   *  join the left group so the footer keeps ONE baseline on both surfaces. */
+  /** Facts a feed post cannot get from its surroundings — project, lane, cost.
+   *  In the left group so the footer keeps one baseline on both surfaces. */
   leading?: ReactNode;
   /** The right edge, after the assignee — a feed post's timestamp lands here
    *  rather than in its own row. */
@@ -822,7 +819,7 @@ function AssigneeDisplay({
             e.stopPropagation();
             setOpen(true);
           }}
-          // Shown on the card's hover: a dashed circle on every unassigned card is a row of holes.
+          // Hover-only: a dashed circle on every unassigned card is a row of holes.
           className="flex size-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/40 opacity-0 transition-[color,border-color,opacity] group-hover:opacity-100 hover:border-muted-foreground hover:text-muted-foreground focus-visible:opacity-100 data-[state=open]:opacity-100"
         >
           <UserPlus01 size={13} />
@@ -854,31 +851,18 @@ export function TaskBoardPage({
   inlineTabs = false,
   taskInSearch = false,
 }: {
-  /** Narrow to this project explicitly, for a mount whose ROUTE carries no
-   *  `$agentId` to read the scope from (`/$org/projects?project=`). Omitted on
-   *  every other mount, which resolves from the route as before.
-   *
-   *  Must be the RESOLVED entity. Passing it skips the "scope known, project
-   *  not yet" loading branch, so a stub carrying only an id would build an
-   *  index with no repository bucket and render an empty board instead of a
-   *  loading one. With only an id, pass nothing and let the route answer. */
+  /** Narrow to this project explicitly, for a mount whose route carries no
+   *  `$agentId` (`/$org/projects?project=`). Must be the RESOLVED entity: it
+   *  skips the loading branch, so a stub id renders an empty board. */
   scopeProject?: VirtualMCPEntity;
-  /** Draw the Board/List/Feed tabs at the top of the board instead of
-   *  portalling them into the panel toolbar. For a mount that is only PART of
-   *  its page (`/$org/projects?project=`, where a project header and its apps
-   *  sit above): a toolbar control belongs to the whole panel, so up there it
-   *  reads as switching the screen rather than the board under it.
-   *
-   *  A placement and not a "render them yourself" escape hatch, deliberately.
-   *  Switching to List or Feed has to `clearSelection()` — that only the board
-   *  can do, and a second copy of these tabs outside it would drop it. */
+  /** Draw the Board/List/Feed tabs inside the board instead of portalling them
+   *  into the panel toolbar, for a mount that is only part of its page. A
+   *  placement, not an escape hatch: switching views has to `clearSelection()`,
+   *  which only the board can do. */
   inlineTabs?: boolean;
-  /** Address the open card in `?task=` instead of the route's `{-$taskKey}`
-   *  segment — for a mount whose route has no such segment to write
-   *  (`/$org/projects?project=`, which cannot grow one: one more child route
-   *  breaks TanStack's `to: "."` search inference app-wide, as
-   *  `projectsIndexRoute` explains). Without it, clicking a card navigated to
-   *  a param the route does not own and nothing opened. */
+  /** Address the open card in `?task=` rather than the route's `{-$taskKey}`,
+   *  for a route that has no such segment and cannot grow one — see
+   *  `projectsIndexRoute`. */
   taskInSearch?: boolean;
 } = {}) {
   return (
@@ -1034,9 +1018,8 @@ function TaskBoardBody({
   const studio = useStudioTools();
   const { org, locator } = useProjectContext();
   const navigate = useNavigate();
-  /** Scoped to a project, the gear is that project's own settings — the board
-   *  behind it has none of its own to open. Only the unscoped, org-wide board
-   *  (settings/task-board) has settings of its own to reach. */
+  /** Scoped, the gear opens the PROJECT's settings; only the org-wide board
+   *  has board settings of its own. */
   const openBoardSettings = () => {
     if (scopedProject) {
       navigate({
@@ -1073,12 +1056,8 @@ function TaskBoardBody({
     task?: string;
   };
   const openTaskKey = taskInSearch ? taskKeySearch : taskKeyParam;
-  /**
-   * Where this mount writes a card's address — the route segment normally, or
-   * `?task=` on the one screen that has no segment to write (see
-   * `taskInSearch`). Every open, close and canonicalization goes through it,
-   * so the two spellings cannot drift apart.
-   */
+  /** Where this mount writes a card's address. Every open, close and
+   *  canonicalization goes through it, so the two spellings cannot drift. */
   const taskAddress = (key: string | undefined) =>
     taskInSearch
       ? {
@@ -1092,9 +1071,8 @@ function TaskBoardBody({
           }),
           search: (prev: Record<string, unknown>) => prev,
         };
-  /** Resolved against the ORG's cards, not the scoped slice: a card's URL is
-   *  its one address, and a link followed from outside the project it belongs
-   *  to must open it rather than redirect away as stale. */
+  /** Resolved against the ORG's cards, not the scoped slice: a link from
+   *  outside the project must open rather than redirect away as stale. */
   const openItem = findTaskByKeyOrId(orgItems, openTaskKey) ?? null;
   /** A deleted (or never-visible) card leaves the segment dangling; land on
    *  the board rather than an empty pane. */
@@ -1340,13 +1318,7 @@ function TaskBoardBody({
             </Button>
           </Page.Actions>
           {inlineTabs ? (
-            /* The board's own toolbar strip, fenced off from the apps
-                   launcher above it by a full-bleed rule: without one the tabs
-                   read as a third row of the project header rather than the
-                   control of the region under them. Full-bleed and not capped
-                   like the row inside it — a rule that stops short of the panel
-                   edge is a box someone forgot to finish. The row is padded for
-                   the filters that sit beside these tabs. */
+            /* A full-bleed rule fences these tabs off from the apps launcher above, so they read as the control of the region below them. */
             <div className="mt-2 border-t border-border">
               {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
               <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
@@ -2786,19 +2758,11 @@ function TaskCard({
 }
 
 /**
- * How each feed event reads: the badge pinned to the right of a post's author
- * line, saying what the news is.
+ * The badge on a post's author line. `namesLane` marks a badge derived FROM the
+ * lane, so the footer chip does not print the same lane twice.
  *
- * `namesLane` is the one non-obvious field: a badge derived FROM the lane
- * ("Shipped" is `done`, "In review" is `in_review`) would otherwise print its
- * own lane a second time as a chip in the footer. Every other event — a run, a
- * hand-off, a plain edit — leaves the lane unsaid, so the chip is the only
- * place it appears.
- *
- * Only what someone has to act on is coloured, and only an event that IS news
- * gets a badge at all: `created` and `updated` have no entry here, because a
- * badge on nearly every post said no more than the timestamp beside it while
- * making a red "Run failed" one more pill in a row of them.
+ * Only what someone must act on is coloured, and `created`/`updated` get no
+ * badge at all — the timestamp beside them already says it.
  */
 const FEED_EVENT_CONFIG: Partial<
   Record<
@@ -2850,21 +2814,11 @@ const FEED_DAY_FMT = new Intl.DateTimeFormat(undefined, {
 });
 
 /**
- * One post in the feed: who, when, what it is about, and what they said.
+ * One post in the feed: a message in a thread, not a card in a grid.
  *
- * A message in a thread, not a card in a grid — no border, no shadow, just a
- * divider between one post and the next. Every card on this board already has
- * an author (a person, or the agent that ran on it) and a body (the run's own
- * last words), so it reads as a conversation the board has been having, and
- * the card container was furniture around a sentence.
- *
- * The body is the newest live run's last message when there is one, and the
- * description otherwise — an agent's own account of what it just did is the
- * point of reading a feed, and a description that never changes is only a
- * fallback for a card no agent has touched.
- *
- * Only facts this board holds appear in the footer. There is no comment count
- * and no per-run reply thread to read, so neither is claimed.
+ * The body is the newest live run's last message, falling back to the
+ * description for a card no agent has touched. The footer claims only facts
+ * this board holds — there is no comment count to show.
  */
 function FeedRow({
   item,
@@ -2886,9 +2840,8 @@ function FeedRow({
   const LaneIcon = lane.visual.icon;
   const body =
     item.threads.filter(isLiveAttempt)[0]?.lastMessage ?? item.description;
-  /** The author falls back to the ASSIGNEE, which is the one slot that can hold
-   *  the agent: a run writes the row under an id no member list resolves, and
-   *  a post signed by nobody reads as a post nobody made. */
+  /** Falls back to the ASSIGNEE: a run writes the row under an id no member
+   *  list resolves, and a post signed by nobody reads as unmade. */
   const byAgent = !author && item.assigneeId === SUPER_AGENT_ASSIGNEE_ID;
   const name = byAgent
     ? t("taskBoard.taskDialog.superAgentLabel")
@@ -2985,9 +2938,8 @@ function FeedRow({
   );
 }
 
-/** What starting a card from the feed's composer needs — the rest of a card
- *  (labels, due date, assignee, project) takes its default and is edited on
- *  the card itself, which is where someone is looking when it matters. */
+/** What the composer needs; everything else takes its default and is edited
+ *  on the card itself. */
 export interface FeedComposeInput {
   title: string;
   description: string;
@@ -2997,17 +2949,9 @@ export interface FeedComposeInput {
 }
 
 /**
- * The card at the top of the feed that starts a card.
- *
- * A feed you only read is a log. This is the reply box — title, an optional
- * description, and the three properties worth setting before a first read
- * (status, type, priority) rather than after. Everything else about the card
- * (labels, due date, assignee, project) takes its default and is edited on
- * the card itself, which is where someone is looking when it matters.
- *
- * It creates into the scope the feed is already showing, so a card typed inside
- * a project belongs to that project rather than landing unattributed on the org
- * board.
+ * The feed's reply box: title, optional description, and the three properties
+ * worth setting before a first read. It creates into the scope the feed is
+ * showing, so a card typed inside a project belongs to it.
  */
 function FeedComposer({
   onCreated,
@@ -3023,11 +2967,8 @@ function FeedComposer({
   );
   const [priority, setPriority] = useState<TaskBoardItemPriority>("medium");
   const [type, setType] = useState<TaskBoardItemType>(DEFAULT_TASK_TYPE);
-  /** The description field appears once someone starts writing, not before:
-   *  at rest the composer is one line, so the feed under it is what the page
-   *  is about. State rather than `:focus-within` because picking a property
-   *  moves focus into a portaled menu, and a field that vanished while its
-   *  menu was open would shift the very row the menu hangs from. */
+  /** State rather than `:focus-within`: picking a property moves focus into a
+   *  portaled menu, and collapsing then would shift the row it hangs from. */
   const [engaged, setEngaged] = useState(false);
   const trimmed = title.trim();
 
@@ -3177,28 +3118,14 @@ function FeedComposer({
   );
 }
 
+/** Every visible card, newest first, under the day it last moved on. `now` is
+ *  read once per render so rows cannot disagree across midnight. */
 /**
- * The board as a reading order: every visible card, newest first, under the day
- * it last moved on.
+ * What is happening right now, beside the feed: which agents are working, and
+ * what has stopped on a person. Derived from the cards already on screen.
  *
- * `now` is read once per render rather than per row so a group and its rows
- * cannot disagree about what "today" is across a midnight boundary. The day
- * header is sticky: which day a row belongs to must be answerable without
- * scrolling back up to find out.
- */
-/**
- * What is happening right now, beside the feed rather than inside it.
- *
- * The rail used to list the project's owner, repo and folder — true whether or
- * not anything is happening, and already answered by project settings and the
- * Library. A feed is read to find out what is going on, so its margin answers
- * the two live questions the rows themselves scroll away from: which agents are
- * working this second, and what has stopped waiting on a person. Both are
- * derived from the cards already on screen, so nothing new is fetched and the
- * rail cannot disagree with the feed beside it.
- *
- * Only rendered for the project overview's inline feed: the org-wide board
- * would need to name a project on every row, which is the feed's own job.
+ * Inline feed only — the org-wide board would have to name a project on every
+ * row, which is the feed's own job.
  */
 function FeedRail({
   items,
@@ -3206,8 +3133,7 @@ function FeedRail({
   onOpen,
 }: {
   items: TaskBoardItem[];
-  /** Read once by the feed and handed down, so the rail's ages and the day
-   *  headers beside them cannot disagree about when "now" is. */
+  /** Handed down so the rail's ages and the day headers agree on "now". */
   now: Date;
   onOpen: (item: TaskBoardItem) => void;
 }) {
@@ -3310,10 +3236,7 @@ function FeedView({
   const days = groupFeedByDay(items, now);
 
   return (
-    /* The composer and the rail sit OUTSIDE the scrolling region, and only the
-       posts scroll. Inside it they scrolled away — the reply box you came to
-       use, and the live status the rail exists to keep in view — and, worse,
-       they were sliced flat against the tabs above on the way out. */
+    /* Composer and rail sit OUTSIDE the scrolling region; only posts scroll. */
     <div
       className={cn(
         "flex min-h-0 flex-1 flex-col",
@@ -3354,8 +3277,7 @@ function FeedView({
                     <FeedRow
                       key={item.id}
                       item={item}
-                      /* Every card on this feed IS `project` already — the
-                         chip would repeat the screen's own name on every row. */
+                      /* Every card here IS `project`, so the chip would repeat the screen's own name. */
                       bucket={project ? null : entryForTask(item, index)}
                       assignee={
                         item.assigneeId
@@ -3377,12 +3299,8 @@ function FeedView({
   );
 }
 
-/**
- * The board as one column, grouped by lane in the board's own order — the
- * status a reader scans for is a heading, not a glyph to decode on every row.
- * A lane with nothing in it gets no heading: a list is read top to bottom, and
- * an empty group is a line that says "keep going".
- */
+/** The board as one column, grouped by lane in the board's own order. An empty
+ *  lane gets no heading. */
 function ListView({
   items,
   memberByUserId,
@@ -3460,8 +3378,8 @@ function ListView({
   );
 }
 
-/** One row, one line. Every fact sits in a fixed slot so a column of rows
- *  aligns: priority, key, title, then labels, assignee and age at the right. */
+/** One row, one line: priority, key, title, then labels, assignee and age in
+ *  fixed slots so a column of rows aligns. */
 function ListRow({
   item,
   assignee,

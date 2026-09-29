@@ -25,10 +25,8 @@
   font-display: swap;
 }
 
-/* Switzer — deco's typeface. It already set the landing page and the report
-   deck; it was scoped out of the product, which left the app speaking in a
-   different voice from its own brand. It is the UI face now, and Inter is
-   only the fallback while it loads. */
+/* Switzer — deco's typeface, already used by the landing page and the report
+   deck. Inter is the fallback while it loads. */
 @font-face {
   font-family: "Switzer";
   font-style: normal;
@@ -73,15 +71,8 @@
   box-shadow: var(--card-shadow-raised);
 }
 
-/* ============================================================
-   The system's vocabulary.
-
-   Four utilities carry nearly every surface and label in the product. They
-   exist so the relationship between a card's background, corner and edge is
-   stated ONCE — three classes repeated at ninety call sites is three chances
-   for a card to drift, and that drift is what makes an interface read as
-   assembled rather than designed.
-   ============================================================ */
+/* The system's vocabulary: four utilities carrying nearly every surface and
+   label, so a card's background, corner and edge are stated once. */
 
 /** A sheet of work: white, moderately cornered, edged by a hairline ring and
  *  the faintest shade. The default surface for anything that holds content. */
@@ -111,18 +102,11 @@
 }
 
 /**
- * A caption: the facts under a title — a status, a project, a relative time,
- * a cost.
+ * A caption: the facts under a title — a status, a project, a time, a cost.
  *
- * Deliberately NOT the mono face. It was, on the theory that "machine-written"
- * deserved its own voice, and that was the wrong cut: "failed", "2d ago" and a
- * project's name are language, and setting language in mono makes a caption
- * read as log output. Mono is for strings you copy or compare character by
- * character — a run id, a SHA, a path, code — and the product already set its
- * task keys in sans with lining figures, so the mono rule was not even
- * consistent with what was here.
- *
- * Tabular figures stay, because costs and counts still have to line up.
+ * Sans, not mono: these are language, and mono makes a caption read as log
+ * output. Mono is for strings you copy or compare character by character.
+ * Tabular figures stay so costs and counts line up.
  */
 @utility text-meta {
   font-size: var(--text-xs);
@@ -132,17 +116,11 @@
 }
 
 /**
- * Display type — the same typeface, set like a headline.
+ * Display type — the same typeface, set like a headline. There is no second
+ * family; a headline earns its authority from weight, tracking and size.
  *
- * There is no second family and there should not be one. A borrowed display
- * serif is the loudest tell of a design nobody chose: the warm-serif-on-cream
- * look now reads as "AI startup", and importing it would have said less about
- * deco than the lime already does. Switzer carries the whole product, and a
- * headline earns its authority from weight, tracking and size instead.
- *
- * Optical tracking is the part that cannot be left to a developer to
- * remember: Switzer set at 40px with default spacing reads loose, and the
- * correction belongs to the role, not the call site.
+ * The optical tracking belongs to the role, not the call site: Switzer at 40px
+ * with default spacing reads loose.
  */
 @utility font-display {
   font-weight: 640;
@@ -157,15 +135,10 @@
 }
 
 /**
- * The one focus state.
- *
- * Drawn as an `outline`, never a ring. Tailwind's `ring-*` composes into
- * `box-shadow`, which is the same property `card-shadow` uses to draw a
- * surface's hairline edge — so on every card, input and outline button the
- * two fought, and whichever the stylesheet emitted last silently erased the
- * other. An outline cannot collide with a shadow, and it follows
- * `border-radius` on its own, so a pill button gets a pill focus ring for
- * free rather than a rectangle around it.
+ * The one focus state, drawn as an `outline` and never a ring: Tailwind's
+ * `ring-*` composes into `box-shadow`, the same property `card-shadow` uses,
+ * so the two silently erased each other. An outline also follows
+ * `border-radius` on its own.
  */
 @utility focus-ring {
   &:focus-visible {
@@ -616,7 +589,7 @@
      the editor should hardcode either — these are the knobs. */
   --studio-control-height: 2.25rem;
   --studio-control-radius: calc(var(--radius) * 2.667);
-  --studio-surface-radius: calc(var(--radius) * 4);
+  --studio-surface-radius: var(--radius-xl);
   --studio-button-radius: 9999px;
 }
 
@@ -806,8 +779,8 @@
 
 :root {
   --shadow-border:
-    0px 0px 0px 0.5px rgba(0, 0, 0, 0.09),
-    0px 1px 2px -1px rgba(0, 0, 0, 0.2), 0px 2px 4px 0px rgba(0, 0, 0, 0.04);
+    0px 0px 0px 0.5px rgba(0, 0, 0, 0.09), 0px 1px 2px -1px rgba(0, 0, 0, 0.2),
+    0px 2px 4px 0px rgba(0, 0, 0, 0.04);
 }
 
 @layer base {

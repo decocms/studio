@@ -488,37 +488,29 @@ const orgHomeRoute = createRoute({
     /** Reports onboarding hand-off, forwarded verbatim by the `/$org` resolver. */
     connect: z.coerce.string().optional(),
     siteUrl: z.string().optional(),
-    /** The org's OTHER destination. It rides here rather than on `/$org/agents`
-     *  for the reason `projectsIndexRoute` documents below: one more child in
-     *  this tree pushes TanStack's `to: "."` search inference past its limit
-     *  and turns `prev` into `any` at every search caller in the app. Two
-     *  destinations, one route; the sidebar is what tells them apart. */
+    /** The org's OTHER destination, on this route rather than `/$org/agents`
+     *  for the reason `projectsIndexRoute` documents below. */
     view: z.enum(["agents"]).optional(),
   }),
   component: lazyRouteComponent(() => import("./routes/workspace/home.tsx")),
 });
 
 /**
- * Bare `/projects` promotes a search-carried legacy identity or lands on the
- * organization Home. It is an entry point, never a second project list.
+ * Bare `/projects` promotes a legacy identity or lands on the org Home; it is
+ * an entry point, never a second project list.
  *
- * `?project=` is the exception, and the whole of the flat shape's routing
- * (`lib/flat-projects.ts`): it names a project WITHOUT narrowing the shell,
- * because `useScopeId` reads `$agentId` and the legacy `?virtualmcpid=`, and
- * this is neither. It rides here rather than on a route of its own because one
- * more child pushes TanStack's `to: "."` search inference past its limit and
- * turns `prev` into `any` at every caller in the app.
+ * `?project=` names a project WITHOUT narrowing the shell, since `useScopeId`
+ * reads `$agentId` and `?virtualmcpid=` and this is neither. It rides here
+ * because one more child pushes TanStack's `to: "."` search inference past its
+ * limit, turning `prev` into `any` at every caller in the app.
  */
 const projectsIndexRoute = createRoute({
   getParentRoute: () => threadSessionRoute,
   path: "/projects",
   staticData: { pageTitle: "projects.settings.title", defaultMain: "board" },
-  /** `files` is this screen's own: the flat shape has no sidebar to hold a
-   *  project's destinations, so the two a project HAS — itself, and its files
-   *  — are a toggle in the topbar and this is what it writes. Extended here
-   *  rather than added to the shared compatibility payload: no other route
-   *  owns it, and the same reason there is no child route for it (search
-   *  inference) applies to widening the shape everyone validates against. */
+  /** `files` is this screen's own — the topbar toggle between a project and
+   *  its files. Extended here rather than added to the shared payload, since no
+   *  other route owns it. */
   validateSearch: legacyWorkspaceCompatibilitySearchSchema.extend({
     files: z.coerce.boolean().optional().catch(undefined),
   }),

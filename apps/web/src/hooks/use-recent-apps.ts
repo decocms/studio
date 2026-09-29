@@ -1,15 +1,9 @@
 /**
- * The org's recently-opened apps, and the one way to add to them.
+ * The org's recently-opened apps. Written from the ROUTE, not the launcher
+ * tile, so a pasted URL or a back button still counts as having been there.
  *
- * Written from the ROUTE, not from the launcher tile. The tile used to be the
- * only event, on the theory that "apps I opened" meant "apps I clicked" — but a
- * pasted URL, a shared deep link and a back button all land you inside an app
- * the rail then refused to list, so the one column that is always on screen
- * could not take you back to the screen you were on.
- *
- * Backed by `useLocalStorage`, which is TanStack-Query-backed: the rail reads
- * the same key from a different corner of the tree and re-renders when this
- * writes, with no bus in between.
+ * Backed by `useLocalStorage` (TanStack-Query-backed), so the rail re-renders
+ * on write with no bus in between.
  */
 
 import { useEffect } from "react";
@@ -32,8 +26,7 @@ export function useRecentApps(orgSlug: string): {
   );
 
   return {
-    /** A value written by an older build (or by hand) must not crash the rail
-     *  that draws it. */
+    /** A value from an older build must not crash the rail. */
     recent: Array.isArray(recent) ? recent : EMPTY,
     remember: (entry) =>
       setRecent((prev) =>
@@ -42,8 +35,8 @@ export function useRecentApps(orgSlug: string): {
   };
 }
 
-/** The app the current route IS, or null — a route with no launchable app
- *  (Today, the board, a settings page) so the rail is left alone. */
+/** The app the current route IS, or null for a route with no launchable
+ *  app. */
 export function useOpenApp(): { app: string; projectId: string } | null {
   return useRouterState({
     select: (state) => {
@@ -54,20 +47,14 @@ export function useOpenApp(): { app: string; projectId: string } | null {
       if (!app || !projectId) return null;
       return app in PROJECT_APPS ? { app, projectId } : null;
     },
-    /** Referentially stable across unrelated route state so the effect below
-     *  fires once per app, not once per navigation. */
+    /** Stable across unrelated route state, so the effect fires once per app
+     *  rather than once per navigation. */
     structuralSharing: true,
   });
 }
 
-/**
- * Record the app the route is on, whichever way you got there.
- *
- * An effect and not a click handler because the event being observed IS the
- * navigation — there is no click to hang it on when the URL was typed. It is
- * keyed on the entry, so a re-render writes nothing and only a real change of
- * app or project touches storage.
- */
+/** Record the app the route is on. An effect, not a click handler: a typed URL
+ *  has no click. Keyed on the entry, so a re-render writes nothing. */
 export function useRememberOpenApp(orgSlug: string): void {
   const { remember } = useRecentApps(orgSlug);
   const open = useOpenApp();

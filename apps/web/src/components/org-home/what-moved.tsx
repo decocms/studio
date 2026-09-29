@@ -1,20 +1,9 @@
 /**
- * What moved, one line per project.
+ * What moved, one line per project — read down a column of names.
  *
- * The project's name in the gutter and a sentence beside it, because the
- * question this answers is "did anything happen in MY stores overnight" — and
- * that is read down a column of names, not out of a stack of cards where the
- * same project appears four times.
- *
- * The sentence is the paragraph a workflow wrote for that project
- * (`readWrittenBrief`) when one exists. Nothing writes it yet, so until then
- * each row states the one thing that provably moved: the newest card that
- * broke, or the newest that shipped. Both readings are true; only the first is
- * analysis, and this section is the place it will land.
- *
- * A project with nothing to report has no row. "Nothing happened in farmrio"
- * is not a line worth a reader's eye, and four of them make a quiet night look
- * like an outage.
+ * The sentence is a workflow's paragraph (`readWrittenBrief`) when one exists.
+ * Nothing writes it yet, so until then each row states the one thing that
+ * provably moved. A project with nothing to report has no row.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -38,11 +27,8 @@ import { HomeCard, HomeCardRow } from "./section";
 /** Lanes that mean the work left the board on its own feet. */
 const SHIPPED = new Set(["done", "merged"]);
 
-/** The derived reading, kept STRUCTURED rather than pre-composed into a
- *  sentence. A title is a title and a status is a machine fact, and the rest
- *  of the product sets those two differently — fusing them into one quoted
- *  string made this the only row on the home where the thing that happened
- *  was not readable at a glance. */
+/** Structured rather than pre-composed into a sentence, so a title and a
+ *  status stay set the way the rest of the product sets them. */
 export interface DerivedMove {
   title: string;
   kind: "failed" | "shipped";
@@ -56,18 +42,13 @@ export interface DerivedMove {
 
 interface Moved {
   project: VirtualMCPEntity;
-  /** The workflow's paragraph, when one has been written. Genuine prose, so
-   *  it stays prose. */
+  /** The workflow's paragraph, when one has been written. */
   written: string | null;
   derived: DerivedMove | null;
 }
 
-/**
- * The one thing that provably moved in a project, newest first.
- *
- * A break outranks a delivery: something that shipped is good news you can read
- * later, something that failed is the reason you opened the page.
- */
+/** The one thing that provably moved, newest first. A break outranks a
+ *  delivery. */
 export function derivedMove(
   tasks: readonly TaskBoardItem[],
 ): DerivedMove | null {

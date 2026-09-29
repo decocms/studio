@@ -1,15 +1,8 @@
 /**
- * Settings, in the footer beside the inbox bell.
+ * Settings, in the footer beside the inbox bell: you go there to change
+ * something and come back, which is the bell's shape, not a destination's.
  *
- * It was a destination row in the spine until the spine became Today and
- * Agents. It is not a destination: you do not go to Settings to work, you go
- * there to change something and come back, which is the same shape as the
- * notifications bell it now sits next to.
- *
- * Two forms, for the footer's two states — an icon beside the account row when
- * the sidebar is open, a full row in the collapsed rail where there is nothing
- * to sit beside. Exactly the pair `inbox.tsx` already keeps, and for the same
- * reason.
+ * Two forms for the footer's two states, the same pair `inbox.tsx` keeps.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -28,10 +21,8 @@ import { useProjectContext } from "@/sdk";
 import { track } from "@/lib/posthog-client";
 import { useT } from "@/i18n/use-t.ts";
 
-/** Which settings this opens, and how it reports itself. Scoped to a project
- *  it opens THAT project's settings panel, which lives in a SESSION whose id is
- *  not knowable at render time — so scoped it is a button and unscoped it is a
- *  real anchor, the same split the row it replaces made. */
+/** Scoped it opens the PROJECT's settings, which live in a session whose id is
+ *  unknown at render time — so scoped is a button, unscoped an anchor. */
 function useSettingsTarget() {
   const { org } = useProjectContext();
   const scopeId = useScopeId();
@@ -50,8 +41,7 @@ function useSettingsTarget() {
   };
 }
 
-/** The icon, sized and styled as `InboxIconButton` — the two are one control
- *  strip and must not drift apart. */
+/** Sized and styled as `InboxIconButton`; the two are one control strip. */
 export function SettingsIconButton() {
   const t = useT();
   const { scopeId, orgLink, open } = useSettingsTarget();

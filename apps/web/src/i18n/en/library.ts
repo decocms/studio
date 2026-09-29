@@ -128,6 +128,10 @@ export const library = {
   "library.library.uploadedSingle": "Uploaded {filename}",
   "library.library.uploading": "Uploading…",
   "library.libraryViews.brands": "Brands",
+  "library.libraryViews.curatedSkillSetsReadOnly":
+    "Curated skill sets — read-only",
+  "library.libraryViews.readOnly": "Read-only",
+  "library.libraryViews.searchResults": "{count} result(s)",
   "library.libraryViews.emptyFolder":
     "Empty folder — upload a file or create a folder to get started.",
   "library.libraryViews.emptyReadOnlySet":

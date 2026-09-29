@@ -1,24 +1,12 @@
 /**
- * The sidebar's project TREE, shown behind the project-first navigation flag.
+ * The sidebar's project TREE, behind the project-first navigation flag.
  *
- * Projects were reachable only through the picker, which is a popover you have
- * to open to learn anything. Listing them costs one row each and turns the
- * sidebar into the map it was already pretending to be.
+ * Folders come from `lib/project-tree.ts`; an org with none renders the same
+ * flat list as before. Collapsed, folders are dropped and every project shows
+ * at icon width.
  *
- * The folders come from `lib/project-tree.ts`, which is where the rule lives:
- * a folder is a name a person pinned, or the owner of a repository two or more
- * projects share, and nothing else. An org with neither renders the same flat
- * list it rendered before — the tree appears when there IS a tree.
- *
- * Collapsed, the folders are dropped and every project shows at icon width. A
- * folder has no icon worth a 48px rail, and hiding projects one disclosure deep
- * in a rail you cannot read the label of is a list you cannot use.
- *
- * It lists PLACES and nothing else. Each project row used to carry up to three
- * cards waiting on you nested underneath, which made the nav a second board:
- * the same cards the org home already ranks, at a third of the width and with
- * no lane, no age and no way to act. A tree that answers "where" stays readable
- * at thirty projects; one that also answers "what" does not.
+ * It lists PLACES only — cards nested under a project row made the nav a
+ * second, worse board.
  */
 
 import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
@@ -58,9 +46,8 @@ function ProjectRow({
       icon={<ProjectIcon icon={project.icon} name={project.title} />}
       label={project.title}
       isActive={isActive}
-      /** A button, not a link: these resolve a SESSION, so the destination id
-       *  is not knowable at render time — the same reason `ProjectNav`'s rows
-       *  are buttons. */
+      /** A button, not a link: these resolve a session, so the destination id
+       *  is not knowable at render time. */
       onSelect={() => {
         track("sidebar_project_clicked");
         navigateToAgent(project.id);
@@ -70,15 +57,8 @@ function ProjectRow({
   );
 }
 
-/**
- * A folder and the projects in it.
- *
- * The disclosure is local state and starts open: a folder someone made is a
- * grouping, not a drawer, and a sidebar that hides every project until you
- * open two folders is worse than the flat list it replaced. Closing one is
- * for the org with thirty projects, and it does not need to survive a reload
- * to be worth having.
- */
+/** A folder and the projects in it. The disclosure is local state and starts
+ *  open — a folder is a grouping, not a drawer. */
 function FolderRow({
   folder,
   selectedId,
@@ -138,25 +118,17 @@ export function SidebarProjectsTree({
   const leafPath = useLeafRoutePath();
   const search = useSearch({ strict: false }) as { project?: string };
 
-  /** ORG scope only. Inside a project the sidebar is already about THAT
-   *  project — its own views sit right above this — so a list of every project
-   *  underneath them turns the one place that says where you are into a place
-   *  that says where you could be instead. The picker and the way back out are
-   *  the controls for leaving; this section is the org's map. */
+  /** ORG scope only: inside a project the sidebar is already about that
+   *  project, and the picker is the control for leaving it. */
   if (scopeId || (projects.length === 0 && !canManageProjects)) return null;
 
-  /** Collapsed there is no room for a folder, so the tree flattens back to the
-   *  list of every project — see this module's docblock. */
+  /** Collapsed there is no room for a folder, so the tree flattens. */
   const tree = collapsed
     ? { folders: [], loose: projects }
     : buildProjectTree(projects);
   const canAdd = canManageProjects;
-  /** This tree IS the selection control — picking a row swaps the screen beside
-   *  it rather than entering anywhere — so the row you are looking at has to
-   *  read as chosen. Keyed on the ROUTE as well as the param because
-   *  neighbouring links spread the current search forward: `?project=` outlives
-   *  the screen that meant it, and a project lit up while the org board is open
-   *  names the wrong place. */
+  /** Keyed on the ROUTE as well as the param: neighbouring links spread the
+   *  search forward, so `?project=` outlives the screen that meant it. */
   const selectedId =
     leafPath === FLAT_PROJECT_ROUTE ? (search.project?.trim() ?? null) : null;
 

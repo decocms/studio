@@ -1,39 +1,16 @@
 /**
- * What a project is ABOUT, and what it can DO.
+ * What a project is ABOUT (`storeUrl`, `platform`) and what it can DO (the
+ * capability predicates below).
  *
- * Two different things, kept apart on purpose:
+ * The rule the rest of the app answers to: capability decides, label
+ * describes. A screen gates on what it needs to exist, never on a value
+ * somebody picked from a list — which is why there is no `kind` field.
  *
- *  - `storeUrl` is substance: a report runs against it, so it changes what the
- *    product does. `platform` is how the project reads.
- *  - the capability predicates below are DERIVED from what someone actually
- *    connected, and they are what turns behaviour on or off.
- *
- * The rule the rest of the app answers to: **capability decides, label
- * describes.** If a screen appears or disappears because of a value someone
- * picked from a list, that value has become a gate and is in the wrong place.
- * Ask what the screen needs in order to exist and read that.
- *
- * This is why there is no `kind` here any more. It named the four things an
- * e-commerce org runs — a site, an app, a store, an automation — but as an
- * EXCLUSIVE choice, when the real ones combine: a storefront with a VTEX
- * account is both. It let a project read "Automation" while holding a store
- * URL, and briefly gated Reports. `platform` already says "this sells
- * somewhere", derived from a real connection, and the project's own icon
- * already carries its identity.
- *
- * All of it lives in `metadata.project`, a key the API's metadata schema
- * already passes through untouched (`.loose()`), so none of this needed a
- * migration or a server change.
+ * Stored under `metadata.project`, which the API schema passes through
+ * untouched, so none of this needs a migration.
  */
 
-/**
- * Commerce platforms Studio knows how to recognise.
- *
- * A VOCABULARY for reading a connection, not a field anyone fills in: which
- * platform a project sells on is already stated by the connection it holds,
- * and asking again only creates a second answer that can disagree with the
- * first.
- */
+/** A vocabulary for reading a connection, not a field anyone fills in. */
 const COMMERCE_PLATFORMS = [
   "vtex",
   "shopify",
@@ -54,13 +31,8 @@ interface ConnectionLike {
 /**
  * The platform a project sells on, read off the connection it holds.
  *
- * Derived rather than declared, for the reason this module exists: a VTEX
- * connection already says "this is VTEX", and a second hand-picked answer
- * beside it can only agree redundantly or disagree wrongly.
- *
- * Matches on the connection's `app_name`/`slug` CONTAINING a platform name,
- * because an org names its instances ("VTEX Farm", "vtex-prod") and the
- * registry id is `deco/vtex`. Pure, and exported for its test.
+ * Substring match on `app_name`/`slug`, because orgs name their instances
+ * ("VTEX Farm", "vtex-prod") and the registry id is `deco/vtex`.
  */
 export function platformFromConnections(
   project: { connections?: readonly { connection_id: string }[] | null },
@@ -79,8 +51,7 @@ export function platformFromConnections(
 }
 
 export interface ProjectProfile {
-  /** The storefront this project is about — and the report's subject. The one
-   *  thing here nobody but the person can know, so the one thing we ask for. */
+  /** The storefront this project is about, and the report's subject. */
   storeUrl: string | null;
 }
 
@@ -114,14 +85,8 @@ export function readProjectProfile(project: ProjectLike): ProjectProfile {
   return { storeUrl: nonEmpty(stored.storeUrl) ?? inferStoreUrl(metadata) };
 }
 
-/**
- * The metadata to send on an update that changes a project's profile.
- *
- * `COLLECTION_VIRTUAL_MCP_UPDATE` replaces the whole metadata object, so the
- * caller has to hand back everything it is not changing. Merging here — rather
- * than at each call site — is what keeps a platform change from dropping a
- * project's repo, instructions or sidebar views on the floor.
- */
+/** `COLLECTION_VIRTUAL_MCP_UPDATE` replaces the whole metadata object, so
+ *  merge here rather than at each call site. */
 export function withProjectProfile(
   metadata: unknown,
   patch: StoredProjectProfile,
@@ -132,13 +97,9 @@ export function withProjectProfile(
 }
 
 /**
- * `https://farm.com.br` from anything a person is likely to paste.
- *
- * Null when the input cannot be read as a host at all, which is what gates the
- * report creation path — a report run against a typo is worse than no report.
- * A bare `localhost` is rejected along with the typos: a storefront has a dot
- * in it, and accepting single-label hosts turns every mis-typed word into a
- * valid address.
+ * `https://farm.com.br` from anything a person is likely to paste; null when
+ * it cannot be read as a host, which gates report creation. Single-label hosts
+ * are rejected so a mis-typed word is not a valid address.
  */
 export function normalizeStoreUrl(raw: string): string | null {
   const trimmed = raw.trim();
@@ -155,14 +116,8 @@ export function normalizeStoreUrl(raw: string): string | null {
   }
 }
 
-/**
- * What a project actually HAS. Derived, never declared.
- *
- * Each of these is the consequence of something a person did — imported a
- * repository, named a storefront, connected a platform — so none of them can
- * disagree with reality the way a chosen label can. Behaviour reads these;
- * `platform` is how a project LOOKS, and gates nothing.
- */
+/** What a project actually HAS, derived from what someone connected.
+ *  Behaviour reads these; `platform` gates nothing. */
 export function hasRepository(project: ProjectLike): boolean {
   const metadata = isRecord(project.metadata) ? project.metadata : {};
   const repo = isRecord(metadata.githubRepo) ? metadata.githubRepo : null;
@@ -173,25 +128,15 @@ export function hasStorefront(project: ProjectLike): boolean {
   return !!readProjectProfile(project).storeUrl;
 }
 
-/**
- * Whether the project was created AS a project, rather than being a
- * pre-projects agent someone made to call tools with.
- *
- * Provenance, not semantics: the test is that `metadata.project` exists at
- * all, never what it holds. Having been created in the projects flow is what
- * tells a freshly made, still-empty project apart from a leftover tool bundle.
- */
+/** Provenance: `metadata.project` existing at all, never what it holds. Tells
+ *  a new empty project from a pre-projects agent. */
 export function wasCreatedAsProject(project: ProjectLike): boolean {
   const metadata = isRecord(project.metadata) ? project.metadata : {};
   return isRecord(metadata.project);
 }
 
-/**
- * Whether the project is anything yet — the gate for destinations that only
- * make sense once there is somewhere for work to land. A repository, an
- * address, a connection, or simply having been created as a project each
- * count.
- */
+/** Whether the project is anything yet — the gate for destinations that need
+ *  somewhere for work to land. */
 export function projectHasSubstance(
   project: ProjectLike & { connections?: readonly unknown[] | null },
 ): boolean {
@@ -203,7 +148,7 @@ export function projectHasSubstance(
   );
 }
 
-/** `farm.com.br` from `https://www.farm.com.br/feminino` — for a card's subtitle. */
+/** `farm.com.br` from `https://www.farm.com.br/feminino`. */
 export function storeHost(url: string | null | undefined): string | null {
   if (!url) return null;
   try {

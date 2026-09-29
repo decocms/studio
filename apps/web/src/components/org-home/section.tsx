@@ -1,22 +1,11 @@
-/**
- * The home's furniture: a titled card, and the two-column frame it sits in.
- *
- * Every block on the home is the same object — a title, a count, one control,
- * and rows divided by hairlines — so it is one component rather than five that
- * drift. The label is deliberately small: a page whose headings out-shout their
- * content makes you read the furniture before the work.
- */
+/** The home's furniture: a titled card, and the two-column frame it sits in.
+ *  One component rather than five that drift. */
 
 import type { ReactNode } from "react";
 import { cn } from "@decocms/ui/lib/utils.ts";
 
-/**
- * One block of the home: a header strip, then its rows.
- *
- * The header is inside the card and separated by the same hairline the rows
- * use, so the whole block reads as one surface rather than a floating label
- * above a box.
- */
+/** One block of the home. The header is inside the card, on the same hairline
+ *  the rows use, so the block reads as one surface. */
 export function HomeCard({
   label,
   count,
@@ -47,8 +36,8 @@ export function HomeCard({
   );
 }
 
-/** A row inside a {@link HomeCard}. Padded, not bordered: the list owns the
- *  rules, so a row that draws its own would double them at every join. */
+/** A row inside a {@link HomeCard}. Padded, not bordered — the list owns the
+ *  rules. */
 export function HomeCardRow({
   children,
   className,
@@ -69,13 +58,9 @@ export function HomeCardRow({
 }
 
 /**
- * The home's two-column read: the work on the left, the standing readouts on
- * the right, collapsing to one column when the panel cannot hold both.
- *
- * The mock's `.today-grid`: 1.35 to 1, not 70/30. The left column holds
- * sentences and the right holds numbers, so it gets the extra width — but a
- * right rail starved to 30% left a column of short cards beside a long one,
- * which is the void that made the page read as unfinished.
+ * Work on the left, standing readouts on the right, one column when the panel
+ * cannot hold both. 1.35 to 1: the left holds sentences and the right holds
+ * numbers, but a 30% rail starves into a void beside the long column.
  */
 export function HomeSplit({
   main,

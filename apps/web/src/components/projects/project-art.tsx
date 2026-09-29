@@ -1,16 +1,10 @@
 /**
- * The artwork for the project creation paths and the home's empty state.
+ * Artwork for the project creation paths and the home's empty state, inline for
+ * the same reason as `empty-state-illustrations.tsx`.
  *
- * Drawn here rather than exported as assets for the same reason
- * `empty-state-illustrations.tsx` is: these are chrome, not content. They are
- * monochrome `currentColor` line work, so they inherit the surface they sit on
- * and are correct in both themes without a second file — and a card can tint
- * its whole scene by setting one text colour.
- *
- * Each scene is a literal picture of the thing being created: a storefront in
- * a browser, a repository graph feeding a folder, an awning over a shopping
- * bag, a page of measurements. They share a 96×64 frame so the four cards in
- * the dialog line up on the pixel, not by luck.
+ * Monochrome `currentColor` line work, so one text colour tints a whole scene
+ * and both themes are correct without a second file. The card scenes share a
+ * 96×64 frame so they line up on the pixel.
  */
 
 const frame = {
@@ -60,15 +54,8 @@ export function FolderArt({ className }: { className?: string }) {
   );
 }
 
-/**
- * The home's empty state: the three things an org builds here, stacked the way
- * they would sit on a desk — a storefront behind, a phone leaning on it, a
- * price tag in front.
- *
- * Larger frame and slightly heavier line than the card scenes: this one is
- * looked AT, not glanced at, and it is the only thing on an otherwise blank
- * page.
- */
+/** The home's empty state: a storefront behind, a phone leaning on it, a price
+ *  tag in front. Larger frame and heavier line than the card scenes. */
 export function EmptyProjectsArt({ className }: { className?: string }) {
   return (
     <svg

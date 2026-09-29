@@ -1,13 +1,9 @@
 /** The org-wide destination rows: real `<Link>`s, so nav paints on the first
  *  frame. Projects are a tree below these, not rows here.
  *
- *  Two of them, and two is the point. Today is the daily brief — what changed
- *  and what is stopped on you. Agents is the machine — what is running right
- *  now and what runs without being asked. Everything the sidebar used to list
- *  beside them (Reports, Board, Library, Settings) is either a place you reach
- *  FROM one of those two, or an org utility that belongs in a group of its own;
- *  a spine of five equal rows made all five read as the same weight, which is
- *  how a brief ends up looking like a tab. */
+ *  Reports, Board, Library and Settings are reached FROM these rather than
+ *  listed beside them: a spine of five equal rows gave all five the same
+ *  weight, which made the brief read as a tab. */
 
 import type { ReactNode } from "react";
 import { useSearch, type LinkProps } from "@tanstack/react-router";
@@ -36,20 +32,12 @@ interface NavDestination {
   link: LinkProps;
 }
 
-/**
- * `nav_destination_clicked`'s `destination` for the Settings row.
- *
- * Settings no longer has a row — it is reached from the account footer and by
- * URL until the org utility group is designed. The VALUE stays because PostHog
- * dashboards key on it, and because whatever control replaces the row should
- * keep reporting as the same destination rather than starting a new series.
- */
+/** Settings has no row any more, but the VALUE stays: PostHog dashboards key
+ *  on it, and its replacement should report as the same series. */
 export const SETTINGS_DESTINATION = "settings";
 
-/** The destination keys, in display order — and the order the sidebar actually
- *  renders, since `useNavDestinations` maps over this rather than returning a
- *  literal array. Growing or shrinking it is a compile error until the keyed
- *  record below matches, so a test asserting on it pins the real spine. */
+/** The display order `useNavDestinations` maps over. The keyed record below is
+ *  exhaustive over it, so the two cannot drift. */
 export const NAV_DESTINATION_KEYS = ["overview", "tasks", "agents"] as const;
 
 type NavDestinationKey = (typeof NAV_DESTINATION_KEYS)[number];
@@ -62,9 +50,7 @@ function useNavDestinations(): NavDestination[] {
   const scopeId = useScopeId();
   const { view } = useSearch({ strict: false }) as { view?: "agents" };
 
-  /** Keyed, not ordered — NAV_DESTINATION_KEYS fixes the order below. The
-   *  record is exhaustive over that constant, so a key added there without a
-   *  row here (or a row here the constant does not list) fails to compile. */
+  /** Keyed, not ordered — `NAV_DESTINATION_KEYS` fixes the order below. */
   const rows: Record<NavDestinationKey, NavDestination> = {
     overview: {
       key: "overview",
@@ -96,9 +82,8 @@ function useNavDestinations(): NavDestination[] {
         params: { org: org.slug, taskKey: undefined },
       },
     },
-    /** Same ROUTE as Today, told apart by `?view=` — see that param's note in
-     *  `router.tsx`. So both rows key their active state on the search, not on
-     *  the path, or Today would light up on both. */
+    /** Same ROUTE as Today, told apart by `?view=`, so both rows key their
+     *  active state on the search rather than the path. */
     agents: {
       key: "agents",
       label: t("sidebar.navDestinations.agents"),
@@ -116,10 +101,8 @@ function useNavDestinations(): NavDestination[] {
   return NAV_DESTINATION_KEYS.map((key) => rows[key]);
 }
 
-/** The destination list. Chat opens from the sidebar header, and
- *  chat search lives in the chat panel's threads menu, so this renders
- *  destinations only. Collapsed, it becomes an icon rail — `SidebarNavRow`
- *  supplies the tooltips and the accessible names. */
+/** The destination list; chat opens from the sidebar header instead.
+ *  Collapsed it becomes an icon rail, with tooltips from `SidebarNavRow`. */
 export function NavDestinationsContent({
   onNavigate,
 }: {

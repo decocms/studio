@@ -20,6 +20,7 @@ import { SidebarAccountFooter } from "./footer/sidebar-footer";
 import { SidebarAccountFooterMobile } from "./footer/sidebar-footer-mobile";
 import { SidebarPickerHeader, SidebarPickerHeaderMobile } from "./header";
 import { NavDestinationsContent } from "./nav-destinations";
+import { NavDestinationsContentClassic } from "./nav-destinations-classic";
 import { SidebarBackRow } from "./nav-row";
 import { NavSettingsRow } from "./nav-settings-row";
 import { ProjectNav } from "./project-nav";
@@ -73,7 +74,11 @@ function OrgSidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <ErrorBoundary>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
-          <NavDestinationsContent onNavigate={onNavigate} />
+          {projectFirstNav ? (
+            <NavDestinationsContent onNavigate={onNavigate} />
+          ) : (
+            <NavDestinationsContentClassic onNavigate={onNavigate} />
+          )}
           <ProjectNav onNavigate={onNavigate} />
           {/* Project-first navigation reaches settings from the org rail instead. */}
           {!projectFirstNav && <NavSettingsRow onNavigate={onNavigate} />}

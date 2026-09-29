@@ -1,16 +1,7 @@
 /**
- * Which projects use a connection — the org-level half of per-project
- * connections.
- *
- * A project has been able to pick its own connections for a while; what was
- * missing is the view from the other side. An org with a VTEX account per
- * brand and two analytics properties has no way, from Settings › Connections,
- * to tell which credential feeds which storefront — and that is exactly the
- * question someone asks before they revoke one.
- *
- * So each connection card carries the projects that aggregate it: their marks,
- * their names, and "shared" when nothing claims it. Read from the project list
- * the page already loads, so it costs no request.
+ * Which projects use a connection — the question someone asks before revoking
+ * one. Each card carries the projects that aggregate it, or "shared" when
+ * nothing claims it, read off the project list the page already loads.
  */
 
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
@@ -20,12 +11,8 @@ import { useT } from "@/i18n/use-t.ts";
 /** Marks shown before the row collapses into a count. */
 const MAX_MARKS = 3;
 
-/**
- * Connection id → the projects aggregating it.
- *
- * Pure and exported for its test: a connection attributed to the wrong project
- * is a credential someone revokes believing nothing depends on it.
- */
+/** Connection id → the projects aggregating it. Pure and tested: a wrong
+ *  attribution is a credential revoked in the belief nothing uses it. */
 export function projectsByConnection(
   projects: readonly VirtualMCPEntity[],
 ): Map<string, VirtualMCPEntity[]> {
@@ -65,8 +52,8 @@ export function ConnectionProjects({
         {shown.map((project) => (
           <span
             key={project.id}
-            /** A ring in the card's own colour, so overlapping marks read as
-             *  separate objects rather than one smeared shape. */
+            /** A ring in the card's colour, so overlapping marks stay
+             *  separate. */
             className="rounded-md ring-2 ring-card"
             title={project.title}
           >

@@ -93,9 +93,7 @@ export function FolderIcon({
           width="14"
           height="12"
           rx="1.2"
-          /* Paper is paper in both themes, like the folder's own blues: a
-             `fill-background` sheet goes near-black in dark mode and reads as a
-             slot cut into the folder rather than as something inside it. */
+          /* Constant in both themes: `fill-background` goes near-black in dark and reads as a slot cut into the folder. */
           fill="#F4F6F9"
           stroke="#C9D2DC"
           strokeWidth="0.7"

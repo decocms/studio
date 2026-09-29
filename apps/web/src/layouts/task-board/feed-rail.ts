@@ -1,14 +1,7 @@
 /**
- * What belongs beside the feed: the state of the work right now.
- *
- * The rail used to hold the project's owner, repo and folder — facts that are
- * true whether or not anything is happening, and already answered by the
- * project's settings and the Library. A feed is read to find out what is going
- * on, so its margin answers the two live questions the page itself cannot: what
- * is an agent doing this second, and what has stopped waiting on a person.
- *
- * Pure and derived from the board the feed already loaded, so nothing new is
- * fetched and the rail can never disagree with the rows next to it.
+ * What belongs beside the feed: what an agent is doing this second, and what
+ * has stopped on a person. Derived from the board the feed already loaded, so
+ * the rail cannot disagree with the rows beside it.
  */
 
 import {
@@ -19,8 +12,7 @@ import {
   type TaskBoardItemThread,
 } from "./config";
 
-/** How many rows either section shows before it stops. A rail is a glance: past
- *  a handful it competes with the feed it sits beside. */
+/** Past a handful the rail competes with the feed beside it. */
 const FEED_RAIL_LIMIT = 5;
 
 /** One live run: the card it is on, and the attempt that is running. */
@@ -53,8 +45,7 @@ export function feedRail(items: readonly TaskBoardItem[]): FeedRail {
   for (const item of items) {
     const thread = newestLiveRun(item);
     if (thread) running.push({ item, thread });
-    // A card whose agent is mid-run is reported as running even if an older
-    // attempt is parked on a question — one card, one place in the rail.
+    // One card, one place: a live run outranks an older parked attempt.
     else if (isTaskBlocked(item) || isTaskHandedToHuman(item))
       waiting.push(item);
   }
@@ -73,13 +64,8 @@ export function feedRail(items: readonly TaskBoardItem[]): FeedRail {
   };
 }
 
-/**
- * How long something has been going, at a glance: `"3m"`, `"2h"`, `"4d"`.
- *
- * Under a minute reads `"now"` rather than `"0m"` — a run that just started has
- * not been going for no time, it has just started. Negative ages (a sandbox
- * clock ahead of this browser) clamp to the same.
- */
+/** `"3m"`, `"2h"`, `"4d"`. Under a minute — and a negative age from sandbox
+ *  clock skew — reads `"now"`, not `"0m"`. */
 export function compactElapsed(iso: string, now: number): string {
   const started = Date.parse(iso);
   if (Number.isNaN(started)) return "";

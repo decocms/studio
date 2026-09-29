@@ -33,10 +33,7 @@ export function OrgLabel({ collapsed = false }: { collapsed?: boolean }) {
 
   return (
     <div
-      /* Flush with the rows below, on both edges the eye follows: `pl-2` is
-         their own padding, so the name starts on their icon column.
-         `md:h-[34px]` is the collapse toggle's height, so the strip is one
-         line rather than two off by 2px. */
+      /* `pl-2` is the rows' own padding and `md:h-[34px]` the collapse toggle's height, so the strip lines up with both. */
       className="flex min-w-0 flex-1 items-center py-1.5 pr-1.5 pl-2 md:h-[34px] md:py-0"
       data-tour={LAYOUT_TOUR_ANCHORS.switcher}
     >

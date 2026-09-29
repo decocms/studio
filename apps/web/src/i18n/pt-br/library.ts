@@ -134,6 +134,10 @@ export const library = {
   "library.library.uploadedSingle": "Enviado {filename}",
   "library.library.uploading": "Enviando…",
   "library.libraryViews.brands": "Marcas",
+  "library.libraryViews.curatedSkillSetsReadOnly":
+    "Conjuntos de skills curados — somente leitura",
+  "library.libraryViews.readOnly": "Apenas leitura",
+  "library.libraryViews.searchResults": "{count} resultado(s)",
   "library.libraryViews.emptyFolder":
     "Pasta vazia — envie um arquivo ou crie uma pasta para começar.",
   "library.libraryViews.emptyReadOnlySet":

@@ -1,21 +1,14 @@
 /**
- * The operations strip: what the agents cost, how much they ran, and what runs
- * without anyone asking.
+ * The operations strip: cost, runs, and what runs unasked.
  *
- * Cloudflare-analytics-card shaped: a figure, its trend against the window's
- * own first half, then the chart AS the card's body rather than a decoration
- * under the number — gridlines and a scale on the right turn the shape into a
- * measurement. Wide-then-narrow rather than three equal boxes because the
- * three are not equal: money is the one number an operator answers for to
- * someone else. The per-project breakdown that used to be a side column
- * now opens as a dialog on click: the same chart, larger, plus a ranked list.
+ * A figure, its trend against the window's own first half, then the chart as
+ * the card's body. Wide-then-narrow because money is the one number an
+ * operator answers for to someone else; its per-project breakdown opens as a
+ * dialog.
  *
- * Every figure here is measured, never estimated. Two things a fuller mock
- * might draw are missing for the same reason: the **budget bar** ("59% of
- * $2.0k") needs a ceiling no project or organization declares, and the
- * **Day/Week/Month range toggle** would switch between two windows we do not
- * compute. Both go in the day the field exists; a control that changes
- * nothing is worse than no control.
+ * Every figure is measured, never estimated — which is why there is no budget
+ * bar (no ceiling is declared) and no range toggle (the windows are not
+ * computed).
  */
 
 import {
@@ -61,9 +54,8 @@ import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import type { MonthlyCost, RunsToday } from "./daily-pulse";
 import { RhythmChart } from "./sparkline";
 
-/** `$1.2k`, `$318`, `$8.97` — the magnitude a reader compares, never the cents
- *  on a four-figure number. Nothing spent is `$0`, not `$0.00`: two decimal
- *  places on a zero reads as a broken figure rather than an empty month. */
+/** `$1.2k`, `$318`, `$8.97` — magnitude, never cents on a four-figure number.
+ *  Nothing spent is `$0`, not `$0.00`. */
 export function formatUsd(usd: number): string {
   if (usd <= 0) return "$0";
   if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}k`;
@@ -71,14 +63,10 @@ export function formatUsd(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-/** One card of the strip. The label strip is a fixed height so the three read
- *  off one baseline however different their bodies are. `interactive` adds a
- *  full-bleed, invisible overlay `<button>` — the mock's project card overlay
- *  pattern — rather than making the whole `<section>` a button: `action` (the
- *  kebab menu) needs its own independently-clickable button, and a button
- *  can't nest a button. The overlay sits behind `pointer-events-none` content
- *  so clicks fall through to it everywhere except `action`, which opts back
- *  into `pointer-events-auto`. */
+/** One card of the strip; the label strip is a fixed height so all three read
+ *  off one baseline. `interactive` overlays an invisible `<button>` rather than
+ *  making the `<section>` one, because `action` is itself a button and buttons
+ *  cannot nest. */
 const StatCard = forwardRef<
   HTMLButtonElement,
   {
@@ -135,8 +123,7 @@ const StatCard = forwardRef<
   );
 });
 
-/** The headline figure of a card, with the mock's trailing `<small>`: one size
- *  for all three, so the row reads as three readings of one machine. */
+/** The headline figure; one size for all three cards. */
 function Figure({ value, caption }: { value: string; caption?: ReactNode }) {
   return (
     <p className="flex items-baseline gap-2.5">
@@ -152,13 +139,9 @@ function Figure({ value, caption }: { value: string; caption?: ReactNode }) {
   );
 }
 
-/** Second half of the rhythm window against the first — the Cloudflare card's
- *  trend badge, but a raw delta rather than a percentage: at this scale (a
- *  handful of runs, single-digit dollars) a near-zero first half turns a
- *  percentage into noise ("↑7973%"), where the same swing as a count or a
- *  dollar amount stays readable. Matches the roster's own `Delta`. Null with
- *  nothing to compare against (a zero first half makes the ratio meaningless,
- *  not just large — the roster's rule too). */
+/** Second half of the window against the first, as a raw delta: at this scale
+ *  a near-zero first half turns a percentage into noise ("↑7973%"). Null when
+ *  there is nothing to compare against. Matches the roster's `Delta`. */
 function trendDelta(series: readonly number[]): number | null {
   const half = Math.floor(series.length / 2);
   const previous = series.slice(0, half).reduce((sum, day) => sum + day, 0);

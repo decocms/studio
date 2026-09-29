@@ -1,14 +1,7 @@
 /**
- * A project's delivery rhythm, fourteen days wide and one row tall.
- *
- * Deliberately not a business metric. A project does not declare a goal
- * anywhere in this product, and inventing a field to hold one is the mistake
- * `lib/project-profile.ts` exists to prevent. What a project provably has is a
- * rhythm — and a flat line on a storefront that used to ship every day is a
- * real thing to notice from a list.
- *
- * It renders nothing when the line would be flat at zero: an empty chart is a
- * chart that says "no data" in the most expensive way available.
+ * A project's delivery rhythm, fourteen days wide and one row tall — not a
+ * business metric (see `lib/project-profile.ts`). Renders nothing when the
+ * line would be flat at zero.
  */
 
 import { useId } from "react";
@@ -22,9 +15,8 @@ export function Sparkline({
   className,
   label,
   height = HEIGHT,
-  /** Fill the caller's width and shade the area under the line — the mock's
-   *  runs card, where the chart IS the card's body rather than a mark at the
-   *  end of a row. A stretched viewBox is what lets one component be both. */
+  /** Fill the caller's width and shade under the line, for a chart that is a
+   *  card's body rather than a mark at the end of a row. */
   stretch = false,
 }: {
   series: readonly number[];
@@ -81,12 +73,8 @@ export function Sparkline({
 
 const formatRounded = (value: number) => String(Math.round(value));
 
-/**
- * A rhythm as a filled area against its own scale — the Cloudflare-style
- * dashboard card: gridlines and the value each one marks turn a shape into a
- * measurement instead of a decoration. Text lives in HTML, not the SVG, so
- * the non-uniform stretch that fills the card's width doesn't warp glyphs.
- */
+/** A rhythm as a filled area against its own scale. Text lives in HTML, not
+ *  the SVG, so the stretch that fills the card's width cannot warp glyphs. */
 export function RhythmChart({
   series,
   className,
@@ -100,9 +88,8 @@ export function RhythmChart({
   height?: number;
   formatValue?: (value: number) => string;
 }) {
-  /** Two of these render side by side on the home, and an SVG gradient is
-   *  referenced by a document-wide id — a shared one would make the second
-   *  chart paint with the first's fill. */
+  /** SVG gradient ids are document-wide, and two of these render side by
+   *  side. */
   const fillId = `rhythm-fill-${useId()}`;
   const max = Math.max(...series, 0);
   if (series.length < 2 || max <= 0) return null;

@@ -71,16 +71,8 @@ function RailOrgButton({
   );
 }
 
-/**
- * One app you had open, under the orgs.
- *
- * It wears the launcher's own glyph and tint so the icon here and the tile it
- * came from read as the same door, and it is LABELLED with the app rather than
- * the project: the label answers "where does this take me", which is the
- * question the rail is for. The tooltip carries the project, because two
- * projects can have the same app and neither the glyph nor the label can say
- * which one this is.
- */
+/** One app you had open, under the orgs. Labelled with the APP; the tooltip
+ *  carries the project, since two projects can have the same app. */
 function RailAppButton({
   entry,
   orgSlug,
@@ -92,8 +84,7 @@ function RailAppButton({
 }) {
   const t = useT();
   const app = PROJECT_APPS[entry.app as keyof typeof PROJECT_APPS];
-  /** An id no launcher offers any more — a retired app, or a value from an
-   *  older build. Drawing a blank square is worse than dropping the row. */
+  /** A retired app id: drop the row rather than draw a blank square. */
   if (!app) return null;
 
   return (
@@ -127,24 +118,21 @@ function RailAppButton({
   );
 }
 
-/** Mounted once by `Layout`, outside the resizable `<Sidebar>` — a fixed
- *  column the sidebar's own collapse/resize never touches. Desktop only: the
- *  mobile sheet already lists every org through the picker drawer, and a
- *  second rail would just eat width from a screen that has none to spare. */
+/** Mounted once by `Layout`, outside the resizable `<Sidebar>`, so collapse
+ *  and resize never touch it. Desktop only — the mobile picker drawer already
+ *  lists every org. */
 export function OrgRail() {
   const t = useT();
   const navigate = useNavigate();
   const { org: currentOrg } = useProjectContext();
   const { data: organizations } = useActiveOrganizations();
   const [creatingOrg, setCreatingOrg] = useState(false);
-  /** The border separates the rail from the SIDEBAR beside it. A launched app
-   *  takes the sidebar's place (`useAppTakeover`), so with no sidebar there the
-   *  line just sits against the app's own content — the rail's stub of a
-   *  sidebar that never fully left. */
+  /** The border separates the rail from the SIDEBAR; a launched app takes the
+   *  sidebar's place (`useAppTakeover`), leaving nothing to separate. */
   const takeover = useAppTakeover();
   const { recent } = useRecentApps(currentOrg.slug);
-  /** The rail is where "take me back to the thing I was in" lives, so it is
-   *  also what records having been there — by URL as much as by launcher. */
+  /** Records by URL as much as by launcher, since the rail is what takes you
+   *  back. */
   useRememberOpenApp(currentOrg.slug);
   /** Which recent is the screen you are on, so the rail marks it the same way
    *  it marks the current org. */
@@ -163,14 +151,7 @@ export function OrgRail() {
   return (
     <>
       <div
-        /* `w-18` and not `w-14`: the marks did not grow, the labels under them
-          did, and 56px left "Storefront" breaking after "Store". 72px fits the
-          words the product actually uses at two lines.
-
-          `pt-3` and not `pt-2`: the first org mark is 36px, so 12px of inset
-          centres it on y=30 — the line the sidebar's org name and the panel's
-          breadcrumb already share. At 8px it sat 4px high, which reads as the
-          whole rail being off rather than as one row being. */
+        /* `w-18` fits the labels at two lines; `pt-3` centres the first 36px mark on y=30, the line the org name and breadcrumb share. */
         className={cn(
           "flex w-18 shrink-0 flex-col items-center gap-2 overflow-y-auto bg-sidebar pt-3 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           !takeover && "border-r border-sidebar-border",
@@ -193,9 +174,7 @@ export function OrgRail() {
             onSelect={travelTo}
           />
         )}
-        {/* Labelled "New", not "New organization": the label is a word under a
-            glyph, and the tooltip is where the full sentence goes. */}
-        <RailItem active={false} label={t("sidebar.rail.newOrgShort")}>
+        <RailItem active={false}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button

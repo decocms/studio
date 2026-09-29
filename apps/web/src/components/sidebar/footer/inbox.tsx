@@ -32,6 +32,7 @@ import { useT } from "@/i18n/use-t.ts";
 import { InboxTaskItem } from "./inbox-task-item";
 import { InvitationRow } from "@/components/header/org-switcher";
 import { usePendingInvitations } from "@/hooks/use-pending-invitations";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 /**
  * Loads the next page once it scrolls into view. An observer in a ref callback
@@ -58,7 +59,11 @@ function InboxPanel({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { org } = useProjectContext();
   const { updates, markAllRead, markRead, hasMore, fetchMore } = useInboxFeed();
-  const { invitations, refetch: refetchInvitations } = usePendingInvitations();
+  const projectFirstNav = useProjectFirstNav();
+  const pending = usePendingInvitations();
+  // Classic still surfaces invitations in `org-project-picker.tsx`.
+  const invitations = projectFirstNav ? pending.invitations : [];
+  const refetchInvitations = pending.refetch;
 
   return (
     <>

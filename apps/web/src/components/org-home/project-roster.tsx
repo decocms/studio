@@ -1,16 +1,9 @@
 /**
- * The projects, and the number each one is moving.
+ * The projects, each with a rhythm and one ranked headline
+ * (`projectSummaries`), so a row answers "is there anything for me in here"
+ * before you click it.
  *
- * The home's navigation, in the shape that makes it worth reading before you
- * click: a name, a rhythm, and one headline ranked by how much it wants you
- * (see `projectSummaries`). A row that answers "is there anything for me in
- * here" saves the trip into a project that turns out to be quiet.
- *
- * The number is delivery, not a business goal. A project does not declare a
- * goal anywhere in this product, and inventing a field to hold one is the
- * mistake `lib/project-profile.ts` exists to prevent — so the column says what
- * it can prove: what shipped over `RHYTHM_DAYS`, and its second half against
- * its first.
+ * The number is delivery, not a business goal — see `lib/project-profile.ts`.
  */
 
 import type { ReactNode } from "react";
@@ -29,15 +22,8 @@ import type { ProjectHeadlineKind, ProjectSummary } from "./daily-pulse";
 import { HomeCard, HomeCardRow } from "./section";
 import { Sparkline } from "./sparkline";
 
-/**
- * Colour is spent once on this page, and the queue above already spent it.
- *
- * "Waiting on you" leads the ranking because a row that says "3 shipped" while
- * a run is stopped on an answer is a row that cost someone their morning — but
- * it is stated, not alarmed: the Needs-you card names every one of those cards
- * in warning already. Only a break gets colour here, because that is the one
- * thing the queue above does NOT carry.
- */
+/** "Waiting on you" leads the ranking, but only a break spends colour — the
+ *  queue above already names everything else in warning. */
 const HEADLINE: Record<
   Exclude<ProjectHeadlineKind, "quiet">,
   { labelKey: TranslationKey; className: string }
@@ -63,8 +49,7 @@ const HEADLINE: Record<
 /** Projects the home shows before it defers to Settings › Projects. */
 const MAX_PROJECTS = 6;
 
-/** One half of the rhythm window against the other, or nothing — which is the
- *  right answer more often than it looks. */
+/** One half of the rhythm window against the other, or nothing. */
 function Delta({ value, previous }: { value: number; previous: number }) {
   const diff = value - previous;
   if (diff === 0) return null;
@@ -141,8 +126,8 @@ function ProjectRosterItem({
   );
 }
 
-/** Empty by default: the classic org home has no daily-pulse query to draw
- *  summaries or series from, and every row degrades to its quiet state. */
+/** Empty by default, so a caller with no daily-pulse query still renders every
+ *  row in its quiet state. */
 const NO_SUMMARIES: Map<string, ProjectSummary> = new Map();
 const NO_SERIES: Map<string, readonly number[]> = new Map();
 
@@ -157,14 +142,12 @@ export function ProjectRoster({
   summaries?: Map<string, ProjectSummary>;
   /** Shipped-per-day per project id, from `shippedSeries`. */
   series?: Map<string, readonly number[]>;
-  /** The block's own control — "New project". Passed in rather than imported
-   *  so the roster owns no creation path. */
+  /** Passed in rather than imported, so the roster owns no creation path. */
   action?: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  /** Most recent first, then capped — the home leads with what you touched last
-   *  and hands the tail to "See all". */
+  /** Most recent first, then capped; the tail goes to "See all". */
   const recent = [...projects]
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .slice(0, MAX_PROJECTS);

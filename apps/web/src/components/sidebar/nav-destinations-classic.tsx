@@ -1,0 +1,284 @@
+/** The pre-project-first-nav destination rows: real `<Link>`s, so nav paints on
+ *  the first frame. Projects are a scope, not rows: see `OrgProjectPicker`.
+ *  Discover has no row for now; its page stays routable and is still reachable
+ *  from the command palette.
+ *
+ *  This is the CLASSIC spine — rendered when `useProjectFirstNav()` is false,
+ *  so production without the flag keeps exactly the destinations it always
+ *  had. `nav-destinations.tsx` holds the new, flag-on spine.
+ *
+ *  The one thing read here is the SCOPED project, to resolve its source and
+ *  sidebar preferences. That read is non-blocking and fails open, so the first
+ *  frame is unchanged. */
+
+import type { ReactNode } from "react";
+import type { LinkProps } from "@tanstack/react-router";
+import {
+  BarChartSquare02,
+  Columns03,
+  Folder,
+  Home02,
+  Lock01,
+  MessageChatSquare,
+} from "@untitledui/icons";
+import { SidebarMenu } from "@decocms/ui/components/sidebar.tsx";
+import { SidebarNavRow } from "./nav-row";
+import { useTabLocked } from "./use-tab-locked";
+import { LAYOUT_TOUR_ANCHORS } from "@/components/layout-tour/anchors";
+import { useProjectContext } from "@/sdk";
+import { useProjectScope, useScopeId } from "@/hooks/use-project-scope";
+import { useThreadAnalyticsOrgs } from "@/hooks/use-thread-analytics";
+import { agentHasClonableSource } from "@/lib/agent-capabilities";
+import {
+  DESTINATION_ROUTE,
+  PROJECT_ROUTE,
+  routeExistsInScope,
+  useLeafRoutePath,
+} from "@/hooks/use-destination-route";
+import { track } from "@/lib/posthog-client";
+import { useT } from "@/i18n/use-t.ts";
+import {
+  effectiveProjectSidebarViews,
+  resolveProjectSidebarViews,
+  type ProjectSidebarViewsMetadata,
+} from "@/layouts/main-panel-tabs/project-sidebar-views";
+import { useOptimisticProjectSidebarViews } from "@/layouts/main-panel-tabs/optimistic-project-sidebar-views";
+import type { VirtualMcpSidebarView } from "@decocms/shared/sdk/types";
+
+interface NavDestination {
+  key: NavDestinationKey;
+  label: string;
+  icon: ReactNode;
+  isActive: boolean;
+  /** `nav_destination_clicked`'s `destination` property. PostHog dashboards key
+   *  on these exact values, so they are decoupled from the route. */
+  trackAs: string;
+  link: LinkProps;
+  /** `data-tour` anchor, for the rows the layout tour highlights. */
+  dataTour?: string;
+}
+
+/** The destination keys, in display order — and the order the sidebar actually
+ *  renders, since `useNavDestinations` maps over this rather than returning a
+ *  literal array. Growing or shrinking it is a compile error until the keyed
+ *  record below matches, so a test asserting on it pins the real spine. */
+const NAV_DESTINATION_KEYS_CLASSIC = [
+  "overview",
+  "reports",
+  "board",
+  "files",
+  "threadAnalytics",
+] as const;
+
+type NavDestinationKey = (typeof NAV_DESTINATION_KEYS_CLASSIC)[number];
+
+/**
+ * Whether the scope in force is a project WITHOUT a repo — the state in which
+ * Home, Reports and Tasks are dropped, because each is about work on a
+ * codebase.
+ *
+ * Pure so the rule is testable, and it FAILS OPEN: `project` is null both while
+ * the agent list loads (it is read non-blocking) and when nothing is scoped, so
+ * hiding on null would blank three rows on every cold load and pop them back,
+ * and would empty the unscoped org sidebar outright. Only a RESOLVED project
+ * that has no source hides them.
+ */
+function scopedProjectLacksSource(
+  scopeId: string | null,
+  project: { metadata?: unknown } | null,
+): boolean {
+  if (!scopeId || !project) return false;
+  return !agentHasClonableSource(project.metadata);
+}
+
+/** Whether one of the project-aware destination rows survives sidebar
+ * customization. Like the source gate above, this fails open until a scoped
+ * project resolves so the non-blocking sidebar never disappears on cold load. */
+function scopedProjectDestinationEnabled(
+  scopeId: string | null,
+  project: { metadata?: ProjectSidebarViewsMetadata | null } | null,
+  viewId: "overview" | "reports" | "board",
+  optimisticViews?: readonly VirtualMcpSidebarView[],
+): boolean {
+  if (!scopeId || !project) return true;
+  const hasOptimisticViews = optimisticViews !== undefined;
+  return effectiveProjectSidebarViews(
+    hasOptimisticViews
+      ? optimisticViews
+      : resolveProjectSidebarViews(project.metadata),
+    hasOptimisticViews ? 1 : project.metadata?.sidebarViewsVersion,
+  ).includes(viewId);
+}
+
+/** The destinations, in display order. Scope-bound in four ways: Library is
+ *  org-only (it lists the ORG's files), Reports is project-only (a report is
+ *  about one site), and Home / Reports / Tasks additionally require the scoped
+ *  project to have a source and to select that row. The first two live in
+ *  `routeExistsInScope`, because `useExitProjectScope` reads the same fact when
+ *  clearing scope; the latter two are the pure gates above. */
+function useNavDestinationsClassic(): NavDestination[] {
+  const t = useT();
+  const { org } = useProjectContext();
+  const leafPath = useLeafRoutePath();
+  const scopeId = useScopeId();
+  const { project, repo } = useProjectScope();
+  const optimisticSidebarViews = useOptimisticProjectSidebarViews(project?.id);
+
+  // Non-blocking: the row stays absent until the admin check resolves true.
+  const isAdminOrg = useThreadAnalyticsOrgs().data?.isAdmin === true;
+
+  const lacksSource = scopedProjectLacksSource(scopeId, project);
+  const destinationEnabled = (viewId: "overview" | "reports" | "board") =>
+    scopedProjectDestinationEnabled(
+      scopeId,
+      project,
+      viewId,
+      optimisticSidebarViews,
+    );
+
+  /** Keyed, not ordered — NAV_DESTINATION_KEYS_CLASSIC fixes the order below.
+   *  The record is exhaustive over that constant, so a key added there without
+   *  a row here (or a row here the constant does not list) fails to compile.
+   *  `null` is a row this scope drops. */
+  const rows: Record<NavDestinationKey, NavDestination | null> = {
+    overview:
+      lacksSource || !destinationEnabled("overview")
+        ? null
+        : {
+            key: "overview",
+            label: t("sidebar.navDestinations.home"),
+            icon: <Home02 size={16} />,
+            isActive:
+              leafPath === DESTINATION_ROUTE.home ||
+              leafPath === DESTINATION_ROUTE.orgIndex ||
+              leafPath === PROJECT_ROUTE.root ||
+              leafPath === `${PROJECT_ROUTE.root}/`,
+            trackAs: "overview",
+            link: scopeId
+              ? {
+                  to: PROJECT_ROUTE.root,
+                  params: { org: org.slug, agentId: scopeId },
+                }
+              : { to: DESTINATION_ROUTE.home, params: { org: org.slug } },
+          },
+    reports:
+      routeExistsInScope(DESTINATION_ROUTE.reports, scopeId) &&
+      !lacksSource &&
+      destinationEnabled("reports")
+        ? {
+            key: "reports",
+            label: t("sidebar.navDestinations.reports"),
+            icon: <BarChartSquare02 size={16} />,
+            isActive:
+              leafPath === DESTINATION_ROUTE.reports ||
+              leafPath === PROJECT_ROUTE.reports,
+            trackAs: "reports",
+            link: scopeId
+              ? {
+                  to: PROJECT_ROUTE.reports,
+                  params: { org: org.slug, agentId: scopeId },
+                }
+              : { to: DESTINATION_ROUTE.reports, params: { org: org.slug } },
+          }
+        : null,
+    board:
+      lacksSource || !destinationEnabled("board")
+        ? null
+        : {
+            key: "board",
+            label: t("sidebar.navDestinations.tasks"),
+            icon: <Columns03 size={16} />,
+            isActive:
+              leafPath === DESTINATION_ROUTE.tasks ||
+              leafPath === PROJECT_ROUTE.tasks,
+            trackAs: "board",
+            dataTour: LAYOUT_TOUR_ANCHORS.tasks,
+            link: {
+              to: scopeId ? PROJECT_ROUTE.tasks : DESTINATION_ROUTE.tasks,
+              /** Explicitly cleared: params merge with the current match, so an open
+               *  card would otherwise keep its segment and this link would go
+               *  nowhere. Tasks means the lanes. */
+              params: {
+                org: org.slug,
+                agentId: scopeId ?? undefined,
+                taskKey: undefined,
+              },
+              /** Entering a project SEEDS the board's Project filter with it — a
+               *  hint on entry, not a lock: clearing the filter stays cleared
+               *  until you enter the project again. The `?repo=` value is a
+               *  bucket id — the repo's `owner/name`, or a repo-less project's
+               *  `vir_…` id — both of which `entryForFilter` resolves. */
+              search: (prev: Record<string, unknown>) => {
+                const seed = repo ?? project?.id;
+                return seed ? { ...prev, repo: seed } : prev;
+              },
+            },
+          },
+    files: routeExistsInScope(DESTINATION_ROUTE.library, scopeId)
+      ? {
+          key: "files",
+          label: t("sidebar.navDestinations.library"),
+          icon: <Folder size={16} />,
+          isActive: leafPath === DESTINATION_ROUTE.library,
+          trackAs: "files",
+          link: { to: DESTINATION_ROUTE.library, params: { org: org.slug } },
+        }
+      : null,
+    threadAnalytics:
+      isAdminOrg &&
+      routeExistsInScope(DESTINATION_ROUTE.threadAnalytics, scopeId)
+        ? {
+            key: "threadAnalytics",
+            label: t("sidebar.navDestinations.threadAnalytics"),
+            icon: <MessageChatSquare size={16} />,
+            isActive: leafPath === DESTINATION_ROUTE.threadAnalytics,
+            trackAs: "thread_analytics",
+            link: {
+              to: DESTINATION_ROUTE.threadAnalytics,
+              params: { org: org.slug },
+            },
+          }
+        : null,
+  };
+
+  return NAV_DESTINATION_KEYS_CLASSIC.map((key) => rows[key]).filter(
+    (row): row is NavDestination => row !== null,
+  );
+}
+
+/** The classic destination list. Chat opens from the sidebar header, and
+ *  chat search lives in the chat panel's threads menu, so this renders
+ *  destinations only. Collapsed, it becomes an icon rail — `SidebarNavRow`
+ *  supplies the tooltips and the accessible names. */
+export function NavDestinationsContentClassic({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}) {
+  const destinations = useNavDestinationsClassic();
+  const isLocked = useTabLocked();
+
+  return (
+    <SidebarMenu className="gap-1">
+      {destinations.map((item) => (
+        <SidebarNavRow
+          key={item.key}
+          icon={item.icon}
+          label={item.label}
+          dataTour={item.dataTour}
+          isActive={item.isActive}
+          link={item.link}
+          trailing={
+            isLocked(item.key) ? (
+              <Lock01 size={14} className="text-muted-foreground" />
+            ) : undefined
+          }
+          onSelect={() => {
+            track("nav_destination_clicked", { destination: item.trackAs });
+            onNavigate?.();
+          }}
+        />
+      ))}
+    </SidebarMenu>
+  );
+}

@@ -1,36 +1,18 @@
 /**
- * Which organizations the rail draws, for someone who belongs to dozens.
+ * Which organizations the rail draws, bounded so forty memberships stay
+ * navigation rather than a haystack.
  *
- * The rail lists every org you belong to, which is fine at five and a scroll
- * bar at forty — and a column of forty marks is not navigation, it is a
- * haystack. So the rail shows a bounded set and a search opens the rest.
- *
- * Membership is by RECENCY; order is not.
- *
- * That split is the whole design. Ordering the rail by recency would move
- * every mark each time you switched org — the one you just left slides down,
- * the one you just opened jumps to the top — which destroys the muscle memory
- * that makes an always-visible rail worth having in the first place. Instead
- * recency decides only WHICH orgs are in the set; they are then drawn in the
- * org list's own stable order, so a switch usually moves nothing at all, and
- * the current org is marked rather than repositioned.
- *
- * Pure: the hook owns storage, this owns the rules.
+ * Membership is by recency; ORDER is not. Recency picks the set, the org
+ * list's own stable order draws it, so switching org moves no marks and the
+ * rail keeps its muscle memory.
  */
 
-/** How many marks the rail will draw before deferring to search.
- *
- *  Five, down from seven: each mark now carries its name underneath
- *  (`components/sidebar/rail-item.tsx`), which is half again the height it was,
- *  and seven orgs plus search, "new org" and four recent apps no longer fit a
- *  laptop without the rail growing a scrollbar of its own. The number has
- *  always been "what fits"; what fits changed. */
+/** What fits a laptop once each mark carries its name underneath
+ *  (`rail-item.tsx`), beside search, "new org" and four recent apps. */
 const RAIL_ORG_LIMIT = 5;
 
-/** Newest first, one entry per slug — reopening an org MOVES it to the front
- *  rather than adding a second copy. Trimmed generously rather than to the
- *  rail's limit: the history is also what search ranks by, and an org that
- *  falls off the rail is not one you have forgotten. */
+/** Newest first, one entry per slug. Kept longer than the rail's limit because
+ *  search ranks by this history too. */
 export function pushRecentOrg(
   list: readonly string[],
   slug: string,
@@ -40,14 +22,9 @@ export function pushRecentOrg(
 }
 
 /**
- * Split the orgs you belong to into the ones the rail draws and the count it
- * is hiding.
- *
- * The current org is always in the set even when nothing has been remembered
- * yet — landing on an org by deep link and not seeing it in the rail reads as
- * the rail being broken. Beyond that the set fills from history, then from the
- * list's own order, so a fresh profile still gets a full rail rather than one
- * mark and a search button.
+ * The orgs the rail draws, and the count it hides. The current org is always
+ * in the set — a deep link landing outside the rail reads as a broken rail —
+ * then history, then the list's own order fills the rest.
  */
 export function railOrgs<T extends { slug: string }>(
   all: readonly T[],

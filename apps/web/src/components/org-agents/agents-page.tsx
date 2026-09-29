@@ -1,16 +1,10 @@
 /**
- * Agents — every run and every schedule in the organization, in one place.
+ * Agents — every run and every schedule in the org. The second destination:
+ * Today answers what happened, this answers what is running and what runs
+ * unasked.
  *
- * The second of the org's two destinations. Today answers "what happened and
- * what is stopped on me"; this answers "what is the machine doing right now,
- * and what does it do without being asked". They are different questions and a
- * daily brief that tried to hold both would bury one.
- *
- * Both halves come off reads the product already makes — the board payload for
- * runs, the automation list for schedules — so this page costs no new data
- * path. What it deliberately does NOT draw is the mock's per-run progress bar
- * and step log: a run reports no percentage, and a bar filled from elapsed time
- * is a guess rendered as a measurement.
+ * Both halves come off reads the product already makes. No per-run progress
+ * bar: a run reports no percentage.
  */
 
 import { Suspense } from "react";
@@ -39,8 +33,7 @@ import { usePreferences } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 import type { TFunction } from "@/i18n/use-t.ts";
 
-/** `6m`, `2h` — elapsed, not a clock time. How long a run has been going is
- *  what tells you whether to look at it; when it started is not. */
+/** `6m`, `2h` — elapsed, not a clock time. */
 function elapsed(startedAt: string): string {
   const at = Date.parse(startedAt);
   if (Number.isNaN(at)) return "";
@@ -50,8 +43,7 @@ function elapsed(startedAt: string): string {
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
 }
 
-/** The next firing, in the reader's own locale, or a dash when nothing is
- *  scheduled — a paused automation has no next run and should not invent one. */
+/** The next firing, or a dash: a paused automation must not invent one. */
 function nextRun(iso: string | null, locale: string): string {
   if (!iso) return "—";
   const at = Date.parse(iso);
@@ -153,8 +145,7 @@ function Schedules({
   locale: string;
   t: TFunction;
 }) {
-  /** Non-blocking: the runs above are the reason to open this page, and they
-   *  should not wait on a list that answers a different question. */
+  /** Non-blocking: the runs above must not wait on it. */
   const automations = useAutomations().data;
   if (!automations) return null;
 

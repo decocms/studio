@@ -1,31 +1,16 @@
 /**
- * The sidebar's project tree: which folder each project sits in.
+ * The sidebar's project tree: ONE split, read off the project rather than
+ * asked for — a project with a repository is code, everything else is not.
+ * Capability decides, label only describes.
  *
- * ONE split, and it is read off the project rather than asked for: a project
- * with a repository is code and lands in one folder, everything else in the
- * other. Capability decides, label only describes — the same rule the rest of
- * projects answers to.
- *
- * This replaces a richer rule (a folder someone pinned on
- * `metadata.project.folder`, plus one per repository OWNER shared by two or
- * more projects). Nothing writes the pinned key, so half of that rule was a
- * folder nobody could make, and the other half grouped by an accident of who
- * owns the GitHub org. The split that is true today is "does this project have
- * code in it", because that is what changes what you can do with it.
- *
- * Both folders have to be occupied for either to appear: a single folder over
- * every project is a lid that says nothing the heading above it did not, and
- * an org that is all code — or none — renders EXACTLY the flat list it
- * rendered before. The tree appears when there IS a tree.
- *
- * Pure, so the rule is a thing a unit test can hold.
+ * Both folders have to be occupied for either to appear, so an org that is all
+ * code (or none) renders exactly the flat list it rendered before.
  */
 
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { hasRepository } from "./project-profile";
 
-/** Which half a project fell in. The sidebar names them; this module does not
- *  hold copy. */
+/** Which half a project fell in; the sidebar names them. */
 export type ProjectFolderKind = "code" | "other";
 
 export interface ProjectFolder {

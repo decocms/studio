@@ -1,14 +1,7 @@
 /**
- * The apps a project can launch.
- *
- * The other half of a project's single screen: the board says what is in
- * flight, this says what you can open to change it. Which tiles appear is not a
- * list anyone edits here — it is `effectiveProjectSidebarViews`, the same
- * resolver the scoped sidebar uses, so a project offers exactly the apps it
- * already has and the two shapes can never disagree about what a project is.
- *
- * Board and Overview are excluded: the screen this sits on IS those, and a tile
- * that reopens the page you are reading is a door to the room you are in.
+ * The apps a project can launch. Which tiles appear comes from
+ * `effectiveProjectSidebarViews`, the resolver the scoped sidebar uses, so the
+ * two shapes cannot disagree about what a project has.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -36,15 +29,12 @@ import {
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { track } from "@/lib/posthog-client";
 
-/** Board and Overview are the screen this sits on, so a tile for either is a
- *  door to the room you are already in. Reports is NOT one of those — it is a
- *  separate destination, and excluding it here was the only reason a project
- *  with a diagnostic had no way to reach it from its own apps row. */
+/** Board and Overview are the screen this sits on. Reports is not — it is a
+ *  separate destination and must stay launchable. */
 type LaunchableViewId = Exclude<ProjectSidebarViewId, "overview" | "board">;
 
-/** What each app is called, what it is for, and the route that opens it. The
- *  `to` values are `PROJECT_ROUTE` literals, so a rename in the router is a
- *  compile error here. */
+/** `to` values are `PROJECT_ROUTE` literals, so a router rename fails to
+ *  compile here. */
 const APPS: Record<
   LaunchableViewId,
   {
@@ -121,20 +111,16 @@ const APPS: Record<
   },
 };
 
-/** Every launchable app's name, glyph, tint and route. Exported so the rail can
- *  draw the ones you opened last (`lib/recent-apps.ts`) with the same mark the
- *  tile you launched them from had — two different-looking doors to one place
- *  is two places as far as a reader is concerned. */
+/** Exported so the rail draws a recent app (`lib/recent-apps.ts`) with the same
+ *  mark as the tile it was launched from. */
 export const PROJECT_APPS = APPS;
 
-/** The apps a project can launch, in the sidebar's own order. Exported because
- *  the shell reads it to know a route is an app rather than a place — see
- *  `hooks/use-app-takeover.ts`. */
+/** Exported because the shell reads it to tell an app route from a place —
+ *  see `hooks/use-app-takeover.ts`. */
 export const LAUNCHABLE_VIEW_IDS = Object.keys(APPS) as LaunchableViewId[];
 
-/** The apps this project offers, in the sidebar's own order. Pure and exported
- *  for its test: a tile that opens a view the project does not have is a dead
- *  end, and a missing tile hides a whole surface. */
+/** The apps this project offers, in the sidebar's own order. Pure and
+ *  tested. */
 export function launchableApps(project: {
   metadata?: {
     sidebarViews?: readonly string[] | null;
@@ -158,8 +144,7 @@ export function ProjectApps({
   orgSlug: string;
 }) {
   const t = useT();
-  /** Site Editor opens a repo; a project with none has nothing for it to show,
-   *  so it drops out here rather than linking to a tile that just bounces to
+  /** Site Editor opens a repo; without one the tile would bounce to
    *  Settings. */
   const hasSource = agentHasClonableSource(project.metadata);
   const apps = launchableApps(project).filter(
@@ -168,10 +153,7 @@ export function ProjectApps({
   if (apps.length === 0) return null;
 
   return (
-    /* A quiet label, not a rule: the row after it already reads as a group
-       (a launcher, the way a phone's home screen does), so the label is
-       there for orientation ("what IS this") rather than to divide the page
-       into fenced-off areas. */
+    /* A quiet label for orientation; the tiles below already read as a group. */
     <section className="flex flex-col gap-2">
       {/* `pl-3` matches the Board/List/Feed tabs below: those are `sm`-size
           pill buttons with `px-3` built in, so their label sits 12px past the
@@ -188,8 +170,8 @@ export function ProjectApps({
               key={id}
               to={app.to}
               params={{ org: orgSlug, agentId: project.id }}
-              /** Opening it is what the rail records, wherever the URL came
-               *  from — see `useRememberOpenApp`. */
+              /** The rail records the open, not the click — see
+               *  `useRememberOpenApp`. */
               onClick={() => track("project_app_launched", { app: id })}
               title={t(app.captionKey)}
               className="group flex w-20 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"

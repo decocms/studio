@@ -1,17 +1,10 @@
 /**
- * A folder, drawn as the thing it is.
+ * Folders lead a listing as TILES, not rows: entering one is decided on
+ * recognition, where a file is scanned in a column against its neighbours.
  *
- * Folders lead every listing and they lead it as TILES, not as rows: a folder
- * is a place you are deciding whether to enter, and that decision is made on
- * recognition — the name, the mark, whether it has anything in it — while a
- * file is scanned in a column against its neighbours. Every drive worth copying
- * makes this split, and it is why the Library shows folders above a table of
- * files rather than mixing the two into one undifferentiated list.
- *
- * The count under the name is a real listing of the folder, which also means
- * the folder you are about to open is already in cache by the time you click
- * it. It is capped (`enabled`) so a drive with fifty folders does not open
- * fifty requests to decorate itself.
+ * The count under the name is a real listing, so the folder is in cache by the
+ * time it is clicked. Capped (`enabled`) so fifty folders are not fifty
+ * requests.
  */
 
 import type { ComponentType, ReactNode, SVGProps } from "react";
@@ -21,12 +14,10 @@ import { useOrgFsList } from "@/hooks/use-org-fs";
 import { useT } from "@/i18n/use-t.ts";
 import { EntryActionsMenu } from "./cards";
 
-/** Folders past this many stop counting their contents. Past a screenful the
- *  count has stopped being read anyway, and the requests have not. */
+/** Past a screenful the count stops being read; the requests do not stop. */
 export const FOLDER_COUNT_LIMIT = 24;
 
-/** The fan of pages on the mark: none, some, full. A precise count would be a
- *  second, worse rendering of the number already written under the name. */
+/** none / some / full — the number itself is already under the name. */
 function sheetsFor(count: number | undefined): number {
   if (!count) return 0;
   if (count <= 2) return 1;
@@ -63,8 +54,8 @@ export function FolderTile({
   overlay?: ReactNode;
   /** Top-left mark: the shared-folder badge. */
   badge?: ReactNode;
-  /** List this folder to count what is in it. Omit for a folder whose contents
-   *  are not a listing (a volume) or when the count is already known. */
+  /** List this folder to count it. Omit for a volume, or when already
+   *  known. */
   counts?: { volume: string; path: string; enabled: boolean };
   onOpen: () => void;
   onShare?: () => void;
@@ -152,8 +143,7 @@ export function FolderTile({
   );
 }
 
-/** The tile row. Sized so a folder stays recognisable at any width rather than
- *  stretching to fill one: `auto-fill` leaves the last row short instead. */
+/** `auto-fill` so a folder keeps its size and the last row runs short. */
 export function FolderTiles({ children }: { children: ReactNode }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">

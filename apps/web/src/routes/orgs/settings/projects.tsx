@@ -1,18 +1,9 @@
 /**
- * Settings › Projects — the org's projects, and the boundary between what is
- * configured once for the organization and what is configured per project.
+ * Settings › Projects — the index INTO per-project settings, for an org running
+ * several storefronts off different platforms and analytics accounts.
  *
- * The settings tree used to have exactly one axis: the organization. That was
- * fine while a project was a repository someone had imported, and stops being
- * fine the moment an org runs a storefront, an app and three seller accounts
- * off different platforms and different analytics accounts. So this page is the
- * index INTO the per-project settings: each row says what the project is, what
- * it is built from, and where its report stands, and opens that project's own
- * settings.
- *
- * The note under the heading is load-bearing, not decoration: members, billing,
- * security and AI providers are deliberately NOT per project, and saying so
- * here is cheaper than letting someone hunt for them inside a project.
+ * The note under the heading is load-bearing: members, billing, security and AI
+ * providers are deliberately NOT per project.
  */
 
 import { useState } from "react";

@@ -1,17 +1,9 @@
 /**
- * What the agents are doing right now.
+ * What the agents are doing right now, off the `in_progress` threads already in
+ * the board payload. Hides itself when nothing is running.
  *
- * The one block that says the product is working while you look at it — every
- * other part of a daily brief reports finished work, which reads as a log. It
- * costs nothing: `in_progress` threads are already in the board payload the
- * page loads, so this is a read of data in hand.
- *
- * It hides itself when nothing is running, because "0 agents running" is a
- * sentence that makes a quiet morning look broken.
- *
- * There is deliberately no progress bar. A run reports no percentage — nothing
- * in the payload knows how far along it is — and a bar drawn from elapsed time
- * would be a guess rendered as a measurement.
+ * No progress bar: a run reports no percentage, and one filled from elapsed
+ * time is a guess rendered as a measurement.
  */
 
 import { Link } from "@tanstack/react-router";
@@ -28,10 +20,8 @@ import { HomeCard, HomeCardRow } from "./section";
 /** Rows shown before the block defers to the board. */
 const MAX_ROWS = 5;
 
-/** `6m`, `2h` — elapsed, not a clock time. How long a run has been going is the
- *  thing that tells you whether to look at it; when it started is not. Read at
- *  render like every other relative time in the app: it does not tick, and a
- *  run nobody is watching does not need it to. */
+/** `6m`, `2h` — elapsed, not a clock time. Read at render; it does not
+ *  tick. */
 function elapsed(startedAt: string): string {
   const at = Date.parse(startedAt);
   if (Number.isNaN(at)) return "";

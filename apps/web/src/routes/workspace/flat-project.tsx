@@ -1,18 +1,10 @@
 /**
- * One project, without entering it.
+ * One project, without entering it (see `lib/flat-projects.ts`): the sidebar
+ * keeps the org's nav, so there is no scope to leave.
  *
- * The alternative shape (see `lib/flat-projects.ts`): the sidebar keeps the
- * organization's nav and its project list, and picking a project opens this —
- * its identity, the apps it can launch, and its board. There is no scope to
- * leave, so there is no "All projects" to come back through.
- *
- * `?project=` and not a path segment, deliberately: a path segment is what
- * makes `useScopeId` narrow the shell, and this screen exists precisely to not
- * do that. The scoped route (`/$org/projects/$agentId`) is untouched beside it.
- *
- * A project is two things you can look at — the project, and its files — and
- * with no sidebar here to list them, `?files` and the topbar toggle below are
- * how you get between them.
+ * `?project=` and not a path segment: a segment is what makes `useScopeId`
+ * narrow the shell, which this screen exists not to do. The scoped route
+ * `/$org/projects/$agentId` is untouched beside it.
  */
 
 import { Suspense } from "react";
@@ -34,20 +26,13 @@ import { scopableProjects } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
 import { useProjectContext, useVirtualMCPs } from "@/sdk";
 
-/**
- * The project, or its files.
- *
- * In the topbar beside the project's name and not in the toolbar under it:
- * the toolbar row belongs to the board, which has its own Board/List/Feed
- * there, and a second switch beside those would read as a fourth view of the
- * board rather than a different thing to look at.
- */
+/** The project, or its files. In the topbar, not the toolbar: the toolbar row
+ *  belongs to the board's own Board/List/Feed. */
 function ProjectViewToggle({ files }: { files: boolean }) {
   const t = useT();
   const navigate = useNavigate();
-  /** Opening the files closes an open card: the card is a view of the board,
-   *  and leaving it in the URL would re-open it on the way back with no way
-   *  to tell that from a fresh link. */
+  /** Opening the files closes an open card, which would otherwise re-open on
+   *  the way back. */
   const go = (next: boolean | undefined) =>
     navigate({
       to: ".",
@@ -59,7 +44,7 @@ function ProjectViewToggle({ files }: { files: boolean }) {
     });
 
   return (
-    // Right, not Left: Left is `overflow-hidden` for breadcrumb truncation and clips this instead.
+    // Right, not Left: Left is `overflow-hidden` and clips this.
     <Panel.Topbar.Right.Portal>
       <div className="shrink-0">
         <ViewModeToggle
@@ -83,11 +68,8 @@ function ProjectViewToggle({ files }: { files: boolean }) {
   );
 }
 
-/** A project's files: the same Library every other surface uses, rooted at the
- *  project's own folder so walking up cannot land in another project's.
- *
- *  `filePreview="dialog"` because this screen has no main-panel tabs to open a
- *  file into — see `LibraryTab`. */
+/** The same Library every other surface uses, rooted at the project's folder.
+ *  `filePreview="dialog"` because this screen has no main-panel tabs. */
 function ProjectFiles({ project }: { project: VirtualMCPEntity }) {
   return (
     <LibraryTab
@@ -120,9 +102,8 @@ function FlatProjectBody({
     return <ProjectsEmptyState canCreate={canManageProjects} />;
   }
 
-  /** No `?id=` lands on the most recently touched project rather than an empty
-   *  frame: this screen is reached by picking one, so arriving without a pick
-   *  means a bare link, and the newest project is the best guess available. */
+  /** No `?id=` means a bare link, so land on the most recently touched
+   *  project rather than an empty frame. */
   const project =
     projects.find((p) => p.id === projectId) ??
     [...projects].sort((a, b) =>
@@ -170,8 +151,7 @@ export default function FlatProjectRoute() {
     files?: boolean;
   };
   return (
-    /* The board's own frame, not `Page`: `Page.Content` scrolls, and the board
-       already owns its scrolling. */
+    /* Not `Page`: `Page.Content` scrolls, and the board owns its scrolling. */
     <ChatLayout.Content>
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <Suspense

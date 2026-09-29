@@ -1,20 +1,11 @@
 /**
- * The Library's listings.
+ * The Library's listings: folder tiles above, a sorted file table below.
  *
- * Folders above, files below, and they are drawn differently on purpose. A
- * FOLDER is a place you decide whether to enter, and that decision is made on
- * recognition, so folders are tiles. A FILE is scanned against its neighbours —
- * newest, biggest, the one from Tuesday — so files are a sorted table. Mixing
- * the two into one undifferentiated list is what the Library used to do, and it
- * served neither.
+ * The files table has a second presentation, a thumbnail grid, for recognising
+ * a file by its own first page. Its toggle lives in the Files heading because
+ * it changes that section and nothing else.
  *
- * The files table has a second presentation, a thumbnail grid, because
- * recognising a file by its own first page is the one thing a table cannot do.
- * The toggle lives in the Files heading rather than the page header: it changes
- * that section and nothing else.
- *
- * `entries.ts` normalizes every listing to the same records, so each of these
- * is one way of drawing one shape.
+ * `entries.ts` normalizes every listing to the same records.
  */
 
 import type { ComponentType, SVGProps } from "react";
@@ -77,7 +68,7 @@ import {
 import type { ShareTarget } from "./file-share-button";
 import { SyncedRepoFolders } from "./synced-repos";
 
-/** List or grid — see the module docblock for which answers what. */
+/** List or grid, for the Files section. */
 export type LibraryLayout = "list" | "grid";
 
 /** Absolute proxy link to copy when sharing a file. */
@@ -136,15 +127,9 @@ export const SYSTEM_FOLDER_NAMES: ReadonlySet<string> = new Set([
 
 const RECENTLY_ADDED_COUNT = 12;
 
-/**
- * The folder a cross-volume hit lives in — its name, not its path.
- *
- * A full path truncates to "rafaelvalls-local/…" in a column this narrow,
- * which tells you nothing. The containing folder's own name is what a reader
- * is actually asking for ("which decks folder?"), and it is the only part that
- * fits. Entries at a volume's root fall back to the volume, which IS their
- * folder.
- */
+/** The folder a cross-volume hit lives in — its NAME, since a full path
+ *  truncates to nothing in this column. Volume root falls back to the
+ *  volume. */
 function locationOf(volume: string, path: string, orgSlug: string): string {
   const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   if (dir) return segmentLabel(basename(dir));
@@ -197,8 +182,8 @@ export interface PendingDelete {
   kind: "file" | "dir";
 }
 
-/** How a listing is ordered and drawn. Passed down as one object because every
- *  listing needs all of it and none of it is the listing's own state. */
+/** How a listing is ordered and drawn — one object, none of it the listing's
+ *  own state. */
 export interface ListingView {
   layout: LibraryLayout;
   onLayout: (layout: LibraryLayout) => void;
@@ -207,8 +192,7 @@ export interface ListingView {
   fileView: LibraryFileView;
 }
 
-/** Table or thumbnails, for the Files section. Two states, so it is a toggle
- *  and not a menu: the choice is worth exactly one click. */
+/** Table or thumbnails: two states, so a toggle rather than a menu. */
 function LayoutToggle({
   layout,
   onChange,
@@ -245,12 +229,7 @@ function LayoutToggle({
   );
 }
 
-/**
- * A section heading: what this is, how many, and the section's own control.
- *
- * Small on purpose — one step above the rows and no more. A page whose headings
- * out-shout their content makes you read the furniture before the work.
- */
+/** A section heading: what this is, how many, and its own control. */
 function SectionHead({
   label,
   count,
@@ -332,13 +311,8 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
 }
 
-/**
- * One file, in whichever presentation the Files section is in.
- *
- * The grid always shows the thumbnail. Reading a file's own first page is the
- * only reason to be in a grid at all — a grid of type icons is a table with
- * worse density.
- */
+/** One file, in whichever presentation the Files section is in. The grid
+ *  always shows the thumbnail — that is the only reason to be in one. */
 function FileEntry({
   entry,
   view,
@@ -443,17 +417,11 @@ function VolumeFolderTile({
 }
 
 /**
- * The folders pinned to the top of the drive.
+ * The folders pinned to the top of the drive, led by `projects`. The others are
+ * separate volumes under the hood, which a member has no reason to know.
  *
- * `projects` leads them, because the product is one computer and a project is a
- * folder in it: the drive's first tile should be the thing the rest of the
- * product is organized by. The others are separate volumes under the hood
- * (mounted elsewhere in the sandbox) but a member has no reason to know that —
- * here they are just the folders chat and agents fill.
- *
- * Their labels are reserved at the drive root (`SYSTEM_FOLDER_NAMES`): a
- * hand-made folder with one of those names would land in this same row under
- * the same label but point at a different volume.
+ * Their labels are reserved at the drive root (`SYSTEM_FOLDER_NAMES`), since a
+ * hand-made folder of the same name would point at a different volume.
  */
 function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
   const t = useT();
@@ -496,13 +464,8 @@ function SystemFolders({ onOpenDir }: { onOpenDir: (path: string) => void }) {
   );
 }
 
-/**
- * The project each folder under `projects/` belongs to, by folder name.
- *
- * Read non-blocking and allowed to be empty: the avatar it resolves is
- * decoration on a tile that is already correct without it, and a listing must
- * not wait on the project list to draw a folder.
- */
+/** The project each folder under `projects/` belongs to. Non-blocking and
+ *  allowed to be empty: the avatar is decoration on a correct tile. */
 function useProjectsByFolder(): Map<string, VirtualMCPEntity> {
   const all = useVirtualMCPsNonBlocking();
   const byFolder = new Map<string, VirtualMCPEntity>();
@@ -654,9 +617,7 @@ function RecentlyAdded({
   if (recentlyAdded.length === 0) return null;
 
   return (
-    /* Already in recency order from the server, and that IS the section — the
-       sort control would rename it after an order it no longer has, so this one
-       list does not take one. */
+    /* Server-ordered by recency, which IS the section, so it takes no sort. */
     <FilesSection
       view={view}
       label={t("library.libraryViews.recentlyAdded")}
@@ -764,22 +725,19 @@ export function VolumeView({
   const fileUrl = useOrgFsFileUrl();
   const projectsByFolder = useProjectsByFolder();
   const isDriveRoot = location.isHomeRoot && root === HOME_MOUNT_PATH;
-  /** Inside `projects/`, a folder IS a project — so it wears the project's own
-   *  avatar. The one place in the drive where a folder has an identity beyond
-   *  its name, and the place that teaches the whole metaphor. */
+  /** Inside `projects/`, a folder IS a project, so it wears that project's
+   *  avatar. */
   const inProjectsFolder =
     volume === HOME_MOUNT_PATH && location.dirPath === PROJECTS_FOLDER;
 
-  /** A folder named `uploads` that predates the pinned tiles still renders, so
-   *  it carries its path to tell it from the volume card. New collisions are
-   *  rejected at the writers; these are the ones already out there. */
+  /** A pre-existing folder colliding with a pinned name still renders, and
+   *  carries its path to tell it from the volume card. */
   const disambiguate = (name: string) =>
     isDriveRoot && SYSTEM_FOLDER_NAMES.has(name.toLowerCase())
       ? `${homeDisplayName(org.slug)}/${name}`
       : undefined;
 
-  // The pinned folders don't depend on this listing, so they render straight
-  // away on the landing view instead of flashing a skeleton.
+  // Independent of this listing, so no skeleton flash on the landing view.
   const systemFolders = isDriveRoot ? (
     <SystemFolders onOpenDir={onOpenDir} />
   ) : null;
@@ -868,9 +826,7 @@ export function VolumeView({
       {(dirs.length > 0 || systemFolders) && (
         <Section
           label={t("library.libraryViews.folders")}
-          /* Only where it is the whole truth. At the drive root the pinned
-             folders are drawn beside these and are not in this listing, so a
-             count here would name a number nobody can find on screen. */
+          /* Omitted at the drive root, where the pinned folders sit beside these and are not in the listing. */
           count={systemFolders ? undefined : dirs.length}
         >
           <FolderTiles>

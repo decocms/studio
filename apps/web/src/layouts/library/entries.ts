@@ -1,30 +1,14 @@
 /**
- * One listing, one shape.
- *
- * The Library used to render a folder and a file as two different kinds of
- * object — folders as a grid of cards, files as a table below it — so a folder
- * holding three subfolders and twenty files asked you to read two layouts and
- * compare across them. Every file manager worth copying puts them in ONE list
- * with folders on top, because "what is in here, and what changed" is a single
- * question.
- *
- * So each entry is normalized to the same record before anything renders it,
- * and the row and the tile are two presentations of that record rather than two
- * hierarchies. Pure, and exported for its test: a sort that silently drops an
- * entry loses someone's file.
+ * One listing, one shape: folders and files normalized to the same record, so
+ * the row and the tile are two presentations rather than two hierarchies.
+ * Pure and tested — a sort that drops an entry loses someone's file.
  */
 
 import type { OrgFsEntry } from "@/hooks/use-org-fs";
 import { basename } from "./location";
 
-/**
- * What an entry IS, which decides its mark and what opens it.
- *
- * `skill` and `brand` are folders the product understands — a dir carrying
- * `SKILL.md` or brand tokens — and they open their own preview rather than a
- * listing. That distinction is the server's (`hasSkill` / `hasBrand`), not a
- * name we pattern-match here.
- */
+/** What an entry IS, which decides its mark and what opens it. `skill` and
+ *  `brand` are the server's claim (`hasSkill`/`hasBrand`), not a name match. */
 export type LibraryEntryKind = "folder" | "skill" | "brand" | "file";
 
 export interface LibraryEntry {
@@ -37,8 +21,7 @@ export interface LibraryEntry {
   entry: OrgFsEntry;
 }
 
-/** A dir carrying both markers is a skill: it is the more specific claim, and
- *  rendering it twice would put one folder in the list under two marks. */
+/** Both markers means skill — the more specific claim. */
 function kindOf(entry: OrgFsEntry): LibraryEntryKind {
   if (entry.kind === "file") return "file";
   if (entry.hasSkill) return "skill";
@@ -60,22 +43,14 @@ export function toLibraryEntry(entry: OrgFsEntry): LibraryEntry {
 export const LIBRARY_SORTS = ["name", "updated", "size"] as const;
 export type LibrarySort = (typeof LIBRARY_SORTS)[number];
 
-/** Folders group above files whatever the sort is. Sorting a listing by size
- *  and getting folders interleaved at zero bytes is the behaviour every file
- *  manager decided against: a folder's size is not a fact the listing knows. */
+/** Folders group above files whatever the sort is: a folder's size is not a
+ *  fact the listing knows. */
 function group(entry: LibraryEntry): number {
   return entry.kind === "file" ? 1 : 0;
 }
 
-/**
- * The listing in display order.
- *
- * `name` is locale-aware and numeric, so `img2` precedes `img10` and `Ação`
- * files where a reader expects it. `updated` and `size` are descending —
- * newest and largest first is what someone asking for them wants — and both
- * fall back to name, so entries sharing a timestamp keep a stable order
- * instead of shuffling between renders.
- */
+/** `name` is locale-aware and numeric (`img2` before `img10`). `updated` and
+ *  `size` are descending and fall back to name, so ties stay stable. */
 export function sortEntries(
   entries: readonly LibraryEntry[],
   sort: LibrarySort,
@@ -100,8 +75,7 @@ export function sortEntries(
   });
 }
 
-/** `1.2 MB`. Bytes are never shown: nobody reading a listing wants them, and
- *  a folder has no size at all, which is why this returns null for one. */
+/** `1.2 MB`; null for a folder, which has no size. */
 export function formatSize(entry: LibraryEntry): string | null {
   if (entry.kind !== "file") return null;
   const bytes = entry.size;
