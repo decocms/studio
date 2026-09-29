@@ -593,11 +593,12 @@
   --studio-button-radius: 9999px;
 }
 
-/* Compact no longer redefines the shape of the product — the role radii above
-   are the system in BOTH layouts, so a card has one corner regardless of a
-   preference. What is left here is the genuine difference: compact raises
-   secondary controls onto the card surface instead of tinting them. */
-:root[data-compact-layout="true"] {
+/* Secondary and outline controls sit ON the card surface rather than being
+   tinted: a white pill with the card's own hairline and drop, so a toolbar
+   reads as a row of objects on the page instead of a row of holes in it.
+   Last write wins over the tinted defaults further up, which is the whole
+   reason this block sits down here. */
+:root {
   --studio-input-background: var(--card);
   --studio-outline-foreground: var(--card-foreground);
   --studio-outline-hover-background: var(--accent);
