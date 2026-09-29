@@ -18,6 +18,7 @@ describe("withoutCredentials", () => {
     userName: "u",
     userEmail: "e",
     submoduleCredentials: [{ host: "github.com", token: SUBMODULE_TOKEN }],
+    credentialExpiresAt: 1_700_000_000_000,
   });
   const opts: EnsureOptions = {
     tenant: { orgId: "o1", userId: "u1" },
@@ -47,6 +48,8 @@ describe("withoutCredentials", () => {
       "https://github.com/acme/docs.git",
     );
     expect(state.orgFsRedacted).toBe(true);
+    // Its URL is stripped, so the credential's expiry means nothing there.
+    expect(state.ensureOpts.repo?.credentialExpiresAt).toBeUndefined();
   });
 
   it("remembers an org-fs mount it already redacted", () => {

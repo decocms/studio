@@ -19,6 +19,7 @@ interface Entry {
 }
 
 const DEFAULT_MAX_ENTRIES = 20_000;
+const SEED_MARGIN_MS = 2 * 60_000;
 
 /** How the runner's mint paths name a repo, or null when none can re-mint it. */
 export function repoIdentityOf(
@@ -124,25 +125,26 @@ export class PushedCredentials {
     };
   }
 
-  /** The credentials an ensure arrived with, for recovery before the next push. */
+  /**
+   * The credentials an ensure arrived with, for recovery before the next
+   * push: each clone URL until its own `credentialExpiresAt`, less a margin
+   * so a recovery never clones with a token about to lapse.
+   */
   seed(
     opts: EnsureOptions,
-    validUntil: { cloneUrl?: number; orgFsConfig?: number } | undefined,
+    validUntil: { orgFsConfig?: number } | undefined,
   ): void {
     const tenant = opts.tenant
       ? { orgId: opts.tenant.orgId, userId: opts.tenant.userId }
       : null;
-    const cloneUntil = validUntil?.cloneUrl;
-    if (cloneUntil !== undefined) {
-      for (const repo of [opts.repo, ...(opts.extraRepos ?? [])]) {
-        if (!repo || !hasUserinfo(repo.cloneUrl)) continue;
-        const identity = repoIdentityOf(repo);
-        if (!identity) continue;
-        this.put(this.clones, tenantKey(tenant) + repoKey(identity), {
-          value: repo.cloneUrl,
-          expiresAt: cloneUntil,
-        });
-      }
+    for (const repo of [opts.repo, ...(opts.extraRepos ?? [])]) {
+      if (!repo?.credentialExpiresAt || !hasUserinfo(repo.cloneUrl)) continue;
+      const identity = repoIdentityOf(repo);
+      if (!identity) continue;
+      this.put(this.clones, tenantKey(tenant) + repoKey(identity), {
+        value: repo.cloneUrl,
+        expiresAt: repo.credentialExpiresAt - SEED_MARGIN_MS,
+      });
     }
     const orgFsUntil = validUntil?.orgFsConfig;
     if (tenant && opts.orgFsConfigJson && orgFsUntil !== undefined) {

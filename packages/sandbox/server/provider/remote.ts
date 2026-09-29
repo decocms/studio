@@ -60,11 +60,11 @@ export interface RemoteSandboxProviderOptions {
   /** Bearer the host accepts for its sandbox API. */
   token: string;
   /**
-   * How long, at least, the credentials an ensure carries stay valid, from
-   * the moment they were minted. Sent with each ensure so the host can keep
-   * them for recovery; without it the host waits for the next push.
+   * How long, at least, the org-fs config an ensure carries stays valid,
+   * from the moment it was minted. Sent with each ensure so the host can keep
+   * it for recovery; clone credentials carry their own `credentialExpiresAt`.
    */
-  credentialLifetimeMs?: { cloneUrl: number; orgFsConfig: number };
+  credentialLifetimeMs?: { orgFsConfig: number };
   /**
    * How long the host's watch may stay silent — no phase, no keepalive —
    * before a provisioning call or a watch gives up on it. Defaults to four
@@ -341,7 +341,6 @@ export class RemoteSandboxProvider implements SandboxProvider {
           opts: wireOpts,
           ...(lifetime && {
             credentialsValidUntil: {
-              cloneUrl: now + lifetime.cloneUrl,
               orgFsConfig: now + lifetime.orgFsConfig,
             },
           }),

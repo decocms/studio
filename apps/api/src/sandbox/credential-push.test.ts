@@ -3,6 +3,7 @@ import type { TenantPool } from "@decocms/sandbox/provider/agent-sandbox";
 import type { SandboxListing } from "@decocms/sandbox/provider/sandbox-api";
 import {
   type CredentialRecords,
+  credentialExpiresAt,
   mintCredentialPush,
   planCredentialPush,
   PUSH_CLONE_BUFFER_MS,
@@ -180,5 +181,15 @@ describe("mintCredentialPush", () => {
         orgFsConfigs: [],
       },
     ]);
+  });
+});
+
+describe("credentialExpiresAt", () => {
+  it("passes a mint's own expiry, a day for a never-expiring token, nothing without one", () => {
+    expect(credentialExpiresAt(new Date(NOW + 55 * 60_000), NOW)).toBe(
+      NOW + 55 * 60_000,
+    );
+    expect(credentialExpiresAt(null, NOW)).toBe(NOW + DAY);
+    expect(credentialExpiresAt(undefined, NOW)).toBeUndefined();
   });
 });

@@ -13,10 +13,7 @@ import { KyselySandboxProviderStateStore } from "@/storage/sandbox-runner-state"
 import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
 import { sandboxCredentialMinters } from "@/sandbox/credential-mint";
-import {
-  CLONE_URL_LIFETIME_MS,
-  ORG_FS_CONFIG_LIFETIME_MS,
-} from "@/sandbox/credential-push";
+import { ORG_FS_CONFIG_LIFETIME_MS } from "@/sandbox/credential-push";
 
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/api/src/index.ts` is wired
@@ -153,10 +150,7 @@ async function instantiate(
     return new RemoteSandboxProvider({
       baseUrl: controlPlane.url,
       token: controlPlane.token,
-      credentialLifetimeMs: {
-        cloneUrl: CLONE_URL_LIFETIME_MS,
-        orgFsConfig: ORG_FS_CONFIG_LIFETIME_MS,
-      },
+      credentialLifetimeMs: { orgFsConfig: ORG_FS_CONFIG_LIFETIME_MS },
     });
   }
   const stateStore = new KyselySandboxProviderStateStore(db);

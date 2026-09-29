@@ -129,7 +129,7 @@ beforeAll(() => {
   provider = new RemoteSandboxProvider({
     baseUrl: `http://127.0.0.1:${host.port}`,
     token: TOKEN,
-    credentialLifetimeMs: { cloneUrl: 5 * 60_000, orgFsConfig: 60 * 60_000 },
+    credentialLifetimeMs: { orgFsConfig: 60 * 60_000 },
     stallMs: STALL_MS,
   });
 });
@@ -245,14 +245,16 @@ describe("RemoteSandboxProvider against the host tools", () => {
         connectionId: "c1",
         userName: "u",
         userEmail: "e",
+        // A fresh installation token's own expiry.
+        credentialExpiresAt: Date.now() + 55 * 60_000,
       },
       orgFsConfigJson: '{"token":"k"}',
     };
     await provider.ensure(ID, opts);
     expect(lastEnsureOpts).toEqual(opts);
-    expect(store.cloneUrl(TENANT, REPO)).toBe(CLONE);
-    // Claimed for 5 minutes: not enough for a re-mint that wants 30.
-    expect(store.cloneUrl(TENANT, REPO, 30 * 60_000)).toBeNull();
+    // Good for the runner's 30-minute re-mint, not for a 55-minute one.
+    expect(store.cloneUrl(TENANT, REPO, 30 * 60_000)).toBe(CLONE);
+    expect(store.cloneUrl(TENANT, REPO, 55 * 60_000)).toBeNull();
     expect(store.orgFsConfig(TENANT)).toBe('{"token":"k"}');
   });
 

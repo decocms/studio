@@ -120,30 +120,48 @@ describe("PushedCredentials", () => {
     );
   });
 
-  it("seeds only credentialed clone URLs, for the time the caller vouches", () => {
+  it("seeds each credentialed clone URL until its own expiry, less a margin", () => {
     const t = clock();
     const store = new PushedCredentials({ now: t.now });
-    const repo = (cloneUrl: string, connectionId = "c1") => ({
+    const repo = (
+      cloneUrl: string,
+      connectionId = "c1",
+      credentialExpiresAt = t.now() + 55 * MIN,
+    ) => ({
       cloneUrl,
       connectionId,
       userName: "u",
       userEmail: "e",
+      credentialExpiresAt,
     });
     store.seed(
       {
         tenant: { ...A, orgSlug: "a" },
         repo: repo(url("seed")),
-        extraRepos: [repo("https://github.com/acme/public.git", "c9")],
+        extraRepos: [
+          repo("https://github.com/acme/public.git", "c9"),
+          repo(url("short"), "c2", t.now() + 10 * MIN),
+        ],
         orgFsConfigJson: "{k}",
       },
-      { cloneUrl: t.now() + 5 * MIN, orgFsConfig: t.now() + 60 * MIN },
+      { orgFsConfig: t.now() + 60 * MIN },
     );
+    // A spot eviction eight minutes in still finds the token.
+    t.advance(8 * MIN);
     expect(store.cloneUrl(A, SITE)).toBe(url("seed"));
+    expect(store.cloneUrl(A, SITE, 30 * MIN)).toBe(url("seed"));
     expect(
       store.cloneUrl(A, { connectionId: "c9", repo: "acme/public" }),
     ).toBeNull();
-    expect(store.orgFsConfigExpiresAt(A)).toBe(t.now() + 60 * MIN);
-    store.seed({ tenant: B, repo: repo(url("b")) }, undefined);
+    // Ten minutes of life, two of them margin: gone at eight.
+    expect(
+      store.cloneUrl(A, { connectionId: "c2", repo: "acme/short" }),
+    ).toBeNull();
+    t.advance(46 * MIN);
+    expect(store.cloneUrl(A, SITE)).toBeNull();
+    expect(store.orgFsConfigExpiresAt(A)).toBe(t.now() + 6 * MIN);
+    const { credentialExpiresAt: _unknown, ...noExpiry } = repo(url("b"));
+    store.seed({ tenant: B, repo: noExpiry }, undefined);
     expect(store.cloneUrl(B, SITE)).toBeNull();
   });
 });

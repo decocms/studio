@@ -67,6 +67,7 @@ const repoSchema = z.object({
     .array(z.object({ host: z.string(), token: z.string() }))
     .optional(),
   directoryName: z.string().optional(),
+  credentialExpiresAt: expiresAt.optional(),
 });
 
 /** `image` is left out: the host's template pins it. */
@@ -100,12 +101,13 @@ export type Daemon = z.infer<typeof daemonSchema>;
 export const ensureInputSchema = z.object({
   id: sandboxIdSchema,
   opts: ensureOptionsSchema,
-  /** Until when the credentials in `opts` stay valid, at least; unset keeps them out of the host's store. */
+  /**
+   * Until when `opts.orgFsConfigJson` stays valid, at least; unset keeps it
+   * out of the host's store. Clone credentials carry their own
+   * `credentialExpiresAt`.
+   */
   credentialsValidUntil: z
-    .object({
-      cloneUrl: expiresAt.optional(),
-      orgFsConfig: expiresAt.optional(),
-    })
+    .object({ orgFsConfig: expiresAt.optional() })
     .optional(),
 });
 

@@ -19,18 +19,30 @@ import type {
 import { CREDENTIALS_PUSH_MAX } from "@decocms/sandbox/provider/sandbox-api";
 import { mapBounded } from "@decocms/shared/std";
 import { ORG_FS_KEY_TTL_MS } from "@/file-storage/mount/provisioning";
-import { PROACTIVE_REFRESH_BUFFER_MS } from "@/oauth/token-refresh";
 import type { Database as DatabaseSchema } from "@/storage/types";
 
 /** Every pushed clone token has at least this much life left. */
 export const PUSH_CLONE_BUFFER_MS = 45 * 60_000;
-/**
- * What a freshly minted credential is claimed to live, at least. A clone
- * token minted with the default refresh buffer has that much left; an org-fs
- * key is claimed an hour short of its TTL.
- */
-export const CLONE_URL_LIFETIME_MS = PROACTIVE_REFRESH_BUFFER_MS;
+/** A freshly minted org-fs key is claimed an hour short of its TTL. */
 export const ORG_FS_CONFIG_LIFETIME_MS = ORG_FS_KEY_TTL_MS - 60 * 60_000;
+/**
+ * How long a host may keep a token that never expires before it needs a
+ * push again. Revocation is the only end such a token has, and pushes come
+ * every 10 minutes.
+ */
+const NON_EXPIRING_CLAIM_MS = 24 * 60 * 60_000;
+
+/**
+ * `EnsureRepo.credentialExpiresAt` for a mint's expiry: its own, a day for a
+ * token that never expires, absent when the mint had no token.
+ */
+export function credentialExpiresAt(
+  expiresAt: Date | null | undefined,
+  now = Date.now(),
+): number | undefined {
+  if (expiresAt === undefined) return undefined;
+  return expiresAt === null ? now + NON_EXPIRING_CLAIM_MS : expiresAt.getTime();
+}
 /** An org-fs key the host holds for longer than this is left alone. */
 const ORG_FS_REMINT_BEFORE_MS = 24 * 60 * 60_000;
 const MINT_CONCURRENCY = 8;

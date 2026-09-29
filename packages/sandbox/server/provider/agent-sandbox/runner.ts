@@ -1632,7 +1632,10 @@ export class AgentSandboxProvider {
     if (!this.mintCloneUrl) return repo;
     try {
       const fresh = await this.mintCloneUrl(repo, opts);
-      return fresh ? { ...repo, cloneUrl: fresh } : repo;
+      if (!fresh) return repo;
+      // The mint says nothing of the new token's life.
+      const { credentialExpiresAt: _stale, ...rest } = repo;
+      return { ...rest, cloneUrl: fresh };
     } catch (err) {
       console.warn(
         `[${LOG_LABEL}] clone credential re-mint failed: ${
@@ -3192,7 +3195,11 @@ function withoutUserinfo(
     const url = new URL(repo.cloneUrl);
     url.username = "";
     url.password = "";
-    const { submoduleCredentials: _tokens, ...kept } = repo;
+    const {
+      submoduleCredentials: _tokens,
+      credentialExpiresAt: _expiry,
+      ...kept
+    } = repo;
     return { ...kept, cloneUrl: url.toString() };
   } catch {
     return null;

@@ -81,7 +81,9 @@ import {
   findRepositoryForLegacyBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers";
+import type { RepoCloneInfo } from "../../git-providers/credentials";
 import { GitProviderError } from "../../git-providers/types";
+import { credentialExpiresAt } from "@/sandbox/credential-push";
 import type { RepositoryRecord } from "../../storage/repositories";
 import {
   encodeSandboxStartError,
@@ -430,7 +432,7 @@ async function buildExtraRepoOpts(args: {
       );
       const connectionId = repo.connectionId ?? repository?.legacyConnectionId;
       if (!studioRepository && !connectionId) continue;
-      const { cloneUrl } = studioRepository
+      const { cloneUrl, expiresAt } = studioRepository
         ? await cloneInfoForRepository(args.ctx, studioRepository, {
             forceRefresh: true,
           })
@@ -443,6 +445,7 @@ async function buildExtraRepoOpts(args: {
           );
       out.push({
         cloneUrl,
+        credentialExpiresAt: credentialExpiresAt(expiresAt),
         ...(studioRepository
           ? { repositoryId: studioRepository.id }
           : { connectionId: connectionId! }),
@@ -529,6 +532,7 @@ async function provisionSandbox(params: StartParams): Promise<{
         branch: string;
         displayName: string;
         submoduleCredentials?: { host: string; token: string }[];
+        credentialExpiresAt?: number;
       }
     | undefined;
 
@@ -580,7 +584,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
     // trade-off of linking a repo without a GitHub connection.
-    const { cloneUrl, gitUserName, gitUserEmail } = studioRepository
+    const { cloneUrl, gitUserName, gitUserEmail, expiresAt } = studioRepository
       ? await studioCloneInfo(ctx, studioRepository)
       : connectionId
         ? await buildCloneInfo(
@@ -646,6 +650,7 @@ async function provisionSandbox(params: StartParams): Promise<{
 
     repoOpts = {
       cloneUrl,
+      credentialExpiresAt: credentialExpiresAt(expiresAt),
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
       ...(studioRepository
         ? { repositoryId: studioRepository.id }
@@ -1011,7 +1016,7 @@ async function waitForSchedulableCapacity(
 async function studioCloneInfo(
   ctx: StudioContext,
   repository: RepositoryRecord,
-): Promise<{ cloneUrl: string; gitUserName: string; gitUserEmail: string }> {
+): Promise<RepoCloneInfo> {
   try {
     return await cloneInfoForRepository(ctx, repository, {
       forceRefresh: true,
