@@ -107,11 +107,13 @@ export const SUBMODULE_HOST_RE = /^[a-zA-Z0-9.-]+(?::[0-9]+)?$/;
  * Kept named `submoduleCredentials` on the wire — that is the daemon's field.
  */
 export const SubmoduleCredentialSchema = z.object({
+  // Lowercased: git hosts are case-insensitive, but the per-host uniqueness check compares this string verbatim.
   host: z
     .string()
     .min(1)
     .max(MAX_SETTINGS_STRING_LENGTH)
     .regex(SUBMODULE_HOST_RE)
+    .transform((value) => value.toLowerCase())
     .describe("Git host, e.g. 'github.com' (bare hostname, no scheme)."),
   secretId: z
     .string()

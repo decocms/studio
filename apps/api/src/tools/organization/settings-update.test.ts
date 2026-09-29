@@ -144,6 +144,29 @@ describe("ORGANIZATION_SETTINGS_UPDATE", () => {
     ).toBe(true);
   });
 
+  it("rejects hosts that only differ by case as duplicates", () => {
+    // Git hosts are case-insensitive.
+    const result = ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+      organizationId: "org-a",
+      submodule_credentials: [
+        { host: "GitHub.com", secretId: "secret-1" },
+        { host: "github.com", secretId: "secret-2" },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("normalizes a submodule credential host to lowercase", () => {
+    const result = ORGANIZATION_SETTINGS_UPDATE.inputSchema.safeParse({
+      organizationId: "org-a",
+      submodule_credentials: [{ host: "GitHub.com", secretId: "secret-1" }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.submodule_credentials?.[0]?.host).toBe("github.com");
+  });
+
   it("rejects an oversized string in a sidebar item or default_home_agents id", () => {
     const longString = "x".repeat(501);
 
