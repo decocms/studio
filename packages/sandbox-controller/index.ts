@@ -9,10 +9,21 @@ export {
   type TenantPool,
 } from "@decocms/sandbox/provider/agent-sandbox";
 export {
-  migrateRunnerStateStore,
+  migrateSandboxControllerSchema,
   postgresRunnerStateStore,
+  postgresTenantPoolStore,
+  storedTenantPoolInputSchema,
+  TenantPoolConflictError,
+  tenantPoolReader,
   type PostgresRunnerStateStore,
   type PostgresRunnerStateStoreOptions,
+  type PostgresTenantPoolStore,
+  type PostgresTenantPoolStoreOptions,
+  type StoredTenantPool,
+  type StoredTenantPoolInput,
+  type TenantPoolReader,
+  type TenantPoolReaderOptions,
+  type TenantPoolStore,
 } from "@decocms/sandbox/provider/postgres-state-store";
 export type {
   EnsureOptions,

@@ -4,7 +4,7 @@
  * clone, no install, no Vite boot.
  *
  * The host passes the list (or a function returning it) to the provider: the
- * control plane from its own database, in-process Studio from the
+ * control plane from `postgresTenantPoolStore`, in-process Studio from the
  * `STUDIO_SANDBOX_TENANT_POOLS` deploy env (a JSON array). Empty = nothing
  * changes anywhere. `name` is explicit rather than derived from the org
  * because the matching `SandboxWarmPool` object is rendered from the same

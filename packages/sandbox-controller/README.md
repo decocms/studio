@@ -27,12 +27,14 @@ which are private, and bundles it into one module with declarations.
 - Export `AgentSandboxProvider`, its option and state-store types, and
   `kubeConfigForServer`, a credential-less kubeconfig for a local proxy, built
   with the package's own client.
-- Export `postgresRunnerStateStore`, a Postgres `RunnerStateStore` in the
-  library's own `sandbox_controller` schema, and `migrateRunnerStateStore`,
-  which creates and upgrades that schema.
-- Export `TenantPool`, `tenantPoolSchema` (the one validator for a pool) and
-  `parseTenantPools`, so the host validates the pools it stores the way the
-  provider does.
+- Export `migrateSandboxControllerSchema`, which creates and upgrades the
+  library's own `sandbox_controller` Postgres schema, and the stores in it:
+  `postgresRunnerStateStore`, a `RunnerStateStore`, and
+  `postgresTenantPoolStore`, the tenant warm pools per sandbox cluster, with
+  `tenantPoolReader`, a cached list for the provider's `tenantPools`.
+- Export `TenantPool`, `tenantPoolSchema` (the one validator for a pool),
+  `storedTenantPoolInputSchema` (a pool plus its `size`) and
+  `parseTenantPools`, so the host validates pools the way the provider does.
 - Export the wire contract in `sandbox-api`: tool names and schemas, and the
   watch route.
 - Export host helpers: `sandboxTools` (framework-free tool definitions),
@@ -46,17 +48,23 @@ which are private, and bundles it into one module with declarations.
 import {
   AgentSandboxProvider,
   kubeConfigForServer,
-  migrateRunnerStateStore,
+  migrateSandboxControllerSchema,
   postgresRunnerStateStore,
+  postgresTenantPoolStore,
   PushedCredentials,
   pushedCredentialOptions,
   sandboxTools,
   sandboxWatchResponse,
+  tenantPoolReader,
 } from "@decocms/sandbox-controller";
 
-// At boot, before the store serves a call. The store opens its own pool.
-await migrateRunnerStateStore({ url: databaseUrl });
+// At boot, before any store serves a call. Each store opens its own pool.
+await migrateSandboxControllerSchema({ url: databaseUrl });
 const stateStore = postgresRunnerStateStore({ url: databaseUrl });
+const poolStore = postgresTenantPoolStore({ url: databaseUrl });
+// The host's admin surface writes pools with poolStore.upsert / delete.
+const pools = tenantPoolReader(poolStore, "sandbox-cluster-1");
+await pools.start();
 
 // Memory only: a restart forgets it until Studio's next push.
 const credentials = new PushedCredentials();
@@ -69,8 +77,8 @@ const provider = new AgentSandboxProvider({
   stateStore,
   // Warm-pool mode; tenant pools need it.
   sentinelToken,
-  // Read on every ensure, push and reconcile tick: keep it a cheap snapshot.
-  tenantPools: () => currentTenantPools(),
+  // Read on every ensure, push and reconcile tick: a synchronous snapshot.
+  tenantPools: pools.current,
   // Mint hooks that read the store, and `persistCredentials: false`.
   ...pushedCredentialOptions(credentials),
 });
@@ -96,11 +104,11 @@ Service URL). The control plane holds no cluster credential: its kube and
 daemon calls are sandbox ops its cluster's data-plane agent runs
 (`decocms/operator` `internal/agent/ops.go`).
 
-The host owns the tenant warm pools: it keeps them, renders their
-`SandboxWarmPool` objects and passes them to the provider as `tenantPools`,
-a list or a function. The provider reads a function on every use, so a pool
-the host adds or removes takes effect on the next ensure and reconcile tick,
-without a restart. The reconciler forgets a removed pool's pods and zeroes its
+The host decides the tenant warm pools and renders their `SandboxWarmPool`
+objects (`size` is the replica count); the library keeps them. The provider
+takes them as `tenantPools`, a list or a function, and reads a function on
+every use, so a pool added or removed takes effect on the next ensure and
+reconcile tick, without a restart. The reconciler forgets a removed pool's pods and zeroes its
 depth gauge; the pool's pods are the host's to delete.
 
 The host never calls Studio. Credentials only Studio can mint (clone tokens,
@@ -131,6 +139,19 @@ the store never migrates on its own. Migrating is idempotent and holds an
 advisory lock, so every replica can run it at once. Applied versions are
 recorded in `sandbox_controller.migrations`. `state` embeds short-lived
 credentials; never log it.
+
+The pool store keeps one row per pool in `sandbox_controller.tenant_pools`,
+unique by cluster and name, so one database can serve several sandbox
+clusters. `upsert(cluster, pool)` validates with `storedTenantPoolInputSchema`
+and creates or updates the pool of that name, but throws
+`TenantPoolConflictError` when the name belongs to another org or repo: its
+warm pods hold that tenant's checkout. `delete` answers whether a pool was
+removed. `tenantPoolReader(store, cluster)` loads the cluster's pools on
+`start()`, on `refresh()` and every `refreshMs` (default 30 seconds);
+`current()` answers the last loaded list synchronously. A failed load keeps
+the last list, and a load that finishes after a newer one is dropped. A write
+from another replica reaches a reader on its next tick; the writer's own
+process can call `refresh()` right away.
 
 The watch route writes an SSE keepalive comment every
 `SANDBOX_WATCH_KEEPALIVE_MS`. Studio reads the watch as the host's sign of

@@ -1,5 +1,10 @@
 import { hash } from "node:crypto";
 import postgres from "postgres";
+import { z } from "zod";
+import {
+  tenantPoolSchema,
+  type TenantPool,
+} from "./agent-sandbox/tenant-pools";
 import type {
   RunnerStatePut,
   RunnerStateRecord,
@@ -44,6 +49,20 @@ const MIGRATIONS = [
     primary key (user_id, project_ref)
   );
   create index runner_state_handle_idx on sandbox_controller.runner_state (handle);`,
+  `create table sandbox_controller.tenant_pools (
+    id uuid primary key default gen_random_uuid(),
+    cluster text not null,
+    name text not null,
+    org_id text not null,
+    repo text not null,
+    branch text not null default 'main',
+    connection_id text,
+    workload jsonb not null,
+    size integer not null check (size >= 1),
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (cluster, name)
+  );`,
 ];
 
 function advisoryKey(value: string): string {
@@ -109,8 +128,8 @@ function isStatementTimeoutError(err: unknown): boolean {
   return code === "57014" || /statement timeout/i.test(err.message);
 }
 
-/** Applies the store's schema; safe to run on every boot from every replica at once. */
-export async function migrateRunnerStateStore({
+/** Applies the `sandbox_controller` schema; safe to run on every boot from every replica at once. */
+export async function migrateSandboxControllerSchema({
   url,
 }: {
   url: string;
@@ -170,5 +189,165 @@ export function postgresRunnerStateStore({
       return result;
     },
     close: () => sql.end(),
+  };
+}
+
+export const storedTenantPoolInputSchema = tenantPoolSchema.extend({
+  size: z.number().int().min(1),
+});
+
+export type StoredTenantPoolInput = z.input<typeof storedTenantPoolInputSchema>;
+
+export type StoredTenantPool = TenantPool & { cluster: string; size: number };
+
+export interface PostgresTenantPoolStoreOptions {
+  url: string;
+  maxConnections?: number;
+}
+
+export interface TenantPoolStore {
+  list(cluster: string): Promise<StoredTenantPool[]>;
+  upsert(
+    cluster: string,
+    input: StoredTenantPoolInput,
+  ): Promise<{ pool: StoredTenantPool; created: boolean }>;
+  delete(cluster: string, name: string): Promise<boolean>;
+}
+
+export interface PostgresTenantPoolStore extends TenantPoolStore {
+  close(): Promise<void>;
+}
+
+/** A pool name already taken in the cluster by another org or repo: its warm pods hold that tenant's checkout. */
+export class TenantPoolConflictError extends Error {
+  constructor(
+    readonly cluster: string,
+    readonly poolName: string,
+  ) {
+    super(
+      `pool ${poolName} already exists in ${cluster} for another org or repo`,
+    );
+    this.name = "TenantPoolConflictError";
+  }
+}
+
+interface PoolRow {
+  cluster: string;
+  name: string;
+  org_id: string;
+  repo: string;
+  branch: string;
+  connection_id: string | null;
+  workload: unknown;
+  size: number;
+}
+
+function toStoredPool(row: PoolRow): StoredTenantPool {
+  return {
+    cluster: row.cluster,
+    name: row.name,
+    orgId: row.org_id,
+    repo: row.repo,
+    branch: row.branch,
+    workload: tenantPoolSchema.shape.workload.parse(row.workload),
+    ...(row.connection_id ? { connectionId: row.connection_id } : {}),
+    size: row.size,
+  };
+}
+
+const DEFAULT_POOL_STORE_MAX_CONNECTIONS = 2;
+
+export function postgresTenantPoolStore({
+  url,
+  maxConnections = DEFAULT_POOL_STORE_MAX_CONNECTIONS,
+}: PostgresTenantPoolStoreOptions): PostgresTenantPoolStore {
+  const sql = postgres(url, { max: maxConnections, prepare: false });
+  return {
+    async list(cluster) {
+      const rows = await sql<PoolRow[]>`
+        select cluster, name, org_id, repo, branch, connection_id, workload, size
+        from sandbox_controller.tenant_pools
+        where cluster = ${cluster} order by name`;
+      return rows.map(toStoredPool);
+    },
+    async upsert(cluster, raw) {
+      const input = storedTenantPoolInputSchema.parse(raw);
+      const workload = JSON.stringify(input.workload);
+      const [row] = await sql<(PoolRow & { created: boolean })[]>`
+        insert into sandbox_controller.tenant_pools
+          (cluster, name, org_id, repo, branch, connection_id, workload, size)
+        values (${cluster}, ${input.name}, ${input.orgId}, ${input.repo}, ${input.branch},
+          ${input.connectionId ?? null}, ${workload}::text::jsonb, ${input.size})
+        on conflict (cluster, name) do update set
+          repo = excluded.repo, branch = excluded.branch,
+          connection_id = excluded.connection_id, workload = excluded.workload,
+          size = excluded.size, updated_at = now()
+        where tenant_pools.org_id = excluded.org_id
+          and lower(tenant_pools.repo) = lower(excluded.repo)
+        returning cluster, name, org_id, repo, branch, connection_id, workload, size,
+          (xmax = 0) as created`;
+      if (!row) throw new TenantPoolConflictError(cluster, input.name);
+      const { created, ...pool } = row;
+      return { pool: toStoredPool(pool), created };
+    },
+    async delete(cluster, name) {
+      const rows = await sql`
+        delete from sandbox_controller.tenant_pools
+        where cluster = ${cluster} and name = ${name} returning id`;
+      return rows.length > 0;
+    },
+    close: () => sql.end(),
+  };
+}
+
+export interface TenantPoolReaderOptions {
+  refreshMs?: number;
+}
+
+export interface TenantPoolReader {
+  start(): Promise<readonly TenantPool[]>;
+  stop(): void;
+  refresh(): Promise<readonly TenantPool[]>;
+  current(): readonly TenantPool[];
+}
+
+const DEFAULT_TENANT_POOL_REFRESH_MS = 30_000;
+
+/** A cached pool list for `AgentSandboxProvider`'s `tenantPools`; a failed load keeps the last one. */
+export function tenantPoolReader(
+  store: Pick<TenantPoolStore, "list">,
+  cluster: string,
+  { refreshMs = DEFAULT_TENANT_POOL_REFRESH_MS }: TenantPoolReaderOptions = {},
+): TenantPoolReader {
+  let pools: readonly TenantPool[] = [];
+  let latestLoad = 0;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  async function refresh(): Promise<readonly TenantPool[]> {
+    const load = ++latestLoad;
+    try {
+      const rows = await store.list(cluster);
+      if (load === latestLoad) {
+        pools = rows.map(({ cluster: _cluster, size: _size, ...pool }) => pool);
+      }
+    } catch (err) {
+      console.warn(
+        `[sandbox] tenant pool refresh for ${cluster} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return pools;
+  }
+
+  return {
+    start() {
+      timer ??= setInterval(() => void refresh(), refreshMs);
+      return refresh();
+    },
+    stop() {
+      clearInterval(timer);
+      timer = undefined;
+    },
+    refresh,
+    current: () => pools,
   };
 }
