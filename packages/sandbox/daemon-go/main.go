@@ -1107,11 +1107,11 @@ func main() {
 		// The tenant env Studio pushed on the config channel — the harness's model
 		// credential lives there, and it reaches the harness as its spawn
 		// environment, so it dies with the run.
-		// Plus the provider CLI's token (GH_TOKEN for `gh`, GITLAB_TOKEN +
-		// GITLAB_HOST for `glab`), so the harness can open the pull/merge request
-		// its prompt asks for: `git push` already works off the credentialed
-		// `origin`, but the CLIs read a token from the environment and there is
-		// none in the pod.
+		// Plus the provider CLI's token (GH_TOKEN for `gh`, GITLAB_TOKEN,
+		// GITLAB_HOST and GLAB_IS_OAUTH2 for `glab`), so the harness can open
+		// the pull/merge request its prompt asks for: `git push` already works
+		// off the credentialed `origin`, but the CLIs read a token from the
+		// environment and there is none in the pod.
 		//
 		// Read back from the clone URL rather than pushed separately, so it cannot
 		// drift from what the working tree pushes with, and it grants the harness
@@ -1147,9 +1147,10 @@ func main() {
 		// fail — it answers wrongly and silently, which is the worse outcome. See
 		// `WaitHomeReady` for why this one place waits where the rest fail open.
 		BeforeRun: func(info dispatch.RunInfo) {
-			// `glab` cannot authenticate from the environment for an OAuth token
-			// (see CliEnvFromCloneUrl), so the credential goes in its config file
-			// instead — refreshed per run, because the clone URL's token rotates.
+			// The harness's `glab` authenticates from RunEnv, but the task
+			// manager's PTYs never see RunEnv, so the credential also goes in
+			// glab's config file — refreshed per run, because the clone URL's
+			// token rotates.
 			writeGlabConfig(d.store.Read())
 			// Two different waits, in dependency order. This one is for the org
 			// HOME volume to be attached at all: it is what the thread's saved

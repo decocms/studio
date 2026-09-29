@@ -326,8 +326,8 @@ func TestCliEnvFromCloneUrl(t *testing.T) {
 	}{
 		{"github", "https://x-access-token:tok-gh@github.com/acme/site.git", map[string]string{"GH_TOKEN": "tok-gh"}},
 		{"github enterprise", "https://x-access-token:tok@ghe.acme.com/acme/site.git", map[string]string{"GH_TOKEN": "tok", "GH_HOST": "ghe.acme.com"}},
-		{"gitlab", "https://oauth2:tok-gl@gitlab.com/group/sub/project.git", map[string]string{"GITLAB_TOKEN": "tok-gl", "GITLAB_HOST": "https://gitlab.com"}},
-		{"self-hosted gitlab with port", "https://oauth2:t@gitlab.acme.com:8443/g/p.git", map[string]string{"GITLAB_TOKEN": "t", "GITLAB_HOST": "https://gitlab.acme.com:8443"}},
+		{"gitlab", "https://oauth2:tok-gl@gitlab.com/group/sub/project.git", map[string]string{"GITLAB_TOKEN": "tok-gl", "GITLAB_HOST": "https://gitlab.com", "GLAB_IS_OAUTH2": "true"}},
+		{"self-hosted gitlab with port", "https://oauth2:t@gitlab.acme.com:8443/g/p.git", map[string]string{"GITLAB_TOKEN": "t", "GITLAB_HOST": "https://gitlab.acme.com:8443", "GLAB_IS_OAUTH2": "true"}},
 		{"bitbucket", "https://x-token-auth:tok-bb@bitbucket.org/acme/site.git", map[string]string{"BITBUCKET_TOKEN": "tok-bb"}},
 		{"anonymous", "https://github.com/acme/site.git", nil},
 		{"ssh", "git@github.com:acme/site.git", nil},
