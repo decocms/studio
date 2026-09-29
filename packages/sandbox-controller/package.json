@@ -1,0 +1,33 @@
+{
+  "name": "@decocms/sandbox-controller",
+  "version": "0.1.0",
+  "description": "Runs Studio agent sandboxes on Kubernetes, and serves them to a remote Studio.",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "pack": "bun run build && bun pm pack --filename $PWD/dist/sandbox-controller.tgz --quiet"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^1.4.0"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@decocms/sandbox": "workspace:*",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3"
+  }
+}

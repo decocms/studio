@@ -1,7 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import type { SandboxMap, SandboxRecord } from "@decocms/shared/sdk";
 import type { StudioContext } from "../../core/studio-context";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 
 // Mock the hosted teardown runner before importing SANDBOX_DELETE.
 const mockDelete = mock(async (_handle: string): Promise<void> => {});
@@ -11,7 +11,7 @@ async function* readyOnly() {
 }
 
 const mockRunner: Pick<
-  AgentSandboxProvider,
+  SandboxProvider,
   | "alive"
   | "delete"
   | "ensure"

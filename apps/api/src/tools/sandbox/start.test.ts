@@ -8,7 +8,7 @@ import type {
   SandboxId,
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import { isTransientRunFailure } from "../task-board/transient-failure";
 
@@ -30,7 +30,7 @@ async function* readyOnly() {
 }
 
 const mockRunner: Pick<
-  AgentSandboxProvider,
+  SandboxProvider,
   | "alive"
   | "delete"
   | "ensure"

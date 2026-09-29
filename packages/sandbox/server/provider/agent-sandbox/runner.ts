@@ -108,6 +108,15 @@ import {
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
+import { repoIdentityOf } from "../pushed-credentials";
+import type { RepoIdentity } from "../sandbox-api";
+import { proxyDaemonWithRetry } from "../shared/daemon-proxy";
+import {
+  PREVIEW_NOT_READY_HEADER,
+  proxyPreview,
+} from "../shared/preview-proxy";
+
+export { PREVIEW_NOT_READY_HEADER };
 
 const LOG_LABEL = "AgentSandboxProvider";
 
@@ -126,14 +135,6 @@ function errMsg(err: unknown): string {
   }
   return String(err);
 }
-
-/**
- * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
- * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
- * The Studio edge (`apps/api/src/sandbox/preview-proxy.ts`) swaps these for an
- * auto-reloading "connecting" page on top-level document navigations.
- */
-export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
 
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
@@ -208,41 +209,6 @@ const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
  * label cap.
  */
 
-/**
- * Headers stripped before re-issuing the preview proxy fetch. Hop-by-hop per
- * RFC 7230 + cookies (preview is per-handle, not per-user — no callee session
- * leak) + accept-encoding (Bun fetch auto-decompresses, so a downstream
- * content-encoding would mismatch the actual body).
- */
-const PREVIEW_STRIP_REQUEST_HEADERS = [
-  "cookie",
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "accept-encoding",
-  "content-length",
-  "upgrade",
-];
-
-/**
- * Stripped from the proxied response. content-encoding/length would mismatch
- * after Bun fetch auto-decompresses; CSP/X-Frame-Options the daemon already
- * rewrote — re-passing them defeats the iframe-embedding fix the daemon
- * installed.
- */
-const PREVIEW_STRIP_RESPONSE_HEADERS = [
-  "connection",
-  "keep-alive",
-  "transfer-encoding",
-  "content-encoding",
-  "content-length",
-];
-
 // Deterministic local-port range for port-forward listeners. Same
 // (handle, containerPort) pair → same host port across studio restarts, so
 // `previewUrl` cached in the thread's sandboxMap stays valid when the studio
@@ -262,9 +228,10 @@ interface ForwardWebSocket {
   on: (event: "close" | "error", handler: (err?: unknown) => void) => void;
 }
 
-interface PortForwarder {
-  server: net.Server;
+/** A local port whose connections reach a pod's container port. */
+export interface PortForwarder {
   localPort: number;
+  close(): void;
 }
 
 interface RunnerTenant {
@@ -277,6 +244,8 @@ interface RunnerTenant {
 }
 
 interface K8sRecord {
+  /** Recovered from state that left its org-fs config out; it mounts org-fs. */
+  orgFsRedacted?: boolean;
   id: SandboxId;
   handle: string;
   /**
@@ -350,6 +319,8 @@ interface PersistedK8sState {
    * SANDBOX_START reprovision flow then runs with full opts).
    */
   ensureOpts?: EnsureOptions;
+  /** `ensureOpts` had an org-fs config, left out with `persistCredentials: false`. */
+  orgFsRedacted?: boolean;
   [k: string]: unknown;
 }
 
@@ -464,10 +435,11 @@ export interface AgentSandboxProviderOptions {
    * `opts.bufferMs` asks the minter to refresh the token when it has less than
    * that many ms of life left — the periodic refresher passes a large value to
    * keep long-lived sandboxes ahead of the ~55min expiry; recovery omits it.
+   * `opts.tenant` is the sandbox's tenant; absent for a tenant pool's pod.
    */
   mintCloneUrl?: (
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts?: { bufferMs?: number },
+    opts?: { bufferMs?: number; tenant?: EnsureOptions["tenant"] },
   ) => Promise<string | null>;
   /**
    * Re-mint a fresh `orgFsConfigJson` for a tenant. Same lifetime problem as
@@ -483,6 +455,27 @@ export interface AgentSandboxProviderOptions {
   mintOrgFsConfig?: (
     tenant: NonNullable<EnsureOptions["tenant"]>,
   ) => Promise<string | null>;
+  /**
+   * Replaces the apiserver port-forward to a pod's container port, for a
+   * host that reaches pods some other way (the control plane goes through
+   * its cluster agent). Must resolve to a 127.0.0.1 port.
+   */
+  forwardPort?: (
+    podName: string,
+    containerPort: number,
+    handle: string,
+  ) => Promise<PortForwarder>;
+  /**
+   * What `daemonEndpoint` answers: this process's local forward (default), or
+   * the in-cluster Service URL for a caller that runs inside the cluster.
+   */
+  daemonAddress?: "forward" | "service";
+  /**
+   * Whether persisted state keeps the credentials `ensureOpts` embeds (clone
+   * tokens, submodule tokens, the org-fs API key). A host outside Studio sets
+   * false: recovery then re-mints through the hooks instead. Default true.
+   */
+  persistCredentials?: boolean;
 }
 
 export class AgentSandboxProvider {
@@ -527,6 +520,9 @@ export class AgentSandboxProvider {
   private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
   /** See {@link AgentSandboxProviderOptions.mintOrgFsConfig}. */
   private readonly mintOrgFsConfig: AgentSandboxProviderOptions["mintOrgFsConfig"];
+  private readonly forwardPort: AgentSandboxProviderOptions["forwardPort"];
+  private readonly daemonAddress: "forward" | "service";
+  private readonly persistCredentials: boolean;
   /** See {@link AgentSandboxProviderOptions.tenantPools}. */
   private readonly tenantPools: readonly TenantPool[];
   private readonly tenantPoolRefreshMs: number;
@@ -572,6 +568,9 @@ export class AgentSandboxProvider {
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
     this.mintOrgFsConfig = opts.mintOrgFsConfig;
+    this.forwardPort = opts.forwardPort;
+    this.daemonAddress = opts.daemonAddress ?? "forward";
+    this.persistCredentials = opts.persistCredentials ?? true;
     this.tenantPools =
       this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
     if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
@@ -776,54 +775,30 @@ export class AgentSandboxProvider {
     let activeRec = rec;
     const start = performance.now();
     let status = 0;
-    const canRetryBody = !(init.body instanceof ReadableStream);
+    const address = (r: K8sRecord) => {
+      activeRec = r;
+      return { url: r.daemonUrl, token: r.token };
+    };
     try {
-      let resp = await proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
-      // A 401 means the cached record is stale — the pool pod was recreated
-      // and no longer holds our token. Drop it and re-resolve; rehydrate
-      // re-bootstraps the fresh daemon. Then retry once. Retry only when the
-      // body is re-sendable: of the BodyInit variants only a ReadableStream is
-      // one-shot (consumed by the first fetch); strings, buffers,
-      // URLSearchParams, FormData and Blobs are re-read from memory on retry.
-      if (resp.status === 401 && canRetryBody) {
-        this.invalidateRecord(handle);
-        const fresh =
-          (await this.getRecord(handle).catch(() => null)) ??
-          (await this.resurrectByHandle(handle).catch(() => null));
-        if (fresh) {
-          // Drain the discarded 401 response so its connection is released.
-          try {
-            await resp.body?.cancel();
-          } catch {
-            /* ignore */
-          }
-          activeRec = fresh;
-          resp = await proxyDaemonRequest(
-            fresh.daemonUrl,
-            fresh.token,
-            path,
-            init,
-          );
-        }
-      }
-      status = resp.status;
-      return resp;
-    } catch (err) {
-      // Stale port-forward / dead pod after idle eviction — same recovery
-      // path as preview's fetch-retry arm.
-      if (!canRetryBody) throw err;
-      this.invalidateRecord(handle);
-      const fresh =
-        (await this.resurrectByHandle(handle)) ??
-        (await this.getRecord(handle).catch(() => null));
-      if (!fresh) throw err;
-      activeRec = fresh;
-      const resp = await proxyDaemonRequest(
-        fresh.daemonUrl,
-        fresh.token,
-        path,
-        init,
-      );
+      const resp = await proxyDaemonWithRetry(address(rec), path, init, {
+        // The cached record is stale: rehydrate re-bootstraps the fresh daemon.
+        unauthorized: async () => {
+          this.invalidateRecord(handle);
+          const fresh =
+            (await this.getRecord(handle).catch(() => null)) ??
+            (await this.resurrectByHandle(handle).catch(() => null));
+          return fresh ? address(fresh) : null;
+        },
+        // Stale port-forward / dead pod after idle eviction — same recovery
+        // path as preview's fetch-retry arm.
+        unreachable: async () => {
+          this.invalidateRecord(handle);
+          const fresh =
+            (await this.resurrectByHandle(handle)) ??
+            (await this.getRecord(handle).catch(() => null));
+          return fresh ? address(fresh) : null;
+        },
+      });
       status = resp.status;
       return resp;
     } finally {
@@ -924,6 +899,49 @@ export class AgentSandboxProvider {
   }
 
   /**
+   * The daemon's address and bearer, resurrecting an evicted claim, for a
+   * remote caller that dials the daemon itself. Null when there is no such
+   * sandbox.
+   */
+  async daemonEndpoint(
+    handle: string,
+  ): Promise<{ url: string; token: string } | null> {
+    const rec =
+      (await this.getRecord(handle)) ?? (await this.resurrectByHandle(handle));
+    if (!rec) return null;
+    const url =
+      this.daemonAddress === "service"
+        ? `http://${rec.adoptedSandboxName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`
+        : rec.daemonUrl;
+    return { url, token: rec.token };
+  }
+
+  /**
+   * The sandboxes this replica holds, as Studio needs them to push fresh
+   * credentials: tenant, repos, whether it mounts org-fs. No credential.
+   */
+  listSandboxes(): Array<{
+    handle: string;
+    tenant: { orgId: string; userId: string } | null;
+    repos: RepoIdentity[];
+    orgFs: boolean;
+  }> {
+    return [...this.records.values()].map((rec) => {
+      const opts = rec.ensureOpts;
+      const tenant = opts?.tenant;
+      return {
+        handle: rec.handle,
+        tenant: tenant ? { orgId: tenant.orgId, userId: tenant.userId } : null,
+        repos: [opts?.repo, ...(opts?.extraRepos ?? [])]
+          .filter((repo) => repo !== undefined)
+          .map(repoIdentityOf)
+          .filter((repo) => repo !== null),
+        orgFs: Boolean(opts?.orgFsConfigJson) || rec.orgFsRedacted === true,
+      };
+    });
+  }
+
+  /**
    * Resolve the operator-managed Service name we should route preview
    * traffic to for `handle`. See `resolvePreviewUpstreamUrl` and
    * `K8sRecord.adoptedSandboxName` for why this differs from the claim
@@ -952,23 +970,7 @@ export class AgentSandboxProvider {
     return handle;
   }
 
-  /**
-   * Reverse-proxies an inbound preview HTTP request to the sandbox's daemon.
-   * Unauthenticated by design — preview URLs are open the same way Vercel
-   * preview URLs are; the *handle* is the secret.
-   *
-   * `/_sandbox/*` access policy at the edge:
-   *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
-   *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
-   *     because the studio UI consumes them cross-origin from the preview
-   *     URL — that's the only path it has to live setup state. Stripping
-   *     them here would break the studio UI's setup tab and SSE event feed.
-   *   - **Non-GET** (POST/PUT/DELETE/etc) is rejected as defense-in-depth.
-   *     The daemon enforces bearer auth on the mutating endpoints
-   *     (read/write/edit/grep/glob/bash/exec/kill), but the only legitimate
-   *     caller for those is studio itself via the internal port-forward; the
-   *     preview surface should never see them.
-   */
+  /** See `proxyPreview`; recovery resurrects an evicted claim. */
   async proxyPreviewRequest(
     handle: string,
     request: Request,
@@ -982,119 +984,22 @@ export class AgentSandboxProvider {
     const cachedRec = this.records.get(handle) ?? null;
     let status = 0;
     try {
-      const upstreamBase = await this.resolvePreviewUpstreamUrl(handle);
-      if (!upstreamBase) {
-        status = 404;
-        const notReady = jsonResponse(404, { error: "sandbox not found" });
-        notReady.headers.set(PREVIEW_NOT_READY_HEADER, "1");
-        return notReady;
-      }
-
-      const reqUrl = new URL(request.url);
-      const isAdminPath =
-        reqUrl.pathname === "/_sandbox" ||
-        reqUrl.pathname.startsWith("/_sandbox/");
-      if (isAdminPath && request.method !== "GET") {
-        status = 404;
-        return jsonResponse(404, { error: "not found" });
-      }
-
-      const reqTarget = (base: string) =>
-        `${base}${reqUrl.pathname}${reqUrl.search}`;
-      const headers = new Headers(request.headers);
-      for (const h of PREVIEW_STRIP_REQUEST_HEADERS) headers.delete(h);
-
-      const hasBody = request.method !== "GET" && request.method !== "HEAD";
-      const init: RequestInit & { duplex?: string } = {
-        method: request.method,
-        headers,
-        body: hasBody ? request.body : undefined,
-        redirect: "manual",
-        signal: request.signal,
-        duplex: hasBody ? "half" : undefined,
-      };
-
-      let upstream: Response;
-      try {
-        upstream = await fetch(reqTarget(upstreamBase), init as RequestInit);
-      } catch (err) {
-        // Truncate to host+pathname — query strings can carry secrets
-        // (magic-link tokens, signed URLs) and would otherwise end up in
-        // studio stdout → kubectl logs → log aggregator.
-        const safeTarget = `${upstreamBase}${reqUrl.pathname}`;
-        console.warn(
-          `[${LOG_LABEL}] preview fetch to ${safeTarget} failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-
-        // Recover from operator-driven eviction (15-min idle TTL): the
-        // claim + Service are gone but our records cache (or the
-        // synthesized prod-mode URL) still pointed at the stale endpoint.
-        // Drop the cache and resurrect via state-store. Retry only for
-        // replay-safe methods — `init.body` is a stream that's been
-        // consumed by the failed fetch; replaying a POST would silently
-        // send an empty body. The browser/caller can retry the mutating
-        // request after this 502 surfaces; the resurrected sandbox will
-        // be ready for that next attempt.
-        if (request.method === "GET" || request.method === "HEAD") {
-          this.invalidateRecord(handle);
-          const resurrected = await this.resurrectByHandle(handle).catch(
-            () => null,
-          );
-          if (resurrected) {
-            const retryBase = await this.resolvePreviewUpstreamUrl(handle);
-            if (retryBase) {
-              try {
-                upstream = await fetch(
-                  reqTarget(retryBase),
-                  init as RequestInit,
-                );
-                const responseHeaders = new Headers();
-                for (const [k, v] of upstream.headers.entries()) {
-                  if (
-                    !PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())
-                  ) {
-                    responseHeaders.set(k, v);
-                  }
-                }
-                status = upstream.status;
-                return new Response(upstream.body, {
-                  status: upstream.status,
-                  statusText: upstream.statusText,
-                  headers: responseHeaders,
-                });
-              } catch (retryErr) {
-                console.warn(
-                  `[${LOG_LABEL}] preview fetch retry to ${safeTarget} failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
-                );
-              }
-            }
-          }
-        } else {
-          // Non-replay-safe method: still drop the stale cache so the next
-          // request goes through fresh validation.
-          this.invalidateRecord(handle);
-        }
-
-        status = 502;
-        const notReady502 = jsonResponse(502, {
-          error: "sandbox daemon unreachable",
-        });
-        notReady502.headers.set(PREVIEW_NOT_READY_HEADER, "1");
-        return notReady502;
-      }
-
-      const responseHeaders = new Headers();
-      for (const [k, v] of upstream.headers.entries()) {
-        if (!PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())) {
-          responseHeaders.set(k, v);
-        }
-      }
-      status = upstream.status;
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders,
-      });
+      const resp = await proxyPreview(
+        request,
+        {
+          base: () => this.resolvePreviewUpstreamUrl(handle),
+          invalidate: () => this.invalidateRecord(handle),
+          retryBase: async () => {
+            const resurrected = await this.resurrectByHandle(handle).catch(
+              () => null,
+            );
+            return resurrected ? this.resolvePreviewUpstreamUrl(handle) : null;
+          },
+        },
+        LOG_LABEL,
+      );
+      status = resp.status;
+      return resp;
     } finally {
       this.recordProxyDuration(
         "preview",
@@ -1722,15 +1627,15 @@ export class AgentSandboxProvider {
    */
   private async withFreshCloneUrl(
     repo: NonNullable<EnsureOptions["repo"]>,
-    bufferMs?: number,
+    opts: { bufferMs?: number; tenant?: EnsureOptions["tenant"] } = {},
   ): Promise<NonNullable<EnsureOptions["repo"]>> {
     if (!this.mintCloneUrl) return repo;
     try {
-      const fresh = await this.mintCloneUrl(
-        repo,
-        bufferMs !== undefined ? { bufferMs } : undefined,
-      );
-      return fresh ? { ...repo, cloneUrl: fresh } : repo;
+      const fresh = await this.mintCloneUrl(repo, opts);
+      if (!fresh) return repo;
+      // The mint says nothing of the new token's life.
+      const { credentialExpiresAt: _stale, ...rest } = repo;
+      return { ...rest, cloneUrl: fresh };
     } catch (err) {
       console.warn(
         `[${LOG_LABEL}] clone credential re-mint failed: ${
@@ -1752,11 +1657,18 @@ export class AgentSandboxProvider {
    */
   private async withFreshCredentials(
     opts: EnsureOptions,
+    orgFsRedacted = false,
   ): Promise<EnsureOptions> {
     return {
       ...opts,
-      ...(opts.repo ? { repo: await this.withFreshCloneUrl(opts.repo) } : {}),
-      ...(opts.orgFsConfigJson
+      ...(opts.repo
+        ? {
+            repo: await this.withFreshCloneUrl(opts.repo, {
+              tenant: opts.tenant,
+            }),
+          }
+        : {}),
+      ...(opts.orgFsConfigJson || orgFsRedacted
         ? {
             orgFsConfigJson: await freshOrgFsConfigJson(
               opts,
@@ -1842,10 +1754,11 @@ export class AgentSandboxProvider {
    * Optional accelerator: without a webhook the periodic refresh below still
    * picks the commits up within `tenantPoolRefreshMs`.
    */
-  markTenantPoolsDirty(repoFullName: string, ref: string): string[] {
+  /** Async so a remote provider can serve the same surface. */
+  markTenantPoolsDirty(repoFullName: string, ref: string): Promise<string[]> {
     const matched = poolsMatchingPush(this.tenantPools, repoFullName, ref);
     for (const pool of matched) this.dirtyPools.add(pool.name);
-    return matched.map((pool) => pool.name);
+    return Promise.resolve(matched.map((pool) => pool.name));
   }
 
   private async reconcileTenantPools(): Promise<void> {
@@ -2070,10 +1983,10 @@ export class AgentSandboxProvider {
         const repo = rec.ensureOpts?.repo;
         if (!repo) return;
         try {
-          const fresh = await this.withFreshCloneUrl(
-            repo,
-            CREDENTIAL_REFRESH_BUFFER_MS,
-          );
+          const fresh = await this.withFreshCloneUrl(repo, {
+            bufferMs: CREDENTIAL_REFRESH_BUFFER_MS,
+            tenant: rec.ensureOpts?.tenant,
+          });
           await this.refreshDaemonGitCredential(rec, {
             ...rec.ensureOpts,
             repo: fresh,
@@ -2321,7 +2234,10 @@ export class AgentSandboxProvider {
       if (this.sentinelToken !== null) {
         // Persisted credentials have usually lapsed by pod recreation.
         const rebootstrapOpts: EnsureOptions | null = state.ensureOpts
-          ? await this.withFreshCredentials(state.ensureOpts)
+          ? await this.withFreshCredentials(
+              state.ensureOpts,
+              state.orgFsRedacted === true,
+            )
           : null;
         const ok = await this.rebootstrapDaemon(
           live.daemonUrl,
@@ -2368,6 +2284,7 @@ export class AgentSandboxProvider {
       daemonBootId: live.bootId,
       tenant: state.tenant ?? null,
       ensureOpts: state.ensureOpts ?? null,
+      orgFsRedacted: state.orgFsRedacted === true,
       // Rows written before the rollout gate existed have no persisted impl;
       // they are TS sandboxes by construction, but say null rather than guess.
     };
@@ -2545,10 +2462,14 @@ export class AgentSandboxProvider {
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(handle);
     if (!row) return null;
-    const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
+    const persisted = row.state as Partial<PersistedK8sState>;
+    const persistedOpts = persisted.ensureOpts;
     if (!persistedOpts) return null;
     // Persisted credentials carry first-provision tokens, long expired by now.
-    const opts = await this.withFreshCredentials(persistedOpts);
+    const opts = await this.withFreshCredentials(
+      persistedOpts,
+      persisted.orgFsRedacted === true,
+    );
     // The row must resolve back to the handle we were asked to resurrect.
     // Structurally guaranteed now that both derive from `id.projectRef`, which
     // is the point of asserting it: if a future ref encoding breaks the
@@ -2650,7 +2571,11 @@ export class AgentSandboxProvider {
       workload: rec.workload,
       daemonBootId: rec.daemonBootId,
       tenant: rec.tenant,
-      ...(rec.ensureOpts ? { ensureOpts: rec.ensureOpts } : {}),
+      ...(rec.ensureOpts
+        ? this.persistCredentials
+          ? { ensureOpts: rec.ensureOpts }
+          : withoutCredentials(rec.ensureOpts, rec.orgFsRedacted === true)
+        : {}),
     };
     await ops.put(rec.id, { handle: rec.handle, state });
   }
@@ -2736,6 +2661,9 @@ export class AgentSandboxProvider {
     // recreation (operator-driven): sandboxMap's cached previewUrl stays valid.
     handle: string = podName,
   ): Promise<PortForwarder> {
+    if (this.forwardPort) {
+      return this.forwardPort(podName, containerPort, handle);
+    }
     const startPort = deterministicLocalPort(handle, containerPort);
     return new Promise((resolve, reject) => {
       const tryBind = (port: number, attempt: number) => {
@@ -2770,7 +2698,18 @@ export class AgentSandboxProvider {
             reject(new Error("port-forward listener failed to bind"));
             return;
           }
-          resolve({ server, localPort: address.port });
+          const localPort = address.port;
+          resolve({
+            localPort,
+            close: () =>
+              server.close((err) => {
+                if (err) {
+                  console.warn(
+                    `[${LOG_LABEL}] port-forward close on :${localPort} errored: ${err.message}`,
+                  );
+                }
+              }),
+          });
         });
       };
       tryBind(startPort, 0);
@@ -2865,13 +2804,7 @@ export class AgentSandboxProvider {
   }
 
   private closeForwarder(forwarder: PortForwarder): void {
-    forwarder.server.close((err) => {
-      if (err) {
-        console.warn(
-          `[${LOG_LABEL}] port-forward close on :${forwarder.localPort} errored: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    });
+    forwarder.close();
   }
 
   close(): void {
@@ -3002,23 +2935,6 @@ function deterministicLocalPort(handle: string, containerPort: number): number {
     .update(`${handle}:${containerPort}`)
     .digest();
   return PORT_RANGE_START + (hash.readUInt32BE(0) % PORT_RANGE_SIZE);
-}
-
-// CORS headers on synthesized preview-proxy responses. The studio iframe
-// renders under the studio origin and fetches the preview origin cross-site
-// (SSE at `/_sandbox/events`, plus the EventSource probeMissing fetch);
-// without ACAO the browser blocks the response *and* hides the actual status,
-// so a 404 from us looks like an opaque CORS failure in devtools. The daemon
-// already sets ACAO on its own responses — these headers only fire on errors
-// we synthesize before reaching the daemon.
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-    },
-  });
 }
 
 // K8s label keys studio attaches. Centralized so writers (buildTenantLabels)
@@ -3270,6 +3186,48 @@ export async function freshOrgFsConfigJson(
     );
     return opts.orgFsConfigJson;
   }
+}
+
+function withoutUserinfo(
+  repo: NonNullable<EnsureOptions["repo"]>,
+): NonNullable<EnsureOptions["repo"]> | null {
+  try {
+    const url = new URL(repo.cloneUrl);
+    url.username = "";
+    url.password = "";
+    const {
+      submoduleCredentials: _tokens,
+      credentialExpiresAt: _expiry,
+      ...kept
+    } = repo;
+    return { ...kept, cloneUrl: url.toString() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `ensureOpts` as a host that must not store credentials persists them: clone
+ * URLs lose their userinfo, submodule tokens and the org-fs config are
+ * dropped, and `orgFsRedacted` remembers the mount so recovery re-mints it. A
+ * clone URL that does not parse is dropped with its repo: fail closed.
+ */
+export function withoutCredentials(
+  opts: EnsureOptions,
+  orgFsRedacted: boolean,
+): { ensureOpts: EnsureOptions; orgFsRedacted?: true } {
+  const { orgFsConfigJson, repo, extraRepos, ...rest } = opts;
+  const ensureOpts: EnsureOptions = rest;
+  const stripped = repo && withoutUserinfo(repo);
+  if (stripped) ensureOpts.repo = stripped;
+  if (extraRepos) {
+    ensureOpts.extraRepos = extraRepos
+      .map(withoutUserinfo)
+      .filter((r) => r !== null);
+  }
+  return orgFsConfigJson || orgFsRedacted
+    ? { ensureOpts, orgFsRedacted: true }
+    : { ensureOpts };
 }
 
 /**

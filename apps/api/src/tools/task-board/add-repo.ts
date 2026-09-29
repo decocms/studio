@@ -53,7 +53,7 @@ import {
   syntheticBranchToGitRef,
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   secondaryRepoDirNames,
   secondaryRepoDirName,
@@ -167,7 +167,7 @@ export function secondaryRepoCapExceeded(
 
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
-  provider: AgentSandboxProvider,
+  provider: SandboxProvider,
   handle: string,
   threadId: string,
   command: string,

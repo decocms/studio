@@ -16,7 +16,7 @@ import {
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
 import type { SandboxImage } from "@decocms/shared/git-providers";
@@ -82,7 +82,9 @@ import {
   findRepositoryForLegacyBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers";
+import type { RepoCloneInfo } from "../../git-providers/credentials";
 import { GitProviderError } from "../../git-providers/types";
+import { credentialExpiresAt } from "@/sandbox/credential-push";
 import type { RepositoryRecord } from "../../storage/repositories";
 import {
   encodeSandboxStartError,
@@ -359,7 +361,7 @@ type StartParams = {
   /** The thread's secondary checkouts, accumulated by `TASK_ADD_REPO`. */
   threadRepos?: GithubRepo[];
   existing: SandboxRecord | null;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
 };
@@ -431,7 +433,7 @@ async function buildExtraRepoOpts(args: {
       );
       const connectionId = repo.connectionId ?? repository?.legacyConnectionId;
       if (!studioRepository && !connectionId) continue;
-      const { cloneUrl } = studioRepository
+      const { cloneUrl, expiresAt } = studioRepository
         ? await cloneInfoForRepository(args.ctx, studioRepository, {
             forceRefresh: true,
           })
@@ -444,6 +446,7 @@ async function buildExtraRepoOpts(args: {
           );
       out.push({
         cloneUrl,
+        credentialExpiresAt: credentialExpiresAt(expiresAt),
         ...(studioRepository
           ? { repositoryId: studioRepository.id }
           : { connectionId: connectionId! }),
@@ -530,6 +533,7 @@ async function provisionSandbox(params: StartParams): Promise<{
         branch: string;
         displayName: string;
         submoduleCredentials?: { host: string; token: string }[];
+        credentialExpiresAt?: number;
       }
     | undefined;
 
@@ -581,7 +585,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
     // trade-off of linking a repo without a GitHub connection.
-    const { cloneUrl, gitUserName, gitUserEmail } = studioRepository
+    const { cloneUrl, gitUserName, gitUserEmail, expiresAt } = studioRepository
       ? await studioCloneInfo(ctx, studioRepository)
       : connectionId
         ? await buildCloneInfo(
@@ -649,6 +653,7 @@ async function provisionSandbox(params: StartParams): Promise<{
 
     repoOpts = {
       cloneUrl,
+      credentialExpiresAt: credentialExpiresAt(expiresAt),
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
       ...(studioRepository
         ? { repositoryId: studioRepository.id }
@@ -968,9 +973,9 @@ const CAPACITY_POLL_MS = 5_000;
  * original for anything that wants it.
  */
 async function ensureOrRephrase(
-  runner: AgentSandboxProvider,
-  ...args: Parameters<AgentSandboxProvider["ensure"]>
-): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  runner: SandboxProvider,
+  ...args: Parameters<SandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<SandboxProvider["ensure"]>>> {
   try {
     return await runner.ensure(...args);
   } catch (err) {
@@ -983,7 +988,7 @@ async function ensureOrRephrase(
 }
 
 async function waitForSchedulableCapacity(
-  runner: AgentSandboxProvider,
+  runner: SandboxProvider,
 ): Promise<void> {
   const deadline = Date.now() + CAPACITY_WAIT_MS;
   let logged = false;
@@ -1014,7 +1019,7 @@ async function waitForSchedulableCapacity(
 async function studioCloneInfo(
   ctx: StudioContext,
   repository: RepositoryRecord,
-): Promise<{ cloneUrl: string; gitUserName: string; gitUserEmail: string }> {
+): Promise<RepoCloneInfo> {
   try {
     return await cloneInfoForRepository(ctx, repository, {
       forceRefresh: true,

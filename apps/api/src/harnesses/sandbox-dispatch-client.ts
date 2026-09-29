@@ -41,7 +41,7 @@ import {
   SUPERSEDED_TERMINAL_CODE,
 } from "@decocms/sandbox/dispatch/error-codes";
 import type { PodTermination } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessStreamInput } from "@/harnesses/lib/types";
 import {
@@ -872,7 +872,7 @@ const PUSH_ENV_TIMEOUT_MS = 30_000;
  * the request body in an error message.
  */
 export async function pushSandboxEnv(
-  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
+  provider: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
   env: Record<string, string | null>,
 ): Promise<void> {
@@ -924,7 +924,7 @@ const TTL_RENEW_MS = 5 * 60_000;
  * protecting.
  */
 function renewWhileStreaming(
-  provider: Pick<AgentSandboxProvider, "renewTtl">,
+  provider: Pick<SandboxProvider, "renewTtl">,
   handle: string,
 ): () => void {
   const renew = () =>
@@ -945,7 +945,7 @@ function renewWhileStreaming(
 }
 
 async function* dispatchToDaemon(args: {
-  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest" | "renewTtl">;
+  provider: Pick<SandboxProvider, "proxyDaemonRequest" | "renewTtl">;
   handle: string;
   runId: string;
   input: HarnessStreamInput;

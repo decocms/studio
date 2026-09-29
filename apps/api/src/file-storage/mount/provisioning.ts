@@ -104,6 +104,7 @@ export function buildOrgFsConfig(opts: {
  *  Sandboxes are ephemeral and re-provisioned (re-minting) on restart, so a
  *  generous fixed TTL is fine for now; tie to the sandbox lifecycle later. */
 const ORG_FS_KEY_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const ORG_FS_KEY_TTL_MS = ORG_FS_KEY_TTL_SECONDS * 1000;
 
 /**
  * Mint an org-fs API key for the caller and return the JSON config the daemon
