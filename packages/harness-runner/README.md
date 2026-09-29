@@ -32,7 +32,8 @@ is hard-coded to `claude-code`, driven by the Claude Agent SDK.
   previous attempt was cut short by infrastructure and its conversation is gone;
   the work itself is in the checkout and in git (a replaced pod clones the branch
   the dying daemon pushed on SIGTERM), so the prompt sends the model to
-  `git status` / `git log` / `gh pr list` first and forbids opening a second pull
+  `git status` / `git log` and checks the remote provider for existing change
+  requests first. It forbids opening a second pull
   request.
 
 ## Usage

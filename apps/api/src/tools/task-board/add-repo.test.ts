@@ -46,9 +46,12 @@ test("a new repo is refused once the thread is at the secondary cap", () => {
   const existing = Array.from({ length: MAX_SECONDARY_REPOS }, (_, i) => ({
     owner: "acme",
     name: `repo-${i}`,
+    url: `https://github.com/acme/repo-${i}`,
   }));
   expect(
-    secondaryRepoCapExceeded(existing, { owner: "acme", name: "one-more" }),
+    secondaryRepoCapExceeded(existing, {
+      url: "https://github.com/acme/one-more",
+    }),
   ).toBe(true);
 });
 
@@ -56,9 +59,12 @@ test("a repo below the cap is allowed", () => {
   const existing = Array.from({ length: MAX_SECONDARY_REPOS - 1 }, (_, i) => ({
     owner: "acme",
     name: `repo-${i}`,
+    url: `https://github.com/acme/repo-${i}`,
   }));
   expect(
-    secondaryRepoCapExceeded(existing, { owner: "acme", name: "one-more" }),
+    secondaryRepoCapExceeded(existing, {
+      url: "https://github.com/acme/one-more",
+    }),
   ).toBe(false);
 });
 
@@ -67,9 +73,12 @@ test("a repo already checked out is let through at the cap, case-insensitively",
   const existing = Array.from({ length: MAX_SECONDARY_REPOS }, (_, i) => ({
     owner: "acme",
     name: `repo-${i}`,
+    url: `https://github.com/acme/repo-${i}`,
   }));
   expect(
-    secondaryRepoCapExceeded(existing, { owner: "ACME", name: "Repo-0" }),
+    secondaryRepoCapExceeded(existing, {
+      url: "https://github.com/ACME/Repo-0",
+    }),
   ).toBe(false);
 });
 

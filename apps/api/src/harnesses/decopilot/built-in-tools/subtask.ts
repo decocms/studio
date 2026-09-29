@@ -179,7 +179,15 @@ export interface SubtaskParams {
 }
 
 export function resolveSubtaskCodingWorkspace(
-  targetRef: { repo?: { owner: string; name: string; connectionId?: string } },
+  targetRef: {
+    repo?: {
+      owner: string;
+      name: string;
+      connectionId?: string;
+      repositoryId?: string;
+      url?: string;
+    };
+  },
   parentWorkspace?: CodingWorkspacePromptInput,
   isSelf = false,
 ): CodingWorkspacePromptInput | undefined {
@@ -189,7 +197,10 @@ export function resolveSubtaskCodingWorkspace(
     repo: {
       owner: targetRef.repo.owner,
       name: targetRef.repo.name,
-      linked: Boolean(targetRef.repo.connectionId),
+      linked: Boolean(
+        targetRef.repo.repositoryId || targetRef.repo.connectionId,
+      ),
+      url: targetRef.repo.url,
     },
     branch: parentWorkspace?.branch,
     cwd: parentWorkspace?.cwd,

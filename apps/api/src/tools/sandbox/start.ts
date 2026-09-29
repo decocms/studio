@@ -9,6 +9,7 @@
  * callers that have a branch must pass it or they get a second sandbox.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
@@ -394,7 +395,7 @@ async function resolveStudioRepository(
  * with a log rather than sent with a dead clone URL: one revoked connection
  * should cost its own checkout, never the pod.
  */
-async function buildExtraRepoOpts(args: {
+export async function buildExtraRepoOpts(args: {
   ctx: StudioContext;
   orgId: string;
   repos: RepositoryBinding[];
@@ -403,11 +404,8 @@ async function buildExtraRepoOpts(args: {
   gitUserEmail: string;
   submoduleCredentials: { host: string; token: string }[];
 }): Promise<EnsureRepo[]> {
-  const primaryKey = args.primary
-    ? `${args.primary.owner}/${args.primary.name}`.toLowerCase()
-    : null;
   const secondaries = args.repos.filter(
-    (repo) => `${repo.owner}/${repo.name}`.toLowerCase() !== primaryKey,
+    (repo) => !args.primary || !sameRepositoryBinding(repo, args.primary),
   );
   const dirNames = secondaryRepoDirNames(secondaries);
   const out: EnsureRepo[] = [];

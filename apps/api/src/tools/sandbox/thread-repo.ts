@@ -298,7 +298,8 @@ export async function getThreadRepository(
   const meta = await getThreadMeta(ctx, threadId);
   const repo =
     (meta as { repository?: RepositoryBinding } | null)?.repository ?? null;
-  if (!threadId || !meta || !repo?.connectionId) return repo;
+  if (!threadId || !meta || !repo?.connectionId || repo.repositoryId)
+    return repo;
 
   try {
     // The org the thread was just read under — `ctx.organization` is unset on

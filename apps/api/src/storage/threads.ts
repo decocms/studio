@@ -5,6 +5,7 @@
  * Threads are organization-scoped, messages are thread-scoped.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import {
   readRepositoryMetadata,
   writeRepositoryMetadata,
@@ -456,61 +457,66 @@ export class SqlThreadStorage implements ThreadStoragePort {
     return thread;
   }
 
-  /** Append a secondary checkout using the existing atomic JSON update. */
+  /**
+   * Append under a row lock so concurrent tool calls preserve every checkout.
+   * The reference table and compatibility JSON must commit together.
+   */
   async appendThreadRepository(
     id: string,
     organizationId: string,
     repo: RepositoryBinding,
   ): Promise<RepositoryBinding[]> {
-    const stored = writeRepositoryMetadata({ additionalRepositories: [repo] });
-    /**
-     * Only a repo Studio has a row for can be referenced. One that has none
-     * (a legacy binding a reader has not stamped yet) still lands in the
-     * array, so nothing is lost — it simply has no reference until then.
-     */
-    if (repo.repositoryId) {
-      await this.db
-        .insertInto("thread_repositories")
-        .values({
-          thread_id: id,
-          organization_id: organizationId,
-          repository_id: repo.repositoryId,
-        })
-        .onConflict((oc) =>
-          oc.columns(["thread_id", "repository_id"]).doNothing(),
-        )
-        .execute();
-    }
-    // Database compatibility: the atomic append still targets the stored key.
-    const key = `${repo.owner}/${repo.name}`.toLowerCase();
-    const row = await this.db
-      .updateTable("threads")
-      .set({
-        metadata: sql`
-          jsonb_set(
-            coalesce(metadata, '{}'::jsonb),
-            '{githubRepos}',
-            coalesce(
-              (
-                SELECT jsonb_agg(entry)
-                  FROM jsonb_array_elements(
-                         coalesce(metadata->'githubRepos', '[]'::jsonb)
-                       ) AS entry
-                 WHERE lower(
-                         (entry->>'owner') || '/' || (entry->>'name')
-                       ) <> ${key}
-              ),
-              '[]'::jsonb
-            ) || ${JSON.stringify(stored?.githubRepos)}::jsonb
+    return this.db.transaction().execute(async (trx) => {
+      // Lock the destination before reading metadata: concurrent appends must
+      // preserve each other's checkouts and commit the table/JSON together.
+      const thread = await trx
+        .selectFrom("threads")
+        .select("metadata")
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!thread) return [];
+      if (repo.repositoryId) {
+        await trx
+          .selectFrom("repositories")
+          .select("id")
+          .where("id", "=", repo.repositoryId)
+          .where("organization_id", "=", organizationId)
+          .executeTakeFirstOrThrow();
+        await trx
+          .insertInto("thread_repositories")
+          .values({
+            thread_id: id,
+            organization_id: organizationId,
+            repository_id: repo.repositoryId,
+          })
+          .onConflict((oc) =>
+            oc.columns(["thread_id", "repository_id"]).doNothing(),
           )
-        `,
-        updated_at: new Date(),
-      })
-      .where("id", "=", id)
-      .where("organization_id", "=", organizationId)
-      .returning("metadata")
-      .executeTakeFirst();
-    return readRepositoryMetadata(row?.metadata)?.additionalRepositories ?? [];
+          .execute();
+      }
+      const metadata = readRepositoryMetadata(thread.metadata) ?? {};
+      const repos = (metadata.additionalRepositories ?? []).filter(
+        (existing) => !sameRepositoryBinding(existing, repo),
+      );
+      repos.push(repo);
+      await trx
+        .updateTable("threads")
+        .set({
+          metadata: JSON.stringify(
+            writeRepositoryMetadata({
+              ...metadata,
+              additionalRepositories: repos,
+            }),
+          ),
+          updated_at: new Date(),
+        })
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .execute();
+      return repos;
+    });
   }
 
   /**
