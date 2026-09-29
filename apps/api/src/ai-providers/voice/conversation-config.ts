@@ -3,6 +3,8 @@ import {
   VOICE_SESSION_TTL_MS,
 } from "@decocms/shared/voice";
 
+import { VOICE_CONVERSATION_TOOLS } from "./conversation-tools";
+
 export function voiceConversationConfig(config: {
   voiceId: string;
   model: string;
@@ -18,48 +20,19 @@ export function voiceConversationConfig(config: {
           llm: config.conversationModel,
           thinking_budget: 0,
           max_tokens: 512,
-          tools: [
-            {
-              type: "client",
-              name: "delegate_to_agent",
-              description:
-                "Submit a complete work request to the selected Studio agent. Returns immediately after acceptance, while work continues in the background. Results arrive later.",
-              expects_response: true,
-              execution_mode: "async",
-              interruption_mode: "allow",
-              pre_tool_speech: "off",
-              response_timeout_secs: 20,
-              parameters: {
-                type: "object",
-                properties: {
-                  request: {
-                    type: "string",
-                    description:
-                      "The complete user request, with relevant conversational details. Preserve intent and constraints.",
-                  },
-                },
-                required: ["request"],
-              },
-            },
-            {
-              type: "client",
-              name: "get_agent_status",
-              description:
-                "Read the current work status. Use when asked about progress, never poll.",
-              expects_response: true,
-              response_timeout_secs: 5,
-              parameters: { type: "object", properties: {} },
-            },
-            {
-              type: "client",
-              name: "stop_agent_work",
-              description:
-                "Request cancellation of the coding agent ONLY when the user explicitly asks to stop its work. Speaking over the voice companion is not a cancellation request.",
-              expects_response: true,
-              response_timeout_secs: 5,
-              parameters: { type: "object", properties: {} },
-            },
-          ],
+          tools: VOICE_CONVERSATION_TOOLS.map((tool) => ({
+            ...tool,
+            type: "client",
+            expects_response: true,
+            response_timeout_secs: tool.name === "delegate_to_agent" ? 20 : 5,
+            ...(tool.name === "delegate_to_agent"
+              ? {
+                  execution_mode: "async",
+                  interruption_mode: "allow",
+                  pre_tool_speech: "off",
+                }
+              : {}),
+          })),
         },
       },
       asr: { provider: "scribe_realtime", quality: "high" },

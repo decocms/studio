@@ -99,6 +99,8 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { ElevenLabsConversationAdapter } from "@/ai-providers/voice/elevenlabs-conversation";
+import { OpenAIConversationAdapter } from "@/ai-providers/voice/openai";
 import { ElevenLabsSpeechAdapter } from "@/ai-providers/voice/elevenlabs";
 import { VoiceSessions } from "@/voice/sessions";
 import {
@@ -2305,15 +2307,32 @@ export async function createApp(options: CreateAppOptions = {}) {
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
   const voiceSettings = getSettings();
+  const speechAdapter = voiceSettings.elevenlabsApiKey
+    ? new ElevenLabsSpeechAdapter({
+        apiKey: voiceSettings.elevenlabsApiKey,
+        model: voiceSettings.elevenlabsVoiceModel,
+        conversationModel: voiceSettings.elevenlabsConversationModel,
+        voiceId: voiceSettings.elevenlabsVoiceId,
+      })
+    : null;
+  const conversationAdapter =
+    voiceSettings.voiceConversationProvider === "openai"
+      ? voiceSettings.openaiRealtimeApiKey
+        ? new OpenAIConversationAdapter({
+            apiKey: voiceSettings.openaiRealtimeApiKey,
+            model: voiceSettings.openaiRealtimeModel,
+            voice: voiceSettings.openaiRealtimeVoice,
+          })
+        : null
+      : speechAdapter
+        ? new ElevenLabsConversationAdapter(
+            speechAdapter,
+            () => natsProvider?.getConnection() ?? null,
+          )
+        : null;
   const voiceSessions = new VoiceSessions({
-    adapter: voiceSettings.elevenlabsApiKey
-      ? new ElevenLabsSpeechAdapter({
-          apiKey: voiceSettings.elevenlabsApiKey,
-          model: voiceSettings.elevenlabsVoiceModel,
-          conversationModel: voiceSettings.elevenlabsConversationModel,
-          voiceId: voiceSettings.elevenlabsVoiceId,
-        })
-      : null,
+    adapter: speechAdapter,
+    conversationAdapter,
     secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
     getConnection: () => natsProvider?.getConnection() ?? null,
   });

@@ -35,7 +35,10 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
   app.post("/threads/:threadId/voice/sessions", async (c) => {
     const scope = await authorize(c);
     const body = z
-      .object({ mode: z.literal("conversation").optional() })
+      .object({
+        mode: z.literal("conversation").optional(),
+        language: z.enum(["en", "pt"]).default("en"),
+      })
       .strict()
       .safeParse(
         c.req.header("Content-Type")
@@ -47,7 +50,11 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
         message: "Invalid voice session request",
       });
     return c.json(
-      await sessions.create(scope, body.data.mode === "conversation"),
+      await sessions.create(
+        scope,
+        body.data.mode === "conversation",
+        body.data.language,
+      ),
     );
   });
   app.post("/threads/:threadId/voice/sessions/speech", async (c) => {

@@ -1,8 +1,15 @@
-/** Providers own the spoken conversation; Studio owns work, permissions, and history. */
+import type { VoiceConversationConnection } from "@decocms/shared/voice";
+
+/** Legacy transcription/synthesis for browsers opened before realtime rollout. */
 export interface SpeechAdapter {
   createTranscriptionToken(): Promise<string>;
   synthesize(text: string, signal: AbortSignal): Promise<Response>;
-  readonly conversationKey: string;
-  ensureConversationAgent(): Promise<string>;
-  createConversationToken(agentId: string): Promise<string>;
+}
+
+/** Providers own speech; Studio owns work, permissions, and history. */
+export interface ConversationAdapter {
+  createSession(input: {
+    language: "en" | "pt";
+    safetyIdentifier: string;
+  }): Promise<VoiceConversationConnection>;
 }

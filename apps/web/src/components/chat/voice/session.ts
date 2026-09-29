@@ -1,4 +1,4 @@
-import type { Conversation } from "@elevenlabs/client";
+import { startVoiceConversation, type VoiceConversation } from "./conversation";
 import {
   VoiceDelegationSchema,
   VoiceSessionSchema,
@@ -45,7 +45,9 @@ export class VoiceSession {
   };
   private listeners = new Set<() => void>();
   private generation = 0;
-  private conversation?: Conversation;
+  private conversation?: VoiceConversation;
+  private startupAbort?: AbortController;
+  private userSpeaking = false;
   private token?: string;
   private timer?: ReturnType<typeof setInterval>;
   private expires?: ReturnType<typeof setTimeout>;
@@ -58,7 +60,7 @@ export class VoiceSession {
   private dispatchQueue: Promise<unknown> = Promise.resolve();
   private lastContext = "";
   private utterance = 0;
-  private lastUserEventId?: number;
+  private seenUserEvents = new Set<string | number>();
 
   constructor(
     private readonly url: string,
@@ -216,6 +218,7 @@ export class VoiceSession {
     if (
       !this.conversation ||
       !this.announcements.length ||
+      this.userSpeaking ||
       this.state.phase !== "listening" ||
       Date.now() - this.lastActivity < 1800
     )
@@ -309,6 +312,8 @@ export class VoiceSession {
     if (this.state.phase !== "idle" && this.state.phase !== "error") return;
     this.stop();
     const generation = ++this.generation;
+    const startupAbort = new AbortController();
+    this.startupAbort = startupAbort;
     const current = () => generation === this.generation;
     this.patch({
       phase: "connecting",
@@ -324,7 +329,8 @@ export class VoiceSession {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "conversation" }),
+        body: JSON.stringify({ mode: "conversation", language: this.language }),
+        // Read late bootstrap responses so leaving voice can release their reservation.
         signal: AbortSignal.timeout(50_000),
       }).then(async (response) => {
         if (!response.ok) throw new Error("Voice unavailable");
@@ -338,59 +344,64 @@ export class VoiceSession {
       const config = await reservation;
       if (!current()) return;
       this.token = config.token;
-      const { Conversation } = await import("@elevenlabs/client");
-      if (!current()) return;
-      const startup = Conversation.startSession({
-        conversationToken: config.conversationToken,
-        connectionType: "webrtc",
-        overrides: { agent: { language: this.language } },
-        clientTools: {
-          delegate_to_agent: (parameters: unknown) =>
-            current()
-              ? this.delegate(parameters)
-              : JSON.stringify({ status: "disconnected" }),
-          get_agent_status: () =>
-            JSON.stringify(
-              current() ? this.status() : { status: "disconnected" },
-            ),
-          stop_agent_work: () => {
-            if (!current()) return JSON.stringify({ status: "disconnected" });
-            this.bindings?.stop();
-            return JSON.stringify({
-              status: "cancellation_requested",
-              note: "Cancellation was requested; it is not confirmed until the run stops.",
-            });
+      const startup = startVoiceConversation(
+        config,
+        this.language,
+        {
+          clientTools: {
+            delegate_to_agent: (parameters: unknown) =>
+              current()
+                ? this.delegate(parameters)
+                : JSON.stringify({ status: "disconnected" }),
+            get_agent_status: () =>
+              JSON.stringify(
+                current() ? this.status() : { status: "disconnected" },
+              ),
+            stop_agent_work: () => {
+              if (!current()) return JSON.stringify({ status: "disconnected" });
+              this.bindings?.stop();
+              return JSON.stringify({
+                status: "cancellation_requested",
+                note: "Cancellation was requested; it is not confirmed until the run stops.",
+              });
+            },
+          },
+          onConnect: () => {
+            if (current()) this.patch({ phase: "listening" });
+          },
+          onModeChange: ({ mode }) => {
+            if (current()) this.patch({ phase: mode });
+          },
+          onMessage: ({ role, message, event_id }) => {
+            if (!current()) return;
+            if (role === "user") {
+              if (message.startsWith("[Studio background event,")) return;
+              if (event_id === undefined || !this.seenUserEvents.has(event_id))
+                this.utterance++;
+              if (event_id !== undefined) this.seenUserEvents.add(event_id);
+              this.lastActivity = Date.now();
+              this.patch({
+                transcript: message.slice(0, VOICE_MAX_TEXT_LENGTH),
+              });
+            } else
+              this.patch({ response: message.slice(0, VOICE_MAX_TEXT_LENGTH) });
+          },
+          onVadScore: ({ vadScore }) => {
+            if (current() && vadScore > 0.5 && !this.state.muted)
+              this.lastActivity = Date.now();
+          },
+          onUserSpeaking: (speaking) => {
+            if (current()) this.userSpeaking = speaking;
+          },
+          onError: () => {
+            if (current()) this.fail("unavailable");
+          },
+          onDisconnect: () => {
+            if (current()) this.fail("disconnected");
           },
         },
-        onConnect: () => {
-          if (current()) this.patch({ phase: "listening" });
-        },
-        onModeChange: ({ mode }) => {
-          if (current()) this.patch({ phase: mode });
-        },
-        onMessage: ({ role, message, event_id }) => {
-          if (!current()) return;
-          if (role === "user") {
-            if (message.startsWith("[Studio background event,")) return;
-            if (event_id === undefined || event_id !== this.lastUserEventId)
-              this.utterance++;
-            this.lastUserEventId = event_id;
-            this.lastActivity = Date.now();
-            this.patch({ transcript: message.slice(0, VOICE_MAX_TEXT_LENGTH) });
-          } else
-            this.patch({ response: message.slice(0, VOICE_MAX_TEXT_LENGTH) });
-        },
-        onVadScore: ({ vadScore }) => {
-          if (current() && vadScore > 0.5 && !this.state.muted)
-            this.lastActivity = Date.now();
-        },
-        onError: () => {
-          if (current()) this.fail("unavailable");
-        },
-        onDisconnect: () => {
-          if (current()) this.fail("disconnected");
-        },
-      });
+        startupAbort.signal,
+      );
       this.cleanup = startup
         .then(async (conversation) => {
           if (!current()) await conversation.endSession();
@@ -478,6 +489,9 @@ export class VoiceSession {
 
   stop = () => {
     this.generation++;
+    this.startupAbort?.abort();
+    this.startupAbort = undefined;
+    this.userSpeaking = false;
     clearTimeout(this.expires);
     clearInterval(this.timer);
     const conversation = this.conversation;
@@ -493,7 +507,7 @@ export class VoiceSession {
     this.announcements = [];
     this.lastContext = "";
     this.utterance = 0;
-    this.lastUserEventId = undefined;
+    this.seenUserEvents.clear();
     this.approvalReported = false;
     this.dispatchQueue = Promise.resolve();
     this.patch({

@@ -98,6 +98,8 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   await setVoiceFlag(api, orgSlug, true);
   for (const data of [
     { mode: "unknown" },
+    { mode: "conversation", language: "unsupported" },
+    { mode: "conversation", provider: "openai" },
     { mode: "conversation", agentId: "untrusted" },
     null,
   ]) {
@@ -116,6 +118,7 @@ for (const flag of ["absent", "false"] as const) {
     page.on("request", (request) => {
       if (
         request.url().includes("elevenlabs") ||
+        request.url().includes("api.openai.com/v1/realtime") ||
         request.url().includes("/voice/sessions")
       )
         voiceRequests.push(request.url());
@@ -420,10 +423,10 @@ async function startModel(delayMs = 0, text = "Mensagem de voz recebida.") {
   };
 }
 
-test.describe("ElevenLabs live voice", () => {
+test.describe("Live voice provider", () => {
   test.skip(
     process.env.E2E_VOICE_LIVE !== "1" || !process.env.E2E_VOICE_WAV,
-    "Requires a configured ElevenLabs API server and a synthetic WAV input",
+    "Requires a configured voice provider on the API server and a synthetic WAV input",
   );
   test("a spoken turn uses the current agent and returns to text in the same chat", async ({
     authedPage,
@@ -473,7 +476,11 @@ test.describe("ElevenLabs live voice", () => {
       expect(bootstrapped.status()).toBe(200);
       const { token } = await bootstrapped.json();
       const sessionPath = `/api/${orgSlug}/threads/${threadId}/voice/sessions`;
-      expect((await api.post(sessionPath)).status()).toBe(409);
+      expect(
+        (
+          await api.post(sessionPath, { data: { mode: "conversation" } })
+        ).status(),
+      ).toBe(409);
       for (const text of ["", " ", "x".repeat(12_001)]) {
         expect(
           (

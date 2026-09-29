@@ -221,6 +221,12 @@ export function resolveConfig(
 
   const natsRaw = envVars.NATS_URL || "nats://localhost:4222";
 
+  const voiceProvider =
+    envVars.VOICE_CONVERSATION_PROVIDER?.trim() || "elevenlabs";
+  if (voiceProvider !== "elevenlabs" && voiceProvider !== "openai") {
+    throw new Error("VOICE_CONVERSATION_PROVIDER must be elevenlabs or openai");
+  }
+
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
     nodeEnv,
@@ -239,6 +245,11 @@ export function resolveConfig(
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
+    voiceConversationProvider: voiceProvider,
+    openaiRealtimeApiKey: envVars.OPENAI_REALTIME_API_KEY,
+    openaiRealtimeModel:
+      envVars.OPENAI_REALTIME_MODEL?.trim() || "gpt-realtime-2.1",
+    openaiRealtimeVoice: envVars.OPENAI_REALTIME_VOICE?.trim() || "marin",
     elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
     elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
     elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",

@@ -19,7 +19,11 @@ export interface Settings {
   publicUrl: string | undefined;
   dataDir: string;
 
-  // Voice (ElevenLabs)
+  // Voice
+  voiceConversationProvider: "elevenlabs" | "openai";
+  openaiRealtimeApiKey: string | undefined;
+  openaiRealtimeModel: string;
+  openaiRealtimeVoice: string;
   elevenlabsApiKey: string | undefined;
   elevenlabsVoiceId: string;
   elevenlabsVoiceModel: string;
