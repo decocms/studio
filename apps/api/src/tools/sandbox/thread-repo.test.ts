@@ -44,6 +44,21 @@ test("syntheticBranchToGitRef maps a synthetic key to a real, valid, non-default
   }
 });
 
+test("syntheticBranchToGitRef's flat form has no slash for a protected */* pattern to match", () => {
+  expect(syntheticBranchToGitRef("thread:t1", { flat: true })).toBe(
+    "sandbox-thread-t1",
+  );
+  expect(syntheticBranchToGitRef("thread:t1/conn_a", { flat: true })).toBe(
+    "sandbox-thread-t1-conn_a",
+  );
+  for (const ref of ["thread:t1", "thread:t1/conn_a"]) {
+    const out = syntheticBranchToGitRef(ref, { flat: true });
+    expect(out.includes("/")).toBe(false);
+    expect(out).not.toBe(syntheticBranchToGitRef(ref));
+    expect(/^[A-Za-z0-9._-]+$/.test(out)).toBe(true);
+  }
+});
+
 test("syntheticBranchToGitRef is deterministic and per-thread distinct (restore + isolation)", () => {
   expect(syntheticBranchToGitRef(threadBranch("t1"))).toBe(
     syntheticBranchToGitRef(threadBranch("t1")),
