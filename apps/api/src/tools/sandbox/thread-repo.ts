@@ -12,7 +12,6 @@
 
 import type { StudioContext } from "@/core/studio-context";
 import type { Thread } from "@/storage/types";
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import {
   type GitProviderKind,
   parseRepoUrl,
@@ -33,7 +32,7 @@ import {
   readSandboxMap,
 } from "./sandbox-map";
 
-/** Match provisioning's project fallback without changing unflagged dispatches. */
+/** Keep coding-agent dispatch and repository lookup aligned with provisioning. */
 export async function getCodingAgentProjectMetadata(
   ctx: StudioContext,
   virtualMcpId: string | null | undefined,
@@ -41,9 +40,6 @@ export async function getCodingAgentProjectMetadata(
 ) {
   const organizationId = ctx.storage.threads.getOrganizationId();
   if (!organizationId || !virtualMcpId) return null;
-  const settings = await ctx.storage.organizationSettings.get(organizationId);
-  if (!orgFlagEnabled(settings?.flags, "coding_agent_project_context"))
-    return null;
   const project = await (loadedProject ??
     ctx.storage.virtualMcps.findById(virtualMcpId, organizationId));
   return project?.organization_id === organizationId
