@@ -8,7 +8,7 @@
  * else gets a large type icon. Real xlsx/pptx renders are phase 3.
  */
 
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFileText } from "@/hooks/use-org-fs";
@@ -25,6 +25,7 @@ import {
 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { timeAgo } from "@/lib/format-time";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +34,6 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { useT, type TFunction } from "@/i18n/use-t.ts";
 import { describeFileType, FileTypeIcon } from "@/components/file-type-icon";
-import { FolderIcon, type FolderTone } from "@/components/folder-icon";
 import { KEYS } from "@/lib/query-keys";
 import { parseBrandTokens } from "./brand";
 import { parseSkillMd } from "./skill";
@@ -64,22 +64,6 @@ const TEXT_THUMB_EXTS = new Set([
 /** Don't fetch snippet bytes for anything bigger than this. */
 const MAX_TEXT_THUMB_BYTES = 256 * 1024;
 
-/** Compact relative time ("10h ago", per the design) — long forms like
- *  "about 2 hours ago" squeeze the filename out of the card. */
-export function timeAgo(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const diffMs = Date.now() - d.getTime();
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 function extOf(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
@@ -106,7 +90,13 @@ export type PublicState = "public" | "password" | "inherited";
 
 /** Small badge marking a shared file/folder (globe = public, key = password,
  *  muted globe = inherited from a parent). */
-function PublicBadge({ state, t }: { state: PublicState; t: TFunction }) {
+export function PublicBadge({
+  state,
+  t,
+}: {
+  state: PublicState;
+  t: TFunction;
+}) {
   const label =
     state === "password"
       ? t("library.cards.passwordProtected")
@@ -127,67 +117,27 @@ function PublicBadge({ state, t }: { state: PublicState; t: TFunction }) {
   );
 }
 
-function FileActions({
-  downloadUrl,
-  filename,
-  onShare,
-  onDelete,
-  t,
-}: {
-  downloadUrl: string;
-  filename: string;
-  onShare?: () => void;
-  onDelete?: () => void;
-  t: TFunction;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 data-[state=open]:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-          aria-label={t("library.cards.actionsFor", { filename })}
-        >
-          <DotsVertical size={14} />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        {onShare && <ShareMenuItem onShare={onShare} t={t} />}
-        <DropdownMenuItem asChild>
-          <a href={downloadUrl} download={filename}>
-            <Download01 size={14} />
-            {t("library.cards.download")}
-          </a>
-        </DropdownMenuItem>
-        {onDelete && (
-          <DropdownMenuItem variant="destructive" onClick={onDelete}>
-            <Trash01 size={14} />
-            {t("library.cards.delete")}
-          </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-/** Shared "Actions" dropdown for a card: browse/share/delete, whichever
- *  the caller passes. Renders nothing if none are given. */
-function EntryActionsMenu({
+/** The one entry menu — browse/share/download/delete, whichever the caller
+ *  passes. Shared by every presentation of an entry (row, card, tile) so a
+ *  folder offers the same verbs wherever it is drawn. Renders nothing when
+ *  there is nothing to offer. */
+export function EntryActionsMenu({
   label,
   onBrowse,
   onShare,
+  download,
   onDelete,
   t,
 }: {
   label: string;
   onBrowse?: () => void;
   onShare?: () => void;
+  /** Files only: a direct byte URL and the name to save it under. */
+  download?: { url: string; filename: string };
   onDelete?: () => void;
   t: TFunction;
 }) {
-  if (!onBrowse && !onShare && !onDelete) return undefined;
+  if (!onBrowse && !onShare && !download && !onDelete) return undefined;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -209,6 +159,14 @@ function EntryActionsMenu({
           </DropdownMenuItem>
         )}
         {onShare && <ShareMenuItem onShare={onShare} t={t} />}
+        {download && (
+          <DropdownMenuItem asChild>
+            <a href={download.url} download={download.filename}>
+              <Download01 size={14} />
+              {t("library.cards.download")}
+            </a>
+          </DropdownMenuItem>
+        )}
         {onDelete && (
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
             <Trash01 size={14} />
@@ -335,77 +293,6 @@ function CardHeader({
   );
 }
 
-export function FolderCard({
-  name,
-  meta,
-  subtitle,
-  glyph,
-  tone,
-  readOnly,
-  publicState,
-  onOpen,
-  onShare,
-  onDelete,
-  draggable,
-  onDragStart,
-  onContextMenu,
-  onDrop,
-}: {
-  name: string;
-  meta?: string;
-  subtitle?: string;
-  /** Well-known-folder mark rendered on the folder body (skills/outputs/…). */
-  glyph?: ComponentType<SVGProps<SVGSVGElement>>;
-  /** Folder palette — graphite for the system folders the product fills. */
-  tone?: FolderTone;
-  /** View-only corner badge (public sets). */
-  readOnly?: boolean;
-  /** Public badge state (own = published here, inherited = via a parent). */
-  publicState?: PublicState;
-  onOpen: () => void;
-  onShare?: () => void;
-  onDelete?: () => void;
-  draggable?: boolean;
-  onDragStart?: (e: React.DragEvent) => void;
-  onContextMenu?: (e: React.MouseEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
-}) {
-  const t = useT();
-  return (
-    <CardShell
-      onOpen={onOpen}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onContextMenu={onContextMenu}
-      onDrop={onDrop}
-    >
-      <CardHeader
-        icon={
-          <FolderIcon
-            glyph={glyph}
-            tone={tone}
-            readOnly={readOnly}
-            className="size-8 shrink-0"
-          />
-        }
-        name={name}
-        meta={meta}
-        subtitle={subtitle}
-        publicState={publicState}
-        actions={
-          <EntryActionsMenu
-            label={name}
-            onShare={onShare}
-            onDelete={onDelete}
-            t={t}
-          />
-        }
-        t={t}
-      />
-    </CardShell>
-  );
-}
-
 export function FileCard({
   layout = "card",
   size = 0,
@@ -468,9 +355,9 @@ export function FileCard({
           <span className="w-20 shrink-0 text-right text-xs text-muted-foreground">
             {timeAgo(updatedAt)}
           </span>
-          <FileActions
-            downloadUrl={downloadUrl}
-            filename={filename}
+          <EntryActionsMenu
+            label={filename}
+            download={{ url: downloadUrl, filename }}
             onShare={onShare}
             onDelete={onDelete}
             t={t}
@@ -486,9 +373,9 @@ export function FileCard({
           subtitle={subtitle ?? describeFileType(filename)}
           publicState={publicState}
           actions={
-            <FileActions
-              downloadUrl={downloadUrl}
-              filename={filename}
+            <EntryActionsMenu
+              label={filename}
+              download={{ url: downloadUrl, filename }}
               onShare={onShare}
               onDelete={onDelete}
               t={t}

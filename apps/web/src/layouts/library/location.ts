@@ -116,3 +116,30 @@ export function orgFsMountPath(browsePath: string): string | null {
   }
   return dirPath ? `${base}/${dirPath}` : base;
 }
+
+export interface LibraryCrumb {
+  /** Display label for the segment. */
+  label: string;
+  /** Browse path that opens it. */
+  path: string;
+}
+
+/**
+ * The trail from a tree's root to the folder being browsed, root EXCLUSIVE.
+ *
+ * The root is drawn separately in every chrome that shows this — it is the name
+ * of the place you are in (the drive, or a project), not a step on the way to
+ * it. A path that is not under `root` falls back to its own full trail rather
+ * than returning nothing: a breadcrumb that silently empties is how someone
+ * gets stranded in a folder with no way back up.
+ */
+export function libraryTrail(browsePath: string, root: string): LibraryCrumb[] {
+  const segments = browsePath.split("/").filter(Boolean);
+  const rootSegments = root.split("/").filter(Boolean);
+  const under = rootSegments.every((seg, i) => segments[i] === seg);
+  const offset = under ? rootSegments.length : 0;
+  return segments.slice(offset).map((segment, index) => ({
+    label: segmentLabel(segment),
+    path: segments.slice(0, offset + index + 1).join("/"),
+  }));
+}

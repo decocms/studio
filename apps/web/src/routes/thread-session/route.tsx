@@ -61,6 +61,7 @@ import { resolveThreadSessionIdentity } from "./session-identity";
 import { MobileMainPanelTabSelect } from "@/layouts/main-panel-tabs/mobile-main-panel-tab-select";
 import { SandboxEventsProvider } from "@/components/sandbox/hooks/sandbox-events-context.tsx";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
+import { useAppTakeover } from "@/hooks/use-app-takeover";
 import {
   SandboxLifecycleProvider,
   overlayThreadSandboxMap,
@@ -456,6 +457,16 @@ function ThreadSessionContent({
 
   const entity = useVirtualMCP(virtualMcpId);
   const contentKey = useActivePanelTabId() ?? "overview";
+  /** Takeover apps default the chat panel closed, in local state so
+   *  `?sidepanel` cannot reopen it on arrival. Keyed on the view, so opening
+   *  the chat in one app does not carry into the next one launched. */
+  const takeover = useAppTakeover();
+  const [threadOpenIn, setThreadOpenIn] = useState<string | null>(null);
+  const takeoverThreadOpen = threadOpenIn === contentKey;
+  const threadOpen = takeover ? takeoverThreadOpen : layout.threadOpen;
+  const toggleThread = takeover
+    ? () => setThreadOpenIn(takeoverThreadOpen ? null : contentKey)
+    : layout.toggleThread;
 
   return (
     <>
@@ -465,6 +476,8 @@ function ThreadSessionContent({
       />
       <ChatLayout
         {...layout}
+        threadOpen={threadOpen}
+        toggleThread={toggleThread}
         contentKey={contentKey}
         contentNavigation={
           <MainPanelTabsBar virtualMcpId={virtualMcpId} taskId={taskId} />

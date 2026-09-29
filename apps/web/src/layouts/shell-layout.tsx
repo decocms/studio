@@ -3,6 +3,11 @@ import { OrgAccessGate } from "@/components/org-access-gate";
 import { FloatingReleaseCard } from "@/components/release-channel/floating-release-card";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { CommandPalette } from "@/components/command-palette";
+import { NewProjectDialog } from "@/components/projects/new-project-dialog";
+import {
+  newProjectSource,
+  useNewProjectDialog,
+} from "@/components/projects/new-project-store";
 import {
   closeCommandPalette,
   openCommandPalette,
@@ -250,6 +255,7 @@ function ShellLayoutContent() {
   const org = orgMatch?.params.org;
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useCommandPaletteOpen();
+  const [newProjectOpen, setNewProjectOpen] = useNewProjectDialog();
   const router = useRouter();
   const isHomeRoute = useIsHomeRoute();
 
@@ -441,6 +447,18 @@ function ShellLayoutContent() {
           so gating the mount does not lose it. */}
       {paletteOpen && (
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      )}
+
+      {/* Mounted here, and gated the same way, for the same reason: creating a
+          project is offered from the home, the sidebar, the picker popover and
+          two indexes, and a dialog the PICKER rendered would unmount with the
+          popover that held it the moment the item was clicked. */}
+      {newProjectOpen && (
+        <NewProjectDialog
+          open
+          onOpenChange={setNewProjectOpen}
+          source={newProjectSource()}
+        />
       )}
 
       {/* Keyboard Shortcuts Dialog */}

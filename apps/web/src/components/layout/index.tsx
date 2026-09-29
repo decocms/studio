@@ -13,7 +13,8 @@ import {
 } from "@decocms/ui/components/sheet.tsx";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Panel } from "@/components/panel";
-
+import { useProjectFirstNav } from "@/hooks/use-preferences";
+import { OrgRail } from "@/components/sidebar/org-rail";
 import { SidebarResizeHandle } from "@/components/sidebar/sidebar-resize-handle";
 import { SidebarThreadButtonProvider } from "@/components/sidebar/thread-button";
 import { useLocalStorage } from "@/hooks/use-local-storage";
@@ -47,27 +48,33 @@ function LayoutRoot({
     true,
   );
   const resize = useSidebarResize();
+  const projectFirstNav = useProjectFirstNav();
 
   return (
     <LayoutContext value={{ isMobile, resize }}>
       <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <div className="app-shell-root flex flex-col h-dvh overflow-hidden">
           {notice}
-          <SidebarLayout
-            ref={resize.wrapperRef}
-            className="flex-1 bg-sidebar relative min-h-0"
-            style={
-              {
-                "--sidebar-width": `${resize.width}px`,
-                // The icon rail keeps its buttons the same size as the toolbar.
-                "--sidebar-width-icon": "3.25rem",
-              } as Record<string, string>
-            }
-          >
-            <SidebarThreadButtonProvider>
-              {children}
-            </SidebarThreadButtonProvider>
-          </SidebarLayout>
+          <div className="flex flex-1 flex-row min-h-0">
+            {!isMobile && projectFirstNav && <OrgRail />}
+            <SidebarLayout
+              ref={resize.wrapperRef}
+              className="flex-1 bg-sidebar relative min-h-0"
+              style={
+                {
+                  "--sidebar-width": `${resize.width}px`,
+                  // The icon rail keeps its buttons the same size as the toolbar.
+                  "--sidebar-width-icon": projectFirstNav
+                    ? "3.25rem"
+                    : "3.125rem",
+                } as Record<string, string>
+              }
+            >
+              <SidebarThreadButtonProvider>
+                {children}
+              </SidebarThreadButtonProvider>
+            </SidebarLayout>
+          </div>
         </div>
       </SidebarProvider>
     </LayoutContext>

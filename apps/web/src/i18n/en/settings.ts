@@ -350,6 +350,9 @@ export const settings = {
   "settings.blocksEditor.title": "New blocks editor",
   "settings.blocksEditor.description":
     "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
+  "settings.preferences.projectFirstNav": "Project-first navigation",
+  "settings.preferences.projectFirstNavDescription":
+    "Try the org rail, project launcher and the Today/Agents home.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",

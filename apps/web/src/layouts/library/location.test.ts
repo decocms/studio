@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   basename,
   browsePathFor,
+  libraryTrail,
   parseLibraryPath,
   segmentLabel,
 } from "./location";
@@ -78,5 +79,39 @@ describe("basename", () => {
   it("returns the last segment", () => {
     expect(basename("a/b/c.txt")).toBe("c.txt");
     expect(basename("c.txt")).toBe("c.txt");
+  });
+});
+
+describe("libraryTrail", () => {
+  it("is empty at the root — the root is the place, not a step to it", () => {
+    expect(libraryTrail("home", "home")).toEqual([]);
+    expect(libraryTrail("home/projects/farm", "home/projects/farm")).toEqual(
+      [],
+    );
+  });
+
+  it("walks the segments below the root", () => {
+    expect(libraryTrail("home/decks/q3", "home")).toEqual([
+      { label: "decks", path: "home/decks" },
+      { label: "q3", path: "home/decks/q3" },
+    ]);
+  });
+
+  it("a project root hides the folders above it", () => {
+    expect(
+      libraryTrail("home/projects/farm/decks", "home/projects/farm"),
+    ).toEqual([{ label: "decks", path: "home/projects/farm/decks" }]);
+  });
+
+  it("labels `public` as skills, like every other segment reader", () => {
+    expect(libraryTrail("public/core", "")[0]?.label).toBe("skills");
+  });
+
+  /** A breadcrumb that silently empties strands someone in a folder. */
+  it("a path outside the root falls back to its own full trail", () => {
+    expect(libraryTrail("uploads/docs", "home")).toEqual([
+      { label: "uploads", path: "uploads" },
+      { label: "docs", path: "uploads/docs" },
+    ]);
   });
 });

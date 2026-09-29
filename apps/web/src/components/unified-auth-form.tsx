@@ -662,9 +662,11 @@ export function UnifiedAuthForm({
       {!isForgotPassword && !(isEmailOtp && otpSent) && hasSocialProviders && (
         <div className="grid gap-2">
           {visibleSocialProviders.map((provider) => (
-            <button
+            <Button
               key={provider.name}
               type="button"
+              variant="outline"
+              size={compact ? "lg" : "xl"}
               disabled={isLoading}
               onClick={() => void handleSocialSignIn(provider.name)}
               className={cn(
@@ -686,7 +688,7 @@ export function UnifiedAuthForm({
               {copy.continueWith(
                 provider.name.charAt(0).toUpperCase() + provider.name.slice(1),
               )}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -761,16 +763,14 @@ export function UnifiedAuthForm({
                 )}
               </div>
 
-              <button
+              <Button
                 type="submit"
+                size={compact ? "lg" : "xl"}
                 disabled={isLoading || !canSubmit}
-                className={cn(
-                  "flex items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50",
-                  compact ? "h-11 sm:w-auto" : "h-12 w-full",
-                )}
+                className={cn(compact ? "sm:w-auto" : "w-full")}
               >
                 {isLoading ? copy.sending : copy.sendCode}
-              </button>
+              </Button>
             </form>
           ) : (
             <form
@@ -805,16 +805,14 @@ export function UnifiedAuthForm({
                 />
               </div>
 
-              <button
+              <Button
                 type="submit"
+                size={compact ? "lg" : "xl"}
                 disabled={isLoading || !canSubmit}
-                className={cn(
-                  "flex items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 disabled:pointer-events-none disabled:opacity-50",
-                  compact ? "h-11 sm:w-auto" : "h-12 w-full",
-                )}
+                className={cn(compact ? "sm:w-auto" : "w-full")}
               >
                 {isLoading ? copy.verifying : copy.verify}
-              </button>
+              </Button>
 
               <button
                 type="button"

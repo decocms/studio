@@ -9,6 +9,22 @@ export function formatDate(value: string | Date): string {
   });
 }
 
+/** Compact relative time ("10h ago", per the design) — long forms like
+ *  "about 2 hours ago" squeeze the filename out of the card. */
+export function timeAgo(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export function formatTimeAgo(date: Date): string {
   const seconds = differenceInSeconds(new Date(), date);
 

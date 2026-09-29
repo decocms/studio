@@ -50,7 +50,7 @@ function SettingsAutomationsPage() {
 
   const handleBrowseAgents = () => {
     track("automations_empty_state_browse_agents_clicked");
-    navigate({ to: "/$org/settings/agents", params: { org: org.slug } });
+    navigate({ to: "/$org/settings/projects", params: { org: org.slug } });
   };
 
   return (

@@ -18,6 +18,8 @@ interface Preferences {
    * renamed lane can't resurrect the wrong column.
    */
   shownTaskBoardLanes: string[];
+  /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
+  projectFirstNav: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -27,6 +29,7 @@ const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   language: detectLocale(),
   shownTaskBoardLanes: [],
+  projectFirstNav: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -104,7 +107,13 @@ export function usePreferences() {
       if (!Array.isArray(merged.shownTaskBoardLanes)) {
         merged.shownTaskBoardLanes = [];
       }
+      merged.projectFirstNav = merged.projectFirstNav === true;
       return merged;
     },
   );
+}
+
+export function useProjectFirstNav(): boolean {
+  const [preferences] = usePreferences();
+  return preferences.projectFirstNav;
 }

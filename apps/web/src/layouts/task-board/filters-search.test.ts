@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   boardSearchParams,
+  enabledLayout,
   type BoardView,
   parseBoardSearch,
   visibleSelection,
@@ -61,6 +62,22 @@ describe("board search params", () => {
       boardSearchParams({ ...EMPTY_VIEW, layout: "list", subgroupBy: "status" })
         .subgroup,
     ).toBeUndefined();
+  });
+
+  test("the feed is a third view, carried the same way", () => {
+    expect(boardSearchParams({ ...EMPTY_VIEW, layout: "feed" }).view).toBe(
+      "feed",
+    );
+    expect(parseBoardSearch({ view: "feed" }).layout).toBe("feed");
+  });
+
+  test("a mount's own default layout drops out of the URL, Board does not", () => {
+    expect(
+      boardSearchParams({ ...EMPTY_VIEW, layout: "feed" }, "feed").view,
+    ).toBeUndefined();
+    expect(boardSearchParams({ ...EMPTY_VIEW }, "feed").view).toBe("board");
+    expect(parseBoardSearch({}, "feed").layout).toBe("feed");
+    expect(parseBoardSearch({ view: "board" }, "feed").layout).toBe("board");
   });
 
   test("defaults are omitted from the URL", () => {
@@ -163,5 +180,24 @@ describe("visibleSelection", () => {
 
   test("an empty board selects nothing", () => {
     expect(visibleSelection(new Set(["a"]), [])).toEqual(new Set());
+  });
+});
+
+/** Feed ships behind project-first navigation, and the tab that leaves it does
+ *  too — so the URL alone must not put a reader there. */
+describe("enabledLayout", () => {
+  test("keeps the feed for a reader who has it", () => {
+    expect(enabledLayout("feed", true)).toBe("feed");
+  });
+
+  test("sends a reader without it to the board, not to a view with no tabs", () => {
+    expect(enabledLayout("feed", false)).toBe("board");
+  });
+
+  test("leaves the two unflagged layouts alone either way", () => {
+    for (const enabled of [true, false]) {
+      expect(enabledLayout("board", enabled)).toBe("board");
+      expect(enabledLayout("list", enabled)).toBe("list");
+    }
   });
 });

@@ -21,6 +21,11 @@ const badgeVariants = cva(
           "border-transparent bg-warning text-warning-foreground [a&]:hover:bg-warning/90 focus-visible:ring-warning/20 dark:focus-visible:ring-warning/40",
         outline:
           "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+        /** A quiet classifier — a kind, a platform, a count. It names what
+         *  something IS rather than how it is doing, so it carries no status
+         *  colour and never competes with the label beside it. */
+        muted:
+          "border-transparent bg-muted text-muted-foreground [a&]:hover:bg-muted/80",
       },
       size: {
         default: "px-2 py-0.5",

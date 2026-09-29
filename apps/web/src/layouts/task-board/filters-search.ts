@@ -17,7 +17,9 @@ import {
   type SortDirection,
 } from "./list-sort";
 
-export type Layout = "board" | "list";
+const LAYOUTS = ["board", "list", "feed"] as const;
+
+export type Layout = (typeof LAYOUTS)[number];
 
 const DUE_FILTERS: DueFilter[] = ["overdue", "today", "week", "none"];
 
@@ -60,15 +62,23 @@ export type BoardView = {
   sortDirection: SortDirection;
 };
 
-/** Anything unrecognized in the URL is dropped, not trusted. */
-export function parseBoardSearch(search: BoardSearch): BoardView {
+/** Anything unrecognized in the URL is dropped, not trusted. `defaultLayout`
+ *  is the landing view when the URL names none — Board everywhere, except the
+ *  project overview's inline tabs, where the board's horizontal columns are the
+ *  wrong shape for a strip under a header and Feed reads top to bottom. */
+export function parseBoardSearch(
+  search: BoardSearch,
+  defaultLayout: Layout = "board",
+): BoardView {
   const priority = str(search.priority);
   const due = str(search.due);
   const tags = str(search.tags);
   const groupBy = isGroupBy(search.group) ? search.group : null;
   const sortBy = isSortBy(search.sort) ? search.sort : null;
   return {
-    layout: search.view === "list" ? "list" : "board",
+    layout: LAYOUTS.includes(search.view as Layout)
+      ? (search.view as Layout)
+      : defaultLayout,
     groupBy,
     subgroupBy:
       groupBy !== null &&
@@ -97,16 +107,12 @@ export function parseBoardSearch(search: BoardSearch): BoardView {
 }
 
 /** Defaults are written as `undefined` so they drop out of the URL entirely. */
-export function boardSearchParams({
-  filters,
-  layout,
-  groupBy,
-  subgroupBy,
-  sortBy,
-  sortDirection,
-}: BoardView): Record<keyof BoardSearch, string | undefined> {
+export function boardSearchParams(
+  { filters, layout, groupBy, subgroupBy, sortBy, sortDirection }: BoardView,
+  defaultLayout: Layout = "board",
+): Record<keyof BoardSearch, string | undefined> {
   return {
-    view: layout === "list" ? "list" : undefined,
+    view: layout === defaultLayout ? undefined : layout,
     group: groupBy ?? undefined,
     subgroup: groupBy !== null ? (subgroupBy ?? undefined) : undefined,
     sort: sortBy ?? undefined,
@@ -124,6 +130,17 @@ export function boardSearchParams({
 }
 
 /**
+ * The layout a reader is actually allowed to be in.
+ *
+ * Feed is behind project-first navigation, so a `?view=feed` link shared by
+ * someone who has the flag must not strand a reader who does not on a view
+ * their tabs cannot leave.
+ */
+export function enabledLayout(layout: Layout, feedEnabled: boolean): Layout {
+  return layout === "feed" && !feedEnabled ? "board" : layout;
+}
+
+/**
  * The selection a bulk action is allowed to touch: only cards currently on
  * screen. The project scope is not the board's own control — it can change
  * under a live selection — so a stale id must never reach an update or a
@@ -138,10 +155,10 @@ export function visibleSelection(
 }
 
 /** `useState`-shaped replacement for the board's view state. */
-export function useBoardSearch() {
+export function useBoardSearch(defaultLayout: Layout = "board") {
   const search = useSearch({ strict: false }) as BoardSearch;
   const navigate = useNavigate();
-  const view = parseBoardSearch(search);
+  const view = parseBoardSearch(search, defaultLayout);
   const { groupBy, subgroupBy } = view;
 
   const write = (patch: Partial<BoardView>) =>
@@ -149,7 +166,7 @@ export function useBoardSearch() {
       to: ".",
       search: (prev: Record<string, unknown>) => ({
         ...prev,
-        ...boardSearchParams({ ...view, ...patch }),
+        ...boardSearchParams({ ...view, ...patch }, defaultLayout),
       }),
       // Typing in the search box would otherwise push a history entry per key.
       replace: true,
