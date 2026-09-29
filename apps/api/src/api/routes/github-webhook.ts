@@ -156,7 +156,9 @@ export function createGithubWebhookRoutes(deps: GithubWebhookDeps): Hono {
         // A remote provider's push is a round trip and GitHub gives up after
         // 10s; the pool reconciler refreshes on its next tick either way.
         void getOrInitSharedRunner()
-          .then((runner) => runner?.markTenantPoolsDirty(repo, ref))
+          .then((runner) =>
+            runner?.markTenantPoolsDirty(`https://github.com/${repo}`, ref),
+          )
           .catch((err: unknown) =>
             console.warn(
               `[github-webhook] tenant pool refresh for ${repo}@${ref} failed: ${err instanceof Error ? err.message : String(err)}`,

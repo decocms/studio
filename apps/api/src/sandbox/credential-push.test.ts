@@ -8,6 +8,7 @@ import {
   credentialExpiresAt,
   mintCredentialPush,
   planCredentialPush,
+  poolRepoKey,
   PUSH_CLONE_BUFFER_MS,
   tenantKey,
 } from "./credential-push";
@@ -26,6 +27,10 @@ const records: CredentialRecords = {
   repositoryOrgs: new Map([
     ["repo_a", "org_a"],
     ["repo_b", "org_b"],
+  ]),
+  orgRepositories: new Map([
+    [poolRepoKey("org_a", "https://github.com/acme/site.git")!, "repo_a"],
+    [poolRepoKey("org_b", "https://github.com/acme/docs.git")!, "repo_b"],
   ]),
 };
 
@@ -54,6 +59,7 @@ describe("planCredentialPush", () => {
         { tenant: A, repo: SITE },
         { tenant: A, repo: { repositoryId: "repo_a" } },
       ],
+      poolClones: [],
       orgFs: [],
       refused: 0,
     });
@@ -109,45 +115,54 @@ describe("planCredentialPush", () => {
   });
 
   describe("pools from the host's listing", () => {
-    const pool = (orgId: string, connectionId?: string): ListedTenantPool => ({
+    const pool = (tenant: string, repoUrl: string): ListedTenantPool => ({
       name: "p",
-      orgId,
-      repo: "Acme/Site",
-      ...(connectionId ? { connectionId } : {}),
+      tenant,
+      image: "default",
+      repos: [{ repoUrl, branch: "main" }],
     });
 
-    it("mints a pool without a tenant when its connection is the pool org's", () => {
-      expect(plan([], [pool("org_a", "conn_a")])).toEqual({
-        clones: [{ tenant: null, repo: SITE }],
-        orgFs: [],
-        refused: 0,
-      });
+    it("mints a pool repo from the pool org's own record for it", () => {
+      expect(plan([], [pool("org_a", "https://github.com/Acme/Site")])).toEqual(
+        {
+          clones: [],
+          poolClones: [
+            {
+              tenant: "org_a",
+              repoUrl: "https://github.com/Acme/Site",
+              repositoryId: "repo_a",
+            },
+          ],
+          orgFs: [],
+          refused: 0,
+        },
+      );
     });
 
-    it("refuses a pool whose connection belongs to another org", () => {
-      expect(plan([], [pool("org_a", "conn_b")])).toEqual({
-        clones: [],
-        orgFs: [],
-        refused: 1,
-      });
+    it("refuses a pool repo with no record in the pool's org, even when another org has one", () => {
+      expect(
+        plan(
+          [],
+          [
+            pool("org_a", "https://github.com/acme/docs"),
+            pool("org_a", "https://github.com/acme/unknown"),
+            pool("org_a", "git@github.com:acme/site.git"),
+          ],
+        ),
+      ).toEqual({ clones: [], poolClones: [], orgFs: [], refused: 3 });
     });
 
-    it("refuses a pool whose connection Studio has no record of", () => {
-      expect(plan([], [pool("org_a", "conn_unknown")]).refused).toBe(1);
-    });
-
-    it("mints nothing for a public pool with no connection", () => {
-      expect(plan([], [pool("org_a")])).toEqual({
-        clones: [],
-        orgFs: [],
-        refused: 0,
-      });
+    it("mints nothing for a pool with no repos", () => {
+      expect(
+        plan([], [{ name: "p", tenant: "org_a", image: "default", repos: [] }]),
+      ).toEqual({ clones: [], poolClones: [], orgFs: [], refused: 0 });
     });
   });
 
   it("ignores tenant-less listings: pools are listed separately", () => {
     expect(plan([listing({ tenant: null })])).toEqual({
       clones: [],
+      poolClones: [],
       orgFs: [],
       refused: 0,
     });
@@ -161,8 +176,15 @@ describe("mintCredentialPush", () => {
       {
         clones: [
           { tenant: A, repo: SITE },
-          { tenant: null, repo: { repositoryId: "repo_a" } },
+          { tenant: A, repo: { repositoryId: "repo_a" } },
           { tenant: A, repo: { connectionId: "conn_a", repo: "acme/none" } },
+        ],
+        poolClones: [
+          {
+            tenant: "org_a",
+            repoUrl: "https://github.com/acme/site",
+            repositoryId: "repo_a",
+          },
         ],
         orgFs: [{ ...A, orgSlug: "acme" }],
         refused: 0,
@@ -184,6 +206,10 @@ describe("mintCredentialPush", () => {
       { cloneUrl: "https://github.com/acme/site.git", connectionId: "conn_a" },
       { bufferMs: PUSH_CLONE_BUFFER_MS },
     ]);
+    expect(asked.at(-1)).toEqual([
+      { cloneUrl: "", repositoryId: "repo_a" },
+      { bufferMs: PUSH_CLONE_BUFFER_MS },
+    ]);
     expect(batches).toEqual([
       {
         cloneUrls: [
@@ -194,8 +220,16 @@ describe("mintCredentialPush", () => {
             expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
           },
           {
-            tenant: null,
+            tenant: A,
             repo: { repositoryId: "repo_a" },
+            cloneUrl: "https://x-access-token:t@github.com/acme/site.git",
+            expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
+          },
+        ],
+        poolCloneUrls: [
+          {
+            tenant: "org_a",
+            repoUrl: "https://github.com/acme/site",
             cloneUrl: "https://x-access-token:t@github.com/acme/site.git",
             expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
           },

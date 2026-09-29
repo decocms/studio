@@ -25,10 +25,21 @@ export type SandboxProvider = Pick<
   | "close"
 >;
 export {
-  parseTenantPools,
-  repoKeyFromCloneUrl,
+  allocationsMatchingPush,
+  normalizeRepoUrl,
+  renderTenantPoolWarmPools,
+  resolveTenantPoolBinding,
+  tenantPoolAllocations,
+  TenantPoolCapacityError,
+  tenantPoolFieldsSchema,
+  tenantPoolRepoSchema,
   tenantPoolSchema,
+  type SandboxWarmPoolObject,
   type TenantPool,
+  type TenantPoolFieldsInput,
+  type TenantPoolInput,
+  type TenantPoolRepo,
+  type TenantPoolRepoInput,
 } from "./tenant-pools";
 // Lifecycle types live in their own module (no K8s deps) so type-only
 // consumers — notably the studio web bundle — can import them safely.

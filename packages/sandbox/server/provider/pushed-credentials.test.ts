@@ -18,13 +18,27 @@ function clock(start = 1_000_000) {
 }
 
 function clone(
-  tenant: typeof A | null,
+  tenant: typeof A,
   cloneUrl: string,
   expiresAt: number,
   repo: typeof SITE | { repositoryId: string } = SITE,
 ) {
   return {
     cloneUrls: [{ tenant, repo, cloneUrl, expiresAt }],
+    poolCloneUrls: [],
+    orgFsConfigs: [],
+  };
+}
+
+function poolClone(
+  tenant: string,
+  repoUrl: string,
+  cloneUrl: string,
+  expiresAt: number,
+) {
+  return {
+    cloneUrls: [],
+    poolCloneUrls: [{ tenant, repoUrl, cloneUrl, expiresAt }],
     orgFsConfigs: [],
   };
 }
@@ -65,18 +79,34 @@ describe("PushedCredentials", () => {
     expect(store.cloneUrl(A, SITE)).toBeNull();
   });
 
-  it("keeps each tenant's credentials, and the pool's, apart", () => {
+  it("keeps each tenant's credentials, and the pools', apart", () => {
     const t = clock();
     const store = new PushedCredentials({ now: t.now });
     store.push(clone(A, url("a"), t.now() + 50 * MIN));
-    store.push(clone(null, url("pool"), t.now() + 50 * MIN));
+    store.push(
+      poolClone(
+        "org_a",
+        "https://github.com/Acme/Site",
+        url("pool"),
+        t.now() + 50 * MIN,
+      ),
+    );
     expect(store.cloneUrl(B, SITE)).toBeNull();
     expect(
       store.cloneUrl({ orgId: "org_a", userId: "user_2" }, SITE),
     ).toBeNull();
-    expect(store.cloneUrl(null, SITE)).toBe(url("pool"));
-    expect(store.cloneUrl(undefined, SITE)).toBe(url("pool"));
+    expect(store.cloneUrl(null, SITE)).toBeNull();
+    expect(store.cloneUrl(undefined, SITE)).toBeNull();
     expect(store.cloneUrl(A, SITE)).toBe(url("a"));
+    expect(
+      store.poolCloneUrl("org_a", "https://x:y@github.com/acme/site.git"),
+    ).toBe(url("pool"));
+    expect(
+      store.poolCloneUrl("org_b", "https://github.com/acme/site"),
+    ).toBeNull();
+    expect(
+      store.poolCloneUrl("org_a", "https://github.com/acme/other"),
+    ).toBeNull();
     expect(
       store.cloneUrl(A, { connectionId: "c2", repo: "acme/site" }),
     ).toBeNull();
@@ -85,6 +115,7 @@ describe("PushedCredentials", () => {
     ).toBeNull();
     store.push({
       cloneUrls: [],
+      poolCloneUrls: [],
       orgFsConfigs: [
         { tenant: A, orgFsConfigJson: "{a}", expiresAt: t.now() + MIN },
       ],
@@ -187,6 +218,27 @@ describe("pushedCredentialOptions", () => {
     ).toBeNull();
     expect(await opts.mintCloneUrl(persisted, { tenant: B })).toBeNull();
     expect(await opts.mintOrgFsConfig(A)).toBeNull();
+
+    store.push(
+      poolClone(
+        "org_a",
+        "https://github.com/acme/site",
+        url("pool"),
+        t.now() + 45 * MIN,
+      ),
+    );
+    expect(
+      await opts.mintPoolCloneUrl({
+        tenant: "org_a",
+        repoUrl: "https://github.com/Acme/Site",
+      }),
+    ).toBe(url("pool"));
+    expect(
+      await opts.mintPoolCloneUrl({
+        tenant: "org_b",
+        repoUrl: "https://github.com/acme/site",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -209,5 +261,17 @@ describe("repoIdentityOf", () => {
       }),
     ).toBeNull();
     expect(repoIdentityOf({ cloneUrl: url("x") })).toBeNull();
+    expect(
+      repoIdentityOf({
+        cloneUrl: "https://x-access-token:tok@github.com/Acme/Site.git",
+        connectionId: "c1",
+      }),
+    ).toEqual(SITE);
+    expect(
+      repoIdentityOf({
+        cloneUrl: "git@github.com:acme/site.git",
+        connectionId: "c1",
+      }),
+    ).toBeNull();
   });
 });

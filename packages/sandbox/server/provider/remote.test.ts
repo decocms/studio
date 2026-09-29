@@ -67,20 +67,20 @@ const fake = {
   ],
   listTenantPools: () => [
     {
-      name: "tenant-acme-site",
-      orgId: "o1",
-      repo: "acme/site",
-      connectionId: "c1",
-      branch: "main",
-      workload: { runtime: "node" as const },
+      name: "acme",
+      tenant: "o1",
+      size: 3,
+      image: "default",
+      repos: [
+        {
+          repoUrl: "https://github.com/acme/site",
+          branch: "main",
+          workload: { runtime: "node" as const },
+          replicas: 2,
+        },
+      ],
     },
-    {
-      name: "tenant-acme-docs",
-      orgId: "o1",
-      repo: "acme/docs",
-      branch: "main",
-      workload: { runtime: "node" as const },
-    },
+    { name: "acme-blank", tenant: "o1", size: 1, image: "android", repos: [] },
   ],
   async *watchClaimLifecycle() {
     yield* phases;
@@ -227,9 +227,12 @@ describe("RemoteSandboxProvider against the host tools", () => {
 
   it("maps capacity and tenant pools", async () => {
     expect(await provider.hasSchedulableCapacity()).toBe(false);
-    expect(await provider.markTenantPoolsDirty("acme/app", "main")).toEqual([
-      "pool-a",
-    ]);
+    expect(
+      await provider.markTenantPoolsDirty(
+        "https://github.com/acme/app",
+        "refs/heads/main",
+      ),
+    ).toEqual(["pool-a"]);
   });
 
   it("streams phases until the terminal one", async () => {
@@ -279,10 +282,21 @@ describe("RemoteSandboxProvider against the host tools", () => {
     const expiresAt = Date.now() + 2 * 60 * 60_000;
     const pushed = await provider.pushCredentials({
       cloneUrls: [{ tenant: TENANT, repo: REPO, cloneUrl: CLONE, expiresAt }],
+      poolCloneUrls: [
+        {
+          tenant: "o1",
+          repoUrl: "https://github.com/acme/site",
+          cloneUrl: CLONE,
+          expiresAt,
+        },
+      ],
       orgFsConfigs: [{ tenant: TENANT, orgFsConfigJson: "{}", expiresAt }],
     });
-    expect(pushed).toEqual({ stored: 2, kept: 0 });
+    expect(pushed).toEqual({ stored: 3, kept: 0 });
     expect(store.cloneUrl(TENANT, REPO, 30 * 60_000)).toBe(CLONE);
+    expect(store.poolCloneUrl("o1", "https://github.com/acme/site")).toBe(
+      CLONE,
+    );
     expect(await provider.list()).toEqual({
       sandboxes: [
         {
@@ -295,12 +309,12 @@ describe("RemoteSandboxProvider against the host tools", () => {
       ],
       pools: [
         {
-          name: "tenant-acme-site",
-          orgId: "o1",
-          repo: "acme/site",
-          connectionId: "c1",
+          name: "acme",
+          tenant: "o1",
+          image: "default",
+          repos: [{ repoUrl: "https://github.com/acme/site", branch: "main" }],
         },
-        { name: "tenant-acme-docs", orgId: "o1", repo: "acme/docs" },
+        { name: "acme-blank", tenant: "o1", image: "android", repos: [] },
       ],
     });
   });
@@ -310,7 +324,7 @@ describe("RemoteSandboxProvider against the host tools", () => {
       "an oversized batch",
       {
         cloneUrls: Array.from({ length: 2_001 }, () => ({
-          tenant: null,
+          tenant: TENANT,
           repo: REPO,
           cloneUrl: CLONE,
           expiresAt: Date.now() + 60_000,
@@ -322,7 +336,7 @@ describe("RemoteSandboxProvider against the host tools", () => {
       "a clone URL that is not one",
       {
         cloneUrls: [
-          { tenant: null, repo: REPO, cloneUrl: "ssh://x", expiresAt: 1 },
+          { tenant: TENANT, repo: REPO, cloneUrl: "ssh://x", expiresAt: 1 },
         ],
         orgFsConfigs: [],
       },
@@ -332,12 +346,34 @@ describe("RemoteSandboxProvider against the host tools", () => {
       {
         cloneUrls: [
           {
-            tenant: null,
+            tenant: TENANT,
             repo: { ...REPO, repositoryId: "r1" },
             cloneUrl: CLONE,
             expiresAt: 1,
           },
         ],
+        orgFsConfigs: [],
+      },
+    ],
+    [
+      "a clone URL with no tenant",
+      {
+        cloneUrls: [
+          { tenant: null, repo: REPO, cloneUrl: CLONE, expiresAt: 1 },
+        ],
+        orgFsConfigs: [],
+      },
+    ],
+    [
+      "an oversized pool batch",
+      {
+        cloneUrls: [],
+        poolCloneUrls: Array.from({ length: 2_001 }, () => ({
+          tenant: "o1",
+          repoUrl: "https://github.com/acme/site",
+          cloneUrl: CLONE,
+          expiresAt: Date.now() + 60_000,
+        })),
         orgFsConfigs: [],
       },
     ],

@@ -1,122 +1,298 @@
 /**
- * Tenant warm pools — a pool of pods that are already running the dev server
- * for one org's repo, so a member of that org opens a project and there is no
- * clone, no install, no Vite boot.
+ * Tenant warm pools — warm pod capacity reserved for one tenant. The host
+ * decides what a tenant is; the provider only compares it with the claim's
+ * tenant key. Repos are optional allocations inside a pool: each gets its own
+ * `SandboxWarmPool` whose pods already run that repo's dev server, and the
+ * pool's remaining replicas are blank warm pods that clone on bind.
  *
- * The host passes the list (or a function returning it) to the provider: the
- * control plane from `postgresTenantPoolStore`, in-process Studio from the
- * `STUDIO_SANDBOX_TENANT_POOLS` deploy env (a JSON array). Empty = nothing
- * changes anywhere. `name` is explicit rather than derived from the org
- * because the matching `SandboxWarmPool` object is rendered from the same
- * string — a derivation on both sides is a mismatch waiting to happen.
+ * One `SandboxWarmPool` per allocation because the operator binds any warm pod
+ * of the pool a claim names, and the daemon refuses to move a cloned pod to
+ * another repo (`409 immutable: cloneUrl`).
  */
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
-import type { SandboxImage } from "@decocms/shared/git-providers";
-import type { SandboxPurpose } from "../types";
+import {
+  type SandboxImage,
+  SandboxImageSchema,
+} from "@decocms/shared/git-providers";
+import { K8S_CONSTANTS } from "./constants";
+import type { EnsureOptions, SandboxPurpose } from "../types";
 
-export const tenantPoolSchema = z.object({
-  /**
-   * SandboxWarmPool object name. Must match a rendered pool, and be
-   * DNS-label-safe (it names a k8s object).
-   */
-  name: z
-    .string()
-    .max(63)
-    .regex(
-      /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/,
-      "pool name must be a DNS label (lowercase alphanumeric and '-')",
-    ),
-  /** The ONLY org whose members may be given one of these pods. */
-  orgId: z.string().min(1),
-  /** `owner/name`, case-insensitive. A pool serves exactly one repo. */
-  repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be `owner/name`"),
-  /**
-   * GitHub connection the clone credential is minted from, fresh per bootstrap
-   * and never stored. Omit only for a PUBLIC repo — without it the pods clone
-   * anonymously, which fails on anything private.
-   */
-  connectionId: z.string().min(1).optional(),
-  /** What idle pods sit on. Claims switch branch post-bind (deps survive). */
-  branch: z.string().min(1).default("main"),
-  workload: z
-    .object({
-      runtime: z.enum(["node", "bun", "deno"]).default("node"),
-      packageManager: z.enum(["npm", "pnpm", "yarn", "bun", "deno"]).optional(),
-      packageManagerPath: z.string().optional(),
-      devPort: z.number().int().positive().optional(),
-    })
-    .default({ runtime: "node" }),
-});
-
-export type TenantPool = z.infer<typeof tenantPoolSchema>;
+/** Leaves room for `-<8 hex>` in an allocation's `SandboxWarmPool` name. */
+const TENANT_POOL_NAME_MAX = 54;
+const DNS_LABEL = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+const REPO_URL_MAX = 2048;
 
 /**
- * Throws on malformed config — a pool that silently fails to parse is a pool
- * that silently costs N pods and serves nobody.
+ * Credential-free https clone URL: lowercase host, no userinfo, no trailing
+ * `.git` or `/`. Null for anything else, so a credential never reaches storage.
  */
-export function parseTenantPools(raw: string | undefined): TenantPool[] {
-  if (!raw || raw.trim() === "") return [];
-  const pools = z.array(tenantPoolSchema).parse(JSON.parse(raw));
-  const names = new Set<string>();
-  for (const pool of pools) {
-    if (names.has(pool.name)) {
-      throw new Error(`tenant pools: duplicate pool name ${pool.name}`);
-    }
-    names.add(pool.name);
-  }
-  return pools;
-}
-
-/**
- * `owner/name` from a github.com clone URL (credentialed or anonymous),
- * lowercased. Pools are declared as GitHub `owner/name`, so a clone URL on any
- * other host yields null — a GitLab `acme/site` must never bind a pool warmed
- * for the GitHub repo of the same name.
- */
-export function repoKeyFromCloneUrl(cloneUrl: string): string | null {
+export function normalizeRepoUrl(raw: string): string | null {
+  let url: URL;
   try {
-    const url = new URL(cloneUrl);
-    if (url.hostname.toLowerCase() !== "github.com") return null;
-    const [owner, rest] = url.pathname.replace(/^\/+/, "").split("/");
-    const name = rest?.replace(/\.git$/, "");
-    return owner && name ? `${owner}/${name}`.toLowerCase() : null;
+    url = new URL(raw.trim());
   } catch {
     return null;
   }
+  if (url.protocol !== "https:" || url.search || url.hash) return null;
+  const path = url.pathname
+    .replace(/\/+$/, "")
+    .replace(/\.git$/, "")
+    .replace(/\/+$/, "");
+  return path ? `https://${url.host.toLowerCase()}${path}` : null;
 }
 
-/**
- * The isolation boundary. `orgId` is the org of the *authenticated user being
- * served*, never a request field — the operator has no notion of a tenant and
- * will happily bind any pool a claim names, so the claim (built server-side)
- * is the only thing keeping one org's warm pods away from another's.
- *
- * Purpose is deliberately not a factor: a `harness-run` used to be excluded
- * because it posts `cloneOnly`, which stops the pod's dev task. The fix is to
- * drop `cloneOnly` once such a run actually binds a pool pod (see
- * `workloadConfigPayload` in runner.ts), not to send it to a cold pod.
- */
-export function resolveTenantPool(
+/** Git hosts resolve repository paths case-insensitively. */
+function repoUrlKey(raw: string): string | null {
+  return normalizeRepoUrl(raw)?.toLowerCase() ?? null;
+}
+
+export const tenantPoolWorkloadSchema = z
+  .object({
+    runtime: z.enum(["node", "bun", "deno"]).default("node"),
+    packageManager: z.enum(["npm", "pnpm", "yarn", "bun", "deno"]).optional(),
+    packageManagerPath: z.string().optional(),
+    devPort: z.number().int().positive().optional(),
+  })
+  .default({ runtime: "node" });
+
+export const tenantPoolRepoSchema = z.object({
+  repoUrl: z
+    .string()
+    .max(REPO_URL_MAX)
+    .transform((raw, ctx) => {
+      const normalized = normalizeRepoUrl(raw);
+      if (normalized) return normalized;
+      ctx.addIssue({
+        code: "custom",
+        message: "repoUrl must be an https clone URL",
+      });
+      return z.NEVER;
+    }),
+  /** What idle pods sit on. Claims switch branch post-bind (deps survive). */
+  branch: z.string().min(1).default("main"),
+  workload: tenantPoolWorkloadSchema,
+  replicas: z.number().int().min(1),
+});
+
+/** A pool's size is less than the replicas its repos take. */
+export class TenantPoolCapacityError extends Error {
+  constructor(
+    readonly poolName: string,
+    readonly size: number,
+    readonly allocated: number,
+  ) {
+    super(
+      `pool ${poolName}: repos take ${allocated} replicas, more than its size ${size}`,
+    );
+    this.name = "TenantPoolCapacityError";
+  }
+}
+
+type RepoAllocation = Pick<TenantPoolRepo, "repoUrl" | "branch" | "replicas">;
+
+/** The first allocation that repeats an earlier one's repo and branch. */
+export function duplicateRepoAllocation<T extends RepoAllocation>(
+  repos: readonly T[],
+): T | null {
+  const seen = new Set<string>();
+  for (const repo of repos) {
+    const key = `${repoUrlKey(repo.repoUrl) ?? repo.repoUrl}#${repo.branch}`;
+    if (seen.has(key)) return repo;
+    seen.add(key);
+  }
+  return null;
+}
+
+export function allocatedReplicas(
+  repos: readonly Pick<RepoAllocation, "replicas">[],
+): number {
+  return repos.reduce((sum, repo) => sum + repo.replicas, 0);
+}
+
+export const tenantPoolFieldsSchema = z.object({
+  /** DNS label; names the pool's `SandboxWarmPool` objects. */
+  name: z
+    .string()
+    .max(TENANT_POOL_NAME_MAX)
+    .regex(
+      DNS_LABEL,
+      "pool name must be a DNS label (lowercase alphanumeric and '-')",
+    ),
+  /** Opaque isolation key: only claims with this tenant key bind the pool. */
+  tenant: z.string().min(1).max(512),
+  size: z.number().int().min(1),
+  image: SandboxImageSchema.default("default"),
+});
+
+export const tenantPoolSchema = tenantPoolFieldsSchema
+  .extend({ repos: z.array(tenantPoolRepoSchema).default([]) })
+  .superRefine((pool, ctx) => {
+    const duplicate = duplicateRepoAllocation(pool.repos);
+    if (duplicate) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["repos"],
+        message: `duplicate repo allocation ${duplicate.repoUrl}#${duplicate.branch}`,
+      });
+    }
+    const allocated = allocatedReplicas(pool.repos);
+    if (allocated > pool.size) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["repos"],
+        message: new TenantPoolCapacityError(pool.name, pool.size, allocated)
+          .message,
+      });
+    }
+  });
+
+export type TenantPoolInput = z.input<typeof tenantPoolSchema>;
+export type TenantPoolFieldsInput = z.input<typeof tenantPoolFieldsSchema>;
+export type TenantPoolRepoInput = z.input<typeof tenantPoolRepoSchema>;
+export type TenantPoolRepo = z.output<typeof tenantPoolRepoSchema> & {
+  /** Overrides the derived `SandboxWarmPool` name, for pools a chart already renders. */
+  warmPoolName?: string;
+};
+export type TenantPool = Omit<z.output<typeof tenantPoolSchema>, "repos"> & {
+  repos: TenantPoolRepo[];
+};
+
+/** `<pool>-<8 hex of repoUrl#branch>`, unless the allocation names its own. */
+export function allocationWarmPoolName(
+  poolName: string,
+  repo: Pick<TenantPoolRepo, "repoUrl" | "branch" | "warmPoolName">,
+): string {
+  if (repo.warmPoolName) return repo.warmPoolName;
+  const digest = createHash("sha256")
+    .update(`${repo.repoUrl}#${repo.branch}`)
+    .digest("hex")
+    .slice(0, 8);
+  return `${poolName}-${digest}`;
+}
+
+function blankReplicas(pool: TenantPool): number {
+  return Math.max(0, pool.size - allocatedReplicas(pool.repos));
+}
+
+export interface TenantPoolAllocation {
+  pool: TenantPool;
+  repo: TenantPoolRepo;
+  warmPoolName: string;
+}
+
+export function tenantPoolAllocations(
   pools: readonly TenantPool[],
-  claim: { orgId: string | undefined; cloneUrl: string | undefined },
-): TenantPool | null {
-  const { orgId, cloneUrl } = claim;
-  if (!orgId || !cloneUrl) return null;
-  const repoKey = repoKeyFromCloneUrl(cloneUrl);
-  if (!repoKey) return null;
-  return (
-    pools.find(
-      (pool) => pool.orgId === orgId && pool.repo.toLowerCase() === repoKey,
-    ) ?? null
+): TenantPoolAllocation[] {
+  return pools.flatMap((pool) =>
+    pool.repos.map((repo) => ({
+      pool,
+      repo,
+      warmPoolName: allocationWarmPoolName(pool.name, repo),
+    })),
   );
 }
 
+/** The template a pool's pods are built from; claims that bind them name the same one. */
+function tenantPoolTemplateName(
+  templateName: string,
+  image: SandboxImage,
+): string {
+  return claimTemplateName(undefined, templateName, true, image);
+}
+
+const TENANT_POOL_LABEL = "studio.decocms.com/tenant-pool";
+
+export interface SandboxWarmPoolObject {
+  apiVersion: string;
+  kind: "SandboxWarmPool";
+  metadata: { name: string; labels: Record<string, string> };
+  spec: {
+    replicas: number;
+    updateStrategy: { type: "OnReplenish" };
+    sandboxTemplateRef: { name: string };
+  };
+}
+
 /**
- * The claim's `spec.warmpool`. A resolved tenant pool binds one of that org's
- * already-running pods; otherwise the generic pool, named explicitly, or
- * `"none"` without a sentinel because the operator rejects per-claim env
- * outside `"none"`.
+ * The `SandboxWarmPool` objects a pool needs: one per repo allocation, then
+ * the blank remainder, rendered even at 0 replicas so a shrink is applied.
+ */
+export function renderTenantPoolWarmPools(
+  pool: TenantPool,
+  { templateName }: { templateName: string },
+): SandboxWarmPoolObject[] {
+  const template = tenantPoolTemplateName(templateName, pool.image);
+  const warmPool = (name: string, replicas: number): SandboxWarmPoolObject => ({
+    apiVersion: `${K8S_CONSTANTS.CLAIM_API_GROUP}/${K8S_CONSTANTS.CLAIM_API_VERSION}`,
+    kind: "SandboxWarmPool",
+    metadata: { name, labels: { [TENANT_POOL_LABEL]: pool.name } },
+    spec: {
+      replicas,
+      updateStrategy: { type: "OnReplenish" },
+      sandboxTemplateRef: { name: template },
+    },
+  });
+  return [
+    ...pool.repos.map((repo) =>
+      warmPool(allocationWarmPoolName(pool.name, repo), repo.replicas),
+    ),
+    warmPool(pool.name, blankReplicas(pool)),
+  ];
+}
+
+/** The key a claim's tenant is matched on; the one place that reads it from ensure. */
+export function claimTenantKey(opts: EnsureOptions): string | undefined {
+  return opts.tenant?.orgId;
+}
+
+export interface TenantPoolBinding {
+  pool: TenantPool;
+  /** Null for a blank pod, which clones on bind. */
+  repo: TenantPoolRepo | null;
+  warmPoolName: string;
+}
+
+/**
+ * The isolation boundary. The tenant key comes from the principal being
+ * served, never a request field: the operator binds any pool a claim names.
+ *
+ * Order: an allocation for the claim's repo (exact branch first), then the
+ * tenant's blank pods, else null for the generic pool. Only pools built for
+ * the claim's image qualify, and a pool with no blank replicas is skipped.
+ */
+export function resolveTenantPoolBinding(
+  pools: readonly TenantPool[],
+  claim: {
+    tenant: string | undefined;
+    image: SandboxImage;
+    cloneUrl: string | undefined;
+    branch: string | undefined;
+  },
+): TenantPoolBinding | null {
+  if (!claim.tenant) return null;
+  const eligible = pools.filter(
+    (pool) => pool.tenant === claim.tenant && pool.image === claim.image,
+  );
+  const key = claim.cloneUrl ? repoUrlKey(claim.cloneUrl) : null;
+  if (key) {
+    const matches = tenantPoolAllocations(eligible).filter(
+      (allocation) => repoUrlKey(allocation.repo.repoUrl) === key,
+    );
+    const hit =
+      matches.find((allocation) => allocation.repo.branch === claim.branch) ??
+      matches[0];
+    if (hit) return hit;
+  }
+  const blank = eligible.find((pool) => blankReplicas(pool) > 0);
+  return blank ? { pool: blank, repo: null, warmPoolName: blank.name } : null;
+}
+
+/**
+ * The claim's `spec.warmpool`. A tenant binding names its `SandboxWarmPool`;
+ * otherwise the generic pool, named explicitly, or `"none"` without a
+ * sentinel because the operator rejects per-claim env outside `"none"`.
  *
  * `genericPoolName` must be the SandboxWarmPool object's real name — the
  * sandbox-env chart names it after the SandboxTemplate. It used to be the
@@ -129,11 +305,11 @@ export function resolveTenantPool(
  * `tenant-electrolux-prod-*` pods.
  */
 export function claimWarmPoolName(
-  pool: TenantPool | null,
+  binding: TenantPoolBinding | null,
   warmPoolMode: boolean,
   genericPoolName: string,
 ): string {
-  return pool?.name ?? (warmPoolMode ? genericPoolName : "none");
+  return binding?.warmPoolName ?? (warmPoolMode ? genericPoolName : "none");
 }
 
 /**
@@ -145,9 +321,9 @@ export function claimWarmPoolName(
  * sandbox-env chart renders the cross product.
  *
  * Size — a `harness-run` claim gets the roomier `-medium` template: that is
- * where prod's 4Gi OOMKills happened. A claim that matched a TENANT POOL also
- * names `-medium`, because the chart builds tenant pools from that template
- * and operator v0.4.5 binds warm pods by template hash — a claim naming a
+ * where prod's 4Gi OOMKills happened. A claim bound to a TENANT POOL also
+ * names `-medium`, because tenant pools are built from that template and
+ * operator v0.4.5 binds warm pods by template hash — a claim naming a
  * template the pool wasn't built from gets a cold pod and no error.
  *
  * Image — `android` selects the image carrying an Android emulator, so an
@@ -159,7 +335,7 @@ export function claimWarmPoolName(
 export function claimTemplateName(
   purpose: SandboxPurpose | undefined,
   templateName: string,
-  tenantPool?: TenantPool | null,
+  tenantPool = false,
   sandboxImage?: SandboxImage,
 ): string {
   const image =
@@ -193,8 +369,8 @@ export type TemplateProbes = Record<string, TemplateProbe>;
  */
 export async function resolveClaimTemplateName(args: {
   purpose: SandboxPurpose | undefined;
-  /** Set when the claim matched a tenant pool — see `claimTemplateName`. */
-  tenantPool?: TenantPool | null;
+  /** Set when the claim is bound to a tenant pool — see `claimTemplateName`. */
+  tenantPool?: boolean;
   /** Set when the repository pinned a non-default image. */
   sandboxImage?: SandboxImage;
   templateName: string;
@@ -236,29 +412,25 @@ export async function resolveClaimTemplateName(args: {
 }
 
 /**
- * Pools a GitHub push event makes stale. Branch match is case-SENSITIVE (git
- * refs are); repo match is not (GitHub owners/names aren't).
+ * Allocations a push to `repoUrl`@`ref` makes stale. Branch match is
+ * case-SENSITIVE (git refs are); the repo match is not.
  */
-export function poolsMatchingPush(
+export function allocationsMatchingPush(
   pools: readonly TenantPool[],
-  repoFullName: string,
+  repoUrl: string,
   ref: string,
-): TenantPool[] {
+): TenantPoolAllocation[] {
+  const key = repoUrlKey(repoUrl);
+  if (!key) return [];
   const branch = ref.replace(/^refs\/heads\//, "");
-  return pools.filter(
-    (pool) =>
-      pool.repo.toLowerCase() === repoFullName.toLowerCase() &&
-      pool.branch === branch,
+  return tenantPoolAllocations(pools).filter(
+    ({ repo }) => repoUrlKey(repo.repoUrl) === key && repo.branch === branch,
   );
 }
 
-/** Anonymous clone URL for a pool's repo; the credential is minted per bootstrap. */
-export function poolCloneUrl(pool: TenantPool): string {
-  return `https://github.com/${pool.repo}.git`;
-}
-
-/** When this replica last touched an unbound pool pod; see `TenantPoolState`. */
+/** When this replica last touched an unbound allocation pod; see `TenantPoolState`. */
 export interface PoolPodState {
+  /** The allocation's `SandboxWarmPool` name. */
   pool: string;
   lastConfigAt: number;
   lastFailureAt: number;
@@ -267,17 +439,17 @@ export interface PoolPodState {
 
 /**
  * The pools a host serves, re-read on every call so pools it adds or removes
- * take effect on the next read, plus this replica's per-pool bookkeeping.
- * In-memory and per-replica on purpose: every entry is a hint, and losing it
- * costs one redundant (idempotent) config post per pod.
+ * take effect on the next read, plus this replica's bookkeeping per allocation
+ * `SandboxWarmPool`. In-memory and per-replica on purpose: every entry is a
+ * hint, and losing it costs one redundant (idempotent) config post per pod.
  */
 export class TenantPoolState {
-  /** Pool names a GitHub push says are stale; drained by the next tick. */
+  /** Allocation warm pools a push says are stale; drained by the next tick. */
   private readonly dirty = new Set<string>();
   /** Keyed by pod UID. */
   private readonly pods = new Map<string, PoolPodState>();
-  /** The pools the last `retain` saw, to tell which ones went away. */
-  private known = new Map<string, TenantPool>();
+  /** The allocations the last `retain` saw, to tell which ones went away. */
+  private known = new Map<string, TenantPoolAllocation>();
 
   constructor(private readonly source: () => readonly TenantPool[]) {}
 
@@ -285,22 +457,23 @@ export class TenantPoolState {
     return this.source();
   }
 
-  resolve(claim: {
-    orgId: string | undefined;
-    cloneUrl: string | undefined;
-  }): TenantPool | null {
-    return resolveTenantPool(this.pools(), claim);
+  resolve(
+    claim: Parameters<typeof resolveTenantPoolBinding>[1],
+  ): TenantPoolBinding | null {
+    return resolveTenantPoolBinding(this.pools(), claim);
   }
 
-  /** Names of the pools a push to `repoFullName`@`ref` makes stale. */
-  markDirty(repoFullName: string, ref: string): string[] {
-    const matched = poolsMatchingPush(this.pools(), repoFullName, ref);
-    for (const pool of matched) this.dirty.add(pool.name);
-    return matched.map((pool) => pool.name);
+  /** Warm pool names of the allocations a push to `repoUrl`@`ref` makes stale. */
+  markDirty(repoUrl: string, ref: string): string[] {
+    const names = allocationsMatchingPush(this.pools(), repoUrl, ref).map(
+      (allocation) => allocation.warmPoolName,
+    );
+    for (const name of names) this.dirty.add(name);
+    return names;
   }
 
-  takeDirty(poolName: string): boolean {
-    return this.dirty.delete(poolName);
+  takeDirty(warmPoolName: string): boolean {
+    return this.dirty.delete(warmPoolName);
   }
 
   pod(uid: string): PoolPodState | undefined {
@@ -311,18 +484,22 @@ export class TenantPoolState {
     this.pods.set(uid, state);
   }
 
-  /** Forgets a pool's pods that are no longer in its listing. */
-  retainPods(poolName: string, liveUids: ReadonlySet<string>): void {
+  /** Forgets an allocation's pods that are no longer in its listing. */
+  retainPods(warmPoolName: string, liveUids: ReadonlySet<string>): void {
     for (const [uid, state] of this.pods) {
-      if (state.pool === poolName && !liveUids.has(uid)) this.pods.delete(uid);
+      if (state.pool === warmPoolName && !liveUids.has(uid)) {
+        this.pods.delete(uid);
+      }
     }
   }
 
-  /** Drops the state of every pool not in `pools`, and returns those pools. */
-  retain(pools: readonly TenantPool[]): TenantPool[] {
-    const current = new Map(pools.map((pool) => [pool.name, pool]));
+  /** Drops the state of every allocation not in `allocations`, and returns those. */
+  retain(allocations: readonly TenantPoolAllocation[]): TenantPoolAllocation[] {
+    const current = new Map(
+      allocations.map((allocation) => [allocation.warmPoolName, allocation]),
+    );
     const gone = [...this.known.values()].filter(
-      (pool) => !current.has(pool.name),
+      (allocation) => !current.has(allocation.warmPoolName),
     );
     for (const name of this.dirty) {
       if (!current.has(name)) this.dirty.delete(name);

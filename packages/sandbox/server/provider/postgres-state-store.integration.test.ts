@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
+import { TenantPoolCapacityError } from "./agent-sandbox/tenant-pools";
 import {
   migrateSandboxControllerSchema,
   postgresRunnerStateStore,
@@ -9,7 +10,6 @@ import {
   tenantPoolReader,
   type PostgresRunnerStateStore,
   type PostgresTenantPoolStore,
-  type StoredTenantPoolInput,
 } from "./postgres-state-store";
 import type { SandboxId } from "./types";
 
@@ -64,9 +64,13 @@ describe("migrateSandboxControllerSchema", () => {
       expect(versions.map((row) => row.version)).toEqual([1, 2]);
       const [tables] = await sql`
         select to_regclass('sandbox_controller.runner_state') as runner_state,
-          to_regclass('sandbox_controller.tenant_pools') as tenant_pools`;
+          to_regclass('sandbox_controller.tenant_pools') as tenant_pools,
+          to_regclass('sandbox_controller.tenant_pool_repos') as tenant_pool_repos`;
       expect(tables?.runner_state).toBe("sandbox_controller.runner_state");
       expect(tables?.tenant_pools).toBe("sandbox_controller.tenant_pools");
+      expect(tables?.tenant_pool_repos).toBe(
+        "sandbox_controller.tenant_pool_repos",
+      );
     } finally {
       await sql.end();
     }
@@ -77,7 +81,7 @@ describe("migrateSandboxControllerSchema", () => {
     const sql = postgres(url, { max: 1 });
     const id = sandboxId();
     try {
-      await sql`drop table sandbox_controller.tenant_pools`;
+      await sql`drop table sandbox_controller.tenant_pool_repos, sandbox_controller.tenant_pools`;
       await sql`delete from sandbox_controller.migrations where version > 1`;
       await store.put(id, { handle: "h_v1", state: { kept: true } });
 
@@ -211,14 +215,21 @@ describe("postgresRunnerStateStore", () => {
   });
 });
 
+const SITE = "https://github.com/Acme/Site";
+const DOCS = "https://gitlab.com/acme/group/docs";
+
 function poolInput(
-  overrides: Partial<StoredTenantPoolInput> = {},
-): StoredTenantPoolInput {
+  overrides: Partial<{
+    name: string;
+    tenant: string;
+    size: number;
+    image: string;
+  }> = {},
+) {
   return {
     name: `pool-${randomUUID().slice(0, 8)}`,
-    orgId: `org_${randomUUID()}`,
-    repo: "acme/site",
-    size: 2,
+    tenant: `tenant_${randomUUID()}`,
+    size: 4,
     ...overrides,
   };
 }
@@ -226,62 +237,158 @@ function poolInput(
 describe("postgresTenantPoolStore", () => {
   beforeAll(() => migrateSandboxControllerSchema({ url }));
 
-  it("creates with defaults, then updates the same name in place", async () => {
+  it("creates with defaults, then updates size and image in place", async () => {
     const cluster = `c_${randomUUID()}`;
     const input = poolInput();
-    const created = await pools.upsert(cluster, input);
-    expect(created).toEqual({
+    expect(await pools.upsertPool(cluster, input)).toEqual({
       created: true,
-      pool: {
-        cluster,
-        name: input.name,
-        orgId: input.orgId,
-        repo: "acme/site",
-        branch: "main",
-        workload: { runtime: "node" },
-        size: 2,
-      },
+      pool: { cluster, ...input, image: "default", repos: [] },
     });
 
-    const updated = await pools.upsert(cluster, {
+    const updated = await pools.upsertPool(cluster, {
       ...input,
-      repo: "Acme/Site",
-      branch: "develop",
-      connectionId: "conn_1",
-      workload: { runtime: "bun", packageManager: "bun", devPort: 3000 },
-      size: 5,
+      size: 6,
+      image: "android",
     });
     expect(updated).toEqual({
       created: false,
-      pool: {
-        cluster,
-        name: input.name,
-        orgId: input.orgId,
-        repo: "Acme/Site",
-        branch: "develop",
-        connectionId: "conn_1",
-        workload: { runtime: "bun", packageManager: "bun", devPort: 3000 },
-        size: 5,
-      },
+      pool: { cluster, ...input, size: 6, image: "android", repos: [] },
     });
     expect(await pools.list(cluster)).toEqual([updated.pool]);
   });
 
-  it("refuses a name held by another org or repo, leaving the row as it was", async () => {
+  it("replaces the repos, round-tripping the normalized URL and the workload", async () => {
     const cluster = `c_${randomUUID()}`;
     const input = poolInput();
-    const { pool } = await pools.upsert(cluster, input);
+    await pools.upsertPool(cluster, input);
 
-    for (const takeover of [
-      { ...input, orgId: `org_${randomUUID()}` },
-      { ...input, repo: "acme/other" },
-    ]) {
-      const attempt = pools.upsert(cluster, { ...takeover, size: 9 });
-      await expect(attempt).rejects.toBeInstanceOf(TenantPoolConflictError);
-      await expect(attempt).rejects.toThrow(
-        `pool ${input.name} already exists in ${cluster}`,
-      );
+    const first = await pools.setRepos(cluster, input.name, [
+      {
+        repoUrl: "https://x-access-token:secret@GitHub.com/Acme/Site.git",
+        replicas: 2,
+      },
+      {
+        repoUrl: DOCS,
+        branch: "develop",
+        workload: { runtime: "bun", packageManager: "bun", devPort: 3000 },
+        replicas: 1,
+      },
+    ]);
+    const expected = {
+      cluster,
+      ...input,
+      image: "default",
+      repos: [
+        {
+          repoUrl: SITE,
+          branch: "main",
+          workload: { runtime: "node" },
+          replicas: 2,
+        },
+        {
+          repoUrl: DOCS,
+          branch: "develop",
+          workload: { runtime: "bun", packageManager: "bun", devPort: 3000 },
+          replicas: 1,
+        },
+      ],
+    };
+    expect(first).toEqual(expected);
+    expect(await pools.list(cluster)).toEqual([expected]);
+
+    const sql = postgres(url, { max: 1 });
+    try {
+      const rows = await sql`
+        select r.repo_url from sandbox_controller.tenant_pool_repos r
+        join sandbox_controller.tenant_pools p on p.id = r.pool_id
+        where p.cluster = ${cluster}`;
+      expect(JSON.stringify(rows)).not.toContain("secret");
+    } finally {
+      await sql.end();
     }
+
+    const second = await pools.setRepos(cluster, input.name, [
+      { repoUrl: DOCS, replicas: 4 },
+    ]);
+    expect(second?.repos).toEqual([
+      {
+        repoUrl: DOCS,
+        branch: "main",
+        workload: { runtime: "node" },
+        replicas: 4,
+      },
+    ]);
+    expect((await pools.setRepos(cluster, input.name, []))?.repos).toEqual([]);
+  });
+
+  it("refuses repos over the pool's size, and a shrink below its repos, leaving both as they were", async () => {
+    const cluster = `c_${randomUUID()}`;
+    const input = poolInput({ size: 3 });
+    await pools.upsertPool(cluster, input);
+    const held = await pools.setRepos(cluster, input.name, [
+      { repoUrl: SITE, replicas: 2 },
+    ]);
+
+    await expect(
+      pools.setRepos(cluster, input.name, [
+        { repoUrl: SITE, replicas: 2 },
+        { repoUrl: DOCS, replicas: 2 },
+      ]),
+    ).rejects.toBeInstanceOf(TenantPoolCapacityError);
+    await expect(
+      pools.upsertPool(cluster, { ...input, size: 1 }),
+    ).rejects.toBeInstanceOf(TenantPoolCapacityError);
+    expect(await pools.list(cluster)).toEqual([held!]);
+    expect(
+      (await pools.upsertPool(cluster, { ...input, size: 2 })).pool.size,
+    ).toBe(2);
+  });
+
+  it("serializes concurrent writers on the pool row, so their sum never exceeds the size", async () => {
+    const cluster = `c_${randomUUID()}`;
+    const input = poolInput({ size: 4 });
+    await pools.upsertPool(cluster, input);
+    await pools.setRepos(cluster, input.name, [{ repoUrl: SITE, replicas: 1 }]);
+    const results = await Promise.allSettled([
+      pools.setRepos(cluster, input.name, [{ repoUrl: SITE, replicas: 4 }]),
+      pools.upsertPool(cluster, { ...input, size: 1 }),
+    ]);
+    const [pool] = await pools.list(cluster);
+    const allocated = pool!.repos.reduce((sum, r) => sum + r.replicas, 0);
+    expect(allocated).toBeLessThanOrEqual(pool!.size);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+  });
+
+  it("refuses the same repo and branch twice, and an unknown pool", async () => {
+    const cluster = `c_${randomUUID()}`;
+    const input = poolInput();
+    await pools.upsertPool(cluster, input);
+    await expect(
+      pools.setRepos(cluster, input.name, [
+        { repoUrl: SITE, replicas: 1 },
+        { repoUrl: "https://github.com/acme/site", replicas: 1 },
+      ]),
+    ).rejects.toThrow(/duplicate repo allocation/);
+    expect(
+      await pools.setRepos(cluster, "no-such-pool", [
+        { repoUrl: SITE, replicas: 1 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("refuses a name held by another tenant, leaving the row as it was", async () => {
+    const cluster = `c_${randomUUID()}`;
+    const input = poolInput();
+    const { pool } = await pools.upsertPool(cluster, input);
+    const attempt = pools.upsertPool(cluster, {
+      ...input,
+      tenant: `tenant_${randomUUID()}`,
+      size: 9,
+    });
+    await expect(attempt).rejects.toBeInstanceOf(TenantPoolConflictError);
+    await expect(attempt).rejects.toThrow(
+      `pool ${input.name} already exists in ${cluster}`,
+    );
     expect(await pools.list(cluster)).toEqual([pool]);
   });
 
@@ -291,43 +398,59 @@ describe("postgresTenantPoolStore", () => {
       poolInput({ size: 0 }),
       poolInput({ size: 1.5 }),
       poolInput({ name: "Not_A_Label" }),
-      poolInput({ repo: "no-slash" }),
-      poolInput({ orgId: "" }),
+      poolInput({ name: "a".repeat(55) }),
+      poolInput({ tenant: "" }),
+      poolInput({ image: "Not An Image" }),
     ]) {
-      await expect(pools.upsert(cluster, bad)).rejects.toThrow();
+      await expect(pools.upsertPool(cluster, bad)).rejects.toThrow();
     }
     expect(await pools.list(cluster)).toEqual([]);
+
+    const input = poolInput();
+    await pools.upsertPool(cluster, input);
+    for (const bad of [
+      [{ repoUrl: "git@github.com:acme/site.git", replicas: 1 }],
+      [{ repoUrl: SITE, replicas: 0 }],
+      [{ repoUrl: SITE, branch: "", replicas: 1 }],
+    ]) {
+      await expect(pools.setRepos(cluster, input.name, bad)).rejects.toThrow();
+    }
+    expect((await pools.list(cluster))[0]?.repos).toEqual([]);
   });
 
-  it("deletes by name and reports whether a row was removed", async () => {
+  it("deletes a pool with its repos, and reports whether a row was removed", async () => {
     const cluster = `c_${randomUUID()}`;
     const input = poolInput();
-    await pools.upsert(cluster, input);
-    expect(await pools.delete(cluster, input.name)).toBe(true);
-    expect(await pools.delete(cluster, input.name)).toBe(false);
+    await pools.upsertPool(cluster, input);
+    await pools.setRepos(cluster, input.name, [{ repoUrl: SITE, replicas: 1 }]);
+    expect(await pools.deletePool(cluster, input.name)).toBe(true);
+    expect(await pools.deletePool(cluster, input.name)).toBe(false);
     expect(await pools.list(cluster)).toEqual([]);
+
+    await pools.upsertPool(cluster, input);
+    expect((await pools.list(cluster))[0]?.repos).toEqual([]);
   });
 
   it("keeps clusters apart: same name, different tenants, separate deletes", async () => {
     const east = `c_${randomUUID()}`;
     const west = `c_${randomUUID()}`;
     const name = `pool-${randomUUID().slice(0, 8)}`;
-    const a = await pools.upsert(east, poolInput({ name }));
-    const b = await pools.upsert(west, poolInput({ name, repo: "other/repo" }));
+    const a = await pools.upsertPool(east, poolInput({ name }));
+    const b = await pools.upsertPool(west, poolInput({ name }));
     expect(b.created).toBe(true);
+    await pools.setRepos(west, name, [{ repoUrl: SITE, replicas: 1 }]);
     expect(await pools.list(east)).toEqual([a.pool]);
-    expect(await pools.list(west)).toEqual([b.pool]);
 
-    expect(await pools.delete(east, name)).toBe(true);
+    expect(await pools.deletePool(east, name)).toBe(true);
     expect(await pools.list(east)).toEqual([]);
-    expect(await pools.list(west)).toEqual([b.pool]);
+    expect((await pools.list(west))[0]?.repos).toHaveLength(1);
   });
 });
 
 describe("tenantPoolReader", () => {
   beforeAll(() => migrateSandboxControllerSchema({ url }));
 
-  it("picks up a new pool on refresh and keeps the last list when a load fails", async () => {
+  it("picks up a new pool and its repos on refresh and keeps the last list when a load fails", async () => {
     const cluster = `c_${randomUUID()}`;
     const readerStore = postgresTenantPoolStore({ url });
     const reader = tenantPoolReader(readerStore, cluster, {
@@ -338,23 +461,30 @@ describe("tenantPoolReader", () => {
       expect(await reader.start()).toEqual([]);
       expect(current()).toEqual([]);
 
-      const input = poolInput({ connectionId: "conn_1" });
-      await pools.upsert(cluster, input);
+      const input = poolInput();
+      await pools.upsertPool(cluster, input);
+      await pools.setRepos(cluster, input.name, [
+        { repoUrl: SITE, replicas: 1 },
+      ]);
       await reader.refresh();
       const expected = [
         {
-          name: input.name,
-          orgId: input.orgId,
-          repo: "acme/site",
-          branch: "main",
-          connectionId: "conn_1",
-          workload: { runtime: "node" },
+          ...input,
+          image: "default",
+          repos: [
+            {
+              repoUrl: SITE,
+              branch: "main",
+              workload: { runtime: "node" },
+              replicas: 1,
+            },
+          ],
         },
       ];
       expect(current()).toEqual(expected);
 
       await readerStore.close();
-      await pools.upsert(cluster, poolInput());
+      await pools.upsertPool(cluster, poolInput());
       expect(await reader.refresh()).toEqual(expected);
       expect(current()).toEqual(expected);
     } finally {

@@ -437,21 +437,18 @@ export class RemoteSandboxProvider implements SandboxProvider {
   }
 
   /** An accelerator only: the host's pools refresh on schedule anyway. */
-  async markTenantPoolsDirty(
-    repoFullName: string,
-    ref: string,
-  ): Promise<string[]> {
+  async markTenantPoolsDirty(repoUrl: string, ref: string): Promise<string[]> {
     try {
       return (
         await this.call(
           SANDBOX_TOOLS.tenantPoolsPush,
-          { repo: repoFullName, ref },
+          { repoUrl, ref },
           tenantPoolsPushOutputSchema,
         )
       ).pools;
     } catch (err) {
       console.warn(
-        `[${LOG_LABEL}] tenant pool push for ${repoFullName}@${ref} failed: ${errMsg(err)}`,
+        `[${LOG_LABEL}] tenant pool push for ${repoUrl}@${ref} failed: ${errMsg(err)}`,
       );
       return [];
     }

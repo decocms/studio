@@ -68,7 +68,8 @@ Keep from #7461:
 - Template name `<base>-<variant>[-medium]`, probed per name with the existing
   TTL cache, degrading to the base template with a warning when the cluster
   does not render it.
-- A non-default image opts out of tenant pools (built from the default image).
+- A tenant pool is built for one image; a claim binds only a pool of its own
+  image, on that image's `-medium` template.
 
 Change from #7461:
 

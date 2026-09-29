@@ -153,7 +153,7 @@ export const emptySchema = z.object({});
 export const capacityOutputSchema = z.object({ schedulable: z.boolean() });
 
 export const tenantPoolsPushInputSchema = z.object({
-  repo: z.string().min(1),
+  repoUrl: z.string().min(1).max(CLONE_URL_MAX),
   ref: z.string().min(1),
 });
 export const tenantPoolsPushOutputSchema = z.object({
@@ -212,18 +212,31 @@ export type RepoIdentity = z.infer<typeof repoIdentitySchema>;
 
 export const CREDENTIALS_PUSH_MAX = 2_000;
 
-/** `tenant: null` is a tenant pool's credential. */
+const pushedCloneUrl = z.url({ protocol: /^https?$/ }).max(CLONE_URL_MAX);
+
 export const credentialsPushInputSchema = z.object({
   cloneUrls: z
     .array(
       z.object({
-        tenant: tenantIdsSchema.nullable(),
+        tenant: tenantIdsSchema,
         repo: repoIdentitySchema,
-        cloneUrl: z.url({ protocol: /^https?$/ }).max(CLONE_URL_MAX),
+        cloneUrl: pushedCloneUrl,
         expiresAt,
       }),
     )
     .max(CREDENTIALS_PUSH_MAX),
+  /** Clone URLs for tenant pool allocations, keyed by the pool's tenant and repo. */
+  poolCloneUrls: z
+    .array(
+      z.object({
+        tenant: id,
+        repoUrl: z.string().min(1).max(CLONE_URL_MAX),
+        cloneUrl: pushedCloneUrl,
+        expiresAt,
+      }),
+    )
+    .max(CREDENTIALS_PUSH_MAX)
+    .default([]),
   orgFsConfigs: z
     .array(
       z.object({
@@ -243,6 +256,7 @@ export const credentialsPushOutputSchema = z.object({
 
 export const SANDBOX_LIST_MAX = 5_000;
 export const SANDBOX_LIST_POOLS_MAX = 500;
+export const SANDBOX_LIST_POOL_REPOS_MAX = 100;
 
 /** The host's live sandboxes and its tenant pools, without credentials. */
 export const listOutputSchema = z.object({
@@ -264,10 +278,16 @@ export const listOutputSchema = z.object({
     .array(
       z.object({
         name: id,
-        orgId: id,
-        /** GitHub `owner/name`. */
-        repo: id,
-        connectionId: id.optional(),
+        tenant: id,
+        image: SandboxImageSchema,
+        repos: z
+          .array(
+            z.object({
+              repoUrl: z.string().min(1).max(CLONE_URL_MAX),
+              branch: z.string().min(1),
+            }),
+          )
+          .max(SANDBOX_LIST_POOL_REPOS_MAX),
       }),
     )
     .max(SANDBOX_LIST_POOLS_MAX)

@@ -21,6 +21,7 @@ import {
   listOutputSchema,
   SANDBOX_LIST_MAX,
   SANDBOX_LIST_POOLS_MAX,
+  SANDBOX_LIST_POOL_REPOS_MAX,
   SANDBOX_TOOLS,
   SANDBOX_WATCH_KEEPALIVE_MS,
   statusInputSchema,
@@ -180,8 +181,8 @@ export function sandboxTools(
         "Refresh the tenant warm pools serving a repo and branch after a push.",
       inputSchema: tenantPoolsPushInputSchema,
       outputSchema: tenantPoolsPushOutputSchema,
-      execute: async ({ repo, ref }) => ({
-        pools: await provider().markTenantPoolsDirty(repo, ref),
+      execute: async ({ repoUrl, ref }) => ({
+        pools: await provider().markTenantPoolsDirty(repoUrl, ref),
       }),
     }),
     tool({
@@ -211,11 +212,13 @@ export function sandboxTools(
         pools: provider()
           .listTenantPools()
           .slice(0, SANDBOX_LIST_POOLS_MAX)
-          .map(({ name, orgId, repo, connectionId }) => ({
+          .map(({ name, tenant, image, repos }) => ({
             name,
-            orgId,
-            repo,
-            ...(connectionId ? { connectionId } : {}),
+            tenant,
+            image,
+            repos: repos
+              .slice(0, SANDBOX_LIST_POOL_REPOS_MAX)
+              .map(({ repoUrl, branch }) => ({ repoUrl, branch })),
           })),
       }),
     }),
