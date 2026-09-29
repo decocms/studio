@@ -54,7 +54,7 @@ rules:
   # and the pool sits full of empty pods, which reads as "nothing happened".
   - apiGroups: ["extensions.agents.x-k8s.io"]
     resources: ["sandboxwarmpools"]
-    verbs: ["get"]
+    verbs: {{ if .Values.hostManagedTenantPools }}["get", "list", "create", "patch", "delete"]{{ else }}["get"]{{ end }}
   # Studio checks that the `-medium` SandboxTemplate exists before naming it on
   # a claim (see the runner's resolveTemplateName). A 403 here reads the same as
   # absent, so a deploy that misses this rule silently keeps every claim on the
