@@ -167,10 +167,13 @@ RUN arch="$(dpkg --print-architecture)" \
   && gh --version
 
 # `glab`, the GitLab counterpart: agents working on a GitLab-hosted repository
-# open merge requests with it, fed GITLAB_TOKEN + GITLAB_HOST per run by the
-# daemon (same RunEnv, keyed off the clone URL's `oauth2` userinfo). Release
-# tarball, pinned, per-arch — same reasoning as `gh` above.
-ARG GLAB_CLI_VERSION=1.57.0
+# open merge requests with it, fed GITLAB_TOKEN, GITLAB_HOST and GLAB_IS_OAUTH2
+# per run by the daemon (same RunEnv, keyed off the clone URL's `oauth2`
+# userinfo). Release tarball, pinned, per-arch — same reasoning as `gh` above.
+# Keep it at 1.82.0 or later: older releases require an `oauth2_expiry_date`
+# the daemon's glab config does not carry, and fail every API call before
+# sending it.
+ARG GLAB_CLI_VERSION=1.119.0
 RUN arch="$(dpkg --print-architecture)" \
   && curl -fsSL --retry 3 \
        "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_CLI_VERSION}/downloads/glab_${GLAB_CLI_VERSION}_linux_${arch}.tar.gz" \
@@ -178,6 +181,15 @@ RUN arch="$(dpkg --print-architecture)" \
   && mv /tmp/bin/glab /usr/local/bin/glab \
   && rm -rf /tmp/bin \
   && glab --version
+# The daemon rewrites glab's config before every run, which resets the state
+# that limits the update check to once a day and the post-upgrade banner to
+# once per version. Left on, the first glab command of every run can end with
+# an update notice and the banner, pushing its own output (an MR link) out of
+# a `| tail`. Telemetry would report an agent's commands to the GitLab
+# instance as the user's own.
+ENV GLAB_CHECK_UPDATE=0 \
+    GLAB_SHOW_WHATS_NEW=0 \
+    GLAB_SEND_TELEMETRY=0
 
 # The claude-code harness: the Claude Agent SDK (a TS library) plus the `claude`
 # CLI it drives. The daemon execs the runner once per run — see
