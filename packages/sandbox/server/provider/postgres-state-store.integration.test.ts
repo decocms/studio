@@ -61,7 +61,7 @@ describe("migrateSandboxControllerSchema", () => {
     try {
       const versions = await sql`
         select version from sandbox_controller.migrations order by version`;
-      expect(versions.map((row) => row.version)).toEqual([1, 2]);
+      expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
       const [tables] = await sql`
         select to_regclass('sandbox_controller.runner_state') as runner_state,
           to_regclass('sandbox_controller.tenant_pools') as tenant_pools,
@@ -76,14 +76,22 @@ describe("migrateSandboxControllerSchema", () => {
     }
   });
 
-  it("upgrades a v1-only database to v2 concurrently, keeping its runner state", async () => {
+  it("upgrades a v1-only database concurrently, keeping its runner state in the default scope", async () => {
     await migrateSandboxControllerSchema({ url });
     const sql = postgres(url, { max: 1 });
     const id = sandboxId();
     try {
       await sql`drop table sandbox_controller.tenant_pool_repos, sandbox_controller.tenant_pools`;
+      await sql.unsafe(`
+        alter table sandbox_controller.runner_state drop constraint runner_state_pkey;
+        drop index sandbox_controller.runner_state_handle_idx;
+        alter table sandbox_controller.runner_state drop column scope;
+        alter table sandbox_controller.runner_state add primary key (user_id, project_ref);
+        create index runner_state_handle_idx on sandbox_controller.runner_state (handle);`);
       await sql`delete from sandbox_controller.migrations where version > 1`;
-      await store.put(id, { handle: "h_v1", state: { kept: true } });
+      await sql`
+        insert into sandbox_controller.runner_state (user_id, project_ref, handle, state)
+        values (${id.userId}, ${id.projectRef}, 'h_v1', ${sql.json({ kept: true })})`;
 
       await Promise.all([
         migrateSandboxControllerSchema({ url }),
@@ -94,7 +102,7 @@ describe("migrateSandboxControllerSchema", () => {
 
       const versions = await sql`
         select version from sandbox_controller.migrations order by version`;
-      expect(versions.map((row) => row.version)).toEqual([1, 2]);
+      expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
       expect((await store.get(id))?.state).toEqual({ kept: true });
       expect(await pools.list(`c_${randomUUID()}`)).toEqual([]);
     } finally {
@@ -106,6 +114,57 @@ describe("migrateSandboxControllerSchema", () => {
 
 describe("postgresRunnerStateStore", () => {
   beforeAll(() => migrateSandboxControllerSchema({ url }));
+
+  it("keeps each scope's rows apart, by id and by handle", async () => {
+    const stg = postgresRunnerStateStore({ url, scope: "stg" });
+    const prod = postgresRunnerStateStore({ url, scope: "prod" });
+    const id = sandboxId();
+    const handle = `h_${randomUUID()}`;
+    try {
+      await stg.put(id, { handle, state: { env: "stg" } });
+      await prod.put(id, { handle, state: { env: "prod" } });
+      expect((await stg.get(id))?.state).toEqual({ env: "stg" });
+      expect((await prod.get(id))?.state).toEqual({ env: "prod" });
+      expect(await store.get(id)).toBeNull();
+      expect((await prod.getByHandle(handle))?.state).toEqual({ env: "prod" });
+      expect(await store.getByHandle(handle)).toBeNull();
+
+      await stg.deleteByHandle(handle);
+      expect(await stg.get(id)).toBeNull();
+      expect((await prod.get(id))?.state).toEqual({ env: "prod" });
+      await prod.delete(id);
+      expect(await prod.get(id)).toBeNull();
+    } finally {
+      await stg.close();
+      await prod.close();
+    }
+  });
+
+  it("locks per scope: the same id in another scope is not blocked", async () => {
+    const stg = postgresRunnerStateStore({ url, scope: "stg" });
+    const prod = postgresRunnerStateStore({
+      url,
+      scope: "prod",
+      lockWaitMs: 2_000,
+    });
+    const id = sandboxId();
+    const held = deferred();
+    const release = deferred();
+    try {
+      const holder = stg.withLock(id, async () => {
+        held.resolve();
+        await release.promise;
+      });
+      await held.promise;
+      expect(await prod.withLock(id, async () => "free")).toBe("free");
+      release.resolve();
+      await holder;
+    } finally {
+      release.resolve();
+      await stg.close();
+      await prod.close();
+    }
+  });
 
   it("upserts, reads by id and by handle, and deletes", async () => {
     const id = sandboxId();

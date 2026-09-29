@@ -23,6 +23,8 @@ import type { SandboxId } from "./types";
 
 export interface PostgresRunnerStateStoreOptions {
   url: string;
+  /** Keeps one host's rows apart from another's sharing the database, e.g. one per Studio env. Default `""`. */
+  scope?: string;
   maxConnections?: number;
   lockWaitMs?: number;
 }
@@ -75,16 +77,20 @@ const MIGRATIONS = [
     replicas integer not null check (replicas >= 1),
     unique (pool_id, repo_url, branch)
   );`,
+  `alter table sandbox_controller.runner_state add column scope text not null default '';
+  alter table sandbox_controller.runner_state drop constraint runner_state_pkey;
+  alter table sandbox_controller.runner_state add primary key (scope, user_id, project_ref);
+  drop index sandbox_controller.runner_state_handle_idx;
+  create index runner_state_handle_idx on sandbox_controller.runner_state (scope, handle);`,
 ];
 
 function advisoryKey(value: string): string {
   return hash("sha256", value, "buffer").readBigInt64BE(0).toString();
 }
 
-function lockKey(id: SandboxId): string {
-  return advisoryKey(
-    `${id.userId}\x00${id.projectRef}\x00${SANDBOX_PROVIDER_KIND}`,
-  );
+function lockKey(id: SandboxId, scope: string): string {
+  const key = `${id.userId}\x00${id.projectRef}\x00${SANDBOX_PROVIDER_KIND}`;
+  return advisoryKey(scope ? `${key}\x00${scope}` : key);
 }
 
 function toRecord(row: Row): RunnerStateRecordWithId {
@@ -96,12 +102,12 @@ function toRecord(row: Row): RunnerStateRecordWithId {
   };
 }
 
-function ops(exec: Executor): RunnerStateStoreOps {
+function ops(exec: Executor, scope: string): RunnerStateStoreOps {
   return {
     async get(id): Promise<RunnerStateRecord | null> {
       const [row] = await exec<Row[]>`
         select handle, state, updated_at from sandbox_controller.runner_state
-        where user_id = ${id.userId} and project_ref = ${id.projectRef}`;
+        where scope = ${scope} and user_id = ${id.userId} and project_ref = ${id.projectRef}`;
       return row
         ? { handle: row.handle, state: row.state, updatedAt: row.updated_at }
         : null;
@@ -109,7 +115,8 @@ function ops(exec: Executor): RunnerStateStoreOps {
     async getByHandle(handle) {
       const [row] = await exec<Row[]>`
         select user_id, project_ref, handle, state, updated_at
-        from sandbox_controller.runner_state where handle = ${handle} limit 1`;
+        from sandbox_controller.runner_state
+        where scope = ${scope} and handle = ${handle} limit 1`;
       return row ? toRecord(row) : null;
     },
     async put(id, entry: RunnerStatePut) {
@@ -117,18 +124,20 @@ function ops(exec: Executor): RunnerStateStoreOps {
       const now = new Date().toISOString();
       await exec`
         insert into sandbox_controller.runner_state
-          (user_id, project_ref, handle, state, updated_at)
-        values (${id.userId}, ${id.projectRef}, ${entry.handle}, ${state}::text::jsonb, ${now})
-        on conflict (user_id, project_ref) do update set
+          (scope, user_id, project_ref, handle, state, updated_at)
+        values (${scope}, ${id.userId}, ${id.projectRef}, ${entry.handle}, ${state}::text::jsonb, ${now})
+        on conflict (scope, user_id, project_ref) do update set
           handle = excluded.handle, state = excluded.state, updated_at = excluded.updated_at`;
     },
     async delete(id) {
       await exec`
         delete from sandbox_controller.runner_state
-        where user_id = ${id.userId} and project_ref = ${id.projectRef}`;
+        where scope = ${scope} and user_id = ${id.userId} and project_ref = ${id.projectRef}`;
     },
     async deleteByHandle(handle) {
-      await exec`delete from sandbox_controller.runner_state where handle = ${handle}`;
+      await exec`
+        delete from sandbox_controller.runner_state
+        where scope = ${scope} and handle = ${handle}`;
     },
   };
 }
@@ -172,12 +181,13 @@ export async function migrateSandboxControllerSchema({
 /** `RunnerStateStore` on its own pool, since a lock holder keeps a connection for a whole provisioning. */
 export function postgresRunnerStateStore({
   url,
+  scope = "",
   maxConnections = DEFAULT_MAX_CONNECTIONS,
   lockWaitMs = DEFAULT_LOCK_WAIT_MS,
 }: PostgresRunnerStateStoreOptions): PostgresRunnerStateStore {
   const sql = postgres(url, { max: maxConnections, prepare: false });
   return {
-    ...ops(sql),
+    ...ops(sql, scope),
     async withLock<T>(
       id: SandboxId,
       fn: (store: RunnerStateStoreOps) => Promise<T>,
@@ -186,7 +196,7 @@ export function postgresRunnerStateStore({
       await sql.begin(async (tx) => {
         try {
           await tx.unsafe(`set local statement_timeout = ${lockWaitMs}`);
-          await tx`select pg_advisory_xact_lock(${lockKey(id)}::bigint)`;
+          await tx`select pg_advisory_xact_lock(${lockKey(id, scope)}::bigint)`;
         } catch (err) {
           if (isStatementTimeoutError(err)) {
             throw new Error(
@@ -196,7 +206,7 @@ export function postgresRunnerStateStore({
           throw err;
         }
         await tx`set local statement_timeout = 0`;
-        result = await fn(ops(tx));
+        result = await fn(ops(tx, scope));
       });
       return result;
     },
