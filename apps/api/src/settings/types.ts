@@ -19,6 +19,11 @@ export interface Settings {
   publicUrl: string | undefined;
   dataDir: string;
 
+  // Voice (ElevenLabs)
+  elevenlabsApiKey: string | undefined;
+  elevenlabsVoiceId: string;
+  elevenlabsVoiceModel: string;
+
   // Database
   databaseUrl: string;
   databasePgSsl: boolean;

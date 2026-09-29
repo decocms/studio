@@ -239,6 +239,9 @@ export function resolveConfig(
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
+    elevenlabsApiKey: envVars.ELEVENLABS_API_KEY,
+    elevenlabsVoiceId: envVars.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb",
+    elevenlabsVoiceModel: envVars.ELEVENLABS_VOICE_MODEL || "eleven_v4_turbo",
 
     // Database (url resolved after services start)
     databasePgSsl: toBool(envVars.DATABASE_PG_SSL),

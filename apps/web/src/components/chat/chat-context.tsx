@@ -108,6 +108,7 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -147,6 +148,7 @@ import {
 // ============================================================================
 
 export interface ChatStreamContextValue {
+  sendVoiceMessage?: (messageId: string, text: string) => Promise<boolean>;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
   sendMessage: (
@@ -858,6 +860,7 @@ export function ActiveTaskProvider({
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
+  const voiceEnabled = useOrgFlag("voice_mode");
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
@@ -1217,7 +1220,10 @@ export function ActiveTaskProvider({
   // rethrows) and resolves `false` on failure so edit-flow callers can react;
   // the immediate-submit branch still RETHROWS on failure — unchanged
   // plain-send behavior (sendMessageInternal ignores the return value).
-  async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
+  async function dispatchUserMessage(
+    message: ChatMessage,
+    voiceMode = false,
+  ): Promise<boolean> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
@@ -1288,6 +1294,7 @@ export function ActiveTaskProvider({
     }
 
     const requestOptions: RequestOptions = {
+      ...(voiceMode || voiceEnabled ? { voiceMode } : {}),
       tier: activeTier,
       mode: modeToSend,
       toolApprovalLevel:
@@ -1531,6 +1538,26 @@ export function ActiveTaskProvider({
   // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
+    sendVoiceMessage: async (messageId, text) => {
+      if (sendInFlight.has(taskId)) return false;
+      sendInFlight.add(taskId);
+      setChatError(null);
+      return dispatchUserMessage(
+        {
+          id: messageId,
+          role: "user",
+          parts: [{ type: "text", text }],
+          metadata: {
+            created_at: new Date().toISOString(),
+            user: {
+              name: user?.name ?? "you",
+              avatar: user?.image ?? undefined,
+            },
+          },
+        },
+        true,
+      );
+    },
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,
