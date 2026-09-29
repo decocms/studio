@@ -3,9 +3,9 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { connectDevDb } from "../fixtures/db";
 
 for (const scenario of [
-  "enabled",
-  "absent",
-  "disabled",
+  "no-flag",
+  "legacy-enabled",
+  "legacy-disabled",
   "other-user",
   "other-branch",
 ] as const) {
@@ -18,10 +18,10 @@ for (const scenario of [
       "ORGANIZATION_GET",
       {},
     );
-    if (scenario !== "absent")
+    if (scenario === "legacy-enabled" || scenario === "legacy-disabled")
       await callSelfMcpTool(api, orgSlug, "ORGANIZATION_SETTINGS_UPDATE", {
         organizationId: orgId,
-        flags: { coding_agent_project_context: scenario !== "disabled" },
+        flags: {},
       });
     const { item: connection } = await callSelfMcpTool<{
       item: { id: string };
@@ -65,6 +65,19 @@ for (const scenario of [
     );
     const seedDb = await connectDevDb();
     try {
+      if (scenario === "legacy-enabled" || scenario === "legacy-disabled") {
+        // The retired flag cannot be written through the current API schema.
+        const updated = await seedDb.query(
+          `UPDATE organization_settings SET flags = COALESCE(flags, '{}'::jsonb) || $1::jsonb WHERE "organizationId" = $2`,
+          [
+            JSON.stringify({
+              coding_agent_project_context: scenario === "legacy-enabled",
+            }),
+            orgId,
+          ],
+        );
+        expect(updated.rowCount).toBe(1);
+      }
       // Sandbox records have no client-write API; lifecycle owns this metadata.
       await seedDb.query(
         "UPDATE connections SET metadata = (COALESCE(metadata, '{}')::jsonb || $1::jsonb)::text WHERE id = $2 AND organization_id = $3",
@@ -109,7 +122,7 @@ for (const scenario of [
     );
     expect(response.status()).toBe(200);
     const envelope = await response.json();
-    if (scenario !== "enabled") {
+    if (scenario === "other-user" || scenario === "other-branch") {
       expect(envelope.result?.isError).toBe(true);
       expect(envelope.result.content[0].text).toContain(
         "No sandbox is registered",

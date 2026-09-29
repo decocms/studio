@@ -113,7 +113,6 @@ export interface StudioToolIO {
       flags?:
         | {
             voice_mode?: boolean | undefined;
-            coding_agent_project_context?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -192,7 +191,6 @@ export interface StudioToolIO {
       flags?:
         | {
             voice_mode?: boolean | undefined;
-            coding_agent_project_context?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -267,7 +265,6 @@ export interface StudioToolIO {
       flags?:
         | {
             voice_mode?: boolean | undefined;
-            coding_agent_project_context?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
