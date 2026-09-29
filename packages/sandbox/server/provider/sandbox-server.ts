@@ -7,18 +7,19 @@
 import type { z } from "zod";
 import { ConfigRequestError } from "../daemon-client";
 import type { AgentSandboxProvider } from "./agent-sandbox";
-import type { MintScope } from "./agent-sandbox/runner";
+import type { PushedCredentials } from "./pushed-credentials";
 import type { EnsureOptions } from "./types";
 import {
   capacityOutputSchema,
-  cloneUrlResponseSchema,
+  credentialsPushInputSchema,
+  credentialsPushOutputSchema,
   emptySchema,
   ensureInputSchema,
   ensureOutputSchema,
   handleInputSchema,
   lifetimeInputSchema,
-  orgFsConfigResponseSchema,
-  SANDBOX_CALLBACK_PATHS,
+  listOutputSchema,
+  SANDBOX_LIST_MAX,
   SANDBOX_TOOLS,
   SANDBOX_WATCH_KEEPALIVE_MS,
   statusInputSchema,
@@ -82,11 +83,22 @@ type Provider = Pick<
   | "releaseAfter"
   | "hasSchedulableCapacity"
   | "markTenantPoolsDirty"
+  | "listSandboxes"
 >;
 
-/** `provider` is read per call, so a host can build it lazily. */
+export {
+  PushedCredentials,
+  pushedCredentialOptions,
+} from "./pushed-credentials";
+
+/**
+ * `provider` is read per call, so a host can build it lazily. `credentials`
+ * is the store the provider's mint hooks read (`pushedCredentialOptions`):
+ * ensure seeds it, and Studio's pushes refresh it.
+ */
 export function sandboxTools(
   provider: () => Provider,
+  credentials: PushedCredentials,
 ): SandboxToolDefinition[] {
   return [
     tool({
@@ -95,9 +107,10 @@ export function sandboxTools(
         "Provision (or resume) a user's sandbox and wait until its daemon is ready. Returns the handle and the daemon's address and bearer.",
       inputSchema: ensureInputSchema,
       outputSchema: ensureOutputSchema,
-      execute: async ({ id, opts }) => {
+      execute: async ({ id, opts, credentialsValidUntil }) => {
         // The wire type drops `image`; nothing else differs.
         const ensureOpts: EnsureOptions = opts;
+        credentials.seed(ensureOpts, credentialsValidUntil);
         const sandbox = await provider().ensure(id, ensureOpts);
         const daemon = await provider().daemonEndpoint(sandbox.handle);
         if (!daemon) {
@@ -169,6 +182,32 @@ export function sandboxTools(
         pools: await provider().markTenantPoolsDirty(repo, ref),
       }),
     }),
+    tool({
+      id: SANDBOX_TOOLS.credentialsPush,
+      description:
+        "Store fresh clone credentials and org-fs configs, in memory, for the sandboxes' re-mints.",
+      inputSchema: credentialsPushInputSchema,
+      outputSchema: credentialsPushOutputSchema,
+      execute: async (batch) => credentials.push(batch),
+    }),
+    tool({
+      id: SANDBOX_TOOLS.list,
+      description:
+        "The live sandboxes' tenants and repos, without credentials, for Studio's credential push.",
+      inputSchema: emptySchema,
+      outputSchema: listOutputSchema,
+      execute: async () => ({
+        sandboxes: provider()
+          .listSandboxes()
+          .slice(0, SANDBOX_LIST_MAX)
+          .map((sandbox) => ({
+            ...sandbox,
+            orgFsConfigExpiresAt: sandbox.tenant
+              ? credentials.orgFsConfigExpiresAt(sandbox.tenant)
+              : null,
+          })),
+      }),
+    }),
   ];
 }
 
@@ -231,72 +270,4 @@ export function sandboxWatchResponse(
       "cache-control": "no-cache",
     },
   });
-}
-
-const CALLBACK_TIMEOUT_MS = 30_000;
-
-/**
- * `mintCloneUrl` / `mintOrgFsConfig` for a host outside Studio: both ask the
- * Studio at `studioUrl`. Best-effort like the in-process minters: a failure
- * logs and answers null, so the runner keeps the credential it has.
- */
-export function studioCredentialMinters(opts: {
-  studioUrl: string;
-  token: string;
-}) {
-  const post = async <T>(
-    path: string,
-    body: unknown,
-    schema: z.ZodType<T>,
-  ): Promise<T | null> => {
-    try {
-      const res = await fetch(new URL(path, opts.studioUrl), {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${opts.token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(CALLBACK_TIMEOUT_MS),
-      });
-      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-      return schema.parse(await res.json());
-    } catch (err) {
-      console.warn(
-        `[sandbox] Studio callback ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return null;
-    }
-  };
-  return {
-    mintCloneUrl: async (
-      repo: NonNullable<EnsureOptions["repo"]>,
-      mintOpts?: MintScope & { bufferMs?: number },
-    ) =>
-      (
-        await post(
-          SANDBOX_CALLBACK_PATHS.cloneUrl,
-          {
-            cloneUrl: repo.cloneUrl,
-            connectionId: repo.connectionId,
-            repositoryId: repo.repositoryId,
-            tenant: mintOpts?.tenant,
-            bufferMs: mintOpts?.bufferMs,
-            grant: mintOpts?.callbackGrant,
-          },
-          cloneUrlResponseSchema,
-        )
-      )?.cloneUrl ?? null,
-    mintOrgFsConfig: async (
-      tenant: NonNullable<EnsureOptions["tenant"]>,
-      mintOpts?: Pick<MintScope, "callbackGrant">,
-    ) =>
-      (
-        await post(
-          SANDBOX_CALLBACK_PATHS.orgFsConfig,
-          { tenant, grant: mintOpts?.callbackGrant },
-          orgFsConfigResponseSchema,
-        )
-      )?.orgFsConfigJson ?? null,
-  };
 }

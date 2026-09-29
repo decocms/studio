@@ -1,8 +1,9 @@
 /**
  * The sandbox API a host of `AgentSandboxProvider` (the control plane) serves
- * to Studio: MCP tools for calls, one SSE route for claim phases, and two
- * callbacks back into Studio for credentials only Studio can mint. Both sides
- * import these schemas, so a change breaks both builds instead of a parse.
+ * to Studio: MCP tools for calls and one SSE route for claim phases. The host
+ * never calls Studio: credentials only Studio can mint arrive with each ensure
+ * and on Studio's periodic `SANDBOX_CREDENTIALS_PUSH`. Both sides import these
+ * schemas, so a change breaks both builds instead of a parse.
  */
 
 import { z } from "zod";
@@ -22,6 +23,8 @@ export const SANDBOX_TOOLS = {
   lifetime: "SANDBOX_LIFETIME",
   capacity: "SANDBOX_CAPACITY",
   tenantPoolsPush: "SANDBOX_TENANT_POOLS_PUSH",
+  credentialsPush: "SANDBOX_CREDENTIALS_PUSH",
+  list: "SANDBOX_LIST",
 } as const;
 
 /**
@@ -32,20 +35,11 @@ export const SANDBOX_TOOLS = {
 export const SANDBOX_WATCH_PATH = "/api/sandbox/watch";
 export const SANDBOX_WATCH_KEEPALIVE_MS = 15_000;
 
-/**
- * Studio routes the host calls, with the same bearer both ways. The bearer
- * only says the caller is the host; the `grant` Studio put in the sandbox's
- * ensure options says which tenant and repos it may mint for.
- */
-export const SANDBOX_CALLBACK_PATHS = {
-  cloneUrl: "/api/sandbox-callbacks/clone-url",
-  orgFsConfig: "/api/sandbox-callbacks/org-fs-config",
-} as const;
-
 const id = z.string().min(1).max(512);
-const GRANT_MAX = 16_384;
-/** Absent for a tenant pool's pod, which its pool config vouches for. */
-const grant = z.string().min(1).max(GRANT_MAX).optional();
+const CLONE_URL_MAX = 4096;
+const ORG_FS_CONFIG_MAX = 65_536;
+/** Epoch ms. */
+const expiresAt = z.number().int().positive();
 
 export const sandboxIdSchema = z.object({
   userId: id,
@@ -62,7 +56,7 @@ const tenantSchema = z.object({
 });
 
 const repoSchema = z.object({
-  cloneUrl: z.string().min(1).max(4096),
+  cloneUrl: z.string().min(1).max(CLONE_URL_MAX),
   connectionId: z.string().optional(),
   repositoryId: z.string().optional(),
   userName: z.string(),
@@ -94,8 +88,7 @@ export const ensureOptionsSchema: z.ZodType<Omit<EnsureOptions, "image">> =
     cloneOnly: z.boolean().optional(),
     env: z.record(z.string(), z.string()).optional(),
     tenant: tenantSchema.optional(),
-    orgFsConfigJson: z.string().optional(),
-    callbackGrant: z.string().max(GRANT_MAX).optional(),
+    orgFsConfigJson: z.string().max(ORG_FS_CONFIG_MAX).optional(),
   });
 
 export const daemonSchema = z.object({
@@ -107,6 +100,13 @@ export type Daemon = z.infer<typeof daemonSchema>;
 export const ensureInputSchema = z.object({
   id: sandboxIdSchema,
   opts: ensureOptionsSchema,
+  /** Until when the credentials in `opts` stay valid, at least; unset keeps them out of the host's store. */
+  credentialsValidUntil: z
+    .object({
+      cloneUrl: expiresAt.optional(),
+      orgFsConfig: expiresAt.optional(),
+    })
+    .optional(),
 });
 
 export const ensureOutputSchema = z.object({
@@ -196,27 +196,67 @@ export const claimPhaseSchema: z.ZodType<ClaimPhase> = z.discriminatedUnion(
   ],
 );
 
-export const cloneUrlRequestSchema = z
-  .object({
-    cloneUrl: z.url({ protocol: /^https?$/ }).max(4096),
-    connectionId: z.string().min(1).optional(),
-    repositoryId: z.string().min(1).optional(),
-    /** Absent for a tenant pool's pod. */
-    tenant: tenantSchema.optional(),
-    bufferMs: z.number().int().nonnegative().optional(),
-    grant,
-  })
-  .refine((r) => r.connectionId !== undefined || r.repositoryId !== undefined, {
-    message: "connectionId or repositoryId is required",
-  });
-export const cloneUrlResponseSchema = z.object({
-  cloneUrl: z.string().nullable(),
+const tenantIdsSchema = z.object({ orgId: id, userId: id });
+
+/**
+ * A repo as its credential is keyed: by repository record, or by connection
+ * and lowercased GitHub `owner/name`, which is what each mint path trusts.
+ */
+export const repoIdentitySchema = z.union([
+  z.object({ repositoryId: id }).strict(),
+  z.object({ connectionId: id, repo: id }).strict(),
+]);
+export type RepoIdentity = z.infer<typeof repoIdentitySchema>;
+
+export const CREDENTIALS_PUSH_MAX = 2_000;
+
+/** `tenant: null` is a tenant pool's credential. */
+export const credentialsPushInputSchema = z.object({
+  cloneUrls: z
+    .array(
+      z.object({
+        tenant: tenantIdsSchema.nullable(),
+        repo: repoIdentitySchema,
+        cloneUrl: z.url({ protocol: /^https?$/ }).max(CLONE_URL_MAX),
+        expiresAt,
+      }),
+    )
+    .max(CREDENTIALS_PUSH_MAX),
+  orgFsConfigs: z
+    .array(
+      z.object({
+        tenant: tenantIdsSchema,
+        orgFsConfigJson: z.string().min(1).max(ORG_FS_CONFIG_MAX),
+        expiresAt,
+      }),
+    )
+    .max(CREDENTIALS_PUSH_MAX),
+});
+export type CredentialsPush = z.infer<typeof credentialsPushInputSchema>;
+/** `kept`: an entry the host already held with a later expiry, or already expired. */
+export const credentialsPushOutputSchema = z.object({
+  stored: z.number().int().nonnegative(),
+  kept: z.number().int().nonnegative(),
 });
 
-export const orgFsConfigRequestSchema = z.object({
-  tenant: tenantSchema,
-  grant,
+export const SANDBOX_LIST_MAX = 5_000;
+
+/** The host's live sandboxes, without credentials. */
+export const listOutputSchema = z.object({
+  sandboxes: z
+    .array(
+      z.object({
+        handle: id,
+        tenant: tenantIdsSchema.nullable(),
+        repos: z.array(repoIdentitySchema).max(16),
+        /** The sandbox mounts org-fs. */
+        orgFs: z.boolean(),
+        /** When the org-fs config the host holds for its tenant expires. */
+        orgFsConfigExpiresAt: expiresAt.nullable(),
+      }),
+    )
+    .max(SANDBOX_LIST_MAX),
 });
-export const orgFsConfigResponseSchema = z.object({
-  orgFsConfigJson: z.string().nullable(),
-});
+export type SandboxListing = z.infer<
+  typeof listOutputSchema
+>["sandboxes"][number];

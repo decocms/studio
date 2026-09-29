@@ -27,11 +27,12 @@ which are private, and bundles it into one module with declarations.
 - Export `AgentSandboxProvider`, its option and state-store types, and
   `kubeConfigForServer`, a credential-less kubeconfig for a local proxy, built
   with the package's own client.
-- Export the wire contract in `sandbox-api`: tool names and schemas, the watch
-  route, and the credential callbacks into Studio.
+- Export the wire contract in `sandbox-api`: tool names and schemas, and the
+  watch route.
 - Export host helpers: `sandboxTools` (framework-free tool definitions),
-  `sandboxWatchResponse` (claim phases as SSE), and `studioCredentialMinters`
-  (re-mint clone URLs and org-fs configs through Studio).
+  `sandboxWatchResponse` (claim phases as SSE), `PushedCredentials` (the
+  in-memory store of the credentials Studio pushes) and
+  `pushedCredentialOptions` (the provider's mint hooks over that store).
 
 ## Usage
 
@@ -39,10 +40,14 @@ which are private, and bundles it into one module with declarations.
 import {
   AgentSandboxProvider,
   kubeConfigForServer,
+  PushedCredentials,
+  pushedCredentialOptions,
   sandboxTools,
   sandboxWatchResponse,
-  studioCredentialMinters,
 } from "@decocms/sandbox-controller";
+
+// Memory only: a restart forgets it until Studio's next push.
+const credentials = new PushedCredentials();
 
 const provider = new AgentSandboxProvider({
   // The host's local proxy to the cluster; it authenticates on its own.
@@ -50,11 +55,12 @@ const provider = new AgentSandboxProvider({
   // Reach daemons the host's way instead of an apiserver port-forward.
   forwardPort: (pod, port) => openDaemonForward(pod, port),
   stateStore, // the host's RunnerStateStore
-  ...studioCredentialMinters({ studioUrl, token }),
+  // Mint hooks that read the store, and `persistCredentials: false`.
+  ...pushedCredentialOptions(credentials),
 });
 
 // Wrap each definition in the host's tool type, behind the host's auth.
-const tools = sandboxTools(() => provider);
+const tools = sandboxTools(() => provider, credentials);
 
 // GET /api/sandbox/watch?handle=… behind the same auth.
 const watch = (req: Request, handle: string) =>
@@ -65,8 +71,6 @@ const watch = (req: Request, handle: string) =>
 
 ```text
 Studio ──MCP tools + SSE watch──▶ host (this library) ──▶ Kubernetes
-   ▲                                  │
-   └──── credential callbacks ────────┘
 Studio ──────── daemon and preview traffic ────────────▶ sandbox pod
 ```
 
@@ -74,15 +78,20 @@ The host answers where a sandbox's daemon is and which bearer opens it; Studio
 dials the daemon itself (`daemonAddress: "service"` answers the in-cluster
 Service URL). The control plane holds no cluster credential: its kube and
 daemon calls are sandbox ops its cluster's data-plane agent runs
-(`decocms/operator` `internal/agent/ops.go`). The same bearer authenticates both directions: Studio
-to the host's tools and watch route, and the host to Studio's
-`/api/sandbox-callbacks/*`. The bearer grants no tenant: every
-`SANDBOX_ENSURE` carries `opts.callbackGrant`, which Studio signs over the
-sandbox's tenant and repos. The provider persists it inside the sandbox's
-state and hands it to the mint hooks, and `studioCredentialMinters` sends it as
-`grant`; Studio mints only what the grant names. Tenant-pool pods carry none:
-Studio authorizes them against its own `STUDIO_SANDBOX_TENANT_POOLS`, which
-must list the pools the host runs.
+(`decocms/operator` `internal/agent/ops.go`).
+
+The host never calls Studio. Credentials only Studio can mint (clone tokens,
+org-fs API keys) reach it two ways: each `SANDBOX_ENSURE` carries them, with
+how long they stay valid, and every 10 minutes Studio calls `SANDBOX_LIST`
+(tenants and repos, no credentials) and then `SANDBOX_CREDENTIALS_PUSH`.
+Studio mints only for tenants and credentials its own records authorize, plus
+its `STUDIO_SANDBOX_TENANT_POOLS`, so those must list the pools the host runs.
+The store keeps each entry's expiry, never replaces a longer-lived entry with
+a shorter one, and answers a re-mint with nothing when an entry has less life
+left than the runner asks for. With `persistCredentials: false` the persisted
+state keeps no clone token, submodule token or org-fs config; recovery takes
+them from the store. After a host restart, a sandbox recovered before the next
+push has no credential until that push, at most 10 minutes later.
 
 The watch route writes an SSE keepalive comment every
 `SANDBOX_WATCH_KEEPALIVE_MS`. Studio reads the watch as the host's sign of

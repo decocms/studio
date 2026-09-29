@@ -6,7 +6,11 @@ import { ConfigRequestError } from "../daemon-client";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
 import { RemoteSandboxProvider, SandboxHostError } from "./remote";
 import { SANDBOX_WATCH_PATH } from "./sandbox-api";
-import { sandboxTools, sandboxWatchResponse } from "./sandbox-server";
+import {
+  PushedCredentials,
+  sandboxTools,
+  sandboxWatchResponse,
+} from "./sandbox-server";
 import { computeHandle } from "./shared";
 
 // The client against the host helpers it is paired with, over real MCP and
@@ -20,6 +24,10 @@ const calls: string[] = [];
 let ensureFails: Error | null = null;
 let ensureWaitMs = 0;
 let lastEnsureOpts: unknown = null;
+const store = new PushedCredentials();
+const TENANT = { orgId: "o1", userId: "u1" };
+const REPO = { connectionId: "c1", repo: "acme/site" };
+const CLONE = "https://x-access-token:ghs_1@github.com/acme/site.git";
 /** Replaces the watch route when set. */
 let watchRoute: ((req: Request) => Response) | null = null;
 const phases: ClaimPhase[] = [
@@ -54,6 +62,9 @@ const fake = {
     void calls.push(`release:${ms}`),
   hasSchedulableCapacity: async () => false,
   markTenantPoolsDirty: async () => ["pool-a"],
+  listSandboxes: () => [
+    { handle: HANDLE, tenant: TENANT, repos: [REPO], orgFs: true },
+  ],
   async *watchClaimLifecycle() {
     yield* phases;
   },
@@ -64,7 +75,7 @@ async function serveMcp(req: Request): Promise<Response> {
     { name: "host", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
-  for (const tool of sandboxTools(() => fake)) {
+  for (const tool of sandboxTools(() => fake, store)) {
     server.registerTool(
       tool.id,
       {
@@ -118,8 +129,7 @@ beforeAll(() => {
   provider = new RemoteSandboxProvider({
     baseUrl: `http://127.0.0.1:${host.port}`,
     token: TOKEN,
-    callbackGrant: (opts) =>
-      opts.tenant ? `grant:${opts.tenant.orgId}` : undefined,
+    credentialLifetimeMs: { cloneUrl: 5 * 60_000, orgFsConfig: 60 * 60_000 },
     stallMs: STALL_MS,
   });
 });
@@ -227,12 +237,94 @@ describe("RemoteSandboxProvider against the host tools", () => {
     ]);
   });
 
-  it("sends the grant it signs for the sandbox's tenant", async () => {
-    await provider.ensure(ID, { tenant: { orgId: "o1", userId: "u1" } });
-    expect(lastEnsureOpts).toEqual({
-      tenant: { orgId: "o1", userId: "u1" },
-      callbackGrant: "grant:o1",
+  it("seeds the host's store with the credentials an ensure carries", async () => {
+    const opts = {
+      tenant: TENANT,
+      repo: {
+        cloneUrl: CLONE,
+        connectionId: "c1",
+        userName: "u",
+        userEmail: "e",
+      },
+      orgFsConfigJson: '{"token":"k"}',
+    };
+    await provider.ensure(ID, opts);
+    expect(lastEnsureOpts).toEqual(opts);
+    expect(store.cloneUrl(TENANT, REPO)).toBe(CLONE);
+    // Claimed for 5 minutes: not enough for a re-mint that wants 30.
+    expect(store.cloneUrl(TENANT, REPO, 30 * 60_000)).toBeNull();
+    expect(store.orgFsConfig(TENANT)).toBe('{"token":"k"}');
+  });
+
+  it("pushes credentials and lists sandboxes over the tools", async () => {
+    const expiresAt = Date.now() + 2 * 60 * 60_000;
+    const pushed = await provider.pushCredentials({
+      cloneUrls: [{ tenant: TENANT, repo: REPO, cloneUrl: CLONE, expiresAt }],
+      orgFsConfigs: [{ tenant: TENANT, orgFsConfigJson: "{}", expiresAt }],
     });
+    expect(pushed).toEqual({ stored: 2, kept: 0 });
+    expect(store.cloneUrl(TENANT, REPO, 30 * 60_000)).toBe(CLONE);
+    expect(await provider.listSandboxes()).toEqual([
+      {
+        handle: HANDLE,
+        tenant: TENANT,
+        repos: [REPO],
+        orgFs: true,
+        orgFsConfigExpiresAt: expiresAt,
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      "an oversized batch",
+      {
+        cloneUrls: Array.from({ length: 2_001 }, () => ({
+          tenant: null,
+          repo: REPO,
+          cloneUrl: CLONE,
+          expiresAt: Date.now() + 60_000,
+        })),
+        orgFsConfigs: [],
+      },
+    ],
+    [
+      "a clone URL that is not one",
+      {
+        cloneUrls: [
+          { tenant: null, repo: REPO, cloneUrl: "ssh://x", expiresAt: 1 },
+        ],
+        orgFsConfigs: [],
+      },
+    ],
+    [
+      "a repo named two ways",
+      {
+        cloneUrls: [
+          {
+            tenant: null,
+            repo: { ...REPO, repositoryId: "r1" },
+            cloneUrl: CLONE,
+            expiresAt: 1,
+          },
+        ],
+        orgFsConfigs: [],
+      },
+    ],
+    [
+      "an oversized org-fs config",
+      {
+        cloneUrls: [],
+        orgFsConfigs: [
+          { tenant: TENANT, orgFsConfigJson: "x".repeat(70_000), expiresAt: 1 },
+        ],
+      },
+    ],
+  ])("refuses %s without storing", async (_label, batch) => {
+    const err = await provider
+      .pushCredentials(batch as never)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
   });
 
   it("waits out a long ensure while the host's watch keeps talking", async () => {

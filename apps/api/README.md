@@ -213,8 +213,7 @@ Core settings include:
 | `CONFIG_PATH` | Theme, logo, and monitoring JSON configuration | `./config.json` |
 | `STUDIO_DISPATCH_ROLE` | Queue role: `all`, `api`, or `worker` | `all` |
 | `STUDIO_AGENT_SANDBOX_ENABLED` | Enable hosted AgentSandbox provisioning | `false` |
-| `STUDIO_SANDBOX_CONTROL_PLANE_URL` / `STUDIO_SANDBOX_CONTROL_PLANE_TOKEN` | Ask a remote host (the control plane) for sandboxes instead of running them in-process; the token also authenticates its `/api/sandbox-callbacks/*` calls | Unset: in-process |
-| `STUDIO_SANDBOX_CALLBACK_GRANT_SECRETS` | Required with the control plane: comma-separated secrets (32+ characters) that sign each sandbox's callback grant; the first signs, all verify, so a rotation prepends the new one | None |
+| `STUDIO_SANDBOX_CONTROL_PLANE_URL` / `STUDIO_SANDBOX_CONTROL_PLANE_TOKEN` | Ask a remote host (the control plane) for sandboxes instead of running them in-process | Unset: in-process |
 | `CLICKHOUSE_URL` | Optional ClickHouse monitoring endpoint | Local monitoring backend |
 
 Authentication providers use `AUTH_*` variables. The validated list lives in

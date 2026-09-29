@@ -15,6 +15,10 @@ import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
 import {
   capacityOutputSchema,
   claimPhaseSchema,
+  type CredentialsPush,
+  credentialsPushOutputSchema,
+  listOutputSchema,
+  type SandboxListing,
   type Daemon,
   emptySchema,
   ensureOutputSchema,
@@ -56,10 +60,11 @@ export interface RemoteSandboxProviderOptions {
   /** Bearer the host accepts for its sandbox API. */
   token: string;
   /**
-   * The grant this sandbox's credential callbacks present, signed by the
-   * caller; sent as `opts.callbackGrant` on every ensure.
+   * How long, at least, the credentials an ensure carries stay valid, from
+   * the moment they were minted. Sent with each ensure so the host can keep
+   * them for recovery; without it the host waits for the next push.
    */
-  callbackGrant?: (opts: EnsureOptions) => string | undefined;
+  credentialLifetimeMs?: { cloneUrl: number; orgFsConfig: number };
   /**
    * How long the host's watch may stay silent — no phase, no keepalive —
    * before a provisioning call or a watch gives up on it. Defaults to four
@@ -154,7 +159,7 @@ interface CallOptions {
 export class RemoteSandboxProvider implements SandboxProvider {
   private readonly baseUrl: string;
   private readonly token: string;
-  private readonly callbackGrant: RemoteSandboxProviderOptions["callbackGrant"];
+  private readonly credentialLifetimeMs: RemoteSandboxProviderOptions["credentialLifetimeMs"];
   private readonly stallMs: number;
   private readonly closed = new AbortController();
   private connecting: Promise<Client> | null = null;
@@ -165,7 +170,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
   constructor(opts: RemoteSandboxProviderOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.token = opts.token;
-    this.callbackGrant = opts.callbackGrant;
+    this.credentialLifetimeMs = opts.credentialLifetimeMs;
     this.stallMs = opts.stallMs ?? 4 * SANDBOX_WATCH_KEEPALIVE_MS;
   }
 
@@ -325,12 +330,22 @@ export class RemoteSandboxProvider implements SandboxProvider {
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     const { image: _templatePinned, ...wireOpts } = opts;
-    const callbackGrant = this.callbackGrant?.(opts);
     const handle = computeHandle(id);
+    const lifetime = this.credentialLifetimeMs;
+    const now = Date.now();
     const out = await this.whileHostAlive(handle, (signal) =>
       this.call(
         SANDBOX_TOOLS.ensure,
-        { id, opts: callbackGrant ? { ...wireOpts, callbackGrant } : wireOpts },
+        {
+          id,
+          opts: wireOpts,
+          ...(lifetime && {
+            credentialsValidUntil: {
+              cloneUrl: now + lifetime.cloneUrl,
+              orgFsConfig: now + lifetime.orgFsConfig,
+            },
+          }),
+        },
         ensureOutputSchema,
         { timeoutMs: null, signal },
       ),
@@ -441,6 +456,21 @@ export class RemoteSandboxProvider implements SandboxProvider {
       );
       return [];
     }
+  }
+
+  /** The host's live sandboxes, as untrusted input to a credential push. */
+  async listSandboxes(): Promise<SandboxListing[]> {
+    return (await this.call(SANDBOX_TOOLS.list, {}, listOutputSchema))
+      .sandboxes;
+  }
+
+  /** Hands the host fresh credentials; it keeps them in memory only. */
+  pushCredentials(batch: CredentialsPush) {
+    return this.call(
+      SANDBOX_TOOLS.credentialsPush,
+      batch,
+      credentialsPushOutputSchema,
+    );
   }
 
   close(): void {

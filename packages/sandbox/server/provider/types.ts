@@ -192,12 +192,6 @@ export interface EnsureOptions {
    * means no org-fs mount.
    */
   orgFsConfigJson?: string;
-  /**
-   * Opaque proof, signed by Studio, of the tenant and repos a control-plane
-   * sandbox may have credentials re-minted for. Persisted with the options
-   * and handed to the mint hooks, which present it to Studio's callbacks.
-   */
-  callbackGrant?: string;
 }
 
 export interface ProxyRequestInit {

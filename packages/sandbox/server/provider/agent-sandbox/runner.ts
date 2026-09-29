@@ -108,6 +108,8 @@ import {
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
+import { repoIdentityOf } from "../pushed-credentials";
+import type { RepoIdentity } from "../sandbox-api";
 import { proxyDaemonWithRetry } from "../shared/daemon-proxy";
 import {
   PREVIEW_NOT_READY_HEADER,
@@ -242,6 +244,8 @@ interface RunnerTenant {
 }
 
 interface K8sRecord {
+  /** Recovered from state that left its org-fs config out; it mounts org-fs. */
+  orgFsRedacted?: boolean;
   id: SandboxId;
   handle: string;
   /**
@@ -315,11 +319,10 @@ interface PersistedK8sState {
    * SANDBOX_START reprovision flow then runs with full opts).
    */
   ensureOpts?: EnsureOptions;
+  /** `ensureOpts` had an org-fs config, left out with `persistCredentials: false`. */
+  orgFsRedacted?: boolean;
   [k: string]: unknown;
 }
-
-/** Who a re-mint is for, from the sandbox's persisted options. */
-export type MintScope = Pick<EnsureOptions, "tenant" | "callbackGrant">;
 
 export interface AgentSandboxProviderOptions {
   stateStore?: RunnerStateStore;
@@ -432,12 +435,11 @@ export interface AgentSandboxProviderOptions {
    * `opts.bufferMs` asks the minter to refresh the token when it has less than
    * that many ms of life left — the periodic refresher passes a large value to
    * keep long-lived sandboxes ahead of the ~55min expiry; recovery omits it.
-   * `opts.tenant` and `opts.callbackGrant` are the sandbox's; both absent for
-   * a tenant pool's pod.
+   * `opts.tenant` is the sandbox's tenant; absent for a tenant pool's pod.
    */
   mintCloneUrl?: (
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts?: MintScope & { bufferMs?: number },
+    opts?: { bufferMs?: number; tenant?: EnsureOptions["tenant"] },
   ) => Promise<string | null>;
   /**
    * Re-mint a fresh `orgFsConfigJson` for a tenant. Same lifetime problem as
@@ -452,7 +454,6 @@ export interface AgentSandboxProviderOptions {
    */
   mintOrgFsConfig?: (
     tenant: NonNullable<EnsureOptions["tenant"]>,
-    opts?: Pick<MintScope, "callbackGrant">,
   ) => Promise<string | null>;
   /**
    * Replaces the apiserver port-forward to a pod's container port, for a
@@ -469,6 +470,12 @@ export interface AgentSandboxProviderOptions {
    * the in-cluster Service URL for a caller that runs inside the cluster.
    */
   daemonAddress?: "forward" | "service";
+  /**
+   * Whether persisted state keeps the credentials `ensureOpts` embeds (clone
+   * tokens, submodule tokens, the org-fs API key). A host outside Studio sets
+   * false: recovery then re-mints through the hooks instead. Default true.
+   */
+  persistCredentials?: boolean;
 }
 
 export class AgentSandboxProvider {
@@ -515,6 +522,7 @@ export class AgentSandboxProvider {
   private readonly mintOrgFsConfig: AgentSandboxProviderOptions["mintOrgFsConfig"];
   private readonly forwardPort: AgentSandboxProviderOptions["forwardPort"];
   private readonly daemonAddress: "forward" | "service";
+  private readonly persistCredentials: boolean;
   /** See {@link AgentSandboxProviderOptions.tenantPools}. */
   private readonly tenantPools: readonly TenantPool[];
   private readonly tenantPoolRefreshMs: number;
@@ -562,6 +570,7 @@ export class AgentSandboxProvider {
     this.mintOrgFsConfig = opts.mintOrgFsConfig;
     this.forwardPort = opts.forwardPort;
     this.daemonAddress = opts.daemonAddress ?? "forward";
+    this.persistCredentials = opts.persistCredentials ?? true;
     this.tenantPools =
       this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
     if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
@@ -908,6 +917,31 @@ export class AgentSandboxProvider {
   }
 
   /**
+   * The sandboxes this replica holds, as Studio needs them to push fresh
+   * credentials: tenant, repos, whether it mounts org-fs. No credential.
+   */
+  listSandboxes(): Array<{
+    handle: string;
+    tenant: { orgId: string; userId: string } | null;
+    repos: RepoIdentity[];
+    orgFs: boolean;
+  }> {
+    return [...this.records.values()].map((rec) => {
+      const opts = rec.ensureOpts;
+      const tenant = opts?.tenant;
+      return {
+        handle: rec.handle,
+        tenant: tenant ? { orgId: tenant.orgId, userId: tenant.userId } : null,
+        repos: [opts?.repo, ...(opts?.extraRepos ?? [])]
+          .filter((repo) => repo !== undefined)
+          .map(repoIdentityOf)
+          .filter((repo) => repo !== null),
+        orgFs: Boolean(opts?.orgFsConfigJson) || rec.orgFsRedacted === true,
+      };
+    });
+  }
+
+  /**
    * Resolve the operator-managed Service name we should route preview
    * traffic to for `handle`. See `resolvePreviewUpstreamUrl` and
    * `K8sRecord.adoptedSandboxName` for why this differs from the claim
@@ -1008,24 +1042,10 @@ export class AgentSandboxProvider {
             rec.token,
             opts.orgFsConfigJson,
           );
-          // A rotated grant secret stops verifying the persisted grant; the
-          // caller's is current.
-          let regranted = false;
-          if (
-            opts.callbackGrant &&
-            rec.ensureOpts &&
-            rec.ensureOpts.callbackGrant !== opts.callbackGrant
-          ) {
-            rec.ensureOpts = {
-              ...rec.ensureOpts,
-              callbackGrant: opts.callbackGrant,
-            };
-            regranted = true;
-          }
           return this.finish(
             rec,
             ops,
-            /* persistNow */ regranted,
+            /* persistNow */ false,
             /* patchTtl */ true,
             "resume",
           );
@@ -1607,7 +1627,7 @@ export class AgentSandboxProvider {
    */
   private async withFreshCloneUrl(
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts: MintScope & { bufferMs?: number } = {},
+    opts: { bufferMs?: number; tenant?: EnsureOptions["tenant"] } = {},
   ): Promise<NonNullable<EnsureOptions["repo"]>> {
     if (!this.mintCloneUrl) return repo;
     try {
@@ -1634,6 +1654,7 @@ export class AgentSandboxProvider {
    */
   private async withFreshCredentials(
     opts: EnsureOptions,
+    orgFsRedacted = false,
   ): Promise<EnsureOptions> {
     return {
       ...opts,
@@ -1641,11 +1662,10 @@ export class AgentSandboxProvider {
         ? {
             repo: await this.withFreshCloneUrl(opts.repo, {
               tenant: opts.tenant,
-              callbackGrant: opts.callbackGrant,
             }),
           }
         : {}),
-      ...(opts.orgFsConfigJson
+      ...(opts.orgFsConfigJson || orgFsRedacted
         ? {
             orgFsConfigJson: await freshOrgFsConfigJson(
               opts,
@@ -1963,7 +1983,6 @@ export class AgentSandboxProvider {
           const fresh = await this.withFreshCloneUrl(repo, {
             bufferMs: CREDENTIAL_REFRESH_BUFFER_MS,
             tenant: rec.ensureOpts?.tenant,
-            callbackGrant: rec.ensureOpts?.callbackGrant,
           });
           await this.refreshDaemonGitCredential(rec, {
             ...rec.ensureOpts,
@@ -2212,7 +2231,10 @@ export class AgentSandboxProvider {
       if (this.sentinelToken !== null) {
         // Persisted credentials have usually lapsed by pod recreation.
         const rebootstrapOpts: EnsureOptions | null = state.ensureOpts
-          ? await this.withFreshCredentials(state.ensureOpts)
+          ? await this.withFreshCredentials(
+              state.ensureOpts,
+              state.orgFsRedacted === true,
+            )
           : null;
         const ok = await this.rebootstrapDaemon(
           live.daemonUrl,
@@ -2259,6 +2281,7 @@ export class AgentSandboxProvider {
       daemonBootId: live.bootId,
       tenant: state.tenant ?? null,
       ensureOpts: state.ensureOpts ?? null,
+      orgFsRedacted: state.orgFsRedacted === true,
       // Rows written before the rollout gate existed have no persisted impl;
       // they are TS sandboxes by construction, but say null rather than guess.
     };
@@ -2436,10 +2459,14 @@ export class AgentSandboxProvider {
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(handle);
     if (!row) return null;
-    const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
+    const persisted = row.state as Partial<PersistedK8sState>;
+    const persistedOpts = persisted.ensureOpts;
     if (!persistedOpts) return null;
     // Persisted credentials carry first-provision tokens, long expired by now.
-    const opts = await this.withFreshCredentials(persistedOpts);
+    const opts = await this.withFreshCredentials(
+      persistedOpts,
+      persisted.orgFsRedacted === true,
+    );
     // The row must resolve back to the handle we were asked to resurrect.
     // Structurally guaranteed now that both derive from `id.projectRef`, which
     // is the point of asserting it: if a future ref encoding breaks the
@@ -2541,7 +2568,11 @@ export class AgentSandboxProvider {
       workload: rec.workload,
       daemonBootId: rec.daemonBootId,
       tenant: rec.tenant,
-      ...(rec.ensureOpts ? { ensureOpts: rec.ensureOpts } : {}),
+      ...(rec.ensureOpts
+        ? this.persistCredentials
+          ? { ensureOpts: rec.ensureOpts }
+          : withoutCredentials(rec.ensureOpts, rec.orgFsRedacted === true)
+        : {}),
     };
     await ops.put(rec.id, { handle: rec.handle, state });
   }
@@ -3143,10 +3174,7 @@ export async function freshOrgFsConfigJson(
 ): Promise<string | undefined> {
   if (!mint || !opts.tenant) return opts.orgFsConfigJson;
   try {
-    return (
-      (await mint(opts.tenant, { callbackGrant: opts.callbackGrant })) ??
-      opts.orgFsConfigJson
-    );
+    return (await mint(opts.tenant)) ?? opts.orgFsConfigJson;
   } catch (err) {
     console.warn(
       `[${LOG_LABEL}] org-fs credential re-mint failed: ${
@@ -3155,6 +3183,44 @@ export async function freshOrgFsConfigJson(
     );
     return opts.orgFsConfigJson;
   }
+}
+
+function withoutUserinfo(
+  repo: NonNullable<EnsureOptions["repo"]>,
+): NonNullable<EnsureOptions["repo"]> | null {
+  try {
+    const url = new URL(repo.cloneUrl);
+    url.username = "";
+    url.password = "";
+    const { submoduleCredentials: _tokens, ...kept } = repo;
+    return { ...kept, cloneUrl: url.toString() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `ensureOpts` as a host that must not store credentials persists them: clone
+ * URLs lose their userinfo, submodule tokens and the org-fs config are
+ * dropped, and `orgFsRedacted` remembers the mount so recovery re-mints it. A
+ * clone URL that does not parse is dropped with its repo: fail closed.
+ */
+export function withoutCredentials(
+  opts: EnsureOptions,
+  orgFsRedacted: boolean,
+): { ensureOpts: EnsureOptions; orgFsRedacted?: true } {
+  const { orgFsConfigJson, repo, extraRepos, ...rest } = opts;
+  const ensureOpts: EnsureOptions = rest;
+  const stripped = repo && withoutUserinfo(repo);
+  if (stripped) ensureOpts.repo = stripped;
+  if (extraRepos) {
+    ensureOpts.extraRepos = extraRepos
+      .map(withoutUserinfo)
+      .filter((r) => r !== null);
+  }
+  return orgFsConfigJson || orgFsRedacted
+    ? { ensureOpts, orgFsRedacted: true }
+    : { ensureOpts };
 }
 
 /**
@@ -3186,8 +3252,6 @@ export function stripEnsureOpts(opts: EnsureOptions): EnsureOptions | null {
   // opts (no SANDBOX_START in that loop) would silently drop the org-fs
   // mounts a live sandbox had.
   if (opts.orgFsConfigJson) out.orgFsConfigJson = opts.orgFsConfigJson;
-  // Every re-mint a replay triggers presents it.
-  if (opts.callbackGrant) out.callbackGrant = opts.callbackGrant;
   return Object.keys(out).length > 0 ? out : null;
 }
 
