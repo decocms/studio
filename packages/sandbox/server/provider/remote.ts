@@ -18,7 +18,7 @@ import {
   type CredentialsPush,
   credentialsPushOutputSchema,
   listOutputSchema,
-  type SandboxListing,
+  type SandboxList,
   type Daemon,
   emptySchema,
   ensureOutputSchema,
@@ -457,10 +457,9 @@ export class RemoteSandboxProvider implements SandboxProvider {
     }
   }
 
-  /** The host's live sandboxes, as untrusted input to a credential push. */
-  async listSandboxes(): Promise<SandboxListing[]> {
-    return (await this.call(SANDBOX_TOOLS.list, {}, listOutputSchema))
-      .sandboxes;
+  /** The host's live sandboxes and tenant pools, as untrusted input to a credential push. */
+  list(): Promise<SandboxList> {
+    return this.call(SANDBOX_TOOLS.list, {}, listOutputSchema);
   }
 
   /** Hands the host fresh credentials; it keeps them in memory only. */

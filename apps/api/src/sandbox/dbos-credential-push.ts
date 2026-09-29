@@ -10,7 +10,6 @@
  */
 
 import { DBOS, SchedulerMode } from "@dbos-inc/dbos-sdk";
-import { parseTenantPools } from "@decocms/sandbox/provider/agent-sandbox";
 import { getDb } from "@/database";
 import { CredentialVault } from "@/encryption/credential-vault";
 import { sandboxCredentialMinters } from "@/sandbox/credential-mint";
@@ -58,8 +57,7 @@ async function pushSandboxCredentials(): Promise<PushOutcome | null> {
   if (!(runner instanceof RemoteSandboxProvider)) return null;
 
   const { db } = getDb();
-  const pools = parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS);
-  const sandboxes = await runner.listSandboxes();
+  const { sandboxes, pools } = await runner.list();
   const now = Date.now();
   const plan = planCredentialPush({
     sandboxes,

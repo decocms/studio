@@ -65,6 +65,23 @@ const fake = {
   listSandboxes: () => [
     { handle: HANDLE, tenant: TENANT, repos: [REPO], orgFs: true },
   ],
+  listTenantPools: () => [
+    {
+      name: "tenant-acme-site",
+      orgId: "o1",
+      repo: "acme/site",
+      connectionId: "c1",
+      branch: "main",
+      workload: { runtime: "node" as const },
+    },
+    {
+      name: "tenant-acme-docs",
+      orgId: "o1",
+      repo: "acme/docs",
+      branch: "main",
+      workload: { runtime: "node" as const },
+    },
+  ],
   async *watchClaimLifecycle() {
     yield* phases;
   },
@@ -258,7 +275,7 @@ describe("RemoteSandboxProvider against the host tools", () => {
     expect(store.orgFsConfig(TENANT)).toBe('{"token":"k"}');
   });
 
-  it("pushes credentials and lists sandboxes over the tools", async () => {
+  it("pushes credentials and lists sandboxes and pools over the tools", async () => {
     const expiresAt = Date.now() + 2 * 60 * 60_000;
     const pushed = await provider.pushCredentials({
       cloneUrls: [{ tenant: TENANT, repo: REPO, cloneUrl: CLONE, expiresAt }],
@@ -266,15 +283,26 @@ describe("RemoteSandboxProvider against the host tools", () => {
     });
     expect(pushed).toEqual({ stored: 2, kept: 0 });
     expect(store.cloneUrl(TENANT, REPO, 30 * 60_000)).toBe(CLONE);
-    expect(await provider.listSandboxes()).toEqual([
-      {
-        handle: HANDLE,
-        tenant: TENANT,
-        repos: [REPO],
-        orgFs: true,
-        orgFsConfigExpiresAt: expiresAt,
-      },
-    ]);
+    expect(await provider.list()).toEqual({
+      sandboxes: [
+        {
+          handle: HANDLE,
+          tenant: TENANT,
+          repos: [REPO],
+          orgFs: true,
+          orgFsConfigExpiresAt: expiresAt,
+        },
+      ],
+      pools: [
+        {
+          name: "tenant-acme-site",
+          orgId: "o1",
+          repo: "acme/site",
+          connectionId: "c1",
+        },
+        { name: "tenant-acme-docs", orgId: "o1", repo: "acme/docs" },
+      ],
+    });
   });
 
   it.each([

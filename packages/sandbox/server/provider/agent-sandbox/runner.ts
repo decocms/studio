@@ -102,9 +102,8 @@ import {
   resolveClaimTemplateName,
   type TemplateProbes,
   poolCloneUrl,
-  poolsMatchingPush,
-  resolveTenantPool,
   type TenantPool,
+  TenantPoolState,
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
@@ -360,11 +359,15 @@ export interface AgentSandboxProviderOptions {
    * to one binds a pod that is already running that repo's dev server instead
    * of a generic (empty) warm pod. Empty = today's behavior everywhere.
    *
+   * A function is read on every ensure, push and reconcile tick, so a host
+   * whose pools change at runtime passes one; it must be cheap and must not
+   * throw.
+   *
    * Requires warm-pool mode (`sentinelToken`): the reconciler configures
    * unbound pool pods with the sentinel, and a pool pod could not accept a
    * per-claim env token anyway.
    */
-  tenantPools?: TenantPool[];
+  tenantPools?: readonly TenantPool[] | (() => readonly TenantPool[]);
   /**
    * How often an unbound pool pod re-fetches its branch (and refreshes its
    * clone credential, which is the same call). Must stay under the ~1h GitHub
@@ -523,22 +526,11 @@ export class AgentSandboxProvider {
   private readonly forwardPort: AgentSandboxProviderOptions["forwardPort"];
   private readonly daemonAddress: "forward" | "service";
   private readonly persistCredentials: boolean;
-  /** See {@link AgentSandboxProviderOptions.tenantPools}. */
-  private readonly tenantPools: readonly TenantPool[];
+  /** See {@link AgentSandboxProviderOptions.tenantPools}; null outside warm-pool mode. */
+  private readonly tenantPools: TenantPoolState | null;
   private readonly tenantPoolRefreshMs: number;
-  /**
-   * Per-pool-pod bookkeeping, keyed by pod UID. In-memory and per-replica on
-   * purpose: every entry is a "when did I last touch this pod" hint, and
-   * losing it costs one redundant (idempotent) config post per pod.
-   */
-  private readonly poolPods = new Map<
-    string,
-    { lastConfigAt: number; lastFailureAt: number; failures: number }
-  >();
   /** Derived SandboxTemplate lookups by name; see `resolveTemplateName`. */
   private templateProbes: TemplateProbes = {};
-  /** Pool names a GitHub push says are stale; drained by the next tick. */
-  private readonly dirtyPools = new Set<string>();
   private closed = false;
   /** Aborts the background SandboxClaim-deletion watch on `close()`. */
   private readonly claimWatchAbort = new AbortController();
@@ -571,9 +563,17 @@ export class AgentSandboxProvider {
     this.forwardPort = opts.forwardPort;
     this.daemonAddress = opts.daemonAddress ?? "forward";
     this.persistCredentials = opts.persistCredentials ?? true;
+    const pools = opts.tenantPools;
     this.tenantPools =
-      this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
-    if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
+      this.sentinelToken === null
+        ? null
+        : new TenantPoolState(
+            typeof pools === "function" ? pools : () => pools ?? [],
+          );
+    const poolsIgnored =
+      this.sentinelToken === null &&
+      (typeof pools === "function" || (pools?.length ?? 0) > 0);
+    if (poolsIgnored) {
       console.warn(
         `[${LOG_LABEL}] tenant pools configured without a sentinel token — ignoring them (warm-pool mode is off)`,
       );
@@ -1262,20 +1262,13 @@ export class AgentSandboxProvider {
     handle: string,
     opts: EnsureOptions,
     boot: { token: string; daemonBootId: string; workdir: string },
+    tenantPool: TenantPool | null,
     templateName: string,
   ): SandboxClaim {
     // Warm-pool mode: the operator rejects claim.spec.env outright when
     // warmpool != "none". Studio delivers the per-claim secret post-bind via
     // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
-    // Tenant isolation lives here: the pool is resolved from the org of the
-    // user being served, never from anything in the request. The operator has
-    // no notion of a tenant — it binds whatever pool a claim names — and
-    // Studio is the only writer of SandboxClaims in this namespace.
-    const tenantPool = resolveTenantPool(this.tenantPools, {
-      orgId: opts.tenant?.orgId,
-      cloneUrl: opts.repo?.cloneUrl,
-    });
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))
@@ -1342,6 +1335,7 @@ export class AgentSandboxProvider {
       handle,
       opts,
       { token, daemonBootId, workdir },
+      pool,
       await this.resolveTemplateName(opts.purpose, pool, opts.sandboxImage),
     );
     try {
@@ -1372,13 +1366,19 @@ export class AgentSandboxProvider {
    * Tenant pools are built from the DEFAULT image's template, so a repo
    * that asked for another image cannot be served from one: the pod would
    * be pre-warmed with the wrong toolchain. Such a claim starts cold.
+   *
+   * Tenant isolation lives here: the pool is resolved from the org of the
+   * user being served, never from anything in the request. The operator has
+   * no notion of a tenant — it binds whatever pool a claim names — and
+   * Studio is the only writer of SandboxClaims in this namespace.
    */
   private claimTenantPool(opts: EnsureOptions): TenantPool | null {
-    return !opts.sandboxImage || opts.sandboxImage === "default"
-      ? resolveTenantPool(this.tenantPools, {
+    const defaultImage = !opts.sandboxImage || opts.sandboxImage === "default";
+    return defaultImage
+      ? (this.tenantPools?.resolve({
           orgId: opts.tenant?.orgId,
           cloneUrl: opts.repo?.cloneUrl,
-        })
+        }) ?? null)
       : null;
   }
 
@@ -1730,12 +1730,13 @@ export class AgentSandboxProvider {
    * clones.
    */
   private startTenantPoolReconciler(): void {
-    if (this.tenantPools.length === 0) return;
+    const pools = this.tenantPools;
+    if (!pools) return;
     const { signal } = this.claimWatchAbort;
     void (async () => {
       while (!signal.aborted) {
         try {
-          await this.reconcileTenantPools();
+          await this.reconcileTenantPools(pools);
         } catch (err) {
           console.warn(
             `[${LOG_LABEL}] tenant pool reconcile failed: ${
@@ -1748,6 +1749,11 @@ export class AgentSandboxProvider {
     })();
   }
 
+  /** The pools this provider serves now, for Studio's credential push. */
+  listTenantPools(): readonly TenantPool[] {
+    return this.tenantPools?.pools() ?? [];
+  }
+
   /**
    * A GitHub push landed on a pool's branch — refresh its unbound pods on the
    * next tick. Set-based, so a burst of pushes collapses into one refresh.
@@ -1756,13 +1762,16 @@ export class AgentSandboxProvider {
    */
   /** Async so a remote provider can serve the same surface. */
   markTenantPoolsDirty(repoFullName: string, ref: string): Promise<string[]> {
-    const matched = poolsMatchingPush(this.tenantPools, repoFullName, ref);
-    for (const pool of matched) this.dirtyPools.add(pool.name);
-    return Promise.resolve(matched.map((pool) => pool.name));
+    return Promise.resolve(
+      this.tenantPools?.markDirty(repoFullName, ref) ?? [],
+    );
   }
 
-  private async reconcileTenantPools(): Promise<void> {
-    for (const pool of this.tenantPools) {
+  /** Re-reads the pools each tick, so an empty list costs one read. */
+  private async reconcileTenantPools(state: TenantPoolState): Promise<void> {
+    const pools = state.pools();
+    for (const gone of state.retain(pools)) this.recordPoolGone(gone);
+    for (const pool of pools) {
       const pods = await listWarmPoolPods(
         this.kubeConfig,
         this.namespace,
@@ -1774,22 +1783,27 @@ export class AgentSandboxProvider {
         );
         continue;
       }
-      const dirty = this.dirtyPools.delete(pool.name);
+      const dirty = state.takeDirty(pool.name);
       // A bound pod carries the claim's handle label. Never touch one: the user
       // has a working tree on it, and a hard reset under them is data loss.
       const unbound = pods.filter(
         (pod) => !pod.labels[LABEL_KEYS.sandboxHandle],
       );
-      for (const [uid] of this.poolPods) {
-        if (!pods.some((pod) => pod.uid === uid)) this.poolPods.delete(uid);
-      }
+      state.retainPods(pool.name, new Set(pods.map((pod) => pod.uid)));
       // Sequential: a whole pool reinstalling at once is a thundering herd on
       // the registry and the node.
       for (const pod of unbound) {
         if (this.claimWatchAbort.signal.aborted) return;
-        await this.warmPoolPod(pool, pod, dirty);
+        await this.warmPoolPod(state, pool, pod, dirty);
       }
-      this.recordPoolDepth(pool, pods, unbound);
+      this.recordPoolDepth(state, pool, pods, unbound);
+    }
+  }
+
+  private recordPoolGone(pool: TenantPool): void {
+    const attrs = { pool: pool.name, org: pool.orgId };
+    for (const podState of ["ready", "bound", "pending", "failed"]) {
+      this.metrics?.poolPods.record(0, { ...attrs, state: podState });
     }
   }
 
@@ -1801,6 +1815,7 @@ export class AgentSandboxProvider {
    * never completes) are otherwise silent.
    */
   private recordPoolDepth(
+    state: TenantPoolState,
     pool: TenantPool,
     pods: readonly WarmPoolPod[],
     unbound: readonly WarmPoolPod[],
@@ -1810,7 +1825,7 @@ export class AgentSandboxProvider {
     let ready = 0;
     let failed = 0;
     for (const pod of unbound) {
-      const seen = this.poolPods.get(pod.uid);
+      const seen = state.pod(pod.uid);
       if (!seen) continue;
       if (seen.failures >= TENANT_POOL_MAX_FAILURES) failed++;
       else if (seen.lastConfigAt > 0) ready++;
@@ -1826,11 +1841,12 @@ export class AgentSandboxProvider {
   }
 
   private async warmPoolPod(
+    state: TenantPoolState,
     pool: TenantPool,
     pod: WarmPoolPod,
     dirty: boolean,
   ): Promise<void> {
-    const seen = this.poolPods.get(pod.uid);
+    const seen = state.pod(pod.uid);
     // A pod that fails to warm repeatedly (bad lockfile, private submodule, no
     // `dev` script) would otherwise be retried forever while the pool *looks*
     // full. Stop touching it and say so once — but not forever: the same
@@ -1841,7 +1857,7 @@ export class AgentSandboxProvider {
       if (Date.now() - seen.lastFailureAt < TENANT_POOL_GIVE_UP_COOLDOWN_MS) {
         return;
       }
-      this.poolPods.set(pod.uid, { ...seen, failures: 0 });
+      state.setPod(pod.uid, { ...seen, failures: 0 });
     }
     // A refresh re-fetches the branch and restarts dev. A first sight doesn't:
     // this replica may simply have restarted under a pool that is already warm,
@@ -1869,7 +1885,7 @@ export class AgentSandboxProvider {
       // anonymous URL would clone a private repo without credentials — where it
       // doesn't hang on a password prompt it leaves the pod on a remote the
       // user can't push to. Skip; the next tick retries.
-      this.recordPoolFailure(pod, pool, "clone credential mint failed");
+      this.recordPoolFailure(state, pod, pool, "clone credential mint failed");
       return;
     }
     const forward = await this.openForwarder(
@@ -1878,7 +1894,7 @@ export class AgentSandboxProvider {
       pod.name,
     ).catch(() => null);
     if (!forward) {
-      this.recordPoolFailure(pod, pool, "port-forward failed");
+      this.recordPoolFailure(state, pod, pool, "port-forward failed");
       return;
     }
     const daemonUrl = `http://127.0.0.1:${forward.localPort}`;
@@ -1920,7 +1936,8 @@ export class AgentSandboxProvider {
       ) {
         await postSetupStep(daemonUrl, sentinel, "clone");
       }
-      this.poolPods.set(pod.uid, {
+      state.setPod(pod.uid, {
+        pool: pool.name,
         lastConfigAt: Date.now(),
         lastFailureAt: 0,
         failures: 0,
@@ -1930,6 +1947,7 @@ export class AgentSandboxProvider {
       );
     } catch (err) {
       this.recordPoolFailure(
+        state,
         pod,
         pool,
         err instanceof Error ? err.message : String(err),
@@ -1949,13 +1967,15 @@ export class AgentSandboxProvider {
   }
 
   private recordPoolFailure(
+    state: TenantPoolState,
     pod: WarmPoolPod,
     pool: TenantPool,
     reason: string,
   ): void {
-    const prev = this.poolPods.get(pod.uid);
+    const prev = state.pod(pod.uid);
     const failures = (prev?.failures ?? 0) + 1;
-    this.poolPods.set(pod.uid, {
+    state.setPod(pod.uid, {
+      pool: pool.name,
       lastConfigAt: prev?.lastConfigAt ?? 0,
       lastFailureAt: Date.now(),
       failures,

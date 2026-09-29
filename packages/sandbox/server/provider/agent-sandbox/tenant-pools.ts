@@ -3,21 +3,22 @@
  * for one org's repo, so a member of that org opens a project and there is no
  * clone, no install, no Vite boot.
  *
- * Config comes from the `STUDIO_SANDBOX_TENANT_POOLS` deploy env (a JSON array).
- * Empty/unset = nothing changes anywhere. `name` is explicit rather than
- * derived from the org because the sandbox-env chart renders the matching
- * `SandboxWarmPool` object from the same string — a derivation on both sides
- * is a mismatch waiting to happen.
+ * The host passes the list (or a function returning it) to the provider: the
+ * control plane from its own database, in-process Studio from the
+ * `STUDIO_SANDBOX_TENANT_POOLS` deploy env (a JSON array). Empty = nothing
+ * changes anywhere. `name` is explicit rather than derived from the org
+ * because the matching `SandboxWarmPool` object is rendered from the same
+ * string — a derivation on both sides is a mismatch waiting to happen.
  */
 import { z } from "zod";
 
 import type { SandboxImage } from "@decocms/shared/git-providers";
 import type { SandboxPurpose } from "../types";
 
-const tenantPoolSchema = z.object({
+export const tenantPoolSchema = z.object({
   /**
-   * SandboxWarmPool object name. Must match a pool rendered by the sandbox-env
-   * chart's `tenantPools` list, and be DNS-label-safe (it names a k8s object).
+   * SandboxWarmPool object name. Must match a rendered pool, and be
+   * DNS-label-safe (it names a k8s object).
    */
   name: z
     .string()
@@ -59,9 +60,7 @@ export function parseTenantPools(raw: string | undefined): TenantPool[] {
   const names = new Set<string>();
   for (const pool of pools) {
     if (names.has(pool.name)) {
-      throw new Error(
-        `STUDIO_SANDBOX_TENANT_POOLS: duplicate pool name ${pool.name}`,
-      );
+      throw new Error(`tenant pools: duplicate pool name ${pool.name}`);
     }
     names.add(pool.name);
   }
@@ -255,4 +254,82 @@ export function poolsMatchingPush(
 /** Anonymous clone URL for a pool's repo; the credential is minted per bootstrap. */
 export function poolCloneUrl(pool: TenantPool): string {
   return `https://github.com/${pool.repo}.git`;
+}
+
+/** When this replica last touched an unbound pool pod; see `TenantPoolState`. */
+export interface PoolPodState {
+  pool: string;
+  lastConfigAt: number;
+  lastFailureAt: number;
+  failures: number;
+}
+
+/**
+ * The pools a host serves, re-read on every call so pools it adds or removes
+ * take effect on the next read, plus this replica's per-pool bookkeeping.
+ * In-memory and per-replica on purpose: every entry is a hint, and losing it
+ * costs one redundant (idempotent) config post per pod.
+ */
+export class TenantPoolState {
+  /** Pool names a GitHub push says are stale; drained by the next tick. */
+  private readonly dirty = new Set<string>();
+  /** Keyed by pod UID. */
+  private readonly pods = new Map<string, PoolPodState>();
+  /** The pools the last `retain` saw, to tell which ones went away. */
+  private known = new Map<string, TenantPool>();
+
+  constructor(private readonly source: () => readonly TenantPool[]) {}
+
+  pools(): readonly TenantPool[] {
+    return this.source();
+  }
+
+  resolve(claim: {
+    orgId: string | undefined;
+    cloneUrl: string | undefined;
+  }): TenantPool | null {
+    return resolveTenantPool(this.pools(), claim);
+  }
+
+  /** Names of the pools a push to `repoFullName`@`ref` makes stale. */
+  markDirty(repoFullName: string, ref: string): string[] {
+    const matched = poolsMatchingPush(this.pools(), repoFullName, ref);
+    for (const pool of matched) this.dirty.add(pool.name);
+    return matched.map((pool) => pool.name);
+  }
+
+  takeDirty(poolName: string): boolean {
+    return this.dirty.delete(poolName);
+  }
+
+  pod(uid: string): PoolPodState | undefined {
+    return this.pods.get(uid);
+  }
+
+  setPod(uid: string, state: PoolPodState): void {
+    this.pods.set(uid, state);
+  }
+
+  /** Forgets a pool's pods that are no longer in its listing. */
+  retainPods(poolName: string, liveUids: ReadonlySet<string>): void {
+    for (const [uid, state] of this.pods) {
+      if (state.pool === poolName && !liveUids.has(uid)) this.pods.delete(uid);
+    }
+  }
+
+  /** Drops the state of every pool not in `pools`, and returns those pools. */
+  retain(pools: readonly TenantPool[]): TenantPool[] {
+    const current = new Map(pools.map((pool) => [pool.name, pool]));
+    const gone = [...this.known.values()].filter(
+      (pool) => !current.has(pool.name),
+    );
+    for (const name of this.dirty) {
+      if (!current.has(name)) this.dirty.delete(name);
+    }
+    for (const [uid, state] of this.pods) {
+      if (!current.has(state.pool)) this.pods.delete(uid);
+    }
+    this.known = current;
+    return gone;
+  }
 }

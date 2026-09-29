@@ -30,6 +30,9 @@ which are private, and bundles it into one module with declarations.
 - Export `postgresRunnerStateStore`, a Postgres `RunnerStateStore` in the
   library's own `sandbox_controller` schema, and `migrateRunnerStateStore`,
   which creates and upgrades that schema.
+- Export `TenantPool`, `tenantPoolSchema` (the one validator for a pool) and
+  `parseTenantPools`, so the host validates the pools it stores the way the
+  provider does.
 - Export the wire contract in `sandbox-api`: tool names and schemas, and the
   watch route.
 - Export host helpers: `sandboxTools` (framework-free tool definitions),
@@ -64,6 +67,10 @@ const provider = new AgentSandboxProvider({
   // Reach daemons the host's way instead of an apiserver port-forward.
   forwardPort: (pod, port) => openDaemonForward(pod, port),
   stateStore,
+  // Warm-pool mode; tenant pools need it.
+  sentinelToken,
+  // Read on every ensure, push and reconcile tick: keep it a cheap snapshot.
+  tenantPools: () => currentTenantPools(),
   // Mint hooks that read the store, and `persistCredentials: false`.
   ...pushedCredentialOptions(credentials),
 });
@@ -89,12 +96,22 @@ Service URL). The control plane holds no cluster credential: its kube and
 daemon calls are sandbox ops its cluster's data-plane agent runs
 (`decocms/operator` `internal/agent/ops.go`).
 
+The host owns the tenant warm pools: it keeps them, renders their
+`SandboxWarmPool` objects and passes them to the provider as `tenantPools`,
+a list or a function. The provider reads a function on every use, so a pool
+the host adds or removes takes effect on the next ensure and reconcile tick,
+without a restart. The reconciler forgets a removed pool's pods and zeroes its
+depth gauge; the pool's pods are the host's to delete.
+
 The host never calls Studio. Credentials only Studio can mint (clone tokens,
 org-fs API keys) reach it two ways: each `SANDBOX_ENSURE` carries them, with
 how long they stay valid, and every 10 minutes Studio calls `SANDBOX_LIST`
-(tenants and repos, no credentials) and then `SANDBOX_CREDENTIALS_PUSH`.
-Studio mints only for tenants and credentials its own records authorize, plus
-its `STUDIO_SANDBOX_TENANT_POOLS`, so those must list the pools the host runs.
+(tenants and repos, and each pool's name, org, repo and connection, with no
+credentials) and then `SANDBOX_CREDENTIALS_PUSH`. Studio treats the listing as
+untrusted: it mints for a tenant only while the user is a member of the org,
+and for a repo or pool only while its connection or repository belongs to that
+org. `STUDIO_SANDBOX_TENANT_POOLS` configures pools only for Studio's
+in-process provider; with a control plane, Studio ignores it.
 The store keeps each entry's expiry, never replaces a longer-lived entry with
 a shorter one, and answers a re-mint with nothing when an entry has less life
 left than the runner asks for. With `persistCredentials: false` the persisted

@@ -9,6 +9,7 @@ import {
   repoKeyFromCloneUrl,
   resolveTenantPool,
   type TenantPool,
+  TenantPoolState,
 } from "./tenant-pools";
 
 const POOLS = parseTenantPools(
@@ -452,5 +453,63 @@ describe("claimTemplateName with a tenant pool", () => {
   it("leaves a non-pool interactive claim on the default template", () => {
     expect(claimTemplateName("interactive", "sbx", null)).toBe("sbx");
     expect(claimTemplateName(undefined, "sbx")).toBe("sbx");
+  });
+});
+
+describe("TenantPoolState", () => {
+  const acme = POOLS[0]!;
+  const docs: TenantPool = {
+    ...acme,
+    name: "tenant-acme-docs",
+    repo: "acme/docs",
+  };
+  const claim = {
+    orgId: "org-acme",
+    cloneUrl: "https://github.com/acme/docs.git",
+  };
+  const podState = (pool: string) => ({
+    pool,
+    lastConfigAt: 1,
+    lastFailureAt: 0,
+    failures: 0,
+  });
+
+  it("binds a pool the host added after construction on the next read", () => {
+    let pools: readonly TenantPool[] = [];
+    const state = new TenantPoolState(() => pools);
+    expect(state.resolve(claim)).toBeNull();
+    expect(state.markDirty("acme/docs", "refs/heads/main")).toEqual([]);
+
+    pools = [acme, docs];
+    expect(state.resolve(claim)?.name).toBe("tenant-acme-docs");
+    expect(state.markDirty("acme/docs", "refs/heads/main")).toEqual([
+      "tenant-acme-docs",
+    ]);
+  });
+
+  it("drops a removed pool's dirty flag and pod state, and reports it once", () => {
+    let pools: readonly TenantPool[] = [acme, docs];
+    const state = new TenantPoolState(() => pools);
+    expect(state.retain(state.pools())).toEqual([]);
+    state.markDirty("acme/docs", "main");
+    state.setPod("uid-docs", podState(docs.name));
+    state.setPod("uid-acme", podState(acme.name));
+
+    pools = [acme];
+    expect(state.resolve(claim)).toBeNull();
+    expect(state.retain(state.pools())).toEqual([docs]);
+    expect(state.takeDirty(docs.name)).toBe(false);
+    expect(state.pod("uid-docs")).toBeUndefined();
+    expect(state.pod("uid-acme")).toEqual(podState(acme.name));
+    expect(state.retain(state.pools())).toEqual([]);
+  });
+
+  it("forgets only the listed pool's vanished pods", () => {
+    const state = new TenantPoolState(() => [acme, docs]);
+    state.setPod("uid-docs", podState(docs.name));
+    state.setPod("uid-acme", podState(acme.name));
+    state.retainPods(acme.name, new Set());
+    expect(state.pod("uid-acme")).toBeUndefined();
+    expect(state.pod("uid-docs")).toEqual(podState(docs.name));
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { TenantPool } from "@decocms/sandbox/provider/agent-sandbox";
-import type { SandboxListing } from "@decocms/sandbox/provider/sandbox-api";
+import type {
+  ListedTenantPool,
+  SandboxListing,
+} from "@decocms/sandbox/provider/sandbox-api";
 import {
   type CredentialRecords,
   credentialExpiresAt,
@@ -38,7 +40,7 @@ function listing(over: Partial<SandboxListing> = {}): SandboxListing {
   };
 }
 
-const plan = (sandboxes: SandboxListing[], pools: TenantPool[] = []) =>
+const plan = (sandboxes: SandboxListing[], pools: ListedTenantPool[] = []) =>
   planCredentialPush({ sandboxes, pools, records, now: NOW });
 
 describe("planCredentialPush", () => {
@@ -106,24 +108,44 @@ describe("planCredentialPush", () => {
     expect(plan([listing({ orgFs: false })]).orgFs).toEqual([]);
   });
 
-  it("mints the configured pools without a tenant, if their connection is the pool org's", () => {
-    const pool = (orgId: string, connectionId: string): TenantPool => ({
+  describe("pools from the host's listing", () => {
+    const pool = (orgId: string, connectionId?: string): ListedTenantPool => ({
       name: "p",
       orgId,
       repo: "Acme/Site",
-      connectionId,
-      branch: "main",
-      workload: { runtime: "node" },
+      ...(connectionId ? { connectionId } : {}),
     });
-    expect(plan([], [pool("org_a", "conn_a")])).toEqual({
-      clones: [{ tenant: null, repo: SITE }],
-      orgFs: [],
-      refused: 0,
+
+    it("mints a pool without a tenant when its connection is the pool org's", () => {
+      expect(plan([], [pool("org_a", "conn_a")])).toEqual({
+        clones: [{ tenant: null, repo: SITE }],
+        orgFs: [],
+        refused: 0,
+      });
     });
-    expect(plan([], [pool("org_a", "conn_b")]).refused).toBe(1);
+
+    it("refuses a pool whose connection belongs to another org", () => {
+      expect(plan([], [pool("org_a", "conn_b")])).toEqual({
+        clones: [],
+        orgFs: [],
+        refused: 1,
+      });
+    });
+
+    it("refuses a pool whose connection Studio has no record of", () => {
+      expect(plan([], [pool("org_a", "conn_unknown")]).refused).toBe(1);
+    });
+
+    it("mints nothing for a public pool with no connection", () => {
+      expect(plan([], [pool("org_a")])).toEqual({
+        clones: [],
+        orgFs: [],
+        refused: 0,
+      });
+    });
   });
 
-  it("ignores tenant-less listings: pools come from Studio's config", () => {
+  it("ignores tenant-less listings: pools are listed separately", () => {
     expect(plan([listing({ tenant: null })])).toEqual({
       clones: [],
       orgFs: [],

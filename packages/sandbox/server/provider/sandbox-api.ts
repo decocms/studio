@@ -242,8 +242,9 @@ export const credentialsPushOutputSchema = z.object({
 });
 
 export const SANDBOX_LIST_MAX = 5_000;
+export const SANDBOX_LIST_POOLS_MAX = 500;
 
-/** The host's live sandboxes, without credentials. */
+/** The host's live sandboxes and its tenant pools, without credentials. */
 export const listOutputSchema = z.object({
   sandboxes: z
     .array(
@@ -258,7 +259,20 @@ export const listOutputSchema = z.object({
       }),
     )
     .max(SANDBOX_LIST_MAX),
+  /** Defaulted so a host that predates pool listing still lists its sandboxes. */
+  pools: z
+    .array(
+      z.object({
+        name: id,
+        orgId: id,
+        /** GitHub `owner/name`. */
+        repo: id,
+        connectionId: id.optional(),
+      }),
+    )
+    .max(SANDBOX_LIST_POOLS_MAX)
+    .default([]),
 });
-export type SandboxListing = z.infer<
-  typeof listOutputSchema
->["sandboxes"][number];
+export type SandboxList = z.infer<typeof listOutputSchema>;
+export type SandboxListing = SandboxList["sandboxes"][number];
+export type ListedTenantPool = SandboxList["pools"][number];

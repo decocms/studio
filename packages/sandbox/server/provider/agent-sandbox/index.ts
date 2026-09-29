@@ -27,6 +27,7 @@ export type SandboxProvider = Pick<
 export {
   parseTenantPools,
   repoKeyFromCloneUrl,
+  tenantPoolSchema,
   type TenantPool,
 } from "./tenant-pools";
 // Lifecycle types live in their own module (no K8s deps) so type-only

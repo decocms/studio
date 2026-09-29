@@ -3,8 +3,10 @@ import { KubeConfig } from "@kubernetes/client-node";
 export {
   AgentSandboxProvider,
   parseTenantPools,
+  tenantPoolSchema,
   type ClaimPhase,
   type PortForwarder,
+  type TenantPool,
 } from "@decocms/sandbox/provider/agent-sandbox";
 export {
   migrateRunnerStateStore,

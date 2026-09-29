@@ -1,18 +1,18 @@
 /**
  * Keeps a control plane's sandboxes supplied with credentials only Studio can
  * mint. The control plane never calls Studio: each ensure carries fresh
- * credentials, and this push refreshes them for every sandbox the host lists
- * plus the configured tenant pools, well inside a clone token's life.
+ * credentials, and this push refreshes them for every sandbox and tenant pool
+ * the host lists, well inside a clone token's life.
  *
  * The host's listing is untrusted input: a tenant is minted for only while
- * its user is still a member of the org, and a credential only while it
- * belongs to that org.
+ * its user is still a member of the org, and a credential, a pool's included,
+ * only while it belongs to that org.
  */
 
 import type { Kysely } from "kysely";
-import type { TenantPool } from "@decocms/sandbox/provider/agent-sandbox";
 import type {
   CredentialsPush,
+  ListedTenantPool,
   RepoIdentity,
   SandboxListing,
 } from "@decocms/sandbox/provider/sandbox-api";
@@ -82,7 +82,7 @@ function repoOrg(
 /** Pure: which credentials to mint for a listing, pools and records. */
 export function planCredentialPush(input: {
   sandboxes: readonly SandboxListing[];
-  pools: readonly TenantPool[];
+  pools: readonly ListedTenantPool[];
   records: CredentialRecords;
   now: number;
 }): CredentialPushPlan {
@@ -106,7 +106,7 @@ export function planCredentialPush(input: {
 
   for (const sandbox of input.sandboxes) {
     const tenant = sandbox.tenant;
-    // A tenant-less sandbox is a pool's, and pools come from Studio's config.
+    // A tenant-less sandbox is a pool's; the pools are authorized above.
     if (!tenant) continue;
     const orgSlug = records.members.get(tenantKey(tenant));
     if (orgSlug === undefined) {
@@ -140,11 +140,11 @@ export function planCredentialPush(input: {
   return { clones: [...clones.values()], orgFs: [...orgFs.values()], refused };
 }
 
-/** Studio's records for every id a listing and the pools name. */
+/** Studio's records for every id a listing names. */
 export async function credentialRecords(
   db: Kysely<DatabaseSchema>,
   sandboxes: readonly SandboxListing[],
-  pools: readonly TenantPool[],
+  pools: readonly ListedTenantPool[],
 ): Promise<CredentialRecords> {
   const orgIds = new Set<string>();
   const userIds = new Set<string>();
