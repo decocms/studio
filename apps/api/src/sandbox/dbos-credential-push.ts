@@ -95,7 +95,6 @@ async function sandboxCredentialPushWorkflowFn(
   _scheduledTime: Date,
   _currentTime: Date,
 ): Promise<void> {
-  if (!getSettings().agentSandboxEnabled) return;
   const outcome = await DBOS.runStep(pushSandboxCredentialsOnce, {
     name: "pushSandboxCredentials",
   });
@@ -117,6 +116,11 @@ let registeredWorkflow: typeof sandboxCredentialPushWorkflowFn | null = null;
  */
 export function registerSandboxCredentialPushWorkflow(): void {
   if (registeredWorkflow) return;
+  // Unscheduled unless sandboxes run on the control plane, so a deploy
+  // without it changes nothing.
+  if (!getSettings().agentSandboxEnabled || !readControlPlaneSandboxConfig()) {
+    return;
+  }
   registeredWorkflow = DBOS.registerWorkflow(sandboxCredentialPushWorkflowFn, {
     name: "sandboxCredentialPushWorkflow",
   });
