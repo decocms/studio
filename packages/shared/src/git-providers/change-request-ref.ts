@@ -26,6 +26,14 @@ const WEB_SUFFIX: Record<GitProviderKind, string> = {
   bitbucket: "pull-requests",
 };
 
+/** How the provider's own UI writes a change request's number: GitLab's `!12`. */
+export function changeRequestNumberLabel(
+  provider: GitProviderKind,
+  number: number,
+): string {
+  return `${provider === "gitlab" ? "!" : "#"}${number}`;
+}
+
 /** Canonical browser URL for a change request. */
 export function changeRequestUrl(repo: RepoRef, number: number): string {
   return `${repoWebUrl(repo)}/${WEB_SUFFIX[repo.provider]}/${number}`;
@@ -40,11 +48,21 @@ export function changeRequestUrl(repo: RepoRef, number: number): string {
  * provider/host/path work, so a self-hosted GitLab and a GitHub Enterprise
  * host parse through exactly the same code as the SaaS ones.
  *
+ * `/-/merge_requests/` is GitLab-only, so it names the provider on any host.
+ *
  * All are linear (no nested quantifiers) — safe to run on large stdout.
  */
-const URL_PATTERNS: { re: RegExp; api?: boolean }[] = [
+const URL_PATTERNS: {
+  re: RegExp;
+  api?: boolean;
+  /** The provider the path shape implies when the host does not name one. */
+  provider?: GitProviderKind;
+}[] = [
   // https://<host>/<group/sub/project>/-/merge_requests/<iid>
-  { re: /https?:\/\/([^/\s"']+)\/([^\s"']+?)\/-\/merge_requests\/(\d+)/ },
+  {
+    re: /https?:\/\/([^/\s"']+)\/([^\s"']+?)\/-\/merge_requests\/(\d+)/,
+    provider: "gitlab",
+  },
   // https://<host>/<owner>/<repo>/pull/<number>
   { re: /https?:\/\/([^/\s"']+)\/([^/\s"']+\/[^/\s"']+)\/pull\/(\d+)/ },
   // https://bitbucket.org/<workspace>/<repo>/pull-requests/<id>
@@ -60,6 +78,7 @@ const URL_PATTERNS: { re: RegExp; api?: boolean }[] = [
   {
     re: /https?:\/\/([^/\s"']+)\/api\/v4\/projects\/([^/\s"']+)\/merge_requests\/(\d+)/,
     api: true,
+    provider: "gitlab",
   },
   // https://api.bitbucket.org/2.0/repositories/<workspace>/<repo>/pullrequests/<id>
   {
@@ -87,6 +106,7 @@ function webHostOf(host: string): string {
 function refFrom(
   match: RegExpExecArray,
   api: boolean,
+  provider: GitProviderKind | undefined,
 ): ChangeRequestRef | null {
   const number = Number(match[3]);
   if (!Number.isSafeInteger(number) || number <= 0) return null;
@@ -95,7 +115,10 @@ function refFrom(
   const rawPath = match[2]!;
   const path = api ? decodeURIComponent(rawPath) : rawPath;
   if (/^\d+$/.test(path)) return null;
-  const repo = parseRepoUrl(`https://${host}/${path}`);
+  const repoUrl = `https://${host}/${path}`;
+  const repo =
+    parseRepoUrl(repoUrl) ??
+    (provider ? parseRepoUrl(repoUrl, { provider }) : null);
   if (!repo) return null;
   return { repo, number, url: changeRequestUrl(repo, number) };
 }
@@ -107,9 +130,9 @@ function refFrom(
 export function parseChangeRequestUrl(input: string): ChangeRequestRef | null {
   const raw = input.trim();
   if (!raw) return null;
-  for (const { re, api } of URL_PATTERNS) {
+  for (const { re, api, provider } of URL_PATTERNS) {
     const match = re.exec(raw);
-    const ref = match ? refFrom(match, api === true) : null;
+    const ref = match ? refFrom(match, api === true, provider) : null;
     if (ref) return ref;
   }
   return null;
@@ -133,9 +156,9 @@ const MAX_SCAN = 200_000;
  */
 export function findChangeRequestUrl(text: string): ChangeRequestRef | null {
   const s = text.length > MAX_SCAN ? text.slice(0, MAX_SCAN) : text;
-  for (const { re, api } of URL_PATTERNS) {
+  for (const { re, api, provider } of URL_PATTERNS) {
     const match = re.exec(s);
-    const ref = match ? refFrom(match, api === true) : null;
+    const ref = match ? refFrom(match, api === true, provider) : null;
     if (ref) return ref;
   }
   return null;
