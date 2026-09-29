@@ -29,7 +29,8 @@ which are private, and bundles it into one module with declarations.
   with the package's own client.
 - Export `migrateSandboxControllerSchema`, which creates and upgrades the
   library's own `sandbox_controller` Postgres schema, and the stores in it:
-  `postgresRunnerStateStore`, a `RunnerStateStore`, and
+  `postgresRunnerStateStore`, a `RunnerStateStore` (its `scope` keeps several
+  hosts' or environments' rows and locks apart in one database), and
   `postgresTenantPoolStore`, the tenant warm pools per sandbox cluster, with
   `tenantPoolReader`, a cached list for the provider's `tenantPools`.
 - Export the tenant pool model: `TenantPool` and `TenantPoolRepo`, their
