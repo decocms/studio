@@ -14,6 +14,11 @@ import { CredentialVault } from "@/encryption/credential-vault";
 import { getSettings } from "@/settings";
 import { sandboxCredentialMinters } from "@/sandbox/credential-mint";
 import { ORG_FS_CONFIG_LIFETIME_MS } from "@/sandbox/credential-push";
+import {
+  legacyPoolCloneUrlMinter,
+  legacyTenantPools,
+  parseLegacyTenantPools,
+} from "@/sandbox/legacy-tenant-pools";
 
 // Stashed on globalThis so they survive Bun's `--hot` reload. The preview
 // reverse-proxy registered at the top of `apps/api/src/index.ts` is wired
@@ -157,7 +162,7 @@ async function instantiate(
   const previewUrlPattern = readPreviewUrlPattern();
   // Dynamic import — @kubernetes/client-node is heavy and only needed when
   // hosted agent sandboxes are enabled.
-  const { AgentSandboxProvider, parseTenantPools } = await import(
+  const { AgentSandboxProvider } = await import(
     "@decocms/sandbox/provider/agent-sandbox"
   );
   // `meter` is reassigned by initObservability() after sdk.start(); read
@@ -167,6 +172,10 @@ async function instantiate(
   // re-mint a fresh clone credential on autonomous recovery instead of
   // replaying the expired token baked into the persisted cloneUrl.
   const vault = new CredentialVault(getSettings().encryptionKey);
+  const minters = sandboxCredentialMinters(db, vault);
+  const legacyPools = parseLegacyTenantPools(
+    process.env.STUDIO_SANDBOX_TENANT_POOLS,
+  );
   return new AgentSandboxProvider({
     stateStore,
     previewUrlPattern,
@@ -174,13 +183,13 @@ async function instantiate(
     envName: readEnvName(),
     previewGateway: readPreviewGateway(),
     sentinelToken: readSandboxSentinelToken(),
-    // JSON array of tenant warm pools (see the provider's
-    // `tenant-pools.ts`). Unset — the default — means no pool is ever
-    // resolved and no reconciler runs. Throws on malformed config: a pool
-    // that silently fails to parse costs N pods and serves nobody.
-    tenantPools: parseTenantPools(process.env.STUDIO_SANDBOX_TENANT_POOLS),
+    tenantPools: legacyTenantPools(legacyPools),
+    mintPoolCloneUrl: legacyPoolCloneUrlMinter(
+      legacyPools,
+      minters.mintCloneUrl,
+    ),
     meter,
-    ...sandboxCredentialMinters(db, vault),
+    ...minters,
   });
 }
 

@@ -20,6 +20,8 @@ import {
   lifetimeInputSchema,
   listOutputSchema,
   SANDBOX_LIST_MAX,
+  SANDBOX_LIST_POOLS_MAX,
+  SANDBOX_LIST_POOL_REPOS_MAX,
   SANDBOX_TOOLS,
   SANDBOX_WATCH_KEEPALIVE_MS,
   statusInputSchema,
@@ -84,6 +86,7 @@ type Provider = Pick<
   | "hasSchedulableCapacity"
   | "markTenantPoolsDirty"
   | "listSandboxes"
+  | "listTenantPools"
 >;
 
 export {
@@ -178,8 +181,8 @@ export function sandboxTools(
         "Refresh the tenant warm pools serving a repo and branch after a push.",
       inputSchema: tenantPoolsPushInputSchema,
       outputSchema: tenantPoolsPushOutputSchema,
-      execute: async ({ repo, ref }) => ({
-        pools: await provider().markTenantPoolsDirty(repo, ref),
+      execute: async ({ repoUrl, ref }) => ({
+        pools: await provider().markTenantPoolsDirty(repoUrl, ref),
       }),
     }),
     tool({
@@ -193,7 +196,7 @@ export function sandboxTools(
     tool({
       id: SANDBOX_TOOLS.list,
       description:
-        "The live sandboxes' tenants and repos, without credentials, for Studio's credential push.",
+        "The live sandboxes' tenants and repos, and the tenant pools, without credentials, for Studio's credential push.",
       inputSchema: emptySchema,
       outputSchema: listOutputSchema,
       execute: async () => ({
@@ -205,6 +208,17 @@ export function sandboxTools(
             orgFsConfigExpiresAt: sandbox.tenant
               ? credentials.orgFsConfigExpiresAt(sandbox.tenant)
               : null,
+          })),
+        pools: provider()
+          .listTenantPools()
+          .slice(0, SANDBOX_LIST_POOLS_MAX)
+          .map(({ name, tenant, image, repos }) => ({
+            name,
+            tenant,
+            image,
+            repos: repos
+              .slice(0, SANDBOX_LIST_POOL_REPOS_MAX)
+              .map(({ repoUrl, branch }) => ({ repoUrl, branch })),
           })),
       }),
     }),

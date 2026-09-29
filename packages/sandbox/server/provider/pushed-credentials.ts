@@ -6,7 +6,7 @@
  * ever written to the state store.
  */
 
-import { repoKeyFromCloneUrl } from "./agent-sandbox/tenant-pools";
+import { normalizeRepoUrl } from "./agent-sandbox/tenant-pools";
 import type { CredentialsPush, RepoIdentity } from "./sandbox-api";
 import type { EnsureOptions } from "./types";
 
@@ -21,13 +21,30 @@ interface Entry {
 const DEFAULT_MAX_ENTRIES = 20_000;
 const SEED_MARGIN_MS = 2 * 60_000;
 
+/**
+ * `owner/name` from a github.com clone URL (credentialed or anonymous),
+ * lowercased: a connection mints for a GitHub repo only, so a clone URL on any
+ * other host yields null.
+ */
+function githubRepoKey(cloneUrl: string): string | null {
+  try {
+    const url = new URL(cloneUrl);
+    if (url.hostname.toLowerCase() !== "github.com") return null;
+    const [owner, rest] = url.pathname.replace(/^\/+/, "").split("/");
+    const name = rest?.replace(/\.git$/, "");
+    return owner && name ? `${owner}/${name}`.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** How the runner's mint paths name a repo, or null when none can re-mint it. */
 export function repoIdentityOf(
   repo: Pick<Repo, "cloneUrl" | "connectionId" | "repositoryId">,
 ): RepoIdentity | null {
   // The runner's mint prefers the repository record, so the key does too.
   if (repo.repositoryId) return { repositoryId: repo.repositoryId };
-  const key = repo.connectionId ? repoKeyFromCloneUrl(repo.cloneUrl) : null;
+  const key = repo.connectionId ? githubRepoKey(repo.cloneUrl) : null;
   return repo.connectionId && key
     ? { connectionId: repo.connectionId, repo: key }
     : null;
@@ -36,7 +53,12 @@ export function repoIdentityOf(
 function tenantKey(tenant: Tenant | null | undefined): string {
   return tenant
     ? JSON.stringify(["tenant", tenant.orgId, tenant.userId])
-    : "pool";
+    : "untenanted";
+}
+
+function poolRepoKey(tenant: string, repoUrl: string): string | null {
+  const url = normalizeRepoUrl(repoUrl);
+  return url ? JSON.stringify(["pool", tenant, url.toLowerCase()]) : null;
 }
 
 function repoKey(repo: RepoIdentity): string {
@@ -115,14 +137,20 @@ export class PushedCredentials {
       )
         stored++;
     }
+    for (const p of batch.poolCloneUrls) {
+      const key = poolRepoKey(p.tenant, p.repoUrl);
+      const entry = { value: p.cloneUrl, expiresAt: p.expiresAt };
+      if (key && this.put(this.clones, key, entry)) stored++;
+    }
     for (const o of batch.orgFsConfigs) {
       const entry = { value: o.orgFsConfigJson, expiresAt: o.expiresAt };
       if (this.put(this.orgFs, tenantKey(o.tenant), entry)) stored++;
     }
-    return {
-      stored,
-      kept: batch.cloneUrls.length + batch.orgFsConfigs.length - stored,
-    };
+    const pushed =
+      batch.cloneUrls.length +
+      batch.poolCloneUrls.length +
+      batch.orgFsConfigs.length;
+    return { stored, kept: pushed - stored };
   }
 
   /**
@@ -166,6 +194,12 @@ export class PushedCredentials {
     );
   }
 
+  /** A tenant pool allocation's clone URL. */
+  poolCloneUrl(tenant: string, repoUrl: string, bufferMs = 0): string | null {
+    const key = poolRepoKey(tenant, repoUrl);
+    return key ? (this.get(this.clones, key, bufferMs)?.value ?? null) : null;
+  }
+
   orgFsConfig(tenant: Tenant, bufferMs = 0): string | null {
     return this.get(this.orgFs, tenantKey(tenant), bufferMs)?.value ?? null;
   }
@@ -195,5 +229,9 @@ export function pushedCredentialOptions(store: PushedCredentials) {
     mintOrgFsConfig: async (
       tenant: NonNullable<EnsureOptions["tenant"]>,
     ): Promise<string | null> => store.orgFsConfig(tenant),
+    mintPoolCloneUrl: async (repo: {
+      tenant: string;
+      repoUrl: string;
+    }): Promise<string | null> => store.poolCloneUrl(repo.tenant, repo.repoUrl),
   };
 }

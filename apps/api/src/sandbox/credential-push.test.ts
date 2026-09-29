@@ -1,11 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import type { TenantPool } from "@decocms/sandbox/provider/agent-sandbox";
-import type { SandboxListing } from "@decocms/sandbox/provider/sandbox-api";
+import type {
+  ListedTenantPool,
+  SandboxListing,
+} from "@decocms/sandbox/provider/sandbox-api";
 import {
   type CredentialRecords,
   credentialExpiresAt,
   mintCredentialPush,
   planCredentialPush,
+  poolRepoKey,
   PUSH_CLONE_BUFFER_MS,
   tenantKey,
 } from "./credential-push";
@@ -25,6 +28,10 @@ const records: CredentialRecords = {
     ["repo_a", "org_a"],
     ["repo_b", "org_b"],
   ]),
+  orgRepositories: new Map([
+    [poolRepoKey("org_a", "https://github.com/acme/site.git")!, "repo_a"],
+    [poolRepoKey("org_b", "https://github.com/acme/docs.git")!, "repo_b"],
+  ]),
 };
 
 function listing(over: Partial<SandboxListing> = {}): SandboxListing {
@@ -38,7 +45,7 @@ function listing(over: Partial<SandboxListing> = {}): SandboxListing {
   };
 }
 
-const plan = (sandboxes: SandboxListing[], pools: TenantPool[] = []) =>
+const plan = (sandboxes: SandboxListing[], pools: ListedTenantPool[] = []) =>
   planCredentialPush({ sandboxes, pools, records, now: NOW });
 
 describe("planCredentialPush", () => {
@@ -52,6 +59,7 @@ describe("planCredentialPush", () => {
         { tenant: A, repo: SITE },
         { tenant: A, repo: { repositoryId: "repo_a" } },
       ],
+      poolClones: [],
       orgFs: [],
       refused: 0,
     });
@@ -106,26 +114,55 @@ describe("planCredentialPush", () => {
     expect(plan([listing({ orgFs: false })]).orgFs).toEqual([]);
   });
 
-  it("mints the configured pools without a tenant, if their connection is the pool org's", () => {
-    const pool = (orgId: string, connectionId: string): TenantPool => ({
+  describe("pools from the host's listing", () => {
+    const pool = (tenant: string, repoUrl: string): ListedTenantPool => ({
       name: "p",
-      orgId,
-      repo: "Acme/Site",
-      connectionId,
-      branch: "main",
-      workload: { runtime: "node" },
+      tenant,
+      image: "default",
+      repos: [{ repoUrl, branch: "main" }],
     });
-    expect(plan([], [pool("org_a", "conn_a")])).toEqual({
-      clones: [{ tenant: null, repo: SITE }],
-      orgFs: [],
-      refused: 0,
+
+    it("mints a pool repo from the pool org's own record for it", () => {
+      expect(plan([], [pool("org_a", "https://github.com/Acme/Site")])).toEqual(
+        {
+          clones: [],
+          poolClones: [
+            {
+              tenant: "org_a",
+              repoUrl: "https://github.com/Acme/Site",
+              repositoryId: "repo_a",
+            },
+          ],
+          orgFs: [],
+          refused: 0,
+        },
+      );
     });
-    expect(plan([], [pool("org_a", "conn_b")]).refused).toBe(1);
+
+    it("refuses a pool repo with no record in the pool's org, even when another org has one", () => {
+      expect(
+        plan(
+          [],
+          [
+            pool("org_a", "https://github.com/acme/docs"),
+            pool("org_a", "https://github.com/acme/unknown"),
+            pool("org_a", "git@github.com:acme/site.git"),
+          ],
+        ),
+      ).toEqual({ clones: [], poolClones: [], orgFs: [], refused: 3 });
+    });
+
+    it("mints nothing for a pool with no repos", () => {
+      expect(
+        plan([], [{ name: "p", tenant: "org_a", image: "default", repos: [] }]),
+      ).toEqual({ clones: [], poolClones: [], orgFs: [], refused: 0 });
+    });
   });
 
-  it("ignores tenant-less listings: pools come from Studio's config", () => {
+  it("ignores tenant-less listings: pools are listed separately", () => {
     expect(plan([listing({ tenant: null })])).toEqual({
       clones: [],
+      poolClones: [],
       orgFs: [],
       refused: 0,
     });
@@ -139,8 +176,15 @@ describe("mintCredentialPush", () => {
       {
         clones: [
           { tenant: A, repo: SITE },
-          { tenant: null, repo: { repositoryId: "repo_a" } },
+          { tenant: A, repo: { repositoryId: "repo_a" } },
           { tenant: A, repo: { connectionId: "conn_a", repo: "acme/none" } },
+        ],
+        poolClones: [
+          {
+            tenant: "org_a",
+            repoUrl: "https://github.com/acme/site",
+            repositoryId: "repo_a",
+          },
         ],
         orgFs: [{ ...A, orgSlug: "acme" }],
         refused: 0,
@@ -162,6 +206,10 @@ describe("mintCredentialPush", () => {
       { cloneUrl: "https://github.com/acme/site.git", connectionId: "conn_a" },
       { bufferMs: PUSH_CLONE_BUFFER_MS },
     ]);
+    expect(asked.at(-1)).toEqual([
+      { cloneUrl: "", repositoryId: "repo_a" },
+      { bufferMs: PUSH_CLONE_BUFFER_MS },
+    ]);
     expect(batches).toEqual([
       {
         cloneUrls: [
@@ -172,8 +220,16 @@ describe("mintCredentialPush", () => {
             expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
           },
           {
-            tenant: null,
+            tenant: A,
             repo: { repositoryId: "repo_a" },
+            cloneUrl: "https://x-access-token:t@github.com/acme/site.git",
+            expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
+          },
+        ],
+        poolCloneUrls: [
+          {
+            tenant: "org_a",
+            repoUrl: "https://github.com/acme/site",
             cloneUrl: "https://x-access-token:t@github.com/acme/site.git",
             expiresAt: NOW + PUSH_CLONE_BUFFER_MS,
           },

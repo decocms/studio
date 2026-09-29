@@ -2,15 +2,35 @@ import { KubeConfig } from "@kubernetes/client-node";
 
 export {
   AgentSandboxProvider,
-  parseTenantPools,
+  normalizeRepoUrl,
+  renderTenantPoolWarmPools,
+  TenantPoolCapacityError,
+  tenantPoolFieldsSchema,
+  tenantPoolRepoSchema,
+  tenantPoolSchema,
   type ClaimPhase,
   type PortForwarder,
+  type SandboxWarmPoolObject,
+  type TenantPool,
+  type TenantPoolFieldsInput,
+  type TenantPoolInput,
+  type TenantPoolRepo,
+  type TenantPoolRepoInput,
 } from "@decocms/sandbox/provider/agent-sandbox";
 export {
-  migrateRunnerStateStore,
+  migrateSandboxControllerSchema,
   postgresRunnerStateStore,
+  postgresTenantPoolStore,
+  TenantPoolConflictError,
+  tenantPoolReader,
   type PostgresRunnerStateStore,
   type PostgresRunnerStateStoreOptions,
+  type PostgresTenantPoolStore,
+  type PostgresTenantPoolStoreOptions,
+  type StoredTenantPool,
+  type TenantPoolReader,
+  type TenantPoolReaderOptions,
+  type TenantPoolStore,
 } from "@decocms/sandbox/provider/postgres-state-store";
 export type {
   EnsureOptions,
