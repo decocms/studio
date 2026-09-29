@@ -129,6 +129,9 @@ describe("postgresRunnerStateStore", () => {
       expect((await prod.getByHandle(handle))?.state).toEqual({ env: "prod" });
       expect(await store.getByHandle(handle)).toBeNull();
 
+      expect((await stg.list()).map((r) => r.state)).toEqual([{ env: "stg" }]);
+      expect((await prod.list({ limit: 1 })).map((r) => r.id)).toEqual([id]);
+
       await stg.deleteByHandle(handle);
       expect(await stg.get(id)).toBeNull();
       expect((await prod.get(id))?.state).toEqual({ env: "prod" });

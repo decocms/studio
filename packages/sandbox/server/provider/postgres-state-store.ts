@@ -30,6 +30,8 @@ export interface PostgresRunnerStateStoreOptions {
 }
 
 export interface PostgresRunnerStateStore extends RunnerStateStore {
+  /** This scope's rows, most recently updated first; `state` holds daemon bearers, so never expose it as is. */
+  list(opts?: { limit?: number }): Promise<RunnerStateRecordWithId[]>;
   close(): Promise<void>;
 }
 
@@ -188,6 +190,13 @@ export function postgresRunnerStateStore({
   const sql = postgres(url, { max: maxConnections, prepare: false });
   return {
     ...ops(sql, scope),
+    async list({ limit = 500 } = {}) {
+      const rows = await sql<Row[]>`
+        select user_id, project_ref, handle, state, updated_at
+        from sandbox_controller.runner_state
+        where scope = ${scope} order by updated_at desc limit ${limit}`;
+      return rows.map(toRecord);
+    },
     async withLock<T>(
       id: SandboxId,
       fn: (store: RunnerStateStoreOps) => Promise<T>,
