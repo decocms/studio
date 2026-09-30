@@ -3,7 +3,7 @@
   width: clamp(110px, 45cqw, 180px);
   aspect-ratio: 1;
   /* Room to grow at full volume without covering the status text. */
-  margin-block: calc(clamp(110px, 45cqw, 180px) * 0.2);
+  margin-block: calc(clamp(110px, 45cqw, 180px) * 0.15);
   border-radius: 50%;
   background: radial-gradient(
     circle at 30% 25%,
@@ -17,7 +17,7 @@
       var(--color-primary) calc(20% + var(--voice-level) * 30%),
       transparent
     );
-  transform: scale(calc(1 + var(--voice-level) * 0.4));
+  transform: scale(calc(1 + var(--voice-level) * 0.3));
   filter: brightness(calc(1 + var(--voice-level) * 0.2));
   transition: opacity 200ms;
   animation: studio-voice-breathe 4s ease-in-out infinite;
