@@ -29,6 +29,8 @@ export interface Sandbox {
    * expensive (a needless cold start, or minutes polling a dead port).
    */
   warmPoolAdopted: boolean;
+  /** Where the sandbox runs. */
+  provider: SandboxProviderKind;
 }
 
 /** When omitted, no dev server is started; the default tool image is used. */

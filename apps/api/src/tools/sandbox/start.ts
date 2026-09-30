@@ -62,6 +62,7 @@ import {
 } from "@decocms/shared/branch-name";
 import { PACKAGE_MANAGER_CONFIG } from "@decocms/shared/runtime-defaults";
 import { getAgentSandboxProvider } from "../../sandbox/lifecycle";
+import { timeProvision } from "../../sandbox/provision-metrics";
 import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
@@ -759,36 +760,47 @@ async function provisionSandbox(params: StartParams): Promise<{
   // infrastructure.
   await waitForSchedulableCapacity(runner);
 
-  const sandbox = await ensureOrRephrase(
-    runner,
-    { userId: sandboxUserId, projectRef },
+  const sandbox = await timeProvision(
     {
-      // Annotation only — the handle comes from `projectRef`, which already
-      // carries this branch, so runner and proxy agree without being told.
-      branch,
-      repo: repoOpts,
-      extraRepos,
-      workload,
-      // Explicit, not implied by the absent `workload`: the daemon autodetects a
-      // package manager from the lockfile when the config names none, so an
-      // omitted workload still installed (404 packages, competing with the run
-      // that only wanted the checkout).
-      cloneOnly,
-      ...(purpose ? { purpose } : {}),
-      ...(provider ? { provider } : {}),
-      ...(sandboxImage !== "default" ? { sandboxImage } : {}),
-      tenant: {
-        orgId,
-        // The sandbox's owner, so the pod's `user_id` label/metric matches the
-        // claim handle it answers on.
-        userId: sandboxUserId,
-        ...(ctx.organization?.slug ? { orgSlug: ctx.organization.slug } : {}),
-        ...(ctx.organization?.name ? { orgName: ctx.organization.name } : {}),
-        ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
-        ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
-      },
-      ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+      start: existing ? "resume" : "fresh",
+      purpose: purpose ?? "interactive",
     },
+    () =>
+      ensureOrRephrase(
+        runner,
+        { userId: sandboxUserId, projectRef },
+        {
+          // Annotation only — the handle comes from `projectRef`, which already
+          // carries this branch, so runner and proxy agree without being told.
+          branch,
+          repo: repoOpts,
+          extraRepos,
+          workload,
+          // Explicit, not implied by the absent `workload`: the daemon autodetects a
+          // package manager from the lockfile when the config names none, so an
+          // omitted workload still installed (404 packages, competing with the run
+          // that only wanted the checkout).
+          cloneOnly,
+          ...(purpose ? { purpose } : {}),
+          ...(provider ? { provider } : {}),
+          ...(sandboxImage !== "default" ? { sandboxImage } : {}),
+          tenant: {
+            orgId,
+            // The sandbox's owner, so the pod's `user_id` label/metric matches the
+            // claim handle it answers on.
+            userId: sandboxUserId,
+            ...(ctx.organization?.slug
+              ? { orgSlug: ctx.organization.slug }
+              : {}),
+            ...(ctx.organization?.name
+              ? { orgName: ctx.organization.name }
+              : {}),
+            ...(ctx.auth.user?.email ? { userEmail: ctx.auth.user.email } : {}),
+            ...(ctx.auth.user?.name ? { userName: ctx.auth.user.name } : {}),
+          },
+          ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
+        },
+      ),
   );
 
   // Resolve declared env (literals + secret refs) and push to the daemon

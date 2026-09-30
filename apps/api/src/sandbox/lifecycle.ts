@@ -165,13 +165,27 @@ async function instantiate(
       import("@decocms/sandbox/provider/freestyle"),
       import("@decocms/sandbox/provider/router"),
     ]);
-  return new SandboxProviderRouter({
-    kubernetes,
-    freestyle: new FreestyleSandboxProvider({
-      apiKey,
-      image: process.env.STUDIO_SANDBOX_FREESTYLE_IMAGE?.trim() || undefined,
-    }),
-  });
+  return new SandboxProviderRouter(
+    {
+      kubernetes,
+      freestyle: new FreestyleSandboxProvider({
+        apiKey,
+        image: process.env.STUDIO_SANDBOX_FREESTYLE_IMAGE?.trim() || undefined,
+        meter,
+      }),
+    },
+    { freestyleShare: readFreestyleShare() },
+  );
+}
+
+/** STUDIO_SANDBOX_FREESTYLE_SHARE: 0 to 1, the share of new sandboxes placed on Freestyle. */
+function readFreestyleShare(): number {
+  const share = Number(process.env.STUDIO_SANDBOX_FREESTYLE_SHARE ?? 0);
+  if (Number.isFinite(share) && share >= 0 && share <= 1) return share;
+  console.warn(
+    "[lifecycle] STUDIO_SANDBOX_FREESTYLE_SHARE must be a number from 0 to 1; using 0",
+  );
+  return 0;
 }
 
 async function instantiateKubernetes(
@@ -186,6 +200,7 @@ async function instantiateKubernetes(
       baseUrl: controlPlane.url,
       token: controlPlane.token,
       credentialLifetimeMs: { orgFsConfig: ORG_FS_CONFIG_LIFETIME_MS },
+      meter,
     });
   }
   const stateStore = new KyselySandboxProviderStateStore(db);

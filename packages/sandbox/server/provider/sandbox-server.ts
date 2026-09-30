@@ -8,7 +8,8 @@ import type { z } from "zod";
 import { ConfigRequestError } from "../daemon-client";
 import type { AgentSandboxProvider } from "./agent-sandbox";
 import type { PushedCredentials } from "./pushed-credentials";
-import type { EnsureOptions } from "./types";
+import { sandboxProviderOfError } from "./shared/provider-tag";
+import type { EnsureOptions, SandboxProviderKind } from "./types";
 import {
   capacityOutputSchema,
   credentialsPushInputSchema,
@@ -60,20 +61,26 @@ function tool<I extends z.ZodType, O extends z.ZodType>(
     // A thrown message is all an MCP error carries, so it carries JSON.
     execute: (input) =>
       def.execute(input).catch((err: unknown) => {
-        const body: ToolError =
-          err instanceof ConfigRequestError
+        const provider = sandboxProviderOfError(err);
+        const body: ToolError = {
+          ...(err instanceof ConfigRequestError
             ? {
                 code: "bootstrap-rejected",
                 error: err.message,
                 status: err.status,
               }
-            : { code: "internal", error: messageChain(err) };
+            : { code: "internal", error: messageChain(err) }),
+          ...(provider ? { provider } : {}),
+        };
         throw new Error(JSON.stringify(body));
       }),
   };
 }
 
-type Provider = Pick<
+type Provider = {
+  /** Absent on a Kubernetes-only host. */
+  providerOf?(handle: string): Promise<SandboxProviderKind>;
+} & Pick<
   AgentSandboxProvider,
   | "ensure"
   | "delete"
@@ -141,6 +148,7 @@ export function sandboxTools(
           previewUrl,
           daemon,
           lastTermination,
+          provider: (await provider().providerOf?.(handle)) ?? "kubernetes",
         };
       },
     }),

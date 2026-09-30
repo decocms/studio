@@ -24,6 +24,7 @@ const mockRunner: Pick<
     workdir: "/app",
     previewUrl: null,
     warmPoolAdopted: false,
+    provider: "kubernetes",
   }),
   delete: (h) => mockDelete(h),
   alive: async () => true,

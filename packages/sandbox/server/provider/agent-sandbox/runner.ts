@@ -2633,6 +2633,7 @@ export class AgentSandboxProvider {
       workdir: rec.workdir,
       previewUrl: this.composePreviewUrl(rec),
       warmPoolAdopted: rec.tenantPoolPodBound === true,
+      provider: "kubernetes",
     };
   }
 

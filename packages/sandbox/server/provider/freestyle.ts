@@ -9,6 +9,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
+import type { Meter } from "@opentelemetry/api";
 import { Freestyle, FreestyleApiError, type Vm } from "freestyle";
 import { sleep } from "@decocms/shared/std";
 import pkg from "../../package.json" with { type: "json" };
@@ -26,6 +27,7 @@ import {
   proxyDaemonWithRetry,
 } from "./shared/daemon-proxy";
 import { proxyPreview } from "./shared/preview-proxy";
+import { daemonProxyTimer, RUNNER_KIND } from "./shared/proxy-metrics";
 import type {
   EnsureOptions,
   PodTermination,
@@ -66,6 +68,8 @@ export interface FreestyleSandboxProviderOptions {
   idleTimeoutSeconds?: number;
   /** Where daemon ports are published. Default `style.dev`, free on every account. */
   domainSuffix?: string;
+  /** Records daemon request latency; see `daemonProxyTimer`. */
+  meter?: Meter;
 }
 
 interface Found {
@@ -78,6 +82,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly image: string;
   private readonly idleTimeoutSeconds: number;
   private readonly domainSuffix: string;
+  private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
   private readonly inflight = new Inflight<string, Sandbox>();
   private readonly snapshotInflight = new Inflight<string, string>();
   private readonly lookups = new Map<
@@ -95,6 +100,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 15 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
+    this.timeDaemonRequest = daemonProxyTimer(opts.meter);
   }
 
   /** Whether this handle is a Freestyle sandbox. Cached; see `MISS_TTL_MS`. */
@@ -228,6 +234,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         workdir: WORKDIR,
         previewUrl: this.daemonUrl(handle),
         warmPoolAdopted: false,
+        provider: "freestyle",
       };
     });
   }
@@ -413,13 +420,20 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     }
     const reread = async () =>
       (await this.find(handle, { refresh: true }))?.daemon ?? null;
-    return proxyDaemonWithRetry(found.daemon, path, init, {
-      unauthorized: async () => {
-        const fresh = await reread();
-        return fresh && fresh.token !== found.daemon.token ? fresh : null;
-      },
-      unreachable: reread,
-    });
+    return this.timeDaemonRequest(RUNNER_KIND.freestyle, () =>
+      proxyDaemonWithRetry(found.daemon, path, init, {
+        unauthorized: async () => {
+          const fresh = await reread();
+          return fresh && fresh.token !== found.daemon.token ? fresh : null;
+        },
+        unreachable: reread,
+      }),
+    );
+  }
+
+  /** The daemon's public address and bearer, for a host serving `sandbox-api`. */
+  async daemonEndpoint(handle: string): Promise<DaemonAddress | null> {
+    return (await this.find(handle))?.daemon ?? null;
   }
 
   async adoptLiveClaim(_id: SandboxId, handle: string): Promise<boolean> {

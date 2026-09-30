@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxProvider } from "./agent-sandbox";
-import { type OwningSandboxProvider, SandboxProviderRouter } from "./router";
+import {
+  handleShare,
+  type OwningSandboxProvider,
+  SandboxProviderRouter,
+} from "./router";
+import { sandboxProviderOfError } from "./shared/provider-tag";
 import { computeHandle } from "./shared";
 
 const ID = { userId: "u1", projectRef: "agent:org:vmcp:feature-x" };
@@ -20,6 +25,7 @@ function fake(
         workdir: "/app",
         previewUrl: kind,
         warmPoolAdopted: false,
+        provider: kind === "fs" ? "freestyle" : "kubernetes",
       };
     },
     alive: async () => state.alive ?? false,
@@ -98,5 +104,47 @@ describe("SandboxProviderRouter", () => {
       kubernetes: fake("k8s", { capacity: false }) as SandboxProvider,
     });
     expect(await fullAlone.hasSchedulableCapacity()).toBe(false);
+  });
+
+  test("splits new sandboxes by freestyleShare, the same way every time", async () => {
+    const share = handleShare(HANDLE);
+    const below = new SandboxProviderRouter(
+      { kubernetes: fake("k8s"), freestyle: fake("fs") },
+      { freestyleShare: Math.min(1, share + 0.01) },
+    );
+    expect(await below.place(HANDLE, {})).toBe("freestyle");
+    const above = new SandboxProviderRouter(
+      { kubernetes: fake("k8s"), freestyle: fake("fs") },
+      { freestyleShare: Math.max(0, share - 0.01) },
+    );
+    expect(await above.place(HANDLE, {})).toBe("kubernetes");
+    // An explicit request still wins over the split.
+    expect(await below.place(HANDLE, { provider: "kubernetes" })).toBe(
+      "kubernetes",
+    );
+    // Roughly half of many handles fall under 0.5.
+    const hits = Array.from({ length: 2_000 }, (_, i) =>
+      handleShare(`h-${i}`),
+    ).filter((x) => x < 0.5).length;
+    expect(hits).toBeGreaterThan(900);
+    expect(hits).toBeLessThan(1_100);
+  });
+
+  test("tags a failed ensure with the provider that ran it", async () => {
+    const failing = fake("fs");
+    failing.ensure = async () => {
+      throw new Error("vm boot failed");
+    };
+    const router = new SandboxProviderRouter({
+      kubernetes: fake("k8s"),
+      freestyle: failing,
+    });
+    const err = await router
+      .ensure(ID, { provider: "freestyle" })
+      .catch((e: unknown) => e);
+    expect(sandboxProviderOfError(err)).toBe("freestyle");
+    expect(sandboxProviderOfError(new Error("rephrased", { cause: err }))).toBe(
+      "freestyle",
+    );
   });
 });
