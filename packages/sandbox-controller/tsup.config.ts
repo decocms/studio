@@ -1,7 +1,6 @@
 import { defineConfig } from "tsup";
 
-// The workspace packages are private, so they are bundled in; npm
-// dependencies stay external.
+// Private workspace packages and their npm-only deps (freestyle) are bundled; the host provides the externals.
 export default defineConfig({
   entry: { index: "index.ts" },
   format: ["esm"],

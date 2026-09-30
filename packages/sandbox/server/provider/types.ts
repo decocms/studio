@@ -29,6 +29,8 @@ export interface Sandbox {
    * expensive (a needless cold start, or minutes polling a dead port).
    */
   warmPoolAdopted: boolean;
+  /** Where the sandbox runs. */
+  provider: SandboxProviderKind;
 }
 
 /** When omitted, no dev server is started; the default tool image is used. */
@@ -114,7 +116,16 @@ export interface EnsureRepo {
   credentialExpiresAt?: number;
 }
 
+/** Where a sandbox runs. See `SandboxProviderRouter`. */
+export type SandboxProviderKind = "kubernetes" | "freestyle";
+
 export interface EnsureOptions {
+  /**
+   * Where a NEW sandbox should run, when that provider is configured and can
+   * serve the request. An existing sandbox stays where it is. Consumed by
+   * `SandboxProviderRouter`; the providers themselves ignore it.
+   */
+  provider?: SandboxProviderKind;
   /**
    * Defaults to `interactive` when absent. AgentSandboxProvider uses this to
    * decide the SandboxTemplate (memory ceiling) and the warm pool, so it has

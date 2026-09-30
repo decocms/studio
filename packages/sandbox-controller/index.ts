@@ -32,6 +32,15 @@ export {
   type TenantPoolReaderOptions,
   type TenantPoolStore,
 } from "@decocms/sandbox/provider/postgres-state-store";
+export {
+  FreestyleSandboxProvider,
+  type FreestyleSandboxProviderOptions,
+} from "@decocms/sandbox/provider/freestyle";
+export {
+  SandboxProviderRouter,
+  type OwningSandboxProvider,
+  type SandboxProviders,
+} from "@decocms/sandbox/provider/router";
 export type {
   EnsureOptions,
   RunnerStatePut,
@@ -41,6 +50,7 @@ export type {
   RunnerStateStoreOps,
   Sandbox,
   SandboxId,
+  SandboxProviderKind,
 } from "@decocms/sandbox/provider";
 export * from "@decocms/sandbox/provider/sandbox-api";
 export * from "@decocms/sandbox/provider/sandbox-server";

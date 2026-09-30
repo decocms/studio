@@ -177,6 +177,32 @@ set, they use `RemoteSandboxProvider` instead: the control plane runs the same
 provider (published as `@decocms/sandbox-controller`) and serves the contract
 in `server/provider/sandbox-api.ts`. Both satisfy `SandboxProvider`.
 
+With `FREESTYLE_API_KEY` set, Studio also runs `FreestyleSandboxProvider`:
+each sandbox is a [Freestyle](https://freestyle.sh) VM running the same image
+under Docker, with the daemon published at `https://<handle>.style.dev`. The
+VM's slug is the handle and its metadata holds the daemon bearer, so it needs
+no state store. An idle VM is paused, and traffic resumes it. The first ensure
+for an image builds a base snapshot with the image pulled;
+`STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
+release of this package's version.
+
+`SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
+input picks where a new sandbox runs, when that provider is configured and
+serves the requested image. Without it, `STUDIO_SANDBOX_FREESTYLE_SHARE`
+(0 to 1, default 0) of new sandboxes go to Freestyle, split by a hash of the
+handle so a retry lands where the first try did; the rest run on Kubernetes
+while it has capacity. An existing sandbox stays with its provider. Handle-only calls go to
+the provider that owns the handle: Freestyle answers ownership by VM lookup,
+and every other handle is Kubernetes'. If the Kubernetes provider cannot be
+built, Studio runs Freestyle alone. A control plane can host the router
+instead: the sandbox API carries `provider` on ensure, status and errors.
+
+Two histograms compare the providers, both split by `runner_kind`
+(`agent-sandbox` or `freestyle`): `studio.sandbox.provision.duration_ms`
+(each ensure, by `outcome` and `start=fresh|resume`) and
+`studio.sandbox.proxy.duration_ms` (`source=daemon` requests, by
+`status_code`).
+
 ## Routing and preview traffic
 
 The daemon listens on port `9000`. A production `agent-sandbox` deployment may
@@ -204,6 +230,8 @@ contract.
 | `@decocms/sandbox/shared` | Constants, daemon event types, shell quoting, Git identity, and shared helpers |
 | `@decocms/sandbox/provider` | Sandbox contracts, references, and filesystem hooks |
 | `@decocms/sandbox/provider/agent-sandbox` | Kubernetes agent-sandbox provider implementation |
+| `@decocms/sandbox/provider/freestyle` | Freestyle VM provider implementation |
+| `@decocms/sandbox/provider/router` | Routes one `SandboxProvider` surface across providers |
 | `@decocms/sandbox/daemon-client` | Authenticated daemon HTTP client |
 | `@decocms/sandbox/org-fs` | Organization filesystem client and contracts |
 | `@decocms/sandbox/dispatch` | Harness run schemas and fixtures namespace |

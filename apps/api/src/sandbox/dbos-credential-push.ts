@@ -50,10 +50,16 @@ async function pushSandboxCredentialsOnce(): Promise<PushOutcome | null> {
 
 async function pushSandboxCredentials(): Promise<PushOutcome | null> {
   if (!readControlPlaneSandboxConfig()) return null;
-  const runner = await getOrInitSharedRunner();
-  const { RemoteSandboxProvider } = await import(
-    "@decocms/sandbox/provider/remote"
-  );
+  const [{ RemoteSandboxProvider }, { SandboxProviderRouter }] =
+    await Promise.all([
+      import("@decocms/sandbox/provider/remote"),
+      import("@decocms/sandbox/provider/router"),
+    ]);
+  const shared = await getOrInitSharedRunner();
+  const runner =
+    shared instanceof SandboxProviderRouter
+      ? shared.providers.kubernetes
+      : shared;
   if (!(runner instanceof RemoteSandboxProvider)) return null;
 
   const { db } = getDb();
