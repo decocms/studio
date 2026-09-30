@@ -20,6 +20,7 @@ import * as VirtualMCPTools from "./virtual";
 import * as MonitoringTools from "./monitoring";
 import * as OrganizationTools from "./organization";
 import * as TaskBoardTools from "./task-board";
+import * as ForumTools from "./forum";
 import * as NotificationTools from "./notifications";
 import * as TagTools from "./tags";
 import * as ExperimentTools from "./experiments";
@@ -91,6 +92,10 @@ export const CORE_TOOLS = [
   TaskBoardTools.TASK_BOARD_COMMENT_DELETE,
   TaskBoardTools.TASK_BOARD_DISMISSED_LIST,
   TaskBoardTools.TASK_BOARD_DISMISSED_RESTORE,
+  ForumTools.FORUM_CHANNEL_LIST,
+  ForumTools.FORUM_TOPIC_LIST,
+  ForumTools.FORUM_TOPIC_GET,
+  ForumTools.FORUM_TOPIC_VOTE,
   TaskBoardTools.TASK_ADD_REPO,
   TaskBoardTools.TASK_BOARD_ADMIN_ORG_LIST,
   TaskBoardTools.TASK_BOARD_DELIVERY,

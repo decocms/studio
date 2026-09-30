@@ -43,6 +43,7 @@ const createMockContext = (
     orgRepoSyncs: null as never,
     jiraIntegrations: null as never,
     taskBoard: null as never,
+    forum: null as never,
     columnAutomations: null as never,
     taskBoardPrompts: null as never,
     taskBoardAnalytics: null as never,

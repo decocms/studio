@@ -1,5 +1,8 @@
 import { Page } from "@/components/page";
+import { launchableApps } from "@/components/projects/project-apps";
 import { Panel } from "@/components/panel";
+import { ThreadsView } from "@/views/forum/threads-view";
+import { TopicPage } from "@/views/forum/topic-page";
 /**
  * Task board — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
@@ -1045,7 +1048,14 @@ function TaskBoardBody({
     sortDirection,
     setSortBy,
     setSortDirection,
-  } = useBoardSearch(inlineTabs && feedEnabled ? "feed" : "board");
+  } = useBoardSearch(
+    // A forum channel is read as threads first; its cards are topics.
+    scopedProject?.metadata?.forum
+      ? "threads"
+      : inlineTabs && feedEnabled
+        ? "feed"
+        : "board",
+  );
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
@@ -1300,7 +1310,7 @@ function TaskBoardBody({
    * wherever it was clicked. The board's filters ride along; anything the
    * tasks route does not declare is dropped by its schema.
    */
-  const openTask = (item: TaskBoardItem) => {
+  const openTask = (item: { id: string; keySeq: number | null }) => {
     navigate({ to: ".", ...taskAddress(taskRouteSegment(org.slug, item)) });
   };
 
@@ -1343,6 +1353,18 @@ function TaskBoardBody({
           {t("common.taskBoard.feedView")}
         </Page.Tab>
       )}
+      <Page.Tab
+        active={layout === "threads"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("forum.threadsView"),
+        })}
+        onClick={() => {
+          setLayout("threads");
+          clearSelection();
+        }}
+      >
+        {t("forum.threadsView")}
+      </Page.Tab>
       <Page.Tab
         active={layout === "board"}
         aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
@@ -1445,7 +1467,15 @@ function TaskBoardBody({
           </Page.Actions>
           {inlineTabs ? (
             /* A full-bleed rule fences these tabs off from the apps launcher above, so they read as the control of the region below them. */
-            <div className="mt-2 border-t border-border">
+            <div
+              className={cn(
+                // Fenced off only when the apps row sits above; otherwise
+                // the topbar's own rule is right there and this doubles it.
+                scopedProject &&
+                  launchableApps(scopedProject).length > 0 &&
+                  "mt-2 border-t border-border",
+              )}
+            >
               {/* Same page padding as the project overview header above it (`Page.Container`'s), not the org-wide board's. */}
               <div className="mx-auto w-full max-w-[1680px] px-4 pt-4 pb-3 md:px-8">
                 {layoutTabs}
@@ -1475,7 +1505,9 @@ function TaskBoardBody({
         view={layout === "list" ? { grouping, sorting } : undefined}
       />
 
-      {items.length === 0 ? (
+      {layout === "threads" ? (
+        <ThreadsView project={scopedProject ?? undefined} onOpen={openTask} />
+      ) : items.length === 0 ? (
         <div
           className={cn(
             "mx-auto w-full max-w-[1680px]",
@@ -1630,7 +1662,12 @@ function TaskBoardBody({
 
       {/* Keyed by id so switching cards (a deep link changing under us) starts
           the editor's form over rather than carrying the last one's fields. */}
-      {openItem && (
+      {openItem && layout === "threads" && openItem.keySeq !== null && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <TopicPage keySeq={openItem.keySeq} onBack={() => closeTask()} />
+        </div>
+      )}
+      {openItem && layout !== "threads" && (
         <TaskBoardItemDetail
           key={openItem.id}
           item={openItem}

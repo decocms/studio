@@ -17,7 +17,7 @@ import {
   type SortDirection,
 } from "./list-sort";
 
-const LAYOUTS = ["board", "list", "feed"] as const;
+const LAYOUTS = ["board", "list", "feed", "threads"] as const;
 
 export type Layout = (typeof LAYOUTS)[number];
 

@@ -16,7 +16,10 @@ import { ViewModeToggle } from "@decocms/ui/components/view-mode-toggle.tsx";
 import { ChatLayout } from "@/components/chat-layout";
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
-import { ProjectApps } from "@/components/projects/project-apps";
+import {
+  launchableApps,
+  ProjectApps,
+} from "@/components/projects/project-apps";
 import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
 import { TaskBoardPage } from "@/layouts/task-board";
 import { LibraryTab } from "@/layouts/main-panel-tabs/library-tab";
@@ -123,7 +126,7 @@ function FlatProjectBody({
           {/* Apps: what you can open. Renders nothing for a project with none, and
           nothing while a card is open — a launcher above someone reading one
           card is the rest of the project talking over it. */}
-          {!taskOpen && (
+          {!taskOpen && launchableApps(project).length > 0 && (
             <Page.Container className="flex max-w-[1680px] shrink-0 flex-col gap-4 pb-6">
               <ProjectApps project={project} orgSlug={org.slug} />
             </Page.Container>

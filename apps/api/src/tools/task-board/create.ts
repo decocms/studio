@@ -30,6 +30,22 @@ import { type DuplicateOutcome, findDuplicateTask } from "./duplicate-check";
 import { invalidatePrCards } from "./prs-get";
 import { rejectsUngatedDeliveryLane } from "./update";
 
+/** A card may only name a project of its own org. */
+async function projectInOrg(
+  ctx: StudioContext,
+  organizationId: string,
+  projectId: string,
+): Promise<string> {
+  const project = await ctx.storage.virtualMcps.findById(
+    projectId,
+    organizationId,
+  );
+  if (!project || project.organization_id !== organizationId) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
+  return project.id;
+}
+
 export const TASK_BOARD_ITEM_CREATE = defineTool({
   name: "TASK_BOARD_ITEM_CREATE",
   description: "Create a new task board item for the organization.",
@@ -52,6 +68,11 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
     type: TaskBoardItemTypeSchema.optional(),
     assigneeId: z.string().nullable().optional(),
     repo: z.string().max(MAX_TASK_REPO_LENGTH).nullable().optional(),
+    projectId: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("The project the card is filed in, e.g. a forum channel."),
     dueDate: z.string().datetime().nullable().optional(),
     tagIds: z.array(z.string()).max(1000).optional(),
     prUrl: z
@@ -183,6 +204,9 @@ export const TASK_BOARD_ITEM_CREATE = defineTool({
       assignedBy: input.assigneeId ? getUserId(ctx)! : null,
       repo: input.repo ?? null,
       dueDate: input.dueDate ?? null,
+      projectId: input.projectId
+        ? await projectInOrg(ctx, organizationId, input.projectId)
+        : null,
       by: getUserId(ctx)!,
     });
 

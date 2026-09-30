@@ -120,11 +120,14 @@ export const PROJECT_APPS = APPS;
 export const LAUNCHABLE_VIEW_IDS = Object.keys(APPS) as LaunchableViewId[];
 
 /** The apps this project offers, in the sidebar's own order. Pure and
- *  tested. */
+ *  tested. Site Editor opens a repo and Deco Score diagnoses the site one
+ *  deploys, so on a repo-less project (a forum channel) both would be tiles
+ *  that lead nowhere. */
 export function launchableApps(project: {
   metadata?: {
     sidebarViews?: readonly string[] | null;
     sidebarViewsVersion?: number | null;
+    repository?: { url?: unknown } | null;
   } | null;
 }): LaunchableViewId[] {
   const enabled = new Set(
@@ -133,7 +136,12 @@ export function launchableApps(project: {
       project.metadata?.sidebarViewsVersion,
     ),
   );
-  return LAUNCHABLE_VIEW_IDS.filter((id) => enabled.has(id));
+  const hasSource = agentHasClonableSource(project.metadata);
+  return LAUNCHABLE_VIEW_IDS.filter(
+    (id) =>
+      enabled.has(id) &&
+      (hasSource || (id !== "site-editor" && id !== "reports")),
+  );
 }
 
 export function ProjectApps({
@@ -144,12 +152,7 @@ export function ProjectApps({
   orgSlug: string;
 }) {
   const t = useT();
-  /** Site Editor opens a repo; without one the tile would bounce to
-   *  Settings. */
-  const hasSource = agentHasClonableSource(project.metadata);
-  const apps = launchableApps(project).filter(
-    (id) => id !== "site-editor" || hasSource,
-  );
+  const apps = launchableApps(project);
   if (apps.length === 0) return null;
 
   return (

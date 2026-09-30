@@ -1789,10 +1789,24 @@ export interface TaskBoardItemTable {
    *  the card, not the thread: each attempt is a NEW thread, so a per-thread
    *  counter would reset every time and never exhaust. */
   retry_attempts: ColumnType<number, number | undefined, number>;
+  /** The forum channel (a project id) this card is a topic in (migration
+   *  227). Null for an ordinary board card. */
+  project_id: ColumnType<
+    string | null,
+    string | null | undefined,
+    string | null
+  >;
   created_by: string;
   created_at: ColumnType<Date, Date | string | undefined, never>;
   updated_by: string;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+/** One member's vote on a forum topic (migration 227). */
+export interface TaskBoardItemVoteTable {
+  task_board_item_id: string;
+  user_id: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
 }
 
 /**
@@ -2005,6 +2019,8 @@ export interface TaskBoardItem {
    * cannot. Null for a card that names only a name, or none at all.
    */
   repositoryId: string | null;
+  /** `task_board_items.project_id` (migration 227). */
+  projectId?: string | null;
   dueDate: string | null;
   /** Manual drag-to-reorder position within a lane, ascending. */
   sortOrder: number;
@@ -2505,6 +2521,7 @@ export interface Database {
   task_board_review_claims: TaskBoardReviewClaimTable;
   task_board_comments: TaskBoardCommentTable;
   task_board_item_tags: TaskBoardItemTagTable;
+  task_board_item_votes: TaskBoardItemVoteTable;
   task_board_import_runs: TaskBoardImportRunTable;
 
   // Jira integration

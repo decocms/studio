@@ -122,6 +122,7 @@ describe("Connection Tools", () => {
         repositories: null as never,
         jiraIntegrations: null as never,
         taskBoard: null as never,
+        forum: null as never,
         taskBoardPrompts: null as never,
         taskBoardAnalytics: null as never,
         threadAnalytics: null as never,

@@ -33,6 +33,9 @@ import { projectRepo, resolveRepositoryAttachment } from "./repository-binding";
 /** The repo field can also contain a project id written by existing clients. */
 export interface AttributableTask {
   repo?: string | null;
+  /** The project the card was filed in — the only link a repo-less project's
+   *  own cards (a forum channel's topics) carry. */
+  projectId?: string | null;
   threads?: readonly { virtualMcpId?: string | null }[];
 }
 
@@ -206,6 +209,10 @@ export function entryForTask(
   task: AttributableTask,
   index: ProjectIndex,
 ): ProjectIndexEntry | null {
+  const filed = task.projectId
+    ? index.byProject.get(task.projectId)
+    : undefined;
+  if (filed) return filed;
   for (const thread of task.threads ?? []) {
     const found = thread.virtualMcpId
       ? index.byProject.get(thread.virtualMcpId)

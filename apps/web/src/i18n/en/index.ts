@@ -27,6 +27,7 @@ import { downloadApp } from "./download-app.ts";
 import { details } from "./details.ts";
 import { deck } from "./deck.ts";
 import { discover } from "./discover.ts";
+import { forum } from "./forum.ts";
 import { commandPalette } from "./command-palette.ts";
 import { connections } from "./connections.ts";
 import { experiments } from "./experiments.ts";
@@ -77,6 +78,7 @@ export const en = {
   ...details,
   ...deck,
   ...discover,
+  ...forum,
   ...commandPalette,
   ...connections,
   ...common,

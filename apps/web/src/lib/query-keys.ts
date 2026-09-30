@@ -95,6 +95,15 @@ export const KEYS = {
   taskBoardComments: (locator: ProjectLocator, itemId: string) =>
     [locator, "task-board-comments", itemId] as const,
 
+  // Forum channels, topics, and one topic with its replies
+  forumChannels: (locator: ProjectLocator) =>
+    [locator, "forum-channels"] as const,
+  forumTopics: (locator: ProjectLocator) => [locator, "forum-topics"] as const,
+  forumChannelTopics: (locator: ProjectLocator, channelId: string) =>
+    [locator, "forum-topics", "channel", channelId] as const,
+  forumTopic: (locator: ProjectLocator, keySeq: number) =>
+    [locator, "forum-topics", keySeq] as const,
+
   // Public report for a domain; `lang` in the key so a language switch refetches.
   report: (domain: string, lang?: string) =>
     ["report", domain, lang ?? ""] as const,

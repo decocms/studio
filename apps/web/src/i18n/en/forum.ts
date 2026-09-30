@@ -1,0 +1,40 @@
+export const forum = {
+  "forum.newTopicIn": "New topic in {channel}",
+  "forum.backToThreads": "All threads",
+  "forum.threadsView": "Threads",
+  "forum.kind": "Kind",
+  "forum.newTopic": "New topic",
+  "forum.sort.hot": "Hot",
+  "forum.sort.new": "New",
+  "forum.sort.top": "Top",
+  "forum.sort.unanswered": "Unanswered",
+  "forum.loading": "Loading…",
+  "forum.empty": "No topics yet. Start the first one.",
+  "forum.emptyUnanswered": "Every topic here has a reply.",
+  "forum.lastActivity": "Last activity",
+  "forum.vote": "Upvote",
+  "forum.topicNotFound": "This topic doesn't exist or was removed.",
+  "forum.replies": "Replies ({count})",
+  "forum.replyFailed": "Couldn't post your reply",
+  "forum.createFailed": "Couldn't create the topic",
+  "forum.titlePlaceholder": "Title",
+  "forum.bodyPlaceholder": "Write your post. Markdown works.",
+  "forum.cancel": "Cancel",
+  "forum.post": "Post topic",
+  "forum.status.todo": "Planned",
+  "forum.status.inProgress": "In progress",
+  "forum.status.inReview": "In review",
+  "forum.status.done": "Done",
+  "forum.template.proposal": "**Problem**\n\n\n**Proposal**\n\n\n**Why now**\n",
+  "forum.template.question":
+    "**What I'm trying to do**\n\n\n**What I tried**\n",
+  "forum.template.role":
+    "**Company**\n\n**Stack**\n\n**Remote / on-site**\n\n**Compensation**\n\n**What you'll do**\n",
+  "forum.template.bounty":
+    "**Scope**\n\n\n**Acceptance criteria**\n- \n\n**Reward:**  · **Deadline:** \n",
+  "forum.template.gig": "**What needs doing**\n\n**Budget**\n\n**Timeline**\n",
+  "forum.template.profile":
+    "**Headline:** \n- **Skills:** \n- **Rate:** \n- **Availability:** \n- **Links:** \n",
+  "forum.template.help":
+    "**What happened**\n\n\n**What I expected**\n\n\n**Steps to reproduce**\n",
+} as const;
