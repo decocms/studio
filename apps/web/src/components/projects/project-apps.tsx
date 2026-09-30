@@ -10,13 +10,14 @@ import {
   BezierCurve02,
   FileSearch02,
   FlipBackward,
+  Grid01,
   Image01,
   LayoutAlt01,
   Server01,
   Speedometer02,
   Zap,
 } from "@untitledui/icons";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
@@ -24,8 +25,20 @@ import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   effectiveProjectSidebarViews,
+  isProjectNativeViewId,
+  resolveProjectSidebarViews,
+  type ProjectNativeViewPresence,
   type ProjectSidebarViewId,
+  type ProjectSidebarViewsMetadata,
 } from "@/layouts/main-panel-tabs/project-sidebar-views";
+import {
+  keepAttachedPinnedViews,
+  pinnedViewsOf,
+} from "@/layouts/main-panel-tabs/attached-pinned-views";
+import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
+import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
+import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
+import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { track } from "@/lib/posthog-client";
 
@@ -121,19 +134,69 @@ export const LAUNCHABLE_VIEW_IDS = Object.keys(APPS) as LaunchableViewId[];
 
 /** The apps this project offers, in the sidebar's own order. Pure and
  *  tested. */
-export function launchableApps(project: {
-  metadata?: {
-    sidebarViews?: readonly string[] | null;
-    sidebarViewsVersion?: number | null;
-  } | null;
-}): LaunchableViewId[] {
+export function launchableApps(
+  project: {
+    metadata?:
+      | (ProjectSidebarViewsMetadata & {
+          sidebarViewsVersion?: number | null;
+        })
+      | null;
+  },
+  native?: ProjectNativeViewPresence,
+): LaunchableViewId[] {
   const enabled = new Set(
     effectiveProjectSidebarViews(
-      project.metadata?.sidebarViews as never,
+      resolveProjectSidebarViews(project.metadata),
       project.metadata?.sidebarViewsVersion,
     ),
   );
-  return LAUNCHABLE_VIEW_IDS.filter((id) => enabled.has(id));
+  /** Native panels exist only where the project has their resource, as in the
+   *  sidebar; a tile for one that is missing would open a dead end. */
+  return LAUNCHABLE_VIEW_IDS.filter(
+    (id) =>
+      enabled.has(id) && (!native || !isProjectNativeViewId(id) || native[id]),
+  );
+}
+
+/** One launcher tile. Native and pinned apps differ only in glyph and target. */
+function AppTile({
+  to,
+  params,
+  title,
+  label,
+  tone,
+  glyph,
+  onClick,
+}: {
+  to: string;
+  params: Record<string, string>;
+  title?: string;
+  label: string;
+  tone: string;
+  glyph: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      to={to}
+      params={params}
+      onClick={onClick}
+      title={title}
+      className="group flex w-20 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"
+    >
+      <span
+        className={cn(
+          "relative flex size-14 shrink-0 items-center justify-center rounded-2xl transition-transform group-hover:scale-105",
+          tone,
+        )}
+      >
+        {glyph}
+      </span>
+      <span className="w-full truncate text-foreground text-xs font-medium">
+        {label}
+      </span>
+    </Link>
+  );
 }
 
 export function ProjectApps({
@@ -147,10 +210,16 @@ export function ProjectApps({
   /** Site Editor opens a repo; without one the tile would bounce to
    *  Settings. */
   const hasSource = agentHasClonableSource(project.metadata);
-  const apps = launchableApps(project).filter(
+  const native = useProjectNativeViewPresence(project);
+  const apps = launchableApps(project, native.presence).filter(
     (id) => id !== "site-editor" || hasSource,
   );
-  if (apps.length === 0) return null;
+  /** The project's pinned app views, the same ones the scoped sidebar lists. */
+  const pinned = keepAttachedPinnedViews(
+    pinnedViewsOf(project),
+    (project.connections ?? []).map((c) => c.connection_id),
+  ).filter((pv) => pv.toolName !== "fetch_assets");
+  if (apps.length === 0 && pinned.length === 0) return null;
 
   return (
     /* A quiet label for orientation; the tiles below already read as a group. */
@@ -166,7 +235,7 @@ export function ProjectApps({
         {apps.map((id) => {
           const app = APPS[id];
           return (
-            <Link
+            <AppTile
               key={id}
               to={app.to}
               params={{ org: orgSlug, agentId: project.id }}
@@ -174,20 +243,40 @@ export function ProjectApps({
                *  `useRememberOpenApp`. */
               onClick={() => track("project_app_launched", { app: id })}
               title={t(app.captionKey)}
-              className="group flex w-20 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"
-            >
-              <span
-                className={cn(
-                  "relative flex size-14 shrink-0 items-center justify-center rounded-2xl transition-transform group-hover:scale-105",
-                  app.tone,
-                )}
-              >
-                <app.Icon size={24} />
-              </span>
-              <span className="w-full truncate text-foreground text-xs font-medium">
-                {t(app.labelKey)}
-              </span>
-            </Link>
+              label={t(app.labelKey)}
+              tone={app.tone}
+              glyph={<app.Icon size={24} />}
+            />
+          );
+        })}
+        {pinned.map((pv) => {
+          const icon = resolveTabIcon({
+            tabId: formatPinnedViewTabId(pv.connectionId, pv.toolName),
+            kind: "expanded",
+            iconUrl: pv.icon,
+            connections: [],
+          });
+          return (
+            <AppTile
+              key={`${pv.connectionId}:${pv.toolName}`}
+              to={PROJECT_ROUTE.app}
+              params={{
+                org: orgSlug,
+                agentId: project.id,
+                connectionId: pv.connectionId,
+                toolName: pv.toolName,
+              }}
+              onClick={() => track("project_app_launched", { app: "pinned" })}
+              label={pv.label || pv.toolName}
+              tone="bg-muted text-muted-foreground"
+              glyph={
+                icon.kind === "fallback" ? (
+                  <Grid01 size={24} />
+                ) : (
+                  <TabIconGlyph icon={icon} />
+                )
+              }
+            />
           );
         })}
       </div>
