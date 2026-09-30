@@ -66,7 +66,11 @@ export const EXPERIMENT_PREVIEW_SYNC_LOCAL = defineTool({
       variants: input.variants.map((v) => v.id),
       active: true,
     };
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
 
     const adminUrl = process.env.AB_TESTING_LOCAL_ADMIN_URL;
     const adminToken = process.env.AB_TESTING_LOCAL_ADMIN_TOKEN;
@@ -90,7 +94,10 @@ export const EXPERIMENT_PREVIEW_SYNC_LOCAL = defineTool({
         // doesn't need to resolve a forced arm for (inactive/unknown short-
         // circuit) — only the forced-variant path needs this to have
         // succeeded, so don't fail the whole preview over it.
-        console.warn("[EXPERIMENT_PREVIEW_SYNC_LOCAL] admin worker PUT failed:", err);
+        console.warn(
+          "[EXPERIMENT_PREVIEW_SYNC_LOCAL] admin worker PUT failed:",
+          err,
+        );
       }
     }
 

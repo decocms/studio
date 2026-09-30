@@ -67,9 +67,7 @@ export const EXPERIMENT_IMPLEMENT = defineTool({
       input.key,
     );
     if (!experiment) {
-      throw new Error(
-        `No experiment "${input.key}" found on ${input.site}.`,
-      );
+      throw new Error(`No experiment "${input.key}" found on ${input.site}.`);
     }
     if (experiment.variants.length === 0) {
       throw new Error(

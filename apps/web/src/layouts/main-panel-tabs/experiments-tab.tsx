@@ -54,10 +54,7 @@ const STATUSES: ExperimentStatus[] = ["draft", "running", "paused", "ended"];
 
 /** Dot/pill colors per status — semantic, not the row's own accent (a variant
  *  split uses accent for "the non-control arm"; status is a different axis). */
-const STATUS_STYLES: Record<
-  ExperimentStatus,
-  { dot: string; pill: string }
-> = {
+const STATUS_STYLES: Record<ExperimentStatus, { dot: string; pill: string }> = {
   running: { dot: "bg-success", pill: "bg-success/10 text-success" },
   paused: { dot: "bg-warning", pill: "bg-warning/10 text-warning" },
   draft: {
@@ -419,9 +416,7 @@ function PromptDialog({
 
           {suggest.error && (
             <p className="text-xs text-destructive">
-              {suggest.error instanceof Error
-                ? suggest.error.message
-                : "Error"}
+              {suggest.error instanceof Error ? suggest.error.message : "Error"}
             </p>
           )}
         </div>
@@ -512,7 +507,11 @@ function SummaryStrip({ experiments }: { experiments: Experiment[] }) {
  *  QA override `useExperiment`'s own doc comment mentions) to a preview URL
  *  — lets a single site render as any one variant, no real assignment
  *  needed. Falls back to the raw base URL if it isn't a valid absolute URL. */
-function buildForcedVariantUrl(baseUrl: string, test: string, variant: string): string {
+function buildForcedVariantUrl(
+  baseUrl: string,
+  test: string,
+  variant: string,
+): string {
   try {
     const url = new URL(baseUrl);
     url.searchParams.set("__ab", `${test}:${variant}`);
@@ -530,7 +529,10 @@ function buildForcedVariantUrl(baseUrl: string, test: string, variant: string): 
  */
 /** The variant's display name in the connected split bar / weight row —
  *  capitalized role when present ("Controle"/"Tratamento"), else the raw id. */
-function variantLabel(t: ReturnType<typeof useT>, v: { id: string; role?: string | null }): string {
+function variantLabel(
+  t: ReturnType<typeof useT>,
+  v: { id: string; role?: string | null },
+): string {
   if (v.role === "control") return t("experiments.preview.control");
   if (v.role === "treatment") return t("experiments.preview.treatment");
   return v.id;
@@ -551,7 +553,9 @@ function PreviewPanel({
   const status = STATUS_STYLES[experiment.status];
   const update = useUpdateExperiment(site);
   const [weights, setWeights] = useState<Record<string, string>>(
-    Object.fromEntries(experiment.variants.map((v) => [v.id, String(v.weight)])),
+    Object.fromEntries(
+      experiment.variants.map((v) => [v.id, String(v.weight)]),
+    ),
   );
 
   const sum = Object.values(weights).reduce((a, w) => a + (Number(w) || 0), 0);
@@ -596,7 +600,10 @@ function PreviewPanel({
               {experiment.status}
             </span>
           </div>
-          <Button onClick={saveSplit} disabled={!dirty || sum !== 100 || update.isPending}>
+          <Button
+            onClick={saveSplit}
+            disabled={!dirty || sum !== 100 || update.isPending}
+          >
             {t("experiments.preview.saveChanges")}
           </Button>
         </div>
@@ -642,10 +649,15 @@ function PreviewPanel({
             <div key={v.id} className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span
-                  className={cn("h-2.5 w-2.5 rounded-full", variantBarColor(v.role))}
+                  className={cn(
+                    "h-2.5 w-2.5 rounded-full",
+                    variantBarColor(v.role),
+                  )}
                 />
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">{variantLabel(t, v)}</span>
+                  <span className="text-sm font-medium">
+                    {variantLabel(t, v)}
+                  </span>
                   <span className="font-mono text-[11px] text-muted-foreground">
                     {v.id}
                   </span>
@@ -671,7 +683,9 @@ function PreviewPanel({
             <div
               key={v.id}
               className={cn(variantBarColor(v.role))}
-              style={{ width: `${((Number(weights[v.id]) || 0) / total) * 100}%` }}
+              style={{
+                width: `${((Number(weights[v.id]) || 0) / total) * 100}%`,
+              }}
             />
           ))}
         </div>
@@ -706,9 +720,14 @@ function PreviewPanel({
                 <div className="flex flex-col gap-1 p-3">
                   <div className="flex items-center gap-2">
                     <span
-                      className={cn("h-2.5 w-2.5 rounded-full", variantBarColor(v.role))}
+                      className={cn(
+                        "h-2.5 w-2.5 rounded-full",
+                        variantBarColor(v.role),
+                      )}
                     />
-                    <span className="text-sm font-semibold">{variantLabel(t, v)}</span>
+                    <span className="text-sm font-semibold">
+                      {variantLabel(t, v)}
+                    </span>
                     <span className="font-mono text-[11px] text-muted-foreground">
                       {v.id}
                     </span>
@@ -716,7 +735,11 @@ function PreviewPanel({
                       {v.weight}%
                     </span>
                     <a
-                      href={buildForcedVariantUrl(baseUrl, experiment.key, v.id)}
+                      href={buildForcedVariantUrl(
+                        baseUrl,
+                        experiment.key,
+                        v.id,
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
@@ -726,7 +749,9 @@ function PreviewPanel({
                     </a>
                   </div>
                   {v.description && (
-                    <p className="text-xs text-muted-foreground">{v.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {v.description}
+                    </p>
                   )}
                 </div>
                 <iframe
@@ -799,12 +824,39 @@ function ReviewPanel({
   const [regeneratePrompt, setRegeneratePrompt] = useState("");
   const [previewNonce, setPreviewNonce] = useState(0);
   const [synced, setSynced] = useState(false);
+  // EXPERIMENT_IMPLEMENT_LOCAL isn't idempotent — it inserts a new gate on
+  // every call. Once "Atualizar preview" has run it successfully for the
+  // current variant text, "Criar" must not run it again (double gate/import
+  // in the site's source). Any further edit to a description invalidates
+  // this, since the inserted gate no longer matches what's described.
+  const [implementedInSource, setImplementedInSource] = useState(false);
 
   const sum = variants.reduce((a, v) => a + (Number(v.weight) || 0), 0);
-  const setVar = (i: number, patch: Partial<VariantForm>) =>
-    setVariants((vs) => vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
+  const setVar = (i: number, patch: Partial<VariantForm>) => {
+    setVariants((vs) =>
+      vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)),
+    );
+    if ("description" in patch) setImplementedInSource(false);
+  };
 
   const updatePreview = () => {
+    // The manifest/admin-worker sync only lets `?__ab=` resolve a forced
+    // arm — it doesn't put the actual gate in the site's code. Without also
+    // (re-)running the local implementer here, the preview iframes would
+    // render both arms identically until after "Criar".
+    if (canImplement && !implementedInSource) {
+      implementLocal.mutate(
+        {
+          key: key.trim(),
+          variants: variants.map((v) => ({
+            id: v.id.trim(),
+            role: v.role || null,
+            description: v.description,
+          })),
+        },
+        { onSuccess: (result) => setImplementedInSource(result.implemented) },
+      );
+    }
     sync.mutate(
       {
         key: key.trim(),
@@ -860,7 +912,7 @@ function ReviewPanel({
       },
       {
         onSuccess: (experiment) => {
-          if (canImplement) {
+          if (canImplement && !implementedInSource) {
             implementLocal.mutate({
               key: experiment.key,
               variants: experiment.variants.map((v) => ({
@@ -948,7 +1000,9 @@ function ReviewPanel({
               <Textarea
                 value={v.description ?? ""}
                 onChange={(e) => setVar(i, { description: e.target.value })}
-                placeholder={t("experiments.dialog.variantDescriptionPlaceholder")}
+                placeholder={t(
+                  "experiments.dialog.variantDescriptionPlaceholder",
+                )}
                 rows={2}
                 className="resize-none text-xs"
               />
@@ -1299,7 +1353,11 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
                 onPreview={() => setPreviewKey(e.key)}
                 onEdit={() => setEditDialog({ open: true, experiment: e })}
                 onImplement={() => {
-                  if (window.confirm(t("experiments.implementConfirm", { key: e.key }))) {
+                  if (
+                    window.confirm(
+                      t("experiments.implementConfirm", { key: e.key }),
+                    )
+                  ) {
                     implement.mutate(e.key);
                   }
                 }}
@@ -1308,7 +1366,9 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
                 }
                 onDelete={() => {
                   if (
-                    window.confirm(t("experiments.deleteConfirm", { key: e.key }))
+                    window.confirm(
+                      t("experiments.deleteConfirm", { key: e.key }),
+                    )
                   ) {
                     del.mutate(e.key);
                   }
@@ -1323,7 +1383,9 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
         site={siteSlug}
         open={promptOpen}
         onOpenChange={setPromptOpen}
-        onGenerated={(suggestion) => setReview({ open: true, initial: suggestion })}
+        onGenerated={(suggestion) =>
+          setReview({ open: true, initial: suggestion })
+        }
       />
       <ExperimentDialog
         key={editDialog.experiment?.key ?? "edit-none"}

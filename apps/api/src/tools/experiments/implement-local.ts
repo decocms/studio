@@ -207,15 +207,13 @@ export const EXPERIMENT_IMPLEMENT_LOCAL = defineTool({
     const { object } = await retryGenerateObject({
       model: provider.aiSdk.languageModel(tier.modelId),
       schema: PatchSchema,
-      system: `You wire an A/B test's variants into this site's actual frontend code. The site already has a convention for this — a small hook wrapping \`useExperiment(key)\` under \`src/ab-testing/\`, and a one-line conditional gate added directly in the component that renders the affected element. Here is one such existing hook, to imitate exactly in style:\n\n${existingHookExample || "(none found — invent a matching shape: a named function wrapping useExperiment(key) from \"@decocms/tanstack\", returning its result.)"}\n\nYou are given a shortlist of files that might render the element the variants describe. Pick the right one — or say \`found: false\` if none plausibly do, rather than guessing. \`anchorLine\` must be copied verbatim from the file you pick, so the caller can find it with a plain string search; if you can't find a safe, unambiguous line to anchor on, say \`found: false\`.`,
+      system: `You wire an A/B test's variants into this site's actual frontend code. The site already has a convention for this — a small hook wrapping \`useExperiment(key)\` under \`src/ab-testing/\`, and a one-line conditional gate added directly in the component that renders the affected element. Here is one such existing hook, to imitate exactly in style:\n\n${existingHookExample || '(none found — invent a matching shape: a named function wrapping useExperiment(key) from "@decocms/tanstack", returning its result.)'}\n\nYou are given a shortlist of files that might render the element the variants describe. Pick the right one — or say \`found: false\` if none plausibly do, rather than guessing. \`anchorLine\` must be copied verbatim from the file you pick, so the caller can find it with a plain string search; if you can't find a safe, unambiguous line to anchor on, say \`found: false\`.`,
       prompt: `Test key: \`${input.key}\`\n\nVariants:\n${input.variants
         .map(
           (v) =>
             `- ${v.id} (${v.role ?? "arm"}): ${v.description ?? "no description"}`,
         )
-        .join(
-          "\n",
-        )}\n\nCandidate files:\n\n${candidates
+        .join("\n")}\n\nCandidate files:\n\n${candidates
         .map((c) => `--- ${c.path} ---\n${c.content}`)
         .join("\n\n")}`,
     });
@@ -263,10 +261,7 @@ export const EXPERIMENT_IMPLEMENT_LOCAL = defineTool({
     );
     const withImport = patched.includes(object.importLine)
       ? patched
-      : patched.replace(
-          /^(import .+\n)/,
-          `$1${object.importLine}\n`,
-        );
+      : patched.replace(/^(import .+\n)/, `$1${object.importLine}\n`);
     await writeFile(targetAbsolute, withImport, "utf8");
 
     return {

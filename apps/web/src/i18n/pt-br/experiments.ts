@@ -19,7 +19,7 @@ export const experiments = {
   "experiments.prompt.placeholder":
     "ex.: banner de Dia dos Namorados aparece pra 50% dos usuários, não aparece pros outros 50%",
   "experiments.prompt.example1": "Banner sazonal pra 50% dos visitantes",
-  "experiments.prompt.example2": "Botão \"Adicionar ao carrinho\" maior",
+  "experiments.prompt.example2": 'Botão "Adicionar ao carrinho" maior',
   "experiments.prompt.example3": "Texto de urgência na página do produto",
   "experiments.prompt.willGenerate":
     "Gera a chave do teste, nome, variantes com split de tráfego e uma hipótese — tudo editável antes de criar.",
@@ -52,7 +52,7 @@ export const experiments = {
   "experiments.preview.baseline": "referência",
   "experiments.preview.updatePreview": "Atualizar preview",
   "experiments.preview.notSyncedYet":
-    "Clica em \"Atualizar preview\" pra renderizar esse rascunho no site local.",
+    'Clica em "Atualizar preview" pra renderizar esse rascunho no site local.',
   "experiments.preview.noUrlTitle": "Sem URL de preview pra esse site",
   "experiments.preview.noUrlDesc":
     "Esse projeto não tem URL de preview/produção configurada, então não dá pra renderizar as variantes aqui.",

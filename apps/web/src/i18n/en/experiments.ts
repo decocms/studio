@@ -17,7 +17,7 @@ export const experiments = {
   "experiments.prompt.placeholder":
     "e.g. Valentine's Day banner shows to 50% of users, doesn't show to the other 50%",
   "experiments.prompt.example1": "Seasonal banner for 50% of visitors",
-  "experiments.prompt.example2": "Bigger \"Add to cart\" button",
+  "experiments.prompt.example2": 'Bigger "Add to cart" button',
   "experiments.prompt.example3": "Urgency copy on the PDP",
   "experiments.prompt.willGenerate":
     "Generates a test key, name, variants with traffic split, and a hypothesis — all editable before you create it.",
@@ -38,7 +38,7 @@ export const experiments = {
   "experiments.dialog.name": "Name",
   "experiments.dialog.variants": "Variants",
   "experiments.dialog.variantDescriptionPlaceholder":
-    "What this arm will look like on the front (e.g. \"the Deals item is hidden from the navbar\")",
+    'What this arm will look like on the front (e.g. "the Deals item is hidden from the navbar")',
   "experiments.dialog.weightSum": "Weights must sum to 100 (now {sum})",
   "experiments.dialog.addVariant": "Add variant",
   "experiments.dialog.create": "Create",
@@ -50,7 +50,7 @@ export const experiments = {
   "experiments.preview.baseline": "baseline",
   "experiments.preview.updatePreview": "Update preview",
   "experiments.preview.notSyncedYet":
-    "Click \"Update preview\" to render this draft on the local site.",
+    'Click "Update preview" to render this draft on the local site.',
   "experiments.preview.noUrlTitle": "No preview URL for this site",
   "experiments.preview.noUrlDesc":
     "This project has no preview/production URL set, so variants can't be rendered here.",
@@ -65,7 +65,7 @@ export const experiments = {
   "experiments.preview.variantsDesc":
     "See how each variant renders on the site.",
   "experiments.preview.openPage": "Open page",
-  "experiments.confirm.title": "Create \"{key}\" and proceed?",
+  "experiments.confirm.title": 'Create "{key}" and proceed?',
   "experiments.confirm.withImplement":
     "This will also write the useExperiment() hook and its gate directly into the local site's code — no sandbox, no PR. Best-effort: if it can't confidently find the right spot, it leaves the code untouched and you'll see that below.",
   "experiments.confirm.withoutImplement":

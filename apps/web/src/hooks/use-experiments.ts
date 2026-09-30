@@ -152,7 +152,9 @@ export function useImplementExperiment(site: string) {
       return await studio.call("EXPERIMENT_IMPLEMENT", { site, key });
     },
     onSuccess: () =>
-      toast.success("Sent to the Super Agent — check the task board for progress."),
+      toast.success(
+        "Sent to the Super Agent — check the task board for progress.",
+      ),
     onError: (error) =>
       toast.error(
         error instanceof Error

@@ -36,7 +36,7 @@ const SuggestExperimentOutputSchema = z.object({
   name: z
     .string()
     .describe(
-      "A human-readable name for the experiment list, in the same language as the prompt, e.g. \"Valentine's Day banner\".",
+      'A human-readable name for the experiment list, in the same language as the prompt, e.g. "Valentine\'s Day banner".',
     ),
   hypothesis: z
     .string()
