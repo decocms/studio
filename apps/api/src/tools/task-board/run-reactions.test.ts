@@ -281,6 +281,7 @@ function makeItem(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "system",
     createdAt: "now",
     updatedBy: "system",

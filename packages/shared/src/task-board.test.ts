@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  statusEnteredAt,
   allReviewersApproved,
   canRunReviewerManually,
   enabledReviewerKinds,
@@ -352,5 +353,42 @@ describe("canRunReviewerManually", () => {
     expect(canRunReviewerManually({ ...base, threadTitles: [null] })).toBe(
       true,
     );
+  });
+});
+
+describe("statusEnteredAt", () => {
+  const created = "2026-01-01T00:00:00.000Z";
+  const move = (to: string, occurredAt: string) => ({
+    action: "status_changed",
+    data: { from: "x", to },
+    occurredAt,
+  });
+
+  it("a card that never moved entered its lane when it was created", () => {
+    expect(statusEnteredAt([], "backlog", created)).toBe(created);
+    expect(
+      statusEnteredAt(
+        [{ action: "created", occurredAt: created }],
+        "backlog",
+        created,
+      ),
+    ).toBe(created);
+  });
+
+  it("is the latest move into the current lane", () => {
+    const activity = [
+      move("todo", "2026-01-02T00:00:00.000Z"),
+      move("in_progress", "2026-01-03T00:00:00.000Z"),
+      { action: "priority_changed", occurredAt: "2026-01-04T00:00:00.000Z" },
+      move("todo", "2026-01-05T00:00:00.000Z"),
+    ];
+    expect(statusEnteredAt(activity, "todo", created)).toBe(
+      "2026-01-05T00:00:00.000Z",
+    );
+  });
+
+  it("is unknown when the latest logged move went to another lane", () => {
+    const activity = [move("in_progress", "2026-01-02T00:00:00.000Z")];
+    expect(statusEnteredAt(activity, "done", created)).toBeNull();
   });
 });

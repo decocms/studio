@@ -210,6 +210,9 @@ export const TaskBoardItemSchema = z.object({
    *  `TaskBoardItem`, so — like `retryAttempts` above — it MUST be modeled here
    *  or Ajv-revalidating MCP clients reject every response with `-32602`. */
   reviewVerdicts: z.array(TaskBoardItemReviewVerdictSchema),
+  /** When the card entered its current status; null when the activity log
+   *  cannot say. Present on every `TaskBoardItem`, so it MUST be modeled here. */
+  statusSince: z.string().datetime().nullable(),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedBy: z.string(),
@@ -241,6 +244,7 @@ export const TASK_BOARD_ACTIVITY_ACTIONS = [
   "merge_failed",
   "type_changed",
   "duplicate_reported",
+  "finding_resolved",
 ] as const;
 
 export type TaskBoardActivityAction =

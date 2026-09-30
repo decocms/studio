@@ -209,6 +209,11 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
+  const handleProjectFirstNavChange = (checked: boolean) => {
+    track("preferences_project_first_nav_toggled", { enabled: checked });
+    setPreferences((prev) => ({ ...prev, projectFirstNav: checked }));
+  };
+
   return (
     <SettingsSection title={t("settings.preferences.title")}>
       <SettingsCard>
@@ -346,6 +351,20 @@ function PreferencesSection() {
                 }}
               />
             </div>
+          }
+        />
+        <SettingsCardItem
+          title={t("settings.preferences.projectFirstNav")}
+          description={t("settings.preferences.projectFirstNavDescription")}
+          onClick={() =>
+            handleProjectFirstNavChange(!preferences.projectFirstNav)
+          }
+          action={
+            <Switch
+              aria-label={t("settings.preferences.projectFirstNav")}
+              checked={preferences.projectFirstNav}
+              onCheckedChange={handleProjectFirstNavChange}
+            />
           }
         />
         <SettingsCardItem

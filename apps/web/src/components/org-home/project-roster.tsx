@@ -1,97 +1,196 @@
 /**
- * The org home's project list — the projects a person made, most recent first,
- * above the feed.
+ * The projects, each with a rhythm and one ranked headline
+ * (`projectSummaries`), so a row answers "is there anything for me in here"
+ * before you click it.
  *
- * The roster is what the home is FOR: it gets you into a project. It sits above
- * the feed because "where do I go" comes before "what happened", and it is the
- * one place on the home that is always there — the feed hides itself when the
- * board is empty, but a project you can open is never nothing to show.
- *
- * It shows the SIX most recent and defers the rest to "See all" — the home is a
- * launchpad, not the full roster, which lives at Settings › Agents. Each project
- * is just its mark and its name — no card, no description, no footer. The home
- * is a way IN; the lighter the row, the faster the eye finds the one it wants.
+ * The number is delivery, not a business goal — see `lib/project-profile.ts`.
  */
 
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
+import { ArrowDown, ArrowUp } from "@untitledui/icons";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { AgentAvatar } from "@/components/agent-icon";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
-import { landingTabIdFor } from "@/layouts/main-panel-tabs/tab-id";
+import { readProjectProfile, storeHost } from "@/lib/project-profile.ts";
 import { useProjectContext } from "@/sdk";
 import { track } from "@/lib/posthog-client";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { useT } from "@/i18n/use-t.ts";
+import type { TranslationKey } from "@/i18n/use-t.ts";
+import type { ProjectHeadlineKind, ProjectSummary } from "./daily-pulse";
+import { HomeCard, HomeCardRow } from "./section";
+import { Sparkline } from "./sparkline";
 
-/** Projects the home shows before it defers to Settings › Agents. */
+/** "Waiting on you" leads the ranking, but only a break spends colour — the
+ *  queue above already names everything else in warning. */
+const HEADLINE: Record<
+  Exclude<ProjectHeadlineKind, "quiet">,
+  { labelKey: TranslationKey; className: string }
+> = {
+  waiting: {
+    labelKey: "home.projects.headlineWaiting",
+    className: "text-foreground",
+  },
+  failed: {
+    labelKey: "home.projects.headlineFailed",
+    className: "text-destructive",
+  },
+  shipped: {
+    labelKey: "home.projects.headlineShipped",
+    className: "text-muted-foreground",
+  },
+  open: {
+    labelKey: "home.projects.headlineOpen",
+    className: "text-muted-foreground",
+  },
+};
+
+/** Projects the home shows before it defers to Settings › Projects. */
 const MAX_PROJECTS = 6;
 
-function ProjectRosterItem({ project }: { project: VirtualMCPEntity }) {
-  const navigateToAgent = useNavigateToAgent();
+/** One half of the rhythm window against the other, or nothing. */
+function Delta({ value, previous }: { value: number; previous: number }) {
+  const diff = value - previous;
+  if (diff === 0) return null;
+  const Glyph = diff > 0 ? ArrowUp : ArrowDown;
   return (
-    <button
-      type="button"
-      onClick={() => {
-        track("org_home_project_clicked");
-        navigateToAgent(project.id, {
-          panel: landingTabIdFor(project.metadata?.ui?.layout),
-        });
-      }}
-      className="flex min-w-0 items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent/60"
+    <span
+      className={cn(
+        "inline-flex items-center text-xs tabular-nums",
+        diff > 0 ? "text-success" : "text-muted-foreground",
+      )}
     >
-      <AgentAvatar icon={project.icon} name={project.title} size="sm+" />
-      <span className="truncate text-sm font-medium text-foreground">
-        {project.title}
-      </span>
-    </button>
+      <Glyph width={11} height={11} aria-hidden />
+      {Math.abs(diff)}
+    </span>
   );
 }
 
+function ProjectRosterItem({
+  project,
+  summary,
+  series,
+}: {
+  project: VirtualMCPEntity;
+  summary: ProjectSummary | undefined;
+  /** Cards shipped per day, oldest first — the row's rhythm. */
+  series: readonly number[];
+}) {
+  const t = useT();
+  const navigateToAgent = useNavigateToAgent();
+  const host = storeHost(readProjectProfile(project).storeUrl);
+  const headline =
+    summary && summary.kind !== "quiet" ? HEADLINE[summary.kind] : null;
+  const shipped = series.reduce((sum, day) => sum + day, 0);
+  const half = Math.floor(series.length / 2);
+  const previous = series.slice(0, half).reduce((sum, day) => sum + day, 0);
+  const current = series.slice(half).reduce((sum, day) => sum + day, 0);
+
+  return (
+    <HomeCardRow className="transition-colors hover:bg-accent/40">
+      <button
+        type="button"
+        /** The row's name is the project, not everything printed in it: the
+         *  rhythm, the count and the delta are context beside the title, and
+         *  reading them as part of the control's name says nothing useful. */
+        aria-label={project.title}
+        onClick={() => {
+          track("org_home_project_clicked");
+          navigateToAgent(project.id);
+        }}
+        className="flex w-full min-w-0 items-center gap-3 text-left"
+      >
+        <AgentAvatar icon={project.icon} name={project.title} size="xs" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium text-foreground">
+            {project.title}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {headline && summary
+              ? t(headline.labelKey, { count: summary.count })
+              : (host ?? t("home.projects.quiet"))}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2.5">
+          <Sparkline
+            series={series}
+            className="text-muted-foreground/60"
+            label={t("home.projects.rhythm", { name: project.title })}
+          />
+          <span className="flex w-10 shrink-0 flex-col items-end">
+            <span className="text-sm tabular-nums text-foreground">
+              {shipped}
+            </span>
+            <Delta value={current} previous={previous} />
+          </span>
+        </span>
+      </button>
+    </HomeCardRow>
+  );
+}
+
+/** Empty by default, so a caller with no daily-pulse query still renders every
+ *  row in its quiet state. */
+const NO_SUMMARIES: Map<string, ProjectSummary> = new Map();
+const NO_SERIES: Map<string, readonly number[]> = new Map();
+
 export function ProjectRoster({
   projects,
+  summaries = NO_SUMMARIES,
+  series = NO_SERIES,
   action,
 }: {
   projects: VirtualMCPEntity[];
-  /** The section's own control — today, "Import repository". Passed in rather
-   *  than imported so the roster owns no creation path. */
+  /** One headline per project id, from `projectSummaries`. */
+  summaries?: Map<string, ProjectSummary>;
+  /** Shipped-per-day per project id, from `shippedSeries`. */
+  series?: Map<string, readonly number[]>;
+  /** Passed in rather than imported, so the roster owns no creation path. */
   action?: ReactNode;
 }) {
   const t = useT();
   const { org } = useProjectContext();
-  /** Most recent first, then capped — the home leads with what you touched last
-   *  and hands the tail to "See all". */
+  /** Most recent first, then capped; the tail goes to "See all". */
   const recent = [...projects]
     .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))
     .slice(0, MAX_PROJECTS);
   const hasMore = projects.length > MAX_PROJECTS;
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-medium text-foreground">
-          {t("home.projects.heading")}
-        </h2>
-        {action}
-      </div>
-      {/* `@container`, so the grid answers to this reading column's width rather
-          than the viewport — the home caps at 720px, where two columns fit. */}
-      <div className="@container">
-        <div className="grid grid-cols-1 gap-1 @lg:grid-cols-2">
-          {recent.map((project) => (
-            <ProjectRosterItem key={project.id} project={project} />
-          ))}
-        </div>
-      </div>
+    <HomeCard
+      label={t("home.projects.heading")}
+      count={projects.length}
+      action={
+        <span className="flex items-center gap-3">
+          {/* The aside is a narrow column, so this labels the number column
+              only where it actually fits beside the block's own title. */}
+          <span className="hidden whitespace-nowrap text-xs text-muted-foreground @[19rem]:inline">
+            {t("home.projects.shippedCaption")}
+          </span>
+          {action}
+        </span>
+      }
+    >
+      {recent.map((project) => (
+        <ProjectRosterItem
+          key={project.id}
+          project={project}
+          summary={summaries.get(project.id)}
+          series={series.get(project.id) ?? []}
+        />
+      ))}
       {hasMore && (
-        <div>
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/$org/settings/agents" params={{ org: org.slug }}>
-              {t("home.projects.seeAll")}
-            </Link>
-          </Button>
-        </div>
+        <HomeCardRow className="py-2">
+          <Link
+            to="/$org/settings/projects"
+            params={{ org: org.slug }}
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {t("home.projects.seeAll")}
+          </Link>
+        </HomeCardRow>
       )}
-    </section>
+    </HomeCard>
   );
 }

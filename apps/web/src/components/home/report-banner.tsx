@@ -3,11 +3,11 @@
  * Overview for orgs that onboarded a store, and opens the report app.
  *
  * A miniature report page bleeds out of the banner's clipped bottom edge,
- * slightly tilted, and straightens on hover. While the run is live the page
- * shimmers and the copy says so; once the deck exists the page shows a score
- * ring and the arrow invites the click. State comes live from
- * `get_my_diagnostic` (see hooks/reports-diagnostic-status.ts), polled gently
- * only while generating.
+ * slightly tilted, and straightens on hover. While the store's first run is
+ * live the page shimmers and the copy says so; once a report exists the page
+ * shows a score ring and the arrow invites the click, also while the engine
+ * refreshes it. State comes live from `get_my_diagnostic` (see
+ * hooks/reports-diagnostic-status.ts), polled gently only while generating.
  *
  * Orgs without the Reports connection never get past the first
  * (cheap, self-tool) gate: the banner renders nothing and no client to the

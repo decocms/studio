@@ -1,6 +1,15 @@
 import type { taskBoard as taskBoardEn } from "../en/task-board.ts";
 
 export const taskBoard = {
+  "taskBoard.feed.today": "Hoje",
+  "taskBoard.feed.yesterday": "Ontem",
+  "taskBoard.feed.eventBlocked": "Precisa de você",
+  "taskBoard.feed.eventHanded": "Devolvida para você",
+  "taskBoard.feed.eventRunning": "Agente trabalhando",
+  "taskBoard.feed.eventFailed": "Execução falhou",
+  "taskBoard.feed.eventDone": "Entregue",
+  "taskBoard.feed.eventDelivered": "Avançou",
+  "taskBoard.feed.eventReview": "Em revisão",
   "taskBoard.taskDialog.commentReplyPlaceholder": "Deixe uma resposta...",
   "taskBoard.conversation.openChat": "Abrir chat",
   "taskBoard.conversation.reviewer": "Revisor",
@@ -51,6 +60,11 @@ export const taskBoard = {
   "taskBoard.taskBoard.layoutViewAriaLabel": "visualização {label}",
   "taskBoard.taskBoard.needsInput": "Precisa de entrada",
   "taskBoard.taskBoard.needsYou": "Precisa de você",
+  "taskBoard.taskBoard.changeStatusLabel": "Mudar status (atual: {status})",
+  "taskBoard.taskBoard.statusAgeDays": "{count}d",
+  "taskBoard.taskBoard.statusAgeToday": "Hoje",
+  "taskBoard.taskBoard.statusAgeDaysHint": "Em {status} há {count} dias",
+  "taskBoard.taskBoard.statusAgeTodayHint": "Em {status} desde hoje",
   "taskBoard.taskBoard.newTask": "Nova tarefa",
   "taskBoard.taskBoard.newTaskInLaneAriaLabel": "Nova tarefa em {lane}",
   "taskBoard.taskBoard.newTaskInLaneTitle": "Nova tarefa em {lane}",
@@ -95,6 +109,8 @@ export const taskBoard = {
     "abriu esta tarefa de novo; ela já estava no board",
   "taskBoard.taskDialog.activityDuplicateReportedTitled":
     'abriu "{title}" de novo; este card já cobre isso',
+  "taskBoard.taskDialog.activityFindingResolved":
+    "registrou que a verificação agora passa em {url}",
   "taskBoard.taskDialog.activityMovedFromTo": "moveu de {from} para {to}",
   "taskBoard.taskDialog.activityMovedTo": "moveu para {to}",
   "taskBoard.taskDialog.activityRetryScheduled":
@@ -289,6 +305,17 @@ export const taskBoard = {
   "taskBoard.viewControls.subgroupingLabel": "Subagrupamento",
   "taskBoard.viewControls.groupToggleAllHint":
     "Alt+clique para abrir ou fechar todos",
+  "taskBoard.viewControls.groupedBy": "Agrupado por",
+  "taskBoard.viewControls.sortedBy": "Ordenado por",
+  "taskBoard.viewControls.sortLabel": "Ordenar",
+  "taskBoard.viewControls.sortingLabel": "Ordenação",
+  "taskBoard.viewControls.sortNone": "Ordem padrão",
+  "taskBoard.viewControls.sortDirectionLabel": "Direção",
+  "taskBoard.viewControls.sortAscending": "Crescente",
+  "taskBoard.viewControls.sortDescending": "Decrescente",
+  "taskBoard.viewControls.reverseSort": "Inverter ordem",
+  "taskBoard.viewControls.removeGrouping": "Remover agrupamento",
+  "taskBoard.viewControls.removeSorting": "Remover ordenação",
   "taskBoard.viewControls.groupNoTags": "Sem tags",
   "taskBoard.viewControls.is": "é",
   "taskBoard.viewControls.isAnyOf": "é algum de",
@@ -307,6 +334,7 @@ export const taskBoard = {
   "taskBoard.taskFilters.priorityLabel": "Prioridade",
   "taskBoard.taskFilters.projectLabel": "Projeto",
   "taskBoard.taskFilters.boardSettingsLabel": "Configurações do quadro",
+  "taskBoard.taskFilters.projectSettingsLabel": "Configurações do projeto",
   "taskBoard.taskFilters.projectNone": "Sem projeto",
   "taskBoard.taskFilters.searchLabel": "Buscar tarefas",
   "taskBoard.taskFilters.searchPlaceholder": "Buscar tarefas…",
@@ -392,4 +420,10 @@ export const taskBoard = {
   "taskBoard.analytics.tabTenants": "Organizações",
   "taskBoard.analytics.noDataInRange": "Sem dados neste período",
   "taskBoard.analytics.nothingToShow": "Nada para mostrar",
+  "taskBoard.feed.composerPlaceholder": "O que precisa ser feito?",
+  "taskBoard.feed.composerDescriptionPlaceholder": "Adicionar descrição...",
+  "taskBoard.feed.composerSubmit": "Adicionar",
+  "taskBoard.feed.railRunning": "Rodando agora",
+  "taskBoard.feed.railWaiting": "Esperando por você",
+  "taskBoard.feed.railIdle": "Nenhum agente rodando agora",
 } satisfies Record<keyof typeof taskBoardEn, string>;

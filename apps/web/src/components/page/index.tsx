@@ -118,11 +118,17 @@ function PageHeader({
   leading,
   actions,
   navigation,
+  trailingActions,
 }: {
   breadcrumbs: readonly BreadcrumbItem[];
   leading?: ReactNode;
   actions?: ReactNode;
   navigation?: ReactNode;
+  /** Rendered after every portaled feature action (`Page.Title`'s, a route's
+   *  own `actions`) — for a control that must stay the row's rightmost
+   *  element regardless of what a feature contributes, like the app-takeover
+   *  close button. Most callers want `actions`, not this. */
+  trailingActions?: ReactNode;
 }) {
   return (
     <>
@@ -140,6 +146,7 @@ function PageHeader({
             {actions}
           </div>
           <Panel.Topbar.Right.Target className="flex items-center gap-2 before:hidden before:h-4 before:w-px before:shrink-0 before:bg-border peer-[:not(:empty)]:before:block" />
+          {trailingActions}
         </Panel.Topbar.Right>
       </Panel.Topbar>
       <Panel.Toolbar>

@@ -11,6 +11,7 @@ import {
   findDuplicatesForBatch,
   type IndexedDraft,
 } from "@/tools/task-board/duplicate-check";
+import type { BatchDuplicate } from "@/tools/task-board/duplicate-decisions";
 import { captureOrgEvent } from "@/posthog";
 import { TagStorage } from "@/storage/tags";
 import { TaskBoardStorage } from "@/storage/task-board";
@@ -67,8 +68,9 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  * card the item created, refreshed, matched or was blocked by. `outcome` is
  * the most specific label, so every `semantic_match` is also counted in
  * `updated` and every `quota_blocked` in `created`. A `semantic_match` reads
- * the same whether the import refreshed a reports card or left a human's card
- * alone. A `quota_blocked` card exists, but the task quota refused its Super
+ * the same whether the import refreshed a reports card, left a human's card
+ * alone, or folded the item into the card an earlier item of the same request
+ * landed on. A `quota_blocked` card exists, but the task quota refused its Super
  * Agent delegation, so the import unassigned it. A replayed run_id wrote
  * nothing and replies without `items`.
  *
@@ -128,17 +130,20 @@ export function normalizeTitleKey(title: string): string {
 
 /**
  * The third, semantic dedup pass — what the two exact keys cannot catch: a
- * keyless finding whose wording drifted between runs, or one a human already
- * filed in their own words.
+ * keyless finding whose wording drifted between runs, one a human already
+ * filed in their own words, or two findings of one request that ask for the
+ * same change.
  *
  * Only items WITHOUT an externalKey and without an exact title match against
  * an open card are offered, in ONE model call for the whole batch, and it runs
  * before the transaction so no model latency sits inside it. Only a
- * high-confidence verdict naming an offered card counts (see
- * `acceptBatchDuplicates`). Best-effort: no model tier, a provider error, or a
- * malformed answer yields an empty map and the items are created as before.
+ * high-confidence verdict naming an offered card or an earlier offered item
+ * counts (see `acceptBatchDuplicates`). Best-effort: no model tier, a provider
+ * error, or a malformed answer yields an empty map and the items are created
+ * as before.
  *
- * Returns item index → the open card that already tracks it.
+ * Returns item index → the open card that already tracks it, or the index of
+ * the earlier item it repeats.
  */
 async function semanticMatchesFor(
   ctx: StudioContext,
@@ -149,7 +154,7 @@ async function semanticMatchesFor(
     externalKey?: string;
   }[],
   openTitleKeys: ReadonlySet<string>,
-): Promise<Map<number, { item: TaskBoardItem; reason: string }>> {
+): Promise<Map<number, BatchDuplicate>> {
   const drafts: IndexedDraft[] = [];
   items.forEach((item, index) => {
     if (item.externalKey) return;
@@ -465,29 +470,45 @@ export const createTaskBoardImportRoutes = () => {
           continue;
         }
         const match = item.externalKey ? undefined : semantic.get(index);
-        if (match) {
-          // Only a reports-owned card is refreshed; a human's keeps its content.
-          const row = isReportsTask(match.item)
-            ? await storage.update(
-                match.item.id,
-                organizationId,
-                {
-                  description: item.description ?? null,
-                  priority: item.priority,
-                  ...(item.repositoryId !== undefined
-                    ? { repositoryId: item.repositoryId }
-                    : {}),
-                },
-                "system",
-              )
-            : match.item;
+        // A repeat of an earlier item lands where that item did, dismissal
+        // included.
+        const earlier =
+          match && "draft" in match
+            ? results.find((r) => r.index === match.draft)
+            : undefined;
+        if (earlier?.outcome === "dismissed") {
+          results.push({ ...earlier, index });
+          continue;
+        }
+        const matched =
+          match && "item" in match
+            ? match.item
+            : earlier && (await storage.getById(earlier.id, organizationId));
+        if (match && matched) {
+          // Only a reports-owned card is refreshed; a human's keeps its
+          // content, and so does the card an earlier item just wrote.
+          const row =
+            "item" in match && isReportsTask(matched)
+              ? await storage.update(
+                  matched.id,
+                  organizationId,
+                  {
+                    description: item.description ?? null,
+                    priority: item.priority,
+                    ...(item.repositoryId !== undefined
+                      ? { repositoryId: item.repositoryId }
+                      : {}),
+                  },
+                  "system",
+                )
+              : matched;
           await storage.recordActivity({
-            taskBoardItemId: match.item.id,
+            taskBoardItemId: matched.id,
             action: "duplicate_reported",
             actorId: null,
             data: { title: item.title, reason: match.reason },
           });
-          openByTitle.set(titleKey, match.item.id);
+          openByTitle.set(titleKey, matched.id);
           touched.push(await withTags(row, item.tags));
           results.push({
             index,

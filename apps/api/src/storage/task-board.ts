@@ -5,6 +5,7 @@
  * many-to-many link between a task and the agent threads run for it.
  */
 
+import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
@@ -31,6 +32,7 @@ import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
   reviewCycleVerdicts,
+  statusEnteredAt,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
@@ -69,6 +71,17 @@ export interface DismissedFinding {
   externalKey: string;
   dismissedBy: string;
   dismissedAt: string;
+}
+
+/** What `resolveFinding` did to one card. */
+export interface FindingResolution {
+  outcome: "closed" | "noted" | "skipped" | "not_found";
+  /** An earlier call with the same run id already resolved the card, and
+   *  `outcome` is that call's. This call wrote nothing. */
+  replayed: boolean;
+  /** The card as this call left it, for the realtime push. Null when the call
+   *  wrote nothing: a miss, a skip, or a replay. */
+  item: TaskBoardItem | null;
 }
 
 function commentFromDbRow(row: {
@@ -176,7 +189,7 @@ export function shouldAdvanceToReview(
   return used.some((t) => t.status === "completed");
 }
 
-/** True when the thread has a repo bound (`metadata.githubRepo.url`) — mirrors
+/** True when the thread has a repo bound (`metadata.repository.url`) — mirrors
  *  the web `agentHasClonableSource`, inlined to avoid importing web code. */
 function threadHasClonableRepo(metadata: unknown): boolean {
   const meta =
@@ -190,8 +203,7 @@ function threadHasClonableRepo(metadata: unknown): boolean {
         })()
       : metadata;
   if (!meta || typeof meta !== "object") return false;
-  const url = (meta as { githubRepo?: { url?: unknown } | null }).githubRepo
-    ?.url;
+  const url = readRepositoryMetadata(meta)?.repository?.url;
   return typeof url === "string" && url.length > 0;
 }
 
@@ -391,8 +403,9 @@ export class TaskBoardStorage {
       return insert(trx);
     });
 
-    // Freshly created — no linked threads yet.
-    return this.itemFromDbRow(row);
+    // Freshly created — no linked threads yet, and in its first lane since now.
+    const item = this.itemFromDbRow(row);
+    return { ...item, statusSince: item.createdAt };
   }
 
   async update(
@@ -595,6 +608,115 @@ export class TaskBoardStorage {
     }
     const result = await query.executeTakeFirst();
     return Number(result.numUpdatedRows ?? 0n);
+  }
+
+  /**
+   * Record that the diagnostic check behind a card passes now.
+   *
+   * The card gets one `finding_resolved` entry per `runId`. A reports-owned
+   * card still in triage also moves to done, since nobody has picked it up and
+   * the work it describes is no longer needed. Any other card keeps its lane,
+   * because whoever started it, or the member who filed it, decides what
+   * happens next.
+   *
+   * For a dismissed card it returns `skipped` and writes nothing. An id
+   * outside the org, a hard-deleted card and a Jira run's anchor are all
+   * `not_found`.
+   *
+   * A replayed `runId` writes nothing and returns the first call's outcome.
+   * The row lock makes a racing replay wait for the first call's commit, so it
+   * then finds that call's entry.
+   */
+  async resolveFinding(params: {
+    id: string;
+    organizationId: string;
+    url: string;
+    runId: string;
+  }): Promise<FindingResolution> {
+    const { id, organizationId, url, runId } = params;
+    const result = await this.inTransaction(async (trx) => {
+      const card = await trx
+        .selectFrom("task_board_items")
+        .select(["status", "created_by", "dismissed_at"])
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .where("source", "is", null)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!card) {
+        return { outcome: "not_found", replayed: false, wrote: false } as const;
+      }
+      if (card.dismissed_at) {
+        return { outcome: "skipped", replayed: false, wrote: false } as const;
+      }
+
+      const prior = await trx
+        .selectFrom("task_board_activity")
+        .select(["data"])
+        .where("task_board_item_id", "=", id)
+        .where("action", "=", "finding_resolved")
+        .where(sql<string>`data->>'run_id'`, "=", runId)
+        .executeTakeFirst();
+      if (prior) {
+        const outcome = prior.data?.closed === true ? "closed" : "noted";
+        return { outcome, replayed: true, wrote: false } as const;
+      }
+
+      const closes =
+        isReportsTask({ createdBy: card.created_by }) &&
+        card.status === LANES.intake;
+      const now = new Date().toISOString();
+      if (closes) {
+        await trx
+          .updateTable("task_board_items")
+          .set({ status: "done", updated_by: "system", updated_at: now })
+          .where("id", "=", id)
+          .where("organization_id", "=", organizationId)
+          .execute();
+      }
+      await trx
+        .insertInto("task_board_activity")
+        .values([
+          {
+            id: generatePrefixedId("act"),
+            task_board_item_id: id,
+            action: "finding_resolved",
+            actor_id: null,
+            data: JSON.stringify({ url, run_id: runId, closed: closes }),
+            occurred_at: now,
+          },
+          ...(closes
+            ? [
+                {
+                  id: generatePrefixedId("act"),
+                  task_board_item_id: id,
+                  action: "status_changed" as const,
+                  actor_id: null,
+                  data: JSON.stringify({
+                    from: card.status,
+                    to: "done",
+                    reason: "finding_resolved",
+                  }),
+                  occurred_at: now,
+                },
+              ]
+            : []),
+        ])
+        .execute();
+      const outcome = closes ? "closed" : "noted";
+      return { outcome, replayed: false, wrote: true } as const;
+    });
+
+    const { outcome, replayed } = result;
+    if (!result.wrote) return { outcome, replayed, item: null };
+    // Followers hear about this move like any other machine move. After the
+    // commit, as `notify` expects.
+    if (outcome === "closed") {
+      await this.fanOut([
+        { taskBoardItemId: id, action: "status_changed", actorId: null },
+      ]);
+    }
+    return { outcome, replayed, item: await this.getById(id, organizationId) };
   }
 
   /**
@@ -1985,7 +2107,7 @@ export class TaskBoardStorage {
       Promise.all([
         this.attachThreads(db, items, organizationId),
         this.attachTags(db, items),
-        this.attachReviewVerdicts(db, items),
+        this.attachActivityFields(db, items),
       ]),
     );
   }
@@ -2163,7 +2285,8 @@ export class TaskBoardStorage {
    * `status_changed` rows come along because that reducer needs the cycle
    * boundary — without them a stale approval reads as current forever.
    */
-  private async attachReviewVerdicts(
+  /** Review verdicts and `statusSince`, both read off one activity scan. */
+  private async attachActivityFields(
     db: Kysely<Database>,
     items: TaskBoardItem[],
   ): Promise<void> {
@@ -2198,6 +2321,7 @@ export class TaskBoardStorage {
 
     for (const item of items) {
       const activity = byItem.get(item.id) ?? [];
+      item.statusSince = statusEnteredAt(activity, item.status, item.createdAt);
       const cycleStartedAt = item.reviewCycleStartedAt;
       const verdicts = reviewCycleVerdicts(activity, { cycleStartedAt });
       const verifiedApprovals = reviewCycleVerdicts(activity, {
@@ -2632,6 +2756,7 @@ export class TaskBoardStorage {
       threads: [],
       tags: [],
       reviewVerdicts: [],
+      statusSince: null,
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

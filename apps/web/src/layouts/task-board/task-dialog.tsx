@@ -140,7 +140,10 @@ import {
 } from "./review-status";
 import { formatTimeAgo } from "@/lib/format-time";
 import { GitProviderIcon } from "@/components/icons/git-provider-icon";
-import { parseChangeRequestUrl } from "@decocms/shared/git-providers";
+import {
+  changeRequestNumberLabel,
+  parseChangeRequestUrl,
+} from "@decocms/shared/git-providers";
 import { useConnections, useProjectContext } from "@/sdk";
 import { NO_TASKS, useProjectIndex } from "@/hooks/use-project-index";
 import { entryForFilter, stampableEntries } from "@/lib/project-index";
@@ -1976,9 +1979,9 @@ function PreviewButton({ url, routes }: { url: string; routes: string[] }) {
 }
 
 /**
- * One PR card: identity + the `#123 ↗` GitHub link, an action row (Edit /
- * preview / ship), and an expandable checks footer that opens each CI check
- * with its GitHub output markdown (fetched for failing runs).
+ * One PR card: identity + the `#123 ↗` link (`!123` on GitLab), an action
+ * row (Edit / preview / ship), and an expandable checks footer that opens each
+ * CI check with its output markdown (fetched for failing runs).
  */
 function PrCard({
   pr,
@@ -2008,6 +2011,8 @@ function PrCard({
 }) {
   const t = useT();
   const [checksOpen, setChecksOpen] = useState(false);
+  // Rows linked before urls were canonicalised are all GitHub.
+  const provider = parseChangeRequestUrl(pr.url)?.repo.provider ?? "github";
   const style = prStateStyle(pr, t);
   const checksState = prChecksStyle(pr.checksStatus, t);
   const { isOpen, hasConflict, showShip, showResolveConflict } = prCardActions(
@@ -2032,7 +2037,7 @@ function PrCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow",
+        "flex flex-col gap-3 rounded-xl border border-border bg-card p-3",
         // Cards are seeded from localStorage, so what's on screen may be a
         // minute (or a day) old. The breathing border says "these numbers are
         // being checked" without blanking the card back to a skeleton.
@@ -2041,7 +2046,7 @@ function PrCard({
     >
       <div className="flex items-center gap-3">
         <GitProviderIcon
-          provider={parseChangeRequestUrl(pr.url)?.repo.provider ?? "github"}
+          provider={provider}
           className="size-4 shrink-0 text-foreground"
         />
         <span className="min-w-0 flex-1 truncate text-sm text-foreground">
@@ -2063,7 +2068,7 @@ function PrCard({
           title={pr.url}
           className="group flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted"
         >
-          #{pr.number}
+          {changeRequestNumberLabel(provider, pr.number)}
           <LinkExternal01
             size={12}
             className="text-muted-foreground/60 group-hover:text-foreground"
@@ -2203,7 +2208,7 @@ function PrCard({
  *  preview) is still loading — the enrichment can take a moment. */
 function PrCardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-3 card-shadow">
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3">
       <div className="flex items-center gap-3">
         <Skeleton className="size-4 shrink-0 rounded" />
         <Skeleton className="h-4 min-w-0 flex-1" />
@@ -2774,6 +2779,10 @@ function describeActivity(
         ? t("taskBoard.taskDialog.activityDuplicateReportedTitled", { title })
         : t("taskBoard.taskDialog.activityDuplicateReported");
     }
+    case "finding_resolved":
+      return t("taskBoard.taskDialog.activityFindingResolved", {
+        url: String(d.url ?? ""),
+      });
     case "status_changed": {
       // Written as In Progress → In Progress, so the move prose said nothing.
       // Stored as a stringified Error, wire prefix and all.
@@ -2929,6 +2938,15 @@ function isMachineActor(actorId: string | null): boolean {
   return !actorId || actorId === SUPER_AGENT_ASSIGNEE_ID;
 }
 
+/** The reports engine also logs with a null actor: a passing check's note and
+ *  the move to done it caused are the Deco Score's, not the Super Agent's. */
+function isDecoScoreEntry(a: TaskBoardActivity): boolean {
+  return (
+    a.action === "finding_resolved" ||
+    (a.action === "status_changed" && a.data.reason === "finding_resolved")
+  );
+}
+
 /** A run of consecutive timeline events, avatars joined by a vertical rail. */
 function TimelineBlock({
   items,
@@ -2940,17 +2958,28 @@ function TimelineBlock({
   const t = useT();
   const [expanded, setExpanded] = useState(false);
 
-  const actorName = (actorId: string | null) => {
-    if (isMachineActor(actorId)) {
+  const actorName = (a: TaskBoardActivity) => {
+    if (isDecoScoreEntry(a)) {
+      return t("taskBoard.taskDialog.createdBySystemLabel");
+    }
+    if (isMachineActor(a.actorId)) {
       return t("taskBoard.taskDialog.superAgentLabel");
     }
     return (
-      memberByUserId.get(actorId!)?.user?.name ??
+      memberByUserId.get(a.actorId!)?.user?.name ??
       t("taskBoard.taskDialog.someoneLabel")
     );
   };
 
-  const actorAvatar = (actorId: string | null): ReactNode => {
+  const actorAvatar = (a: TaskBoardActivity): ReactNode => {
+    const actorId = a.actorId;
+    if (isDecoScoreEntry(a)) {
+      return (
+        <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
+          <Lightning01 size={14} className="text-muted-foreground" />
+        </span>
+      );
+    }
     if (isMachineActor(actorId)) {
       return (
         <span className="z-10 flex size-4 shrink-0 items-center justify-center bg-background">
@@ -2984,9 +3013,9 @@ function TimelineBlock({
       )}
       {visible.map((a) => (
         <div key={a.id} className="relative flex items-center gap-2.5">
-          {actorAvatar(a.actorId)}
+          {actorAvatar(a)}
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            {actorName(a.actorId)} {describeActivity(a, t, memberByUserId)}
+            {actorName(a)} {describeActivity(a, t, memberByUserId)}
             <span className="text-muted-foreground/60">
               {" · "}
               {formatTimeAgo(new Date(a.occurredAt))}

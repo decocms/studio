@@ -38,7 +38,7 @@ export interface Metadata {
   user?: ChatUserConfig;
   created_at?: string | Date;
   thread_id?: string;
-  /** Git branch to pin this thread to on creation. GitHub-linked vms only. */
+  /** Git branch to pin this thread to on creation. repository-linked projects only. */
   branch?: string | null;
   title?: string;
   /** System prompt to prepend to messages at the transport layer */

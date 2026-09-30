@@ -146,7 +146,7 @@ export function AgentListPart({ part, latency }: AgentListPartProps) {
             noun={t("chat.agentList.agentsNoun")}
             onClick={() =>
               navigate({
-                to: "/$org/settings/agents",
+                to: "/$org/settings/projects",
                 params: { org: org.slug },
               })
             }

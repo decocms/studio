@@ -201,6 +201,8 @@ export interface TaskBoardItem {
     verdict: "approved" | "changes_requested";
     verified: boolean;
   }[];
+  /** When the card entered its current status; null when the log cannot say. */
+  statusSince: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

@@ -124,7 +124,7 @@ test("CLI button connects, searches, links and disconnects without storing a tok
         connections: [],
         metadata: {
           previewServerUrl: "https://preview.example.com",
-          githubRepo: {
+          repository: {
             owner: user.login,
             name: "example",
             url: `https://github.com/${user.path}`,

@@ -3,11 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import {
   countGitDiffFiles,
   fetchGithubPrDiff,
-} from "../../thread/github/github-pr-diff.ts";
+} from "../../thread/repository/github-pr-diff.ts";
 import {
   fetchGitDiff,
   type GitDiffResult,
-} from "../../thread/github/sandbox-git-api.ts";
+} from "../../thread/repository/sandbox-git-api.ts";
 
 function prDiffQueryKey(
   orgSlug: string,

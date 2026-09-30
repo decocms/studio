@@ -25,26 +25,52 @@ function getOrgColorStyle(name: string): {
   };
 }
 
+const ORG_ICON_SIZES = {
+  xs: { box: "size-5", text: "text-[9px]" },
+  sm: { box: "size-6", text: "text-xs" },
+  lg: { box: "size-9", text: "text-sm" },
+} as const;
+
 export function OrgIcon({
   org,
   size = "sm",
+  rounded = "rounded-md",
 }: {
   org: { name: string; logo?: string | null };
-  size?: "xs" | "sm";
+  size?: keyof typeof ORG_ICON_SIZES;
+  /** The rail wants a rounder mark than the picker's list rows. */
+  rounded?: "rounded-md" | "rounded-xl";
 }) {
-  const sizeClass = size === "xs" ? "size-5" : "size-6";
-  const textClass = size === "xs" ? "text-[9px]" : "text-xs";
+  const { box: sizeClass, text: textClass } = ORG_ICON_SIZES[size];
+  /**
+   * The logo URL that failed to load, not a boolean.
+   *
+   * A missing logo already fell back to initials, but a logo that is PRESENT
+   * and fails — a dead CDN link, an asset the browser is not allowed to
+   * fetch from this origin — left the browser to draw its own broken-image
+   * glyph, which is how a rail of real organizations ends up looking like a
+   * rail of torn paper. Remembering the URL rather than a flag means an org
+   * whose logo is later fixed gets a fresh attempt on its own.
+   */
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const logo = org.logo && org.logo !== failedSrc ? org.logo : null;
 
   return (
     <div
       className={cn(
         sizeClass,
-        "shrink-0 rounded-md flex items-center justify-center border border-border/50 overflow-hidden",
+        rounded,
+        "shrink-0 flex items-center justify-center border border-border/50 overflow-hidden",
       )}
-      style={org.logo ? undefined : getOrgColorStyle(org.name)}
+      style={logo ? undefined : getOrgColorStyle(org.name)}
     >
-      {org.logo ? (
-        <img src={org.logo} alt="" className="size-full object-cover" />
+      {logo ? (
+        <img
+          src={logo}
+          alt=""
+          className="size-full object-cover"
+          onError={() => setFailedSrc(logo)}
+        />
       ) : (
         <span className={cn("font-semibold leading-none", textClass)}>
           {org.name.slice(0, 2).toUpperCase()}

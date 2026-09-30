@@ -1,9 +1,10 @@
-import * as migration227orgvoiceconfig from "./227-org-voice-config";
+import * as migration228orgvoiceconfig from "./228-org-voice-config";
 import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration222orggitcredentials from "./222-org-git-credentials";
 import * as migration224repositorysandboximage from "./224-repository-sandbox-image";
 import * as migration225threadanalyticsindexes from "./225-thread-analytics-indexes";
 import * as migration226decoscorenames from "./226-deco-score-names";
+import * as migration227taskboardfindingresolvedactivity from "./227-task-board-finding-resolved-activity";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -490,7 +491,9 @@ const migrations: Record<string, Migration> = {
   "224-repository-sandbox-image": migration224repositorysandboximage,
   "225-thread-analytics-indexes": migration225threadanalyticsindexes,
   "226-deco-score-names": migration226decoscorenames,
-  "227-org-voice-config": migration227orgvoiceconfig,
+  "227-task-board-finding-resolved-activity":
+    migration227taskboardfindingresolvedactivity,
+  "228-org-voice-config": migration228orgvoiceconfig,
 };
 
 export default migrations;

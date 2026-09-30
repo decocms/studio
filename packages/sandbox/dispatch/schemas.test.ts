@@ -17,7 +17,6 @@ describe("harnessStreamInputSchema (v3)", () => {
       harness: { sessionId: "cli-session-1" },
       workspace: {
         cwd: "/repo",
-        repo: { owner: "deco", name: "site", connectedGithub: true },
         branch: "main",
       },
       models: {
@@ -50,7 +49,7 @@ describe("harnessStreamInputSchema (v3)", () => {
     ["messages", []],
     [
       "codingWorkspace",
-      { cwd: "/repo", branch: "main", workspaceKind: "github" },
+      { cwd: "/repo", branch: "main", workspaceKind: "repository" },
     ],
     ["projectSlug", "legacy"],
     ["virtualMcp", { id: "agent-1" }],
@@ -269,16 +268,11 @@ describe("harnessStreamInputSchema (v3)", () => {
     ).toBe(false);
   });
 
-  it("round-trips repo workspace facts", () => {
+  it("round-trips the runner workspace directory and branch", () => {
     const result = harnessStreamInputSchema.safeParse({
       ...minimalV3,
       workspace: {
         cwd: "/repo",
-        repo: {
-          owner: "deco",
-          name: "site",
-          connectedGithub: false,
-        },
         branch: "main",
       },
     });
@@ -287,11 +281,6 @@ describe("harnessStreamInputSchema (v3)", () => {
     if (result.success) {
       expect(result.data.workspace).toEqual({
         cwd: "/repo",
-        repo: {
-          owner: "deco",
-          name: "site",
-          connectedGithub: false,
-        },
         branch: "main",
       });
     }

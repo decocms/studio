@@ -27,11 +27,14 @@ import { getUIResourceUri } from "@decocms/shared/mcp-apps/types";
 import { toTitleCase } from "@/components/chat/message/parts/tool-call-part/utils";
 import {
   agentHasClonableSource,
-  agentHasConnectedGithub,
+  agentHasConnectedRepository,
 } from "@/lib/agent-capabilities";
 import { useChatTask } from "@/components/chat/index";
-import { getActiveGithubRepo, repoToolTarget } from "@/lib/github-repo.ts";
-import { usePrByBranch } from "@/components/thread/github/use-pr-data.ts";
+import {
+  getActiveRepository,
+  repoToolTarget,
+} from "@/lib/repository-binding.ts";
+import { usePrByBranch } from "@/components/thread/repository/use-pr-data.ts";
 import { useSandboxEvents } from "@/components/sandbox/hooks/use-sandbox-events";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import type { ThreadExpandedTool } from "@decocms/shared/entities";
@@ -116,14 +119,14 @@ export function useMainPanelTabs(ctx: {
   const { currentBranch, activeTask } = useChatTask();
   const isDesktopApp = useIsDesktopApp();
 
-  const githubRepo = getActiveGithubRepo(entity);
+  const repository = getActiveRepository(entity);
   const prQuery = usePrByBranch({
     orgId: org.id,
     orgSlug: org.slug,
-    target: repoToolTarget(githubRepo),
-    owner: githubRepo?.owner ?? "",
-    repo: githubRepo?.name ?? "",
-    branch: githubRepo ? currentBranch : null,
+    target: repoToolTarget(repository),
+    owner: repository?.owner ?? "",
+    repo: repository?.name ?? "",
+    branch: repository ? currentBranch : null,
   });
   const hasOpenPr = prQuery.data?.state === "open";
 
@@ -135,7 +138,7 @@ export function useMainPanelTabs(ctx: {
   // app below — no pairing / live-partner config involved.
   const devConnId = entity?.id ? getDevConnectionId(entity.id) : null;
   const expandedTools: ThreadExpandedTool[] = metadata?.expanded_tools ?? [];
-  const hasActiveGithubRepo = agentHasConnectedGithub(entity);
+  const hasActiveRepository = agentHasConnectedRepository(entity);
   const reportsOnly = useReportsOnly();
   const { scopeId, project: scopedProject } = useProjectScope();
   const mainViewContext = resolveProjectMainViewContext(
@@ -258,7 +261,7 @@ export function useMainPanelTabs(ctx: {
     });
 
   const gitTabVisible =
-    hasActiveGithubRepo &&
+    hasActiveRepository &&
     (hasOpenPr || (prQuery.isPending && rawActiveTab === "git"));
   const layoutForDefault =
     effectiveDefaultMainView || entityLayout

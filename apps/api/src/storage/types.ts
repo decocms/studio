@@ -242,7 +242,7 @@ export interface MCPConnectionTable {
    * The repository a VIRTUAL connection (an agent) works in — migration 205.
    * Null for every other connection type, and for an agent with no repository.
    *
-   * Preferred over `metadata.githubRepo`, which is still written and read as
+   * Preferred over `metadata.repository`, which is still written and read as
    * the fallback until the expand completes. A GitLab project in subgroups
    * only fits here: the JSON's `owner`/`name` pair cannot carry a namespace.
    */
@@ -259,7 +259,7 @@ export interface MCPConnectionTable {
  *
  * `TASK_ADD_REPO` appends here so one run can hold several checkouts. The
  * primary key is what makes a concurrent double-add a no-op — the reason this
- * is a table and not the `metadata.githubRepos` array it replaces.
+ * is a table and not the `metadata.additionalRepositories` array it replaces.
  */
 export interface ThreadRepositoryTable {
   thread_id: string;
@@ -972,7 +972,7 @@ export interface ThreadTable {
   >;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
-  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  /** Git branch this thread is pinned to (repository-linked projects only) */
   branch: string | null;
   /** Dormant legacy column retained in the physical schema; runtime code ignores it. */
   sandbox_provider_kind: string | null;
@@ -1050,7 +1050,7 @@ export interface Thread {
   last_progress_at: string | null;
   /** Virtual MCP (agent) this thread was initiated with */
   virtual_mcp_id: string;
-  /** Git branch this thread is pinned to (GitHub-linked virtualmcps only) */
+  /** Git branch this thread is pinned to (repository-linked projects only) */
   branch: string | null;
   /** Harness id pinned on first message (e.g. "claude-code", "codex", "decopilot") */
   harness_id: string | null;
@@ -1952,7 +1952,7 @@ export interface TaskBoardItemThreadRef {
   title: string | null;
   /** Latest assistant text, for the card's one-line activity preview. */
   lastMessage: string | null;
-  /** True when a repo is bound to the thread (`metadata.githubRepo`) — the
+  /** True when a repo is bound to the thread (`metadata.repository`) — the
    *  card opens the live dev Preview instead of staying on the board. */
   hasPreview: boolean;
   /** `threads.failure_kind` — null unless `status` is `failed`. Some kinds mean
@@ -2033,6 +2033,8 @@ export interface TaskBoardItem {
   /** Each reviewer's standing verdict in the current review cycle, in
    *  `REVIEWER_KINDS` order. Reviewers that have not decided are absent. */
   reviewVerdicts: TaskBoardItemReviewVerdict[];
+  /** When the card entered its current status; null when the log cannot say. */
+  statusSince: string | null;
   createdBy: string;
   createdAt: string;
   updatedBy: string;

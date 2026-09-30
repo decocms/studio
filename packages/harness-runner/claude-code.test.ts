@@ -74,7 +74,6 @@ describe("promptFromUserMessage", () => {
 describe("promptForRun", () => {
   const repoWorkspace = {
     cwd: "/repo",
-    repo: { owner: "o", name: "n", connectedGithub: true },
     branch: "thread-42",
   } as HarnessStreamInputWire["workspace"];
 
@@ -96,7 +95,8 @@ describe("promptForRun", () => {
     // git/gh, on this task's branch: the repo is the only state that outlives
     // the pod, so the prompt has to point at it.
     expect(prompt).toContain("git log");
-    expect(prompt).toContain("gh pr list --head thread-42");
+    expect(prompt).toContain("git remote get-url origin");
+    expect(prompt).toContain("pull or merge request");
     // The two instructions a resumed autonomous run must not miss.
     expect(prompt).toContain("do not start the task over");
     expect(prompt).toContain("never open a second one");
@@ -107,7 +107,7 @@ describe("promptForRun", () => {
       input({ resume: { reason: "the studio pod restarted" } }),
     );
     expect(prompt).toContain("the studio pod restarted");
-    expect(prompt).toContain("<branch>");
+    expect(prompt).toContain("this task's branch");
     expect(prompt).not.toContain("undefined");
   });
 });
@@ -262,7 +262,6 @@ describe("buildOptions", () => {
     const opts = options({
       workspace: {
         cwd: "/app/repo",
-        repo: { owner: "o", name: "n", connectedGithub: true },
         branch: null,
       },
     });

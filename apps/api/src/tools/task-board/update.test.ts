@@ -40,6 +40,7 @@ function item(overrides: Partial<TaskBoardItem> = {}): TaskBoardItem {
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "user_1",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedBy: "user_1",

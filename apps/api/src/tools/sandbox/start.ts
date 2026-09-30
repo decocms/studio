@@ -9,6 +9,7 @@
  * callers that have a branch must pass it or they get a second sandbox.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
 import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
@@ -16,7 +17,7 @@ import {
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import type { EnsureRepo } from "@decocms/sandbox/provider";
 import type { SandboxImage } from "@decocms/shared/git-providers";
@@ -64,8 +65,8 @@ import { stampRuntimeIfAbsent } from "../thread/stamp-runtime-if-absent";
 import { parseThreadRuntime } from "@decocms/shared/thread/session-runtime";
 import {
   flatSandboxRef,
-  getThreadGithubRepo,
-  getThreadGithubRepos,
+  getThreadRepository,
+  getThreadAdditionalRepositories,
   getThreadHeadRef,
   resolveSandboxUserId,
   setThreadSandboxMapEntry,
@@ -79,10 +80,12 @@ import { mintOrgFsConfigJson } from "../../file-storage/mount/provisioning";
 import { setSandboxMapEntry } from "./sandbox-map";
 import {
   cloneInfoForRepository,
-  findRepositoryForLegacyBinding,
+  findRepositoryForBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers";
+import type { RepoCloneInfo } from "../../git-providers/credentials";
 import { GitProviderError } from "../../git-providers/types";
+import { credentialExpiresAt } from "@/sandbox/credential-push";
 import type { RepositoryRecord } from "../../storage/repositories";
 import {
   encodeSandboxStartError,
@@ -90,20 +93,15 @@ import {
 } from "@decocms/shared/sandbox-start-errors";
 import type { VirtualMCPUpdateData } from "../virtual/schema";
 
-type GithubRepo = {
-  owner: string;
-  name: string;
-  connectionId?: string;
-  repositoryId?: string;
-};
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 
-type GithubRepoMeta = {
-  githubRepo?: GithubRepo | null;
+type RepositoryMetadata = {
+  repository?: RepositoryBinding | null;
 };
 
 export const SANDBOX_START = defineTool({
   name: "SANDBOX_START",
-  description: "Start a sandbox with the connected GitHub repo and dev server.",
+  description: "Start a sandbox with the connected repository and dev server.",
   annotations: {
     title: "Start VM Preview",
     readOnlyHint: false,
@@ -194,9 +192,9 @@ export const SANDBOX_START = defineTool({
     );
 
     // Thread-scoped repo wins over the agent's repo — reuse askingThreadId (not a re-derivation that drops input.threadId).
-    const threadRepo = await getThreadGithubRepo(ctx, askingThreadId);
-    const githubRepo =
-      threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
+    const threadRepo = await getThreadRepository(ctx, askingThreadId);
+    const repository =
+      threadRepo ?? (metadata as RepositoryMetadata).repository ?? null;
 
     const { entry, isNewVm } = await provisionSandbox({
       ctx,
@@ -206,8 +204,8 @@ export const SANDBOX_START = defineTool({
       virtualMcpId: input.virtualMcpId,
       branch: resolvedBranch,
       metadata,
-      githubRepo,
-      threadRepos: await getThreadGithubRepos(ctx, askingThreadId),
+      repository,
+      threadRepos: await getThreadAdditionalRepositories(ctx, askingThreadId),
       existing,
       runner,
     });
@@ -319,9 +317,9 @@ export async function ensureSandbox(
   if (provisioningThreadId) {
     void stampRuntimeIfAbsent(ctx, provisioningThreadId, "sandbox");
   }
-  const threadRepo = await getThreadGithubRepo(ctx, provisioningThreadId);
-  const githubRepo =
-    threadRepo ?? (metadata as GithubRepoMeta).githubRepo ?? null;
+  const threadRepo = await getThreadRepository(ctx, provisioningThreadId);
+  const repository =
+    threadRepo ?? (metadata as RepositoryMetadata).repository ?? null;
   // Past the resume fast path: this call is a real boot, so tell the caller.
   await input.onColdStart?.().catch(() => {});
   const { entry, warmPoolAdopted } = await provisionSandbox({
@@ -332,8 +330,11 @@ export async function ensureSandbox(
     virtualMcpId: input.virtualMcpId,
     branch: input.branch,
     metadata,
-    githubRepo,
-    threadRepos: await getThreadGithubRepos(ctx, provisioningThreadId),
+    repository,
+    threadRepos: await getThreadAdditionalRepositories(
+      ctx,
+      provisioningThreadId,
+    ),
     existing: null,
     runner,
     ...(input.purpose ? { purpose: input.purpose } : {}),
@@ -355,11 +356,11 @@ type StartParams = {
   virtualMcpId: string;
   branch: string;
   metadata: Record<string, unknown>;
-  githubRepo: GithubRepo | null;
+  repository: RepositoryBinding | null;
   /** The thread's secondary checkouts, accumulated by `TASK_ADD_REPO`. */
-  threadRepos?: GithubRepo[];
+  threadRepos?: RepositoryBinding[];
   existing: SandboxRecord | null;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
 };
@@ -394,20 +395,17 @@ async function resolveStudioRepository(
  * with a log rather than sent with a dead clone URL: one revoked connection
  * should cost its own checkout, never the pod.
  */
-async function buildExtraRepoOpts(args: {
+export async function buildExtraRepoOpts(args: {
   ctx: StudioContext;
   orgId: string;
-  repos: GithubRepo[];
-  primary: GithubRepo | null;
+  repos: RepositoryBinding[];
+  primary: RepositoryBinding | null;
   gitUserName: string;
   gitUserEmail: string;
   submoduleCredentials: { host: string; token: string }[];
 }): Promise<EnsureRepo[]> {
-  const primaryKey = args.primary
-    ? `${args.primary.owner}/${args.primary.name}`.toLowerCase()
-    : null;
   const secondaries = args.repos.filter(
-    (r) => `${r.owner}/${r.name}`.toLowerCase() !== primaryKey,
+    (repo) => !args.primary || !sameRepositoryBinding(repo, args.primary),
   );
   const dirNames = secondaryRepoDirNames(secondaries);
   const out: EnsureRepo[] = [];
@@ -419,19 +417,20 @@ async function buildExtraRepoOpts(args: {
        * URL, so a GitHub primary alongside a GitLab secondary is just two
        * independent clones.
        */
-      const repository = await findRepositoryForLegacyBinding(
+      const repositoryRecord = await findRepositoryForBinding(
         args.ctx.storage,
         args.orgId,
         repo,
       );
       const studioRepository = await resolveStudioRepository(
         args.ctx,
-        repository,
+        repositoryRecord,
         repo.connectionId,
       );
-      const connectionId = repo.connectionId ?? repository?.legacyConnectionId;
+      const connectionId =
+        repo.connectionId ?? repositoryRecord?.legacyConnectionId;
       if (!studioRepository && !connectionId) continue;
-      const { cloneUrl } = studioRepository
+      const { cloneUrl, expiresAt } = studioRepository
         ? await cloneInfoForRepository(args.ctx, studioRepository, {
             forceRefresh: true,
           })
@@ -444,6 +443,7 @@ async function buildExtraRepoOpts(args: {
           );
       out.push({
         cloneUrl,
+        credentialExpiresAt: credentialExpiresAt(expiresAt),
         ...(studioRepository
           ? { repositoryId: studioRepository.id }
           : { connectionId: connectionId! }),
@@ -490,17 +490,17 @@ async function provisionSandbox(params: StartParams): Promise<{
 
   // A recorded connectionId can dangle — deleting a connection (force-delete,
   // or another agent's delete tearing down its repo-scoped child) removes
-  // aggregation rows but never rewrites `metadata.githubRepo` on other agents
+  // aggregation rows but never rewrites `metadata.repository` on other agents
   // that recorded it — and the clone path below fails loudly on a connectionId
   // with no connection behind it. Re-point at a live connection covering the
   // same repo when one exists.
-  const githubRepo = params.githubRepo
+  const repository = params.repository
     ? await healDanglingRepoConnection({
         ctx,
         orgId,
         virtualMcpId,
         userId,
-        githubRepo: params.githubRepo,
+        repository: params.repository,
       })
     : null;
 
@@ -530,28 +530,31 @@ async function provisionSandbox(params: StartParams): Promise<{
         branch: string;
         displayName: string;
         submoduleCredentials?: { host: string; token: string }[];
+        credentialExpiresAt?: number;
       }
     | undefined;
 
-  if (githubRepo) {
+  if (repository) {
     // Studio-owned credentials mint through the repository's provider account.
-    const repository = await findRepositoryForLegacyBinding(
+    const repositoryRecord = await findRepositoryForBinding(
       ctx.storage,
       orgId,
-      githubRepo,
+      repository,
     );
     // The PRIMARY repo decides the image: one pod, one toolchain. A secondary
     // checkout that wanted another image does not get one, and saying so here
     // beats a sandbox that silently disagrees with one of its repos.
-    sandboxImage = repository?.sandboxImage ?? "default";
+    sandboxImage = repositoryRecord?.sandboxImage ?? "default";
     const studioRepository = await resolveStudioRepository(
       ctx,
-      repository,
-      githubRepo.connectionId,
+      repositoryRecord,
+      repository.connectionId,
     );
 
     const connectionId =
-      githubRepo.connectionId ?? repository?.legacyConnectionId ?? undefined;
+      repository.connectionId ??
+      repositoryRecord?.legacyConnectionId ??
+      undefined;
 
     // Legacy repo-scoped children may mint through their source connection here.
     // buildCloneInfo and detectRepoRuntime refresh OAuth-shaped tokens before
@@ -581,17 +584,17 @@ async function provisionSandbox(params: StartParams): Promise<{
     // daemon's clone behavior is identical — only the URL and identity
     // change. Push-back fails in the anonymous case; that's the documented
     // trade-off of linking a repo without a GitHub connection.
-    const { cloneUrl, gitUserName, gitUserEmail } = studioRepository
+    const { cloneUrl, gitUserName, gitUserEmail, expiresAt } = studioRepository
       ? await studioCloneInfo(ctx, studioRepository)
       : connectionId
         ? await buildCloneInfo(
             connectionId,
-            githubRepo.owner,
-            githubRepo.name,
+            repository.owner,
+            repository.name,
             ctx.db,
             ctx.vault,
           )
-        : buildAnonymousCloneInfo(githubRepo.owner, githubRepo.name);
+        : buildAnonymousCloneInfo(repository.owner, repository.name);
 
     // Lockfile probe only when metadata has no PM. Used to be client-side in
     // the repo picker, but that introduced a race — SANDBOX_START fired from the
@@ -605,12 +608,12 @@ async function provisionSandbox(params: StartParams): Promise<{
       const detected = connectionId
         ? await detectRepoRuntime(
             connectionId,
-            githubRepo.owner,
-            githubRepo.name,
+            repository.owner,
+            repository.name,
             ctx.db,
             ctx.vault,
           )
-        : await detectRepoRuntimeAnonymous(githubRepo.owner, githubRepo.name);
+        : await detectRepoRuntimeAnonymous(repository.owner, repository.name);
       if (detected) {
         packageManager = detected.packageManager;
         runtime = PACKAGE_MANAGER_CONFIG[detected.packageManager].runtime;
@@ -639,7 +642,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     const gitBranch = pickGitBranch({
       branch,
       derivedRef: syntheticBranchToGitRef(branch, {
-        flat: flatSandboxRef(repository?.provider),
+        flat: flatSandboxRef(repositoryRecord?.provider),
       }),
       recordedHeadRef: stickyHeadRef
         ? await getThreadHeadRef(ctx, threadIdFromBranch(branch))
@@ -649,6 +652,7 @@ async function provisionSandbox(params: StartParams): Promise<{
 
     repoOpts = {
       cloneUrl,
+      credentialExpiresAt: credentialExpiresAt(expiresAt),
       // Persisted so the runner can re-mint on recovery; absent for anonymous.
       ...(studioRepository
         ? { repositoryId: studioRepository.id }
@@ -660,7 +664,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       branch: gitBranch,
       displayName: studioRepository
         ? studioRepository.path
-        : `${githubRepo.owner}/${githubRepo.name}`,
+        : `${repository.owner}/${repository.name}`,
       // Always set, empty included — see buildConfigPayload: an absent field
       // means "keep current" to the daemon, which would make a revoked PAT
       // outlive its deletion.
@@ -676,7 +680,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     ctx,
     orgId,
     repos: threadRepos ?? [],
-    primary: githubRepo,
+    primary: repository,
     gitUserName: repoOpts?.userName ?? "",
     gitUserEmail: repoOpts?.userEmail ?? "",
     submoduleCredentials,
@@ -835,7 +839,7 @@ async function provisionSandbox(params: StartParams): Promise<{
 
 /**
  * Falls back to a live connection covering the same repo when the recorded
- * `githubRepo.connectionId` no longer resolves (see the call site for how it
+ * `repository.connectionId` no longer resolves (see the call site for how it
  * dangles). Org-shared connections win — findReusableRepoConnection. The heal
  * is persisted back onto the agent's metadata (best-effort) so every other
  * consumer of the recorded id — git publish, credential sync, the companion
@@ -850,32 +854,32 @@ async function healDanglingRepoConnection(params: {
   orgId: string;
   virtualMcpId: string;
   userId: string;
-  githubRepo: GithubRepo;
-}): Promise<GithubRepo> {
-  const { ctx, orgId, virtualMcpId, userId, githubRepo } = params;
-  if (!githubRepo.connectionId) return githubRepo;
+  repository: RepositoryBinding;
+}): Promise<RepositoryBinding> {
+  const { ctx, orgId, virtualMcpId, userId, repository } = params;
+  if (!repository.connectionId) return repository;
   const recorded = await ctx.storage.connections.findById(
-    githubRepo.connectionId,
+    repository.connectionId,
     orgId,
   );
-  if (recorded) return githubRepo;
+  if (recorded) return repository;
 
   const { items } = await ctx.storage.connections.list(orgId);
   const replacement = findReusableRepoConnection(
     items,
-    githubRepo.owner,
-    githubRepo.name,
+    repository.owner,
+    repository.name,
   );
   if (!replacement) {
     console.warn(
       "[provisionSandbox] recorded repo connection no longer exists and no live connection covers the repo",
-      { virtualMcpId, connectionId: githubRepo.connectionId },
+      { virtualMcpId, connectionId: repository.connectionId },
     );
-    return githubRepo;
+    return repository;
   }
   console.warn("[provisionSandbox] healed dangling repo connection", {
     virtualMcpId,
-    staleConnectionId: githubRepo.connectionId,
+    staleConnectionId: repository.connectionId,
     connectionId: replacement.id,
   });
 
@@ -884,13 +888,13 @@ async function healDanglingRepoConnection(params: {
   try {
     const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
     const meta = (virtualMcp?.metadata ?? {}) as Record<string, unknown>;
-    const current = (meta as GithubRepoMeta).githubRepo;
-    if (current?.connectionId === githubRepo.connectionId) {
+    const current = (meta as RepositoryMetadata).repository;
+    if (current?.connectionId === repository.connectionId) {
       const scope = getRepoScope(replacement);
       await ctx.storage.virtualMcps.update(virtualMcpId, userId, {
         metadata: {
           ...meta,
-          githubRepo: {
+          repository: {
             ...current,
             connectionId: replacement.id,
             ...(scope ? { installationId: scope.installationId } : {}),
@@ -908,7 +912,7 @@ async function healDanglingRepoConnection(params: {
     );
   }
 
-  return { ...githubRepo, connectionId: replacement.id };
+  return { ...repository, connectionId: replacement.id };
 }
 
 /**
@@ -968,9 +972,9 @@ const CAPACITY_POLL_MS = 5_000;
  * original for anything that wants it.
  */
 async function ensureOrRephrase(
-  runner: AgentSandboxProvider,
-  ...args: Parameters<AgentSandboxProvider["ensure"]>
-): Promise<Awaited<ReturnType<AgentSandboxProvider["ensure"]>>> {
+  runner: SandboxProvider,
+  ...args: Parameters<SandboxProvider["ensure"]>
+): Promise<Awaited<ReturnType<SandboxProvider["ensure"]>>> {
   try {
     return await runner.ensure(...args);
   } catch (err) {
@@ -983,7 +987,7 @@ async function ensureOrRephrase(
 }
 
 async function waitForSchedulableCapacity(
-  runner: AgentSandboxProvider,
+  runner: SandboxProvider,
 ): Promise<void> {
   const deadline = Date.now() + CAPACITY_WAIT_MS;
   let logged = false;
@@ -1014,7 +1018,7 @@ async function waitForSchedulableCapacity(
 async function studioCloneInfo(
   ctx: StudioContext,
   repository: RepositoryRecord,
-): Promise<{ cloneUrl: string; gitUserName: string; gitUserEmail: string }> {
+): Promise<RepoCloneInfo> {
   try {
     return await cloneInfoForRepository(ctx, repository, {
       forceRefresh: true,

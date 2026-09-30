@@ -422,7 +422,7 @@ describe("cancelActiveThreadRun (T7: stop cancels the detached hosted child)", (
 });
 
 describe("defaultHarnessForAgent", () => {
-  const repo = { githubRepo: { url: "https://github.com/acme/site" } };
+  const repo = { repository: { url: "https://github.com/acme/site" } };
 
   test("keeps a repo-backed agent on decopilot while the flag is off", () => {
     expect(
@@ -441,8 +441,8 @@ describe("defaultHarnessForAgent", () => {
       null,
       undefined,
       {},
-      { githubRepo: null },
-      { githubRepo: { url: "" } },
+      { repository: null },
+      { repository: { url: "" } },
     ]) {
       expect(defaultHarnessForAgent({ flagEnabled: true, agentMetadata })).toBe(
         "decopilot",

@@ -7,6 +7,11 @@
  * the connection_aggregations table.
  */
 
+import {
+  readRepositoryMetadata,
+  writeRepositoryMetadata,
+  repositoryMetadataStorageKey,
+} from "./repository-metadata";
 import { type Kysely, sql } from "kysely";
 import { generatePrefixedId } from "@decocms/shared/utils/generate-id";
 import {
@@ -78,10 +83,8 @@ export function escapeLikePattern(term: string): string {
 /**
  * The repository an agent's metadata binds it to, as a reference.
  *
- * DUAL-WRITE while migration 205 expands: the column is the binding, and
- * `metadata.githubRepo` is still written beside it because a pod running the
- * previous release reads only the JSON. The JSON write goes away with the
- * fallback read, not before.
+ * Database compatibility: keep JSON beside the reference column while older
+ * replicas still read the binding from metadata.
  *
  * Null for a legacy binding that names no repository row yet — those keep
  * resolving by identity, which is exactly the step this column exists to
@@ -90,8 +93,8 @@ export function escapeLikePattern(term: string): string {
 function boundRepositoryId(
   metadata: Record<string, unknown> | null | undefined,
 ): string | null {
-  const bound = (metadata as { githubRepo?: { repositoryId?: unknown } } | null)
-    ?.githubRepo?.repositoryId;
+  const bound = (metadata as { repository?: { repositoryId?: unknown } } | null)
+    ?.repository?.repositoryId;
   return typeof bound === "string" && bound.length > 0 ? bound : null;
 }
 
@@ -129,7 +132,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
           oauth_config: null,
           configuration_state: null,
           configuration_scopes: null,
-          metadata: data.metadata ? JSON.stringify(data.metadata) : null,
+          metadata: data.metadata
+            ? JSON.stringify(writeRepositoryMetadata(data.metadata))
+            : null,
           repository_id: boundRepositoryId(data.metadata),
           bindings: null,
           status: data.status ?? "active",
@@ -297,7 +302,9 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       title: row.title,
       icon: row.icon,
       // `connections.metadata` is a TEXT column holding JSON, so the driver hands back a string: a consumer reading `metadata.liveAgentId` off the raw value always saw `undefined` and let dev-agent rows through.
-      metadata: this.parseJson<Record<string, unknown>>(row.metadata),
+      metadata: readRepositoryMetadata(
+        this.parseJson<Record<string, unknown>>(row.metadata),
+      ),
       organization_id: row.organization_id,
       organization_name: row.organization_name,
       organization_slug: row.organization_slug,
@@ -486,7 +493,7 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
       // Dual-write, in step with the JSON — see `boundRepositoryId`.
       updateData.repository_id = boundRepositoryId(data.metadata);
       updateData.metadata = data.metadata
-        ? JSON.stringify(data.metadata)
+        ? JSON.stringify(writeRepositoryMetadata(data.metadata))
         : null;
     }
 
@@ -580,11 +587,25 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     unset: string[];
     by: string;
   }): Promise<boolean> {
-    const next = sql`(coalesce(metadata::jsonb, '{}'::jsonb) - ${params.unset}::text[]) || ${JSON.stringify(params.set)}::jsonb`;
+    // Compatibility: remove both stored spellings before replacing or clearing
+    // a binding, including rows written with canonical keys during migration.
+    const removedKeys = [
+      ...new Set(
+        [...params.unset, ...Object.keys(params.set)].flatMap((key) => [
+          key,
+          repositoryMetadataStorageKey(key),
+        ]),
+      ),
+    ];
+    const next = sql`(coalesce(metadata::jsonb, '{}'::jsonb) - ${removedKeys}::text[]) || ${JSON.stringify(writeRepositoryMetadata(params.set))}::jsonb`;
     const result = await this.db
       .updateTable("connections")
       .set({
         metadata: sql<string>`(${next})::text`,
+        ...(Object.hasOwn(params.set, "repository") ||
+        params.unset.includes("repository")
+          ? { repository_id: boundRepositoryId(params.set) }
+          : {}),
         updated_at: new Date().toISOString(),
         updated_by: params.by,
       })
@@ -736,7 +757,8 @@ export class VirtualMCPStorage implements VirtualMCPStoragePort {
     }>(row.metadata);
 
     // Migration 091 rewrote every row to the canonical `sandboxMap` key with the strict 3-level shape;
-    const { sandboxMap: rawSandboxMap, ...metadataRest } = rawMetadata ?? {};
+    const { sandboxMap: rawSandboxMap, ...metadataRest } =
+      readRepositoryMetadata(rawMetadata) ?? {};
     const normalizedSandboxMap =
       rawSandboxMap !== undefined
         ? normalizeSandboxMap(rawSandboxMap)

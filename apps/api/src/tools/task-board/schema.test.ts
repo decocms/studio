@@ -51,6 +51,7 @@ describe("TaskBoardItemSchema – proxy round-trip validation", () => {
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "user_1",
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedBy: "user_1",

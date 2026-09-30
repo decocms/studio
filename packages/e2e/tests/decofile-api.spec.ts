@@ -145,7 +145,7 @@ test.describe("decofile API", () => {
         },
       );
       // Legacy `productionUrl` key satisfies the URL term (dual-read): with no
-      // githubRepo the NEXT failure surfaces instead of the URL-less 404.
+      // repository the NEXT failure surfaces instead of the URL-less 404.
       const legacyKey = await callSelfMcpTool<{ item: { id: string } }>(
         ctx,
         org,
@@ -166,7 +166,7 @@ test.describe("decofile API", () => {
       );
       expect(legacyRes.status()).toBe(404);
       expect(await legacyRes.json()).toEqual({
-        error: "Project has no GitHub repository",
+        error: "Project has no repository",
       });
 
       const flagOnlyRes = await ctx.get(
@@ -198,7 +198,7 @@ test.describe("decofile API", () => {
       );
       expect(urlNoFlagRes.status()).toBe(404);
       expect(await urlNoFlagRes.json()).toEqual({
-        error: "Project has no GitHub repository",
+        error: "Project has no repository",
       });
     } finally {
       await ctx.dispose();

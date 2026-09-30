@@ -18,6 +18,7 @@ import { CursorIcon } from "@/components/connect/client-icons";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { track } from "@/lib/posthog-client";
+import { cn } from "@decocms/ui/lib/utils.ts";
 
 /**
  * Brand names are never translated; `size` balances stroke vs. filled marks.
@@ -27,16 +28,23 @@ import { track } from "@/lib/posthog-client";
 const CLIENTS: {
   name: string;
   Icon: (props: { size?: number }) => ReactNode;
-  size: number;
+  /** Glyph size at each density, balancing stroke vs. filled marks. */
+  size: [dense: number, roomy: number];
   bg: string;
   fg: string;
 }[] = [
-  { name: "Claude", Icon: ClaudeCodeIcon, size: 14, bg: "#D97757", fg: "#fff" },
-  { name: "Cursor", Icon: CursorIcon, size: 12, bg: "#000", fg: "#fff" },
-  { name: "Codex", Icon: CodexIcon, size: 12, bg: "#4F46E5", fg: "#fff" },
+  {
+    name: "Claude",
+    Icon: ClaudeCodeIcon,
+    size: [11, 14],
+    bg: "#D97757",
+    fg: "#fff",
+  },
+  { name: "Cursor", Icon: CursorIcon, size: [10, 12], bg: "#000", fg: "#fff" },
+  { name: "Codex", Icon: CodexIcon, size: [10, 12], bg: "#4F46E5", fg: "#fff" },
 ];
 
-export function ConnectPill() {
+export function ConnectPill({ dense = true }: { dense?: boolean }) {
   const t = useT();
   const { org } = useProjectContext();
 
@@ -45,7 +53,14 @@ export function ConnectPill() {
       to="/$org/settings/connect"
       params={{ org: org.slug }}
       onClick={() => track("connect_clients_opened", { source: "org_home" })}
-      className="group hidden max-w-full md:inline-flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-border bg-card py-1.5 pl-4 pr-2.5 text-sm transition-colors hover:bg-accent/60"
+      /* Dense matches Button `sm` (h-7) so the pill and "New project" beside
+         it read as one row of controls; at that height it must not wrap. */
+      className={cn(
+        "group hidden max-w-full md:inline-flex items-center justify-center rounded-full border border-border bg-card text-sm transition-colors hover:bg-accent/60",
+        dense
+          ? "h-7 shrink-0 gap-x-2 whitespace-nowrap pl-3 pr-1.5"
+          : "flex-wrap gap-x-3 gap-y-2 py-1.5 pl-4 pr-2.5",
+      )}
     >
       <span className="font-medium text-foreground">
         {t("home.orgHome.connectPill")}
@@ -55,14 +70,22 @@ export function ConnectPill() {
           <span
             key={name}
             title={name}
-            className="flex size-6 items-center justify-center rounded-full"
+            className={cn(
+              "flex items-center justify-center rounded-full",
+              dense ? "size-5" : "size-6",
+            )}
             style={{ backgroundColor: bg, color: fg }}
           >
-            <Icon size={size} />
+            <Icon size={dense ? size[0] : size[1]} />
           </span>
         ))}
       </span>
-      <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      <ArrowRight
+        className={cn(
+          dense ? "size-3" : "size-3.5",
+          "shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5",
+        )}
+      />
     </Link>
   );
 }

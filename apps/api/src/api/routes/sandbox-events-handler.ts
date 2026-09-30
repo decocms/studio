@@ -9,7 +9,7 @@
 
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { delay, exponentialBackoffWithJitter } from "@decocms/shared/std";
 import { subscribeLifecycle } from "../../sandbox/lifecycle";
 import type { StudioContext } from "../../core/studio-context";
@@ -78,7 +78,7 @@ const PROXY_BACKOFF_CAP_MS = 10_000;
 export interface VmEventsHandlerArgs {
   ctx: StudioContext;
   claimName: string;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   virtualMcpId: string;
   branch: string;
   userId: string;
@@ -215,7 +215,7 @@ const HEAD_REF_RESPONSE_MAX_BYTES = 256 * 1024;
  */
 async function recordDaemonHeadRef(args: {
   ctx: StudioContext;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   claimName: string;
   branch: string;
   threadId: string | null;
@@ -259,7 +259,7 @@ async function recordDaemonHeadRef(args: {
 }
 
 async function isStaleHandle(
-  runner: AgentSandboxProvider,
+  runner: SandboxProvider,
   claimName: string,
 ): Promise<boolean> {
   try {
@@ -277,7 +277,7 @@ async function isStaleHandle(
 
 async function cleanupStaleEntry(args: {
   ctx: StudioContext;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   claimName: string;
   virtualMcpId: string;
   branch: string;
@@ -354,7 +354,7 @@ async function cleanupStaleEntry(args: {
 async function emitLifecycle(args: {
   stream: import("hono/streaming").SSEStreamingApi;
   claimName: string;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   signal: AbortSignal;
 }): Promise<boolean> {
   const { stream, claimName, runner, signal } = args;
@@ -398,7 +398,7 @@ async function emitLifecycle(args: {
 
 async function proxyDaemonEvents(args: {
   stream: import("hono/streaming").SSEStreamingApi;
-  runner: AgentSandboxProvider;
+  runner: SandboxProvider;
   claimName: string;
   signal: AbortSignal;
 }): Promise<void> {

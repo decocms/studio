@@ -49,6 +49,14 @@ export function useChatLayout(): ChatLayoutState & ChatLayoutActions {
   return useChatLayoutContext();
 }
 
+/** Null outside a ChatLayout (e.g. the settings route), rather than throwing —
+ *  for callers that render in both. */
+export function useOptionalChatLayout():
+  | (ChatLayoutState & ChatLayoutActions)
+  | null {
+  return use(ChatLayoutContext);
+}
+
 function useChatLayoutContext() {
   const layout = use(ChatLayoutContext);
   if (!layout) throw new Error("ChatLayout regions require a ChatLayout");

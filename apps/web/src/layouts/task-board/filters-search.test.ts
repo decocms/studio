@@ -1,10 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
   boardSearchParams,
+  enabledLayout,
+  type BoardView,
   parseBoardSearch,
   visibleSelection,
 } from "./filters-search";
 import { EMPTY_FILTERS, type TaskFilters } from "./task-filters-core";
+
+const EMPTY_VIEW: BoardView = {
+  filters: EMPTY_FILTERS,
+  layout: "board",
+  groupBy: null,
+  subgroupBy: null,
+  sortBy: null,
+  sortDirection: "asc",
+};
 
 const filters: TaskFilters = {
   search: "login",
@@ -16,14 +27,30 @@ const filters: TaskFilters = {
 };
 
 describe("board search params", () => {
-  test("round-trips filters, layout and grouping through the URL", () => {
-    const params = boardSearchParams(filters, "list", "assignee", "status");
-    expect(parseBoardSearch(params)).toEqual({
+  test("round-trips filters, layout, grouping and sorting through the URL", () => {
+    const view: BoardView = {
       filters,
       layout: "list",
       groupBy: "assignee",
       subgroupBy: "status",
+      sortBy: "due",
+      sortDirection: "desc",
+    };
+    expect(parseBoardSearch(boardSearchParams(view))).toEqual(view);
+  });
+
+  test("a sort's default direction stays out of the URL", () => {
+    const due = boardSearchParams({
+      ...EMPTY_VIEW,
+      sortBy: "due",
+      sortDirection: "asc",
     });
+    expect(due.sort).toBe("due");
+    expect(due.dir).toBeUndefined();
+    expect(parseBoardSearch({ sort: "priority" }).sortDirection).toBe("desc");
+    expect(
+      boardSearchParams({ ...EMPTY_VIEW, sortDirection: "desc" }).dir,
+    ).toBeUndefined();
   });
 
   test("a sub-group needs a different group above it", () => {
@@ -32,15 +59,34 @@ describe("board search params", () => {
       parseBoardSearch({ group: "status", subgroup: "status" }).subgroupBy,
     ).toBeNull();
     expect(
-      boardSearchParams(EMPTY_FILTERS, "list", null, "status").subgroup,
+      boardSearchParams({ ...EMPTY_VIEW, layout: "list", subgroupBy: "status" })
+        .subgroup,
     ).toBeUndefined();
   });
 
+  test("the feed is a third view, carried the same way", () => {
+    expect(boardSearchParams({ ...EMPTY_VIEW, layout: "feed" }).view).toBe(
+      "feed",
+    );
+    expect(parseBoardSearch({ view: "feed" }).layout).toBe("feed");
+  });
+
+  test("a mount's own default layout drops out of the URL, Board does not", () => {
+    expect(
+      boardSearchParams({ ...EMPTY_VIEW, layout: "feed" }, "feed").view,
+    ).toBeUndefined();
+    expect(boardSearchParams({ ...EMPTY_VIEW }, "feed").view).toBe("board");
+    expect(parseBoardSearch({}, "feed").layout).toBe("feed");
+    expect(parseBoardSearch({ view: "board" }, "feed").layout).toBe("board");
+  });
+
   test("defaults are omitted from the URL", () => {
-    expect(boardSearchParams(EMPTY_FILTERS, "board", null, null)).toEqual({
+    expect(boardSearchParams(EMPTY_VIEW)).toEqual({
       view: undefined,
       group: undefined,
       subgroup: undefined,
+      sort: undefined,
+      dir: undefined,
       q: undefined,
       assignee: undefined,
       priority: undefined,
@@ -51,12 +97,7 @@ describe("board search params", () => {
   });
 
   test("an empty URL is the empty state", () => {
-    expect(parseBoardSearch({})).toEqual({
-      filters: EMPTY_FILTERS,
-      layout: "board",
-      groupBy: null,
-      subgroupBy: null,
-    });
+    expect(parseBoardSearch({})).toEqual(EMPTY_VIEW);
   });
 
   test("unrecognized values are dropped, not trusted", () => {
@@ -65,16 +106,13 @@ describe("board search params", () => {
         view: "kanban",
         group: "due",
         subgroup: "due",
+        sort: "status",
+        dir: "sideways",
         priority: "critical",
         due: "yesterday",
         tags: ",,",
       }),
-    ).toEqual({
-      filters: EMPTY_FILTERS,
-      layout: "board",
-      groupBy: null,
-      subgroupBy: null,
-    });
+    ).toEqual(EMPTY_VIEW);
   });
 });
 
@@ -106,24 +144,20 @@ describe("the ambient project scope does not touch the board's filter", () => {
 describe("the ?repo= param carries a bucket id", () => {
   test("a project's bucket id is written to ?repo=", () => {
     expect(
-      boardSearchParams(
-        { ...EMPTY_FILTERS, project: "acme/site" },
-        "board",
-        null,
-        null,
-      ).repo,
+      boardSearchParams({
+        ...EMPTY_VIEW,
+        filters: { ...EMPTY_FILTERS, project: "acme/site" },
+      }).repo,
     ).toBe("acme/site");
   });
 
   test("a repo-less project's id round-trips through it too", () => {
     expect(parseBoardSearch({ repo: "vir_x" }).filters.project).toBe("vir_x");
     expect(
-      boardSearchParams(
-        { ...EMPTY_FILTERS, project: "vir_x" },
-        "board",
-        null,
-        null,
-      ).repo,
+      boardSearchParams({
+        ...EMPTY_VIEW,
+        filters: { ...EMPTY_FILTERS, project: "vir_x" },
+      }).repo,
     ).toBe("vir_x");
   });
 });
@@ -146,5 +180,24 @@ describe("visibleSelection", () => {
 
   test("an empty board selects nothing", () => {
     expect(visibleSelection(new Set(["a"]), [])).toEqual(new Set());
+  });
+});
+
+/** Feed ships behind project-first navigation, and the tab that leaves it does
+ *  too — so the URL alone must not put a reader there. */
+describe("enabledLayout", () => {
+  test("keeps the feed for a reader who has it", () => {
+    expect(enabledLayout("feed", true)).toBe("feed");
+  });
+
+  test("sends a reader without it to the board, not to a view with no tabs", () => {
+    expect(enabledLayout("feed", false)).toBe("board");
+  });
+
+  test("leaves the two unflagged layouts alone either way", () => {
+    for (const enabled of [true, false]) {
+      expect(enabledLayout("board", enabled)).toBe("board");
+      expect(enabledLayout("list", enabled)).toBe("list");
+    }
   });
 });

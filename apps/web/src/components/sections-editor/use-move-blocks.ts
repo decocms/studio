@@ -12,7 +12,7 @@ import {
   setDecofileDraft,
   throwResponseError,
 } from "./decofile-api";
-import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
+import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 
 interface UseMoveBlocksParams {

@@ -13,6 +13,7 @@
 import {
   type ChangeRequestRef,
   findChangeRequestUrl,
+  parseChangeRequestUrl,
   parseRepoUrl,
   repoRefFromOwnerName,
 } from "@decocms/shared/git-providers";
@@ -45,7 +46,9 @@ export function findChangeRequestIn(value: unknown): ChangeRequestRef | null {
 export function originOf(pr: TaskBoardItemPrRef): ChangeRequestOrigin {
   return {
     repo:
-      parseRepoUrl(pr.url) ?? repoRefFromOwnerName(pr.repoOwner, pr.repoName),
+      parseChangeRequestUrl(pr.url)?.repo ??
+      parseRepoUrl(pr.url) ??
+      repoRefFromOwnerName(pr.repoOwner, pr.repoName),
     repositoryId: pr.repositoryId,
     connectionId: pr.connectionId,
   };

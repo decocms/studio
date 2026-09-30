@@ -426,6 +426,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -500,6 +501,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -598,6 +600,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -737,7 +740,8 @@ export interface StudioToolIO {
           | "review_verdict_requested"
           | "merge_conflict_resolution"
           | "type_changed"
-          | "duplicate_reported";
+          | "duplicate_reported"
+          | "finding_resolved";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -2485,15 +2489,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -2549,10 +2553,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -2562,7 +2566,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -2749,18 +2753,18 @@ export interface StudioToolIO {
                           cms?:
                             | "off"
                             | "manual"
-                            | "auto"
                             | "on"
+                            | "auto"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
                                 | "automations"
                                 | "overview"
-                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "assets"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -2816,10 +2820,10 @@ export interface StudioToolIO {
                 | (
                     | "automations"
                     | "overview"
-                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "assets"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -2829,7 +2833,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
@@ -2943,15 +2947,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3007,10 +3011,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3020,7 +3024,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3171,15 +3175,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3235,10 +3239,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3248,7 +3252,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3390,15 +3394,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3454,10 +3458,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3467,7 +3471,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3606,18 +3610,18 @@ export interface StudioToolIO {
                           cms?:
                             | "off"
                             | "manual"
-                            | "auto"
                             | "on"
+                            | "auto"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
                                 | "automations"
                                 | "overview"
-                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "assets"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -3673,10 +3677,10 @@ export interface StudioToolIO {
                 | (
                     | "automations"
                     | "overview"
-                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "assets"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -3686,7 +3690,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
@@ -3808,15 +3812,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3872,10 +3876,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3885,7 +3889,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -4025,15 +4029,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -4089,10 +4093,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -4102,7 +4106,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -5353,15 +5357,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -5417,10 +5421,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -5430,7 +5434,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;

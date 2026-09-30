@@ -318,6 +318,7 @@ export function isLegacySettingsTab(tabId: string | undefined): boolean {
  * agent that named nothing, which is a sensible tab to RENDER but a wrong place
  * to SEND someone from a card they clicked.
  */
+
 /**
  * Org-level destinations an agent may name as its main view. They are not
  * `FIXED_SYSTEM_TABS` — they never appear on the tab bar — but the panel

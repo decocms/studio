@@ -1059,7 +1059,7 @@ export function ActiveTaskProvider({
             chunk as unknown as {
               data: {
                 branch?: string | null;
-                githubRepo?: unknown;
+                repository?: unknown;
                 sandboxMap?: unknown;
               };
             }
@@ -1073,7 +1073,7 @@ export function ActiveTaskProvider({
               ...(data?.branch ? { branch: data.branch } : {}),
               metadata: {
                 ...(current?.metadata ?? {}),
-                ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
+                ...(data?.repository ? { repository: data.repository } : {}),
                 ...(data?.sandboxMap ? { sandboxMap: data.sandboxMap } : {}),
               } as Task["metadata"],
             });
