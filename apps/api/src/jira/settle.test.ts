@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { JiraStatusChange } from "./client";
-import { SETTLE_MS, settle } from "./settle";
+import { settle } from "./settle";
+
+const SETTLE_MS = 60_000;
 
 const T0 = Date.parse("2026-09-29T12:00:00Z");
 const MIN = 60_000;
@@ -84,6 +86,13 @@ describe("settle", () => {
       [T0 + 20 * MIN + 10_000, "Doing"],
     ).map((c) => ({ ...c, fromId: null, toId: null }));
     expect(settle(changes, { now: T0 + 30 * MIN })?.kind).toBe("returned");
+  });
+
+  it("takes the window from the caller when given", () => {
+    const changes = moves([T0, "Doing"]);
+    expect(settle(changes, { now: T0 + 3_000, windowMs: 2_000 })?.kind).toBe(
+      "moved",
+    );
   });
 
   it("trusts the caller's own wait when it passes no clock", () => {

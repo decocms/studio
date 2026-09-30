@@ -39,7 +39,7 @@ import {
   renderIssuesForPrompt,
   type StatusMove,
 } from "./issue-prompt";
-import { type Settled, settle } from "./settle";
+import { type Settled, settle, settleWindowMs } from "./settle";
 
 /** A status change the webhook reported. Only its identity: what the change
  *  amounts to is read back from the issue's history once it has settled. */
@@ -125,7 +125,7 @@ function jiraClientFor(integration: OrgJiraIntegration): JiraClient {
  * that status and nothing dispatched this move already.
  *
  * `changelogId` is the move the webhook reported, and the caller has waited
- * `SETTLE_MS` since; the poll omits it and passes `now`, asking about the
+ * the settle window since; the poll omits it and passes `now`, asking about the
  * issue's latest move. Either way the claim is on the move that settled, so
  * the two never both dispatch it.
  */
@@ -140,6 +140,7 @@ export async function triggerRunForSettledMove(
   const settled = settle(await client.listStatusChanges(target.issueId), {
     changeId: target.changelogId,
     now: target.now,
+    windowMs: settleWindowMs(),
   });
   if (!settled) return "no_rule";
   if (settled.kind !== "moved") return settled.kind;

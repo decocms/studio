@@ -278,6 +278,12 @@ export function resolveConfig(
     localMode,
     disableRateLimit: toBool(envVars.DISABLE_RATE_LIMIT),
     jiraAllowLocalSiteUrl: toBool(envVars.JIRA_ALLOW_LOCAL_SITE_URL),
+    jiraSettleSeconds: toPositiveIntegerOrDefault(
+      "JIRA_SETTLE_SECONDS",
+      envVars.JIRA_SETTLE_SECONDS,
+      60,
+      3600,
+    ),
     studioProvisionSecretKey: envVars.STUDIO_PROVISION_SECRET_KEY,
     deploymentAdminEmails: (envVars.DEPLOYMENT_ADMIN_EMAILS ?? "")
       .split(",")

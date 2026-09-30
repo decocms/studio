@@ -2,7 +2,7 @@
  * The two durable halves of the Jira trigger.
  *
  * The settle wait: a status change the webhook reports is acted on only after
- * `SETTLE_MS`, once the card has stayed put (`settle.ts`). A durable sleep, so a
+ * a minute, once the card has stayed put (`settle.ts`). A durable sleep, so a
  * pod restarting mid-wait resumes it instead of dropping the move; keyed by the
  * changelog entry, so a redelivered webhook joins the wait already running.
  *
@@ -21,7 +21,7 @@ import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import type { Database } from "@/storage/types";
 import { buildOrgContext } from "@/tools/task-board/org-context";
 import { JiraClient } from "./client";
-import { SETTLE_MS } from "./settle";
+import { settleWindowMs } from "./settle";
 import {
   type IssueTransition,
   type TriggerOutcome,
@@ -41,9 +41,9 @@ const LOOKBACK_MINUTES = 35;
  *  problem this sweep should not paper over. */
 const MAX_PAGES = 5;
 
-/** Past `SETTLE_MS`, so a card that just stopped moving reads as settled when
- *  Jira's clock runs a little behind ours. */
-const SETTLE_WAIT_MS = SETTLE_MS + 5_000;
+/** Past the settle window, so a card that just stopped moving reads as
+ *  settled when Jira's clock runs a little behind ours. */
+const CLOCK_SKEW_MS = 5_000;
 
 export interface JiraTriggerSweepRuntime {
   db: Kysely<Database>;
@@ -105,7 +105,7 @@ async function sweepOneIntegration(
       const result = await client.searchIssues({ jql, nextPageToken });
       for (const issue of result.issues) {
         // Only the latest move can still start anything; one younger than
-        // SETTLE_MS is the webhook's wait's to decide, or the next tick's.
+        // the window is the webhook's wait's to decide, or the next tick's.
         const outcome = await triggerRunForSettledMove(ctx, integration, {
           issueId: issue.id,
           now: Date.now(),
@@ -193,7 +193,7 @@ async function jiraSettleWorkflowFn(
   integrationId: string,
   transition: IssueTransition,
 ): Promise<void> {
-  await DBOS.sleep(SETTLE_WAIT_MS);
+  await DBOS.sleep(settleWindowMs() + CLOCK_SKEW_MS);
   await DBOS.runStep(() => settleReportedMove(integrationId, transition), {
     name: "settleJiraMove",
   });
