@@ -161,7 +161,7 @@ function memoryStorage() {
   };
 }
 
-const gates = { open: true, manifest: true };
+const gates = { open: true, manifest: true, manifestSha: "" };
 const heads = { calls: 0, sha: "sha1" };
 const backend: AppPreviewBackend = {
   allowed: async (_ctx, org, vmcp) =>
@@ -174,8 +174,8 @@ const backend: AppPreviewBackend = {
             heads.calls++;
             return b === "main" ? heads.sha : null;
           },
-          manifest: async () =>
-            gates.manifest
+          manifest: async (sha) =>
+            gates.manifest || sha === gates.manifestSha
               ? { kind: "eitri-app", previewLink: "nb://preview?code={code}" }
               : null,
           decofileAt: async (sha) =>
@@ -380,6 +380,27 @@ describe("editor endpoints", () => {
         json("POST", { branch: "main" }),
       );
       expect(res.status).toBe(401);
+    }
+  });
+
+  test("a manifest only on the session branch still allows its preview", async () => {
+    const app = buildApp();
+    gates.manifest = false;
+    gates.manifestSha = heads.sha;
+    try {
+      const onBranch = await app.request(
+        "/app-preview/vir_1/sessions",
+        json("POST", { branch: "main" }),
+      );
+      expect(onBranch.status).toBe(201);
+      const elsewhere = await app.request(
+        "/app-preview/vir_1/sessions",
+        json("POST", { branch: "other" }),
+      );
+      expect(elsewhere.status).toBe(404);
+    } finally {
+      gates.manifest = true;
+      gates.manifestSha = "";
     }
   });
 

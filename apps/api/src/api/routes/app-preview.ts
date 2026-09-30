@@ -617,12 +617,15 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
     return { owner: { organizationId: organization.id, virtualMcpId, userId } };
   };
 
-  /** Default-branch `previewLink` with `code` (null without one), or
-   *  undefined (→ 404) when a gate fails or that head has no app manifest. */
+  /** `previewLink` with `code` (null without one), or undefined (→ 404) when a
+   *  gate fails or there is no app manifest. The default branch wins; the
+   *  session branch counts too, so an app can be previewed before its
+   *  manifest reaches the default branch (the public route still needs it there). */
   const linkFor = async (
     c: Context<Env>,
     owner: PreviewOwner,
     code: string,
+    branch: string,
   ) => {
     const repo = await backend.open(
       c.var.studioContext,
@@ -630,7 +633,11 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
       owner.virtualMcpId,
     );
     if (!repo) return undefined;
-    const manifest = await repo.manifest(await repo.defaultHead());
+    let manifest = await repo.manifest(await repo.defaultHead());
+    if (!manifest) {
+      const head = await repo.branchHead(branch);
+      manifest = head ? await repo.manifest(head) : null;
+    }
     if (!manifest) return undefined;
     return previewLinkFor(manifest.previewLink ?? null, code);
   };
@@ -649,7 +656,7 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
     const code = newPairingCode();
     let link: string | null | undefined;
     try {
-      link = await linkFor(c, scope.owner, code);
+      link = await linkFor(c, scope.owner, code, branch);
     } catch (err) {
       if (repoErrorStatus(err) === 404) return notFound(c);
       return upstream(c, "create", err);
@@ -668,10 +675,16 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
     const scope = await editor(c);
     if (scope === "unauthorized") return unauthorized(c);
     if (!scope) return notFound(c);
+    const current =
+      await c.var.studioContext.storage.appPreviewSessions.getForOwner(
+        c.req.param("id"),
+        scope.owner,
+      );
+    if (!current) return notFound(c);
     const code = newPairingCode();
     let link: string | null | undefined;
     try {
-      link = await linkFor(c, scope.owner, code);
+      link = await linkFor(c, scope.owner, code, current.session.branch);
     } catch (err) {
       if (repoErrorStatus(err) === 404) return notFound(c);
       return upstream(c, "pairing", err);
