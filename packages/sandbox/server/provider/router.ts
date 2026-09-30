@@ -3,13 +3,17 @@
  * where `EnsureOptions.provider` asks, when that provider is configured and
  * can run it; else `freestyleShare` of new sandboxes go to Freestyle, and the
  * rest to Kubernetes while it has room. An existing one stays where it is.
+ * When the chosen provider's ensure fails, the other one gets a try.
  * Handle-only calls go to the provider that owns the handle, because a handle
  * carries no provider tag.
  */
 
 import { createHash } from "node:crypto";
+import { retry } from "@decocms/shared/std";
+import { ConfigRequestError } from "../daemon-client";
 import type { AgentSandboxProvider, SandboxProvider } from "./agent-sandbox";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
+import { claimTenantKey } from "./agent-sandbox/tenant-pools";
 import { computeHandle } from "./shared";
 import { tagSandboxProvider } from "./shared/provider-tag";
 import type {
@@ -18,6 +22,7 @@ import type {
   ProxyRequestInit,
   Sandbox,
   SandboxId,
+  SandboxPlacementReason,
   SandboxProviderKind,
 } from "./types";
 
@@ -56,8 +61,31 @@ export function handleShare(handle: string): number {
 /** In-process record of the provider each recent ensure picked. */
 const PICKED_MAX = 5_000;
 
+interface Placement {
+  kind: SandboxProviderKind;
+  /** Absent when only one provider could take it. */
+  reason?: SandboxPlacementReason;
+}
+
+const other = (kind: SandboxProviderKind): SandboxProviderKind =>
+  kind === "kubernetes" ? "freestyle" : "kubernetes";
+
+/** Errors the other provider would repeat, or that already have a retry path (the 401 re-auth). */
+function repeatsElsewhere(err: unknown): boolean {
+  return err instanceof ConfigRequestError;
+}
+
 export class SandboxProviderRouter implements SandboxProvider {
   private readonly picked = new Map<string, SandboxProviderKind>();
+
+  /**
+   * Handles whose sandbox on this provider outlived a fallback because its
+   * delete failed. Retried when `place` next sees the handle.
+   *
+   * ponytail: in-process, lost on restart; Freestyle's autoDeleteSeconds
+   * reclaims a stray paused VM anyway, only later.
+   */
+  private readonly strays = new Map<string, SandboxProviderKind>();
 
   private readonly freestyleShare: number;
 
@@ -94,18 +122,18 @@ export class SandboxProviderRouter implements SandboxProvider {
     if (!kubernetes) return "freestyle";
     const picked = this.picked.get(handle);
     if (picked) return picked;
-    return (await freestyle.owns(handle)) ? "freestyle" : "kubernetes";
+    // During a Freestyle outage a Freestyle handle gets Kubernetes' 404, which
+    // it would get anyway; a Kubernetes handle keeps working.
+    const owned = await freestyle.owns(handle).catch(() => false);
+    return owned ? "freestyle" : "kubernetes";
   }
 
   private async owner(handle: string): Promise<SandboxProvider> {
     return this.get(await this.providerOf(handle));
   }
 
-  /** Where `ensure` puts this sandbox. */
-  async place(
-    handle: string,
-    opts: EnsureOptions,
-  ): Promise<SandboxProviderKind> {
+  /** Where `ensure` puts this sandbox, and why. */
+  async place(handle: string, opts: EnsureOptions): Promise<Placement> {
     const { kubernetes, freestyle } = this.providers;
     // Only the default image is built for Freestyle; Android always runs on Kubernetes.
     const image = opts.sandboxImage ?? "default";
@@ -113,32 +141,125 @@ export class SandboxProviderRouter implements SandboxProvider {
       if (!kubernetes) {
         throw new Error(`sandbox image ${image} needs the kubernetes provider`);
       }
-      return "kubernetes";
+      return { kind: "kubernetes", reason: freestyle ? "image" : undefined };
     }
-    if (!kubernetes) return "freestyle";
-    if (!freestyle) return "kubernetes";
-    if (await freestyle.owns(handle)) return "freestyle";
-    if (await kubernetes.alive(handle).catch(() => false)) return "kubernetes";
-    if (opts.provider) return opts.provider;
-    if (handleShare(handle) < this.freestyleShare) return "freestyle";
+    if (!kubernetes) return { kind: "freestyle" };
+    if (!freestyle) return { kind: "kubernetes" };
+    // A copy a fallback left behind is not the sandbox, whatever it answers.
+    const stray = this.strays.get(handle);
+    if (stray) this.retire(stray, handle);
+    // Kubernetes first, so a Freestyle outage never touches its sandboxes.
+    if (
+      stray !== "kubernetes" &&
+      (await kubernetes.alive(handle).catch(() => false))
+    ) {
+      return { kind: "kubernetes", reason: "existing" };
+    }
+    const owned =
+      stray === "freestyle"
+        ? false
+        : await freestyle.owns(handle).catch(() => null);
+    if (owned) return { kind: "freestyle", reason: "existing" };
+    if (owned === null) {
+      return { kind: "kubernetes", reason: "freestyle-unavailable" };
+    }
+    if (opts.provider) return { kind: opts.provider, reason: "requested" };
+    if (this.hasWarmPool(opts, image)) {
+      return { kind: "kubernetes", reason: "warm-pool" };
+    }
+    if (handleShare(handle) < this.freestyleShare) {
+      return { kind: "freestyle", reason: "split" };
+    }
     const roomy = await kubernetes.hasSchedulableCapacity().catch(() => false);
-    return roomy ? "kubernetes" : "freestyle";
+    return roomy
+      ? { kind: "kubernetes", reason: "split" }
+      : { kind: "freestyle", reason: "capacity" };
+  }
+
+  /** The org has pods already cloned and running for this image. */
+  private hasWarmPool(opts: EnsureOptions, image: string): boolean {
+    const tenant = claimTenantKey(opts);
+    if (!tenant) return false;
+    const pools = this.providers.kubernetes?.listTenantPools?.() ?? [];
+    return pools.some((p) => p.tenant === tenant && p.image === image);
   }
 
   async ensure(id: SandboxId, opts: EnsureOptions = {}): Promise<Sandbox> {
     const { provider: _requested, ...rest } = opts;
     const handle = computeHandle(id);
-    const kind = await this.place(handle, opts);
-    this.remember(handle, kind);
+    const placed = await this.place(handle, opts);
+    this.remember(handle, placed.kind);
+    // A new sandbox on the stray's provider replaces it; stop deleting it.
+    if (this.strays.get(handle) === placed.kind) this.strays.delete(handle);
+    let failure: unknown;
     try {
-      return await this.get(kind).ensure(id, rest);
+      const sandbox = await this.get(placed.kind).ensure(id, rest);
+      return placed.reason
+        ? { ...sandbox, placement: { reason: placed.reason } }
+        : sandbox;
     } catch (err) {
-      throw tagSandboxProvider(err, kind);
+      failure = tagSandboxProvider(err, placed.kind);
     }
+    const fallback = other(placed.kind);
+    if (
+      !placed.reason ||
+      placed.reason === "image" ||
+      repeatsElsewhere(failure)
+    ) {
+      throw failure;
+    }
+    console.warn(
+      `[SandboxProviderRouter] ensure ${handle} failed on ${placed.kind}, trying ${fallback}:`,
+      failure instanceof Error ? failure.message : String(failure),
+    );
+    this.remember(handle, fallback);
+    let sandbox: Sandbox;
+    try {
+      sandbox = await this.get(fallback).ensure(id, rest);
+    } catch (err) {
+      this.picked.delete(handle);
+      throw tagSandboxProvider(err, fallback);
+    }
+    // A resumed sandbox moved: its work was published to git on the way out
+    // and the new one cloned the same branch. One owner per handle.
+    if (placed.reason === "existing") this.retire(placed.kind, handle);
+    return {
+      ...sandbox,
+      placement: { reason: "fallback", fallbackFrom: placed.kind },
+    };
+  }
+
+  /** Delete the sandbox a fallback left behind on `kind`, in the background. */
+  private retire(kind: SandboxProviderKind, handle: string): void {
+    this.strays.set(handle, kind);
+    void retry(
+      async () => {
+        if (this.strays.get(handle) === kind)
+          await this.get(kind).delete(handle);
+      },
+      { maxAttempts: 3 },
+    )
+      .then(() => {
+        if (this.strays.get(handle) === kind) this.strays.delete(handle);
+      })
+      .catch((err: unknown) =>
+        console.warn(
+          `[SandboxProviderRouter] delete of ${kind} sandbox ${handle} after fallback failed:`,
+          err instanceof Error ? err.message : String(err),
+        ),
+      );
   }
 
   async delete(handle: string): Promise<void> {
-    await (await this.owner(handle)).delete(handle);
+    const stray = this.strays.get(handle);
+    this.strays.delete(handle);
+    await Promise.all([
+      (await this.owner(handle)).delete(handle),
+      stray &&
+        this.get(stray)
+          .delete(handle)
+          .catch(() => {}),
+    ]);
     this.picked.delete(handle);
   }
 
@@ -229,5 +350,6 @@ export class SandboxProviderRouter implements SandboxProvider {
     this.providers.kubernetes?.close();
     this.providers.freestyle?.close();
     this.picked.clear();
+    this.strays.clear();
   }
 }
