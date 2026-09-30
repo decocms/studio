@@ -2368,7 +2368,11 @@ function Lanes({
             inlineTabs ? "px-4 pt-4 md:px-8" : "px-4 pt-6 sm:px-8",
           )}
           style={{
-            gridTemplateColumns: `repeat(${boardLanes.length}, minmax(280px, 1fr))`,
+            // The hidden-lanes tail needs its own track, or the grid wraps it
+            // onto a second row below the lanes.
+            gridTemplateColumns: `repeat(${boardLanes.length}, minmax(280px, 1fr))${
+              hiddenLanes.length > 0 ? " 280px" : ""
+            }`,
           }}
         >
           {boardLanes.map((status) => (
@@ -2470,7 +2474,7 @@ function HiddenLanes({
 }) {
   const t = useT();
   return (
-    <details className="group h-full w-[300px] shrink-0 py-1">
+    <details className="group h-full min-w-0 py-1">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
         <ChevronRight
           size={14}
