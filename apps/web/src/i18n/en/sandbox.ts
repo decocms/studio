@@ -714,6 +714,8 @@ export const sandbox = {
   "sandbox.preview.appPreview.description":
     "Scan with the phone camera, with the app installed. Shows this branch with this tab's edits, live.",
   "sandbox.preview.appPreview.codeLabel": "Code for Eitri Play (dev)",
+  "sandbox.preview.appPreview.eitriPlayHint":
+    "Eitri Play (dev): its camera only reads the eitri app start QR. Open the app, tap “Preview do Studio (QR)” and scan this QR with the app.",
   "sandbox.preview.appPreview.copy": "Copy code",
   "sandbox.preview.appPreview.copied": "Copied",
   "sandbox.preview.appPreview.copyFailed": "Could not copy",

@@ -739,6 +739,8 @@ export const sandbox = {
   "sandbox.preview.appPreview.description":
     "Escaneie com a câmera do celular com o app instalado. Mostra este branch com as edições desta aba, em tempo real.",
   "sandbox.preview.appPreview.codeLabel": "Código para Eitri Play (dev)",
+  "sandbox.preview.appPreview.eitriPlayHint":
+    "Eitri Play (dev): a câmera dele só lê o QR do eitri app start. Abra o app, toque em “Preview do Studio (QR)” e escaneie este QR pelo app.",
   "sandbox.preview.appPreview.copy": "Copiar código",
   "sandbox.preview.appPreview.copied": "Copiado",
   "sandbox.preview.appPreview.copyFailed": "Não foi possível copiar",

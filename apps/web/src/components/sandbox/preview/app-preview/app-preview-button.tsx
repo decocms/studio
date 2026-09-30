@@ -298,6 +298,9 @@ function SessionPanel({
       <div className="rounded-md bg-white p-3">
         <QRCode value={session.link ?? session.pairingCode} size={176} />
       </div>
+      <p className="w-full text-xs text-muted-foreground">
+        {t("sandbox.preview.appPreview.eitriPlayHint")}
+      </p>
       <div className="flex w-full flex-col gap-1">
         <span className="text-xs font-semibold text-muted-foreground">
           {t("sandbox.preview.appPreview.codeLabel")}
