@@ -287,6 +287,16 @@ export async function readDecofileSnapshot(
   const sha = options?.createBranchIfMissing
     ? await resolveOrCreateHead(client, branch)
     : await requireBranchHead(client, branch);
+  return readDecofileAtSha(client, sha, packagePath);
+}
+
+/** The merged decofile at a commit the caller already resolved — lets a reader
+ *  pair it with other files read at the same sha. */
+export function readDecofileAtSha(
+  client: RepoContentClient,
+  sha: string,
+  packagePath: string | null,
+): Promise<DecofileSnapshot> {
   return snapshotFlight.run(
     `${repoIdentityKey(client.repo)}@${sha}:${packagePath ?? ""}`,
     () => resolveSnapshot(client, sha, packagePath),

@@ -133,6 +133,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
+            app_content_delivery?: boolean | undefined;
           }
         | null
         | undefined;
@@ -211,6 +212,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
+            app_content_delivery?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -285,6 +287,7 @@ export interface StudioToolIO {
             site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
             new_blocks_editor?: boolean | undefined;
+            app_content_delivery?: boolean | undefined;
           }
         | null
         | undefined;

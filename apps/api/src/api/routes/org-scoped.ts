@@ -44,6 +44,7 @@ import { createTriggerCallbackRoutes } from "./trigger-callback";
 import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
+import { createAppContentRoutes } from "./app-content";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -120,6 +121,7 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   ); // /api/:org/fs/:volume/...
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
+  app.route("/app-content", createAppContentRoutes()); // /api/:org/app-content/:virtualMcpId — anonymous published decofile for mobile apps
   app.route("/", createHomeNextActionsRoutes());
   app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites
