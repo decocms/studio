@@ -190,7 +190,7 @@ function FlipToBackgroundButton({ onFlip }: { onFlip: () => Promise<void> }) {
         }
       }}
       className={cn(
-        "shrink-0 text-[12px] text-muted-foreground/70 px-2 py-1 classic:rounded-md compact:rounded-lg transition-colors",
+        "shrink-0 text-[12px] text-muted-foreground/70 px-2 py-1 rounded-lg transition-colors",
         "[@media(hover:hover)]:hover:text-foreground [@media(hover:hover)]:hover:bg-accent/40",
         "disabled:opacity-50",
       )}
@@ -248,7 +248,7 @@ function SubtaskCard({
           type="button"
           onClick={() => setOpen(true)}
           className={cn(
-            "group/tool flex items-center gap-2 flex-1 min-w-0 py-2.5 text-left classic:rounded-md compact:rounded-lg transition-colors",
+            "group/tool flex items-center gap-2 flex-1 min-w-0 py-2.5 text-left rounded-lg transition-colors",
             "[@media(hover:hover)]:hover:bg-accent/30",
             isLoading && "shimmer",
           )}

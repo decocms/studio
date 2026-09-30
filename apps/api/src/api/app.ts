@@ -99,6 +99,10 @@ import {
 import { handleApiError } from "./error-handler";
 import { resolveOrgFromPath } from "./middleware/resolve-org-from-path";
 import { createOrgScopedApi } from "./routes/org-scoped";
+import { ElevenLabsConversationAdapter } from "@/ai-providers/voice/elevenlabs-conversation";
+import { OpenAIConversationAdapter } from "@/ai-providers/voice/openai";
+import { ElevenLabsSpeechAdapter } from "@/ai-providers/voice/elevenlabs";
+import { VoiceSessions } from "@/voice/sessions";
 import {
   createDecoSitesOrgRoutes,
   createDecoSitesUserRoutes,
@@ -126,6 +130,7 @@ import { createReportPagesRoutes } from "./routes/report-pages";
 import reportsRoutes from "./routes/reports";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 import { createGithubWebhookRoutes } from "./routes/github-webhook";
+import { registerSandboxCredentialPushWorkflow } from "@/sandbox/dbos-credential-push";
 import { createJiraAttachmentRoutes } from "./routes/jira-attachments";
 import { createJiraWebhookRoutes } from "./routes/jira-webhook";
 import {
@@ -883,7 +888,9 @@ export const watchHandler: MiddlewareHandler<Env> = async (c) => {
     // Send periodic keepalive comments to detect dead connections
     const keepaliveInterval = setInterval(() => {
       stream.writeSSE({ event: "keepalive", data: "" }).catch(() => {
+        // Don't wait for onAbort, which may never fire for a half-closed socket.
         clearInterval(keepaliveInterval);
+        sseHub.remove(listenerKey, listenerId);
       });
     }, 30_000);
 
@@ -1929,6 +1936,7 @@ export async function createApp(options: CreateAppOptions = {}) {
   registerNotificationDigestWorkflow();
   registerTaskBoardMergedTagSweepWorkflow();
   registerTaskBoardGithubReadWorkflow();
+  registerSandboxCredentialPushWorkflow();
 
   const automationRunner: StudioContext["automationRunner"] = async (
     automationId,
@@ -2300,7 +2308,38 @@ export async function createApp(options: CreateAppOptions = {}) {
   // New canonical org-scoped API surface — all routes that depend on org context
   // live here. Old routes still work (with deprecation logs) until the cleanup
   // PR removes them after the deprecation window.
+  const voiceSettings = getSettings();
+  const speechAdapter = voiceSettings.elevenlabsApiKey
+    ? new ElevenLabsSpeechAdapter({
+        apiKey: voiceSettings.elevenlabsApiKey,
+        model: voiceSettings.elevenlabsVoiceModel,
+        conversationModel: voiceSettings.elevenlabsConversationModel,
+        voiceId: voiceSettings.elevenlabsVoiceId,
+      })
+    : null;
+  const conversationAdapters = {
+    openai: voiceSettings.openaiLiveApiKey
+      ? new OpenAIConversationAdapter({
+          apiKey: voiceSettings.openaiLiveApiKey,
+          voice: voiceSettings.openaiLiveVoice,
+        })
+      : null,
+    elevenlabs: speechAdapter
+      ? new ElevenLabsConversationAdapter(
+          speechAdapter,
+          () => natsProvider?.getConnection() ?? null,
+        )
+      : null,
+  };
+  const voiceSessions = new VoiceSessions({
+    adapter: speechAdapter,
+    conversationAdapters,
+    defaults: voiceSettings,
+    secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
+    getConnection: () => natsProvider?.getConnection() ?? null,
+  });
   const orgScopedApi = createOrgScopedApi({
+    voiceSessions,
     kvStorage,
     runRegistry,
     streamBuffer,

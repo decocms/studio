@@ -4,6 +4,7 @@ import {
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import {
+  daysSince,
   agentRunState,
   cardNeedsAttention,
   dropLane,
@@ -45,6 +46,7 @@ function item(id: string, sortOrder: number): TaskBoardItem {
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "user-1",
     createdAt: new Date().toISOString(),
     updatedBy: "user-1",
@@ -436,5 +438,17 @@ describe("isLiveAttempt", () => {
     expect(isLiveAttempt({ failureKind: "ended_after_delivery" })).toBe(true);
     expect(isLiveAttempt({ failureKind: null })).toBe(true);
     expect(isLiveAttempt({})).toBe(true);
+  });
+});
+
+describe("daysSince", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  test("counts whole days", () => {
+    expect(daysSince("2026-09-25T13:00:00Z", now)).toBe(2);
+    expect(daysSince("2026-09-25T12:00:00Z", now)).toBe(3);
+  });
+  test("the same day, or a timestamp ahead of the clock, is 0", () => {
+    expect(daysSince("2026-09-28T01:00:00Z", now)).toBe(0);
+    expect(daysSince("2026-09-29T00:00:00Z", now)).toBe(0);
   });
 });

@@ -9,7 +9,7 @@ describe("pickRecordableHeadRef", () => {
     expect(
       pickRecordableHeadRef({
         status: { current: "restore-visible-search", detached: false },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).toBe("restore-visible-search");
   });
@@ -20,32 +20,53 @@ describe("pickRecordableHeadRef", () => {
     expect(
       pickRecordableHeadRef({
         status: { current: DERIVED, detached: false },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).toBeNull();
+  });
+
+  it("skips the derived ref in either form, and still records a real branch", () => {
+    const flat = "sandbox-thread-thrd_abc-conn_1";
+    for (const current of [DERIVED, flat]) {
+      expect(
+        pickRecordableHeadRef({
+          status: { current, detached: false },
+          requestedRefs: [DERIVED, flat],
+        }),
+      ).toBeNull();
+    }
+    expect(
+      pickRecordableHeadRef({
+        status: { current: "fix/real", detached: false },
+        requestedRefs: [DERIVED, flat],
+      }),
+    ).toBe("fix/real");
   });
 
   it("skips detached HEAD, missing, empty and absent status", () => {
     expect(
       pickRecordableHeadRef({
         status: { current: "abc1234", detached: true },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).toBeNull();
     expect(
       pickRecordableHeadRef({
         status: { current: null },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).toBeNull();
     expect(
-      pickRecordableHeadRef({ status: { current: "" }, requestedRef: DERIVED }),
+      pickRecordableHeadRef({
+        status: { current: "" },
+        requestedRefs: [DERIVED],
+      }),
     ).toBeNull();
     expect(
-      pickRecordableHeadRef({ status: {}, requestedRef: DERIVED }),
+      pickRecordableHeadRef({ status: {}, requestedRefs: [DERIVED] }),
     ).toBeNull();
     expect(
-      pickRecordableHeadRef({ status: null, requestedRef: DERIVED }),
+      pickRecordableHeadRef({ status: null, requestedRefs: [DERIVED] }),
     ).toBeNull();
   });
 
@@ -55,27 +76,30 @@ describe("pickRecordableHeadRef", () => {
     expect(
       pickRecordableHeadRef({
         status: { current: "main", detached: false, base: "main" },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).toBeNull();
     // Also refused by name when `base` is missing from the payload.
     for (const current of ["main", "master", "trunk", "develop", "HEAD"]) {
       expect(
-        pickRecordableHeadRef({ status: { current }, requestedRef: DERIVED }),
+        pickRecordableHeadRef({
+          status: { current },
+          requestedRefs: [DERIVED],
+        }),
       ).toBeNull();
     }
     // A non-conventional default is caught via `base`.
     expect(
       pickRecordableHeadRef({
         status: { current: "production", base: "production" },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).toBeNull();
     // …and that same name IS recordable when it isn't the default.
     expect(
       pickRecordableHeadRef({
         status: { current: "production", base: "main" },
-        requestedRef: DERIVED,
+        requestedRefs: [DERIVED],
       }),
     ).not.toBeNull();
   });
@@ -84,7 +108,7 @@ describe("pickRecordableHeadRef", () => {
     expect(
       pickRecordableHeadRef({
         status: { current: "restore-visible-search" },
-        requestedRef: null,
+        requestedRefs: [],
       }),
     ).not.toBeNull();
   });

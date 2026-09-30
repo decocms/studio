@@ -1,17 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
-  CLASSIC_MAX_UNCOLLAPSED_ITEMS,
-  COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS,
+  MAX_UNCOLLAPSED_ITEMS,
   collapseBreadcrumbs,
   resolveBreadcrumbs,
   type BreadcrumbExtension,
   type BreadcrumbItem,
 } from "./breadcrumb-model";
 
-const LIMITS = [
-  CLASSIC_MAX_UNCOLLAPSED_ITEMS,
-  COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS,
-];
+const LIMITS = [MAX_UNCOLLAPSED_ITEMS];
 
 const route: readonly BreadcrumbItem[] = [
   { key: "org", label: "Grupo Dass" },
@@ -112,7 +108,7 @@ describe("breadcrumb composition", () => {
 });
 
 describe("breadcrumb collapse", () => {
-  test("a too-narrow container keeps the leaf and menus every ancestor, at either limit", () => {
+  test("a too-narrow container keeps the leaf and menus every ancestor, ", () => {
     for (const max of LIMITS) {
       expect(
         collapseBreadcrumbs(["Org", "Library", "Folder"], true, max),
@@ -131,49 +127,24 @@ describe("breadcrumb collapse", () => {
     }
   });
 
-  test.each([0, 1, 2, 3, 4])(
-    "the classic limit keeps a %i-item trail intact",
-    (length) => {
-      const items = Array.from({ length }, (_, index) => index);
-      expect(
-        collapseBreadcrumbs(items, false, CLASSIC_MAX_UNCOLLAPSED_ITEMS),
-      ).toEqual(items.map((item) => ({ type: "item", item })));
-    },
-  );
-
   test.each([0, 1, 2, 3, 4, 5])(
-    "the compact layout limit keeps a %i-item trail intact",
+    "the page header limit keeps a %i-item trail intact",
     (length) => {
       const items = Array.from({ length }, (_, index) => index);
-      expect(
-        collapseBreadcrumbs(items, false, COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS),
-      ).toEqual(items.map((item) => ({ type: "item", item })));
+      expect(collapseBreadcrumbs(items, false, MAX_UNCOLLAPSED_ITEMS)).toEqual(
+        items.map((item) => ({ type: "item", item })),
+      );
     },
   );
 
-  test("the compact layout renders a full five-item trail rather than hiding its middle", () => {
+  test("the page header renders a full five-item trail rather than hiding its middle", () => {
     const items = ["Org", "Project", "Site Editor", "Home", "HeroSlideShow"];
-    expect(
-      collapseBreadcrumbs(items, false, COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS),
-    ).toEqual(items.map((item) => ({ type: "item", item })));
+    expect(collapseBreadcrumbs(items, false, MAX_UNCOLLAPSED_ITEMS)).toEqual(
+      items.map((item) => ({ type: "item", item })),
+    );
   });
 
-  test("the classic limit collapses that same five-item trail", () => {
-    expect(
-      collapseBreadcrumbs(
-        ["Org", "Project", "Site Editor", "Home", "HeroSlideShow"],
-        false,
-        CLASSIC_MAX_UNCOLLAPSED_ITEMS,
-      ),
-    ).toEqual([
-      { type: "item", item: "Org" },
-      { type: "menu", items: ["Project", "Site Editor"] },
-      { type: "item", item: "Home" },
-      { type: "item", item: "HeroSlideShow" },
-    ]);
-  });
-
-  test("six items collapse to one menu and the immediate parent at either limit", () => {
+  test("six items collapse to one menu and the immediate parent ", () => {
     const items = [
       "Org",
       "Project",
@@ -193,7 +164,7 @@ describe("breadcrumb collapse", () => {
   });
 
   test.each([false, true])(
-    "preserves every item and its action in order at any depth and either limit (compact: %s)",
+    "preserves every item and its action in order at any depth  (compact: %s)",
     (compact) => {
       const leaf = { key: "leaf", label: "Leaf", onSelect: () => -1 };
       for (const max of LIMITS) {
@@ -221,10 +192,10 @@ describe("breadcrumb collapse", () => {
     },
   );
 
-  test("the limit defaults to the classic one when a caller omits it", () => {
+  test("the limit defaults to the page header limit when a caller omits it", () => {
     const items = ["Org", "Project", "Site Editor", "Home", "HeroSlideShow"];
     expect(collapseBreadcrumbs(items)).toEqual(
-      collapseBreadcrumbs(items, false, CLASSIC_MAX_UNCOLLAPSED_ITEMS),
+      collapseBreadcrumbs(items, false, MAX_UNCOLLAPSED_ITEMS),
     );
   });
 });

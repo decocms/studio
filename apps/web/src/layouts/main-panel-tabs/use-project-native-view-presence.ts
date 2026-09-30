@@ -6,7 +6,10 @@ import { useControlPlaneViews } from "@/hooks/use-organization-settings";
 import { usePublicConfig } from "@/hooks/use-public-config";
 import { KEYS } from "@/lib/query-keys";
 import { useProjectContext } from "@/sdk";
-import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import {
+  resolveAgentSiteSlug,
+  resolveAnalyticsSiteSlug,
+} from "@decocms/shared/site-slug";
 import type { ProjectNativeViewPresence } from "./project-sidebar-views";
 
 export interface ProjectNativeViewPresenceResult {
@@ -35,11 +38,49 @@ export function useProjectNativeViewPresence(
   const siteAccessProbeEnabled =
     (hostingEnabled || monitorEnabled) && !!siteSlug;
 
-  const siteAccess = useQuery({
-    queryKey: KEYS.hostingAccess(org.slug, siteSlug ?? ""),
+  const siteAccess = useSiteAccess(org.slug, siteSlug, siteAccessProbeEnabled);
+  // Monitor reads the analytics site, which a migrated project may override.
+  const analyticsSlug = resolveAnalyticsSiteSlug(project);
+  const analyticsProbeEnabled =
+    monitorEnabled && !!analyticsSlug && analyticsSlug !== siteSlug;
+  const analyticsAccess = useSiteAccess(
+    org.slug,
+    analyticsSlug,
+    analyticsProbeEnabled,
+  );
+
+  const ownsSite = siteAccess.data?.owned === true;
+  const ownsAnalyticsSite = analyticsProbeEnabled
+    ? analyticsAccess.data?.owned === true
+    : ownsSite;
+  return {
+    presence: {
+      assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
+      hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
+      e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
+      analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
+      cdn: monitorEnabled && ownsAnalyticsSite && controlPlaneViews.monitor,
+      experiments: controlPlaneViews.experiments,
+    },
+    assetsPending: !!siteSlug && fileConfigs.isPending,
+    // A disabled TanStack query is still pending; it is only unresolved when a
+    // probe can actually run.
+    siteAccessPending:
+      (siteAccessProbeEnabled && siteAccess.isPending) ||
+      (analyticsProbeEnabled && analyticsAccess.isPending),
+  };
+}
+
+function useSiteAccess(
+  orgSlug: string,
+  siteSlug: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: KEYS.hostingAccess(orgSlug, siteSlug ?? ""),
     queryFn: async () => {
       const response = await fetch(
-        `/api/${org.slug}/hosting/${encodeURIComponent(siteSlug ?? "")}/access`,
+        `/api/${orgSlug}/hosting/${encodeURIComponent(siteSlug ?? "")}/access`,
       );
       if (!response.ok) return { owned: false, canWrite: false };
       return (await response.json()) as {
@@ -47,23 +88,7 @@ export function useProjectNativeViewPresence(
         canWrite: boolean;
       };
     },
-    enabled: siteAccessProbeEnabled,
+    enabled,
     staleTime: 60_000,
   });
-
-  const ownsSite = siteAccess.data?.owned === true;
-  return {
-    presence: {
-      assets: !!matchSiteSlugConfig(fileConfigs.data?.configs ?? [], siteSlug),
-      hosting: hostingEnabled && ownsSite && controlPlaneViews.hosting,
-      e2e: hostingEnabled && ownsSite && controlPlaneViews.e2e,
-      analytics: hostingEnabled && ownsSite && controlPlaneViews.analytics,
-      cdn: monitorEnabled && ownsSite && controlPlaneViews.monitor,
-      experiments: controlPlaneViews.experiments,
-    },
-    assetsPending: !!siteSlug && fileConfigs.isPending,
-    // A disabled TanStack query is still pending; it is only unresolved when a
-    // probe can actually run.
-    siteAccessPending: siteAccessProbeEnabled && siteAccess.isPending,
-  };
 }

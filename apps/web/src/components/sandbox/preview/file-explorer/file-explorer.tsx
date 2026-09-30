@@ -16,11 +16,11 @@ import { Editor, type OnMount } from "@/components/monaco/editor";
 import { usePanelActions } from "@/layouts/shell-layout";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
-import { saveChangesDebug } from "../../../thread/github/save-changes-debug.ts";
+import { saveChangesDebug } from "../../../thread/repository/save-changes-debug.ts";
 import {
   fetchGitStatus,
   sandboxGitStatusQueryKey,
-} from "../../../thread/github/sandbox-git-api.ts";
+} from "../../../thread/repository/sandbox-git-api.ts";
 import type { FileBuffer, TreeNode } from "./types";
 import {
   FileExplorerNameDialog,
@@ -1280,7 +1280,7 @@ export function FileExplorer({
                   )}
                   <button
                     type="button"
-                    className="ml-1 classic:rounded p-0.5 hover:bg-accent-foreground/10 compact:rounded-lg"
+                    className="ml-1 p-0.5 hover:bg-accent-foreground/10 rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       closeTab(tab);
@@ -1326,7 +1326,7 @@ export function FileExplorer({
               />
               <button
                 type="submit"
-                className="flex h-6 w-6 shrink-0 items-center justify-center classic:rounded-full compact:rounded-lg bg-foreground text-background transition-opacity"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-foreground text-background transition-opacity"
                 title={t("sandbox.fileExplorer.send")}
               >
                 <svg

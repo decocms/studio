@@ -20,6 +20,7 @@ import {
 import { ConnectionEntitySchema } from "../connection/schema";
 import { VirtualMCPEntitySchema } from "../virtual/schema";
 import { fetchReportsAuth, resolveReportsMcpUrl } from "./auth-client";
+import { releaseReportsSite, siteLeftBehind } from "./release";
 
 const REPORT_TOOL_NAME = REPORTS_TOOL_NAME as "get_my_diagnostic";
 
@@ -80,9 +81,9 @@ async function rereadVirtualMcpOrThrow(
 export const REPORTS_SETUP = defineTool({
   name: "REPORTS_SETUP",
   description:
-    "Create or return the Reports connection and virtual MCP for the current organization.",
+    "Create or return the Deco Score connection and virtual MCP for the current organization.",
   annotations: {
-    title: "Set Up Reports",
+    title: "Set Up Deco Score",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
@@ -181,11 +182,22 @@ export const REPORTS_SETUP = defineTool({
         siteUrl: normalized.value,
         connectionId,
       });
+      const leftBehind = siteLeftBehind(
+        connection.metadata?.siteUrl,
+        normalized.value,
+      );
       connection = await ctx.storage.connections.update(connection.id, {
         connection_url: mcpUrl,
         connection_token: auth.authorizationToken,
         metadata: { ...(connection.metadata ?? {}), siteUrl: normalized.value },
       });
+      if (leftBehind) {
+        releaseReportsSite({
+          siteUrl: leftBehind,
+          orgId: organization.id,
+          cause: "site_changed",
+        });
+      }
     } else {
       console.log("[reports] creating connection", {
         orgId: organization.id,

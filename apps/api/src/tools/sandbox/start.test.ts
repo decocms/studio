@@ -8,7 +8,7 @@ import type {
   SandboxId,
 } from "@decocms/sandbox/provider";
 import { composeSandboxRef } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { ConfigRequestError } from "@decocms/sandbox/daemon-client";
 import { isTransientRunFailure } from "../task-board/transient-failure";
 
@@ -20,6 +20,7 @@ const mockEnsure = mock(
     workdir: "/app",
     previewUrl: "https://stub.preview/",
     warmPoolAdopted: false,
+    provider: "kubernetes",
   }),
 );
 
@@ -30,7 +31,7 @@ async function* readyOnly() {
 }
 
 const mockRunner: Pick<
-  AgentSandboxProvider,
+  SandboxProvider,
   | "alive"
   | "delete"
   | "ensure"
@@ -169,13 +170,13 @@ const EXPECTED_REF = composeSandboxRef({
 });
 
 type Metadata = {
-  githubRepo: { owner: string; name: string; connectionId: string };
+  repository: { owner: string; name: string; connectionId: string };
   runtime: { selected: string; port: string; path?: string | null };
   sandboxMap?: SandboxMap;
 };
 
 const BASE_METADATA: Metadata = {
-  githubRepo: {
+  repository: {
     owner: "acme",
     name: "app",
     connectionId: "conn_github_1",
@@ -260,7 +261,7 @@ function makeCtx(overrides: {
         list: mock(async () => ({ items: [], totalCount: 0 })),
       },
       // A `thread:` branch resolves the thread's creator + bound repo. Default
-      // is no thread, so provisioning falls back to the VM's own githubRepo and
+      // is no thread, so provisioning falls back to the VM's own repository and
       // keys the sandbox by the caller.
       threads: {
         get: mock(async (_id: string) => thread),
@@ -338,6 +339,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     mockTokenGet.mockImplementation(async () => ({
       id: "dtok_1",
@@ -452,7 +454,7 @@ describe("SANDBOX_START", () => {
       virtualMcp,
       thread: {
         created_by: USER_ID,
-        metadata: { githubRepo: { owner: "acme", name: "thread-repo" } },
+        metadata: { repository: { owner: "acme", name: "thread-repo" } },
       },
     });
 
@@ -504,6 +506,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const virtualMcp = makeVirtualMcp(ORG_ID, BASE_METADATA);
     const updateSpy = mock(async () => {});
@@ -544,6 +547,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -576,11 +580,12 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: "https://stub.preview/",
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     // detectRepoRuntime probe will run when packageManager is unset; stub
     // it so it returns null and leaves metadata.runtime unchanged.
     const metadata = {
-      githubRepo: BASE_METADATA.githubRepo,
+      repository: BASE_METADATA.repository,
     } as unknown as Metadata;
     const virtualMcp = makeVirtualMcp(ORG_ID, metadata);
     const updateSpy = mock(async () => {});
@@ -617,6 +622,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: CACHED_ENTRY.previewUrl,
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,
@@ -745,7 +751,7 @@ describe("SANDBOX_START", () => {
     const updateSpy = mock(async () => {});
     const virtualMcp = makeVirtualMcp(ORG_ID, {
       ...BASE_METADATA,
-      githubRepo: { owner: "acme", name: "app", connectionId: "conn_gone" },
+      repository: { owner: "acme", name: "app", connectionId: "conn_gone" },
     });
     const ctx = makeCtx({
       virtualMcp,
@@ -767,18 +773,18 @@ describe("SANDBOX_START", () => {
     // The heal is persisted so publish/credential-sync read the live id too.
     const persisted = (updateSpy.mock.calls as unknown[][]).find(
       (call) =>
-        (call[2] as { metadata?: { githubRepo?: { connectionId?: string } } })
-          ?.metadata?.githubRepo?.connectionId === "conn_github_1",
+        (call[2] as { metadata?: { repository?: { connectionId?: string } } })
+          ?.metadata?.repository?.connectionId === "conn_github_1",
     );
     expect(persisted).toBeDefined();
     const meta = (
       persisted![2] as {
         metadata: {
-          githubRepo: { connectionId: string; installationId: number };
+          repository: { connectionId: string; installationId: number };
         };
       }
     ).metadata;
-    expect(meta.githubRepo.installationId).toBe(42);
+    expect(meta.repository.installationId).toBe(42);
   });
 
   it("keeps failing loudly when the dangling repo connection has no live replacement", async () => {
@@ -864,6 +870,7 @@ describe("SANDBOX_START", () => {
       workdir: "/app",
       previewUrl: agentSandboxEntry.previewUrl,
       warmPoolAdopted: false,
+      provider: "kubernetes",
     }));
     const metadata: Metadata = {
       ...BASE_METADATA,

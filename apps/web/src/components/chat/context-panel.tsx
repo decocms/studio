@@ -429,7 +429,7 @@ export function ChatContextPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-6 items-center justify-center classic:rounded hover:bg-accent transition-colors compact:rounded-lg"
+            className="flex size-6 items-center justify-center hover:bg-accent transition-colors rounded-lg"
           >
             {back ? (
               <ChevronLeft size={14} className="text-muted-foreground" />
@@ -462,7 +462,7 @@ export function ChatContextPanel({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center classic:rounded-md compact:rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           {back ? <ChevronLeft size={14} /> : <XClose size={14} />}
         </button>

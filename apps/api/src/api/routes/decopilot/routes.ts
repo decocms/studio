@@ -309,7 +309,7 @@ export function applyThreadLock(args: {
 /**
  * The harness a thread's FIRST message pins, for an agent that has never run.
  *
- * A Code Agent — an agent imported from a GitHub repo (`metadata.githubRepo`) —
+ * A Code Agent — an agent imported from a GitHub repo (`metadata.repository`) —
  * is a coding agent whose whole point is the checkout, so it runs `claude-code`
  * inside its sandbox rather than hosted Decopilot. Everything else stays on
  * Decopilot. Behind a default-off org flag: this swaps the runtime of every
@@ -325,10 +325,10 @@ export function defaultHarnessForAgent(args: {
 }): HostedHarnessId {
   if (!args.flagEnabled) return "decopilot";
   const meta = args.agentMetadata as
-    | { githubRepo?: { url?: unknown } | null }
+    | { repository?: { url?: unknown } | null }
     | null
     | undefined;
-  const url = meta?.githubRepo?.url;
+  const url = meta?.repository?.url;
   return typeof url === "string" && url.length > 0
     ? "claude-code"
     : "decopilot";
@@ -463,7 +463,23 @@ async function validate(
     branch,
     toolApprovalLevel,
     mode,
+    voiceMode,
+    voiceTranscript,
   } = await validateRequest(c);
+
+  if (voiceTranscript && voiceMode !== true) {
+    throw new HTTPException(400, {
+      message: "voiceTranscript requires voiceMode",
+    });
+  }
+  if (voiceMode) {
+    const settings = await ctx.storage.organizationSettings.get(
+      organization.id,
+    );
+    if (!orgFlagEnabled(settings?.flags, "voice_mode")) {
+      throw new HTTPException(403, { message: "Voice mode is disabled" });
+    }
+  }
 
   const bodyThreadId = thread_id ?? memoryConfig?.thread_id;
   if (threadIdParam && bodyThreadId && bodyThreadId !== threadIdParam) {
@@ -547,6 +563,8 @@ async function validate(
 
   return {
     messages: [...systemMessages, requestMessage],
+    voiceMode,
+    ...(voiceTranscript ? { voiceTranscript } : {}),
     models,
     agent,
     temperature,

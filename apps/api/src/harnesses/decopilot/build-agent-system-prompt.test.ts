@@ -90,11 +90,11 @@ describe("buildAgentSystemPrompt", () => {
         repo: {
           owner: "deco",
           name: "site",
-          connectedGithub: true,
+          linked: true,
         },
         branch: "main",
         cwd: "/repo",
-        workspaceKind: "github",
+        workspaceKind: "repository",
       },
     });
 

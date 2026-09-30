@@ -36,6 +36,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { sharedJsonSchemaValidator } from "@decocms/mcp-utils";
 import type { StudioContext } from "../../core/studio-context";
 import { requireOrganization } from "../../core/studio-context";
+import { clampExpiresIn } from "../../tools/object-storage/schema";
 import { getContentType } from "./dev-assets";
 
 // Local tool definition type
@@ -358,7 +359,7 @@ function createDevAssetsTools(
         args: Record<string, unknown>,
       ): Promise<GetPresignedUrlOutput> => {
         const input = args as GetPresignedUrlInput;
-        const expiresIn = input.expiresIn ?? DEFAULT_EXPIRES_IN;
+        const expiresIn = clampExpiresIn(input.expiresIn, DEFAULT_EXPIRES_IN);
 
         const url = generatePresignedUrl(
           baseUrl,
@@ -391,7 +392,7 @@ function createDevAssetsTools(
         args: Record<string, unknown>,
       ): Promise<PutPresignedUrlOutput> => {
         const input = args as PutPresignedUrlInput;
-        const expiresIn = input.expiresIn ?? DEFAULT_EXPIRES_IN;
+        const expiresIn = clampExpiresIn(input.expiresIn, DEFAULT_EXPIRES_IN);
 
         const url = generatePresignedUrl(
           baseUrl,

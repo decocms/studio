@@ -1,4 +1,27 @@
 export const chat = {
+  "chat.voice.title": "Voice conversation",
+  "chat.voice.start": "Start voice mode",
+  "chat.voice.idle": "Ready",
+  "chat.voice.connecting": "Connecting…",
+  "chat.voice.listening": "Listening",
+  "chat.voice.working": "Working on your request. You can keep talking.",
+  "chat.voice.backgroundWork": "The agent is working. You can keep talking.",
+  "chat.voice.speaking": "Speaking",
+  "chat.voice.error": "Voice unavailable",
+  "chat.voice.muted": "Microphone muted",
+  "chat.voice.mute": "Mute microphone",
+  "chat.voice.unmute": "Unmute microphone",
+  "chat.voice.backToChat": "Back to chat",
+  "chat.voice.stopWork": "Stop agent work",
+  "chat.voice.retry": "Try again",
+  "chat.voice.permission":
+    "Allow microphone access in your browser to use voice mode.",
+  "chat.voice.unavailable":
+    "Could not start voice mode. Check microphone access and the organization's voice configuration.",
+  "chat.voice.disconnected":
+    "Voice session ended. Your chat and the agent's work are still available.",
+  "chat.voice.sendFailed":
+    "Could not send or complete this request. Return to the chat to check its status.",
   "chat.input.taskMode": "Task",
   "chat.input.startTask": "Start task",
   "chat.input.taskPlaceholder":

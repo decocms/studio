@@ -1,10 +1,13 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import type { PermissionCapability } from "@decocms/shared/tools/registry-metadata";
+import type { OrganizationRole } from "@/hooks/use-organization-roles";
+import type { ConnectionEntity } from "@/sdk";
+import type { AiProviderKey } from "@/hooks/collections/use-ai-providers";
+import type { TFunction } from "@/i18n/use-t.ts";
 import { Panel } from "@/components/panel";
 import {
   getCapabilitySections,
   isCapabilityEnabled,
   toggleCapabilityInTools,
-  type PermissionCapability,
 } from "@decocms/shared/tools/registry-metadata";
 import {
   getProjectScope,
@@ -15,19 +18,14 @@ import { DEFAULT_LOGO, PROVIDER_LOGOS } from "@/utils/ai-providers-logos";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { ToolSetSelector } from "@/components/tool-set-selector.tsx";
 import { useMembers } from "@/hooks/use-members";
-import { type OrganizationRole } from "@/hooks/use-organization-roles";
+
 import { useOrgAuthClient } from "@/hooks/use-org-auth-client";
 import { getInitials } from "@/lib/get-initials";
 import { KEYS } from "@/lib/query-keys";
 import { track } from "@/lib/posthog-client";
 import { getRoleColor, getRoleDotColor } from "@/lib/role-color";
+import { useConnections, useProjectContext } from "@/sdk";
 import {
-  useConnections,
-  useProjectContext,
-  type ConnectionEntity,
-} from "@/sdk";
-import {
-  type AiProviderKey,
   useHostedAiProviderKeys,
   useSuspenseAiProviderModels,
 } from "@/hooks/collections/use-ai-providers";
@@ -65,7 +63,7 @@ import { IntegrationIcon } from "@/components/integration-icon";
 import { ProjectIcon } from "@/components/project-icon";
 import { useVirtualMCPsNonBlocking } from "@/sdk/hooks/use-virtual-mcp";
 import { scopableProjects } from "@/hooks/use-project-scope";
-import { type TFunction, useT } from "@/i18n/use-t.ts";
+import { useT } from "@/i18n/use-t.ts";
 import {
   SettingsCard,
   SettingsCardItem,
@@ -1459,7 +1457,6 @@ function RoleDetailPageInner({
   members: MemberLike[];
   connections: ConnectionEntity[];
 }) {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { locator } = useProjectContext();
   const orgAuth = useOrgAuthClient();
@@ -1744,43 +1741,21 @@ function RoleDetailPageInner({
               </div>
             </Page.Title>
 
-            {compact ? (
-              <>
-                <Panel.Toolbar.Left.Portal>
-                  <Page.Tabs>
-                    {tabs.map((tab) => (
-                      <Page.Tab
-                        key={tab.id}
-                        active={activeTab === tab.id}
-                        onClick={() => handleTabChange(tab.id)}
-                      >
-                        {tab.label}
-                      </Page.Tab>
-                    ))}
-                  </Page.Tabs>
-                </Panel.Toolbar.Left.Portal>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
+            <>
+              <Panel.Toolbar.Left.Portal>
+                <Page.Tabs>
                   {tabs.map((tab) => (
-                    <button
+                    <Page.Tab
                       key={tab.id}
-                      type="button"
+                      active={activeTab === tab.id}
                       onClick={() => handleTabChange(tab.id)}
-                      className={cn(
-                        "h-7 px-2 text-sm rounded-lg border border-input transition-colors inline-flex items-center",
-                        activeTab === tab.id
-                          ? "bg-accent border-border text-foreground"
-                          : "bg-transparent text-muted-foreground hover:border-border hover:bg-accent/50 hover:text-foreground",
-                      )}
                     >
                       {tab.label}
-                    </button>
+                    </Page.Tab>
                   ))}
-                </div>
-              </>
-            )}
+                </Page.Tabs>
+              </Panel.Toolbar.Left.Portal>
+            </>
             <div className="flex items-center justify-between gap-3">
               <SearchInput
                 value={searchQuery}

@@ -185,7 +185,7 @@ export function TimeRangePicker({
                       type="button"
                       onClick={() => handleQuickRangeSelect(range)}
                       className={cn(
-                        "w-full text-left px-3 py-2 text-sm classic:rounded-md compact:rounded-lg transition-colors",
+                        "w-full text-left px-3 py-2 text-sm rounded-lg transition-colors",
                         "hover:bg-accent hover:text-accent-foreground",
                         isSelected &&
                           "bg-accent text-accent-foreground font-medium",

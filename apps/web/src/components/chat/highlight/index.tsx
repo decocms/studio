@@ -1,4 +1,5 @@
 import { Button } from "@decocms/ui/components/button.tsx";
+import { cn } from "@decocms/ui/lib/utils.ts";
 import { AlertCircle, AlertTriangle, Copy01 } from "@untitledui/icons";
 import { toast } from "sonner";
 import {
@@ -147,7 +148,7 @@ function StatusHighlight(props: StatusHighlightProps) {
               }}
               aria-label={t("chat.highlight.copyErrorDetails")}
               title={t("chat.highlight.copy")}
-              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center classic:rounded-md compact:rounded-lg bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
+              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-lg bg-background/80 text-muted-foreground backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
             >
               <Copy01 className="size-3.5" />
             </button>
@@ -165,7 +166,13 @@ function StatusHighlight(props: StatusHighlightProps) {
 // ChatHighlight - main component
 // ============================================================================
 
-export function ChatHighlight() {
+export function ChatHighlight({
+  inline = false,
+  voiceMode = false,
+}: {
+  inline?: boolean;
+  voiceMode?: boolean;
+} = {}) {
   const t = useT();
   const {
     error,
@@ -195,6 +202,7 @@ export function ChatHighlight() {
   const buildRequestOptions = (
     toolApprovalLevel: ToolApprovalLevel,
   ): RequestOptions => ({
+    ...(voiceMode ? { voiceMode: true } : {}),
     tier: simpleModeTier,
     mode: chatMode,
     toolApprovalLevel,
@@ -334,7 +342,7 @@ export function ChatHighlight() {
     return canBuyCredits ? (
       <CreditsExhaustedBanner onDismiss={clearError} />
     ) : (
-      <div className="absolute bottom-full left-0 right-0">
+      <div className={cn(!inline && "absolute bottom-full left-0 right-0")}>
         <PlanRefusedHighlight
           kind="ai_budget_exhausted"
           onDismiss={clearError}
@@ -349,7 +357,7 @@ export function ChatHighlight() {
   const approvalKey = pendingApprovals.map((a) => a.approvalId).join("|");
 
   return (
-    <div className="absolute bottom-full left-0 right-0">
+    <div className={cn(!inline && "absolute bottom-full left-0 right-0")}>
       <TodosHighlight todos={flags.todos} />
       {flags.subscriptionErrorKind && (
         <SubscriptionLimitHighlight

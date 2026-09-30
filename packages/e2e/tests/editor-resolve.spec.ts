@@ -45,7 +45,7 @@ async function createOrg(
 
 /**
  * Create a project named `siteSlug`. By default it's a code agent (repo-backed
- * via `metadata.githubRepo`), which is what editor-resolve returns. Pass
+ * via `metadata.repository`), which is what editor-resolve returns. Pass
  * `{ codeAgent: false }` for a Decopilot-only agent (no source) that must be
  * excluded even when the name collides.
  */
@@ -67,7 +67,7 @@ async function createProjectForSite(
         connections: [],
         metadata: {
           instructions: null,
-          githubRepo: codeAgent
+          repository: codeAgent
             ? {
                 url: `https://github.com/e2e/${siteSlug}`,
                 owner: "e2e",

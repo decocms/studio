@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { isOrgArchived } from "@decocms/shared/organization/org-archived";
 import type { StudioContext } from "../../core/studio-context";
 import { rebindOrgScope } from "../../core/context-factory";
+import { findOrgByPreviousSlug } from "../../core/org-previous-slug";
 
 import {
   auditTaskBoardAdminAction,
@@ -70,6 +71,7 @@ const SERVICE_TOKEN_ROUTES: readonly (readonly string[])[] = [
   ["vault", "connections", "*", "access-token"],
   ["vault", "connections", "*", "configuration"],
   ["internal", "task-board", "import"],
+  ["internal", "task-board", "resolve"],
   ["internal", "commerce-diagnostic", "share-invite"],
   ["internal", "organization-notices"],
   ["internal", "repositories", "resolve"],
@@ -123,7 +125,8 @@ export const resolveOrgFromPath: MiddlewareHandler<{
         ? eb.or([eb("slug", "=", slug), eb("id", "=", slug)])
         : eb("slug", "=", slug),
     )
-    .executeTakeFirst();
+    .executeTakeFirst()
+    .then((found) => found ?? findOrgByPreviousSlug(db, slug));
 
   if (!org) {
     // Bounce browser navigations into the SPA so OrgAccessGate shows the

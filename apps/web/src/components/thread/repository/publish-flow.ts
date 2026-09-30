@@ -1,0 +1,336 @@
+/**
+ * The one publish sequence, shared by Fast Preview's publish popover and the
+ * coding session's publish dialog. Publishing runs push → sync → open (or
+ * update) the pull request → squash-merge; submitting for review runs the same
+ * push → open-pr prefix and stops there. Neither surface owns the steps, so a
+ * change to the sequence lands here exactly once.
+ */
+
+import type { CoAuthorIdentity } from "@decocms/sandbox/shared";
+import type { SandboxProxyRef } from "@/sdk/sandbox-url";
+import type { RepoToolTarget } from "@/lib/repository-binding";
+import { toast } from "sonner";
+import type { TFunction } from "@/i18n/use-t.ts";
+import {
+  openChangeRequestForBranch,
+  squashMergeChangeRequest,
+  type CreatedPullRequest,
+} from "./change-request-api.ts";
+import {
+  fetchGitStatus,
+  publishGitChanges,
+  rebaseGitBranch,
+} from "./sandbox-git-api.ts";
+
+/** The steps a publish runs, in order. Submitting for review stops at `open-pr`. */
+type PublishStep = "verify" | "push" | "sync" | "open-pr" | "merge";
+
+/**
+ * The branch moved between the moment its changes were shown and the moment
+ * publish ran — someone else's commit, the coding agent's, or the author's own
+ * autosave in another tab. Thrown before anything mutates, so the work is
+ * untouched and the surface can re-read and ask again.
+ *
+ * This cannot be a `sha` precondition on the merge instead: the sync step
+ * squash-rebases the branch onto base and force-updates the ref, so by merge
+ * time the head is one we wrote, not the one the author confirmed.
+ */
+class PublishHeadMovedError extends Error {
+  constructor(
+    readonly expectedHeadSha: string,
+    readonly actualHeadSha: string,
+  ) {
+    super("The branch changed since these changes were shown");
+    this.name = "PublishHeadMovedError";
+  }
+}
+
+/**
+ * A failure attributed to the step that produced it. `pr` is set only when the
+ * merge failed after the pull request was already opened — the work is not
+ * lost, it is sitting in that open PR.
+ */
+export class PublishStepError extends Error {
+  constructor(
+    message: string,
+    readonly step: PublishStep,
+    readonly pr?: CreatedPullRequest,
+  ) {
+    super(message);
+    this.name = "PublishStepError";
+  }
+}
+
+/**
+ * Where a publish goes: the sandbox branch it pushes, and the pull request it
+ * opens — or updates, when the branch already has one open.
+ */
+export interface PublishTarget {
+  orgSlug: string;
+  virtualMcpId: string;
+  /** Sandbox branch — what gets pushed. */
+  branch: string;
+  /** The session publishing. Decides which runtime answers the git routes. */
+  threadId: string | null;
+  /** Route sandbox-less Fast Preview git operations to the upstream API. */
+  fastPreview?: boolean;
+  baseBranch: string;
+  /** Which repository, and which credential reads it. */
+  target: RepoToolTarget;
+  owner: string;
+  repo: string;
+  /** Branch name on the remote; the sandbox's HEAD can differ from `branch`. */
+  headBranch: string;
+  coAuthor?: CoAuthorIdentity;
+  /**
+   * The head the confirmed change list was read from. Checked against the live
+   * head before anything mutates; see {@link PublishHeadMovedError}. Omit to
+   * publish whatever the branch holds now.
+   */
+  expectedHeadSha?: string;
+}
+
+/** Pull-request title/body and the commit message, from one authored note. */
+interface PublishMessage {
+  title: string;
+  body?: string;
+  message: string;
+}
+
+/**
+ * Derive what the pull request and the commit are called. An empty title falls
+ * back to `fallbackTitle`; the commit message is title and body joined, and
+ * degrades to the title alone when the author wrote neither.
+ */
+export function publishMessageParts(input: {
+  title: string;
+  body: string;
+  fallbackTitle: string;
+}): PublishMessage {
+  const title = input.title.trim();
+  const body = input.body.trim();
+  const prTitle = title || input.fallbackTitle;
+  return {
+    title: prTitle,
+    body: body || undefined,
+    message: [title, body].filter(Boolean).join("\n\n") || prTitle,
+  };
+}
+
+/** Single-textarea surfaces author title and body as one note: line 1 titles it. */
+export function publishNoteParts(
+  note: string,
+  fallbackTitle: string,
+): PublishMessage {
+  const lines = note.trim().split("\n");
+  return publishMessageParts({
+    title: lines[0] ?? "",
+    body: lines.slice(1).join("\n"),
+    fallbackTitle,
+  });
+}
+
+function sandboxRef(target: PublishTarget): SandboxProxyRef {
+  return {
+    orgSlug: target.orgSlug,
+    virtualMcpId: target.virtualMcpId,
+    branch: target.branch,
+    threadId: target.threadId,
+  };
+}
+
+function sandboxCall(target: PublishTarget) {
+  return target.fastPreview ? { fastPreview: true } : undefined;
+}
+
+async function runStep<T>(
+  step: PublishStep,
+  fallback: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw new PublishStepError(
+      error instanceof Error ? error.message : fallback,
+      step,
+    );
+  }
+}
+
+/**
+ * Fail before mutating anything when the branch head is no longer the one the
+ * confirmed change list was read from. A status read that itself fails is not
+ * evidence the head moved, so it lets the publish proceed rather than blocking
+ * on an unrelated outage.
+ */
+async function assertHeadUnchanged(target: PublishTarget): Promise<void> {
+  const expected = target.expectedHeadSha;
+  if (!expected) return;
+  const status = await fetchGitStatus(
+    sandboxRef(target),
+    sandboxCall(target),
+  ).catch(() => null);
+  const actual = status?.headSha;
+  if (actual && actual !== expected) {
+    throw new PublishHeadMovedError(expected, actual);
+  }
+}
+
+function pushChanges(target: PublishTarget, message: string): Promise<void> {
+  return publishGitChanges(sandboxRef(target), message, sandboxCall(target));
+}
+
+function openPullRequest(
+  target: PublishTarget,
+  parts: PublishMessage,
+): Promise<CreatedPullRequest> {
+  return openChangeRequestForBranch(target.orgSlug, target.target, {
+    branch: target.headBranch,
+    title: parts.title,
+    body: parts.body,
+    base: target.baseBranch,
+    coAuthor: target.coAuthor,
+  });
+}
+
+/**
+ * push → sync → open (or update) the pull request → squash-merge. Every failure
+ * arrives as a {@link PublishStepError}; hand it to {@link reportPublishFailure}
+ * for the presentation both surfaces share.
+ */
+export async function runPublishFlow(
+  target: PublishTarget,
+  parts: PublishMessage,
+  t: TFunction,
+): Promise<CreatedPullRequest> {
+  await assertHeadUnchanged(target);
+  await runStep("push", t("thread.publishDialog.failedPushChanges"), () =>
+    pushChanges(target, parts.message),
+  );
+  await runStep("sync", t("thread.publishDialog.failedRebase"), () =>
+    rebaseGitBranch(sandboxRef(target), target.baseBranch, sandboxCall(target)),
+  );
+  const pr = await runStep(
+    "open-pr",
+    t("thread.publishDialog.failedOpenPullRequest"),
+    () => openPullRequest(target, parts),
+  );
+  try {
+    await squashMergeChangeRequest(target.orgSlug, target.target, {
+      number: pr.number,
+      commitTitle: parts.title,
+      commitMessage: parts.body,
+      coAuthor: target.coAuthor,
+    });
+  } catch (error) {
+    throw new PublishStepError(
+      error instanceof Error
+        ? error.message
+        : t("thread.publishDialog.failedMergePullRequest"),
+      "merge",
+      pr,
+    );
+  }
+  return pr;
+}
+
+/**
+ * push → open (or update) the pull request, and stop. GitHub requires the head
+ * on the remote, so this pushes even when the commits are already local-only.
+ * Failures propagate raw — each surface names its own fallback message.
+ */
+export async function runSubmitForReviewFlow(
+  target: PublishTarget,
+  parts: PublishMessage,
+): Promise<CreatedPullRequest> {
+  await assertHeadUnchanged(target);
+  await pushChanges(target, parts.message);
+  return openPullRequest(target, parts);
+}
+
+/** What a publish failure means: the message to show, and the PR it left behind. */
+interface PublishFailure {
+  message: string;
+  /** Set when the merge failed after the PR opened — the work is in that PR. */
+  pullRequest: CreatedPullRequest | null;
+  /** The branch moved before anything ran: nothing changed, re-read and retry. */
+  headMoved: boolean;
+}
+
+/**
+ * Read a failure. A merge that failed after the pull request opened names it,
+ * so the caller can link to it and refresh its PR state; everything else is the
+ * step's own message, or the generic fallback for a non-Error throw.
+ */
+export function describePublishFailure(
+  error: unknown,
+  t: TFunction,
+): PublishFailure {
+  if (error instanceof PublishHeadMovedError) {
+    return {
+      message: t("thread.publishPopover.branchMoved"),
+      pullRequest: null,
+      headMoved: true,
+    };
+  }
+  if (error instanceof PublishStepError && error.step === "merge" && error.pr) {
+    return {
+      message: t("thread.publishDialog.mergeFailed", {
+        prNumber: error.pr.number,
+        message: error.message,
+      }),
+      pullRequest: error.pr,
+      headMoved: false,
+    };
+  }
+  return {
+    message:
+      error instanceof Error
+        ? error.message
+        : t("thread.publishDialog.failedPublish"),
+    pullRequest: null,
+    headMoved: false,
+  };
+}
+
+/**
+ * {@link describePublishFailure} plus the toast both surfaces raise for it.
+ * `pullRequestOpened` refreshes PR state; `headMoved` re-reads the change list.
+ */
+export function reportPublishFailure(
+  error: unknown,
+  t: TFunction,
+): { message: string; pullRequestOpened: boolean; headMoved: boolean } {
+  const failure = describePublishFailure(error, t);
+  const pr = failure.pullRequest;
+  if (pr) {
+    toast.error(failure.message, {
+      action: {
+        label: t("thread.publishDialog.viewPr"),
+        onClick: () => window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
+      },
+    });
+  }
+  return {
+    message: failure.message,
+    pullRequestOpened: pr !== null,
+    headMoved: failure.headMoved,
+  };
+}
+
+/** Both surfaces confirm a review submission the same way: PR number + link. */
+export function notifySubmittedForReview(
+  pr: CreatedPullRequest,
+  t: TFunction,
+): void {
+  toast.success(
+    t("thread.publishDialog.submittedForReview", { prNumber: pr.number }),
+    {
+      action: {
+        label: t("thread.publishDialog.viewOnProvider"),
+        onClick: () => window.open(pr.htmlUrl, "_blank", "noopener,noreferrer"),
+      },
+    },
+  );
+}

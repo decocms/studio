@@ -4,6 +4,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // TestConcurrentKillDuringSpawnDoesNotRace exercises the window between a
@@ -62,4 +63,36 @@ func TestSpawnUnlessLogNameRunningIsAtomic(t *testing.T) {
 	if started != 1 {
 		t.Fatalf("expected exactly 1 spawn to win the race, got %d", started)
 	}
+}
+
+// TestFinishedReturnsOnCancelNotOnlyOnTaskDone guards against a caller
+// (routes/tasks.go's SSE stream) parking a goroutine forever when its client
+// disconnects from a background task with no TimeoutMs (a dev server): the
+// wait must be cut short by cancel rather than only by the task's own done
+// channel.
+func TestFinishedReturnsOnCancelNotOnlyOnTaskDone(t *testing.T) {
+	m := NewTaskManager(TaskManagerDeps{LogsDir: t.TempDir()})
+	defer m.Shutdown()
+
+	task := m.Spawn(TaskSpec{Command: "sleep 5", Mode: "pipe"})
+
+	cancel := make(chan struct{})
+	close(cancel)
+
+	done := make(chan bool, 1)
+	go func() {
+		_, ok := m.Finished(task.ID, cancel)
+		done <- ok
+	}()
+
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatalf("expected Finished to report false on cancel, got true")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Finished did not return promptly on cancel")
+	}
+
+	m.Kill(task.ID, syscall.SIGKILL)
 }

@@ -117,7 +117,7 @@ export function PostEditor({
   const draftPointer = useDraftPointer({ orgSlug, virtualMcpId, branch });
   const initial = getBlogPayload(block, "posts");
 
-  const [post, setPost, syncPost] = useAutosave(
+  const [post, setPost, syncPost, saveScheduled] = useAutosave(
     initial,
     (next) => {
       save.mutate({
@@ -176,7 +176,10 @@ export function PostEditor({
       <div className="absolute inset-x-0 top-0 z-10 bg-background/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-8 py-3">
           <div className="flex items-center gap-3">
-            <SaveStatus isPending={save.isPending} isError={save.isError} />
+            <SaveStatus
+              isPending={save.isPending || saveScheduled}
+              isError={save.isError}
+            />
             {hasErrors && (
               <Tooltip>
                 <TooltipTrigger asChild>

@@ -110,8 +110,9 @@ export class ThreadAnalyticsStorage {
         left join connections c on c.id = t.virtual_mcp_id
         where ${orgIn(q.orgIds, "t.organization_id")}
           and ${q.status ? sql`t.status = ${q.status}` : sql`true`}
+          and ${q.kind ? sql`${kindOf("t")} = ${q.kind}` : sql`true`}
         order by t.updated_at desc
-        limit ${q.kind ? q.limit * 5 : q.limit}
+        limit ${q.limit}
       ) r
       left join lateral (
         select round(sum(${USD}), 4) as usd, sum(${TOKENS("totalTokens")}) as tokens
@@ -124,7 +125,6 @@ export class ThreadAnalyticsStorage {
         where r.status = 'failed' and pe.thread_id = r.id and pe.kind = 'error'
         order by pe.created_at desc limit 1
       ) e on true
-      where ${q.kind ? sql`r.kind = ${q.kind}` : sql`true`}
       order by r.updated_at desc
       limit ${q.limit}
     `);
@@ -137,6 +137,7 @@ export class ThreadAnalyticsStorage {
       from threads t
       where ${orgIn(q.orgIds, "t.organization_id")}
         and (status in ('in_progress','requires_action') or updated_at >= ${hourAgo})
+        and ${q.kind ? sql`${kindOf("t")} = ${q.kind}` : sql`true`}
     `);
 
     return {

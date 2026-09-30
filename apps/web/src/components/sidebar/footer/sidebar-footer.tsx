@@ -10,8 +10,10 @@ import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { SidebarTopActions } from "@/components/sidebar/top-actions";
 import { useReportsOnly } from "@/hooks/use-organization-settings";
 import { useSidebarCollapsed } from "@/hooks/use-sidebar-collapsed";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t";
 import { InboxFullButton, InboxIconButton } from "./inbox";
+import { SettingsFullButton, SettingsIconButton } from "./settings-button";
 import { SidebarFooterIcon, SIDEBAR_FOOTER_ICON_SIZE } from "./icon-slot";
 
 /** The one quick action left in the footer. Connections live in their own
@@ -39,13 +41,19 @@ function SidebarExtraActions() {
   );
 }
 
-/** Account footer — the invite action and the account row. Settings is a
- *  destination row now, so it is not repeated here. The usage chip only shows
+/** Account footer — the invite action, the account row, and the controls that
+ *  sit beside it: notifications and, with project-first navigation, Settings.
+ *  Classic keeps Settings as a destination row in the spine above (the org
+ *  rail there names the org instead of a picker), so repeating it here would
+ *  be two doors to the same place. Neither control is a destination — you open
+ *  it, change something and come back — which is why it is an icon on the
+ *  account row rather than a row in the spine. The usage chip only shows
  *  outside reports-only orgs. */
 export function SidebarAccountFooter() {
   const isCollapsed = useSidebarCollapsed();
   const reportsOnly = useReportsOnly();
   const showCredits = !reportsOnly;
+  const projectFirstNav = useProjectFirstNav();
 
   if (isCollapsed) {
     return (
@@ -53,6 +61,11 @@ export function SidebarAccountFooter() {
         {showCredits && <SidebarTopActions />}
         <SidebarExtraActions />
         <SidebarMenu>
+          {projectFirstNav && (
+            <SidebarMenuItem>
+              <SettingsFullButton />
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <InboxFullButton />
           </SidebarMenuItem>
@@ -74,6 +87,7 @@ export function SidebarAccountFooter() {
             <div className="flex-1 min-w-0">
               <AccountPopover />
             </div>
+            {projectFirstNav && <SettingsIconButton />}
             <InboxIconButton />
           </div>
         </SidebarMenuItem>

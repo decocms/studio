@@ -1,143 +1,270 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  allocationsMatchingPush,
+  allocationWarmPoolName,
   claimTemplateName,
   claimWarmPoolName,
+  normalizeRepoUrl,
+  renderTenantPoolWarmPools,
   resolveClaimTemplateName,
-  parseTenantPools,
-  poolsMatchingPush,
-  repoKeyFromCloneUrl,
-  resolveTenantPool,
+  resolveTenantPoolBinding,
   type TenantPool,
+  type TenantPoolInput,
+  tenantPoolSchema,
+  TenantPoolState,
 } from "./tenant-pools";
 
-const POOLS = parseTenantPools(
-  JSON.stringify([
-    {
-      name: "tenant-acme-site",
-      orgId: "org-acme",
-      repo: "Acme/Site",
-      connectionId: "conn-1",
-    },
-  ]),
-);
+const SITE = "https://github.com/Acme/Site";
+const DOCS = "https://github.com/acme/docs";
 
-describe("parseTenantPools", () => {
-  it("defaults branch and workload", () => {
-    expect(POOLS[0]).toMatchObject({
-      branch: "main",
-      workload: { runtime: "node" },
+function pool(overrides: Partial<TenantPoolInput> = {}): TenantPool {
+  return tenantPoolSchema.parse({
+    name: "acme",
+    tenant: "org-acme",
+    size: 4,
+    repos: [
+      { repoUrl: SITE, replicas: 2 },
+      { repoUrl: SITE, branch: "develop", replicas: 1 },
+    ],
+    ...overrides,
+  });
+}
+
+describe("normalizeRepoUrl", () => {
+  it("strips credentials, .git and a trailing slash, and lowercases the host", () => {
+    expect(
+      normalizeRepoUrl("https://x-access-token:tok@GitHub.com/Acme/Site.git/"),
+    ).toBe("https://github.com/Acme/Site");
+    expect(normalizeRepoUrl("https://gitlab.com/group/sub/proj")).toBe(
+      "https://gitlab.com/group/sub/proj",
+    );
+  });
+
+  it("refuses anything but a plain https clone URL", () => {
+    for (const bad of [
+      "git@github.com:acme/site.git",
+      "http://github.com/acme/site",
+      "https://github.com/",
+      "https://github.com/acme/site?token=x",
+      "acme/site",
+    ]) {
+      expect(normalizeRepoUrl(bad)).toBeNull();
+    }
+  });
+});
+
+describe("tenantPoolSchema", () => {
+  it("defaults image, branch and workload, and stores the normalized URL", () => {
+    const parsed = tenantPoolSchema.parse({
+      name: "acme",
+      tenant: "t",
+      size: 1,
+      repos: [{ repoUrl: "https://u:p@github.com/Acme/Site.git", replicas: 1 }],
+    });
+    expect(parsed).toEqual({
+      name: "acme",
+      tenant: "t",
+      size: 1,
+      image: "default",
+      repos: [
+        {
+          repoUrl: SITE,
+          branch: "main",
+          workload: { runtime: "node" },
+          replicas: 1,
+        },
+      ],
     });
   });
 
-  it("unset/empty → no pools", () => {
-    expect(parseTenantPools(undefined)).toEqual([]);
-    expect(parseTenantPools("  ")).toEqual([]);
+  it("takes a pool with no repos", () => {
+    expect(pool({ repos: undefined }).repos).toEqual([]);
   });
 
-  it("rejects a pool name that is not a DNS label", () => {
+  it("refuses repos that take more replicas than the pool's size", () => {
+    expect(() => pool({ size: 2 })).toThrow(/more than its size 2/);
+  });
+
+  it("refuses the same repo and branch twice, whatever the URL's case", () => {
     expect(() =>
-      parseTenantPools(
-        JSON.stringify([
-          { name: "Tenant_Acme", orgId: "o", repo: "a/b", connectionId: "c" },
-        ]),
-      ),
+      pool({
+        repos: [
+          { repoUrl: SITE, replicas: 1 },
+          { repoUrl: "https://github.com/acme/site.git", replicas: 1 },
+        ],
+      }),
+    ).toThrow(/duplicate repo allocation/);
+  });
+
+  it("refuses a name that leaves no room for the allocation suffix, or is not a DNS label", () => {
+    expect(() => pool({ name: "a".repeat(55) })).toThrow();
+    expect(() => pool({ name: "Acme_Pool" })).toThrow();
+    expect(pool({ name: "a".repeat(54) }).name).toHaveLength(54);
+  });
+
+  it("refuses an empty tenant, a zero size or replica, and a credential-bearing non-https URL", () => {
+    expect(() => pool({ tenant: "" })).toThrow();
+    expect(() => pool({ size: 0, repos: [] })).toThrow();
+    expect(() => pool({ repos: [{ repoUrl: SITE, replicas: 0 }] })).toThrow();
+    expect(() =>
+      pool({
+        repos: [{ repoUrl: "git@github.com:acme/site.git", replicas: 1 }],
+      }),
     ).toThrow();
   });
+});
 
-  it("rejects a repo that is not owner/name", () => {
-    expect(() =>
-      parseTenantPools(
-        JSON.stringify([
-          { name: "p", orgId: "o", repo: "just-a-name", connectionId: "c" },
-        ]),
-      ),
-    ).toThrow();
+describe("renderTenantPoolWarmPools", () => {
+  it("renders one pool per allocation and the blank remainder, on the image's -medium template", () => {
+    const acme = pool({ image: "android" });
+    const rendered = renderTenantPoolWarmPools(acme, { templateName: "sbx" });
+    const [site, develop] = acme.repos;
+    expect(rendered.map((p) => [p.metadata.name, p.spec.replicas])).toEqual([
+      [allocationWarmPoolName("acme", site!), 2],
+      [allocationWarmPoolName("acme", develop!), 1],
+      ["acme", 1],
+    ]);
+    for (const warmPool of rendered) {
+      expect(warmPool.metadata.name).toMatch(/^acme(-[0-9a-f]{8})?$/);
+      expect(warmPool.kind).toBe("SandboxWarmPool");
+      expect(warmPool.spec).toMatchObject({
+        updateStrategy: { type: "OnReplenish" },
+        sandboxTemplateRef: { name: "sbx-android-medium" },
+      });
+    }
   });
 
-  it("rejects duplicate pool names", () => {
-    const one = { name: "p", orgId: "o", repo: "a/b", connectionId: "c" };
-    expect(() => parseTenantPools(JSON.stringify([one, one]))).toThrow(
-      /duplicate pool name/,
+  it("names allocations by repo and branch, stably", () => {
+    const a = allocationWarmPoolName("acme", { repoUrl: SITE, branch: "main" });
+    expect(a).toBe(
+      allocationWarmPoolName("acme", { repoUrl: SITE, branch: "main" }),
     );
+    expect(a).not.toBe(
+      allocationWarmPoolName("acme", { repoUrl: SITE, branch: "develop" }),
+    );
+    expect(
+      allocationWarmPoolName("a".repeat(54), { repoUrl: SITE, branch: "main" }),
+    ).toHaveLength(63);
+  });
+
+  it("renders the blank pool at 0 when the repos take every replica, so a shrink applies", () => {
+    const full = pool({ size: 3 });
+    const blank = renderTenantPoolWarmPools(full, { templateName: "sbx" }).at(
+      -1,
+    );
+    expect(blank?.metadata.name).toBe("acme");
+    expect(blank?.spec.replicas).toBe(0);
+    expect(blank?.spec.sandboxTemplateRef.name).toBe("sbx-medium");
+  });
+
+  it("renders only the blank pool for a pool with no repos", () => {
+    expect(
+      renderTenantPoolWarmPools(pool({ repos: [] }), {
+        templateName: "sbx",
+      }).map((p) => [p.metadata.name, p.spec.replicas]),
+    ).toEqual([["acme", 4]]);
+  });
+
+  it("uses an allocation's explicit warm pool name", () => {
+    const legacy: TenantPool = {
+      ...pool({ size: 1, repos: [] }),
+      repos: [
+        {
+          repoUrl: SITE,
+          branch: "main",
+          workload: { runtime: "node" },
+          replicas: 1,
+          warmPoolName: "tenant-acme-site-prod",
+        },
+      ],
+    };
+    expect(
+      renderTenantPoolWarmPools(legacy, { templateName: "sbx" })[0]?.metadata
+        .name,
+    ).toBe("tenant-acme-site-prod");
   });
 });
 
-describe("repoKeyFromCloneUrl", () => {
-  it("strips credentials, .git, and case", () => {
+describe("resolveTenantPoolBinding", () => {
+  const acme = pool();
+  const claim = {
+    tenant: "org-acme",
+    image: "default",
+    cloneUrl: "https://x-access-token:tok@github.com/acme/site.git",
+    branch: "main",
+  };
+  const [site, develop] = acme.repos;
+
+  it("binds the allocation for the claim's repo, preferring its branch", () => {
+    expect(resolveTenantPoolBinding([acme], claim)).toEqual({
+      pool: acme,
+      repo: site!,
+      warmPoolName: allocationWarmPoolName("acme", site!),
+    });
     expect(
-      repoKeyFromCloneUrl(
-        "https://x-access-token:tok@github.com/Acme/Site.git",
-      ),
-    ).toBe("acme/site");
+      resolveTenantPoolBinding([acme], { ...claim, branch: "develop" })?.repo,
+    ).toBe(develop!);
   });
 
-  it("returns null for a non-URL", () => {
-    expect(repoKeyFromCloneUrl("git@github.com:acme/site.git")).toBeNull();
-  });
-  it("is null for any host other than github.com", () => {
+  it("takes any allocation for the repo when no branch matches", () => {
     expect(
-      repoKeyFromCloneUrl("https://oauth2:tok@gitlab.com/acme/site.git"),
-    ).toBeNull();
-    expect(
-      repoKeyFromCloneUrl("https://gitlab.acme.com/acme/site.git"),
-    ).toBeNull();
-  });
-});
-
-describe("resolveTenantPool", () => {
-  const url = "https://x-access-token:tok@github.com/acme/site.git";
-
-  it("matches on org + repo", () => {
-    expect(
-      resolveTenantPool(POOLS, { orgId: "org-acme", cloneUrl: url })?.name,
-    ).toBe("tenant-acme-site");
+      resolveTenantPoolBinding([acme], { ...claim, branch: "thread/x" })?.repo
+        ?.repoUrl,
+    ).toBe(SITE);
   });
 
-  // Purpose no longer excludes a run; org+repo isolation must not relax with it.
-  it("still refuses another org's pool and another repo's pool", () => {
+  it("falls back to the tenant's blank pods for another repo or no repo", () => {
+    const blank = { pool: acme, repo: null, warmPoolName: "acme" };
     expect(
-      resolveTenantPool(POOLS, { orgId: "org-other", cloneUrl: url }),
-    ).toBeNull();
+      resolveTenantPoolBinding([acme], { ...claim, cloneUrl: `${DOCS}.git` }),
+    ).toEqual(blank);
     expect(
-      resolveTenantPool(POOLS, {
-        orgId: "org-acme",
-        cloneUrl: "https://github.com/acme/other-repo.git",
+      resolveTenantPoolBinding([acme], { ...claim, cloneUrl: undefined }),
+    ).toEqual(blank);
+  });
+
+  it("goes generic when the tenant's pool has no blank replicas left", () => {
+    expect(
+      resolveTenantPoolBinding([pool({ size: 3 })], {
+        ...claim,
+        cloneUrl: undefined,
       }),
     ).toBeNull();
   });
 
-  it("a user of another org never resolves this pool", () => {
+  it("never binds another tenant's pool, or a claim with no tenant", () => {
     expect(
-      resolveTenantPool(POOLS, { orgId: "org-other", cloneUrl: url }),
+      resolveTenantPoolBinding([acme], { ...claim, tenant: "org-other" }),
+    ).toBeNull();
+    expect(
+      resolveTenantPoolBinding([acme], { ...claim, tenant: undefined }),
     ).toBeNull();
   });
 
-  it("the same org on another repo does not resolve it", () => {
+  it("binds only a pool built for the claim's image", () => {
     expect(
-      resolveTenantPool(POOLS, {
-        orgId: "org-acme",
-        cloneUrl: "https://github.com/acme/other.git",
-      }),
+      resolveTenantPoolBinding([acme], { ...claim, image: "android" }),
     ).toBeNull();
+    const android = pool({ name: "acme-android", image: "android" });
+    expect(
+      resolveTenantPoolBinding([acme, android], { ...claim, image: "android" })
+        ?.pool.name,
+    ).toBe("acme-android");
   });
 
-  it("no org or no repo → no pool", () => {
+  it("prefers another pool's allocation over this pool's blank pods", () => {
+    const blankOnly = pool({ name: "acme-blank", repos: [] });
+    const docs = pool({
+      name: "acme-docs",
+      repos: [{ repoUrl: DOCS, replicas: 1 }],
+    });
     expect(
-      resolveTenantPool(POOLS, { orgId: undefined, cloneUrl: url }),
-    ).toBeNull();
-    expect(
-      resolveTenantPool(POOLS, { orgId: "org-acme", cloneUrl: undefined }),
-    ).toBeNull();
-  });
-
-  it("no pools configured → no pool", () => {
-    expect(
-      resolveTenantPool([] as TenantPool[], {
-        orgId: "org-acme",
-        cloneUrl: url,
-      }),
-    ).toBeNull();
+      resolveTenantPoolBinding([blankOnly, docs], {
+        ...claim,
+        cloneUrl: DOCS,
+      })?.pool.name,
+    ).toBe("acme-docs");
   });
 });
 
@@ -145,16 +272,21 @@ describe("resolveTenantPool", () => {
 // claim waits on a cold pod (pool silently useless) or — worse — it names a
 // pool belonging to nobody it should reach.
 describe("claimWarmPoolName", () => {
-  it("a resolved pool binds that pool", () => {
-    expect(claimWarmPoolName(POOLS[0] ?? null, true, "studio-sandbox")).toBe(
-      "tenant-acme-site",
-    );
+  it("a binding names its warm pool", () => {
+    const acme = pool();
+    expect(
+      claimWarmPoolName(
+        { pool: acme, repo: null, warmPoolName: "acme" },
+        true,
+        "studio-sandbox",
+      ),
+    ).toBe("acme");
   });
 
   // Never the literal "default": that matches no SandboxWarmPool, and the
   // operator's fallback then binds any warm pod of the template — including
   // another org's tenant pool, whose repo is already cloned (409 cloneUrl).
-  it("no pool in warm-pool mode names the generic pool explicitly", () => {
+  it("no binding in warm-pool mode names the generic pool explicitly", () => {
     expect(claimWarmPoolName(null, true, "studio-sandbox")).toBe(
       "studio-sandbox",
     );
@@ -192,7 +324,6 @@ describe("claimTemplateName", () => {
     ).toBe("studio-sandbox-medium");
   });
 
-  // With tenant pools ruled out above, these two are the whole matrix.
   it("an interactive claim names the default pool, not the medium one", () => {
     expect(
       claimWarmPoolName(
@@ -319,19 +450,19 @@ describe("resolveClaimTemplateName", () => {
 
 describe("claimTemplateName with an image variant", () => {
   it("suffixes the image before the size", () => {
-    expect(claimTemplateName("interactive", "sbx", null, "android")).toBe(
+    expect(claimTemplateName("interactive", "sbx", false, "android")).toBe(
       "sbx-android",
     );
-    expect(claimTemplateName("harness-run", "sbx", null, "android")).toBe(
+    expect(claimTemplateName("harness-run", "sbx", false, "android")).toBe(
       "sbx-android-medium",
     );
   });
 
   it("treats the default image as no suffix at all", () => {
-    expect(claimTemplateName("interactive", "sbx", null, "default")).toBe(
+    expect(claimTemplateName("interactive", "sbx", false, "default")).toBe(
       "sbx",
     );
-    expect(claimTemplateName("harness-run", "sbx", null, "default")).toBe(
+    expect(claimTemplateName("harness-run", "sbx", false, "default")).toBe(
       "sbx-medium",
     );
   });
@@ -412,45 +543,110 @@ describe("resolveClaimTemplateName with an image variant", () => {
   });
 });
 
-describe("poolsMatchingPush", () => {
-  it("matches the pool's branch, case-insensitively on the repo", () => {
-    expect(
-      poolsMatchingPush(POOLS, "acme/SITE", "refs/heads/main").map(
-        (p) => p.name,
-      ),
-    ).toEqual(["tenant-acme-site"]);
+describe("allocationsMatchingPush", () => {
+  const acme = pool();
+  const names = (repoUrl: string, ref: string) =>
+    allocationsMatchingPush([acme], repoUrl, ref).map((a) => a.repo.branch);
+
+  it("matches the allocation's branch, case-insensitively on the repo", () => {
+    expect(names("https://github.com/acme/SITE", "refs/heads/main")).toEqual([
+      "main",
+    ]);
+    expect(names(`${SITE}.git`, "refs/heads/develop")).toEqual(["develop"]);
   });
 
-  it("ignores a push to another branch", () => {
-    expect(poolsMatchingPush(POOLS, "Acme/Site", "refs/heads/dev")).toEqual([]);
-  });
-
-  it("ignores a tag push (refs/tags is not refs/heads)", () => {
-    expect(poolsMatchingPush(POOLS, "Acme/Site", "refs/tags/main")).toEqual([]);
-  });
-
-  it("ignores another repo", () => {
-    expect(poolsMatchingPush(POOLS, "acme/other", "refs/heads/main")).toEqual(
-      [],
-    );
+  it("ignores another branch, a tag push and another repo", () => {
+    expect(names(SITE, "refs/heads/feature")).toEqual([]);
+    expect(names(SITE, "refs/tags/main")).toEqual([]);
+    expect(names(DOCS, "refs/heads/main")).toEqual([]);
   });
 });
 
 describe("claimTemplateName with a tenant pool", () => {
-  const pool = POOLS[0]!;
-
   // The operator binds warm pods by TEMPLATE HASH, so a claim naming a template
-  // the pool's pods were not built from gets a cold pod and no error. The chart
-  // renders tenant pools from `-medium` (the template harness runs already
+  // the pool's pods were not built from gets a cold pod and no error. Tenant
+  // pools are rendered from `-medium` (the template harness runs already
   // claim), so both kinds must name it or the pool is unreachable — which is
   // exactly how four warm pods sat idle while every task run started cold.
   it("names -medium for a tenant-pool claim, whatever the purpose", () => {
-    expect(claimTemplateName("interactive", "sbx", pool)).toBe("sbx-medium");
-    expect(claimTemplateName("harness-run", "sbx", pool)).toBe("sbx-medium");
+    expect(claimTemplateName("interactive", "sbx", true)).toBe("sbx-medium");
+    expect(claimTemplateName("harness-run", "sbx", true)).toBe("sbx-medium");
+    expect(claimTemplateName("interactive", "sbx", true, "android")).toBe(
+      "sbx-android-medium",
+    );
   });
 
   it("leaves a non-pool interactive claim on the default template", () => {
-    expect(claimTemplateName("interactive", "sbx", null)).toBe("sbx");
+    expect(claimTemplateName("interactive", "sbx", false)).toBe("sbx");
     expect(claimTemplateName(undefined, "sbx")).toBe("sbx");
+  });
+});
+
+describe("TenantPoolState", () => {
+  const acme = pool({ repos: [{ repoUrl: SITE, replicas: 1 }] });
+  const docs = pool({
+    name: "acme-docs",
+    repos: [{ repoUrl: DOCS, replicas: 1 }],
+  });
+  const docsPool = allocationWarmPoolName("acme-docs", docs.repos[0]!);
+  const acmePool = allocationWarmPoolName("acme", acme.repos[0]!);
+  const claim = {
+    tenant: "org-acme",
+    image: "default",
+    cloneUrl: `${DOCS}.git`,
+    branch: undefined,
+  };
+  const podState = (pool: string) => ({
+    pool,
+    lastConfigAt: 1,
+    lastFailureAt: 0,
+    failures: 0,
+  });
+  const allocations = (pools: readonly TenantPool[]) =>
+    pools.flatMap((p) =>
+      p.repos.map((repo) => ({
+        pool: p,
+        repo,
+        warmPoolName: allocationWarmPoolName(p.name, repo),
+      })),
+    );
+
+  it("binds a pool the host added after construction on the next read", () => {
+    let pools: readonly TenantPool[] = [];
+    const state = new TenantPoolState(() => pools);
+    expect(state.resolve(claim)).toBeNull();
+    expect(state.markDirty(DOCS, "refs/heads/main")).toEqual([]);
+
+    pools = [acme, docs];
+    expect(state.resolve(claim)?.warmPoolName).toBe(docsPool);
+    expect(state.markDirty(DOCS, "refs/heads/main")).toEqual([docsPool]);
+  });
+
+  it("drops a removed allocation's dirty flag and pod state, and reports it once", () => {
+    let pools: readonly TenantPool[] = [acme, docs];
+    const state = new TenantPoolState(() => pools);
+    expect(state.retain(allocations(state.pools()))).toEqual([]);
+    state.markDirty(DOCS, "main");
+    state.setPod("uid-docs", podState(docsPool));
+    state.setPod("uid-acme", podState(acmePool));
+
+    pools = [acme];
+    expect(state.resolve(claim)?.repo).toBeNull();
+    expect(
+      state.retain(allocations(state.pools())).map((a) => a.warmPoolName),
+    ).toEqual([docsPool]);
+    expect(state.takeDirty(docsPool)).toBe(false);
+    expect(state.pod("uid-docs")).toBeUndefined();
+    expect(state.pod("uid-acme")).toEqual(podState(acmePool));
+    expect(state.retain(allocations(state.pools()))).toEqual([]);
+  });
+
+  it("forgets only the listed allocation's vanished pods", () => {
+    const state = new TenantPoolState(() => [acme, docs]);
+    state.setPod("uid-docs", podState(docsPool));
+    state.setPod("uid-acme", podState(acmePool));
+    state.retainPods(acmePool, new Set());
+    expect(state.pod("uid-acme")).toBeUndefined();
+    expect(state.pod("uid-docs")).toEqual(podState(docsPool));
   });
 });

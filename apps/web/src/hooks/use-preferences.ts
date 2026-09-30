@@ -1,7 +1,8 @@
+import type { Locale } from "@/i18n/locale.ts";
+import type { TranslationKey } from "@/i18n/en/index.ts";
 import { useLocalStorage } from "./use-local-storage.ts";
 import { LOCALSTORAGE_KEYS } from "@/lib/localstorage-keys.ts";
-import { detectLocale, VALID_LOCALES, type Locale } from "@/i18n/locale.ts";
-import type { TranslationKey } from "@/i18n/en/index.ts";
+import { detectLocale, VALID_LOCALES } from "@/i18n/locale.ts";
 
 export type ToolApprovalLevel = "auto" | "readonly";
 export type ThemeMode = "light" | "dark" | "system";
@@ -11,13 +12,14 @@ interface Preferences {
   enableSounds: boolean;
   theme: ThemeMode;
   language: Locale;
-  compactPageLayout: boolean;
   /**
    * Task-board lanes hidden by default (`HIDDEN_STATUSES`) that this person has
    * pulled back onto the board. Statuses, not lane indexes, so a reordered or
    * renamed lane can't resurrect the wrong column.
    */
   shownTaskBoardLanes: string[];
+  /** Project-first navigation opt-in: the org rail, project launcher, project tree and Today/Agents home. */
+  projectFirstNav: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -26,8 +28,8 @@ const DEFAULT_PREFERENCES: Preferences = {
   enableSounds: false,
   theme: "system",
   language: detectLocale(),
-  compactPageLayout: false,
   shownTaskBoardLanes: [],
+  projectFirstNav: false,
 };
 
 const VALID_TOOL_APPROVAL_LEVELS: ToolApprovalLevel[] = ["auto", "readonly"];
@@ -86,11 +88,13 @@ export function usePreferences() {
     LOCALSTORAGE_KEYS.preferences(),
     (existing) => {
       const merged = { ...DEFAULT_PREFERENCES, ...existing };
-      // Remove the retired shortcut from existing browser preferences.
+      // Remove retired settings (the blocks editor is now an org flag).
       if ("showProjectSettingsGear" in merged) {
         delete merged.showProjectSettingsGear;
       }
-      merged.compactPageLayout = merged.compactPageLayout === true;
+      if ("compactPageLayout" in merged) {
+        delete merged.compactPageLayout;
+      }
       if (!VALID_TOOL_APPROVAL_LEVELS.includes(merged.toolApprovalLevel)) {
         merged.toolApprovalLevel = "auto";
       }
@@ -103,12 +107,13 @@ export function usePreferences() {
       if (!Array.isArray(merged.shownTaskBoardLanes)) {
         merged.shownTaskBoardLanes = [];
       }
+      merged.projectFirstNav = merged.projectFirstNav === true;
       return merged;
     },
   );
 }
 
-export function useCompactPageLayout(): boolean {
+export function useProjectFirstNav(): boolean {
   const [preferences] = usePreferences();
-  return preferences.compactPageLayout;
+  return preferences.projectFirstNav;
 }

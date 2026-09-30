@@ -99,4 +99,19 @@ describe("resolveOriginTokenEndpoint", () => {
     const result = await resolveOriginTokenEndpoint("https://mcp.example.com");
     expect(result).toBeNull();
   });
+
+  it("drains every discarded metadata response body on failure", async () => {
+    const responses: Response[] = [];
+    globalThis.fetch = (async () => {
+      const res = new Response(JSON.stringify({}), { status: 500 });
+      responses.push(res);
+      return res;
+    }) as unknown as typeof globalThis.fetch;
+
+    const result = await resolveOriginTokenEndpoint("https://mcp.example.com");
+
+    expect(result).toBeNull();
+    expect(responses.length).toBeGreaterThan(0);
+    expect(responses.every((res) => res.bodyUsed)).toBe(true);
+  });
 });

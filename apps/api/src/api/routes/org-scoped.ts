@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { createVoiceRoutes } from "./voice";
+import type { VoiceSessions } from "@/voice/sessions";
 import type { MiddlewareHandler } from "hono";
 import type { NatsConnection } from "@nats-io/nats-core";
 import type { AutomationEventDispatcher } from "@/automations/automation-event-dispatcher";
@@ -34,6 +36,7 @@ import { createReportsShareRoutes } from "./reports-share";
 import { createInternalRepositoryRoutes } from "./internal-repositories";
 import { createOrganizationNoticeServiceRoutes } from "./organization-notices-service";
 import { createTaskBoardImportRoutes } from "./task-board-import";
+import { createTaskBoardResolveRoutes } from "./task-board-resolve";
 import { createObjectStorageRoutes } from "./object-storage";
 import { createThreadOutputsRoutes } from "./thread-outputs";
 import { createToolsRestRoutes } from "./tools-rest";
@@ -43,6 +46,7 @@ import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
 
 interface OrgScopedDeps {
+  voiceSessions: VoiceSessions;
   kvStorage: KVStorage;
   /**
    * Decopilot dispatch primitives — required by the preset-task `/start`
@@ -96,10 +100,12 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.use("*", enforceOrgBlock);
 
   // --- Routes that don't need extra middleware ---
+  app.route("/", createVoiceRoutes(deps.voiceSessions));
   app.route("/", createDownstreamTokenRoutes()); // /api/:org/connections/:connectionId/oauth-token
   app.route("/", createGitProviderRoutes()); // /api/:org/git-providers/:type/connect
   app.route("/", createCredentialVaultRoutes()); // /api/:org/vault/connections/:connectionId/access-token
   app.route("/", createTaskBoardImportRoutes()); // /api/:org/internal/task-board/import — service-token batch import
+  app.route("/", createTaskBoardResolveRoutes()); // /api/:org/internal/task-board/resolve, service-token call for cards whose Deco Score check passes
   app.route("/", createReportsShareRoutes()); // /api/:org/internal/commerce-diagnostic/share-invite — service-token share invite
   app.route("/", createOrganizationNoticeServiceRoutes()); // /api/:org/internal/organization-notices
   app.route("/", createInternalRepositoryRoutes()); // /api/:org/internal/repositories/... — service-token repository reads

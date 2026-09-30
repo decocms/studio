@@ -112,6 +112,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -129,8 +130,9 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | null
         | undefined;
@@ -188,6 +190,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -205,8 +208,9 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | undefined;
       submodule_credentials?: { host: string; secretId: string }[] | undefined;
@@ -260,6 +264,7 @@ export interface StudioToolIO {
       default_home_agents?: { ids: string[] } | null | undefined;
       flags?:
         | {
+            voice_mode?: boolean | undefined;
             home_task_intake_enabled?: boolean | undefined;
             demo_mode?: boolean | undefined;
             reports_only?: boolean | undefined;
@@ -277,8 +282,9 @@ export interface StudioToolIO {
             e2e_enabled?: boolean | undefined;
             experiments_enabled?: boolean | undefined;
             monitor_enabled?: boolean | undefined;
+            site_create_enabled?: boolean | undefined;
             delivery_lanes_enabled?: boolean | undefined;
-            cms_auto_fresh_branch?: boolean | undefined;
+            new_blocks_editor?: boolean | undefined;
           }
         | null
         | undefined;
@@ -287,6 +293,10 @@ export interface StudioToolIO {
         | null
         | undefined;
     };
+  };
+  ORGANIZATION_BLOCKS_EDITOR_SET: {
+    input: { enabled: boolean };
+    output: { enabled: boolean };
   };
   ORGANIZATION_HAS_SITE: {
     input: { [x: string]: never };
@@ -416,6 +426,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -490,6 +501,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -588,6 +600,7 @@ export interface StudioToolIO {
           verdict: "approved" | "changes_requested";
           verified: boolean;
         }[];
+        statusSince: string | null;
         createdBy: string;
         createdAt: string;
         updatedBy: string;
@@ -727,7 +740,8 @@ export interface StudioToolIO {
           | "review_verdict_requested"
           | "merge_conflict_resolution"
           | "type_changed"
-          | "duplicate_reported";
+          | "duplicate_reported"
+          | "finding_resolved";
         actorId: string | null;
         data: Record<string, unknown>;
         occurredAt: string;
@@ -2531,15 +2545,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -2595,10 +2609,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -2608,7 +2622,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -2795,18 +2809,18 @@ export interface StudioToolIO {
                           cms?:
                             | "off"
                             | "manual"
-                            | "auto"
                             | "on"
+                            | "auto"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
                                 | "automations"
                                 | "overview"
-                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "assets"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -2862,10 +2876,10 @@ export interface StudioToolIO {
                 | (
                     | "automations"
                     | "overview"
-                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "assets"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -2875,7 +2889,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
@@ -2989,15 +3003,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3053,10 +3067,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3066,7 +3080,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3217,15 +3231,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3281,10 +3295,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3294,7 +3308,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3436,15 +3450,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3500,10 +3514,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3513,7 +3527,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -3652,18 +3666,18 @@ export interface StudioToolIO {
                           cms?:
                             | "off"
                             | "manual"
-                            | "auto"
                             | "on"
+                            | "auto"
                             | null
                             | undefined;
                           sidebarViews?:
                             | (
                                 | "automations"
                                 | "overview"
-                                | "assets"
                                 | "reports"
                                 | "board"
                                 | "site-editor"
+                                | "assets"
                                 | "hosting"
                                 | "e2e"
                                 | "analytics"
@@ -3719,10 +3733,10 @@ export interface StudioToolIO {
                 | (
                     | "automations"
                     | "overview"
-                    | "assets"
                     | "reports"
                     | "board"
                     | "site-editor"
+                    | "assets"
                     | "hosting"
                     | "e2e"
                     | "analytics"
@@ -3732,7 +3746,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               sidebarViewsVersion?: 1 | undefined;
-              githubRepo?:
+              repository?:
                 | {
                     url: string;
                     owner: string;
@@ -3854,15 +3868,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -3918,10 +3932,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -3931,7 +3945,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -4071,15 +4085,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -4135,10 +4149,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -4148,7 +4162,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -4580,6 +4594,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4651,6 +4666,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4698,6 +4714,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4733,6 +4750,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         branch?: string | null | undefined;
@@ -4776,6 +4794,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -4821,6 +4840,7 @@ export interface StudioToolIO {
               source?: "jira" | undefined;
               jira_issue_key?: string | undefined;
               jira_issue_keys?: string[] | undefined;
+              jira_created_issue_keys?: string[] | undefined;
             }
           | undefined;
         run_config?: Record<string, unknown> | null | undefined;
@@ -5151,6 +5171,8 @@ export interface StudioToolIO {
     };
     output: {
       available: boolean;
+      reason: "not_configured" | "no_site_data" | null;
+      analyticsSite: string;
       results: {
         visitors: { default: number; variant: number };
         goals: { goal: string; default: number; variant: number }[];
@@ -5391,15 +5413,15 @@ export interface StudioToolIO {
                         | undefined;
                       chatDefaultOpen?: boolean | null | undefined;
                       cmsDefaultOpen?: boolean | null | undefined;
-                      cms?: "off" | "manual" | "auto" | "on" | null | undefined;
+                      cms?: "off" | "manual" | "on" | "auto" | null | undefined;
                       sidebarViews?:
                         | (
                             | "automations"
                             | "overview"
-                            | "assets"
                             | "reports"
                             | "board"
                             | "site-editor"
+                            | "assets"
                             | "hosting"
                             | "e2e"
                             | "analytics"
@@ -5455,10 +5477,10 @@ export interface StudioToolIO {
             | (
                 | "automations"
                 | "overview"
-                | "assets"
                 | "reports"
                 | "board"
                 | "site-editor"
+                | "assets"
                 | "hosting"
                 | "e2e"
                 | "analytics"
@@ -5468,7 +5490,7 @@ export interface StudioToolIO {
             | null
             | undefined;
           sidebarViewsVersion?: 1 | undefined;
-          githubRepo?:
+          repository?:
             | {
                 url: string;
                 owner: string;
@@ -6152,6 +6174,11 @@ export interface StudioToolIO {
     output: {
       automations: {
         jiraStatus: string;
+        from:
+          | { kind: "any" }
+          | { kind: "earlier" }
+          | { kind: "later" }
+          | { kind: "statuses"; statuses: string[] };
         prompt: string | null;
         continuePr: boolean;
       }[];
@@ -6160,19 +6187,38 @@ export interface StudioToolIO {
   JIRA_AUTOMATION_UPSERT: {
     input: {
       jiraStatus: string;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | { kind: "statuses"; statuses: string[] }
+        | undefined;
       prompt?: string | null | undefined;
       continuePr?: boolean | undefined;
     };
     output: {
       automation: {
         jiraStatus: string;
+        from:
+          | { kind: "any" }
+          | { kind: "earlier" }
+          | { kind: "later" }
+          | { kind: "statuses"; statuses: string[] };
         prompt: string | null;
         continuePr: boolean;
       };
     };
   };
   JIRA_AUTOMATION_DELETE: {
-    input: { jiraStatus: string };
+    input: {
+      jiraStatus: string;
+      from?:
+        | { kind: "any" }
+        | { kind: "earlier" }
+        | { kind: "later" }
+        | { kind: "statuses"; statuses: string[] }
+        | undefined;
+    };
     output: { removed: boolean };
   };
   JIRA_RUN_START: {
@@ -6223,6 +6269,37 @@ export interface StudioToolIO {
       key?: string | undefined;
     };
     output: { linkId: number };
+  };
+  JIRA_ISSUE_CREATE: {
+    input: {
+      summary: string;
+      issueType: string;
+      description?: string | undefined;
+      relatesTo?: string[] | undefined;
+      sprint?: "none" | "active" | undefined;
+      storyPoints?: number | undefined;
+    };
+    output: {
+      key: string;
+      url: string;
+      created: boolean;
+      linked: string[];
+      notLinked: { key: string; reason: string }[];
+    };
+  };
+  JIRA_ISSUE_SEARCH: {
+    input: { jql: string; limit?: number | undefined };
+    output: {
+      issues: {
+        key: string;
+        url: string;
+        summary: string;
+        status: string;
+        type: string | null;
+        updated: string;
+      }[];
+      truncated: boolean;
+    };
   };
   LIST_OBJECTS: {
     input: {
@@ -7127,6 +7204,26 @@ export interface StudioToolIO {
       };
     };
   };
+  REPOSITORY_CREATE_FROM_TEMPLATE: {
+    input: { accountId: string; name: string; template: "storefront" | "blog" };
+    output: {
+      repository: {
+        id: string;
+        organizationId: string;
+        accountId: string | null;
+        provider: "github" | "gitlab" | "bitbucket";
+        host: string;
+        path: string;
+        externalId: string | null;
+        defaultBranch: string | null;
+        webUrl: string;
+        visibility: "public" | "private" | "internal" | null;
+        sandboxImage: string;
+        createdAt: string;
+        updatedAt: string;
+      };
+    };
+  };
   REPOSITORY_UPDATE: {
     input: { id: string; sandboxImage: string };
     output: {
@@ -7314,7 +7411,7 @@ export interface StudioToolIO {
   CHANGE_REQUEST_MERGE: {
     input: {
       number: number;
-      strategy?: "unknown" | "squash" | undefined;
+      strategy?: "any" | "squash" | undefined;
       commitTitle?: string | undefined;
       commitMessage?: string | undefined;
       repositoryId?: string | undefined;

@@ -1,13 +1,4 @@
-/**
- * The board's filtering RULES — everything about which cards a `TaskFilters`
- * lets through, and nothing about how the filters are picked.
- *
- * Split out of `task-filters.tsx` because that file is a component module: it
- * pulls Radix and the whole UI tree in with it, and the pure tests (and pure
- * app code such as `task-route.ts`) that only wanted `taskMatchesFilters` were
- * dragging all of it into environments with no DOM. `task-filters.tsx`
- * re-exports this module, so existing imports keep working.
- */
+/** Pure task-filter matching shared by board views and URL filters. */
 
 import { parseTaskKeySeq } from "@decocms/shared/task-key";
 import type { TranslationKey } from "@/i18n/use-t.ts";

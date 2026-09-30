@@ -99,15 +99,26 @@ import {
 } from "./lifecycle-watcher";
 import {
   claimWarmPoolName,
+  claimTenantKey,
   resolveClaimTemplateName,
   type TemplateProbes,
-  poolCloneUrl,
-  poolsMatchingPush,
-  resolveTenantPool,
   type TenantPool,
+  type TenantPoolAllocation,
+  type TenantPoolBinding,
+  TenantPoolState,
+  tenantPoolAllocations,
 } from "./tenant-pools";
 import { refreshCredentialsByConnection } from "./credential-refresh";
 import type { ClaimPhase } from "./lifecycle-types";
+import { repoIdentityOf } from "../pushed-credentials";
+import type { RepoIdentity } from "../sandbox-api";
+import { proxyDaemonWithRetry } from "../shared/daemon-proxy";
+import {
+  PREVIEW_NOT_READY_HEADER,
+  proxyPreview,
+} from "../shared/preview-proxy";
+
+export { PREVIEW_NOT_READY_HEADER };
 
 const LOG_LABEL = "AgentSandboxProvider";
 
@@ -126,14 +137,6 @@ function errMsg(err: unknown): string {
   }
   return String(err);
 }
-
-/**
- * Response-header marker on the preview-proxy's "sandbox not ready" envelopes
- * (404 "sandbox not found" in dev, 502 "sandbox daemon unreachable" in prod).
- * The Studio edge (`apps/api/src/sandbox/preview-proxy.ts`) swaps these for an
- * auto-reloading "connecting" page on top-level document navigations.
- */
-export const PREVIEW_NOT_READY_HEADER = "x-sandbox-preview-not-ready";
 
 // Shared-namespace topology for MVP; tenancy enforced by unguessable claim
 // names (sha256(userId:projectRef)). Per-org namespaces are deferred.
@@ -197,6 +200,12 @@ const TENANT_POOL_MAX_FAILURES = 3;
  * else would ever un-stick the pod. The gauge reports these as `state=failed`.
  */
 const TENANT_POOL_GIVE_UP_COOLDOWN_MS = 30 * 60 * 1000;
+
+// `org` carries the tenant key so existing dashboards keep their label.
+function poolMetricAttrs(allocation: TenantPoolAllocation) {
+  return { pool: allocation.warmPoolName, org: allocation.pool.tenant };
+}
+
 const CREDENTIAL_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
 
@@ -207,41 +216,6 @@ const CREDENTIAL_REFRESH_BUFFER_MS = 30 * 60 * 1000;
  * slug(≤24) + 1 + hash(16) = 41 chars max — well under K8s's 63-char DNS
  * label cap.
  */
-
-/**
- * Headers stripped before re-issuing the preview proxy fetch. Hop-by-hop per
- * RFC 7230 + cookies (preview is per-handle, not per-user — no callee session
- * leak) + accept-encoding (Bun fetch auto-decompresses, so a downstream
- * content-encoding would mismatch the actual body).
- */
-const PREVIEW_STRIP_REQUEST_HEADERS = [
-  "cookie",
-  "host",
-  "connection",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "accept-encoding",
-  "content-length",
-  "upgrade",
-];
-
-/**
- * Stripped from the proxied response. content-encoding/length would mismatch
- * after Bun fetch auto-decompresses; CSP/X-Frame-Options the daemon already
- * rewrote — re-passing them defeats the iframe-embedding fix the daemon
- * installed.
- */
-const PREVIEW_STRIP_RESPONSE_HEADERS = [
-  "connection",
-  "keep-alive",
-  "transfer-encoding",
-  "content-encoding",
-  "content-length",
-];
 
 // Deterministic local-port range for port-forward listeners. Same
 // (handle, containerPort) pair → same host port across studio restarts, so
@@ -262,9 +236,10 @@ interface ForwardWebSocket {
   on: (event: "close" | "error", handler: (err?: unknown) => void) => void;
 }
 
-interface PortForwarder {
-  server: net.Server;
+/** A local port whose connections reach a pod's container port. */
+export interface PortForwarder {
   localPort: number;
+  close(): void;
 }
 
 interface RunnerTenant {
@@ -277,6 +252,8 @@ interface RunnerTenant {
 }
 
 interface K8sRecord {
+  /** Recovered from state that left its org-fs config out; it mounts org-fs. */
+  orgFsRedacted?: boolean;
   id: SandboxId;
   handle: string;
   /**
@@ -350,6 +327,8 @@ interface PersistedK8sState {
    * SANDBOX_START reprovision flow then runs with full opts).
    */
   ensureOpts?: EnsureOptions;
+  /** `ensureOpts` had an org-fs config, left out with `persistCredentials: false`. */
+  orgFsRedacted?: boolean;
   [k: string]: unknown;
 }
 
@@ -385,15 +364,21 @@ export interface AgentSandboxProviderOptions {
    */
   sentinelToken?: string;
   /**
-   * Tenant warm pools (see `tenant-pools.ts`). A claim whose org+repo resolves
-   * to one binds a pod that is already running that repo's dev server instead
-   * of a generic (empty) warm pod. Empty = today's behavior everywhere.
+   * Tenant warm pools (see `tenant-pools.ts`). A claim whose tenant key has a
+   * pool binds a pod already running its repo's dev server when the pool has
+   * an allocation for that repo, else one of the pool's blank pods, instead of
+   * a generic warm pod. Empty = today's behavior everywhere. The host renders
+   * the pools' `SandboxWarmPool` objects with `renderTenantPoolWarmPools`.
+   *
+   * A function is read on every ensure, push and reconcile tick, so a host
+   * whose pools change at runtime passes one; it must be cheap and must not
+   * throw.
    *
    * Requires warm-pool mode (`sentinelToken`): the reconciler configures
    * unbound pool pods with the sentinel, and a pool pod could not accept a
    * per-claim env token anyway.
    */
-  tenantPools?: TenantPool[];
+  tenantPools?: readonly TenantPool[] | (() => readonly TenantPool[]);
   /**
    * How often an unbound pool pod re-fetches its branch (and refreshes its
    * clone credential, which is the same call). Must stay under the ~1h GitHub
@@ -464,10 +449,11 @@ export interface AgentSandboxProviderOptions {
    * `opts.bufferMs` asks the minter to refresh the token when it has less than
    * that many ms of life left — the periodic refresher passes a large value to
    * keep long-lived sandboxes ahead of the ~55min expiry; recovery omits it.
+   * `opts.tenant` is the sandbox's tenant; absent for a tenant pool's pod.
    */
   mintCloneUrl?: (
     repo: NonNullable<EnsureOptions["repo"]>,
-    opts?: { bufferMs?: number },
+    opts?: { bufferMs?: number; tenant?: EnsureOptions["tenant"] },
   ) => Promise<string | null>;
   /**
    * Re-mint a fresh `orgFsConfigJson` for a tenant. Same lifetime problem as
@@ -483,6 +469,38 @@ export interface AgentSandboxProviderOptions {
   mintOrgFsConfig?: (
     tenant: NonNullable<EnsureOptions["tenant"]>,
   ) => Promise<string | null>;
+  /**
+   * The credentialed clone URL an allocation's unbound pods clone and refresh
+   * with. Null skips the pod until the next tick. Without this hook, pods clone
+   * `<repoUrl>.git` anonymously, which only works for a public repo. Must
+   * never throw.
+   */
+  mintPoolCloneUrl?: (repo: {
+    tenant: string;
+    repoUrl: string;
+    branch: string;
+  }) => Promise<string | null>;
+  /**
+   * Replaces the apiserver port-forward to a pod's container port, for a
+   * host that reaches pods some other way (the control plane goes through
+   * its cluster agent). Must resolve to a 127.0.0.1 port.
+   */
+  forwardPort?: (
+    podName: string,
+    containerPort: number,
+    handle: string,
+  ) => Promise<PortForwarder>;
+  /**
+   * What `daemonEndpoint` answers: this process's local forward (default), or
+   * the in-cluster Service URL for a caller that runs inside the cluster.
+   */
+  daemonAddress?: "forward" | "service";
+  /**
+   * Whether persisted state keeps the credentials `ensureOpts` embeds (clone
+   * tokens, submodule tokens, the org-fs API key). A host outside Studio sets
+   * false: recovery then re-mints through the hooks instead. Default true.
+   */
+  persistCredentials?: boolean;
 }
 
 export class AgentSandboxProvider {
@@ -525,24 +543,17 @@ export class AgentSandboxProvider {
   private readonly sentinelToken: string | null;
   /** See {@link AgentSandboxProviderOptions.mintCloneUrl}. */
   private readonly mintCloneUrl: AgentSandboxProviderOptions["mintCloneUrl"];
+  private readonly mintPoolCloneUrl: AgentSandboxProviderOptions["mintPoolCloneUrl"];
   /** See {@link AgentSandboxProviderOptions.mintOrgFsConfig}. */
   private readonly mintOrgFsConfig: AgentSandboxProviderOptions["mintOrgFsConfig"];
-  /** See {@link AgentSandboxProviderOptions.tenantPools}. */
-  private readonly tenantPools: readonly TenantPool[];
+  private readonly forwardPort: AgentSandboxProviderOptions["forwardPort"];
+  private readonly daemonAddress: "forward" | "service";
+  private readonly persistCredentials: boolean;
+  /** See {@link AgentSandboxProviderOptions.tenantPools}; null outside warm-pool mode. */
+  private readonly tenantPools: TenantPoolState | null;
   private readonly tenantPoolRefreshMs: number;
-  /**
-   * Per-pool-pod bookkeeping, keyed by pod UID. In-memory and per-replica on
-   * purpose: every entry is a "when did I last touch this pod" hint, and
-   * losing it costs one redundant (idempotent) config post per pod.
-   */
-  private readonly poolPods = new Map<
-    string,
-    { lastConfigAt: number; lastFailureAt: number; failures: number }
-  >();
   /** Derived SandboxTemplate lookups by name; see `resolveTemplateName`. */
   private templateProbes: TemplateProbes = {};
-  /** Pool names a GitHub push says are stale; drained by the next tick. */
-  private readonly dirtyPools = new Set<string>();
   private closed = false;
   /** Aborts the background SandboxClaim-deletion watch on `close()`. */
   private readonly claimWatchAbort = new AbortController();
@@ -571,10 +582,22 @@ export class AgentSandboxProvider {
     const trimmedSentinel = opts.sentinelToken?.trim() ?? "";
     this.sentinelToken = trimmedSentinel.length > 0 ? trimmedSentinel : null;
     this.mintCloneUrl = opts.mintCloneUrl;
+    this.mintPoolCloneUrl = opts.mintPoolCloneUrl;
     this.mintOrgFsConfig = opts.mintOrgFsConfig;
+    this.forwardPort = opts.forwardPort;
+    this.daemonAddress = opts.daemonAddress ?? "forward";
+    this.persistCredentials = opts.persistCredentials ?? true;
+    const pools = opts.tenantPools;
     this.tenantPools =
-      this.sentinelToken !== null ? (opts.tenantPools ?? []) : [];
-    if (this.sentinelToken === null && (opts.tenantPools?.length ?? 0) > 0) {
+      this.sentinelToken === null
+        ? null
+        : new TenantPoolState(
+            typeof pools === "function" ? pools : () => pools ?? [],
+          );
+    const poolsIgnored =
+      this.sentinelToken === null &&
+      (typeof pools === "function" || (pools?.length ?? 0) > 0);
+    if (poolsIgnored) {
       console.warn(
         `[${LOG_LABEL}] tenant pools configured without a sentinel token — ignoring them (warm-pool mode is off)`,
       );
@@ -776,54 +799,30 @@ export class AgentSandboxProvider {
     let activeRec = rec;
     const start = performance.now();
     let status = 0;
-    const canRetryBody = !(init.body instanceof ReadableStream);
+    const address = (r: K8sRecord) => {
+      activeRec = r;
+      return { url: r.daemonUrl, token: r.token };
+    };
     try {
-      let resp = await proxyDaemonRequest(rec.daemonUrl, rec.token, path, init);
-      // A 401 means the cached record is stale — the pool pod was recreated
-      // and no longer holds our token. Drop it and re-resolve; rehydrate
-      // re-bootstraps the fresh daemon. Then retry once. Retry only when the
-      // body is re-sendable: of the BodyInit variants only a ReadableStream is
-      // one-shot (consumed by the first fetch); strings, buffers,
-      // URLSearchParams, FormData and Blobs are re-read from memory on retry.
-      if (resp.status === 401 && canRetryBody) {
-        this.invalidateRecord(handle);
-        const fresh =
-          (await this.getRecord(handle).catch(() => null)) ??
-          (await this.resurrectByHandle(handle).catch(() => null));
-        if (fresh) {
-          // Drain the discarded 401 response so its connection is released.
-          try {
-            await resp.body?.cancel();
-          } catch {
-            /* ignore */
-          }
-          activeRec = fresh;
-          resp = await proxyDaemonRequest(
-            fresh.daemonUrl,
-            fresh.token,
-            path,
-            init,
-          );
-        }
-      }
-      status = resp.status;
-      return resp;
-    } catch (err) {
-      // Stale port-forward / dead pod after idle eviction — same recovery
-      // path as preview's fetch-retry arm.
-      if (!canRetryBody) throw err;
-      this.invalidateRecord(handle);
-      const fresh =
-        (await this.resurrectByHandle(handle)) ??
-        (await this.getRecord(handle).catch(() => null));
-      if (!fresh) throw err;
-      activeRec = fresh;
-      const resp = await proxyDaemonRequest(
-        fresh.daemonUrl,
-        fresh.token,
-        path,
-        init,
-      );
+      const resp = await proxyDaemonWithRetry(address(rec), path, init, {
+        // The cached record is stale: rehydrate re-bootstraps the fresh daemon.
+        unauthorized: async () => {
+          this.invalidateRecord(handle);
+          const fresh =
+            (await this.getRecord(handle).catch(() => null)) ??
+            (await this.resurrectByHandle(handle).catch(() => null));
+          return fresh ? address(fresh) : null;
+        },
+        // Stale port-forward / dead pod after idle eviction — same recovery
+        // path as preview's fetch-retry arm.
+        unreachable: async () => {
+          this.invalidateRecord(handle);
+          const fresh =
+            (await this.resurrectByHandle(handle)) ??
+            (await this.getRecord(handle).catch(() => null));
+          return fresh ? address(fresh) : null;
+        },
+      });
       status = resp.status;
       return resp;
     } finally {
@@ -924,6 +923,49 @@ export class AgentSandboxProvider {
   }
 
   /**
+   * The daemon's address and bearer, resurrecting an evicted claim, for a
+   * remote caller that dials the daemon itself. Null when there is no such
+   * sandbox.
+   */
+  async daemonEndpoint(
+    handle: string,
+  ): Promise<{ url: string; token: string } | null> {
+    const rec =
+      (await this.getRecord(handle)) ?? (await this.resurrectByHandle(handle));
+    if (!rec) return null;
+    const url =
+      this.daemonAddress === "service"
+        ? `http://${rec.adoptedSandboxName}.${this.namespace}.svc.cluster.local:${DAEMON_CONTAINER_PORT}`
+        : rec.daemonUrl;
+    return { url, token: rec.token };
+  }
+
+  /**
+   * The sandboxes this replica holds, as Studio needs them to push fresh
+   * credentials: tenant, repos, whether it mounts org-fs. No credential.
+   */
+  listSandboxes(): Array<{
+    handle: string;
+    tenant: { orgId: string; userId: string } | null;
+    repos: RepoIdentity[];
+    orgFs: boolean;
+  }> {
+    return [...this.records.values()].map((rec) => {
+      const opts = rec.ensureOpts;
+      const tenant = opts?.tenant;
+      return {
+        handle: rec.handle,
+        tenant: tenant ? { orgId: tenant.orgId, userId: tenant.userId } : null,
+        repos: [opts?.repo, ...(opts?.extraRepos ?? [])]
+          .filter((repo) => repo !== undefined)
+          .map(repoIdentityOf)
+          .filter((repo) => repo !== null),
+        orgFs: Boolean(opts?.orgFsConfigJson) || rec.orgFsRedacted === true,
+      };
+    });
+  }
+
+  /**
    * Resolve the operator-managed Service name we should route preview
    * traffic to for `handle`. See `resolvePreviewUpstreamUrl` and
    * `K8sRecord.adoptedSandboxName` for why this differs from the claim
@@ -952,23 +994,7 @@ export class AgentSandboxProvider {
     return handle;
   }
 
-  /**
-   * Reverse-proxies an inbound preview HTTP request to the sandbox's daemon.
-   * Unauthenticated by design — preview URLs are open the same way Vercel
-   * preview URLs are; the *handle* is the secret.
-   *
-   * `/_sandbox/*` access policy at the edge:
-   *   - **GET** is allowed through. The daemon's `/events` SSE and `/scripts`
-   *     are intentionally unauthenticated and CORS-enabled (`Allow-Origin: *`)
-   *     because the studio UI consumes them cross-origin from the preview
-   *     URL — that's the only path it has to live setup state. Stripping
-   *     them here would break the studio UI's setup tab and SSE event feed.
-   *   - **Non-GET** (POST/PUT/DELETE/etc) is rejected as defense-in-depth.
-   *     The daemon enforces bearer auth on the mutating endpoints
-   *     (read/write/edit/grep/glob/bash/exec/kill), but the only legitimate
-   *     caller for those is studio itself via the internal port-forward; the
-   *     preview surface should never see them.
-   */
+  /** See `proxyPreview`; recovery resurrects an evicted claim. */
   async proxyPreviewRequest(
     handle: string,
     request: Request,
@@ -982,119 +1008,22 @@ export class AgentSandboxProvider {
     const cachedRec = this.records.get(handle) ?? null;
     let status = 0;
     try {
-      const upstreamBase = await this.resolvePreviewUpstreamUrl(handle);
-      if (!upstreamBase) {
-        status = 404;
-        const notReady = jsonResponse(404, { error: "sandbox not found" });
-        notReady.headers.set(PREVIEW_NOT_READY_HEADER, "1");
-        return notReady;
-      }
-
-      const reqUrl = new URL(request.url);
-      const isAdminPath =
-        reqUrl.pathname === "/_sandbox" ||
-        reqUrl.pathname.startsWith("/_sandbox/");
-      if (isAdminPath && request.method !== "GET") {
-        status = 404;
-        return jsonResponse(404, { error: "not found" });
-      }
-
-      const reqTarget = (base: string) =>
-        `${base}${reqUrl.pathname}${reqUrl.search}`;
-      const headers = new Headers(request.headers);
-      for (const h of PREVIEW_STRIP_REQUEST_HEADERS) headers.delete(h);
-
-      const hasBody = request.method !== "GET" && request.method !== "HEAD";
-      const init: RequestInit & { duplex?: string } = {
-        method: request.method,
-        headers,
-        body: hasBody ? request.body : undefined,
-        redirect: "manual",
-        signal: request.signal,
-        duplex: hasBody ? "half" : undefined,
-      };
-
-      let upstream: Response;
-      try {
-        upstream = await fetch(reqTarget(upstreamBase), init as RequestInit);
-      } catch (err) {
-        // Truncate to host+pathname — query strings can carry secrets
-        // (magic-link tokens, signed URLs) and would otherwise end up in
-        // studio stdout → kubectl logs → log aggregator.
-        const safeTarget = `${upstreamBase}${reqUrl.pathname}`;
-        console.warn(
-          `[${LOG_LABEL}] preview fetch to ${safeTarget} failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-
-        // Recover from operator-driven eviction (15-min idle TTL): the
-        // claim + Service are gone but our records cache (or the
-        // synthesized prod-mode URL) still pointed at the stale endpoint.
-        // Drop the cache and resurrect via state-store. Retry only for
-        // replay-safe methods — `init.body` is a stream that's been
-        // consumed by the failed fetch; replaying a POST would silently
-        // send an empty body. The browser/caller can retry the mutating
-        // request after this 502 surfaces; the resurrected sandbox will
-        // be ready for that next attempt.
-        if (request.method === "GET" || request.method === "HEAD") {
-          this.invalidateRecord(handle);
-          const resurrected = await this.resurrectByHandle(handle).catch(
-            () => null,
-          );
-          if (resurrected) {
-            const retryBase = await this.resolvePreviewUpstreamUrl(handle);
-            if (retryBase) {
-              try {
-                upstream = await fetch(
-                  reqTarget(retryBase),
-                  init as RequestInit,
-                );
-                const responseHeaders = new Headers();
-                for (const [k, v] of upstream.headers.entries()) {
-                  if (
-                    !PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())
-                  ) {
-                    responseHeaders.set(k, v);
-                  }
-                }
-                status = upstream.status;
-                return new Response(upstream.body, {
-                  status: upstream.status,
-                  statusText: upstream.statusText,
-                  headers: responseHeaders,
-                });
-              } catch (retryErr) {
-                console.warn(
-                  `[${LOG_LABEL}] preview fetch retry to ${safeTarget} failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
-                );
-              }
-            }
-          }
-        } else {
-          // Non-replay-safe method: still drop the stale cache so the next
-          // request goes through fresh validation.
-          this.invalidateRecord(handle);
-        }
-
-        status = 502;
-        const notReady502 = jsonResponse(502, {
-          error: "sandbox daemon unreachable",
-        });
-        notReady502.headers.set(PREVIEW_NOT_READY_HEADER, "1");
-        return notReady502;
-      }
-
-      const responseHeaders = new Headers();
-      for (const [k, v] of upstream.headers.entries()) {
-        if (!PREVIEW_STRIP_RESPONSE_HEADERS.includes(k.toLowerCase())) {
-          responseHeaders.set(k, v);
-        }
-      }
-      status = upstream.status;
-      return new Response(upstream.body, {
-        status: upstream.status,
-        statusText: upstream.statusText,
-        headers: responseHeaders,
-      });
+      const resp = await proxyPreview(
+        request,
+        {
+          base: () => this.resolvePreviewUpstreamUrl(handle),
+          invalidate: () => this.invalidateRecord(handle),
+          retryBase: async () => {
+            const resurrected = await this.resurrectByHandle(handle).catch(
+              () => null,
+            );
+            return resurrected ? this.resolvePreviewUpstreamUrl(handle) : null;
+          },
+        },
+        LOG_LABEL,
+      );
+      status = resp.status;
+      return resp;
     } finally {
       this.recordProxyDuration(
         "preview",
@@ -1331,7 +1260,7 @@ export class AgentSandboxProvider {
    */
   private async resolveTemplateName(
     purpose: EnsureOptions["purpose"],
-    tenantPool: TenantPool | null,
+    tenantPool: boolean,
     sandboxImage: EnsureOptions["sandboxImage"],
   ): Promise<string> {
     const { name, probes } = await resolveClaimTemplateName({
@@ -1357,20 +1286,13 @@ export class AgentSandboxProvider {
     handle: string,
     opts: EnsureOptions,
     boot: { token: string; daemonBootId: string; workdir: string },
+    binding: TenantPoolBinding | null,
     templateName: string,
   ): SandboxClaim {
     // Warm-pool mode: the operator rejects claim.spec.env outright when
     // warmpool != "none". Studio delivers the per-claim secret post-bind via
     // POST /_sandbox/config + auth.rotateToken instead.
     const warmPoolMode = this.sentinelToken !== null;
-    // Tenant isolation lives here: the pool is resolved from the org of the
-    // user being served, never from anything in the request. The operator has
-    // no notion of a tenant — it binds whatever pool a claim names — and
-    // Studio is the only writer of SandboxClaims in this namespace.
-    const tenantPool = resolveTenantPool(this.tenantPools, {
-      orgId: opts.tenant?.orgId,
-      cloneUrl: opts.repo?.cloneUrl,
-    });
     const envEntries = warmPoolMode
       ? []
       : Object.entries(this.buildEnvMap(opts, boot))
@@ -1415,7 +1337,7 @@ export class AgentSandboxProvider {
           ...(hasAnnotations ? { annotations } : {}),
         },
         env: envEntries,
-        warmpool: claimWarmPoolName(tenantPool, warmPoolMode, templateName),
+        warmpool: claimWarmPoolName(binding, warmPoolMode, templateName),
         lifecycle: {
           shutdownPolicy: "Delete",
           shutdownTime: this.computeShutdownTime(),
@@ -1432,12 +1354,17 @@ export class AgentSandboxProvider {
     const token = this.tokenGenerator();
     const daemonBootId = randomUUID();
     const workdir = DEFAULT_WORKDIR;
-    const pool = this.claimTenantPool(opts);
+    const binding = this.claimTenantPoolBinding(opts);
     const claim = this.buildClaim(
       handle,
       opts,
       { token, daemonBootId, workdir },
-      await this.resolveTemplateName(opts.purpose, pool, opts.sandboxImage),
+      binding,
+      await this.resolveTemplateName(
+        opts.purpose,
+        binding !== null,
+        opts.sandboxImage,
+      ),
     );
     try {
       await createSandboxClaim(this.kubeConfig, this.namespace, claim);
@@ -1457,24 +1384,35 @@ export class AgentSandboxProvider {
         throw err;
       }
     }
-    return this.bind(id, handle, opts, pool, { token, daemonBootId, workdir });
+    return this.bind(id, handle, opts, binding, {
+      token,
+      daemonBootId,
+      workdir,
+    });
   }
 
   /**
    * Resolved BEFORE the template, because a tenant-pool claim must name the
    * template that pool's pods were built from — the operator binds warm pods
-   * by template hash and a mismatch silently yields a cold pod.
-   * Tenant pools are built from the DEFAULT image's template, so a repo
-   * that asked for another image cannot be served from one: the pod would
-   * be pre-warmed with the wrong toolchain. Such a claim starts cold.
+   * by template hash and a mismatch silently yields a cold pod. A pool is
+   * built for one image, so only a claim for that image binds it.
+   *
+   * Tenant isolation lives here: the key is the tenant of the principal being
+   * served, never anything in the request. The operator has no notion of a
+   * tenant — it binds whatever pool a claim names — and the provider is the
+   * only writer of SandboxClaims in this namespace.
    */
-  private claimTenantPool(opts: EnsureOptions): TenantPool | null {
-    return !opts.sandboxImage || opts.sandboxImage === "default"
-      ? resolveTenantPool(this.tenantPools, {
-          orgId: opts.tenant?.orgId,
-          cloneUrl: opts.repo?.cloneUrl,
-        })
-      : null;
+  private claimTenantPoolBinding(
+    opts: EnsureOptions,
+  ): TenantPoolBinding | null {
+    return (
+      this.tenantPools?.resolve({
+        tenant: claimTenantKey(opts),
+        image: opts.sandboxImage ?? "default",
+        cloneUrl: opts.repo?.cloneUrl,
+        branch: opts.repo?.branch,
+      }) ?? null
+    );
   }
 
   /**
@@ -1485,7 +1423,7 @@ export class AgentSandboxProvider {
     id: SandboxId,
     handle: string,
     opts: EnsureOptions,
-    pool: TenantPool | null,
+    binding: TenantPoolBinding | null,
     {
       token,
       daemonBootId,
@@ -1564,8 +1502,10 @@ export class AgentSandboxProvider {
       handle,
     );
     const daemonUrl = `http://127.0.0.1:${daemonForward.localPort}`;
-    // Cold Sandboxes are named after the claim, adopted ones after their pool.
-    const tenantPoolPodBound = pool !== null && adoptedSandboxName !== handle;
+    // Cold Sandboxes are named after the claim, adopted ones after their pool;
+    // only an allocation's pods were cloned and started before the bind.
+    const tenantPoolPodBound =
+      binding?.repo != null && adoptedSandboxName !== handle;
     const configPayload = this.workloadConfigPayload(opts, tenantPoolPodBound);
     // Warm-pool path: pod boots with the SandboxTemplate's sentinel token;
     // studio authenticates the first /config call with the sentinel and
@@ -1722,15 +1662,15 @@ export class AgentSandboxProvider {
    */
   private async withFreshCloneUrl(
     repo: NonNullable<EnsureOptions["repo"]>,
-    bufferMs?: number,
+    opts: { bufferMs?: number; tenant?: EnsureOptions["tenant"] } = {},
   ): Promise<NonNullable<EnsureOptions["repo"]>> {
     if (!this.mintCloneUrl) return repo;
     try {
-      const fresh = await this.mintCloneUrl(
-        repo,
-        bufferMs !== undefined ? { bufferMs } : undefined,
-      );
-      return fresh ? { ...repo, cloneUrl: fresh } : repo;
+      const fresh = await this.mintCloneUrl(repo, opts);
+      if (!fresh) return repo;
+      // The mint says nothing of the new token's life.
+      const { credentialExpiresAt: _stale, ...rest } = repo;
+      return { ...rest, cloneUrl: fresh };
     } catch (err) {
       console.warn(
         `[${LOG_LABEL}] clone credential re-mint failed: ${
@@ -1752,11 +1692,18 @@ export class AgentSandboxProvider {
    */
   private async withFreshCredentials(
     opts: EnsureOptions,
+    orgFsRedacted = false,
   ): Promise<EnsureOptions> {
     return {
       ...opts,
-      ...(opts.repo ? { repo: await this.withFreshCloneUrl(opts.repo) } : {}),
-      ...(opts.orgFsConfigJson
+      ...(opts.repo
+        ? {
+            repo: await this.withFreshCloneUrl(opts.repo, {
+              tenant: opts.tenant,
+            }),
+          }
+        : {}),
+      ...(opts.orgFsConfigJson || orgFsRedacted
         ? {
             orgFsConfigJson: await freshOrgFsConfigJson(
               opts,
@@ -1818,12 +1765,13 @@ export class AgentSandboxProvider {
    * clones.
    */
   private startTenantPoolReconciler(): void {
-    if (this.tenantPools.length === 0) return;
+    const pools = this.tenantPools;
+    if (!pools) return;
     const { signal } = this.claimWatchAbort;
     void (async () => {
       while (!signal.aborted) {
         try {
-          await this.reconcileTenantPools();
+          await this.reconcileTenantPools(pools);
         } catch (err) {
           console.warn(
             `[${LOG_LABEL}] tenant pool reconcile failed: ${
@@ -1836,47 +1784,64 @@ export class AgentSandboxProvider {
     })();
   }
 
+  /** The pools this provider serves now, for Studio's credential push. */
+  listTenantPools(): readonly TenantPool[] {
+    return this.tenantPools?.pools() ?? [];
+  }
+
   /**
-   * A GitHub push landed on a pool's branch — refresh its unbound pods on the
+   * A push landed on an allocation's branch — refresh its unbound pods on the
    * next tick. Set-based, so a burst of pushes collapses into one refresh.
    * Optional accelerator: without a webhook the periodic refresh below still
    * picks the commits up within `tenantPoolRefreshMs`.
    */
-  markTenantPoolsDirty(repoFullName: string, ref: string): string[] {
-    const matched = poolsMatchingPush(this.tenantPools, repoFullName, ref);
-    for (const pool of matched) this.dirtyPools.add(pool.name);
-    return matched.map((pool) => pool.name);
+  /** Async so a remote provider can serve the same surface. */
+  markTenantPoolsDirty(repoUrl: string, ref: string): Promise<string[]> {
+    return Promise.resolve(this.tenantPools?.markDirty(repoUrl, ref) ?? []);
   }
 
-  private async reconcileTenantPools(): Promise<void> {
-    for (const pool of this.tenantPools) {
+  /**
+   * Re-reads the pools each tick, so an empty list costs one read. Only
+   * allocations are warmed here; a blank pod is configured by the claim that
+   * binds it.
+   */
+  private async reconcileTenantPools(state: TenantPoolState): Promise<void> {
+    const allocations = tenantPoolAllocations(state.pools());
+    for (const gone of state.retain(allocations)) this.recordPoolGone(gone);
+    for (const allocation of allocations) {
+      const pool = allocation.warmPoolName;
       const pods = await listWarmPoolPods(
         this.kubeConfig,
         this.namespace,
-        pool.name,
+        pool,
       );
       if (pods === null) {
         console.warn(
-          `[${LOG_LABEL}] tenant pool ${pool.name}: no SandboxWarmPool (or no selector yet) in ${this.namespace}`,
+          `[${LOG_LABEL}] tenant pool ${pool}: no SandboxWarmPool (or no selector yet) in ${this.namespace}`,
         );
         continue;
       }
-      const dirty = this.dirtyPools.delete(pool.name);
+      const dirty = state.takeDirty(pool);
       // A bound pod carries the claim's handle label. Never touch one: the user
       // has a working tree on it, and a hard reset under them is data loss.
       const unbound = pods.filter(
         (pod) => !pod.labels[LABEL_KEYS.sandboxHandle],
       );
-      for (const [uid] of this.poolPods) {
-        if (!pods.some((pod) => pod.uid === uid)) this.poolPods.delete(uid);
-      }
+      state.retainPods(pool, new Set(pods.map((pod) => pod.uid)));
       // Sequential: a whole pool reinstalling at once is a thundering herd on
       // the registry and the node.
       for (const pod of unbound) {
         if (this.claimWatchAbort.signal.aborted) return;
-        await this.warmPoolPod(pool, pod, dirty);
+        await this.warmPoolPod(state, allocation, pod, dirty);
       }
-      this.recordPoolDepth(pool, pods, unbound);
+      this.recordPoolDepth(state, allocation, pods, unbound);
+    }
+  }
+
+  private recordPoolGone(allocation: TenantPoolAllocation): void {
+    const attrs = poolMetricAttrs(allocation);
+    for (const podState of ["ready", "bound", "pending", "failed"]) {
+      this.metrics?.poolPods.record(0, { ...attrs, state: podState });
     }
   }
 
@@ -1888,7 +1853,8 @@ export class AgentSandboxProvider {
    * never completes) are otherwise silent.
    */
   private recordPoolDepth(
-    pool: TenantPool,
+    state: TenantPoolState,
+    allocation: TenantPoolAllocation,
     pods: readonly WarmPoolPod[],
     unbound: readonly WarmPoolPod[],
   ): void {
@@ -1897,12 +1863,12 @@ export class AgentSandboxProvider {
     let ready = 0;
     let failed = 0;
     for (const pod of unbound) {
-      const seen = this.poolPods.get(pod.uid);
+      const seen = state.pod(pod.uid);
       if (!seen) continue;
       if (seen.failures >= TENANT_POOL_MAX_FAILURES) failed++;
       else if (seen.lastConfigAt > 0) ready++;
     }
-    const attrs = { pool: pool.name, org: pool.orgId };
+    const attrs = poolMetricAttrs(allocation);
     gauge.record(ready, { ...attrs, state: "ready" });
     gauge.record(pods.length - unbound.length, { ...attrs, state: "bound" });
     gauge.record(unbound.length - ready - failed, {
@@ -1913,11 +1879,14 @@ export class AgentSandboxProvider {
   }
 
   private async warmPoolPod(
-    pool: TenantPool,
+    state: TenantPoolState,
+    allocation: TenantPoolAllocation,
     pod: WarmPoolPod,
     dirty: boolean,
   ): Promise<void> {
-    const seen = this.poolPods.get(pod.uid);
+    const pool = allocation.warmPoolName;
+    const { workload } = allocation.repo;
+    const seen = state.pod(pod.uid);
     // A pod that fails to warm repeatedly (bad lockfile, private submodule, no
     // `dev` script) would otherwise be retried forever while the pool *looks*
     // full. Stop touching it and say so once — but not forever: the same
@@ -1928,7 +1897,7 @@ export class AgentSandboxProvider {
       if (Date.now() - seen.lastFailureAt < TENANT_POOL_GIVE_UP_COOLDOWN_MS) {
         return;
       }
-      this.poolPods.set(pod.uid, { ...seen, failures: 0 });
+      state.setPod(pod.uid, { ...seen, failures: 0 });
     }
     // A refresh re-fetches the branch and restarts dev. A first sight doesn't:
     // this replica may simply have restarted under a pool that is already warm,
@@ -1941,31 +1910,28 @@ export class AgentSandboxProvider {
         Date.now() - seen.lastConfigAt >= this.tenantPoolRefreshMs);
     if (seen && !refresh) return;
 
+    const cloneUrl = await this.allocationCloneUrl(allocation);
+    if (!cloneUrl) {
+      // Posting an anonymous URL instead would clone a private repo without
+      // credentials, leaving the pod on a remote the user can't push to.
+      this.recordPoolFailure(state, pod, pool, "clone credential mint failed");
+      return;
+    }
     const repo = {
-      cloneUrl: poolCloneUrl(pool),
-      connectionId: pool.connectionId,
-      branch: pool.branch,
+      cloneUrl,
+      branch: allocation.repo.branch,
       // No user: the daemon leaves `claimed` false for an identity-less config,
       // which is what keeps the housekeeper's idle sweep off an unbound pod.
       userName: "",
       userEmail: "",
     };
-    const fresh = await this.withFreshCloneUrl(repo);
-    if (pool.connectionId && fresh.cloneUrl === repo.cloneUrl) {
-      // The pool named a connection but the mint gave nothing back. Posting the
-      // anonymous URL would clone a private repo without credentials — where it
-      // doesn't hang on a password prompt it leaves the pod on a remote the
-      // user can't push to. Skip; the next tick retries.
-      this.recordPoolFailure(pod, pool, "clone credential mint failed");
-      return;
-    }
     const forward = await this.openForwarder(
       pod.name,
       DAEMON_CONTAINER_PORT,
       pod.name,
     ).catch(() => null);
     if (!forward) {
-      this.recordPoolFailure(pod, pool, "port-forward failed");
+      this.recordPoolFailure(state, pod, pool, "port-forward failed");
       return;
     }
     const daemonUrl = `http://127.0.0.1:${forward.localPort}`;
@@ -1983,19 +1949,19 @@ export class AgentSandboxProvider {
       // install → dev), git-credential-refresh on one already warm.
       const payload =
         buildConfigPayload({
-          runtime: pool.workload.runtime,
+          runtime: workload.runtime,
           // No package manager configured → the daemon autodetects from the
           // lockfile, same as a claim that names none.
-          packageManager: pool.workload.packageManager
+          packageManager: workload.packageManager
             ? {
-                name: pool.workload.packageManager,
-                ...(pool.workload.packageManagerPath
-                  ? { path: pool.workload.packageManagerPath }
+                name: workload.packageManager,
+                ...(workload.packageManagerPath
+                  ? { path: workload.packageManagerPath }
                   : {}),
               }
             : null,
-          repo: fresh,
-          port: pool.workload.devPort ?? DEFAULT_DEV_PORT,
+          repo,
+          port: workload.devPort ?? DEFAULT_DEV_PORT,
         }) ?? {};
       const { transition } = await postConfig(daemonUrl, sentinel, payload);
       // A bootstrap already clones. Anything else only updated stored config,
@@ -2007,22 +1973,46 @@ export class AgentSandboxProvider {
       ) {
         await postSetupStep(daemonUrl, sentinel, "clone");
       }
-      this.poolPods.set(pod.uid, {
+      state.setPod(pod.uid, {
+        pool,
         lastConfigAt: Date.now(),
         lastFailureAt: 0,
         failures: 0,
       });
       console.log(
-        `[${LOG_LABEL}] tenant pool ${pool.name}: warmed ${pod.name} (${transition})`,
+        `[${LOG_LABEL}] tenant pool ${pool}: warmed ${pod.name} (${transition})`,
       );
     } catch (err) {
       this.recordPoolFailure(
+        state,
         pod,
         pool,
         err instanceof Error ? err.message : String(err),
       );
     } finally {
       this.closeForwarder(forward);
+    }
+  }
+
+  /** Null when the host's mint gave nothing back. */
+  private async allocationCloneUrl({
+    pool,
+    repo,
+  }: TenantPoolAllocation): Promise<string | null> {
+    if (!this.mintPoolCloneUrl) return `${repo.repoUrl}.git`;
+    try {
+      return await this.mintPoolCloneUrl({
+        tenant: pool.tenant,
+        repoUrl: repo.repoUrl,
+        branch: repo.branch,
+      });
+    } catch (err) {
+      console.warn(
+        `[${LOG_LABEL}] tenant pool clone credential mint failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
     }
   }
 
@@ -2036,13 +2026,15 @@ export class AgentSandboxProvider {
   }
 
   private recordPoolFailure(
+    state: TenantPoolState,
     pod: WarmPoolPod,
-    pool: TenantPool,
+    pool: string,
     reason: string,
   ): void {
-    const prev = this.poolPods.get(pod.uid);
+    const prev = state.pod(pod.uid);
     const failures = (prev?.failures ?? 0) + 1;
-    this.poolPods.set(pod.uid, {
+    state.setPod(pod.uid, {
+      pool,
       lastConfigAt: prev?.lastConfigAt ?? 0,
       lastFailureAt: Date.now(),
       failures,
@@ -2052,7 +2044,7 @@ export class AgentSandboxProvider {
         ? ` — backing off ${TENANT_POOL_GIVE_UP_COOLDOWN_MS / 60_000}min`
         : "";
     console.warn(
-      `[${LOG_LABEL}] tenant pool ${pool.name}: warming ${pod.name} failed (${failures}/${TENANT_POOL_MAX_FAILURES})${giveUp}: ${reason}`,
+      `[${LOG_LABEL}] tenant pool ${pool}: warming ${pod.name} failed (${failures}/${TENANT_POOL_MAX_FAILURES})${giveUp}: ${reason}`,
     );
   }
 
@@ -2069,17 +2061,26 @@ export class AgentSandboxProvider {
         if (this.claimWatchAbort.signal.aborted) return;
         const repo = rec.ensureOpts?.repo;
         if (!repo) return;
-        const fresh = await this.withFreshCloneUrl(
-          repo,
-          CREDENTIAL_REFRESH_BUFFER_MS,
-        );
-        await this.refreshDaemonGitCredential(rec, {
-          ...rec.ensureOpts,
-          repo: fresh,
-        });
-        // Keep the record's URL current so the next sweep sees the fresh token
-        // (a no-op) rather than re-deriving the stale one.
-        rec.ensureOpts = { ...rec.ensureOpts, repo: fresh };
+        try {
+          const fresh = await this.withFreshCloneUrl(repo, {
+            bufferMs: CREDENTIAL_REFRESH_BUFFER_MS,
+            tenant: rec.ensureOpts?.tenant,
+          });
+          await this.refreshDaemonGitCredential(rec, {
+            ...rec.ensureOpts,
+            repo: fresh,
+          });
+          // Next sweep sees the fresh token (a no-op) instead of re-deriving the stale one.
+          rec.ensureOpts = { ...rec.ensureOpts, repo: fresh };
+        } catch (err) {
+          // refreshCredentialsByConnection swallows this per-item; log here or it's untraceable.
+          console.warn(
+            `[${LOG_LABEL}] git credential refresh failed for ${rec.handle}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          throw err;
+        }
       },
     );
   }
@@ -2312,7 +2313,10 @@ export class AgentSandboxProvider {
       if (this.sentinelToken !== null) {
         // Persisted credentials have usually lapsed by pod recreation.
         const rebootstrapOpts: EnsureOptions | null = state.ensureOpts
-          ? await this.withFreshCredentials(state.ensureOpts)
+          ? await this.withFreshCredentials(
+              state.ensureOpts,
+              state.orgFsRedacted === true,
+            )
           : null;
         const ok = await this.rebootstrapDaemon(
           live.daemonUrl,
@@ -2359,6 +2363,7 @@ export class AgentSandboxProvider {
       daemonBootId: live.bootId,
       tenant: state.tenant ?? null,
       ensureOpts: state.ensureOpts ?? null,
+      orgFsRedacted: state.orgFsRedacted === true,
       // Rows written before the rollout gate existed have no persisted impl;
       // they are TS sandboxes by construction, but say null rather than guess.
     };
@@ -2385,7 +2390,7 @@ export class AgentSandboxProvider {
     if (!token || !daemonBootId) {
       throw new SandboxError(`claim ${handle} carries no daemon token`);
     }
-    return this.bind(id, handle, opts, this.claimTenantPool(opts), {
+    return this.bind(id, handle, opts, this.claimTenantPoolBinding(opts), {
       token,
       daemonBootId,
       workdir: DEFAULT_WORKDIR,
@@ -2536,10 +2541,14 @@ export class AgentSandboxProvider {
     if (!this.stateStore) return null;
     const row = await this.stateStore.getByHandle(handle);
     if (!row) return null;
-    const persistedOpts = (row.state as Partial<PersistedK8sState>).ensureOpts;
+    const persisted = row.state as Partial<PersistedK8sState>;
+    const persistedOpts = persisted.ensureOpts;
     if (!persistedOpts) return null;
     // Persisted credentials carry first-provision tokens, long expired by now.
-    const opts = await this.withFreshCredentials(persistedOpts);
+    const opts = await this.withFreshCredentials(
+      persistedOpts,
+      persisted.orgFsRedacted === true,
+    );
     // The row must resolve back to the handle we were asked to resurrect.
     // Structurally guaranteed now that both derive from `id.projectRef`, which
     // is the point of asserting it: if a future ref encoding breaks the
@@ -2624,6 +2633,7 @@ export class AgentSandboxProvider {
       workdir: rec.workdir,
       previewUrl: this.composePreviewUrl(rec),
       warmPoolAdopted: rec.tenantPoolPodBound === true,
+      provider: "kubernetes",
     };
   }
 
@@ -2641,7 +2651,11 @@ export class AgentSandboxProvider {
       workload: rec.workload,
       daemonBootId: rec.daemonBootId,
       tenant: rec.tenant,
-      ...(rec.ensureOpts ? { ensureOpts: rec.ensureOpts } : {}),
+      ...(rec.ensureOpts
+        ? this.persistCredentials
+          ? { ensureOpts: rec.ensureOpts }
+          : withoutCredentials(rec.ensureOpts, rec.orgFsRedacted === true)
+        : {}),
     };
     await ops.put(rec.id, { handle: rec.handle, state });
   }
@@ -2727,6 +2741,9 @@ export class AgentSandboxProvider {
     // recreation (operator-driven): sandboxMap's cached previewUrl stays valid.
     handle: string = podName,
   ): Promise<PortForwarder> {
+    if (this.forwardPort) {
+      return this.forwardPort(podName, containerPort, handle);
+    }
     const startPort = deterministicLocalPort(handle, containerPort);
     return new Promise((resolve, reject) => {
       const tryBind = (port: number, attempt: number) => {
@@ -2761,7 +2778,18 @@ export class AgentSandboxProvider {
             reject(new Error("port-forward listener failed to bind"));
             return;
           }
-          resolve({ server, localPort: address.port });
+          const localPort = address.port;
+          resolve({
+            localPort,
+            close: () =>
+              server.close((err) => {
+                if (err) {
+                  console.warn(
+                    `[${LOG_LABEL}] port-forward close on :${localPort} errored: ${err.message}`,
+                  );
+                }
+              }),
+          });
         });
       };
       tryBind(startPort, 0);
@@ -2856,13 +2884,7 @@ export class AgentSandboxProvider {
   }
 
   private closeForwarder(forwarder: PortForwarder): void {
-    forwarder.server.close((err) => {
-      if (err) {
-        console.warn(
-          `[${LOG_LABEL}] port-forward close on :${forwarder.localPort} errored: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    });
+    forwarder.close();
   }
 
   close(): void {
@@ -2993,23 +3015,6 @@ function deterministicLocalPort(handle: string, containerPort: number): number {
     .update(`${handle}:${containerPort}`)
     .digest();
   return PORT_RANGE_START + (hash.readUInt32BE(0) % PORT_RANGE_SIZE);
-}
-
-// CORS headers on synthesized preview-proxy responses. The studio iframe
-// renders under the studio origin and fetches the preview origin cross-site
-// (SSE at `/_sandbox/events`, plus the EventSource probeMissing fetch);
-// without ACAO the browser blocks the response *and* hides the actual status,
-// so a 404 from us looks like an opaque CORS failure in devtools. The daemon
-// already sets ACAO on its own responses — these headers only fire on errors
-// we synthesize before reaching the daemon.
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-    },
-  });
 }
 
 // K8s label keys studio attaches. Centralized so writers (buildTenantLabels)
@@ -3261,6 +3266,48 @@ export async function freshOrgFsConfigJson(
     );
     return opts.orgFsConfigJson;
   }
+}
+
+function withoutUserinfo(
+  repo: NonNullable<EnsureOptions["repo"]>,
+): NonNullable<EnsureOptions["repo"]> | null {
+  try {
+    const url = new URL(repo.cloneUrl);
+    url.username = "";
+    url.password = "";
+    const {
+      submoduleCredentials: _tokens,
+      credentialExpiresAt: _expiry,
+      ...kept
+    } = repo;
+    return { ...kept, cloneUrl: url.toString() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `ensureOpts` as a host that must not store credentials persists them: clone
+ * URLs lose their userinfo, submodule tokens and the org-fs config are
+ * dropped, and `orgFsRedacted` remembers the mount so recovery re-mints it. A
+ * clone URL that does not parse is dropped with its repo: fail closed.
+ */
+export function withoutCredentials(
+  opts: EnsureOptions,
+  orgFsRedacted: boolean,
+): { ensureOpts: EnsureOptions; orgFsRedacted?: true } {
+  const { orgFsConfigJson, repo, extraRepos, ...rest } = opts;
+  const ensureOpts: EnsureOptions = rest;
+  const stripped = repo && withoutUserinfo(repo);
+  if (stripped) ensureOpts.repo = stripped;
+  if (extraRepos) {
+    ensureOpts.extraRepos = extraRepos
+      .map(withoutUserinfo)
+      .filter((r) => r !== null);
+  }
+  return orgFsConfigJson || orgFsRedacted
+    ? { ensureOpts, orgFsRedacted: true }
+    : { ensureOpts };
 }
 
 /**

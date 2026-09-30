@@ -54,7 +54,7 @@ services:
   # no curl/wget/shell to probe with, and Studio's provisionMinioBucket already
   # retries the startup ECONNREFUSED race.
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z # pinned in .github/actions/start-minio
     command: server /data
     environment:
       MINIO_ROOT_USER: minioadmin

@@ -8,6 +8,7 @@ import {
   JiraClient,
   JiraUserDirectory,
   mediaUuidFromLocation,
+  narrowJql,
 } from "./client";
 
 describe("normalizeSiteUrl", () => {
@@ -352,10 +353,10 @@ describe("jiraBodyToText mentions", () => {
     content: [{ type: "paragraph", content: [{ type: "mention", attrs }] }],
   });
 
-  it("uses the name ADF already carries, stripping its @", () => {
+  it("uses the name ADF already carries, with the id to mention them back", () => {
     expect(
       jiraBodyToText(mention({ id: "557058:abc-123", text: "@Ana Souza" })),
-    ).toBe("@Ana Souza");
+    ).toBe("@[Ana Souza](accountid:557058:abc-123)");
   });
 
   it("falls back to the resolved name when ADF carries none", () => {
@@ -364,12 +365,15 @@ describe("jiraBodyToText mentions", () => {
         mention({ id: "557058:abc-123" }),
         new Map([["557058:abc-123", "Ana Souza"]]),
       ),
-    ).toBe("@Ana Souza");
+    ).toBe("@[Ana Souza](accountid:557058:abc-123)");
   });
 
-  it("renders an unresolvable mention as @unknown", () => {
-    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe("@unknown");
+  it("keeps the id when the name is unknown, and says @unknown with neither", () => {
+    expect(jiraBodyToText(mention({ id: "557058:abc-123" }))).toBe(
+      "@[unknown](accountid:557058:abc-123)",
+    );
     expect(jiraBodyToText(mention({ text: "  @  " }))).toBe("@unknown");
+    expect(jiraBodyToText(mention({ text: "@Ana" }))).toBe("@Ana");
   });
 
   it("collects only the account ids that need a lookup", () => {
@@ -979,5 +983,288 @@ describe("mediaUuidFromLocation", () => {
     ]) {
       expect(mediaUuidFromLocation(location)).toBeNull();
     }
+  });
+});
+
+describe("JiraClient issue creation", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withFetch<T>(
+    respond: (url: string, init?: RequestInit) => Response,
+    body: (calls: Array<{ url: string; init?: RequestInit }>) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      return respond(String(input), init);
+    }) as unknown as typeof fetch;
+    try {
+      return await body(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  it("posts once more with a flat description when Jira refuses the rich one", async () => {
+    let posts = 0;
+    await withFetch(
+      () =>
+        ++posts === 1
+          ? new Response("bad document", { status: 400 })
+          : new Response(JSON.stringify({ id: "1", key: "EX-1" })),
+      async (calls) => {
+        const out = await client().createIssue({
+          projectKey: "EX",
+          issueTypeId: "2",
+          summary: "s",
+          description: "line one\nline two",
+        });
+        expect(out).toEqual({ id: "1", key: "EX-1" });
+        const second = JSON.parse(String(calls[1]?.init?.body));
+        expect(second.fields.description).toEqual(
+          textToAdf("line one\nline two"),
+        );
+      },
+    );
+  });
+
+  it("does not retry a create that timed out or failed upstream", async () => {
+    // Jira may have created the issue before answering 502.
+    await withFetch(
+      () => new Response("bad gateway", { status: 502 }),
+      async (calls) => {
+        await expect(
+          client().createIssue({
+            projectKey: "EX",
+            issueTypeId: "2",
+            summary: "s",
+          }),
+        ).rejects.toThrow("502");
+        expect(calls).toHaveLength(1);
+      },
+    );
+  });
+
+  it("finds a company-managed story points field by its name", async () => {
+    await withFetch(
+      (url) =>
+        new Response(
+          JSON.stringify(
+            /issuetypes\?/.test(url)
+              ? { issueTypes: [{ id: "5", name: "Story" }] }
+              : {
+                  fields: [
+                    { fieldId: "customfield_10028", name: "Story Points" },
+                  ],
+                },
+          ),
+        ),
+      async () => {
+        expect(await client().getCreateMeta("EX", "STORY")).toEqual({
+          issueTypeId: "5",
+          issueTypeName: "Story",
+          storyPointsFieldId: "customfield_10028",
+          sprintFieldId: null,
+        });
+      },
+    );
+  });
+
+  it("answers null when the board has no active sprint", async () => {
+    await withFetch(
+      () => new Response(JSON.stringify({ values: [] })),
+      async () => {
+        expect(await client().getActiveSprint("42")).toBeNull();
+      },
+    );
+  });
+});
+
+describe("narrowJql", () => {
+  const scope = 'project = "EX"';
+
+  it("ANDs the clause onto the scope and keeps its ordering last", () => {
+    expect(narrowJql(scope, "status = Done order by updated DESC")).toBe(
+      '(project = "EX") AND (status = Done) order by updated DESC',
+    );
+    expect(narrowJql(scope, "ORDER BY created")).toBe(
+      '(project = "EX") ORDER BY created',
+    );
+    expect(narrowJql(scope, "  ")).toBe('(project = "EX")');
+  });
+
+  it("counts parentheses inside quoted strings as text", () => {
+    expect(narrowJql(scope, "summary ~ \"a (b\" AND text ~ 'c)'")).toBe(
+      '(project = "EX") AND (summary ~ "a (b" AND text ~ \'c)\')',
+    );
+  });
+
+  it("refuses a clause that would close the scope's group", () => {
+    for (const escape of [
+      "status = Done) OR (project = HR",
+      "(status = Done",
+      "status = Done) OR project = HR OR (key = X",
+      'summary ~ "unterminated',
+    ]) {
+      expect(() => narrowJql(scope, escape)).toThrow("do not balance");
+    }
+  });
+});
+
+describe("JiraClient.isOnBoard", () => {
+  it("is false for a key Jira does not know, which search answers with 400", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("/configuration")) {
+        return new Response(JSON.stringify({ filter: { id: "77" } }));
+      }
+      if (url.includes("/filter/77")) {
+        return new Response(JSON.stringify({ jql: 'project = "EX"' }));
+      }
+      return new Response("An issue with key 'EX-404' does not exist", {
+        status: 400,
+      });
+    }) as unknown as typeof fetch;
+    try {
+      const client = new JiraClient(
+        "https://acme.atlassian.net",
+        "e@acme.com",
+        "tok",
+      );
+      expect(await client.isOnBoard("42", "EX-404")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("JiraClient.listStatusChanges", () => {
+  const client = () =>
+    new JiraClient("https://acme.atlassian.net", "e@acme.com", "tok");
+
+  async function withPages<T>(
+    pages: unknown[],
+    body: (requests: Array<Record<string, unknown>>) => Promise<T>,
+  ): Promise<T> {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://acme.atlassian.net/rest/api/3/changelog/bulkfetch",
+      );
+      requests.push(JSON.parse(String(init?.body)));
+      const page = pages[requests.length - 1];
+      return new Response(JSON.stringify(page ?? {}), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      return await body(requests);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  const history = (
+    id: string | number,
+    created: number | string,
+    from: string,
+    to: string,
+  ) => ({
+    id,
+    created,
+    author: { accountId: "acc-ana", displayName: "Ana" },
+    items: [
+      {
+        fieldId: "status",
+        from: `s-${from}`,
+        fromString: from,
+        to: `s-${to}`,
+        toString: to,
+      },
+    ],
+  });
+
+  it("asks for status only, follows pages and returns the moves oldest first", async () => {
+    await withPages(
+      [
+        {
+          issueChangeLogs: [
+            { changeHistories: [history("12", 2_000, "Doing", "Review")] },
+          ],
+          nextPageToken: "p2",
+        },
+        {
+          issueChangeLogs: [
+            {
+              changeHistories: [
+                history(11, "1970-01-01T00:00:01.000Z", "Backlog", "Doing"),
+              ],
+            },
+          ],
+        },
+      ],
+      async (requests) => {
+        const changes = await client().listStatusChanges("10001");
+        expect(requests).toEqual([
+          {
+            issueIdsOrKeys: ["10001"],
+            fieldIds: ["status"],
+            maxResults: 1000,
+          },
+          {
+            issueIdsOrKeys: ["10001"],
+            fieldIds: ["status"],
+            maxResults: 1000,
+            nextPageToken: "p2",
+          },
+        ]);
+        expect(changes).toEqual([
+          {
+            id: "11",
+            at: 1_000,
+            by: { accountId: "acc-ana", displayName: "Ana" },
+            fromId: "s-Backlog",
+            from: "Backlog",
+            toId: "s-Doing",
+            to: "Doing",
+          },
+          {
+            id: "12",
+            at: 2_000,
+            by: { accountId: "acc-ana", displayName: "Ana" },
+            fromId: "s-Doing",
+            from: "Doing",
+            toId: "s-Review",
+            to: "Review",
+          },
+        ]);
+      },
+    );
+  });
+
+  it("drops entries that record no readable status move", async () => {
+    await withPages(
+      [
+        {
+          issueChangeLogs: [
+            {
+              changeHistories: [
+                { id: "1", created: 1, items: [{ fieldId: "assignee" }] },
+                { ...history("2", "not a date", "A", "B") },
+                { ...history("3", 3, "A", "B"), author: { displayName: "x" } },
+                { id: "4", created: 4, items: [{ fieldId: "status" }] },
+              ],
+            },
+          ],
+        },
+      ],
+      async () => {
+        const changes = await client().listStatusChanges("EX-1");
+        expect(changes).toHaveLength(1);
+        expect(changes[0]).toMatchObject({ id: "3", by: null, to: "B" });
+      },
+    );
   });
 });

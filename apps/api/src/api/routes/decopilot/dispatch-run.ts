@@ -30,6 +30,12 @@
  */
 
 import {
+  VOICE_MODE_PROMPT,
+  voiceRequestContext,
+  type VoiceTranscript,
+} from "@decocms/shared/voice";
+import { withVoiceResponseStyle } from "@/voice/prompt";
+import {
   applySubsidizedBilling,
   resolveSubsidizedPayer,
 } from "@/billing/subsidized-runs";
@@ -45,7 +51,7 @@ import {
   SandboxDispatchClient,
 } from "@/harnesses/sandbox-dispatch-client";
 import { resolveSandboxBranchForThread } from "@/tools/sandbox/thread-repo";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { resolveEffectiveStudioPackVirtualMcp } from "@/tools/virtual/studio-pack";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk";
 import type {
@@ -346,6 +352,8 @@ export interface AgentConfig {
 }
 
 export interface DispatchRunInput {
+  voiceMode?: boolean;
+  voiceTranscript?: VoiceTranscript;
   messages: ChatMessage[];
   /** CLIENT request shape (root credentialId). `prepareRun` normalizes it
    *  into the per-slot harness/wire `ModelsConfig` before dispatch. */
@@ -404,6 +412,9 @@ export interface DispatchRunInput {
 }
 
 export interface FrozenRunSnapshot {
+  voiceMode?: boolean;
+  /** Spoken turns before this request. Model-only, like `systemContext`. */
+  voiceTranscript?: VoiceTranscript;
   models: ClientModelsConfig;
   agent: AgentConfig;
   temperature: number;
@@ -527,6 +538,10 @@ export function buildDurableDispatchInput(
       ? { resumedFromBackground: input.resumedFromBackground }
       : {}),
     mode: input.mode,
+    ...(input.voiceMode !== undefined ? { voiceMode: input.voiceMode } : {}),
+    ...(input.voiceTranscript !== undefined
+      ? { voiceTranscript: input.voiceTranscript }
+      : {}),
     ...(input.windowSize !== undefined ? { windowSize: input.windowSize } : {}),
     ...(input.triggerId !== undefined ? { triggerId: input.triggerId } : {}),
     ...(input.runMetadata !== undefined
@@ -1309,6 +1324,24 @@ async function prepareRun(
     }
 
     ensureModelCompatibility(input.models, [wireUserMessage]);
+    const voiceContext =
+      input.voiceMode && input.voiceTranscript
+        ? voiceRequestContext(input.voiceTranscript)
+        : undefined;
+    if (input.voiceMode) {
+      systemMessages.push({
+        id: `voice-${materializedRequestMessage.id}`,
+        role: "system",
+        parts: [
+          {
+            type: "text",
+            text: voiceContext
+              ? `${VOICE_MODE_PROMPT}\n\n${voiceContext}`
+              : VOICE_MODE_PROMPT,
+          },
+        ],
+      });
+    }
     const decopilotMessages = await loadDecopilotContext({
       ctx,
       threadId: mem.thread.id,
@@ -1360,7 +1393,14 @@ async function prepareRun(
 
     const wireHarnessInput: WireHarnessInput = {
       threadId: mem.thread.id,
-      userMessage: wireUserMessage,
+      userMessage:
+        sandboxHosted && input.voiceMode !== undefined
+          ? withVoiceResponseStyle(
+              wireUserMessage,
+              input.voiceMode === true,
+              voiceContext,
+            )
+          : wireUserMessage,
       harness: { sessionId: undefined },
       workspace,
       models,
@@ -1449,9 +1489,9 @@ async function prepareRun(
               interactive: Boolean(
                 (
                   effectiveVirtualMcp.metadata as {
-                    githubRepo?: GithubRepo | null;
+                    repository?: RepositoryBinding | null;
                   } | null
-                )?.githubRepo?.url,
+                )?.repository?.url,
               ),
               // Tell the harness it is picking up an interrupted turn: its own
               // context is gone, but the work is in the checkout and in git.
@@ -1470,9 +1510,9 @@ async function prepareRun(
                 threadId: mem.thread.id,
                 agentRepo: (
                   effectiveVirtualMcp.metadata as {
-                    githubRepo?: GithubRepo | null;
+                    repository?: RepositoryBinding | null;
                   } | null
-                )?.githubRepo,
+                )?.repository,
                 runBranch: input.branch,
               }),
               // The already-resolved thinking-slot credential becomes the

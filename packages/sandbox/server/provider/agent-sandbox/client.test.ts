@@ -299,6 +299,16 @@ describe("getSandboxClaim", () => {
     await getSandboxClaim(makeKc(), NS, "weird/name");
     expect(fetchCalls[0]!.url).toContain("/weird%2Fname");
   });
+
+  it("drains the 404 body so the connection can be reused", async () => {
+    let resp: Response;
+    fetchImpl = async () => {
+      resp = jsonResponse(404, { kind: "Status", reason: "NotFound" });
+      return resp;
+    };
+    await getSandboxClaim(makeKc(), NS, "missing");
+    expect(resp!.bodyUsed).toBe(true);
+  });
 });
 
 describe("patchSandboxClaimShutdown", () => {

@@ -80,6 +80,12 @@ const ThreadMetadataSchema = z
       .describe(
         "Every Jira issue a 'jira' run may act on. One entry for a run on one issue; several for a run a person started on a batch, whose Jira tools take an issueKey to say which.",
       ),
+    jira_created_issue_keys: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "The Jira issues a 'jira' run created itself, so a repeated create returns the one it made.",
+      ),
   })
   .catchall(z.unknown());
 
@@ -116,7 +122,9 @@ export const ThreadEntitySchema = z.object({
     .string()
     .nullable()
     .optional()
-    .describe("Git branch this thread is pinned to (GitHub-linked vms only)"),
+    .describe(
+      "Git branch this thread is pinned to (repository-linked projects only)",
+    ),
   harness_id: z
     .string()
     .nullable()
@@ -155,7 +163,7 @@ export const ThreadCreateDataSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      "Preferred branch. Used only when the vMCP has a githubRepo; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
+      "Preferred branch. Used only when the vMCP has a repository; ignored otherwise. When omitted, the server picks the most-recently-touched branch from the user's sandboxMap, falling back to a freshly generated name.",
     ),
   runtime: z
     .enum(THREAD_RUNTIMES)

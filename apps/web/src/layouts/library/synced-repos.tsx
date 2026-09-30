@@ -1,6 +1,6 @@
 /**
- * Synced repositories in the Library — one read-only folder card per
- * `org_repo_sync` config, rendered at the home root next to the system
+ * Synced repositories in the Library — one read-only folder tile per
+ * `org_repo_sync` config, rendered at the drive root next to the system
  * folders. Navigation only: adding/removing syncs lives in Settings →
  * Synced repos (views/settings/synced-repos.tsx).
  *
@@ -13,7 +13,8 @@
 import { useT } from "@/i18n/use-t.ts";
 import { GitBranch01 } from "@untitledui/icons";
 import { useOrgRepoSyncs } from "@/hooks/use-org-repo-syncs";
-import { FolderCard, timeAgo } from "./cards";
+import { timeAgo } from "@/lib/format-time";
+import { FolderTile } from "./folder-tile";
 
 export function SyncedRepoFolders({
   onOpenDir,
@@ -26,14 +27,13 @@ export function SyncedRepoFolders({
   return (
     <>
       {(syncs.data ?? []).map((c) => (
-        <FolderCard
+        <FolderTile
           key={c.id}
           name={c.volume}
           glyph={GitBranch01}
           tone="system"
           readOnly
-          meta={`${c.repoOwner}/${c.repoName}`}
-          subtitle={
+          meta={
             c.lastSyncError
               ? t("library.syncedRepos.syncFailed")
               : c.lastSyncedAt

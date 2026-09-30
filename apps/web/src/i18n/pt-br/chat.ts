@@ -1,6 +1,30 @@
 import type { chat as chatEn } from "../en/chat.ts";
 
 export const chat = {
+  "chat.voice.title": "Conversa por voz",
+  "chat.voice.start": "Iniciar modo voz",
+  "chat.voice.idle": "Pronto",
+  "chat.voice.connecting": "Conectando…",
+  "chat.voice.listening": "Ouvindo",
+  "chat.voice.working": "Trabalhando no seu pedido. Pode continuar falando.",
+  "chat.voice.backgroundWork":
+    "O agente está trabalhando. Pode continuar falando.",
+  "chat.voice.speaking": "Falando",
+  "chat.voice.error": "Voz indisponível",
+  "chat.voice.muted": "Microfone silenciado",
+  "chat.voice.mute": "Silenciar microfone",
+  "chat.voice.unmute": "Ativar microfone",
+  "chat.voice.backToChat": "Voltar ao chat",
+  "chat.voice.stopWork": "Parar o trabalho do agente",
+  "chat.voice.retry": "Tentar novamente",
+  "chat.voice.permission":
+    "Permita o acesso ao microfone no navegador para usar o modo voz.",
+  "chat.voice.unavailable":
+    "Não foi possível iniciar o modo voz. Confira o acesso ao microfone e a configuração de voz da organização.",
+  "chat.voice.disconnected":
+    "A sessão de voz terminou. O chat e o trabalho do agente continuam disponíveis.",
+  "chat.voice.sendFailed":
+    "Não foi possível enviar ou concluir este pedido. Volte ao chat para conferir o estado dele.",
   "chat.input.taskMode": "Tarefa",
   "chat.input.startTask": "Iniciar tarefa",
   "chat.input.taskPlaceholder":

@@ -712,6 +712,8 @@ export const sandbox = {
   "sandbox.postEditor.slugLabel": "Slug",
   "sandbox.postEditor.slugPlaceholder": "meu-post",
   "sandbox.postEditor.valuePlaceholder": "valor",
+  "sandbox.postList.noMatches":
+    "Nenhum post corresponde à busca ou aos filtros.",
   "sandbox.postToolbar.allPosts": "Todos os posts",
   "sandbox.postToolbar.archiveSelected": "Arquivar selecionados",
   "sandbox.postToolbar.archiveSelectedPosts": "Arquivar posts selecionados",
@@ -724,6 +726,9 @@ export const sandbox = {
   "sandbox.postToolbar.filterBy": "Filtrar por",
   "sandbox.postToolbar.filterLabel": "Filtro",
   "sandbox.postToolbar.itemsSelected": "Selecionados: {count}",
+  "sandbox.postToolbar.clearSearch": "Limpar busca",
+  "sandbox.postToolbar.searchAriaLabel": "Buscar posts",
+  "sandbox.postToolbar.searchPlaceholder": "Buscar posts",
   "sandbox.postToolbar.selectAll": "Selecionar tudo",
   "sandbox.postToolbar.selectAllPosts": "Selecionar todos os posts",
   "sandbox.postToolbar.sortAZ": "A–Z",

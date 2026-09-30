@@ -41,7 +41,7 @@ import {
   SUPERSEDED_TERMINAL_CODE,
 } from "@decocms/sandbox/dispatch/error-codes";
 import type { PodTermination } from "@decocms/sandbox/provider";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import { isTransientStreamError } from "@/harnesses/decopilot/built-in-tools/subtask";
 import type { HarnessStreamInput } from "@/harnesses/lib/types";
 import {
@@ -60,6 +60,7 @@ import {
 } from "@/mcp-clients/virtual-mcp/mint-endpoint";
 import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
+import type { VirtualMCPEntity } from "@decocms/shared/sdk/types/virtual-mcp";
 import type { ConnectionEntity } from "@/tools/connection/schema";
 import { hasAdminRole } from "@decocms/shared/auth/roles";
 import { fetchRolePermissions } from "@/core/context-factory";
@@ -75,8 +76,9 @@ import {
   type RunStatusStreamBuffer,
 } from "@/api/routes/decopilot/run-status-stage";
 import {
-  getThreadGithubRepo,
-  syntheticBranchToGitRef,
+  getThreadRepository,
+  getCodingAgentProjectMetadata,
+  sandboxGitRef,
   threadBranch,
 } from "@/tools/sandbox/thread-repo";
 
@@ -288,27 +290,33 @@ export class SandboxDispatchClient {
    */
   private async resolveWorkspace(
     threadId: string,
+    agent: Promise<VirtualMCPEntity | null>,
   ): Promise<HarnessStreamInput["workspace"]> {
-    const repo = await getThreadGithubRepo(this.ctx, threadId);
+    const repo =
+      (await getThreadRepository(this.ctx, threadId)) ??
+      (await getCodingAgentProjectMetadata(this.ctx, this.virtualMcpId, agent))
+        ?.repository;
     if (!repo) {
-      return this.branch === threadBranch(threadId)
-        ? {
-            cwd: SANDBOX_REPO_CWD,
-            branch: syntheticBranchToGitRef(this.branch),
-          }
-        : { cwd: null };
+      if (this.branch !== threadBranch(threadId)) return { cwd: null };
+      // SANDBOX_START clones the agent's repo when the thread has none.
+      const agentRepo = (await agent)?.metadata?.repository ?? null;
+      return {
+        cwd: SANDBOX_REPO_CWD,
+        branch: await sandboxGitRef(this.ctx, this.branch, agentRepo),
+      };
     }
     return {
       cwd: SANDBOX_REPO_CWD,
       repo: {
         owner: repo.owner,
         name: repo.name,
-        connectedGithub: Boolean(repo.connectionId),
+        linked: Boolean(repo.repositoryId || repo.connectionId),
+        url: repo.url,
       },
       // The synthetic sandbox key is not a git ref; the daemon checks out its
       // derived branch, so that is the one the harness is standing on.
       branch: this.branch.startsWith("thread:")
-        ? syntheticBranchToGitRef(this.branch)
+        ? await sandboxGitRef(this.ctx, this.branch, repo)
         : this.branch,
     };
   }
@@ -337,8 +345,9 @@ export class SandboxDispatchClient {
     organization: { id: string; slug?: string; name?: string },
     threadId: string,
     dispatcherUserId: string,
+    agent: Promise<VirtualMCPEntity | null>,
   ): Promise<Pick<HarnessStreamInputWire, "mcp" | "orgMcps">> {
-    const candidates = await this.orgMcpConnections(organization);
+    const candidates = await this.orgMcpConnections(organization, agent);
     const grants = await this.dispatcherConnectionGrants(
       organization.id,
       dispatcherUserId,
@@ -449,18 +458,14 @@ export class SandboxDispatchClient {
    * so without them a Code Agent chat lost every tool the agent was configured
    * with — its GitHub MCP included.
    */
-  private async orgMcpConnections(organization: {
-    id: string;
-    slug?: string;
-  }): Promise<ConnectionEntity[]> {
+  private async orgMcpConnections(
+    organization: { id: string; slug?: string },
+    agentRead: Promise<VirtualMCPEntity | null>,
+  ): Promise<ConnectionEntity[]> {
     if (!organization.slug) return [];
     const [settings, agent] = await Promise.all([
       this.ctx.storage.organizationSettings.get(organization.id),
-      // Never throws the run: the synthetic super-agent has no row, and an
-      // unreadable one only costs this run its agent-attached tools.
-      this.ctx.storage.virtualMcps
-        .findById(this.virtualMcpId)
-        .catch(() => null),
+      agentRead,
     ]);
     const orgWide = orgFlagEnabled(settings?.flags, "coding_agent_org_mcps");
     const ownIds = new Set(
@@ -509,6 +514,12 @@ export class SandboxDispatchClient {
     const runEnv = mergeRunEnv(await resolveOrgRunEnv(this.ctx), modelEnv);
 
     const provider = await getAgentSandboxProvider(this.ctx);
+    // One read for both the agent's attached tools and the repo its sandbox
+    // clones. Never throws the run: the synthetic super-agent has no row, and an
+    // unreadable one only costs this run its agent-attached tools.
+    const agent = this.ctx.storage.virtualMcps
+      .findById(this.virtualMcpId)
+      .catch(() => null);
     const wireInput = {
       ...input,
       // Hosted Decopilot's in-process client ignores `mcp` and gets the
@@ -530,10 +541,15 @@ export class SandboxDispatchClient {
       //
       // The org's own MCP connections come alongside it (`orgMcps`), behind
       // the `coding_agent_org_mcps` flag — see `mcpForRun`.
-      ...(await this.mcpForRun(organization, input.threadId, input.user.id)),
+      ...(await this.mcpForRun(
+        organization,
+        input.threadId,
+        input.user.id,
+        agent,
+      )),
       // Hosted Decopilot mounts no working directory; this harness edits the
       // checkout the daemon prepared.
-      workspace: await this.resolveWorkspace(input.threadId),
+      workspace: await this.resolveWorkspace(input.threadId, agent),
     };
 
     // The daemon keys cancellation (`DELETE /_sandbox/runs/:runId`) by this id,
@@ -861,7 +877,7 @@ const PUSH_ENV_TIMEOUT_MS = 30_000;
  * the request body in an error message.
  */
 export async function pushSandboxEnv(
-  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest">,
+  provider: Pick<SandboxProvider, "proxyDaemonRequest">,
   handle: string,
   env: Record<string, string | null>,
 ): Promise<void> {
@@ -891,11 +907,18 @@ export async function pushSandboxEnv(
 
 /**
  * `signal` is an AbortSignal and the run context is attached out-of-band; both
- * are dropped here. Everything else on `HarnessStreamInput` is the wire shape.
+ * are dropped here. The runner only consumes the workspace directory and branch;
+ * repository facts belong to the in-process prompt, not the daemon contract.
  */
 function toWireInput(input: HarnessStreamInput): unknown {
-  const { signal: _signal, ...wire } = input;
-  return wire;
+  const { signal: _signal, workspace, ...wire } = input;
+  return {
+    ...wire,
+    workspace:
+      workspace.cwd === null
+        ? { cwd: null }
+        : { cwd: workspace.cwd, branch: workspace.branch },
+  };
 }
 
 /**
@@ -913,7 +936,7 @@ const TTL_RENEW_MS = 5 * 60_000;
  * protecting.
  */
 function renewWhileStreaming(
-  provider: Pick<AgentSandboxProvider, "renewTtl">,
+  provider: Pick<SandboxProvider, "renewTtl">,
   handle: string,
 ): () => void {
   const renew = () =>
@@ -934,7 +957,7 @@ function renewWhileStreaming(
 }
 
 async function* dispatchToDaemon(args: {
-  provider: Pick<AgentSandboxProvider, "proxyDaemonRequest" | "renewTtl">;
+  provider: Pick<SandboxProvider, "proxyDaemonRequest" | "renewTtl">;
   handle: string;
   runId: string;
   input: HarnessStreamInput;

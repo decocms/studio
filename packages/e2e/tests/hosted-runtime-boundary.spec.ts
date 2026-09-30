@@ -692,7 +692,7 @@ test.describe("hosted runtime boundary", () => {
             status: "active",
             pinned: false,
             metadata: {
-              githubRepo: {
+              repository: {
                 url: "https://github.com/example/native-boundary",
                 owner: "example",
                 name: "native-boundary",

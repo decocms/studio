@@ -133,12 +133,7 @@ func validateWorkspace(raw json.RawMessage) string {
 		return "workspace: required"
 	}
 	var ws struct {
-		Cwd  *string `json:"cwd"`
-		Repo *struct {
-			Owner           *string `json:"owner"`
-			Name            *string `json:"name"`
-			ConnectedGithub *bool   `json:"connectedGithub"`
-		} `json:"repo"`
+		Cwd *string `json:"cwd"`
 	}
 	var probe map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &probe); err != nil || probe == nil {
@@ -155,13 +150,6 @@ func validateWorkspace(raw json.RawMessage) string {
 	}
 	if *ws.Cwd != "/repo" {
 		return "workspace.cwd: must be \"/repo\" or null"
-	}
-	// `repo` is optional: a task run on the bare `thread:<id>` key gets a
-	// repo-less sandbox and clones into /repo mid-run via TASK_ADD_REPO. When
-	// present it must be complete.
-	if ws.Repo != nil &&
-		(ws.Repo.Owner == nil || ws.Repo.Name == nil || ws.Repo.ConnectedGithub == nil) {
-		return "workspace.repo: owner, name and connectedGithub are required"
 	}
 	if _, ok := probe["branch"]; !ok {
 		return "workspace.branch: required"

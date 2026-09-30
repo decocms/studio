@@ -364,7 +364,7 @@ export async function triggerReportsRun(
     /** The repository, as an identity any provider can carry. */
     repository?: ReportsRepositoryRef;
     /** The legacy github.com `owner/name`, for the deprecation window. */
-    githubRepo?: string;
+    githubRepositoryPath?: string;
   },
   options: ReportsAuthOptions = {},
 ): Promise<{ triggered: boolean; reason?: string }> {
@@ -390,7 +390,9 @@ export async function triggerReportsRun(
     body: JSON.stringify({
       org_id: input.orgId,
       ...(input.repository ? { repository: toWire(input.repository) } : {}),
-      ...(input.githubRepo ? { github_repo: input.githubRepo } : {}),
+      ...(input.githubRepositoryPath
+        ? { github_repo: input.githubRepositoryPath }
+        : {}),
     }),
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
@@ -410,23 +412,22 @@ export async function triggerReportsRun(
 class TransientStatusResponseError extends Error {}
 
 /**
- * A GET is always safe to retry — unlike the /upgrade, /bindings, and /run
- * POSTs above (each idempotent only because the callee de-dupes on its own
- * side, not because a retry can't double an effect), this call has no side
- * effect at all. So a single flaky 5xx from Reports no longer
- * fails the whole "Conectado" status read.
+ * Retries a transient (5xx / 429) status, so one flaky response from Reports
+ * doesn't fail the call. Only for calls that are safe to repeat: the status
+ * GET has no side effect, and /unlink is a no-op once the org is off the site.
+ * The /upgrade, /bindings and /run POSTs above stay single-shot. Each is
+ * idempotent only because the callee de-dupes on its own side.
  */
-async function fetchStatusWithRetry(
+async function fetchWithRetry(
   fetchImpl: FetchImpl,
   url: string,
-  apiKey: string,
+  init: RequestInit,
 ): Promise<Response> {
   try {
     return await retry(
       async () => {
         const response = await fetchImpl(url, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${apiKey}` },
+          ...init,
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (response.status >= 500 || response.status === 429) {
@@ -492,7 +493,10 @@ export async function fetchReportsConnectionStatus(
     domain,
   )}/connections/status?org_id=${encodeURIComponent(input.orgId)}`;
 
-  const response = await fetchStatusWithRetry(fetchImpl, url, apiKey);
+  const response = await fetchWithRetry(fetchImpl, url, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
 
   if (response.status === 404 || response.status === 409) {
     return { providers: {}, claimed: false };
@@ -507,4 +511,47 @@ export async function fetchReportsConnectionStatus(
     providers: parsed.success ? parsed.data.providers : {},
     claimed: true,
   };
+}
+
+const UnlinkResponseSchema = z.object({
+  unlinked: z.boolean(),
+  reason: z.string().optional(),
+});
+
+/**
+ * Tell Reports this org no longer holds the site. The org id lets the engine
+ * refuse when another org has claimed the site since. Throws on any non-2xx,
+ * including the 404 of an engine that predates /unlink.
+ */
+export async function unlinkReportsSite(
+  input: { siteUrl: string; orgId: string },
+  options: ReportsAuthOptions = {},
+): Promise<z.infer<typeof UnlinkResponseSchema>> {
+  const baseUrl = resolveBaseUrl(options);
+  const apiKey = resolveApiKey(options);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const domain = domainFromSiteUrl(input.siteUrl);
+  const url = `${baseUrl}/api/v2/internal/diagnostics/${encodeURIComponent(
+    domain,
+  )}/unlink`;
+
+  const response = await fetchWithRetry(fetchImpl, url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ org_id: input.orgId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Reports unlink failed with status ${response.status}.`);
+  }
+  const parsed = UnlinkResponseSchema.safeParse(
+    await parseJsonResponse(response),
+  );
+  if (!parsed.success) {
+    throw new Error("Reports unlink response did not say whether it unlinked.");
+  }
+  return parsed.data;
 }

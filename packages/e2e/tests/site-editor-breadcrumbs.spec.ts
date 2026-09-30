@@ -8,9 +8,7 @@ import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { startPreviewSite } from "../fixtures/preview-site";
 import { expect, test } from "../fixtures/test";
 
-// RoutePageHeader renders nothing outside the compact layout, so the whole
-// composed trail this file asserts on only exists with the preference on.
-test.use({ compactPageLayout: true });
+test.use({ newBlocksEditor: true });
 
 async function createEditor(
   api: APIRequestContext,
@@ -122,8 +120,8 @@ async function createEditor(
   };
 }
 
-test.describe("Site Editor blocks editor, classic layout", () => {
-  test.use({ compactPageLayout: false });
+test.describe("Site Editor classic blocks editor", () => {
+  test.use({ newBlocksEditor: false });
 
   test("names the page once, in its own field", async ({
     authedPage: { page, orgSlug },
@@ -143,17 +141,19 @@ test.describe("Site Editor blocks editor, classic layout", () => {
       await expect(
         blocks.getByPlaceholder("Page name", { exact: true }),
       ).toHaveValue("Home", { timeout: 60_000 });
-      // Classic renders the trail in place rather than contributing it to a
-      // page header, so at the page root a lone crumb would repeat the name
-      // the panel already shows in its own field.
-      await expect(page.getByTestId("page-header")).toHaveCount(0);
+      // The classic editor keeps its page-name field. The application header
+      // is shared by both editor modes, with no duplicate trail in the panel.
+      await expect(page.getByTestId("page-header")).toBeVisible();
       await expect(blocks.getByRole("navigation")).toHaveCount(0);
       await expect(blocks.getByText("Home", { exact: true })).toHaveCount(0);
-      // Drilling into a section gives the trail something to say, so it
-      // appears — and it must not stretch down the panel.
+      // Selecting a section contributes its trail to the application header.
       await blocks.getByRole("button", { name: /HeroSlideShow/ }).click();
-      const trail = blocks.getByRole("navigation");
+      const trail = page.getByTestId("page-header").getByRole("navigation");
       await expect(trail).toHaveCount(1);
+      await expect(
+        trail.getByRole("heading", { name: "HeroSlideShow", exact: true }),
+      ).toBeVisible();
+      await expect(blocks.getByRole("navigation")).toHaveCount(0);
       const trailBox = (await trail.boundingBox())!;
       expect(trailBox.height).toBeLessThan(80);
     } finally {

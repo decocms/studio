@@ -28,6 +28,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { VoiceTranscript } from "@decocms/shared/voice";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -108,6 +109,7 @@ function statusToString(s: ConnStatus): ChatStreamContextValue["status"] {
 }
 
 import { useChatNavigation } from "./hooks/use-chat-navigation";
+import { useOrgFlag } from "@/hooks/use-organization-settings";
 import { useThreadActions, useThreadManager } from "./store/hooks";
 import { derivePartsFromTiptapDoc } from "./derive-parts";
 import type { VirtualMCPInfo } from "./select-virtual-mcp";
@@ -147,6 +149,12 @@ import {
 // ============================================================================
 
 export interface ChatStreamContextValue {
+  sendVoiceMessage?: (
+    messageId: string,
+    text: string,
+    transcript?: VoiceTranscript,
+  ) => Promise<boolean>;
+  voiceContext?: string;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
   sendMessage: (
@@ -858,6 +866,7 @@ export function ActiveTaskProvider({
 }: PropsWithChildren<{ taskId: string }>) {
   const t = useT();
   const isDesktopApp = useIsDesktopApp();
+  const voiceEnabled = useOrgFlag("voice_mode");
   const { virtualMcpId, activeTask, currentBranch } = useChatTask();
   const hostedRuntimeBlocked = shouldBlockHostedRuntime({
     isDesktopApp,
@@ -1055,7 +1064,7 @@ export function ActiveTaskProvider({
             chunk as unknown as {
               data: {
                 branch?: string | null;
-                githubRepo?: unknown;
+                repository?: unknown;
                 sandboxMap?: unknown;
               };
             }
@@ -1069,7 +1078,7 @@ export function ActiveTaskProvider({
               ...(data?.branch ? { branch: data.branch } : {}),
               metadata: {
                 ...(current?.metadata ?? {}),
-                ...(data?.githubRepo ? { githubRepo: data.githubRepo } : {}),
+                ...(data?.repository ? { repository: data.repository } : {}),
                 ...(data?.sandboxMap ? { sandboxMap: data.sandboxMap } : {}),
               } as Task["metadata"],
             });
@@ -1217,7 +1226,11 @@ export function ActiveTaskProvider({
   // rethrows) and resolves `false` on failure so edit-flow callers can react;
   // the immediate-submit branch still RETHROWS on failure — unchanged
   // plain-send behavior (sendMessageInternal ignores the return value).
-  async function dispatchUserMessage(message: ChatMessage): Promise<boolean> {
+  async function dispatchUserMessage(
+    message: ChatMessage,
+    voiceMode = false,
+    voiceTranscript?: VoiceTranscript,
+  ): Promise<boolean> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
     const capturedVirtualMcpId = virtualMcpId;
@@ -1288,6 +1301,8 @@ export function ActiveTaskProvider({
     }
 
     const requestOptions: RequestOptions = {
+      ...(voiceMode || voiceEnabled ? { voiceMode } : {}),
+      ...(voiceMode && voiceTranscript ? { voiceTranscript } : {}),
       tier: activeTier,
       mode: modeToSend,
       toolApprovalLevel:
@@ -1531,6 +1546,37 @@ export function ActiveTaskProvider({
   // oxlint-enable react/set-state-in-effect
 
   const streamValue: ChatStreamContextValue = {
+    voiceContext: voiceEnabled
+      ? [
+          contextPrompt,
+          ...Object.entries(appContexts).map(
+            ([source, text]) => `${source}: ${text}`,
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : undefined,
+    sendVoiceMessage: async (messageId, text, transcript) => {
+      if (sendInFlight.has(taskId)) return false;
+      sendInFlight.add(taskId);
+      setChatError(null);
+      return dispatchUserMessage(
+        {
+          id: messageId,
+          role: "user",
+          parts: [{ type: "text", text }],
+          metadata: {
+            created_at: new Date().toISOString(),
+            user: {
+              name: user?.name ?? "you",
+              avatar: user?.image ?? undefined,
+            },
+          },
+        },
+        true,
+        transcript,
+      );
+    },
     messages,
     status: statusToString(connStatus),
     sendMessage: sendMessagePublic,

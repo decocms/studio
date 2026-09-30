@@ -36,7 +36,7 @@ const ConfigurationStateSchema = z
  */
 export function resolveRunRepository(configurationState: unknown): {
   repository: ReportsRepositoryRef | undefined;
-  githubRepo: string | undefined;
+  githubRepositoryPath: string | undefined;
 } {
   const parsed = ConfigurationStateSchema.safeParse(configurationState);
   const state = parsed.success ? parsed.data : undefined;
@@ -52,7 +52,7 @@ export function resolveRunRepository(configurationState: unknown): {
 
   return {
     repository: repository ?? undefined,
-    githubRepo:
+    githubRepositoryPath:
       (repository ? legacyGithubRepo(repository) : legacy) ?? undefined,
   };
 }
@@ -60,9 +60,9 @@ export function resolveRunRepository(configurationState: unknown): {
 export const REPORTS_RUN = defineTool({
   name: "REPORTS_RUN",
   description:
-    "Trigger the Reports diagnostic run for the current organization's store. Call once the data sources (GA4/GSC/VTEX) are connected — this run resolves credentials and produces the enriched report.",
+    "Trigger the Deco Score run for the current organization's store. Call once the data sources (GA4/GSC/VTEX) are connected — this run resolves credentials and produces the enriched Deco Score.",
   annotations: {
-    title: "Run Reports",
+    title: "Run Deco Score",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
@@ -115,7 +115,7 @@ export const REPORTS_RUN = defineTool({
       organization.id,
     );
 
-    const { repository, githubRepo } = resolveRunRepository(
+    const { repository, githubRepositoryPath } = resolveRunRepository(
       cdConnection?.configuration_state,
     );
 
@@ -123,7 +123,7 @@ export const REPORTS_RUN = defineTool({
       siteUrl: normalized.value,
       orgId: organization.id,
       repository,
-      githubRepo,
+      githubRepositoryPath,
     });
   },
 });

@@ -35,9 +35,9 @@ const ReportsBindOutputSchema = z.discriminatedUnion("ok", [
 export const REPORTS_BIND = defineTool({
   name: "REPORTS_BIND",
   description:
-    "Bind a GA4 property or GSC site to the org's store via the shared service account (consent-free lane). The client grants deco-reader@… access to the resource and provides its id; Reports verifies the resource belongs to this domain before persisting. Returns ok:false with an actionable pt-BR detail when verification fails or the resource is already bound elsewhere.",
+    "Bind a GA4 property or GSC site to the org's store via the shared service account (consent-free lane). The client grants deco-reader@… access to the resource and provides its id; Deco Score verifies the resource belongs to this domain before persisting. Returns ok:false with an actionable pt-BR detail when verification fails or the resource is already bound elsewhere.",
   annotations: {
-    title: "Bind Reports Data Source",
+    title: "Bind Deco Score Data Source",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

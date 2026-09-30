@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { File02, Globe01, LayoutAlt04, Lightning01 } from "@untitledui/icons";
+import {
+  File02,
+  Globe01,
+  Heart,
+  LayoutAlt04,
+  Lightning01,
+} from "@untitledui/icons";
 import { resolveTabIcon, SYSTEM_TAB_ICONS } from "./resolve-tab-icon";
 
 type TestConn = { id: string; icon: string | null };
@@ -26,6 +32,45 @@ describe("code system icon", () => {
 });
 
 describe("resolveTabIcon", () => {
+  test.each(["icon://Heart", "icon://Heart?color=emerald"])(
+    "resolves a pinned app's %s to a component without a connection lookup",
+    (iconUrl) => {
+      expect(
+        resolveTabIcon({
+          tabId: "app:connection:WISHLIST_DASHBOARD",
+          kind: "expanded",
+          iconUrl,
+          connections: [],
+        }),
+      ).toEqual({ kind: "component", Component: Heart });
+    },
+  );
+
+  test.each([null, undefined, "", "icon://", "icon://UnknownIcon"])(
+    "falls back for an absent or unknown pinned app icon: %s",
+    (iconUrl) => {
+      expect(
+        resolveTabIcon({
+          tabId: "app:connection:APP_DASHBOARD",
+          kind: "expanded",
+          iconUrl,
+          connections: [],
+        }),
+      ).toEqual({ kind: "fallback" });
+    },
+  );
+
+  test("preserves a pinned app's image URL without a connection lookup", () => {
+    expect(
+      resolveTabIcon({
+        tabId: "app:connection:APP_DASHBOARD",
+        kind: "expanded",
+        iconUrl: "https://example.com/icon.png",
+        connections: [],
+      }),
+    ).toEqual({ kind: "url", src: "https://example.com/icon.png" });
+  });
+
   const conns: TestConn[] = [
     { id: "app-a", icon: "https://example.com/a.png" },
     { id: "app-b", icon: null },

@@ -9,6 +9,7 @@ export type {
   EnsureOptions,
   EnsureRepo,
   PodTermination,
+  SandboxProviderKind,
   SandboxPurpose,
   Sandbox,
   SandboxId,
@@ -25,4 +26,6 @@ export type {
   RunnerStateStoreOps,
 } from "./state-store";
 export { composeSandboxRef } from "./sandbox-ref";
+export { sandboxProviderOfError } from "./shared/provider-tag";
+export { RUNNER_KIND } from "./shared/proxy-metrics";
 export { createSandboxFsHooks } from "./sandbox-fs-hooks";

@@ -125,7 +125,7 @@ export const reportsOnboarding = {
   "reportsOnboarding.saBinding.remediation.noMatch.gsc.1":
     "Confira se você escolheu a propriedade do Search Console desta loja.",
   "reportsOnboarding.saBinding.remediation.noMatch.gsc.2":
-    "O endereço precisa cobrir o mesmo domínio do diagnóstico.",
+    "O endereço precisa cobrir o mesmo domínio do Deco Score.",
   "reportsOnboarding.saBinding.remediation.alreadyBound.title":
     "Este recurso já está vinculado a outra loja.",
   "reportsOnboarding.saBinding.remediation.alreadyBound.1":

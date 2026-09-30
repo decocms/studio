@@ -15,7 +15,7 @@ import {
 import {
   normalizeThreadForResponse,
   requireOwnedVirtualMcp,
-  type GithubRepoMeta,
+  type RepositoryMetadata,
 } from "./helpers";
 import {
   ThreadEntitySchema,
@@ -94,11 +94,12 @@ export const COLLECTION_THREADS_UPDATE = defineTool({
           effectiveVirtualMcpId,
           organization.id,
         ));
-      const githubRepo = (vmcp?.metadata as GithubRepoMeta | null | undefined)
-        ?.githubRepo;
-      if (githubRepo) {
+      const repository = (
+        vmcp?.metadata as RepositoryMetadata | null | undefined
+      )?.repository;
+      if (repository) {
         throw new Error(
-          "Cannot set branch=null on a github-linked thread (vMCP has githubRepo)",
+          "Cannot set branch=null on a repository-linked thread (vMCP has repository)",
         );
       }
     }

@@ -11,9 +11,11 @@
 import {
   collectMentionAccountIds,
   type JiraClient,
+  type JiraUser,
   jiraBodyToText,
   JiraUserDirectory,
 } from "./client";
+import { mentionMarkdown } from "./wiki-markdown";
 
 export interface IssueForPrompt {
   /** Jira's own issue id. The stable identity a link is keyed by — an issue's
@@ -23,6 +25,9 @@ export interface IssueForPrompt {
   url: string;
   summary: string;
   status: string;
+  /** People on the issue, rendered as mentions a run can copy. */
+  reporter: string | null;
+  assignee: string | null;
   description: string;
   comments: Array<{ author: string; created: string; body: string }>;
   attachments: Array<{ id: string; filename: string; size: number }>;
@@ -70,9 +75,11 @@ export async function loadIssueForPrompt(
     url: issueUrl(siteUrl, issue.key),
     summary: issue.fields.summary,
     status: issue.fields.status.name,
+    reporter: person(issue.fields.reporter),
+    assignee: person(issue.fields.assignee),
     description: jiraBodyToText(issue.fields.description, names).trim(),
     comments: comments.map((c) => ({
-      author: c.author?.displayName ?? "Unknown",
+      author: person(c.author) ?? "Unknown",
       created: c.created,
       body: jiraBodyToText(c.body, names).trim(),
     })),
@@ -85,6 +92,10 @@ export async function loadIssueForPrompt(
   };
 }
 
+function person(user: JiraUser | null | undefined): string | null {
+  return user ? mentionMarkdown(user.accountId, user.displayName) : null;
+}
+
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}\n\n[… truncated]` : text;
 }
@@ -95,10 +106,34 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function renderIssueForPrompt(issue: IssueForPrompt): string {
+/** The status change that started a run — how a rule's run learns where the
+ *  card came from and who sent it. */
+export interface StatusMove {
+  toStatus: string;
+  fromStatus: string | null;
+  movedBy: JiraUser | null;
+  movedAt: string | null;
+}
+
+function renderMove(move: StatusMove): string {
+  const parts = [`Moved into ${move.toStatus}`];
+  if (move.fromStatus) parts.push(`from ${move.fromStatus}`);
+  const by = person(move.movedBy);
+  if (by) parts.push(`by ${by}`);
+  if (move.movedAt) parts.push(`at ${move.movedAt}`);
+  return `${parts.join(" ")} — the move that started this run.`;
+}
+
+export function renderIssueForPrompt(
+  issue: IssueForPrompt,
+  move?: StatusMove,
+): string {
   const lines: string[] = [
     `# ${issue.key}: ${issue.summary}`,
     `Status: ${issue.status}`,
+    ...(move ? [renderMove(move)] : []),
+    ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
+    ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
     `Link: ${issue.url}`,
     "",
     "## Description",
@@ -126,16 +161,27 @@ export function renderIssueForPrompt(issue: IssueForPrompt): string {
   }
   if (issue.comments.length > 0) {
     lines.push("", "## Comments");
+    // The budget goes to the NEWEST comments: the latest review verdict or a
+    // client's rejection is what a run acts on, and it is the one a long
+    // thread of earlier handoffs would otherwise push out.
+    const kept: typeof issue.comments = [];
     let budget = MAX_COMMENTS_CHARS;
-    for (const [index, c] of issue.comments.entries()) {
-      const body = clip(c.body, Math.max(0, budget));
-      lines.push(`**${c.author}** (${c.created}):`, body, "");
+    for (let i = issue.comments.length - 1; i >= 0 && budget > 0; i--) {
+      const c = issue.comments[i];
+      if (!c) continue;
+      const body = clip(c.body, budget);
+      kept.unshift({ ...c, body });
       budget -= body.length;
-      const isLast = index === issue.comments.length - 1;
-      if (budget <= 0 && !isLast) {
-        lines.push("[… older comments omitted]");
-        break;
-      }
+    }
+    const omitted = issue.comments.length - kept.length;
+    if (omitted > 0) {
+      lines.push(
+        `[… ${omitted} older comment${omitted === 1 ? "" : "s"} omitted]`,
+        "",
+      );
+    }
+    for (const c of kept) {
+      lines.push(`**${c.author}** (${c.created}):`, c.body, "");
     }
   }
   return lines.join("\n").trim();
@@ -164,6 +210,8 @@ export function renderIssuesForPrompt(
       "",
       `## ${issue.key}: ${issue.summary}`,
       `Status: ${issue.status}`,
+      ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
+      ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
       `Link: ${issue.url}`,
     );
     if (issue.links.length > 0) {

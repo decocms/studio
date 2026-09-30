@@ -399,7 +399,7 @@ export function PathParamPickerChip({
         title={t("sandbox.pathParamPickerChip.buttonTitle", {
           paramLabel,
         })}
-        className="max-w-64 shrink-0 cursor-pointer truncate classic:rounded-sm compact:rounded-lg bg-special/15 px-1 py-0.5 text-[12px] text-special hover:bg-special/25"
+        className="max-w-64 shrink-0 cursor-pointer truncate rounded-lg bg-special/15 px-1 py-0.5 text-[12px] text-special hover:bg-special/25"
         onClick={(e) => {
           e.stopPropagation();
           handleOpenChange(true);

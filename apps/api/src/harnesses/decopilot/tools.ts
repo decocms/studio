@@ -20,10 +20,10 @@
  */
 
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { GithubRepo } from "@decocms/shared/sdk";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import type { StudioContext } from "@/core/studio-context";
 import {
-  getThreadGithubRepo,
+  getThreadRepository,
   getThreadPinnedRef,
   resolveSandboxBranch,
 } from "@/tools/sandbox/thread-repo";
@@ -291,24 +291,24 @@ export async function assembleDecopilotTools(
     // provisioned lazily on the first tool call inside getBuiltInTools.
     //
     // Two keying regimes:
-    // - GitHub-linked agents (githubRepo set) need per-branch isolation
+    // - repository-linked agents (repository set) need per-branch isolation
     //   so PR/branch workflows don't trample each other. Falls back to a
     //   `thread:<taskId>` synthetic branch when no explicit branch is
     //   supplied yet.
-    // - Ephemeral agents (no githubRepo) share one VM per (user, agent)
+    // - Ephemeral agents (no repository) share one VM per (user, agent)
     //   across threads. The skills work is mostly read-heavy and
     //   sharing a sandbox cuts the VM count linearly with thread count.
     //   Tradeoff: concurrent threads share /app, /home/sandbox, /tmp —
     //   parallel writes to overlapping filenames can race. Fine for
     //   reads and scoped outputs; revisit if it bites.
     const vmMetadata = runContext.virtualMcp.metadata as {
-      githubRepo?: GithubRepo | null;
+      repository?: RepositoryBinding | null;
     };
     // A thread-scoped repo (set by `load_repo`, super-agent-only) wins: it's the
     // only place a repo can persist for the synthetic Decopilot agent. Threads of
     // real repo-agents never carry one. When present it pins the thread to a
     // dedicated `thread:<id>` sandbox branch (not the shared "ephemeral" one).
-    const threadRepo = await getThreadGithubRepo(ctx, extras.threadId);
+    const threadRepo = await getThreadRepository(ctx, extras.threadId);
     // Must be read here too, not just in `resolveSandboxBranchForThread`: this
     // derivation and the dispatch path's have to agree exactly, and a pin seen
     // by only one of them would provision a second pod for the same thread.
@@ -324,7 +324,7 @@ export async function assembleDecopilotTools(
           branch: resolveSandboxBranch({
             threadId: extras.threadId,
             threadRepo,
-            agentRepo: vmMetadata.githubRepo,
+            agentRepo: vmMetadata.repository,
             runBranch: runContext.branch,
             pinnedRef,
           }),
@@ -360,7 +360,7 @@ export async function assembleDecopilotTools(
         htmlArtifactBuffer: extras.htmlArtifactBuffer,
         taskId: extras.threadId,
         agentId: input.agent.id,
-        isCodeProject: Boolean(vmMetadata.githubRepo?.url || threadRepo),
+        isCodeProject: Boolean(vmMetadata.repository?.url || threadRepo),
         onChildUsage: extras.onChildUsage,
         backgroundDispatcher: extras.backgroundDispatcher,
       },

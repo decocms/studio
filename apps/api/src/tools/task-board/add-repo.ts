@@ -20,6 +20,8 @@
  * bare key this tool used to assume) misses the pod the agent loop is in.
  */
 
+import { sameRepositoryBinding } from "@decocms/shared/repository-binding";
+import type { RepositoryBinding } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { defineTool } from "@/core/define-tool";
 import {
@@ -30,7 +32,7 @@ import {
 } from "@/core/studio-context";
 import {
   cloneInfoForRepository,
-  findRepositoryForLegacyBinding,
+  findRepositoryForBinding,
   repositoryUsesStudioCredentials,
 } from "@/git-providers";
 import {
@@ -44,15 +46,17 @@ import {
   ensureGithubCloneToken,
 } from "@/shared/github-clone-info";
 import { resolveSubmoduleCredentials } from "@/tools/sandbox/resolve-submodule-creds";
-import { resolveVm } from "@/tools/sandbox/sandbox-map";
+import { readSandboxMap, resolveVm } from "@/tools/sandbox/sandbox-map";
 import {
+  flatSandboxRef,
   getThreadSandboxMap,
+  getCodingAgentProjectMetadata,
   resolveSandboxBranchForThread,
   resolveSandboxUserId,
   syntheticBranchToGitRef,
 } from "@/tools/sandbox/thread-repo";
 import { retry, sleep } from "@decocms/shared/std";
-import type { AgentSandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
+import type { SandboxProvider } from "@decocms/sandbox/provider/agent-sandbox";
 import {
   secondaryRepoDirNames,
   secondaryRepoDirName,
@@ -95,14 +99,26 @@ async function waitForSandboxRecord(
   threadId: string,
   sandboxUserId: string,
   branch: string,
+  projectId?: string | null,
 ): Promise<ReturnType<typeof resolveVm>> {
   return retry(
     async () => {
-      const record = resolveVm(
+      const threadRecord = resolveVm(
         await getThreadSandboxMap(ctx, threadId),
         sandboxUserId,
         branch,
       );
+      const record =
+        threadRecord ??
+        (projectId
+          ? resolveVm(
+              readSandboxMap(
+                await getCodingAgentProjectMetadata(ctx, projectId),
+              ),
+              sandboxUserId,
+              branch,
+            )
+          : null);
       if (!record) throw new Error("sandbox record not written yet");
       return record;
     },
@@ -139,7 +155,7 @@ const CLONE_MAX_CONSECUTIVE_FAILURES = 5;
  *
  * Nothing else bounds `TASK_ADD_REPO`: the model can call it once per repo the
  * org has imported, and each call clones into the pod and appends to the
- * thread's `githubRepos` list forever (`appendThreadGithubRepo` never
+ * thread's `additionalRepositories` list forever (`appendThreadRepository` never
  * shrinks it). An org with a large connected-repo catalog would otherwise let
  * one run pile up an unbounded number of pod checkouts and an unbounded
  * `git.repositories` config payload pushed to the daemon on every add.
@@ -153,20 +169,18 @@ export const MAX_SECONDARY_REPOS = 20;
  * fills the cap.
  */
 export function secondaryRepoCapExceeded(
-  existing: { owner: string; name: string }[],
-  candidate: { owner: string; name: string },
+  existing: Pick<RepositoryBinding, "url" | "repositoryId">[],
+  candidate: Pick<RepositoryBinding, "url" | "repositoryId">,
   cap = MAX_SECONDARY_REPOS,
 ): boolean {
-  const key = (r: { owner: string; name: string }) =>
-    `${r.owner}/${r.name}`.toLowerCase();
-  const candidateKey = key(candidate);
-  if (existing.some((r) => key(r) === candidateKey)) return false;
+  if (existing.some((repo) => sameRepositoryBinding(repo, candidate)))
+    return false;
   return existing.length >= cap;
 }
 
 /** One bash command in the run's pod. Throws on a non-2xx from the daemon. */
 async function podBash(
-  provider: AgentSandboxProvider,
+  provider: SandboxProvider,
   handle: string,
   threadId: string,
   command: string,
@@ -390,6 +404,7 @@ async function secondaryRepoConfigs(
   ctx: StudioContext,
   organizationId: string,
   repos: {
+    url: string;
     owner: string;
     name: string;
     connectionId?: string;
@@ -407,7 +422,7 @@ async function secondaryRepoConfigs(
   // Independent per-repo credential mints — run concurrently, not in series.
   const settled = await Promise.all(
     repos.map(async (repo, i) => {
-      const repository = await findRepositoryForLegacyBinding(
+      const repository = await findRepositoryForBinding(
         ctx.storage,
         organizationId,
         repo,
@@ -448,8 +463,8 @@ export const TASK_ADD_REPO = defineTool({
   name: "TASK_ADD_REPO",
   description:
     "Clone one of this organization's repositories into your working directory. " +
-    "Your working directory is EMPTY until you call this — do not look for " +
-    "files, and do not run git, before it returns. Call it once, with the " +
+    "If your workspace already names a repository, use that checkout directly. " +
+    "For a workspace without a repository, call this once with the " +
     "repository the task is about; it waits for the checkout and returns the " +
     "repository root listing, so you can start reading files immediately after. " +
     "`git` and the repository's CLI (`gh` for GitHub, `glab` for GitLab; Bitbucket has " +
@@ -510,6 +525,9 @@ export const TASK_ADD_REPO = defineTool({
 
     const thread = await ctx.storage.threads.get(threadId);
     if (!thread) throw new Error(`Thread not found: ${threadId}`);
+    const project = thread.metadata?.repository
+      ? null
+      : await getCodingAgentProjectMetadata(ctx, thread.virtual_mcp_id);
 
     /**
      * The sandbox key, from the one derivation every sandbox consumer shares —
@@ -532,14 +550,15 @@ export const TASK_ADD_REPO = defineTool({
       // in this column does not match the bare key, so it falls through to the
       // same derivation as before.
       runBranch: thread.branch,
+      agentRepo: project?.repository,
     });
     const sandboxUserId = await resolveSandboxUserId(ctx, branch, userId);
-    const provider = await getAgentSandboxProvider(ctx);
     const record = await waitForSandboxRecord(
       ctx,
       threadId,
       sandboxUserId,
       branch,
+      project?.repository ? thread.virtual_mcp_id : null,
     );
     if (!record) {
       throw new Error(
@@ -548,30 +567,27 @@ export const TASK_ADD_REPO = defineTool({
       );
     }
 
-    const githubRepo = (
-      thread.metadata as {
-        githubRepo?: { owner?: string; name?: string };
-      } | null
-    )?.githubRepo;
+    const repository =
+      (
+        thread.metadata as {
+          repository?: RepositoryBinding;
+        } | null
+      )?.repository ?? project?.repository;
     const existingSecondaries =
       (
         thread.metadata as {
-          githubRepos?: { owner: string; name: string }[];
+          additionalRepositories?: RepositoryBinding[];
         } | null
-      )?.githubRepos ?? [];
+      )?.additionalRepositories ?? [];
 
+    const candidate = { url: repo.webUrl, repositoryId: repo.repository?.id };
     const isPrimaryRepo =
-      githubRepo &&
-      githubRepo.owner === repo.owner &&
-      githubRepo.name?.toLowerCase() === repo.name.toLowerCase();
+      repository && sameRepositoryBinding(repository, candidate);
 
     if (
-      githubRepo &&
+      repository &&
       (isPrimaryRepo ||
-        secondaryRepoCapExceeded(existingSecondaries, {
-          owner: repo.owner,
-          name: repo.name,
-        }))
+        secondaryRepoCapExceeded(existingSecondaries, candidate))
     ) {
       return {
         success: false,
@@ -587,6 +603,7 @@ export const TASK_ADD_REPO = defineTool({
     // Fresh credential BEFORE anything is written: a clone URL is only useful
     // with a live token behind it, and this is the failure worth reporting
     // as "could not add the repo" rather than half-binding one.
+    const provider = await getAgentSandboxProvider(ctx);
     const { cloneUrl, gitUserName, gitUserEmail } = await cloneInfoForChoice(
       ctx,
       organization.id,
@@ -607,17 +624,17 @@ export const TASK_ADD_REPO = defineTool({
     // the shutdown git sync, a re-provision's credential refresh, the board's
     // PR extraction — so it has to be persisted, not just handed to the daemon.
     //
-    // The FIRST repo is the primary: `githubRepo` is what drives the sandbox's
+    // The FIRST repo is the primary: `repository` is what drives the sandbox's
     // package-manager probe, dev server and preview, and a second call must not
     // move that out from under a running dev server. Later ones accumulate in
-    // `githubRepos` and land as secondary checkouts.
-    const isPrimary = !githubRepo;
+    // `additionalRepositories` and land as secondary checkouts.
+    const isPrimary = !repository;
     const secondaries = isPrimary
       ? []
-      : await ctx.storage.threads.appendThreadGithubRepo(threadId, bound);
+      : await ctx.storage.threads.appendThreadRepository(threadId, bound);
     if (isPrimary) {
       await ctx.storage.threads.update(threadId, {
-        metadata: { ...(thread.metadata ?? {}), githubRepo: bound },
+        metadata: { ...(thread.metadata ?? {}), repository: bound },
         updated_by: userId,
       });
     }
@@ -633,7 +650,9 @@ export const TASK_ADD_REPO = defineTool({
      */
     const gitRef = pickGitBranch({
       branch,
-      derivedRef: syntheticBranchToGitRef(branch),
+      derivedRef: syntheticBranchToGitRef(branch, {
+        flat: flatSandboxRef(repo.provider),
+      }),
       recordedHeadRef: null,
       sticky: false,
     });
@@ -700,10 +719,7 @@ export const TASK_ADD_REPO = defineTool({
     // it, so the directory survives a pod restart.
     const secondaryDirName = isPrimary
       ? null
-      : secondaryRepoDirName(secondaries, {
-          owner: repo.owner,
-          name: repo.name,
-        });
+      : secondaryRepoDirName(secondaries, bound);
     const checkoutDir =
       isPrimary || !secondaryDirName
         ? "."

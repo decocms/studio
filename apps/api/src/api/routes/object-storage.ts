@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { StudioContext } from "@/core/studio-context";
 import { detectContentType, sanitizeKey } from "@/object-storage/key-utils";
+import { clampExpiresIn } from "@/tools/object-storage/schema";
 
 type Variables = { studioContext: StudioContext };
 
@@ -40,10 +41,10 @@ function parsePresignBody(body: unknown): {
     return { expiresIn: DEFAULT_EXPIRES_IN };
   }
   const value = body as { expiresIn?: unknown; contentType?: unknown };
-  const expiresIn =
-    typeof value.expiresIn === "number" && Number.isFinite(value.expiresIn)
-      ? value.expiresIn
-      : DEFAULT_EXPIRES_IN;
+  const expiresIn = clampExpiresIn(
+    typeof value.expiresIn === "number" ? value.expiresIn : undefined,
+    DEFAULT_EXPIRES_IN,
+  );
   return {
     expiresIn,
     ...(typeof value.contentType === "string"

@@ -13,6 +13,7 @@ import {
   GitBranch01,
   BarChart10,
   Building02,
+  Folder,
   Columns03,
   Stars01,
   CreditCard01,
@@ -33,6 +34,7 @@ import {
 import { useVisibleSettingsTabs } from "@/components/settings/use-settings-tabs";
 import { type CapabilityId, useCapabilities } from "@/hooks/use-capability";
 import { usePendingJoinRequests } from "@/hooks/use-join-requests";
+import { useProjectFirstNav } from "@/hooks/use-preferences";
 import { useT } from "@/i18n/use-t.ts";
 
 /** A route the sidebar can point a row at. `settings-tab-groups.ts` stores the
@@ -74,6 +76,7 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
   const { capabilities, isPrivileged, loading, error } = useCapabilities();
   const joinRequestCount = usePendingJoinRequests().length;
   const visibleTabs = useVisibleSettingsTabs();
+  const projectFirstNav = useProjectFirstNav();
 
   const groups: SettingsNavGroup[] = [
     {
@@ -97,7 +100,6 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
           label: t("settings.nav.general"),
           icon: <Building02 size={14} />,
           to: "/$org/settings/general",
-          requires: "org:manage",
         },
         {
           key: "billing",
@@ -139,12 +141,19 @@ export function useSettingsSidebarGroups(): SettingsNavGroup[] {
           icon: <ZapSquare size={14} />,
           to: "/$org/settings/connections",
         },
-        {
-          key: "agents",
-          label: t("settings.nav.agents"),
-          icon: <Users03 size={14} />,
-          to: "/$org/settings/agents",
-        },
+        projectFirstNav
+          ? {
+              key: "projects",
+              label: t("projects.settings.title"),
+              icon: <Folder size={14} />,
+              to: "/$org/settings/projects",
+            }
+          : {
+              key: "agents",
+              label: t("settings.nav.agents"),
+              icon: <Users03 size={14} />,
+              to: "/$org/settings/agents",
+            },
         {
           key: "automations",
           label: t("settings.nav.automations"),

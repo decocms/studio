@@ -656,6 +656,7 @@ describe("ConnectionStorage", () => {
           updated_at: now,
           created_by: "user_123",
           metadata: JSON.stringify({
+            // Compatibility: the database index still addresses the historical key.
             githubRepo: {
               url: "https://github.com/acme/site",
               owner: "acme",

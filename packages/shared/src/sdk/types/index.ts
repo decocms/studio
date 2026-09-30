@@ -39,7 +39,7 @@ export {
   type VirtualMcpSidebarView,
   type VirtualMcpHomeTile,
   getHomeTiles,
-  type GithubRepo,
+  type RepositoryBinding,
   SandboxMapSchema,
   type SandboxMap,
   SandboxRecordSchema,

@@ -16,10 +16,20 @@ import { ThreadFilesPanel } from "./thread-files-panel";
 import { wasCreditsEmptyDismissed } from "./credits-empty-state";
 
 import { useDecoCredits } from "@/hooks/use-deco-credits";
+import { ChatVoiceBindings, VoiceModePanel, useVoiceMode } from "./voice";
 
 // ---------- Panel content ----------
 
 function ChatSidePanelContent() {
+  return (
+    <ChatVoiceBindings>
+      <ChatSidePanelBody />
+    </ChatVoiceBindings>
+  );
+}
+
+function ChatSidePanelBody() {
+  const { active: voiceActive } = useVoiceMode();
   const { org } = useProjectContext();
   const taskCtx = useOptionalChatTask();
   const { isChatEmpty } = useChatStream();
@@ -63,37 +73,41 @@ function ChatSidePanelContent() {
       {showCreditsModal && <Chat.CreditsEmptyState />}
 
       {/* Chat view */}
-      <div
-        inert={activePanel !== "chat" ? true : undefined}
-        aria-hidden={activePanel !== "chat"}
-        className={cn(
-          "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
-          activePanel !== "chat"
-            ? "opacity-0 pointer-events-none"
-            : "opacity-100",
-        )}
-      >
-        {isChatEmpty && runtime !== "cms" ? (
-          <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
-        ) : (
-          <>
-            {/* @container: the files panel floats in the right gutter on
+      {!voiceActive && (
+        <div
+          inert={activePanel !== "chat" ? true : undefined}
+          aria-hidden={activePanel !== "chat"}
+          className={cn(
+            "absolute inset-0 flex flex-col transition-opacity duration-100 ease-out",
+            activePanel !== "chat"
+              ? "opacity-0 pointer-events-none"
+              : "opacity-100",
+          )}
+        >
+          {isChatEmpty && runtime !== "cms" ? (
+            <AgentHome onOpenContextPanel={() => setActivePanel("context")} />
+          ) : (
+            <>
+              {/* @container: the files panel floats in the right gutter on
                 wide chats and becomes an in-flow topbar (flex row above
                 the scroller) when the gutter can't fit it */}
-            <Chat.Main className="relative flex flex-col overflow-hidden @container">
-              <ThreadFilesPanel />
-              <div className="min-h-0 flex-1">
-                <Chat.Messages />
-              </div>
-            </Chat.Main>
-            <Chat.Footer>
-              <Chat.Input
-                onOpenContextPanel={() => setActivePanel("context")}
-              />
-            </Chat.Footer>
-          </>
-        )}
-      </div>
+              <Chat.Main className="relative flex flex-col overflow-hidden @container">
+                <ThreadFilesPanel />
+                <div className="min-h-0 flex-1">
+                  <Chat.Messages />
+                </div>
+              </Chat.Main>
+              <Chat.Footer>
+                <Chat.Input
+                  onOpenContextPanel={() => setActivePanel("context")}
+                />
+              </Chat.Footer>
+            </>
+          )}
+        </div>
+      )}
+
+      <VoiceModePanel />
 
       {/* Context view */}
       <div

@@ -186,16 +186,16 @@ export function ImportFromDecoDialog({
         throw new Error(t("common.importFromDecoDialog.siteNoLongerAvailable"));
       }
 
-      const githubRepo = resolveDecoSiteGithubRepo(siteName, site.metadata);
+      const repository = resolveDecoSiteGithubRepo(siteName, site.metadata);
 
       const githubInstallation = findGithubInstallation(
         installations,
-        githubRepo.owner,
+        repository.owner,
       );
       if (!githubInstallation) {
         throw new Error(
           t("common.importFromDecoDialog.installGithubApp", {
-            owner: githubRepo.owner,
+            owner: repository.owner,
             installUrl: GITHUB_APP_INSTALL_URL,
           }),
         );
@@ -239,8 +239,8 @@ export function ImportFromDecoDialog({
             orgSlug: org.slug,
             sourceConnection: effectiveGithubConnection,
             installationId: githubInstallation.installationId,
-            owner: githubRepo.owner,
-            repo: githubRepo.name,
+            owner: repository.owner,
+            repo: repository.name,
             githubCallTool: (req) => githubClient.callTool(req),
             selfCallTool: (req) => client.callTool(req),
           });
@@ -269,10 +269,10 @@ export function ImportFromDecoDialog({
                 siteSlug,
                 previewServerUrl,
                 productionUrl: previewServerUrl,
-                githubRepo: {
-                  owner: githubRepo.owner,
-                  name: githubRepo.name,
-                  url: githubRepo.url,
+                repository: {
+                  owner: repository.owner,
+                  name: repository.name,
+                  url: repository.url,
                   installationId: githubInstallation.installationId,
                   connectionId: childConnectionId,
                 },

@@ -1,9 +1,9 @@
+import type { OrganizationRole } from "@/hooks/use-organization-roles";
+import type { TableColumn } from "@/components/collections/collection-table.tsx";
+import type { RoleEditorTarget } from "@/views/settings/org-role-detail.tsx";
 import { useProjectContext } from "@/sdk";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
-import {
-  type OrganizationRole,
-  useOrganizationRoles,
-} from "@/hooks/use-organization-roles";
+import { useOrganizationRoles } from "@/hooks/use-organization-roles";
 import { useOrgAuthClient } from "@/hooks/use-org-auth-client";
 import { useT } from "@/i18n/use-t.ts";
 import { KEYS } from "@/lib/query-keys";
@@ -34,7 +34,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { CollectionTableWrapper } from "@/components/collections/collection-table-wrapper.tsx";
-import type { TableColumn } from "@/components/collections/collection-table.tsx";
+
 import { Page } from "@/components/page";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { EmptyState } from "@/components/empty-state.tsx";
@@ -42,7 +42,6 @@ import { SearchInput } from "@decocms/ui/components/search-input.tsx";
 import {
   RoleDetailPage,
   getTargetKey,
-  type RoleEditorTarget,
 } from "@/views/settings/org-role-detail.tsx";
 import { RequirePrivileged } from "@/components/require-privileged";
 import {
@@ -71,7 +70,6 @@ type RoleRow =
   | { kind: "custom"; role: OrganizationRole & { memberCount: number } };
 
 function RolesPageContent() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const [search, setSearch] = useState("");
   const [roleToDelete, setRoleToDelete] = useState<{
@@ -332,10 +330,7 @@ function RolesPageContent() {
           }}
         />
         <Page.Actions>
-          <Button
-            size={compact ? "sm" : "default"}
-            onClick={() => setActiveRole("new")}
-          >
+          <Button size="sm" onClick={() => setActiveRole("new")}>
             <Plus size={16} />
             {t("settings.roles.createRole")}
           </Button>
@@ -444,4 +439,3 @@ export default function RolesRoute() {
     </RequirePrivileged>
   );
 }
-import { useCompactPageLayout } from "@/hooks/use-preferences";

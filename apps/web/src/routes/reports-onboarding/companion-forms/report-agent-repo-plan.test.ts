@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import type { GithubRepo } from "@/sdk";
+import type { RepositoryBinding } from "@/sdk";
 import {
   parseRepoFullName,
   planAgentConnections,
   planRepoReuse,
 } from "./report-agent-repo-plan";
 
-const repo = (over: Partial<GithubRepo>): GithubRepo => ({
+const repo = (over: Partial<RepositoryBinding>): RepositoryBinding => ({
   url: "https://github.com/acme/store",
   owner: "acme",
   name: "store",

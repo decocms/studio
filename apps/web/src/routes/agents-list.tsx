@@ -1,4 +1,3 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
 import { useState } from "react";
 import { CreateAgentDropdownContent } from "@/components/create-agent-dropdown";
 import {
@@ -38,7 +37,6 @@ import { useT } from "@/i18n/use-t.ts";
 import { useDebouncedValue } from "@/hooks/use-debounced-value.ts";
 
 export default function AgentsListPage() {
-  const compact = useCompactPageLayout();
   const t = useT();
   const { org } = useProjectContext();
   const [search, setSearch] = useState("");
@@ -119,7 +117,7 @@ export default function AgentsListPage() {
       <Page.Content>
         <Page.Container>
           <div className="flex flex-col gap-6">
-            <Page.Title actions={compact && createAction}>
+            <Page.Title actions={createAction}>
               {t("routes.agentsList.title")}
             </Page.Title>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -135,14 +133,13 @@ export default function AgentsListPage() {
                   }
                 }}
               />
-              {!compact && createAction}
             </div>
           </div>
 
           {filteredAgents.length === 0 && (
             <div className="flex items-center justify-center py-20">
               <EmptyState
-                actions={!compact && !search && createAction}
+                actions={false}
                 image={
                   <FolderClosed size={48} className="text-muted-foreground" />
                 }

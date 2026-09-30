@@ -21,17 +21,19 @@
  */
 
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
-import type { GithubRepo } from "@decocms/shared/sdk/types";
+import type { RepositoryBinding } from "@decocms/shared/sdk/types";
 import {
   assertSafeDecoBlockKey,
   isReservedResolverBlockKey,
+  PlaintextSecretError,
+  sanitizeSecretsForPersistence,
 } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
 import { coAuthorFromStudioContext } from "@/lib/co-author-identity";
-import { parseGithubRepoFromMetadata } from "@/tools/sandbox/sync-git-credentials";
+import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import {
   RepoWriteConflict,
   contentClientForProjectRepo,
@@ -54,7 +56,7 @@ interface DecofileScope {
   virtualMcpId: string;
   branch: string;
   packagePath: string | null;
-  githubRepo: GithubRepo;
+  repository: RepositoryBinding;
   /** Present only for session-authenticated (member) requests. */
   userId: string | null;
 }
@@ -196,9 +198,9 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
 
   const connectionIds =
     virtualMcp.connections?.map((conn) => conn.connection_id) ?? [];
-  const githubRepo = parseGithubRepoFromMetadata(metadata, connectionIds);
-  if (!githubRepo) {
-    return c.json({ error: "Project has no GitHub repository" }, 404);
+  const repository = parseRepositoryBinding(metadata, connectionIds);
+  if (!repository) {
+    return c.json({ error: "Project has no repository" }, 404);
   }
 
   const runtime = metadata?.runtime as { path?: string | null } | undefined;
@@ -207,7 +209,7 @@ const resolveDecofileScope = createMiddleware<DecofileEnv>(async (c, next) => {
     virtualMcpId,
     branch,
     packagePath: runtime?.path?.replace(/^\/+|\/+$/g, "") || null,
-    githubRepo,
+    repository,
     userId,
   });
   return next();
@@ -232,7 +234,7 @@ async function contentClientForScope(
   return contentClientForProjectRepo(
     c.var.studioContext,
     scope.organizationId,
-    scope.githubRepo,
+    scope.repository,
   );
 }
 
@@ -357,7 +359,15 @@ export function createDecofileRoutes() {
         400,
       );
     }
-    const patch: DecofilePatch = parsed.data;
+    let patch: DecofilePatch;
+    try {
+      patch = sanitizeSecretsForPersistence(parsed.data);
+    } catch (err) {
+      if (err instanceof PlaintextSecretError) {
+        return c.json({ error: err.message }, 400);
+      }
+      throw err;
+    }
 
     for (const key of [
       ...Object.keys(patch.set ?? {}),
@@ -465,35 +475,19 @@ export function createDecofileRoutes() {
     try {
       const client = await contentClientForScope(c);
       const baseBranch = await client.getDefaultBranch();
-      // Null lastCommitAt == "no age, never auto-switch off this branch".
       if (baseBranch === scope.branch) {
-        return c.json({
-          baseBranch,
-          aheadBy: 0,
-          behindBy: 0,
-          lastCommitAt: null,
-        });
+        return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
       }
       try {
-        const [{ aheadBy, behindBy }, head] = await Promise.all([
-          client.compare(baseBranch, scope.branch),
-          client.getBranch(scope.branch),
-        ]);
-        return c.json({
+        const { aheadBy, behindBy } = await client.compare(
           baseBranch,
-          aheadBy,
-          behindBy,
-          lastCommitAt: head?.committedAt ?? null,
-        });
+          scope.branch,
+        );
+        return c.json({ baseBranch, aheadBy, behindBy });
       } catch (err) {
-        // A thread-minted branch not materialized yet has no drift and no age.
+        // A thread-minted branch not materialized yet has no drift.
         if (repoErrorStatus(err) === 404) {
-          return c.json({
-            baseBranch,
-            aheadBy: 0,
-            behindBy: 0,
-            lastCommitAt: null,
-          });
+          return c.json({ baseBranch, aheadBy: 0, behindBy: 0 });
         }
         throw err;
       }

@@ -54,7 +54,7 @@ function InsertBetween({
         className="group/ins relative flex h-2.5 w-full items-center justify-center opacity-0 transition-opacity hover:opacity-100 cursor-pointer"
       >
         <span className="absolute inset-x-10 top-1/2 h-px -translate-y-1/2 bg-primary/30" />
-        <span className="relative z-10 flex h-5 w-5 items-center justify-center classic:rounded-full compact:rounded-lg border bg-background text-muted-foreground">
+        <span className="relative z-10 flex h-5 w-5 items-center justify-center rounded-lg border bg-background text-muted-foreground">
           <Plus size={12} />
         </span>
       </button>

@@ -51,8 +51,6 @@ const detail = (page: Page) => page.getByTestId("task-detail");
 /** A card's own URL: the board's path plus the human key it wears. */
 const cardUrl = (orgSlug: string) => new RegExp(`/${orgSlug}/tasks/[^/?#]+`);
 
-test.use({ compactPageLayout: true });
-
 test("clicking a card navigates to it and the breadcrumb comes back", async ({
   authedPage,
 }) => {

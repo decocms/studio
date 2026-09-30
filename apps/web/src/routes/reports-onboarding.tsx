@@ -242,18 +242,18 @@ function getReportsAuthCopy(t: ReturnType<typeof useT>) {
 
 // One-shot per SPA load, render-time (useEffect is banned in this app; same
 // pattern as PostHogIdentitySync). This is the LP→studio funnel seam: the
-// diagnostic deck's CTAs land here, so this event is funnel step "arrived in
+// report's CTAs land here, so this event is funnel step "arrived in
 // studio", joinable to the LP journey via the bootstrapped ph_did identity.
 let onboardingViewTracked = false;
 
 function CommerceOnboardingPage() {
   const search = useSearch({ from: "/reports-onboarding" });
-  const { org: requestedOrgSlug, siteUrl } = search;
+  const { org: requestedOrgSlug, siteUrl, fix } = search;
   const siteHost = siteUrlToHost(siteUrl);
 
   if (!onboardingViewTracked && isPostHogInitialized()) {
     onboardingViewTracked = true;
-    // Joins back to the report deck's connect CTA — see reports/onboarding.ts.
+    // Joins back to the report's connect CTA — see reports/onboarding.ts.
     const reportAttribution = reportAttributionFromSearch(
       window.location.search,
     );
@@ -261,6 +261,7 @@ function CommerceOnboardingPage() {
       site_url: siteUrl,
       domain: siteHost ?? undefined,
       ...reportAttribution,
+      ...(fix ? { fix_check_id: fix } : {}),
       // Person-level copy so the store follows the user across sessions.
       ...(siteHost ? { $set: { last_scanned_domain: siteHost } } : {}),
     });

@@ -188,6 +188,15 @@ export const sectionsEditor = {
   "sectionsEditor.richTextLinkControl.urlInputAriaLabel": "URL do link",
   "sectionsEditor.richTextLinkControl.urlInputPlaceholder":
     "Cole ou digite um link…",
+  "sectionsEditor.secretField.encryptButton": "Criptografar",
+  "sectionsEditor.secretField.encryptFailedMessage":
+    "Não foi possível criptografar este segredo com a chave do site, então ele não foi salvo. Verifique se o site está no ar e tente novamente.",
+  "sectionsEditor.secretField.encryptingMessage":
+    "Criptografando com a chave do site…",
+  "sectionsEditor.secretField.pendingMessage":
+    "Ainda não salvo. Pressione Enter para criptografar e salvar.",
+  "sectionsEditor.secretField.plaintextStoredMessage":
+    "O valor armazenado não está criptografado e não vai funcionar. Digite o segredo novamente para criptografá-lo.",
   "sectionsEditor.secretField.leaveBlankPlaceholder":
     "Deixe em branco para manter o valor atual",
   "sectionsEditor.secretField.secretNamePlaceholder": "Nome do segredo",

@@ -1,4 +1,7 @@
 export const settings = {
+  "settings.voice.title": "Voice mode",
+  "settings.voice.description":
+    "Let members talk to agents in chats. Requires ElevenLabs to be configured on this Studio deployment.",
   "settings.title": "Profile & Preferences",
   "settings.nav.organization": "Organization",
   "settings.nav.build": "Build",
@@ -52,7 +55,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts within seconds.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts once the card has stayed put for a minute.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -64,18 +67,27 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. An issue entering an automated status now starts its run within seconds.",
+    "Save. An issue entering an automated status now starts its run once it has stayed there for a minute.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses, Studio starts an agent run on it. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "When an issue enters one of these statuses and stays there for a minute, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
   "settings.jira.addAutomation": "Add automation",
-  "settings.jira.automationOn": "Automation on",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
   "settings.jira.promptHelp":
     "This is the whole instruction the run gets — there is no default. Type “/” to insert a skill (jira-execute to build, jira-review to review); its text is pasted in for you to keep, edit or cut. The issue's description, comments, links and attachments are always included.",
   "settings.jira.promptSave": "Save",
   "settings.jira.promptDiscard": "Discard",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
+  "settings.jira.fromAny": "From any column",
+  "settings.jira.fromEarlier": "From an earlier column",
+  "settings.jira.fromLater": "From a later column (sent back)",
+  "settings.jira.fromStatuses": "From {statuses}",
+  "settings.jira.originLabel": "When the card comes from",
+  "settings.jira.originStatusesPlaceholder": "Pick statuses",
+  "settings.jira.originHelp":
+    "A move starts one rule: the one naming where the card came from, else the one for its direction on the board, else the one for any column. Where it came from is the status it last stayed in, not one it was dragged through.",
+  "settings.jira.createRule": "Create rule",
+  "settings.jira.cancelRule": "Cancel",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.jira.testRunLabel": "Run it by hand",
@@ -344,9 +356,12 @@ export const settings = {
   "settings.profile.updateSuccess": "Profile updated successfully",
   "settings.profile.updateError": "Failed to update profile",
   "settings.preferences.title": "Preferences",
-  "settings.preferences.compactPageLayout": "New Layout",
-  "settings.preferences.compactPageLayoutDescription":
-    "Try the redesigned navigation, page headers, and controls. Turn it off to return to the current layout.",
+  "settings.blocksEditor.title": "New blocks editor",
+  "settings.blocksEditor.description":
+    "Applies to everyone in this organization. The rest of Studio always uses the new layout.",
+  "settings.preferences.projectFirstNav": "Project-first navigation",
+  "settings.preferences.projectFirstNavDescription":
+    "Try the org rail, project launcher and the Today/Agents home.",
   "settings.preferences.theme": "Theme",
   "settings.preferences.themeDescription": "Your preferred color scheme.",
   "settings.preferences.themeLight": "Light theme",
@@ -621,8 +636,8 @@ export const settings = {
   "settings.planUsage.feature.model_choice": "Choose your model",
   "settings.planUsage.feature.trialChat": "Limited access to chat",
   "settings.planUsage.feature.credits": "Extra credits",
-  "settings.planUsage.feature.diagnostic": "Commerce diagnostic",
-  "settings.planUsage.feature.diagnostic_enriched": "Enriched diagnostic",
+  "settings.planUsage.feature.diagnostic": "Deco Score",
+  "settings.planUsage.feature.diagnostic_enriched": "Enriched Deco Score",
   "settings.plans.title": "Plans",
   "settings.plans.loadFailed": "Couldn't load the plans.",
   "settings.plans.currentPlan": "Current plan",
@@ -770,9 +785,9 @@ export const settings = {
   "settings.review.deliveryLanesDescription":
     "Add Approved, Merged and Post-deploy Validation between In Review and Done, and land a merged pull request on Merged instead of Done. For teams whose release process continues after the merge.",
   "settings.review.autoAssignReportTasksTitle":
-    "Auto-assign report tasks to the Super Agent",
+    "Auto-assign Deco Score tasks to the Super Agent",
   "settings.review.autoAssignReportTasksDescription":
-    "Tasks created from a report are delegated to the Super Agent automatically instead of landing unassigned.",
+    "Tasks created from the Deco Score are delegated to the Super Agent automatically instead of landing unassigned.",
   "settings.review.updateError": "Couldn't update the setting",
   "settings.taskPrompt.title": "System prompt",
   "settings.taskPrompt.fieldLabel": "Instructions",

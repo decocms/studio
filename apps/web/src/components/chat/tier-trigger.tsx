@@ -157,7 +157,7 @@ export function TierTriggerPure({ tier, pillIcon, groups }: PureProps) {
               {group.rows.map((row) => (
                 <div
                   key={row.key}
-                  className="group/tier-row relative flex items-stretch classic:rounded-md compact:rounded-lg hover:bg-muted"
+                  className="group/tier-row relative flex items-stretch rounded-lg hover:bg-muted"
                 >
                   <button
                     type="button"
@@ -240,7 +240,7 @@ function TierRowModelOverride({
         // width (which would otherwise force the title/subtitle to truncate
         // even at rest) — it only ever floats on top.
         "absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center",
-        "size-6 classic:rounded-md compact:rounded-lg bg-background border border-border/60 shadow-sm",
+        "size-6 rounded-lg bg-background border border-border/60 shadow-sm",
         "text-muted-foreground hover:text-foreground",
         "opacity-100 [@media(hover:hover)]:opacity-0",
         "[@media(hover:hover)]:group-hover/tier-row:opacity-100",

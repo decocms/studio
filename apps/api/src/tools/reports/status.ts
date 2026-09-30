@@ -29,7 +29,7 @@ export const REPORTS_CONNECTION_STATUS = defineTool({
   description:
     "Read per-provider connection status (ga4/gsc/vtex) for the org's store — { connected, via: oauth|sa, resource }. The single source of truth for whether a data source is connected, unifying the OAuth (Studio vault) and shared-SA binding lanes. Read-only.",
   annotations: {
-    title: "Reports Connection Status",
+    title: "Deco Score Connection Status",
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,

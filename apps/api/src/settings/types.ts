@@ -19,6 +19,17 @@ export interface Settings {
   publicUrl: string | undefined;
   dataDir: string;
 
+  // Voice
+  // Invalid deployment defaults disable voice creation, not API startup.
+  voiceConversationProvider: "elevenlabs" | "openai" | null;
+  openaiLiveApiKey: string | undefined;
+  openaiLiveModel: string;
+  openaiLiveVoice: string;
+  elevenlabsApiKey: string | undefined;
+  elevenlabsVoiceId: string;
+  elevenlabsVoiceModel: string;
+  elevenlabsConversationModel: string;
+
   // Database
   databaseUrl: string;
   databasePgSsl: boolean;
@@ -37,6 +48,9 @@ export interface Settings {
   /** Admit `http://localhost:<port>` as a Jira site — a stand-in Jira for
    *  local development and e2e. See `normalizeSiteUrl`. */
   jiraAllowLocalSiteUrl: boolean;
+  /** How long a Jira card must stay in a status before a rule runs on it
+   *  (`JIRA_SETTLE_SECONDS`, default 60). Shortened only by e2e. */
+  jiraSettleSeconds: number;
   studioProvisionSecretKey: string | undefined; // Secret key to call the Deco AI Gateway API to provision keys
   /** Lowercased emails allowed onto the /admin instance dashboard (DEPLOYMENT_ADMIN_EMAILS, CSV). */
   deploymentAdminEmails: string[];

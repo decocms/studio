@@ -45,6 +45,7 @@ function card(
     threads: [],
     tags: [],
     reviewVerdicts: [],
+    statusSince: null,
     createdBy: "preview",
     createdAt: AT,
     updatedBy: "preview",

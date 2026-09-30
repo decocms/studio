@@ -1,0 +1,40 @@
+name: Pull image
+description: >-
+  Pull a Docker Hub image through a list of registries, retrying with backoff,
+  and tag it under its Docker Hub name so later steps can `docker run` it no
+  matter which registry answered.
+
+  Anonymous pull quotas are per source IP, and GitHub's hosted runners share
+  IPs. Once a runner's IP is out of quota, ECR Public answers `toomanyrequests:
+  Data limit exceeded` to every retry, so retrying the same registry doesn't
+  help; the next registry does.
+
+inputs:
+  image:
+    description: Docker Hub image with tag, e.g. `library/postgres:16` or `pgsty/minio:<tag>`.
+    required: true
+  registries:
+    description: Space-separated registry prefixes, tried in order on every attempt.
+    default: public.ecr.aws/docker mirror.gcr.io docker.io
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        REGISTRIES: ${{ inputs.registries }}
+      run: |
+        for attempt in 1 2 3; do
+          for registry in $REGISTRIES; do
+            ref="$registry/$IMAGE"
+            if docker pull "$ref"; then
+              docker tag "$ref" "$IMAGE"
+              exit 0
+            fi
+            echo "::warning::docker pull $ref failed (attempt $attempt)"
+          done
+          sleep $((attempt * 10))
+        done
+        echo "::error::could not pull $IMAGE from any of: $REGISTRIES"
+        exit 1

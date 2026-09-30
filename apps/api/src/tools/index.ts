@@ -58,6 +58,7 @@ export const CORE_TOOLS = [
   OrganizationTools.ORGANIZATION_DELETE,
   OrganizationTools.ORGANIZATION_SETTINGS_GET,
   OrganizationTools.ORGANIZATION_SETTINGS_UPDATE,
+  OrganizationTools.ORGANIZATION_BLOCKS_EDITOR_SET,
   OrganizationTools.ORGANIZATION_HAS_SITE,
   NotificationTools.NOTIFICATION_LIST,
   NotificationTools.NOTIFICATION_MARK_READ,
@@ -275,6 +276,8 @@ export const CORE_TOOLS = [
   JiraTools.JIRA_ISSUE_TRANSITION,
   JiraTools.JIRA_ATTACHMENT_DOWNLOAD,
   JiraTools.JIRA_REMOTE_LINK_ADD,
+  JiraTools.JIRA_ISSUE_CREATE,
+  JiraTools.JIRA_ISSUE_SEARCH,
 
   // Object Storage tools
   ObjectStorageTools.LIST_OBJECTS,
@@ -302,6 +305,7 @@ export const CORE_TOOLS = [
   GitTools.REPOSITORY_LIST,
   GitTools.REPOSITORY_SEARCH,
   GitTools.REPOSITORY_LINK,
+  GitTools.REPOSITORY_CREATE_FROM_TEMPLATE,
   GitTools.REPOSITORY_UPDATE,
   GitTools.REPOSITORY_DELETE,
   GitTools.REPOSITORY_SEARCH_BRANCHES,

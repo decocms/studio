@@ -3,6 +3,7 @@ import {
   Archive,
   ChevronDown,
   FilterFunnel01,
+  SearchLg,
   SwitchVertical01,
   X,
 } from "@untitledui/icons";
@@ -104,6 +105,44 @@ function OptionCount({ count }: { count: number }) {
     <span className="ml-auto pl-3 text-xs text-muted-foreground tabular-nums">
       {count}
     </span>
+  );
+}
+
+/**
+ * Free-text search over the post list. Its own row above the filter bar, so it
+ * survives selection mode (which replaces the filter bar) and keeps the query
+ * visible while acting on the results it produced.
+ */
+export function PostSearchInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const t = useT();
+  return (
+    <div className="flex items-center gap-2 border-b px-2.5 py-1.5">
+      <SearchLg
+        size={14}
+        className="shrink-0 text-muted-foreground"
+        aria-hidden
+      />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={t("sandbox.postToolbar.searchPlaceholder")}
+        aria-label={t("sandbox.postToolbar.searchAriaLabel")}
+        className="min-w-0 flex-1 bg-transparent py-0.5 text-sm outline-none placeholder:text-muted-foreground"
+      />
+      {value && (
+        <FilterClearButton
+          label={t("sandbox.postToolbar.clearSearch")}
+          onClick={() => onChange("")}
+        />
+      )}
+    </div>
   );
 }
 
@@ -295,7 +334,7 @@ function FilterClearButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center classic:rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer compact:rounded-lg"
+      className="flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer rounded-lg"
     >
       <X size={12} />
     </button>

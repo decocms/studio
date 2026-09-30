@@ -99,7 +99,13 @@ function AppRenderer({
       if (navigateResult.tab === "connect-sources" && navigateResult.field) {
         setConnectSourceField(navigateResult.field);
       } else if (navigateResult.tab) {
-        openTab(navigateResult.tab);
+        // Opening a card pushes a history entry, so Back returns to the app.
+        openTab(
+          navigateResult.tab,
+          navigateResult.task
+            ? { taskKey: navigateResult.task, replace: false }
+            : undefined,
+        );
       }
       return;
     }

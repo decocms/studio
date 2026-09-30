@@ -155,7 +155,7 @@ export function ImageField({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border compact:card-shadow border-border/60 bg-muted/30 transition",
+          "group relative w-full overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-xl))] border card-shadow border-border/60 bg-muted/30 transition",
           isDragging && "border-primary ring-2 ring-primary/30",
           upload.isPending && "pointer-events-none opacity-60",
         )}

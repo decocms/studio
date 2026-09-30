@@ -81,7 +81,7 @@ export function DeckToolbar({
       <button
         type="button"
         onClick={() => window.open(absoluteUrl, "_blank", "noopener")}
-        className="flex min-w-0 flex-1 items-center classic:rounded-md compact:rounded-lg px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         title={absoluteUrl}
       >
         <span className="truncate">{absoluteUrl}</span>

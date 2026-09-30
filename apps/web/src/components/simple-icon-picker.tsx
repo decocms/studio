@@ -67,7 +67,7 @@ export function SimpleIconPicker({
           disabled={disabled}
           aria-label={t("common.simpleIconPicker.changeIcon")}
           className={cn(
-            "size-7 shrink-0 classic:rounded-md compact:rounded-lg transition-colors flex items-center justify-center",
+            "size-7 shrink-0 rounded-lg transition-colors flex items-center justify-center",
             disabled
               ? "cursor-default opacity-50"
               : "cursor-pointer hover:bg-accent",
@@ -111,7 +111,7 @@ export function SimpleIconPicker({
                       setOpen(false);
                     }}
                     className={cn(
-                      "h-7 w-7 flex items-center justify-center classic:rounded-md compact:rounded-lg transition-colors cursor-pointer",
+                      "h-7 w-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer",
                       currentIconName === iconName
                         ? "bg-accent text-foreground"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground",

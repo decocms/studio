@@ -575,7 +575,7 @@ function AssetCardMenu({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-7 classic:rounded-md bg-background/80 backdrop-blur-sm"
+          className="size-7 bg-background/80 backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
           aria-label={t("filePicker.filePickerDialog.assetActions")}
         >

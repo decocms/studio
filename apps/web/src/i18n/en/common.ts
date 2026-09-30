@@ -12,7 +12,7 @@ export const common = {
   "common.accountPopover.enableSounds": "Enable sounds",
   "common.accountPopover.failedToStopImpersonation":
     "Failed to stop impersonation",
-  "common.accountPopover.githubRepo": "decocms/studio",
+  "common.accountPopover.repository": "decocms/studio",
   "common.accountPopover.homepage": "Homepage",
   "common.accountPopover.impersonating": "Impersonating",
   "common.accountPopover.lightTheme": "Light theme",
@@ -113,54 +113,77 @@ export const common = {
   "common.repositoryPicker.createAgentFailed": "Could not create the agent",
   "common.repositoryPicker.agentDescription": "Imported from {path}",
   "common.repositoryPicker.back": "Back",
-  "common.githubRepoPicker.accountNotListed": "Account not listed?",
-  "common.githubRepoPicker.addRepo": "Add repo",
-  "common.githubRepoPicker.addedRepo": "Added {name}",
-  "common.githubRepoPicker.authenticatingGitHub": "Authenticating with GitHub",
-  "common.githubRepoPicker.backToAccounts": "Back to accounts",
-  "common.githubRepoPicker.changeConnection": "Change connection",
-  "common.githubRepoPicker.checkAgain": "Check again",
-  "common.githubRepoPicker.chooseRepositories": "Choose repositories",
-  "common.githubRepoPicker.completeOAuthFlow":
+  "common.createSite.entry": "Create a new site",
+  "common.createSite.entryHint": "Start from a template, in your GitHub",
+  "common.createSite.templateSection": "Choose a template",
+  "common.createSite.templates.storefront.title": "Storefront",
+  "common.createSite.templates.storefront.description":
+    "Online store with product pages, cart and CMS",
+  "common.createSite.templates.blog.title": "Blog",
+  "common.createSite.templates.blog.description":
+    "Blog with posts, categories and CMS",
+  "common.createSite.accountSection": "Where to create it",
+  "common.createSite.accountHint":
+    "The site's repository is created in this GitHub account.",
+  "common.createSite.noGithubAccount":
+    "Connect a GitHub account to create a site in it.",
+  "common.createSite.nameLabel": "Site name",
+  "common.createSite.namePlaceholder": "my-site",
+  "common.createSite.nameHint":
+    "Lower-case letters, numbers and hyphens. Creates the private repository {path}.",
+  "common.createSite.nameInvalid":
+    "Use lower-case letters, numbers and hyphens, starting and ending with a letter or number.",
+  "common.createSite.create": "Create site",
+  "common.createSite.created": "Site {name} created",
+  "common.createSite.agentDescription": "Created from the {template} template",
+  "common.repositoryPicker.accountNotListed": "Account not listed?",
+  "common.repositoryPicker.addRepo": "Add repo",
+  "common.repositoryPicker.addedRepo": "Added {name}",
+  "common.repositoryPicker.authenticatingGitHub": "Authenticating with GitHub",
+  "common.repositoryPicker.backToAccounts": "Back to accounts",
+  "common.repositoryPicker.changeConnection": "Change connection",
+  "common.repositoryPicker.checkAgain": "Check again",
+  "common.repositoryPicker.chooseRepositories": "Choose repositories",
+  "common.repositoryPicker.completeOAuthFlow":
     "Complete the OAuth flow in your browser",
-  "common.githubRepoPicker.connectionExpiredMessage":
+  "common.repositoryPicker.connectionExpiredMessage":
     "Your GitHub connection may have expired. Reconnect to restore access.",
-  "common.githubRepoPicker.connectionFailed": "Connection failed",
-  "common.githubRepoPicker.failedImport": "Failed to import repo: {error}",
-  "common.githubRepoPicker.failedImportFork":
+  "common.repositoryPicker.connectionFailed": "Connection failed",
+  "common.repositoryPicker.failedImport": "Failed to import repo: {error}",
+  "common.repositoryPicker.failedImportFork":
     "Couldn't import the fork {name}. If it isn't shared with the GitHub App, add it under GitHub → Settings → Installations, then try again.",
-  "common.githubRepoPicker.failedLoadAccounts":
+  "common.repositoryPicker.failedLoadAccounts":
     "Failed to load GitHub accounts",
-  "common.githubRepoPicker.failedReconnect":
+  "common.repositoryPicker.failedReconnect":
     "Failed to reconnect GitHub: {error}",
-  "common.githubRepoPicker.forkBadge": "Fork",
-  "common.githubRepoPicker.githubConnected": "GitHub connected",
-  "common.githubRepoPicker.importFromGitHub": "Import repository",
-  "common.githubRepoPicker.importedRepo": "Imported {name}",
-  "common.githubRepoPicker.installGitHubApp": "Install the GitHub App",
-  "common.githubRepoPicker.installingGitHubConnection":
+  "common.repositoryPicker.forkBadge": "Fork",
+  "common.repositoryPicker.githubConnected": "GitHub connected",
+  "common.repositoryPicker.importFromGitHub": "Import repository",
+  "common.repositoryPicker.importedRepo": "Imported {name}",
+  "common.repositoryPicker.installGitHubApp": "Install the GitHub App",
+  "common.repositoryPicker.installingGitHubConnection":
     "Installing the GitHub connection...",
-  "common.githubRepoPicker.noRepositoriesFound": "No repositories found",
-  "common.githubRepoPicker.noRepositoriesShared":
+  "common.repositoryPicker.noRepositoriesFound": "No repositories found",
+  "common.repositoryPicker.noRepositoriesShared":
     "No repositories are shared with Deco yet. Choose what to share on GitHub, then return here to continue.",
-  "common.githubRepoPicker.personalAccount": "Personal account",
-  "common.githubRepoPicker.private": "Private",
-  "common.githubRepoPicker.public": "Public",
-  "common.githubRepoPicker.reconnectGitHub": "Reconnect GitHub",
-  "common.githubRepoPicker.repositoryAccessNote":
+  "common.repositoryPicker.personalAccount": "Personal account",
+  "common.repositoryPicker.private": "Private",
+  "common.repositoryPicker.public": "Public",
+  "common.repositoryPicker.reconnectGitHub": "Reconnect GitHub",
+  "common.repositoryPicker.repositoryAccessNote":
     "You decide exactly what Deco can access. Choosing “all repositories” is optional.",
-  "common.githubRepoPicker.searchRepositories": "Search repositories...",
-  "common.githubRepoPicker.select": "Select",
-  "common.githubRepoPicker.selectConnection": "Select a connection",
-  "common.githubRepoPicker.settingUpGitHub": "Setting up GitHub",
-  "common.githubRepoPicker.setupRepositoriesTitle":
+  "common.repositoryPicker.searchRepositories": "Search repositories...",
+  "common.repositoryPicker.select": "Select",
+  "common.repositoryPicker.selectConnection": "Select a connection",
+  "common.repositoryPicker.settingUpGitHub": "Setting up GitHub",
+  "common.repositoryPicker.setupRepositoriesTitle":
     "Let Deco see your repositories",
-  "common.githubRepoPicker.somethingWentWrong":
+  "common.repositoryPicker.somethingWentWrong":
     "Something went wrong while connecting to GitHub.",
-  "common.githubRepoPicker.tryAgain": "Try again",
-  "common.githubRepoPicker.tryDifferentSearchTerm":
+  "common.repositoryPicker.tryAgain": "Try again",
+  "common.repositoryPicker.tryDifferentSearchTerm":
     "Try a different search term",
-  "common.githubRepoPicker.unknownError": "Unknown error",
+  "common.repositoryPicker.unknownError": "Unknown error",
   "common.iconPicker.apply": "Apply",
   "common.iconPicker.changeColor": "Change color",
   "common.iconPicker.failedToReadImage": "Failed to read image file",
@@ -304,6 +327,7 @@ export const common = {
   "common.mainPanelTabs.cdn": "Monitor",
   "common.taskBoard.listView": "List",
   "common.taskBoard.boardView": "Board",
+  "common.taskBoard.feedView": "Feed",
   "common.openExternalFailed": "Could not open this link in your browser.",
   "common.taskStatus.requiresAction": "Needs review",
   "common.taskStatus.failed": "Failed",

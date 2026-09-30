@@ -2,18 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { KEYS } from "./query-keys";
 
 describe("KEYS.reportAll", () => {
-  test("is a prefix of KEYS.report for every key/lang combination", () => {
-    // `reportAll` is used to invalidate every `report` query for a domain in
-    // one call (see reports/auth-gate.tsx's `onReportAuthenticated`) — it
-    // only works if it's actually a prefix of every variant `report` mints.
+  test("is a prefix of KEYS.report for every lang", () => {
+    // sign-in-overlay.tsx invalidates by this prefix, so it must match every variant.
     const domain = "example.com";
     const prefix = KEYS.reportAll(domain);
-    const variants = [
-      KEYS.report(domain),
-      KEYS.report(domain, "preview-key"),
-      KEYS.report(domain, undefined, "pt-BR"),
-      KEYS.report(domain, "preview-key", "pt-BR"),
-    ];
+    const variants = [KEYS.report(domain), KEYS.report(domain, "pt-BR")];
     for (const variant of variants) {
       expect(variant.slice(0, prefix.length)).toEqual([...prefix]);
     }

@@ -1,6 +1,7 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   fetchWithTransientRetry,
+  parseJsonResponse,
   throwResponseError,
 } from "./fetch-transient-retry";
 import { deriveModalityCapabilities } from "./model-capabilities";
@@ -14,19 +15,6 @@ import type {
 const OPENROUTER_ICON_URL =
   "https://assets.decocache.com/decocms/284f1ad9-3fd8-494c-be88-16671069f3b9/openrouter.svg";
 
-/**
- * Parse a 2xx response body as JSON, degrading a malformed body into a
- * labeled error instead of a bare SyntaxError with no request context.
- */
-async function parseJsonResponse<T>(label: string, res: Response): Promise<T> {
-  const text = await res.text();
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error(`${label} returned malformed JSON: ${text.slice(0, 200)}`);
-  }
-}
-
 function fetchModelsWithRetry(
   headers: Record<string, string>,
   decisions = false,
@@ -37,6 +25,22 @@ function fetchModelsWithRetry(
       ? "https://openrouter.ai/api/v1/models?output_modalities=decisions"
       : "https://openrouter.ai/api/v1/models",
     { headers, signal: AbortSignal.timeout(decisions ? 5_000 : 30_000) },
+  );
+}
+
+/**
+ * OpenRouter's catalog occasionally lists a model missing the nested
+ * metadata mapV1Model relies on — skip it instead of crashing the whole
+ * listModels call over one bad entry.
+ */
+function isMappableModel(m: OpenRouterAPIModel): boolean {
+  return (
+    typeof m.id === "string" &&
+    !!m.architecture &&
+    Array.isArray(m.architecture.input_modalities) &&
+    Array.isArray(m.architecture.output_modalities) &&
+    !!m.top_provider &&
+    !!m.pricing
   );
 }
 
@@ -139,6 +143,7 @@ export const openrouterAdapter: ProviderAdapter = {
             data: OpenRouterAPIModel[];
           }>("OpenRouter decision models", res);
           return data
+            .filter(isMappableModel)
             .filter((model) =>
               model.architecture.output_modalities.includes("decisions"),
             )
@@ -153,7 +158,7 @@ export const openrouterAdapter: ProviderAdapter = {
         const { data } = await parseJsonResponse<{
           data: OpenRouterAPIModel[];
         }>("OpenRouter listModels", res);
-        return data.map(mapV1Model);
+        return data.filter(isMappableModel).map(mapV1Model);
       },
     };
   },

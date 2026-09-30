@@ -32,7 +32,7 @@ import { notifyMcpConfiguration } from "../connection/on-configuration";
  *   the legacy string a Reports still on the old reader needs. A GitLab path
  *   with subgroups in that field would be a string the old reader parses into
  *   the wrong repository, so it is cleared rather than approximated;
- * - the Report Agent's `metadata.githubRepo`, which `agentHasClonableSource`
+ * - the Report Agent's `metadata.repository`, which `agentHasClonableSource`
  *   reads to show the Preview/Code tabs and `SANDBOX_START` reads to clone.
  *   Naming the repository id there is what makes the clone authenticate
  *   through the repository's own git provider account — so, unlike the form
@@ -166,13 +166,13 @@ async function updateReportAgentBinding(
   if (!agent) return;
 
   const metadata = (agent.metadata ?? {}) as Record<string, unknown>;
-  const existing = metadata.githubRepo as { connectionId?: string } | null;
-  const { githubRepo: _drop, ...restMetadata } = metadata;
+  const existing = metadata.repository as { connectionId?: string } | null;
+  const { repository: _drop, ...restMetadata } = metadata;
 
   await ctx.storage.virtualMcps.update(agentId, userId, {
     metadata: {
       ...restMetadata,
-      ...(repository ? { githubRepo: agentRepoBinding(repository) } : {}),
+      ...(repository ? { repository: agentRepoBinding(repository) } : {}),
     },
     connections: withoutStaleRepoConnection(
       agent.connections ?? [],
@@ -184,9 +184,9 @@ async function updateReportAgentBinding(
 export const REPORTS_SET_REPOSITORY = defineTool({
   name: "REPORTS_SET_REPOSITORY",
   description:
-    "Point the organization's Reports diagnostic at one of its linked repositories, or unlink the current one. Works for GitHub, GitLab and Bitbucket.",
+    "Point the organization's Deco Score at one of its linked repositories, or unlink the current one. Works for GitHub, GitLab and Bitbucket.",
   annotations: {
-    title: "Set Reports Repository",
+    title: "Set Deco Score Repository",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,

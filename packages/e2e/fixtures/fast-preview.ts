@@ -29,10 +29,7 @@ export async function seedStubRepo(
     owner: string;
     repo: string;
     defaultBranch?: string;
-    branches?: Record<
-      string,
-      { files?: Record<string, string>; committedAt?: string } | null
-    >;
+    branches?: Record<string, { files?: Record<string, string> } | null>;
     mergeMode?: "merge" | "conflict" | "blocked";
     truncateRecursive?: boolean;
   },
@@ -167,7 +164,7 @@ export async function createFastPreviewProject(
           fastPreview: true,
           previewServerUrl:
             params.previewServerUrl ?? `https://${repo}.example.com`,
-          githubRepo: {
+          repository: {
             owner,
             name: repo,
             url: `https://github.com/${owner}/${repo}`,

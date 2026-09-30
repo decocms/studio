@@ -2009,7 +2009,7 @@ function RegisteredView({
                   type="button"
                   onClick={() => setRange(r)}
                   className={cn(
-                    "classic:rounded-md compact:rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-colors",
+                    "rounded-lg px-2 py-1 text-xs font-medium tabular-nums transition-colors",
                     range === r
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:text-foreground",

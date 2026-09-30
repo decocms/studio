@@ -209,9 +209,9 @@ function PreferencesSection() {
     setPreferences((prev) => ({ ...prev, enableNotifications: checked }));
   };
 
-  const handleCompactLayoutChange = (checked: boolean) => {
-    track("preferences_compact_page_layout_toggled", { enabled: checked });
-    setPreferences((prev) => ({ ...prev, compactPageLayout: checked }));
+  const handleProjectFirstNavChange = (checked: boolean) => {
+    track("preferences_project_first_nav_toggled", { enabled: checked });
+    setPreferences((prev) => ({ ...prev, projectFirstNav: checked }));
   };
 
   return (
@@ -336,7 +336,7 @@ function PreferencesSection() {
                   track("preferences_sounds_previewed");
                   playSound(question004Sound.dataUri).catch(() => {});
                 }}
-                className="size-6 classic:rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer compact:rounded-lg"
+                className="size-6 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer rounded-lg"
               >
                 <Play size={11} />
               </button>
@@ -354,16 +354,16 @@ function PreferencesSection() {
           }
         />
         <SettingsCardItem
-          title={t("settings.preferences.compactPageLayout")}
-          description={t("settings.preferences.compactPageLayoutDescription")}
+          title={t("settings.preferences.projectFirstNav")}
+          description={t("settings.preferences.projectFirstNavDescription")}
           onClick={() =>
-            handleCompactLayoutChange(!preferences.compactPageLayout)
+            handleProjectFirstNavChange(!preferences.projectFirstNav)
           }
           action={
             <Switch
-              aria-label={t("settings.preferences.compactPageLayout")}
-              checked={preferences.compactPageLayout}
-              onCheckedChange={handleCompactLayoutChange}
+              aria-label={t("settings.preferences.projectFirstNav")}
+              checked={preferences.projectFirstNav}
+              onCheckedChange={handleProjectFirstNavChange}
             />
           }
         />

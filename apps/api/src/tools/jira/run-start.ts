@@ -65,8 +65,8 @@ export const JIRA_RUN_START = defineTool({
       .describe(
         "Start ONE run that works every issue named, instead of one run per " +
           "issue — for work that spans them, like landing an epic's pull " +
-          "requests in order. Its Jira tools take `issueKey` to act on any " +
-          "of the issues and refuse every other. Cannot be combined with " +
+          "requests in order. Its Jira tools take `issueKey` to say which " +
+          "issue they act on. Cannot be combined with " +
           "`continuePr`, which pins a run to one issue's pull request.",
       ),
     continuePr: z

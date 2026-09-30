@@ -2,8 +2,9 @@
  * POST /api/_jira/webhook/:secret — Jira issue-event intake, per org.
  *
  * The trigger behind the integration: an `issue_updated` event whose changelog
- * carries a status change is checked against the org's rules and, when one
- * matches, starts an agent run on the issue (`jira/trigger.ts`). Everything
+ * carries a status change starts a durable wait for the card to settle; once it
+ * has, the status it rests in is checked against the org's rules and, when one
+ * matches, an agent run starts on the issue (`jira/trigger.ts`). Everything
  * else is acknowledged and dropped.
  *
  * Jira admin webhooks carry no HMAC signature, so the per-org secret in the
@@ -20,13 +21,10 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import type { Kysely } from "kysely";
 import { CredentialVault } from "@/encryption/credential-vault";
-import {
-  parseWebhookTransition,
-  triggerRunForTransition,
-} from "@/jira/trigger";
+import { enqueueJiraSettle } from "@/jira/dbos-jira-trigger-sweep";
+import { parseWebhookTransition } from "@/jira/trigger";
 import { JiraIntegrationStorage } from "@/storage/jira-integrations";
 import type { Database } from "@/storage/types";
-import { buildOrgContext } from "@/tools/task-board/org-context";
 
 /** The route is unauthenticated until the secret lookup — cap the body. */
 const MAX_BODY_SIZE = 1_048_576; // 1MB
@@ -46,14 +44,10 @@ export function createJiraWebhookRoutes(deps: {
     // Re-fetched here rather than trusted from the ack: config may have changed.
     const integration = await storage.getByWebhookSecret(secret);
     if (!integration?.enabled) return;
-    const ctx = await buildOrgContext(deps.db, integration.organizationId);
-    if (!ctx) return;
-    const outcome = await triggerRunForTransition(ctx, integration, transition);
-    if (outcome === "started") {
-      console.log(
-        `[jira-webhook] started a run for ${transition.issueKey} entering "${transition.toStatus}"`,
-      );
-    }
+    // Any rule, not this status's: the card may settle somewhere else.
+    const rules = await storage.listAutomations(integration.organizationId);
+    if (rules.length === 0) return;
+    await enqueueJiraSettle(integration.id, transition);
   }
 
   const app = new Hono();

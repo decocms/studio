@@ -14,7 +14,7 @@ import { isValidSiteSlug } from "@decocms/shared/site-slug";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import { queryExperimentResults } from "../../deco-legacy/experiment-analytics";
-import { assertOwnsSite } from "./ownership";
+import { resolveOwnedAnalyticsSite } from "./ownership";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -75,6 +75,12 @@ export const EXPERIMENT_RESULTS = defineTool({
   }),
   outputSchema: z.object({
     available: z.boolean(),
+    /** Why `results` is null: the deployment has no analytics backend, or it
+     *  does but this site reports no traffic (e.g. a migrated site whose
+     *  analytics live under another slug — see `analyticsSiteSlug`). */
+    reason: z.enum(["not_configured", "no_site_data"]).nullable(),
+    /** The site slug analytics was actually read for (the override, if any). */
+    analyticsSite: z.string(),
     results: z
       .object({
         visitors: z.object({ default: z.number(), variant: z.number() }),
@@ -105,15 +111,18 @@ export const EXPERIMENT_RESULTS = defineTool({
     requireAuth(ctx);
     await ctx.access.check();
     const organization = requireOrganization(ctx);
-    await assertOwnsSite(ctx, organization.id, input.site);
-    const slug = input.site.toLowerCase();
+    const slug = await resolveOwnedAnalyticsSite(
+      ctx,
+      organization.id,
+      input.site,
+    );
 
     const window =
       input.since && input.until
         ? { since: input.since, until: input.until }
         : defaultWindow();
 
-    const results = await queryExperimentResults({
+    const outcome = await queryExperimentResults({
       slug,
       testName: input.key,
       since: window.since,
@@ -122,6 +131,18 @@ export const EXPERIMENT_RESULTS = defineTool({
       goalOnDash: input.goalOnDash,
     });
 
-    return { available: results !== null, results };
+    return outcome.status === "ok"
+      ? {
+          available: true,
+          reason: null,
+          analyticsSite: slug,
+          results: outcome.results,
+        }
+      : {
+          available: false,
+          reason: outcome.status,
+          analyticsSite: slug,
+          results: null,
+        };
   },
 });

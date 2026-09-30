@@ -104,6 +104,10 @@ function ctx(): StudioContext {
     timings: {
       measure: async <T>(_n: string, cb: () => Promise<T>) => await cb(),
     },
+    meter: {
+      createHistogram: () => ({ record: () => {} }),
+      createCounter: () => ({ add: () => {} }),
+    } as never,
     tracer: {
       startActiveSpan: (
         _n: string,

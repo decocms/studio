@@ -53,4 +53,15 @@ describe("extractDescriptionLinks", () => {
   it("ignores a markdown link to a non-http target", () => {
     expect(extractDescriptionLinks("[local](/settings)")).toEqual([]);
   });
+
+  it("strips trailing sentence punctuation off a bare URL", () => {
+    expect(extractDescriptionLinks("see https://example.com/a.")).toEqual([
+      { url: "https://example.com/a", label: "https://example.com/a" },
+    ]);
+    expect(
+      extractDescriptionLinks("is this related to https://example.com/b?"),
+    ).toEqual([
+      { url: "https://example.com/b", label: "https://example.com/b" },
+    ]);
+  });
 });

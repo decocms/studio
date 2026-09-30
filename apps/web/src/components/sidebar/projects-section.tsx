@@ -1,4 +1,4 @@
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+import type { ProjectIndex } from "@/lib/project-index";
 /**
  * The sidebar's project list, with what each one needs FROM YOU nested under
  * it.
@@ -40,11 +40,7 @@ import { track } from "@/lib/posthog-client";
 import { useProjectContext } from "@/sdk";
 import { useT } from "@/i18n/use-t.ts";
 import { Link } from "@tanstack/react-router";
-import {
-  buildProjectIndex,
-  projectsForTask,
-  type ProjectIndex,
-} from "@/lib/project-index";
+import { buildProjectIndex, projectsForTask } from "@/lib/project-index";
 import { SidebarNavRow } from "./nav-row";
 
 /** Nested rows one project shows before the board takes over. */
@@ -177,7 +173,7 @@ export function SidebarProjectsSection({
 }) {
   const t = useT();
   const collapsed = useSidebarCollapsed();
-  const compact = useCompactPageLayout();
+
   const [importOpen, setImportOpen] = useState(false);
   const { granted: canManageProjects } = useCapability("agents:manage");
   const { org, locator } = useProjectContext();
@@ -199,8 +195,7 @@ export function SidebarProjectsSection({
    *  that says where you could be instead. The picker and the way back out are
    *  the controls for leaving; this section is the org's map.
    *  Collapsed keeps the rows at icon width; only the heading and the nested task rows drop, having no icon to be. */
-  if (scopeId || (projects.length === 0 && (!compact || !canManageProjects)))
-    return null;
+  if (scopeId || (projects.length === 0 && !canManageProjects)) return null;
 
   const byProject = tasksNeedingMeByProject(
     buildProjectIndex(projects),
@@ -210,11 +205,11 @@ export function SidebarProjectsSection({
 
   return (
     <div
-      className="flex flex-col classic:gap-1 compact:gap-2 classic:group-data-[state=collapsed]/sidebar:pt-3"
+      className="flex flex-col gap-2"
       data-tour={LAYOUT_TOUR_ANCHORS.projects}
     >
       {!collapsed && (
-        <p className="px-2 classic:pt-5 classic:pb-0.5 text-xs font-medium classic:text-muted-foreground/60 compact:text-muted-foreground">
+        <p className="px-2 text-xs font-medium text-muted-foreground">
           {t("sidebar.projects.heading")}
         </p>
       )}
@@ -254,7 +249,7 @@ export function SidebarProjectsSection({
             </SidebarNavRow>
           );
         })}
-        {compact && canManageProjects && (
+        {canManageProjects && (
           <SidebarNavRow
             icon={<Plus size={16} />}
             label={t("sidebar.projects.addProject")}

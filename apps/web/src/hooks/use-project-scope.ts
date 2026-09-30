@@ -14,7 +14,7 @@ import {
   useActivePanelSegment,
 } from "@/hooks/use-destination-route";
 import { navigateToTabLocation } from "@/layouts/main-panel-tabs/tab-route";
-import { projectRepo } from "@/lib/github-repo";
+import { projectRepo } from "@/lib/repository-binding";
 
 /** The control renders from the FIRST project: with one there is nothing to
  *  switch between, but its workspace still has to be reachable. Gating this at

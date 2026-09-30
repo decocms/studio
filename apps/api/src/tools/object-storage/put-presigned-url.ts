@@ -1,6 +1,7 @@
 import { defineTool } from "../../core/define-tool";
 import { requireAuth, requireOrganization } from "../../core/studio-context";
 import {
+  clampExpiresIn,
   PutPresignedUrlInputSchema,
   PutPresignedUrlOutputSchema,
   requireObjectStorage,
@@ -28,7 +29,7 @@ export const PUT_PRESIGNED_URL = defineTool({
     await ctx.access.check();
     const storage = requireObjectStorage(ctx);
 
-    const expiresIn = input.expiresIn ?? DEFAULT_EXPIRES_IN;
+    const expiresIn = clampExpiresIn(input.expiresIn, DEFAULT_EXPIRES_IN);
     const url = await storage.presignedPutUrl(
       input.key,
       expiresIn,

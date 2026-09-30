@@ -5,7 +5,7 @@
  * Shared by the tab bar (which decides whether Preview / Code show at all) and
  * by the tab contents (which decide what to render), so the two can never
  * disagree — a tab that is visible because the store row carries a
- * thread-scoped `githubRepo` must not render "no source to preview".
+ * thread-scoped `repository` must not render "no source to preview".
  *
  * The store subscription matters for rows that land AFTER first render (late
  * snapshot, `manager.create` prepend); the suspense query is the cold-load /

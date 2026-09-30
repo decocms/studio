@@ -82,7 +82,7 @@ function ToolPanel({
   return (
     <div className="flex flex-col gap-8 py-6">
       {data.sections.map((section) => (
-        <SectionView key={section.title} section={section} />
+        <SectionView key={section.title} section={section} threadLinks />
       ))}
       <p className="text-xs text-muted-foreground">
         {t("taskBoard.analytics.rangeFootnote", {

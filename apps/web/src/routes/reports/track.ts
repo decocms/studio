@@ -2,7 +2,8 @@ import posthog from "posthog-js";
 import type { CaptureOptions, Properties } from "posthog-js";
 import { isPostHogInitialized } from "@/lib/posthog-client";
 
-let reviewerMode = false;
+/** The `surface` every report-funnel event carries. */
+export const REPORT_SURFACE = "onepager";
 
 const AUTH_ATTEMPT_PREFIX = "report:auth-attempt:";
 const AUTH_ATTEMPT_TTL_MS = 60 * 60 * 1000;
@@ -173,15 +174,7 @@ export function reportAuthErrorType(error: string): string {
   return "unknown";
 }
 
-/** Set at /report route render time (module state, so it lands before any
- *  child component captures — effects would run too late) and cleared on
- *  unmount. Reviewer sessions (?key=) flag every report event with
- *  `report_preview` instead of polluting the production funnel. */
-export function setReportReviewerMode(on: boolean): void {
-  reviewerMode = on;
-}
-
-/** posthog.capture for report-funnel events — merges attribution + reviewer flag.
+/** posthog.capture for report-funnel events — merges the visit's attribution.
  *  Direct posthog (not the `track` wrapper) because CTA clicks need
  *  `{transport: "sendBeacon"}`; the init-deferral guard is kept. */
 export function captureReport(
@@ -196,7 +189,6 @@ export function captureReport(
       {
         ...currentReportAttribution(),
         ...props,
-        ...(reviewerMode ? { report_preview: "reviewer" } : {}),
       },
       options,
     );

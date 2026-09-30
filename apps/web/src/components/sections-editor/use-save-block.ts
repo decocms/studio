@@ -5,6 +5,7 @@ import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { decofileCacheKey } from "./use-decofile";
 import { usePackagePath } from "./use-package-path";
 import { toast } from "sonner";
+import { sanitizeSecretsForPersistence } from "@decocms/shared/decofile";
 import { decoBlockFilePath } from "./deco-block-key";
 import { decoRepoPath } from "./deco-repo-path";
 import {
@@ -14,7 +15,7 @@ import {
   setDecofileDraft,
   throwResponseError,
 } from "./decofile-api";
-import { sandboxGitStatusQueryKey } from "../thread/github/sandbox-git-api";
+import { sandboxGitStatusQueryKey } from "../thread/repository/sandbox-git-api";
 import { useOptionalChatTask } from "@/components/chat/chat-context";
 import { KEYS } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t";
@@ -65,6 +66,8 @@ export function useSaveBlock({
       blockKey: string;
       data: unknown;
     }) => {
+      // Fail closed before any write path: a raw secret must never be persisted.
+      data = sanitizeSecretsForPersistence(data);
       // Local: no persistence — the optimistic cache write is the save.
       if (localPreviewUrl) return { blockKey, data };
       if (fastPreviewActive) {

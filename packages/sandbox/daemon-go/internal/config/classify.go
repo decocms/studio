@@ -254,12 +254,11 @@ func TokenFromCloneUrl(rawUrl string) string {
 // is what an agent's `curl` against api.bitbucket.org sends as its bearer.
 // Empty for an SSH, anonymous or unrecognised URL.
 //
-// The GitLab entries are NOT sufficient on their own: glab sends an env token
-// as `PRIVATE-TOKEN`, which GitLab rejects for an OAuth access token (verified
-// against gitlab.com — every env form, including OAUTH_TOKEN and
-// GITLAB_ACCESS_TOKEN, answers 401). `GlabConfigFromCloneUrl` is what actually
-// authenticates it; these stay because they are what a personal or project
-// access token needs, and because `GITLAB_HOST` is read for the default host.
+// glab prefers GITLAB_TOKEN over its config file and sends it as
+// `PRIVATE-TOKEN`, which GitLab rejects for an OAuth access token (verified
+// against gitlab.com). GLAB_IS_OAUTH2 makes it send `Authorization: Bearer`
+// instead, which GitLab accepts for OAuth, personal and project access tokens
+// alike, so one shape serves every token Studio mints.
 //
 // ⚠️ SECURITY: the values are credentials. Never log them.
 func CliEnvFromCloneUrl(rawUrl string) map[string]string {
@@ -280,7 +279,7 @@ func CliEnvFromCloneUrl(rawUrl string) map[string]string {
 		}
 		return env
 	case "oauth2":
-		env := map[string]string{"GITLAB_TOKEN": token}
+		env := map[string]string{"GITLAB_TOKEN": token, "GLAB_IS_OAUTH2": "true"}
 		if host != "" {
 			env["GITLAB_HOST"] = "https://" + host
 		}

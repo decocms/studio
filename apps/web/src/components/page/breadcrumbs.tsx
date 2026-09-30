@@ -1,3 +1,6 @@
+import type { ComponentPropsWithRef } from "react";
+import type { BreadcrumbExtension } from "./breadcrumb-model";
+import type { BreadcrumbItem } from "./breadcrumb-model";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import {
@@ -8,22 +11,19 @@ import {
 } from "@decocms/ui/components/dropdown-menu.tsx";
 import { createLink } from "@tanstack/react-router";
 import { ChevronRight, DotsHorizontal } from "@untitledui/icons";
-import { useSyncExternalStore, type ComponentPropsWithRef } from "react";
+import { useSyncExternalStore } from "react";
 import { useT } from "@/i18n/use-t";
 import { useElementWidth } from "@/hooks/use-element-width";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
+
 import {
   BreadcrumbContribution,
   BreadcrumbProvider,
   useBreadcrumbStore,
 } from "./breadcrumb-context";
 import {
-  CLASSIC_MAX_UNCOLLAPSED_ITEMS,
-  COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS,
+  MAX_UNCOLLAPSED_ITEMS,
   collapseBreadcrumbs,
   resolveBreadcrumbs,
-  type BreadcrumbExtension,
-  type BreadcrumbItem,
 } from "./breadcrumb-model";
 
 // The trail's final position, rather than a router prefix match, defines current.
@@ -127,16 +127,12 @@ function BreadcrumbSegment({
 
 function BreadcrumbTrail({ items }: { items: readonly BreadcrumbItem[] }) {
   const t = useT();
-  // Named for the preference, because the second argument below is the other
-  // kind of compact: a container too narrow for a path, whatever the layout.
-  const compactLayout = useCompactPageLayout();
+
   const [width, ref] = useElementWidth();
   const entries = collapseBreadcrumbs(
     items,
     width >= 0 && width < 320,
-    compactLayout
-      ? COMPACT_LAYOUT_MAX_UNCOLLAPSED_ITEMS
-      : CLASSIC_MAX_UNCOLLAPSED_ITEMS,
+    MAX_UNCOLLAPSED_ITEMS,
   );
   return (
     <nav

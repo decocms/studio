@@ -8,8 +8,10 @@ import {
   CollectionDeleteInputSchema,
   createCollectionDeleteOutputSchema,
 } from "@decocms/bindings/collections";
+import { WellKnownOrgMCPId } from "@decocms/shared/sdk";
 import { z } from "zod";
 import { posthog } from "../../posthog";
+import { releaseReportsSite } from "../reports/release";
 import { defineTool } from "../../core/define-tool";
 import {
   getUserId,
@@ -128,6 +130,17 @@ export const COLLECTION_CONNECTIONS_DELETE = defineTool({
 
     // Delete connection
     await ctx.storage.connections.delete(input.id);
+
+    if (
+      input.id === WellKnownOrgMCPId.REPORTS(organization.id) &&
+      typeof metadata?.siteUrl === "string"
+    ) {
+      releaseReportsSite({
+        siteUrl: metadata.siteUrl,
+        orgId: organization.id,
+        cause: "connection_deleted",
+      });
+    }
 
     // Drop the unbounded oauth refresh backoff tracker entry so it doesn't linger.
     clearRefreshBackoff(input.id);

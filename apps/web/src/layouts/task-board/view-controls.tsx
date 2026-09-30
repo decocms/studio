@@ -25,6 +25,15 @@ import {
   CommandList,
 } from "@decocms/ui/components/command.tsx";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
+import {
   Popover,
   PopoverAnchor,
   PopoverContent,
@@ -34,11 +43,15 @@ import { cn } from "@decocms/ui/lib/utils.ts";
 import {
   Calendar,
   Check,
+  ArrowNarrowDown,
+  ArrowNarrowUp,
   ChevronRight,
   FilterLines,
   Flag01,
   Plus,
+  Rows01,
   Settings02,
+  SwitchVertical01,
   Tag01,
   User01,
   X,
@@ -49,7 +62,7 @@ import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Separator } from "@decocms/ui/components/separator.tsx";
-import { useT } from "@/i18n/use-t.ts";
+import { useT, type TranslationKey } from "@/i18n/use-t.ts";
 import { getInitials } from "@/lib/get-initials";
 import {
   entryForFilter,
@@ -57,6 +70,7 @@ import {
   type ProjectIndex,
 } from "@/lib/project-index";
 import {
+  laneVisual,
   PRIORITIES,
   PRIORITY_CONFIG,
   SUPER_AGENT_ASSIGNEE_ID,
@@ -70,6 +84,8 @@ import {
   withFieldCleared,
   type FilterFieldId,
 } from "./filter-fields";
+import { GROUP_BY_OPTIONS, type GroupBy } from "./list-groups";
+import { SORT_BY_OPTIONS, type SortBy, type SortDirection } from "./list-sort";
 import {
   DUE_FILTERS,
   dueFilterLabelKey,
@@ -121,6 +137,13 @@ function TagDot({ color }: { color: string | null | undefined }) {
   );
 }
 
+/** Name order, so a long list of people, tags or projects is scannable. */
+function alphabetical<T>(items: readonly T[], name: (item: T) => string): T[] {
+  return [...items].sort((a, b) =>
+    name(a).localeCompare(name(b), undefined, { sensitivity: "base" }),
+  );
+}
+
 function useFilterFields({
   members,
   tags,
@@ -155,20 +178,22 @@ function useFilterFields({
         apply: (f) => ({ ...f, assignee: SUPER_AGENT_ASSIGNEE_ID }),
         isSelected: (f) => f.assignee === SUPER_AGENT_ASSIGNEE_ID,
       },
-      ...members.map((member) => ({
-        id: member.userId,
-        label: member.user?.name ?? member.userId,
-        glyph: (
-          <Avatar
-            url={member.user?.image ?? undefined}
-            fallback={getInitials(member.user?.name)}
-            shape="circle"
-            size="2xs"
-          />
-        ),
-        apply: (f: TaskFilters) => ({ ...f, assignee: member.userId }),
-        isSelected: (f: TaskFilters) => f.assignee === member.userId,
-      })),
+      ...alphabetical(members, (m) => m.user?.name ?? m.userId).map(
+        (member) => ({
+          id: member.userId,
+          label: member.user?.name ?? member.userId,
+          glyph: (
+            <Avatar
+              url={member.user?.image ?? undefined}
+              fallback={getInitials(member.user?.name)}
+              shape="circle"
+              size="2xs"
+            />
+          ),
+          apply: (f: TaskFilters) => ({ ...f, assignee: member.userId }),
+          isSelected: (f: TaskFilters) => f.assignee === member.userId,
+        }),
+      ),
     ],
     valueLabel: (f) =>
       f.assignee === UNASSIGNED_FILTER
@@ -231,7 +256,7 @@ function useFilterFields({
     label: t("taskBoard.taskFilters.tagsLabel"),
     icon: <Tag01 size={14} className="shrink-0" />,
     multi: true,
-    options: tags.map((tag) => ({
+    options: alphabetical(tags, (tag) => tag.name).map((tag) => ({
       id: tag.id,
       label: tag.name,
       glyph: <TagDot color={tag.color} />,
@@ -270,7 +295,7 @@ function useFilterFields({
         apply: (f) => ({ ...f, project: NO_PROJECT_FILTER }),
         isSelected: (f) => f.project === NO_PROJECT_FILTER,
       },
-      ...index.entries.map((entry) => ({
+      ...alphabetical(index.entries, (entry) => entry.title).map((entry) => ({
         id: entry.id,
         label: entry.title,
         glyph: <ProjectEntryIcon entry={entry} />,
@@ -557,6 +582,345 @@ export function TaskFilterButton({
   );
 }
 
+type GroupingProps = {
+  groupBy: GroupBy | null;
+  subgroupBy: GroupBy | null;
+  onGroupByChange: (next: GroupBy | null) => void;
+  onSubgroupByChange: (next: GroupBy | null) => void;
+};
+
+type SortingProps = {
+  sortBy: SortBy | null;
+  sortDirection: SortDirection;
+  onSortByChange: (next: SortBy | null) => void;
+  onSortDirectionChange: (next: SortDirection) => void;
+};
+
+type ChoiceOption<T> = { value: T; label: string; icon?: ReactNode };
+
+/** A view-menu setting whose choices open beside it, like the filter menu. */
+function MenuChoice<T>({
+  icon,
+  label,
+  value,
+  options,
+  onSelect,
+  disabled,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: T;
+  options: ChoiceOption<T>[];
+  onSelect: (next: T) => void;
+  disabled?: boolean;
+}) {
+  const current = options.find((option) => option.value === value);
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        disabled={disabled}
+        className="gap-2 data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+      >
+        <Glyph>{icon}</Glyph>
+        <span className="truncate">{label}</span>
+        <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">
+          {current?.label}
+        </span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-52">
+        {options.map((option) => (
+          <DropdownMenuItem
+            key={String(option.value)}
+            className="gap-2"
+            onSelect={() => onSelect(option.value)}
+          >
+            <Glyph>{option.icon}</Glyph>
+            <span className="truncate">{option.label}</span>
+            {option.value === value && (
+              <Check size={14} className="ml-auto shrink-0" />
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
+const TodoIcon = laneVisual("todo").icon;
+
+const CRITERION_ICONS: Record<GroupBy | SortBy, ReactNode> = {
+  status: <TodoIcon size={14} className="shrink-0" />,
+  assignee: <User01 size={14} className="shrink-0" />,
+  priority: <Flag01 size={14} className="shrink-0" />,
+  due: <Calendar size={14} className="shrink-0" />,
+  tags: <Tag01 size={14} className="shrink-0" />,
+  project: <ProjectEntryIcon entry={undefined} />,
+};
+
+/** A grouping and, nested in each of its groups, an optional sub-grouping by
+ *  a different criterion — shared by the view row's button and the chip. */
+function GroupByMenuContent({
+  groupBy,
+  subgroupBy,
+  onGroupByChange,
+  onSubgroupByChange,
+  align,
+}: GroupingProps & { align: "start" | "end" }) {
+  const t = useT();
+  const none: ChoiceOption<GroupBy | null> = {
+    value: null,
+    label: t("taskBoard.viewControls.groupByNone"),
+  };
+  const criteria = (exclude: GroupBy | null) =>
+    GROUP_BY_OPTIONS.filter((option) => option !== exclude).map((option) => ({
+      value: option,
+      label: t(GROUP_BY_LABEL_KEYS[option]),
+      icon: CRITERION_ICONS[option],
+    }));
+  return (
+    <DropdownMenuContent align={align} className="w-72">
+      <MenuChoice
+        icon={<Rows01 size={14} className="shrink-0" />}
+        label={t("taskBoard.viewControls.groupingLabel")}
+        value={groupBy}
+        options={[none, ...criteria(null)]}
+        onSelect={onGroupByChange}
+      />
+      <MenuChoice
+        icon={<Rows01 size={14} className="shrink-0" />}
+        label={t("taskBoard.viewControls.subgroupingLabel")}
+        value={subgroupBy}
+        options={[none, ...criteria(groupBy)]}
+        onSelect={onSubgroupByChange}
+        disabled={groupBy === null}
+      />
+    </DropdownMenuContent>
+  );
+}
+
+function SortMenuContent({
+  sortBy,
+  sortDirection,
+  onSortByChange,
+  onSortDirectionChange,
+  align,
+}: SortingProps & { align: "start" | "end" }) {
+  const t = useT();
+  return (
+    <DropdownMenuContent align={align} className="w-72">
+      <MenuChoice<SortBy | null>
+        icon={<SwitchVertical01 size={14} className="shrink-0" />}
+        label={t("taskBoard.viewControls.sortingLabel")}
+        value={sortBy}
+        options={[
+          { value: null, label: t("taskBoard.viewControls.sortNone") },
+          ...SORT_BY_OPTIONS.map((option) => ({
+            value: option,
+            label: t(SORT_BY_LABEL_KEYS[option]),
+            icon: CRITERION_ICONS[option],
+          })),
+        ]}
+        onSelect={onSortByChange}
+      />
+      <MenuChoice<SortDirection>
+        icon={
+          sortDirection === "asc" ? (
+            <ArrowNarrowUp size={14} className="shrink-0" />
+          ) : (
+            <ArrowNarrowDown size={14} className="shrink-0" />
+          )
+        }
+        label={t("taskBoard.viewControls.sortDirectionLabel")}
+        value={sortDirection}
+        options={[
+          {
+            value: "asc",
+            label: t("taskBoard.viewControls.sortAscending"),
+            icon: <ArrowNarrowUp size={14} className="shrink-0" />,
+          },
+          {
+            value: "desc",
+            label: t("taskBoard.viewControls.sortDescending"),
+            icon: <ArrowNarrowDown size={14} className="shrink-0" />,
+          },
+        ]}
+        onSelect={onSortDirectionChange}
+        disabled={sortBy === null}
+      />
+    </DropdownMenuContent>
+  );
+}
+
+/** The list view's "Group by" button, Linear's shape. */
+export function GroupByButton(props: GroupingProps) {
+  const t = useT();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t("taskBoard.viewControls.groupByLabel")}
+          tooltipSide="bottom"
+          variant="secondary"
+          aria-pressed={props.groupBy !== null}
+        >
+          <Rows01 />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <GroupByMenuContent {...props} align="end" />
+    </DropdownMenu>
+  );
+}
+
+/** The list view's "Sort" button. Sorting orders the tasks inside every
+ *  group, so it composes with grouping instead of replacing it. */
+export function SortByButton(props: SortingProps) {
+  const t = useT();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={t("taskBoard.viewControls.sortLabel")}
+          tooltipSide="bottom"
+          variant="secondary"
+          aria-pressed={props.sortBy !== null}
+        >
+          <SwitchVertical01 />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <SortMenuContent {...props} align="end" />
+    </DropdownMenu>
+  );
+}
+
+const GROUP_BY_LABEL_KEYS: Record<GroupBy, TranslationKey> = {
+  status: "taskBoard.viewControls.groupByStatus",
+  assignee: "taskBoard.taskFilters.assigneeLabel",
+  priority: "taskBoard.taskFilters.priorityLabel",
+  tags: "taskBoard.taskFilters.tagsLabel",
+  project: "taskBoard.taskFilters.projectLabel",
+};
+
+const SORT_BY_LABEL_KEYS: Record<SortBy, TranslationKey> = {
+  assignee: "taskBoard.taskFilters.assigneeLabel",
+  due: "taskBoard.taskFilters.dueDateLabel",
+  tags: "taskBoard.taskFilters.tagsLabel",
+  project: "taskBoard.taskFilters.projectLabel",
+  priority: "taskBoard.taskFilters.priorityLabel",
+};
+
+/** The grouping and sorting chips at the head of the applied-filters strip:
+ *  the list's arrangement is as much a part of what you are looking at as
+ *  its filters. The value opens the same menu as the view row's button. */
+function ViewChip({
+  icon,
+  label,
+  value,
+  menu,
+  extra,
+  removeLabel,
+  onRemove,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  menu: ReactNode;
+  extra?: ReactNode;
+  removeLabel: string;
+  onRemove: () => void;
+}) {
+  return (
+    <Badge variant="outline" size="segmented">
+      <span className="flex h-full items-center gap-1.5 px-2.5 text-foreground">
+        {icon}
+        {label}
+      </span>
+      <Separator orientation="vertical" />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex h-full max-w-[16rem] items-center gap-1.5 truncate px-2.5 text-foreground hover:bg-accent"
+          >
+            {value}
+          </button>
+        </DropdownMenuTrigger>
+        {menu}
+      </DropdownMenu>
+      {extra}
+      <IconButton label={removeLabel} size="icon-sm" onClick={onRemove}>
+        <X />
+      </IconButton>
+    </Badge>
+  );
+}
+
+function ViewChips({
+  grouping,
+  sorting,
+}: {
+  grouping: GroupingProps;
+  sorting: SortingProps;
+}) {
+  const t = useT();
+  const { groupBy, subgroupBy } = grouping;
+  const { sortBy, sortDirection } = sorting;
+  const DirectionIcon =
+    sortDirection === "asc" ? ArrowNarrowUp : ArrowNarrowDown;
+  return (
+    <>
+      {groupBy !== null && (
+        <ViewChip
+          icon={<Rows01 size={14} className="shrink-0" />}
+          label={t("taskBoard.viewControls.groupedBy")}
+          value={
+            <>
+              {t(GROUP_BY_LABEL_KEYS[groupBy])}
+              {subgroupBy !== null && (
+                <>
+                  <ChevronRight
+                    size={12}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  {t(GROUP_BY_LABEL_KEYS[subgroupBy])}
+                </>
+              )}
+            </>
+          }
+          menu={<GroupByMenuContent {...grouping} align="start" />}
+          removeLabel={t("taskBoard.viewControls.removeGrouping")}
+          onRemove={() => grouping.onGroupByChange(null)}
+        />
+      )}
+      {sortBy !== null && (
+        <ViewChip
+          icon={<SwitchVertical01 size={14} className="shrink-0" />}
+          label={t("taskBoard.viewControls.sortedBy")}
+          value={t(SORT_BY_LABEL_KEYS[sortBy])}
+          menu={<SortMenuContent {...sorting} align="start" />}
+          extra={
+            <>
+              <Separator orientation="vertical" />
+              <IconButton
+                label={t("taskBoard.viewControls.reverseSort")}
+                size="icon-sm"
+                onClick={() =>
+                  sorting.onSortDirectionChange(
+                    sortDirection === "asc" ? "desc" : "asc",
+                  )
+                }
+              >
+                <DirectionIcon />
+              </IconButton>
+            </>
+          }
+          removeLabel={t("taskBoard.viewControls.removeSorting")}
+          onRemove={() => sorting.onSortByChange(null)}
+        />
+      )}
+    </>
+  );
+}
+
 /** The view row's display button — layout, then the board's own settings. */
 /** The values of ONE field, reached from the chip that already names it — so
  *  changing "Priority is Medium" to High is a click on the value, not a trip
@@ -669,6 +1033,7 @@ export function AppliedFiltersBar({
   tags,
   index,
   onChange,
+  view,
 }: {
   filters: TaskFilters;
   items: TaskBoardItem[];
@@ -676,14 +1041,25 @@ export function AppliedFiltersBar({
   tags: OrgTag[];
   index: ProjectIndex;
   onChange: (next: TaskFilters) => void;
+  /** The list view's grouping and sorting; the board has neither. */
+  view?: { grouping: GroupingProps; sorting: SortingProps };
 }) {
   const t = useT();
   const fields = useFilterFields({ members, tags, index });
   const activeIds = activeFilterFieldIds(filters, index);
-  if (activeIds.length === 0) return null;
+  const arranged =
+    view !== undefined &&
+    (view.grouping.groupBy !== null || view.sorting.sortBy !== null);
+  if (activeIds.length === 0 && !arranged) return null;
 
   return (
     <div className="mx-3 flex h-11 shrink-0 items-center gap-2 overflow-x-auto rounded-xl border border-border px-2 no-scrollbar">
+      {view && arranged && (
+        <>
+          <ViewChips {...view} />
+          <Separator orientation="vertical" className="mx-1 h-5" />
+        </>
+      )}
       {activeIds.map((id) => {
         const field = fields.find((candidate) => candidate.id === id);
         if (!field) return null;
@@ -731,22 +1107,34 @@ export function AppliedFiltersBar({
           </IconButton>
         }
       />
-      <div className="ml-auto">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onChange({ ...EMPTY_FILTERS, search: filters.search })}
-        >
-          {t("taskBoard.viewControls.clear")}
-        </Button>
-      </div>
+      {activeIds.length > 0 && (
+        <div className="ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              onChange({ ...EMPTY_FILTERS, search: filters.search })
+            }
+          >
+            {t("taskBoard.viewControls.clear")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
-export function BoardSettingsButton({ onClick }: { onClick: () => void }) {
+export function BoardSettingsButton({
+  onClick,
+  label: labelOverride,
+}: {
+  onClick: () => void;
+  /** The board's own project, when scoped, has settings of its own to open
+   *  instead — the caller names which. */
+  label?: string;
+}) {
   const t = useT();
-  const label = t("taskBoard.taskFilters.boardSettingsLabel");
+  const label = labelOverride ?? t("taskBoard.taskFilters.boardSettingsLabel");
 
   return (
     <IconButton

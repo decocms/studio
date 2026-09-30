@@ -2,13 +2,13 @@ import type { ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useOptionalChatStream, useOptionalChatTask } from "../context";
 import { BranchPill } from "./branch-pill";
-import { useBaseBranch } from "../../thread/github/use-version-gate";
+import { useBaseBranch } from "../../thread/repository/use-version-gate";
 import {
-  getActiveGithubRepo,
+  getActiveRepository,
   hasRepoCredential,
   repoTargetKey,
   repoToolTarget,
-} from "@/lib/github-repo";
+} from "@/lib/repository-binding";
 import { useProjectContext } from "@/sdk";
 import {
   defaultThreadRuntime,
@@ -42,9 +42,9 @@ interface SmartProps {
 
 /**
  * Smart wrapper. Renders the BranchPill for agents imported from GitHub —
- * `metadata.githubRepo` exists AND has an attached `connectionId` (an
+ * `metadata.repository` exists AND has an attached `connectionId` (an
  * authenticated user repo, not a public-template clone). Start Website agents
- * populate `metadata.githubRepo.url` for the template but leave `connectionId`
+ * populate `metadata.repository.url` for the template but leave `connectionId`
  * unset; branches aren't meaningful there.
  *
  * Locked flag is derived from `useOptionalChatStream().messages.length > 0`.
@@ -64,8 +64,8 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     readThreadRuntime(taskCtx?.activeTask?.metadata, virtualMcp?.metadata) ===
       "sandbox";
 
-  const githubRepo = getActiveGithubRepo(virtualMcp);
-  const repoTarget = repoToolTarget(githubRepo);
+  const repository = getActiveRepository(virtualMcp);
+  const repoTarget = repoToolTarget(repository);
 
   const { data: session } = authClient.useSession();
   const userLabel = branchUserLabel(session?.user);
@@ -92,10 +92,10 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
     : undefined;
 
   const branchPill =
-    githubRepo && hasRepoCredential(repoTarget) ? (
+    repository && hasRepoCredential(repoTarget) ? (
       <BranchPill
         // Remount per repo so the previous project's switcher state can't leak.
-        key={`${repoTargetKey(repoTarget)}:${githubRepo.owner}/${githubRepo.name}`}
+        key={`${repoTargetKey(repoTarget)}:${repository.owner}/${repository.name}`}
         userLabel={userLabel}
         virtualMcpId={virtualMcp?.id ?? ""}
         value={currentBranch}
@@ -104,8 +104,8 @@ export function ChatModeRow({ virtualMcp, currentBranch }: SmartProps) {
         orgSlug={org.slug}
         userId={userId}
         target={repoTarget}
-        owner={githubRepo.owner}
-        repo={githubRepo.name}
+        owner={repository.owner}
+        repo={repository.name}
         sandboxMap={virtualMcp?.metadata?.sandboxMap}
         onChange={onChange}
         onCreateBranch={onCreateBranch}

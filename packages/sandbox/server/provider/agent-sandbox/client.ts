@@ -281,6 +281,19 @@ async function readStatusBody(resp: Response): Promise<V1Status | null> {
   }
 }
 
+/**
+ * Drain and discard a response body. An unread body keeps the underlying
+ * connection from returning to the fetch keep-alive pool, so a short-circuit
+ * branch that never touches the body (a 404/403 fast-path) leaks a socket per
+ * call — costly here since these paths are hit by tight polling loops
+ * (waitForSandboxClaimGone, ensure()'s repeated getSandboxClaim, etc.).
+ */
+async function drainBody(resp: Response): Promise<void> {
+  try {
+    await resp.body?.cancel();
+  } catch {}
+}
+
 async function ensureOk(resp: Response, action: string): Promise<void> {
   if (resp.ok) return;
   const body = await readStatusBody(resp);
@@ -305,7 +318,10 @@ async function callSwallowing404<T>(
 ): Promise<T | null> {
   try {
     const resp = await kubeFetch(kc, init);
-    if (resp.status === 404) return null;
+    if (resp.status === 404) {
+      await drainBody(resp);
+      return null;
+    }
     await ensureOk(resp, action);
     if (parse === "json") return (await resp.json()) as T;
     return null;
@@ -332,7 +348,10 @@ export async function sandboxTemplateExists(
   const path = `${CLAIM_PATH_PREFIX}/${encodeURIComponent(namespace)}/${K8S_CONSTANTS.TEMPLATE_PLURAL}/${encodeURIComponent(name)}`;
   try {
     const resp = await kubeFetch(kc, { method: "GET", path });
-    if (resp.status === 404 || resp.status === 403) return false;
+    if (resp.status === 404 || resp.status === 403) {
+      await drainBody(resp);
+      return false;
+    }
     await ensureOk(resp, "sandboxTemplateExists");
     return true;
   } catch (error) {

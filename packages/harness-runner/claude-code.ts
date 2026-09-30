@@ -124,7 +124,7 @@ function resumeInstruction(
     "- `git status` and `git diff` — uncommitted work in this checkout",
     `- \`git log --oneline -20\` — commits on ${ref}, including any the previous`,
     "  attempt's sandbox pushed as it shut down",
-    `- \`gh pr list --head ${branch ?? "<branch>"}\` — whether a pull request already exists`,
+    "- Inspect `git remote get-url origin`, then use that provider's tools to check whether a pull or merge request already exists for the current branch",
     "",
     "Then CONTINUE that work — do not start the task over, and do not redo a " +
       "step that is already committed. If a pull request already exists for " +

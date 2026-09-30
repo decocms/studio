@@ -82,6 +82,7 @@ import { AddConnectionDialog } from "@/views/virtual-mcp/add-connection-dialog";
 import { ConnectionsBanner } from "./connections-banner";
 import { useVoiceInput } from "@/hooks/use-voice-input.ts";
 import { VoiceWaveform } from "./voice-input";
+import { VoiceModeToggle } from "./voice";
 import { resolveComposerAction } from "./composer-action";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { shouldBlockHostedRuntime } from "./hosted-runtime-guard";
@@ -908,6 +909,7 @@ export function ChatInput({
                     {/* Right Actions (model, mic, send) */}
                     <div className="flex items-center gap-1.5 min-w-0">
                       <TierTrigger />
+                      <VoiceModeToggle />
 
                       {/* Microphone button — always enabled; the composer has
                           no disabled state, only a streaming state reflected by
@@ -920,7 +922,7 @@ export function ChatInput({
                           variant="ghost"
                           size="icon"
                           className={cn(
-                            "size-8 classic:rounded-lg transition-colors",
+                            "size-8 transition-colors",
                             voice.status === "permission-denied"
                               ? "text-destructive hover:text-destructive hover:bg-destructive/10"
                               : "text-muted-foreground hover:text-foreground",
@@ -956,8 +958,8 @@ export function ChatInput({
                         disabled={!canSubmit && !showStopOrCancel}
                         className={cn(
                           taskIntake
-                            ? "h-8 px-3 classic:rounded-lg transition-all"
-                            : "size-8 classic:rounded-lg transition-all",
+                            ? "h-8 px-3 transition-all"
+                            : "size-8 transition-all",
                           !canSubmit &&
                             !showStopOrCancel &&
                             "bg-muted text-muted-foreground hover:bg-muted hover:text-muted-foreground cursor-not-allowed",

@@ -89,6 +89,18 @@ describe("googleAdapter.listModels", () => {
     expect(models.map((m) => m.modelId)).toEqual(["gemini-a", "gemini-b"]);
   });
 
+  test("doesn't crash when a page omits `models` entirely", async () => {
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const provider = googleAdapter.create("secret-api-key");
+    await expect(provider.listModels()).resolves.toEqual([]);
+  });
+
   test("retries a transient 5xx and succeeds once Google recovers", async () => {
     let calls = 0;
     globalThis.fetch = (async (): Promise<Response> => {

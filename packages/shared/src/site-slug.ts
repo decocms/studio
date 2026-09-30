@@ -36,3 +36,32 @@ export function resolveAgentSiteSlug(
     normalize(agent?.metadata?.siteSlug) || normalize(agent?.title) || null
   );
 }
+
+/**
+ * The site an agent's analytics reads (Monitor, experiment results) resolve
+ * against. `metadata.analyticsSiteSlug` overrides it for a project whose
+ * production traffic is reported under another site than the one its code lives
+ * in — a TanStack migration (`acme-tanstack`) serving the domains, warehouse
+ * facts and analytics host of the original `acme`. Hosting, assets and the
+ * editor keep `resolveAgentSiteSlug`; only analytics reads follow this. An
+ * override that is not a valid slug is ignored rather than trusted.
+ */
+export function resolveAnalyticsSiteSlug(
+  agent:
+    | {
+        title?: string | null;
+        metadata?: {
+          siteSlug?: string | null;
+          analyticsSiteSlug?: string | null;
+        } | null;
+      }
+    | null
+    | undefined,
+): string | null {
+  const override =
+    typeof agent?.metadata?.analyticsSiteSlug === "string"
+      ? agent.metadata.analyticsSiteSlug.trim().toLowerCase()
+      : "";
+  if (override && isValidSiteSlug(override)) return override;
+  return resolveAgentSiteSlug(agent);
+}

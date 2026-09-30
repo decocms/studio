@@ -333,6 +333,37 @@ export function getSizeRadius(size: AgentAvatarSize): string {
   return SIZES[size].radius;
 }
 
+/**
+ * An avatar-shaped slot in neutral tone, for a row that sits where a project
+ * would but is not one — "New project" at the end of a picker. It exists so
+ * that row's label starts at the same x as every row above it; a bare icon has
+ * a different footprint and breaks the column.
+ */
+export function AgentAvatarPlaceholder({
+  Icon,
+  size = "md",
+  className,
+}: {
+  Icon: IconComponent;
+  size?: AgentAvatarSize;
+  className?: string;
+}) {
+  const sizeConfig = SIZES[size];
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        sizeConfig.container,
+        sizeConfig.radius,
+        "flex shrink-0 items-center justify-center bg-muted text-muted-foreground outline-none ring-0 shadow-none",
+        className,
+      )}
+    >
+      <Icon size={sizeConfig.icon} className={sizeConfig.iconClass} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // AgentAvatar
 // ---------------------------------------------------------------------------

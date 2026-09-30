@@ -91,7 +91,7 @@ export function TierModelOverridePicker({
           <button
             type="button"
             onClick={onReset}
-            className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 classic:rounded-md compact:rounded-lg hover:bg-accent cursor-pointer"
+            className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent cursor-pointer"
           >
             {t("chat.modelPreferences.reset")}
           </button>

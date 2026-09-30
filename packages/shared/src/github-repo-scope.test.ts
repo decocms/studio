@@ -83,6 +83,7 @@ describe("withOptionalReadPermissions", () => {
   it("adds every optional read on top of the base set", () => {
     expect(withOptionalReadPermissions({ contents: "write" })).toEqual({
       contents: "write",
+      statuses: "read",
       deployments: "read",
       checks: "read",
     });
@@ -123,32 +124,56 @@ describe("mintRepoTokenWithFallback", () => {
     expect(result).toBe(ok);
   });
 
-  it("sheds only deployments when checks is granted but deployments isn't", async () => {
+  it("sheds only statuses when the installation grants the rest", async () => {
     const calls: Record<string, string>[] = [];
     const { result, grantedPermissions } = await mintRepoTokenWithFallback(
       (permissions) => {
         calls.push(permissions);
-        // Generic 422 on the full set, then success once deployments is gone.
         return Promise.resolve(
-          "deployments" in permissions
+          "statuses" in permissions
             ? rejected("the requested permissions exceed what the GitHub App")
             : ok,
         );
       },
       desired,
     );
-    expect(calls).toEqual([desired, { ...base, checks: "read" }]);
+    const { statuses: _statuses, ...withoutStatuses } = desired;
+    expect(calls).toEqual([desired, withoutStatuses]);
+    expect(grantedPermissions).toEqual(withoutStatuses);
+    expect(result).toBe(ok);
+  });
+
+  it("sheds statuses and deployments when only checks is granted", async () => {
+    const calls: Record<string, string>[] = [];
+    const { result, grantedPermissions } = await mintRepoTokenWithFallback(
+      (permissions) => {
+        calls.push(permissions);
+        return Promise.resolve(
+          "statuses" in permissions || "deployments" in permissions
+            ? rejected("the requested permissions exceed what the GitHub App")
+            : ok,
+        );
+      },
+      desired,
+    );
+    expect(calls).toEqual([
+      desired,
+      { ...base, deployments: "read", checks: "read" },
+      { ...base, checks: "read" },
+    ]);
     expect(grantedPermissions).toEqual({ ...base, checks: "read" });
     expect(result).toBe(ok);
   });
 
-  it("sheds both optionals when the installation grants neither", async () => {
+  it("sheds every optional when the installation grants none", async () => {
     const calls: Record<string, string>[] = [];
     const { result, grantedPermissions } = await mintRepoTokenWithFallback(
       (permissions) => {
         calls.push(permissions);
         const stillOptional =
-          "deployments" in permissions || "checks" in permissions;
+          "statuses" in permissions ||
+          "deployments" in permissions ||
+          "checks" in permissions;
         return Promise.resolve(
           stillOptional
             ? rejected("the requested permissions exceed what the GitHub App")
@@ -157,7 +182,12 @@ describe("mintRepoTokenWithFallback", () => {
       },
       desired,
     );
-    expect(calls).toEqual([desired, { ...base, checks: "read" }, base]);
+    expect(calls).toEqual([
+      desired,
+      { ...base, deployments: "read", checks: "read" },
+      { ...base, checks: "read" },
+      base,
+    ]);
     expect(grantedPermissions).toEqual(base);
     expect(result).toBe(ok);
   });
@@ -185,8 +215,14 @@ describe("mintRepoTokenWithFallback", () => {
       },
       desired,
     );
-    // Full -> drop deployments -> drop checks -> base (still rejected) -> surface.
-    expect(calls).toEqual([desired, { ...base, checks: "read" }, base]);
+    // Full -> drop statuses -> drop deployments -> drop checks -> base
+    // (still rejected) -> surface.
+    expect(calls).toEqual([
+      desired,
+      { ...base, deployments: "read", checks: "read" },
+      { ...base, checks: "read" },
+      base,
+    ]);
     expect(grantedPermissions).toEqual(base);
     expect(result).toBe(err);
   });

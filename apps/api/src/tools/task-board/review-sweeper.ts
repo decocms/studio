@@ -112,10 +112,11 @@ const DEFAULT_BATCH_SIZE = 50;
  *  blip in the context factory or the quota read. */
 const REARM_DELAY_MS = 60 * 1000;
 
-/** How long a card may sit In Review with no linked PR before it is handed to a
- *  person. A run links its PR and moves the card in two separate calls, so a
- *  sweep can land between them — this is the margin that stops a card being
- *  handed over a second before its PR arrives. */
+/** How long a card may sit In Review with no linked PR, or In Progress after
+ *  its run finished without one, before it is handed to a person. A run links
+ *  its PR and moves the card in two separate calls, and GitHub may not list a
+ *  just-pushed PR yet — this is the margin that stops a card being handed over
+ *  a second before its PR arrives. */
 const NO_PR_HANDOFF_GRACE_MS = 15 * 60 * 1000;
 
 /** How long a failed run may sit unreacted-to before the sweeper steps in. Long
@@ -222,6 +223,10 @@ export class TaskBoardReviewSweeper {
       await this.reapNeverStartedThreads(batchSize);
       dispatched += await this.dispatchDueRetries(batchSize);
       await this.reactToUnhandledFailures(batchSize);
+      dispatched += await this.settleFinishedRunsWithoutPr(
+        batchSize,
+        dueBefore,
+      );
     } catch (err) {
       console.error("[task-board-review-sweeper] sweep failed", err);
     } finally {
@@ -298,6 +303,79 @@ export class TaskBoardReviewSweeper {
         );
       }
     }
+  }
+
+  /**
+   * Settle cards whose run finished In Progress with nothing linked
+   * (`listItemsFinishedWithoutPr`): find the PR by the run's branch and send it
+   * to the reviewers, or, once the grace passes with none, hand the card to a
+   * person In Review — where a PR-less card already ends up via
+   * `handOffReviewWithoutPr`. Before this, both cases sat In Progress forever.
+   * Returns how many cards reached their reviewers.
+   */
+  private async settleFinishedRunsWithoutPr(
+    limit: number,
+    dueBefore: Date,
+  ): Promise<number> {
+    let count = 0;
+    const finished = await this.taskBoard.listItemsFinishedWithoutPr(
+      limit,
+      dueBefore,
+    );
+    for (const { id, organizationId, finishedAt } of finished) {
+      try {
+        if (!(await this.taskBoard.claimSweep(id, organizationId, dueBefore))) {
+          continue;
+        }
+        const item = await this.taskBoard.getById(id, organizationId);
+        if (
+          !item ||
+          item.status !== LANES.progress ||
+          inReviewPhase(item) ||
+          item.assigneeId !== SUPER_AGENT_ASSIGNEE_ID
+        ) {
+          continue;
+        }
+        const ctx = await this.contextFactory(
+          organizationId,
+          item.assignedBy ?? item.createdBy,
+        );
+        if (!ctx) continue;
+        if (await linkPrFromRunBranch(ctx, item)) {
+          // The link opened the cycle; release the interval claimed above so
+          // the reviewers are dispatched now rather than a sweep later.
+          await this.taskBoard.clearSweepBudget(id, organizationId);
+          if (await this.reconcileItem(id, organizationId, dueBefore)) count++;
+          continue;
+        }
+        if (!noPrHandoffDue(finishedAt.getTime(), Date.now())) continue;
+        const reason =
+          "the run finished without opening a pull request — there is " +
+          "nothing for a reviewer to review";
+        const parked = await this.taskBoard.advanceToReviewIfInProgress(
+          id,
+          organizationId,
+          item.updatedBy,
+        );
+        if (!parked) continue;
+        await this.taskBoard
+          .recordActivity({
+            taskBoardItemId: id,
+            action: "status_changed",
+            actorId: null,
+            data: { from: LANES.progress, to: LANES.review, reason },
+          })
+          .catch(() => {});
+        emitTaskBoardUpdated(organizationId, parked);
+        await handTaskToHuman(ctx, parked, reason);
+      } catch (err) {
+        console.error(
+          `[task-board-review-sweeper] settling finished run on ${id} failed`,
+          err,
+        );
+      }
+    }
+    return count;
   }
 
   /**

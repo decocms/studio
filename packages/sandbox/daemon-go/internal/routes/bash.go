@@ -19,7 +19,7 @@ type BashDeps struct {
 }
 
 func awaitTaskResponse(w http.ResponseWriter, tm *proc.TaskManager, id string, extra map[string]any, timedOutExitCode *int) {
-	result, ok := tm.Finished(id)
+	result, ok := tm.Finished(id, nil)
 	if !ok {
 		httpx.Error(w, 500, "task vanished before completion")
 		return

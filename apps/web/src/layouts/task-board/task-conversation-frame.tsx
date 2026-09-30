@@ -11,12 +11,10 @@ import { NewCommentComposer } from "./task-comments";
 /** Owns conversation scrolling; the composer stays visible beside the inspector. */
 export function TaskConversationFrame({
   item,
-  enabled,
   hidden,
   children,
 }: {
   item?: TaskBoardItem;
-  enabled: boolean;
   hidden: boolean;
   children: ReactNode;
 }) {
@@ -39,8 +37,7 @@ export function TaskConversationFrame({
     ? messageIds.filter((id) => !seenIds.includes(id)).length
     : 0;
 
-  if (!item || !enabled)
-    return <div className="min-w-0 sm:flex-1">{children}</div>;
+  if (!item) return <div className="min-w-0 sm:flex-1">{children}</div>;
 
   return (
     <div

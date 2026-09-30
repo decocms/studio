@@ -95,6 +95,7 @@ import { MonacoCodeEditor } from "@/components/monaco-editor";
 import { PickList, str } from "./blocks/primitives";
 import {
   PostFilterBar,
+  PostSearchInput,
   PostSelectionToolbar,
   type PostSort,
 } from "./post-toolbar";
@@ -243,6 +244,7 @@ export function PostsWorkspace({
   const [authorFilter, setAuthorFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<PostStatus | null>(null);
   const [sort, setSort] = useState<PostSort>("date-desc");
+  const [query, setQuery] = useState("");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
   /** Counts describe the whole blog, not the current filter — a option showing
@@ -280,10 +282,18 @@ export function PostsWorkspace({
     }),
   );
 
+  // Title and slug are what the row shows, so they are what search matches.
+  const q = query.trim().toLowerCase();
   const listedPosts = posts
     .filter((p) => !categoryFilter || p.categorySlugs.includes(categoryFilter))
     .filter((p) => !authorFilter || p.authorEmails.includes(authorFilter))
     .filter((p) => !statusFilter || p.status === statusFilter)
+    .filter(
+      (p) =>
+        !q ||
+        p.title.toLowerCase().includes(q) ||
+        p.slug.toLowerCase().includes(q),
+    )
     .sort((a, b) => {
       if (sort === "az") return a.title.localeCompare(b.title);
       if (sort === "za") return b.title.localeCompare(a.title);
@@ -787,6 +797,7 @@ export function PostsWorkspace({
       ) : (
         <div className="flex min-h-0 flex-1">
           <div className="flex w-80 shrink-0 flex-col border-r">
+            <PostSearchInput value={query} onChange={setQuery} />
             {selectionActive ? (
               <PostSelectionToolbar
                 count={selectedKeys.size}
@@ -950,6 +961,14 @@ function PostList({
   isMoving: (key: string) => boolean;
   onArchive: (post: PostMeta) => void;
 }) {
+  const t = useT();
+  if (posts.length === 0) {
+    return (
+      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+        {t("sandbox.postList.noMatches")}
+      </p>
+    );
+  }
   return (
     <ul className="divide-y">
       {posts.map((post) => (

@@ -23,6 +23,7 @@ import {
   orgHasFeature,
   type PlanFeature,
 } from "./plan-feature-gate";
+import { recordGenericToolExecutionMetrics } from "@/monitoring/record-generic-tool-metrics";
 
 // ============================================================================
 // Tool Definition Types
@@ -111,9 +112,10 @@ export interface ToolDefinition<
 
 /**
  * Tool with execute wrapper
- * The execute method adds automatic validation and tracing.
- * Tool execution metrics are emitted only from connection-backed monitoring
- * paths so monitoring metrics stay aligned with monitoring logs.
+ * The execute method adds automatic validation, tracing, and latency metrics.
+ * `tool.execution.*` (record-tool-execution-metrics.ts) stays connection-scoped
+ * so it lines up with monitoring logs; this wrapper separately emits
+ * `studio_tool.execution.*` for every in-process Studio tool call.
  */
 export interface Tool<
   TInput extends z.ZodType,
@@ -173,6 +175,8 @@ export function defineTool<
       input: z.infer<TInput>,
       ctx: StudioContext,
     ): Promise<z.infer<TOutput>> => {
+      const startedAt = performance.now();
+      let isError = false;
       return await ctx.timings.measure(
         `tool.${definition.name}`,
         // Start OpenTelemetry span
@@ -254,6 +258,8 @@ export function defineTool<
 
                 return output;
               } catch (error) {
+                isError = true;
+
                 // Mark span as error
                 span.setStatus({
                   code: SpanStatusCode.ERROR,
@@ -263,6 +269,13 @@ export function defineTool<
 
                 throw error;
               } finally {
+                recordGenericToolExecutionMetrics({
+                  ctx,
+                  toolName: definition.name,
+                  organizationId: ctx.organization?.id ?? "system",
+                  durationMs: performance.now() - startedAt,
+                  isError,
+                });
                 span.end();
               }
             },

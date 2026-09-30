@@ -179,7 +179,7 @@ export function RichTextField({
         description={schema.description}
         virtualMcpId={sandbox?.virtualMcpId}
       />
-      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] border compact:card-shadow border-input">
+      <div className="overflow-hidden rounded-[var(--studio-surface-radius,var(--radius-md))] border card-shadow border-input">
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 bg-muted/30 px-1.5 py-1">
           <ToolbarButton
             active={marks.bold}

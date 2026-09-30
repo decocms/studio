@@ -5,6 +5,7 @@
  * many-to-many link between a task and the agent threads run for it.
  */
 
+import { readRepositoryMetadata } from "./repository-metadata";
 import { sql, type Kysely } from "kysely";
 import { type RepoRef, splitOwnerName } from "@decocms/shared/git-providers";
 // Shared with the quota gate, which charges the same class of task.
@@ -31,6 +32,7 @@ import {
   type ReviewCycleActivity,
   REVIEWER_KINDS,
   reviewCycleVerdicts,
+  statusEnteredAt,
   SUPER_AGENT_ASSIGNEE_ID,
 } from "@decocms/shared/task-board";
 import { RESOLVED_RUN_FAILURE_KINDS } from "@decocms/shared/entities";
@@ -69,6 +71,17 @@ export interface DismissedFinding {
   externalKey: string;
   dismissedBy: string;
   dismissedAt: string;
+}
+
+/** What `resolveFinding` did to one card. */
+export interface FindingResolution {
+  outcome: "closed" | "noted" | "skipped" | "not_found";
+  /** An earlier call with the same run id already resolved the card, and
+   *  `outcome` is that call's. This call wrote nothing. */
+  replayed: boolean;
+  /** The card as this call left it, for the realtime push. Null when the call
+   *  wrote nothing: a miss, a skip, or a replay. */
+  item: TaskBoardItem | null;
 }
 
 function commentFromDbRow(row: {
@@ -155,7 +168,7 @@ export function shouldAdvanceToReview(
   if (item.status !== "in_progress") return false;
   const used = item.threads.filter((t) => t.hasMessages);
   if (used.length === 0) return false;
-  // A repo-backed task reaches In Review only once a PR exists (the agent's PR-open hook moves it mid-run); on thread-finish we require a linked PR so a finished edit with no PR doesn't dead-end In Review. Non-repo tasks advance on finish.
+  // A repo-backed task reaches review only once a PR is linked; one that finishes without one is left to the review sweeper (`settleFinishedRunsWithoutPr`), which finds its PR by branch or hands it to a person. Non-repo tasks advance on finish.
   if (item.repo != null && !hasPr) return false;
   if (
     !used.every(
@@ -176,7 +189,7 @@ export function shouldAdvanceToReview(
   return used.some((t) => t.status === "completed");
 }
 
-/** True when the thread has a repo bound (`metadata.githubRepo.url`) — mirrors
+/** True when the thread has a repo bound (`metadata.repository.url`) — mirrors
  *  the web `agentHasClonableSource`, inlined to avoid importing web code. */
 function threadHasClonableRepo(metadata: unknown): boolean {
   const meta =
@@ -190,8 +203,7 @@ function threadHasClonableRepo(metadata: unknown): boolean {
         })()
       : metadata;
   if (!meta || typeof meta !== "object") return false;
-  const url = (meta as { githubRepo?: { url?: unknown } | null }).githubRepo
-    ?.url;
+  const url = readRepositoryMetadata(meta)?.repository?.url;
   return typeof url === "string" && url.length > 0;
 }
 
@@ -262,6 +274,20 @@ export class TaskBoardStorage {
     const items = rows.map((row) => this.itemFromDbRow(row));
     await this.attachRefs(items, organizationId);
     return items;
+  }
+
+  /** The reports cards the org dismissed. Off the board, and still what a new
+   *  finding must not come back as (the import's duplicate check). */
+  async listDismissed(organizationId: string): Promise<TaskBoardItem[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is not", null)
+      .where("source", "is", null)
+      .orderBy("dismissed_at", "desc")
+      .execute();
+    return rows.map((row) => this.itemFromDbRow(row));
   }
 
   /**
@@ -391,8 +417,9 @@ export class TaskBoardStorage {
       return insert(trx);
     });
 
-    // Freshly created — no linked threads yet.
-    return this.itemFromDbRow(row);
+    // Freshly created — no linked threads yet, and in its first lane since now.
+    const item = this.itemFromDbRow(row);
+    return { ...item, statusSince: item.createdAt };
   }
 
   async update(
@@ -442,7 +469,19 @@ export class TaskBoardStorage {
         ...(data.previewRoutes !== undefined
           ? { preview_routes: JSON.stringify(data.previewRoutes) }
           : {}),
-        ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
+        // A lane change without an explicit slot lands on top, like a create.
+        ...(data.sortOrder !== undefined
+          ? { sort_order: data.sortOrder }
+          : data.status !== undefined
+            ? {
+                sort_order: sql<number>`case when status = ${data.status} then sort_order else (
+                  select coalesce(min(lane.sort_order), 0) - 1
+                  from task_board_items lane
+                  where lane.organization_id = ${organizationId}
+                  and lane.status = ${data.status}
+                ) end`,
+              }
+            : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
         // Done here rather than at the call sites so it covers every one of
         // them — the ship paths, a human dragging a card back to To Do, the
@@ -548,6 +587,40 @@ export class TaskBoardStorage {
     return new Set(rows.flatMap((r) => r.external_key ?? []));
   }
 
+  /** The keys among `externalKeys` a card already holds, open or dismissed. */
+  async heldFindingKeys(
+    organizationId: string,
+    externalKeys: string[],
+  ): Promise<Set<string>> {
+    if (externalKeys.length === 0) return new Set();
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select(["external_key"])
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "in", externalKeys)
+      .where((eb) =>
+        eb.or([eb("dismissed_at", "is not", null), eb("status", "!=", "done")]),
+      )
+      .execute();
+    return new Set(rows.flatMap((r) => r.external_key ?? []));
+  }
+
+  /** Give a card without a key the finding key it turned out to track. A card
+   *  that already has a key keeps it. */
+  async adoptExternalKey(
+    id: string,
+    organizationId: string,
+    externalKey: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ external_key: externalKey })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "is", null)
+      .execute();
+  }
+
   async listDismissedFindings(
     organizationId: string,
   ): Promise<DismissedFinding[]> {
@@ -595,6 +668,115 @@ export class TaskBoardStorage {
     }
     const result = await query.executeTakeFirst();
     return Number(result.numUpdatedRows ?? 0n);
+  }
+
+  /**
+   * Record that the diagnostic check behind a card passes now.
+   *
+   * The card gets one `finding_resolved` entry per `runId`. A reports-owned
+   * card still in triage also moves to done, since nobody has picked it up and
+   * the work it describes is no longer needed. Any other card keeps its lane,
+   * because whoever started it, or the member who filed it, decides what
+   * happens next.
+   *
+   * For a dismissed card it returns `skipped` and writes nothing. An id
+   * outside the org, a hard-deleted card and a Jira run's anchor are all
+   * `not_found`.
+   *
+   * A replayed `runId` writes nothing and returns the first call's outcome.
+   * The row lock makes a racing replay wait for the first call's commit, so it
+   * then finds that call's entry.
+   */
+  async resolveFinding(params: {
+    id: string;
+    organizationId: string;
+    url: string;
+    runId: string;
+  }): Promise<FindingResolution> {
+    const { id, organizationId, url, runId } = params;
+    const result = await this.inTransaction(async (trx) => {
+      const card = await trx
+        .selectFrom("task_board_items")
+        .select(["status", "created_by", "dismissed_at"])
+        .where("id", "=", id)
+        .where("organization_id", "=", organizationId)
+        .where("source", "is", null)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!card) {
+        return { outcome: "not_found", replayed: false, wrote: false } as const;
+      }
+      if (card.dismissed_at) {
+        return { outcome: "skipped", replayed: false, wrote: false } as const;
+      }
+
+      const prior = await trx
+        .selectFrom("task_board_activity")
+        .select(["data"])
+        .where("task_board_item_id", "=", id)
+        .where("action", "=", "finding_resolved")
+        .where(sql<string>`data->>'run_id'`, "=", runId)
+        .executeTakeFirst();
+      if (prior) {
+        const outcome = prior.data?.closed === true ? "closed" : "noted";
+        return { outcome, replayed: true, wrote: false } as const;
+      }
+
+      const closes =
+        isReportsTask({ createdBy: card.created_by }) &&
+        card.status === LANES.intake;
+      const now = new Date().toISOString();
+      if (closes) {
+        await trx
+          .updateTable("task_board_items")
+          .set({ status: "done", updated_by: "system", updated_at: now })
+          .where("id", "=", id)
+          .where("organization_id", "=", organizationId)
+          .execute();
+      }
+      await trx
+        .insertInto("task_board_activity")
+        .values([
+          {
+            id: generatePrefixedId("act"),
+            task_board_item_id: id,
+            action: "finding_resolved",
+            actor_id: null,
+            data: JSON.stringify({ url, run_id: runId, closed: closes }),
+            occurred_at: now,
+          },
+          ...(closes
+            ? [
+                {
+                  id: generatePrefixedId("act"),
+                  task_board_item_id: id,
+                  action: "status_changed" as const,
+                  actor_id: null,
+                  data: JSON.stringify({
+                    from: card.status,
+                    to: "done",
+                    reason: "finding_resolved",
+                  }),
+                  occurred_at: now,
+                },
+              ]
+            : []),
+        ])
+        .execute();
+      const outcome = closes ? "closed" : "noted";
+      return { outcome, replayed: false, wrote: true } as const;
+    });
+
+    const { outcome, replayed } = result;
+    if (!result.wrote) return { outcome, replayed, item: null };
+    // Followers hear about this move like any other machine move. After the
+    // commit, as `notify` expects.
+    if (outcome === "closed") {
+      await this.fanOut([
+        { taskBoardItemId: id, action: "status_changed", actorId: null },
+      ]);
+    }
+    return { outcome, replayed, item: await this.getById(id, organizationId) };
   }
 
   /**
@@ -1220,6 +1402,81 @@ export class TaskBoardStorage {
     // One entry per card: the newest failed thread is the one to react to.
     const seen = new Set<string>();
     return rows.filter((r) => !seen.has(r.id) && seen.add(r.id));
+  }
+
+  /**
+   * Super Agent cards whose run finished and left the board nothing: still In
+   * Progress, no review cycle, no linked PR, nothing still running, and the
+   * newest linked run `completed`. `finishedAt` is when that run ended.
+   *
+   * Nothing else looks at this shape. The thread-finish backstop and stall
+   * recovery both hold a repo-backed card In Progress until a PR is linked, and
+   * the review sweeper only visits cards already in their review phase — so a
+   * PR no Studio hook saw (a `claude-code` run's `gh pr create` inside the pod)
+   * left the card there for good. A newest run that FAILED is the failure
+   * reaction's card, not this one. Due-filtered on `last_swept_at` like
+   * `listItemsPendingReview`, because the caller spends GitHub calls per card.
+   */
+  async listItemsFinishedWithoutPr(
+    limit: number,
+    dueBefore: Date,
+  ): Promise<{ id: string; organizationId: string; finishedAt: Date }[]> {
+    // `t.id desc` breaks a tied `updated_at` deterministically across both calls.
+    const newestLinked = (column: "status" | "updated_at") =>
+      sql<string>`(select t.${sql.ref(column)} from task_board_item_threads l
+            join threads t on t.id = l.thread_id
+           where l.task_board_item_id = i.id
+           order by t.updated_at desc, t.id desc limit 1)`;
+    const rows = await this.db
+      .selectFrom("task_board_items as i")
+      .select([
+        "i.id as id",
+        "i.organization_id as organizationId",
+        newestLinked("updated_at").as("finishedAt"),
+      ])
+      .where("i.status", "=", LANES.progress)
+      .where("i.assignee_id", "=", SUPER_AGENT_ASSIGNEE_ID)
+      .where("i.review_cycle_started_at", "is", null)
+      .where("i.dismissed_at", "is", null)
+      .where("i.retry_at", "is", null)
+      .where("i.source", "is", null)
+      .where((eb) =>
+        eb.or([
+          eb("i.last_swept_at", "is", null),
+          eb("i.last_swept_at", "<", dueBefore),
+        ]),
+      )
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_item_prs as p")
+              .select("p.task_board_item_id")
+              .whereRef("p.task_board_item_id", "=", "i.id"),
+          ),
+        ),
+      )
+      .where(newestLinked("status"), "=", "completed")
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom("task_board_item_threads as l2")
+              .innerJoin("threads as t2", "t2.id", "l2.thread_id")
+              .select("t2.id")
+              .whereRef("l2.task_board_item_id", "=", "i.id")
+              .where("t2.status", "in", ["in_progress", "requires_action"]),
+          ),
+        ),
+      )
+      .orderBy("i.updated_at", "asc")
+      .limit(limit)
+      .execute();
+    return rows.map((r) => ({
+      id: r.id,
+      organizationId: r.organizationId,
+      finishedAt: new Date(r.finishedAt),
+    }));
   }
 
   /**
@@ -1910,7 +2167,7 @@ export class TaskBoardStorage {
       Promise.all([
         this.attachThreads(db, items, organizationId),
         this.attachTags(db, items),
-        this.attachReviewVerdicts(db, items),
+        this.attachActivityFields(db, items),
       ]),
     );
   }
@@ -2088,7 +2345,8 @@ export class TaskBoardStorage {
    * `status_changed` rows come along because that reducer needs the cycle
    * boundary — without them a stale approval reads as current forever.
    */
-  private async attachReviewVerdicts(
+  /** Review verdicts and `statusSince`, both read off one activity scan. */
+  private async attachActivityFields(
     db: Kysely<Database>,
     items: TaskBoardItem[],
   ): Promise<void> {
@@ -2123,6 +2381,7 @@ export class TaskBoardStorage {
 
     for (const item of items) {
       const activity = byItem.get(item.id) ?? [];
+      item.statusSince = statusEnteredAt(activity, item.status, item.createdAt);
       const cycleStartedAt = item.reviewCycleStartedAt;
       const verdicts = reviewCycleVerdicts(activity, { cycleStartedAt });
       const verifiedApprovals = reviewCycleVerdicts(activity, {
@@ -2557,6 +2816,7 @@ export class TaskBoardStorage {
       threads: [],
       tags: [],
       reviewVerdicts: [],
+      statusSince: null,
       createdBy: row.created_by,
       createdAt:
         row.created_at instanceof Date

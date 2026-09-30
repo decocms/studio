@@ -289,7 +289,7 @@ export function EnvSection({
                             setEditValue(e.value);
                           }}
                           title={t("mainPanelTabs.hostingTab.editValue")}
-                          className="min-w-0 truncate classic:rounded px-1.5 py-0.5 text-right font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground compact:rounded-lg"
+                          className="min-w-0 truncate px-1.5 py-0.5 text-right font-mono text-xs text-muted-foreground hover:bg-muted hover:text-foreground rounded-lg"
                         >
                           {e.value || "—"}
                         </button>

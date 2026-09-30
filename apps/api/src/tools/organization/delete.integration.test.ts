@@ -25,6 +25,8 @@ function makeCtx(database: StudioDatabase): StudioContext {
         update: async () => ({ id: ORG_ID }),
       },
     },
+    // No Deco Score connection, so there is no site to release.
+    storage: { connections: { findById: async () => null } },
   } as unknown as StudioContext;
 }
 

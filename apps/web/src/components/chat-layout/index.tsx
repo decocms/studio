@@ -1,6 +1,7 @@
-import { Fragment } from "react";
-import { createContext, use, useRef, type ReactNode } from "react";
-import { useNavigate, type ErrorComponentProps } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import type { ErrorComponentProps } from "@tanstack/react-router";
+import { createContext, use, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Panel } from "@/components/panel";
@@ -24,8 +25,6 @@ import { useSidePanelWidth } from "@/hooks/use-side-panel-width";
 import { MainPanelBoundary, PanelLoading } from "@/layouts/main-panel-boundary";
 import { useT } from "@/i18n/use-t";
 import { RoutePageHeader } from "@/layouts/route-page-header";
-import { useCompactPageLayout } from "@/hooks/use-preferences";
-import { PanelCollapseToggle } from "./toggle-buttons";
 
 const THREAD_PANEL_ID = "chat-layout-thread";
 const CONTENT_PANEL_ID = "chat-layout-content";
@@ -50,6 +49,14 @@ export function useChatLayout(): ChatLayoutState & ChatLayoutActions {
   return useChatLayoutContext();
 }
 
+/** Null outside a ChatLayout (e.g. the settings route), rather than throwing —
+ *  for callers that render in both. */
+export function useOptionalChatLayout():
+  | (ChatLayoutState & ChatLayoutActions)
+  | null {
+  return use(ChatLayoutContext);
+}
+
 function useChatLayoutContext() {
   const layout = use(ChatLayoutContext);
   if (!layout) throw new Error("ChatLayout regions require a ChatLayout");
@@ -58,7 +65,6 @@ function useChatLayoutContext() {
 
 /** Places the thread beside routed content, or selects one region on mobile. */
 function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
-  const compact = useCompactPageLayout();
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const groupRef = useRef<GroupImperativeHandle | null>(null);
@@ -101,27 +107,25 @@ function ChatLayoutRoot({ children, ...layout }: ChatLayoutProps) {
 
   return (
     <ChatLayoutContext value={value}>
-      {compact && (
-        <SidebarThreadButtonPortal
-          open={isMobile ? value.mobileSurface === "chat" : threadOpen}
-          onToggle={() => {
-            if (isMobile) {
-              void navigate({
-                to: ".",
-                search: (prev) => ({
-                  ...prev,
-                  ...mobileSurfaceSearch(
-                    value.mobileSurface === "chat" ? "main" : "chat",
-                  ),
-                }),
-                replace: true,
-              });
-            } else {
-              layout.toggleThread();
-            }
-          }}
-        />
-      )}
+      <SidebarThreadButtonPortal
+        open={isMobile ? value.mobileSurface === "chat" : threadOpen}
+        onToggle={() => {
+          if (isMobile) {
+            void navigate({
+              to: ".",
+              search: (prev) => ({
+                ...prev,
+                ...mobileSurfaceSearch(
+                  value.mobileSurface === "chat" ? "main" : "chat",
+                ),
+              }),
+              replace: true,
+            });
+          } else {
+            layout.toggleThread();
+          }
+        }}
+      />
       {isMobile ? (
         <div
           data-slot="chat-layout"
@@ -185,11 +189,11 @@ function ChatLayoutThread({
   topbar?: ReactNode;
 }) {
   const layout = useChatLayoutContext();
-  const compact = useCompactPageLayout();
+
   if (layout.isMobile) {
     return layout.mobileSurface === "chat" ? (
       <Panel variant="plain" data-slot="chat-layout-thread">
-        {compact && topbar}
+        {topbar}
         <Panel.Content data-testid="chat-panel">{children}</Panel.Content>
       </Panel>
     ) : null;
@@ -253,58 +257,24 @@ function ChatLayoutContent({
   drawer?: ReactNode;
 }) {
   const layout = useChatLayoutContext();
-  const compact = useCompactPageLayout();
+
   if (layout.isMobile && layout.mobileSurface !== "main") return null;
 
-  const BreadcrumbScope = compact ? Page.Breadcrumbs.Provider : Fragment;
   const panel = (
     <Panel
       data-testid="main-panel"
       variant={layout.isMobile ? "plain" : "card"}
     >
-      <BreadcrumbScope>
-        {compact ? (
-          <RoutePageHeader
-            navigation={layout.contentNavigation}
-            actions={
-              <>
-                {layout.contentActions}
-                {actions}
-              </>
-            }
-          />
-        ) : (
-          <>
-            {!layout.isMobile && layout.contentOpen && (
-              <Panel.Topbar>
-                <Panel.Topbar.Left className="gap-0.5">
-                  <PanelCollapseToggle
-                    side="left"
-                    open={layout.threadOpen}
-                    onToggle={layout.toggleThread}
-                  />
-                  {layout.contentNavigation}
-                  <Panel.Topbar.Left.Target />
-                </Panel.Topbar.Left>
-                <Panel.Topbar.Center>
-                  <div className="flex min-w-0 items-center @max-sm/panel-header:hidden">
-                    <Panel.Topbar.Center.Target />
-                  </div>
-                </Panel.Topbar.Center>
-                <Panel.Topbar.Right>
-                  <Panel.Topbar.Right.Target />
-                  {layout.contentActions}
-                  {actions}
-                  <PanelCollapseToggle
-                    side="right"
-                    open={layout.contentOpen}
-                    onToggle={layout.toggleContent}
-                  />
-                </Panel.Topbar.Right>
-              </Panel.Topbar>
-            )}
-          </>
-        )}
+      <Page.Breadcrumbs.Provider>
+        <RoutePageHeader
+          navigation={layout.contentNavigation}
+          actions={
+            <>
+              {layout.contentActions}
+              {actions}
+            </>
+          }
+        />
         <Panel.Content>
           <div className="min-h-0 flex-1 overflow-hidden">
             <ErrorBoundary key={layout.contentKey}>
@@ -317,7 +287,7 @@ function ChatLayoutContent({
           </div>
           {drawer}
         </Panel.Content>
-      </BreadcrumbScope>
+      </Page.Breadcrumbs.Provider>
     </Panel>
   );
 

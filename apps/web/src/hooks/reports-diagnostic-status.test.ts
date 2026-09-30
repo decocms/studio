@@ -10,19 +10,27 @@ describe("deriveReportBannerStatus", () => {
     expect(deriveReportBannerStatus(undefined)).toBe("none");
   });
 
-  test("a live run is generating, even when a prior deck exists", () => {
-    expect(
-      deriveReportBannerStatus({
-        run_in_progress: true,
-        scanned_at: "2026-07-01T00:00:00.000Z",
-      }),
-    ).toBe("generating");
+  test("a store's first run is generating", () => {
     expect(
       deriveReportBannerStatus({
         run_in_progress: true,
         scanned_at: null,
       }),
     ).toBe("generating");
+    expect(deriveReportBannerStatus({ run_in_progress: true })).toBe(
+      "generating",
+    );
+  });
+
+  test("a refresh of a finished report stays ready", () => {
+    // The engine recomputes every report daily; the finished one stays
+    // readable meanwhile, so the banner must not flip back to generating.
+    expect(
+      deriveReportBannerStatus({
+        run_in_progress: true,
+        scanned_at: "2026-07-01T00:00:00.000Z",
+      }),
+    ).toBe("ready");
   });
 
   test("a completed run with no live run is ready", () => {

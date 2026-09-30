@@ -57,6 +57,7 @@ const ALL_TOOL_NAMES = [
   "ORGANIZATION_DELETE",
   "ORGANIZATION_SETTINGS_GET",
   "ORGANIZATION_SETTINGS_UPDATE",
+  "ORGANIZATION_BLOCKS_EDITOR_SET",
   "ORGANIZATION_HAS_SITE",
   "BRAND_CONTEXT_LIST",
   "BRAND_CONTEXT_GET",
@@ -223,6 +224,8 @@ const ALL_TOOL_NAMES = [
   "JIRA_ISSUE_TRANSITION",
   "JIRA_ATTACHMENT_DOWNLOAD",
   "JIRA_REMOTE_LINK_ADD",
+  "JIRA_ISSUE_CREATE",
+  "JIRA_ISSUE_SEARCH",
 
   // Object Storage tools
   "LIST_OBJECTS",
@@ -258,6 +261,7 @@ const ALL_TOOL_NAMES = [
   "REPOSITORY_LIST",
   "REPOSITORY_SEARCH",
   "REPOSITORY_LINK",
+  "REPOSITORY_CREATE_FROM_TEMPLATE",
   "REPOSITORY_UPDATE",
   "REPOSITORY_DELETE",
   "REPOSITORY_SEARCH_BRANCHES",
@@ -375,6 +379,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "ORGANIZATION_SETTINGS_UPDATE",
     description: "Update organization settings",
+    category: "Organizations",
+  },
+  {
+    name: "ORGANIZATION_BLOCKS_EDITOR_SET",
+    description: "Switch the organization's blocks editor",
     category: "Organizations",
   },
   {
@@ -595,27 +604,27 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "REPORTS_SETUP",
-    description: "Set up Reports",
+    description: "Set up Deco Score",
     category: "Connections",
   },
   {
     name: "REPORTS_RUN",
-    description: "Run Reports",
+    description: "Run Deco Score",
     category: "Connections",
   },
   {
     name: "REPORTS_BIND",
-    description: "Bind Reports data source",
+    description: "Bind Deco Score data source",
     category: "Connections",
   },
   {
     name: "REPORTS_CONNECTION_STATUS",
-    description: "Read Reports connection status",
+    description: "Read Deco Score connection status",
     category: "Connections",
   },
   {
     name: "REPORTS_SET_REPOSITORY",
-    description: "Set the Reports repository",
+    description: "Set the Deco Score repository",
     category: "Connections",
   },
   {
@@ -1064,29 +1073,38 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   },
   {
     name: "JIRA_ISSUE_GET",
-    description: "Re-read the Jira issue a run is working on",
+    description: "Read a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_COMMENT_ADD",
-    description: "Comment on the Jira issue a run is working on",
+    description: "Comment on a Jira issue on the board from a run",
     category: "Jira",
   },
   {
     name: "JIRA_ISSUE_TRANSITION",
-    description: "Move the Jira issue a run is working on to another status",
+    description: "Move a Jira issue on the board to another status",
     category: "Jira",
   },
   {
     name: "JIRA_ATTACHMENT_DOWNLOAD",
     description:
-      "Get a short-lived download URL for an attachment of the run's Jira issue",
+      "Get a short-lived download URL for an attachment of a Jira issue",
     category: "Jira",
   },
   {
     name: "JIRA_REMOTE_LINK_ADD",
-    description:
-      "Link a pull request or deploy preview on the run's Jira issue",
+    description: "Link a pull request or deploy preview on a Jira issue",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_CREATE",
+    description: "Create a Jira issue on the board from a run",
+    category: "Jira",
+  },
+  {
+    name: "JIRA_ISSUE_SEARCH",
+    description: "Search the Jira board's issues with JQL from a run",
     category: "Jira",
   },
   {
@@ -1240,6 +1258,11 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "REPOSITORY_LINK",
     description: "Link a repository to the organization",
+    category: "Git",
+  },
+  {
+    name: "REPOSITORY_CREATE_FROM_TEMPLATE",
+    description: "Create a site repository from a template and link it",
     category: "Git",
   },
   {
@@ -1448,13 +1471,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "TASK_BOARD_DISMISSED_LIST",
     description:
-      "List diagnostic findings dismissed by deleting their task board cards",
+      "List Deco Score findings dismissed by deleting their task board cards",
     category: "Task Board",
   },
   {
     name: "TASK_BOARD_DISMISSED_RESTORE",
     description:
-      "Un-dismiss diagnostic findings so the next report import pushes them again",
+      "Un-dismiss Deco Score findings so the next Deco Score import pushes them again",
     category: "Task Board",
   },
   {
@@ -1633,6 +1656,8 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "BRAND_CONTEXT_LIST",
       // Boolean "org owns a legacy site" (no slugs) — gates the home's CMS-training card.
       "ORGANIZATION_HAS_SITE",
+      // Any member picks the org's blocks editor; writes only that one flag.
+      "ORGANIZATION_BLOCKS_EDITOR_SET",
       // Chat threads — talking to an agent is the most basic usage of the
       // product, so every member can CRUD their OWN threads. Per-thread access
       // is scoped at the handler level (you only see your own threads unless
@@ -1880,6 +1905,22 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "MEMBER_TAGS_SET",
     ],
   },
+  // Experiments
+  {
+    id: "experiments:manage",
+    label: "Manage experiments",
+    description: "Create, update, and delete A/B experiments, and view results",
+    section: "Experiments",
+    tools: [
+      "EXPERIMENT_LIST",
+      "EXPERIMENT_GET",
+      "EXPERIMENT_CREATE",
+      "EXPERIMENT_UPDATE",
+      "EXPERIMENT_DELETE",
+      "EXPERIMENT_RESULTS",
+    ],
+    dangerous: true,
+  },
   // Store & Registry
   {
     id: "registry:manage",
@@ -2011,7 +2052,8 @@ export function isCapabilityEnabled(
   allowAll: boolean,
 ): boolean {
   if (allowAll) return true;
-  return cap.tools.every((tool) => enabledTools.includes(tool));
+  const enabledSet = new Set(enabledTools);
+  return cap.tools.every((tool) => enabledSet.has(tool));
 }
 
 /**

@@ -1,8 +1,6 @@
 import { callSelfMcpTool } from "../fixtures/mcp-tools";
 import { expect, test } from "../fixtures/test";
 
-test.use({ compactPageLayout: true });
-
 for (const width of [1280, 390]) {
   test(`first import offers provider selection without a URL form or legacy OAuth at ${width}px`, async ({
     authedPage: { page, orgSlug },
@@ -142,11 +140,11 @@ test("home imports an already linked GitLab repository as an agent without a Git
   const { items } = await callSelfMcpTool<{
     items: Array<{
       title: string;
-      metadata: { githubRepo?: { repositoryId: string } } | null;
+      metadata: { repository?: { repositoryId: string } } | null;
     }>;
   }>(page.request, orgSlug, "COLLECTION_VIRTUAL_MCP_LIST", {});
   const imported = items.filter(
-    (item) => item.metadata?.githubRepo?.repositoryId === repository.id,
+    (item) => item.metadata?.repository?.repositoryId === repository.id,
   );
   expect(imported).toHaveLength(1);
   expect(imported[0]?.title).toBe("import-project");

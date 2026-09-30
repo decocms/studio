@@ -126,8 +126,8 @@ func TestValidateHarnessInputAcceptsRepolessRepoCwd(t *testing.T) {
 	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b"}`)); reason != "" {
 		t.Fatalf("repo-less /repo workspace rejected: %s", reason)
 	}
-	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b", "repo": {"owner": "o"}}`)); reason == "" {
-		t.Fatal("partial repo must be rejected")
+	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo", "branch": "b", "repo": {"owner": "o"}}`)); reason != "" {
+		t.Fatalf("unused workspace metadata must not affect dispatch: %s", reason)
 	}
 	if reason := ValidateHarnessInput(frame(`{"cwd": "/repo"}`)); reason == "" {
 		t.Fatal("missing branch must be rejected")

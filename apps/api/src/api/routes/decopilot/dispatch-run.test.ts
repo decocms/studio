@@ -73,51 +73,56 @@ describe("assertSinglePersistedRequestMessage", () => {
 });
 
 describe("buildDurableDispatchInput", () => {
-  test("drops raw messages and carries only submit-time ids, fence, and frozen config", () => {
-    const durable = buildDurableDispatchInput(
-      {
-        messages: [
-          {
-            id: "msg-user",
-            role: "user",
-            parts: [{ type: "text", text: "secret prompt" }],
-          } as ChatMessage,
-        ],
-        models: {
-          credentialId: "cred-1",
-          thinking: { id: "model-1" },
+  test.each([true, false])(
+    "drops raw messages and freezes voice style %p with the run config",
+    (voiceMode) => {
+      const durable = buildDurableDispatchInput(
+        {
+          messages: [
+            {
+              id: "msg-user",
+              role: "user",
+              parts: [{ type: "text", text: "secret prompt" }],
+            } as ChatMessage,
+          ],
+          models: {
+            credentialId: "cred-1",
+            thinking: { id: "model-1" },
+          },
+          agent: { id: "agent-1" },
+          temperature: 0.2,
+          toolApprovalLevel: "auto",
+          mode: "default",
+          organizationId: "org-1",
+          userId: "user-1",
+          harnessId: "decopilot",
+          taskId: "thread-1",
+          windowSize: 50,
+          voiceMode,
+          branch: "main",
         },
-        agent: { id: "agent-1" },
-        temperature: 0.2,
-        toolApprovalLevel: "auto",
-        mode: "default",
+        {
+          messageId: "msg-user",
+          runFenceToken: "fence-1",
+          branch: "main",
+        },
+      );
+
+      expect("messages" in durable).toBe(false);
+      expect("sandboxProviderKind" in durable).toBe(false);
+      expect(JSON.stringify(durable)).not.toContain("secret prompt");
+      expect(durable).toMatchObject({
         organizationId: "org-1",
         userId: "user-1",
-        harnessId: "decopilot",
         taskId: "thread-1",
-        windowSize: 50,
-        branch: "main",
-      },
-      {
         messageId: "msg-user",
         runFenceToken: "fence-1",
+        harnessId: "decopilot",
         branch: "main",
-      },
-    );
-
-    expect("messages" in durable).toBe(false);
-    expect("sandboxProviderKind" in durable).toBe(false);
-    expect(JSON.stringify(durable)).not.toContain("secret prompt");
-    expect(durable).toMatchObject({
-      organizationId: "org-1",
-      userId: "user-1",
-      taskId: "thread-1",
-      messageId: "msg-user",
-      runFenceToken: "fence-1",
-      harnessId: "decopilot",
-      branch: "main",
-    });
-  });
+        voiceMode,
+      });
+    },
+  );
 
   test("carries runMetadata through the frozen snapshot", () => {
     const durable = buildDurableDispatchInput(
@@ -198,6 +203,37 @@ describe("buildDurableDispatchInput", () => {
       { messageId: "msg-user", runFenceToken: "fence-1" },
     );
     expect("systemContext" in durable).toBe(false);
+  });
+
+  test("keeps the spoken transcript for the durable run", () => {
+    const voiceTranscript = [
+      { role: "user" as const, text: "Create two tasks" },
+      { role: "agent" as const, text: "Which pages?" },
+    ];
+    const durable = buildDurableDispatchInput(
+      {
+        messages: [
+          {
+            id: "msg-user",
+            role: "user",
+            parts: [{ type: "text", text: "Home and checkout" }],
+          } as ChatMessage,
+        ],
+        voiceMode: true,
+        voiceTranscript,
+        models: { credentialId: "cred-1", thinking: { id: "model-1" } },
+        agent: { id: "agent-1" },
+        temperature: 0.2,
+        toolApprovalLevel: "auto",
+        mode: "default",
+        organizationId: "org-1",
+        userId: "user-1",
+        harnessId: "decopilot",
+        taskId: "thread-1",
+      },
+      { messageId: "msg-user", runFenceToken: "fence-1" },
+    );
+    expect(durable.voiceTranscript).toEqual(voiceTranscript);
   });
 });
 

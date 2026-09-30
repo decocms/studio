@@ -125,4 +125,30 @@ describe("createObjectStorageRoutes", () => {
       expiresIn: 120,
     });
   });
+
+  it("clamps expiresIn to a sane range", async () => {
+    const storage = {
+      presignedGetUrl: async (key: string, expiresIn?: number) =>
+        `https://storage.example.com/get/${key}?ttl=${expiresIn}`,
+    } as BoundObjectStorage;
+    const app = createApp(storage);
+
+    const tooLong = await app.request(
+      "/object-storage/presigned-get/pages/home.html",
+      { method: "POST", body: JSON.stringify({ expiresIn: 999_999_999 }) },
+    );
+    expect(await tooLong.json()).toEqual({
+      url: "https://storage.example.com/get/pages/home.html?ttl=604800",
+      expiresIn: 604800,
+    });
+
+    const tooShort = await app.request(
+      "/object-storage/presigned-get/pages/home.html",
+      { method: "POST", body: JSON.stringify({ expiresIn: -5 }) },
+    );
+    expect(await tooShort.json()).toEqual({
+      url: "https://storage.example.com/get/pages/home.html?ttl=60",
+      expiresIn: 60,
+    });
+  });
 });

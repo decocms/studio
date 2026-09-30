@@ -5,7 +5,11 @@ import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import { invalidateVirtualMcpQueries } from "@/lib/query-keys";
 import { useT } from "@/i18n/use-t.ts";
 import type { Repository } from "@/hooks/use-git-providers";
-import { RepositoryPicker } from "@/components/repository-picker";
+import { templateTitleKey } from "@/components/create-site-flow";
+import {
+  RepositoryPicker,
+  type RepositoryPickPayload,
+} from "@/components/repository-picker";
 interface RepositoryImportPayload {
   virtualMcpId: string | null;
   repository: Repository;
@@ -27,7 +31,7 @@ function toRepo(repository: Repository): Repo {
   };
 }
 
-/** Keep the legacy metadata alongside the repository reference during rollout. */
+/** Bind the project to the selected repository and its provider URL. */
 export function agentPayload(
   repository: Pick<Repository, "id">,
   repo: Pick<Repo, "name" | "owner" | "url">,
@@ -39,7 +43,7 @@ export function agentPayload(
     pinned: false,
     icon: null,
     metadata: {
-      githubRepo: {
+      repository: {
         owner: repo.owner,
         name: repo.name,
         url: repo.url,
@@ -86,18 +90,24 @@ export function RepositoryImportPicker({
   const resolvedTitle =
     title ??
     (mode === "link"
-      ? t("common.githubRepoPicker.addRepo")
-      : t("common.githubRepoPicker.importFromGitHub"));
+      ? t("common.repositoryPicker.addRepo")
+      : t("common.repositoryPicker.importFromGitHub"));
 
-  async function createAgent(repository: Repository, repo: Repo) {
+  async function createAgent(
+    { repository, createdFromTemplate }: RepositoryPickPayload,
+    repo: Repo,
+  ) {
+    const description = createdFromTemplate
+      ? t("common.createSite.agentDescription", {
+          template: t(templateTitleKey(createdFromTemplate)),
+        })
+      : t("common.repositoryPicker.agentDescription", {
+          path: repository.path,
+        });
     const result = (await selfClient.callTool({
       name: "COLLECTION_VIRTUAL_MCP_CREATE",
       arguments: {
-        data: agentPayload(repository, repo, {
-          description: t("common.repositoryPicker.agentDescription", {
-            path: repository.path,
-          }),
-        }),
+        data: agentPayload(repository, repo, { description }),
       },
     })) as { structuredContent?: unknown };
     const payload = (result.structuredContent ?? result) as {
@@ -110,10 +120,11 @@ export function RepositoryImportPicker({
     return virtualMcpId;
   }
 
-  async function handlePicked(repository: Repository) {
+  async function handlePicked(payload: RepositoryPickPayload) {
+    const { repository } = payload;
     const repo = toRepo(repository);
     const virtualMcpId =
-      mode === "agent" ? await createAgent(repository, repo) : null;
+      mode === "agent" ? await createAgent(payload, repo) : null;
     invalidateVirtualMcpQueries(queryClient, org.id);
     onOpenChange(false);
     if (onImportComplete) {
@@ -123,12 +134,14 @@ export function RepositoryImportPicker({
       });
     } else if (virtualMcpId) {
       toast.success(
-        t("common.githubRepoPicker.importedRepo", { name: repo.name }),
+        payload.createdFromTemplate
+          ? t("common.createSite.created", { name: repo.name })
+          : t("common.repositoryPicker.importedRepo", { name: repo.name }),
       );
       navigateToAgent(virtualMcpId);
     } else {
       toast.success(
-        t("common.githubRepoPicker.addedRepo", { name: repo.name }),
+        t("common.repositoryPicker.addedRepo", { name: repo.name }),
       );
     }
   }
@@ -138,8 +151,9 @@ export function RepositoryImportPicker({
       open={open}
       onOpenChange={onOpenChange}
       title={resolvedTitle}
-      onPicked={({ repository }) => handlePicked(repository)}
+      onPicked={handlePicked}
       onError={(message) => toast.error(message)}
+      allowCreateSite={mode === "agent"}
     />
   );
 }
