@@ -59,7 +59,8 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   deliberately not fuzzy, because two findings that differ by a few words are
  *   usually two findings, and wrongly merging them loses one silently.
  *
- * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`.
+ * A DISMISSED key (`dismissed_at` set) is skipped and counted in `dismissed`,
+ * and so is an item the semantic pass matches to a dismissed reports card.
  *
  * The reply carries counts and `items`. The counts are `created`, `updated`
  * and `delegated`, plus `dismissed`, `semantic_matches` and `quota_blocked`
@@ -131,19 +132,19 @@ export function normalizeTitleKey(title: string): string {
 /**
  * The third, semantic dedup pass — what the two exact keys cannot catch: a
  * keyless finding whose wording drifted between runs, one a human already
- * filed in their own words, or two findings of one request that ask for the
- * same change.
+ * filed in their own words, one the org dismissed under another wording, or
+ * two findings of one request that ask for the same change.
  *
  * Only items WITHOUT an externalKey and without an exact title match against
- * an open card are offered, in ONE model call for the whole batch, and it runs
- * before the transaction so no model latency sits inside it. Only a
- * high-confidence verdict naming an offered card or an earlier offered item
- * counts (see `acceptBatchDuplicates`). Best-effort: no model tier, a provider
- * error, or a malformed answer yields an empty map and the items are created
- * as before.
+ * an open card are offered, and it runs before the transaction so no model
+ * latency sits inside it. Only a high-confidence verdict naming an offered
+ * card or an earlier offered item counts (see `findDuplicatesForBatch`).
+ * Best-effort: no model tier, a provider error, or a malformed answer yields
+ * no matches and the items are created as before.
  *
- * Returns item index → the open card that already tracks it, or the index of
- * the earlier item it repeats.
+ * Returns item index → the card that already tracks it (open, or a reports
+ * card the org dismissed, listed in `dismissedIds`), or the index of the
+ * earlier item it repeats.
  */
 async function semanticMatchesFor(
   ctx: StudioContext,
@@ -154,19 +155,34 @@ async function semanticMatchesFor(
     externalKey?: string;
   }[],
   openTitleKeys: ReadonlySet<string>,
-): Promise<Map<number, BatchDuplicate>> {
+): Promise<{
+  matches: Map<number, BatchDuplicate>;
+  dismissedIds: ReadonlySet<string>;
+}> {
   const drafts: IndexedDraft[] = [];
   items.forEach((item, index) => {
     if (item.externalKey) return;
     if (openTitleKeys.has(normalizeTitleKey(item.title))) return;
     drafts.push({ index, title: item.title, description: item.description });
   });
-  if (drafts.length === 0) return new Map();
+  if (drafts.length === 0)
+    return { matches: new Map(), dismissedIds: new Set() };
   try {
-    return await findDuplicatesForBatch(ctx, organizationId, drafts);
+    const dismissed = (
+      await ctx.storage.taskBoard.listDismissed(organizationId)
+    ).filter(isReportsTask);
+    return {
+      matches: await findDuplicatesForBatch(
+        ctx,
+        organizationId,
+        drafts,
+        dismissed,
+      ),
+      dismissedIds: new Set(dismissed.map((card) => card.id)),
+    };
   } catch (err) {
     console.warn("[task-board-import] semantic dedup skipped", err);
-    return new Map();
+    return { matches: new Map(), dismissedIds: new Set() };
   }
 }
 
@@ -296,7 +312,7 @@ export const createTaskBoardImportRoutes = () => {
         .filter((row) => row.status !== "done")
         .map((row) => normalizeTitleKey(row.title)),
     );
-    const semantic = await semanticMatchesFor(
+    const { matches: semantic, dismissedIds } = await semanticMatchesFor(
       ctx,
       organizationId,
       items,
@@ -478,6 +494,16 @@ export const createTaskBoardImportRoutes = () => {
             : undefined;
         if (earlier?.outcome === "dismissed") {
           results.push({ ...earlier, index });
+          continue;
+        }
+        // The org dismissed this finding under another wording.
+        if (match && "item" in match && dismissedIds.has(match.item.id)) {
+          results.push({
+            index,
+            outcome: "dismissed",
+            id: match.item.id,
+            key_seq: match.item.keySeq,
+          });
           continue;
         }
         const matched =

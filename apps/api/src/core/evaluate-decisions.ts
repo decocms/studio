@@ -1,6 +1,7 @@
 import {
   experimental_evaluate,
   type Experimental_EvaluationQuestion,
+  type Experimental_EvaluationResult,
 } from "ai";
 import type { StudioContext } from "./studio-context";
 import type { SimpleModeModelSlot } from "@decocms/shared/sdk";
@@ -24,17 +25,30 @@ export function decisionInputFits(
   );
 }
 
+type DecisionInput<
+  Questions extends Record<string, Experimental_EvaluationQuestion>,
+> = {
+  state: Parameters<typeof experimental_evaluate>[0]["state"];
+  questions: Questions;
+};
+
+/** A decision model checked once for the caller's organization, so a caller
+ *  can ask it many small questions for the price of one lookup. */
+export interface DecisionModel {
+  /** Whether `input` fits this model's conservative budget. */
+  fits(input: unknown): boolean;
+  evaluate<
+    const Questions extends Record<string, Experimental_EvaluationQuestion>,
+  >(
+    input: DecisionInput<Questions>,
+  ): Promise<Experimental_EvaluationResult<Questions>>;
+}
+
 /** Resolve credentials in the caller's organization, never through a chat tier. */
-export async function evaluateDecisions<
-  const Questions extends Record<string, Experimental_EvaluationQuestion>,
->(
+export async function openDecisionModel(
   ctx: StudioContext,
   selection: SimpleModeModelSlot,
-  input: {
-    state: Parameters<typeof experimental_evaluate>[0]["state"];
-    questions: Questions;
-  },
-) {
+): Promise<DecisionModel> {
   const org = ctx.organization;
   if (!org) throw new Error("Decision evaluation requires an organization");
   const allowed = await fetchModelPermissions(
@@ -53,16 +67,25 @@ export async function evaluateDecisions<
   if (!model?.capabilities.includes("decisions")) {
     throw new Error("Selected model does not support decisions");
   }
-  if (!decisionInputFits(input, model.limits?.contextWindow ?? 0)) {
-    throw new Error("Decision input exceeds the conservative context budget");
-  }
   const provider = await ctx.aiProviders.activate(selection.keyId, org.id);
-  if (!provider.decisions)
-    throw new Error("Provider does not support decisions");
-  return experimental_evaluate({
-    model: provider.decisions.model(selection.modelId),
-    ...input,
-    maxRetries: 0,
-    abortSignal: AbortSignal.timeout(10_000),
-  });
+  const decisions = provider.decisions;
+  if (!decisions) throw new Error("Provider does not support decisions");
+  const contextWindow = model.limits?.contextWindow ?? 0;
+  const fits = (input: unknown) => decisionInputFits(input, contextWindow);
+  const evaluate = <
+    const Questions extends Record<string, Experimental_EvaluationQuestion>,
+  >(
+    input: DecisionInput<Questions>,
+  ) => {
+    if (!fits(input)) {
+      throw new Error("Decision input exceeds the conservative context budget");
+    }
+    return experimental_evaluate({
+      model: decisions.model(selection.modelId),
+      ...input,
+      maxRetries: 0,
+      abortSignal: AbortSignal.timeout(10_000),
+    });
+  };
+  return { fits, evaluate };
 }
