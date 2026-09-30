@@ -125,7 +125,15 @@ import {
 } from "./path-param-picker-chip";
 import { PathParamInput } from "./path-param-input";
 import { buildPreviewLabel } from "./preview-label";
-import { showCmsPageSelector } from "./cms-controls";
+import {
+  showCmsPageSelector,
+  showPreviewToolbar as shouldShowPreviewToolbar,
+} from "./cms-controls";
+import {
+  PREVIEW_NAVIGATED_MESSAGE,
+  parsePreviewNavigatedPath,
+  previewTargetRendersInPlace,
+} from "./preview-navigation";
 import { useCreatePage } from "@/components/sections-editor/use-create-page";
 import { CreatePageModal } from "@/components/sections-editor/create-page-modal";
 import { sleep } from "@decocms/shared/std";
@@ -507,12 +515,11 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const explicitPreviewDevice =
     agent?.id === virtualMcpId ? agent.metadata?.previewDevice : null;
-  // Only ask the rendering server (Local tunnel, else the preview server) when
-  // the project leaves the device on automatic.
+  // Ask the rendering server (Local tunnel, else the preview server) what it
+  // renders. An explicit project device still wins below; the hint's `kind`
+  // also decides whether edits repaint in place.
   const previewDeviceHint = usePreviewDeviceHint(
-    explicitPreviewDevice
-      ? null
-      : previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
+    previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
   );
   const previewDeviceSize: PreviewDeviceSize =
     chosenDeviceSize ??
@@ -799,7 +806,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
    * place, and re-tracks live once the panel closes.
    */
   const inPlaceRenderEnabled =
-    agent?.id === virtualMcpId && agent.metadata?.fastPreviewInPlace === true;
+    agent?.id === virtualMcpId &&
+    (agent.metadata?.fastPreviewInPlace === true ||
+      previewTargetRendersInPlace(previewDeviceHint));
   // Local renders fake edits in place against the tunnel's `/live/previews`.
   const inPlaceRenderActive = localPreviewUrl
     ? display.mode === "sandbox" &&
@@ -1221,11 +1230,24 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
         );
       } else if (e.data?.type === "cms-editor::render-error") {
         endNavigation();
+      } else if (e.data?.type === PREVIEW_NAVIGATED_MESSAGE) {
+        // A cross-origin frame navigated itself; follow it like the same-origin onLoad sync does.
+        const path = parsePreviewNavigatedPath(e.data);
+        if (!path || activeGlobalSection) return;
+        if (normalizePagePath(path) === normalizePagePath(resolvedPath)) return;
+        setCurrentPath(path);
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [editorBridgeOrigin, cmsSectionLabels, cmsSectionKinds, cmsSectionKeys]);
+  }, [
+    editorBridgeOrigin,
+    cmsSectionLabels,
+    cmsSectionKinds,
+    cmsSectionKeys,
+    activeGlobalSection,
+    resolvedPath,
+  ]);
 
   // Target origin is pinned to the preview site itself: with "*" the parent
   // would still hand the editor script and page-structure metadata to
@@ -1498,8 +1520,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     }
   };
 
-  const showPreviewToolbar =
-    previewSurfaceActive && (daemonReady || display.mode === "production");
+  const showPreviewToolbar = shouldShowPreviewToolbar({
+    previewSurfaceActive,
+    daemonReady,
+    productionDisplay: display.mode === "production",
+    localPreview: !!localPreviewUrl,
+  });
 
   /** The page selector shares the exact project-level gate used by Content and
    *  Blocks. Session runtime and metadata readiness do not change the topbar's
