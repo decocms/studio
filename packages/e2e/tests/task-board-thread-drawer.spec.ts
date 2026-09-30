@@ -95,7 +95,8 @@ async function orgIdOf(
 /** Open the board, then the seeded task's detail page. */
 async function openTask(page: Page, orgSlug: string, title: string) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/${orgSlug}/tasks`);
+  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
+  await page.goto(`/${orgSlug}/tasks?assignee=any`);
   const card = page.locator(`button:has-text("${title}")`);
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.click();

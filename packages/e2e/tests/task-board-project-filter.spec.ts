@@ -68,9 +68,11 @@ async function seedCard(
   return item;
 }
 
-async function openBoard(page: Page, orgSlug: string, search = "") {
+/** `params` joins `assignee=any`: seeded cards are unassigned, and the board
+ *  otherwise opens on the viewer's own. */
+async function openBoard(page: Page, orgSlug: string, params = "") {
   await page.setViewportSize({ width: 1400, height: 900 });
-  await page.goto(`/${orgSlug}/tasks${search}`);
+  await page.goto(`/${orgSlug}/tasks?assignee=any${params && `&${params}`}`);
 }
 
 const card = (page: Page, title: string) =>
@@ -186,7 +188,7 @@ test.describe("task board project filter", () => {
     await seedCard(request, orgSlug, "Unfiled work", null);
 
     const shouted = solo.toUpperCase();
-    await openBoard(page, orgSlug, `?repo=${encodeURIComponent(shouted)}`);
+    await openBoard(page, orgSlug, `repo=${encodeURIComponent(shouted)}`);
 
     await expect(card(page, "Site work")).toBeVisible({ timeout: 30_000 });
     await expect(card(page, "Unfiled work")).toBeHidden();
