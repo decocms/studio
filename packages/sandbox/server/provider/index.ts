@@ -9,6 +9,7 @@ export type {
   EnsureOptions,
   EnsureRepo,
   PodTermination,
+  SandboxProviderKind,
   SandboxPurpose,
   Sandbox,
   SandboxId,

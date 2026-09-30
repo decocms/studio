@@ -144,7 +144,37 @@ export function readControlPlaneSandboxConfig():
   return { url, token };
 }
 
+/**
+ * Kubernetes (in-process or the control plane's), plus Freestyle when
+ * FREESTYLE_API_KEY is set; SANDBOX_START picks between them per sandbox.
+ */
 async function instantiate(
+  db: Kysely<DatabaseSchema>,
+): Promise<SandboxProvider> {
+  const apiKey = process.env.FREESTYLE_API_KEY?.trim();
+  if (!apiKey) return instantiateKubernetes(db);
+  const kubernetes = await instantiateKubernetes(db).catch((err: unknown) => {
+    console.warn(
+      "[lifecycle] kubernetes sandbox provider unavailable, using Freestyle only:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return undefined;
+  });
+  const [{ FreestyleSandboxProvider }, { SandboxProviderRouter }] =
+    await Promise.all([
+      import("@decocms/sandbox/provider/freestyle"),
+      import("@decocms/sandbox/provider/router"),
+    ]);
+  return new SandboxProviderRouter({
+    kubernetes,
+    freestyle: new FreestyleSandboxProvider({
+      apiKey,
+      image: process.env.STUDIO_SANDBOX_FREESTYLE_IMAGE?.trim() || undefined,
+    }),
+  });
+}
+
+async function instantiateKubernetes(
   db: Kysely<DatabaseSchema>,
 ): Promise<SandboxProvider> {
   const controlPlane = readControlPlaneSandboxConfig();

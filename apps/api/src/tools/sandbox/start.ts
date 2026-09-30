@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { SandboxRecord } from "@decocms/shared/sdk";
 import {
   composeSandboxRef,
+  type SandboxProviderKind,
   type SandboxPurpose,
   type Workload,
 } from "@decocms/sandbox/provider";
@@ -125,6 +126,12 @@ export const SANDBOX_START = defineTool({
       .describe(
         "The session asking for a sandbox. A thread stamped `cms` is refused — that session reads and writes over the decofile API and a pod would be invisible to it. Optional: an unstamped (legacy) thread is always allowed, and so is a caller with no thread.",
       ),
+    provider: z
+      .enum(["kubernetes", "freestyle"])
+      .optional()
+      .describe(
+        "Where to run a NEW sandbox, when that provider is configured and can run it; otherwise the other one is used. An existing sandbox stays where it is. Omitted: Kubernetes while it has room, else Freestyle.",
+      ),
   }),
   outputSchema: z.object({
     previewUrl: z.string().nullable(),
@@ -208,6 +215,7 @@ export const SANDBOX_START = defineTool({
       threadRepos: await getThreadAdditionalRepositories(ctx, askingThreadId),
       existing,
       runner,
+      ...(input.provider ? { provider: input.provider } : {}),
     });
     // A pod means a coding session. This is the web's path — `ensureSandbox`'s
     // own drain never runs here — so record it where the id is known.
@@ -363,6 +371,8 @@ type StartParams = {
   runner: SandboxProvider;
   /** See `ensureSandbox`'s `purpose`. `harness-run` implies checkout-only. */
   purpose?: SandboxPurpose;
+  /** See SANDBOX_START's `provider`. */
+  provider?: SandboxProviderKind;
 };
 
 /**
@@ -482,6 +492,7 @@ async function provisionSandbox(params: StartParams): Promise<{
     existing,
     runner,
     purpose,
+    provider,
   } = params;
   // One agent loop needs the checkout, not the install + dev server.
   const cloneOnly = purpose === "harness-run";
@@ -764,6 +775,7 @@ async function provisionSandbox(params: StartParams): Promise<{
       // that only wanted the checkout).
       cloneOnly,
       ...(purpose ? { purpose } : {}),
+      ...(provider ? { provider } : {}),
       ...(sandboxImage !== "default" ? { sandboxImage } : {}),
       tenant: {
         orgId,

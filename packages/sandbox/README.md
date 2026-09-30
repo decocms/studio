@@ -177,6 +177,23 @@ set, they use `RemoteSandboxProvider` instead: the control plane runs the same
 provider (published as `@decocms/sandbox-controller`) and serves the contract
 in `server/provider/sandbox-api.ts`. Both satisfy `SandboxProvider`.
 
+With `FREESTYLE_API_KEY` set, Studio also runs `FreestyleSandboxProvider`:
+each sandbox is a [Freestyle](https://freestyle.sh) VM running the same image
+under Docker, with the daemon published at `https://<handle>.style.dev`. The
+VM's slug is the handle and its metadata holds the daemon bearer, so it needs
+no state store. An idle VM is paused, and traffic resumes it. The first ensure
+for an image builds a base snapshot with the image pulled;
+`STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
+release of this package's version.
+
+`SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
+input picks where a new sandbox runs, when that provider is configured and
+serves the requested image; without it, Kubernetes runs it while it has
+capacity. An existing sandbox stays with its provider. Handle-only calls go to
+the provider that owns the handle: Freestyle answers ownership by VM lookup,
+and every other handle is Kubernetes'. If the Kubernetes provider cannot be
+built, Studio runs Freestyle alone.
+
 ## Routing and preview traffic
 
 The daemon listens on port `9000`. A production `agent-sandbox` deployment may
@@ -204,6 +221,8 @@ contract.
 | `@decocms/sandbox/shared` | Constants, daemon event types, shell quoting, Git identity, and shared helpers |
 | `@decocms/sandbox/provider` | Sandbox contracts, references, and filesystem hooks |
 | `@decocms/sandbox/provider/agent-sandbox` | Kubernetes agent-sandbox provider implementation |
+| `@decocms/sandbox/provider/freestyle` | Freestyle VM provider implementation |
+| `@decocms/sandbox/provider/router` | Routes one `SandboxProvider` surface across providers |
 | `@decocms/sandbox/daemon-client` | Authenticated daemon HTTP client |
 | `@decocms/sandbox/org-fs` | Organization filesystem client and contracts |
 | `@decocms/sandbox/dispatch` | Harness run schemas and fixtures namespace |
