@@ -760,6 +760,10 @@ export const KEYS = {
   // Sandbox-less Fast Preview draft pointer: {version, token} for the current
   // branch head, populated by decofile API reads/writes (never fetched itself).
   decofileDraft: (cacheKey: string) => ["decofile-draft", cacheKey] as const,
+  // Phone preview session (devices, expiry). Keyed by session id only — the
+  // pairing code never enters a query key.
+  appPreviewSession: (org: string, virtualMcpId: string, id: string) =>
+    ["app-preview-session", org, virtualMcpId, id] as const,
   // Variadic so an invalidation call can pass just the org/vmid/branch prefix
   // and still partial-match the full org/vmid/branch/previewUrl query key.
   liveMeta: (...parts: string[]) => ["live-meta", ...parts] as const,

@@ -710,6 +710,26 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
+  "sandbox.preview.appPreview.button": "View on phone",
+  "sandbox.preview.appPreview.description":
+    "Scan with the phone camera, with the app installed. Shows this branch with this tab's edits, live.",
+  "sandbox.preview.appPreview.codeLabel": "Code for Eitri Play (dev)",
+  "sandbox.preview.appPreview.copy": "Copy code",
+  "sandbox.preview.appPreview.copied": "Copied",
+  "sandbox.preview.appPreview.copyFailed": "Could not copy",
+  "sandbox.preview.appPreview.newQr": "New QR",
+  "sandbox.preview.appPreview.end": "End",
+  "sandbox.preview.appPreview.devices": "{count} device(s) connected",
+  "sandbox.preview.appPreview.expiresIn": "Expires in {time}",
+  "sandbox.preview.appPreview.ended": "The phone preview session ended.",
+  "sandbox.preview.appPreview.unavailable":
+    "Phone preview isn't available for this project.",
+  "sandbox.preview.appPreview.createFailed":
+    "Could not start the phone preview.",
+  "sandbox.preview.appPreview.tooLarge":
+    "These edits are too large to send to the phone.",
+  "sandbox.preview.appPreview.syncFailed":
+    "Could not send the latest edits to the phone.",
   "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",

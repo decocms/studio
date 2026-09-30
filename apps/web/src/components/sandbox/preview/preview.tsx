@@ -102,6 +102,7 @@ import { parseSections } from "@/components/sections-editor/parse-sections";
 import { resolveSectionCandidates } from "./section-candidates";
 import { getPageVariantSectionsAt } from "@/components/sections-editor/page-variants";
 import { VisualEditorPrompt } from "./visual-editor-prompt";
+import { AppPreviewButton } from "./app-preview/app-preview-button";
 import {
   useSandboxEvents,
   useSandboxReloadHandler,
@@ -1787,6 +1788,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
+          <AppPreviewButton
+            org={org.slug}
+            virtualMcpId={virtualMcpId}
+            branch={branch}
+            decofile={decofile}
+          />
         </div>
       </div>
     ) : null;

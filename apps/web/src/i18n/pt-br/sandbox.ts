@@ -735,6 +735,27 @@ export const sandbox = {
   "sandbox.preview.templateNoLongerExists":
     "O modelo selecionado não existe mais.",
   "sandbox.preview.valueForParam": "Valor de {label}",
+  "sandbox.preview.appPreview.button": "Ver no celular",
+  "sandbox.preview.appPreview.description":
+    "Escaneie com a câmera do celular com o app instalado. Mostra este branch com as edições desta aba, em tempo real.",
+  "sandbox.preview.appPreview.codeLabel": "Código para Eitri Play (dev)",
+  "sandbox.preview.appPreview.copy": "Copiar código",
+  "sandbox.preview.appPreview.copied": "Copiado",
+  "sandbox.preview.appPreview.copyFailed": "Não foi possível copiar",
+  "sandbox.preview.appPreview.newQr": "Novo QR",
+  "sandbox.preview.appPreview.end": "Encerrar",
+  "sandbox.preview.appPreview.devices": "{count} aparelho(s) conectado(s)",
+  "sandbox.preview.appPreview.expiresIn": "Expira em {time}",
+  "sandbox.preview.appPreview.ended":
+    "A sessão de preview no celular foi encerrada.",
+  "sandbox.preview.appPreview.unavailable":
+    "O preview no celular não está disponível para este projeto.",
+  "sandbox.preview.appPreview.createFailed":
+    "Não foi possível iniciar o preview no celular.",
+  "sandbox.preview.appPreview.tooLarge":
+    "Estas edições são grandes demais para enviar ao celular.",
+  "sandbox.preview.appPreview.syncFailed":
+    "Não foi possível enviar as últimas edições ao celular.",
   "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",
