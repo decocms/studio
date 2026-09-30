@@ -1310,7 +1310,7 @@ function TaskBoardBody({
    * wherever it was clicked. The board's filters ride along; anything the
    * tasks route does not declare is dropped by its schema.
    */
-  const openTask = (item: TaskBoardItem) => {
+  const openTask = (item: { id: string; keySeq: number | null }) => {
     navigate({ to: ".", ...taskAddress(taskRouteSegment(org.slug, item)) });
   };
 
