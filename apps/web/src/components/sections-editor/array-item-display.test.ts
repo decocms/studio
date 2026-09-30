@@ -225,9 +225,10 @@ describe("getArrayItemLabel", () => {
   // member's static title ("Imagem por coleção") although each member
   // declares `@titleBy label` and every row has one.
   test("labels a union row by the matched member's titleBy, then its title", () => {
-    const branch = (title: string, key: string): NonNullable<
-      SchemaProperty["inlineUnionBranches"]
-    >[number] => ({
+    const branch = (
+      title: string,
+      key: string,
+    ): NonNullable<SchemaProperty["inlineUnionBranches"]>[number] => ({
       title,
       schema: {
         type: "object",
