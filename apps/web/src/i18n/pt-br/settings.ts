@@ -76,7 +76,6 @@ export const settings = {
   "settings.jira.automationsDescription":
     "Quando uma issue entra em um destes status e fica nele por um minuto, o Studio inicia um run do agente nela. Um card arrastado por um status, ou para o errado e de volta, não inicia nada. O agente lê a issue e a atualiza no Jira; nada é copiado para o quadro.",
   "settings.jira.addAutomation": "Adicionar automação",
-  "settings.jira.automationOn": "Automação ativa",
   "settings.jira.promptPlaceholder": "Revise a issue e deixe um comentário…",
   "settings.jira.promptHelp":
     "Esta é a instrução inteira que o run recebe — não existe um padrão. Digite “/” para inserir uma skill (jira-execute para construir, jira-review para revisar); o texto dela é colado aqui para você manter, editar ou cortar. A descrição, os comentários, os links e os anexos da issue sempre vão junto.",
@@ -87,7 +86,6 @@ export const settings = {
   "settings.jira.fromEarlier": "Vindo de uma coluna anterior",
   "settings.jira.fromLater": "Vindo de uma coluna posterior (devolvido)",
   "settings.jira.fromStatuses": "Vindo de {statuses}",
-  "settings.jira.addOriginRule": "Adicionar regra para outra origem",
   "settings.jira.originLabel": "Quando o card vem de",
   "settings.jira.originStatusesPlaceholder": "Escolha os status",
   "settings.jira.originHelp":
