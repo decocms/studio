@@ -126,7 +126,7 @@ function OrgHomeBody({
   );
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <BriefHeadline
         eyebrow={eyebrow}
         greeting={greeting}
@@ -172,11 +172,6 @@ function OrgHomeBody({
               projects={projects}
               summaries={projectSummaries(index, tasks, session?.user?.id)}
               series={series}
-              action={
-                canManageProjects && (
-                  <NewProjectButton source="org_home" variant="ghost" />
-                )
-              }
             />
             <AgentsRunning agents={runningAgents(tasks)} orgSlug={org.slug} />
           </>

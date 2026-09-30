@@ -343,50 +343,66 @@ function AppsSection({
   const [line, lineRef] = useFirstLine();
   const clipped = oneLine && !expanded;
 
+  const title = t("projects.apps.heading");
+  const row = (
+    <div className="flex gap-4">
+      <div
+        ref={oneLine ? lineRef : undefined}
+        className={cn(
+          "flex min-w-0 flex-1 flex-wrap gap-4",
+          /* A tile is `w-24` around a 56px face, so the face sits 20px in;
+             the pull lands it on the card title's `px-5` column. */
+          oneLine && "-ml-5",
+          clipped && "overflow-hidden",
+        )}
+        style={
+          clipped && line.height !== null
+            ? { maxHeight: line.height }
+            : undefined
+        }
+      >
+        {children}
+      </div>
+      {oneLine && (line.overflows || expanded) && (
+        /* Centred on the icons, not the labels: `mt-2` is the tile's own
+           padding and `h-14` its face. Styled like the page's other "See"
+           links so the same action reads the same everywhere. */
+        <button
+          type="button"
+          className="mt-2 flex h-14 shrink-0 items-center self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
+          onClick={() => setExpanded((it) => !it)}
+        >
+          {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
+        </button>
+      )}
+    </div>
+  );
+
+  /* On the org home the apps are one card among the brief's cards, drawn with
+     `HomeCard`'s chrome. Not `HomeCard` itself: its body is a list of rows,
+     and a tile row is not a list. */
+  if (oneLine) {
+    return (
+      <section className="hidden flex-col overflow-hidden rounded-2xl bg-card card-shadow has-[a]:flex">
+        <div className="flex h-12 items-center border-b border-border/70 px-5">
+          <h2 className="text-[0.9rem] font-medium tracking-tight text-foreground">
+            {title}
+          </h2>
+        </div>
+        <div className="px-5 py-3">{row}</div>
+      </section>
+    );
+  }
+
   return (
     /* A quiet label for orientation; the tiles below already read as a group. */
     <section className="hidden flex-col gap-3 has-[a]:flex">
       {/* `pl-5` puts the label over the first icon: a tile is `w-24` and its
-          56px face is centred, so the face starts 20px in. On the org home that
-          is also where every card's title sits (`px-5`). */}
-      <h2
-        className={cn(
-          "pl-5",
-          oneLine
-            ? "text-[0.9rem] font-medium tracking-tight text-foreground"
-            : "text-muted-foreground text-sm font-medium",
-        )}
-      >
-        {t("projects.apps.heading")}
+          56px face is centred, so the face starts 20px in. */}
+      <h2 className="pl-5 text-muted-foreground text-sm font-medium">
+        {title}
       </h2>
-      <div className="flex gap-4">
-        <div
-          ref={oneLine ? lineRef : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 flex-wrap gap-4",
-            clipped && "overflow-hidden",
-          )}
-          style={
-            clipped && line.height !== null
-              ? { maxHeight: line.height }
-              : undefined
-          }
-        >
-          {children}
-        </div>
-        {oneLine && (line.overflows || expanded) && (
-          /* Centred on the icons, not the labels: `mt-2` is the tile's own
-             padding and `h-14` its face. Styled like the page's other "See"
-             links so the same action reads the same everywhere. */
-          <button
-            type="button"
-            className="mt-2 flex h-14 shrink-0 items-center self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
-            onClick={() => setExpanded((it) => !it)}
-          >
-            {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
-          </button>
-        )}
-      </div>
+      {row}
     </section>
   );
 }
