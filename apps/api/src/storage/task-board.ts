@@ -455,7 +455,19 @@ export class TaskBoardStorage {
         ...(data.previewRoutes !== undefined
           ? { preview_routes: JSON.stringify(data.previewRoutes) }
           : {}),
-        ...(data.sortOrder !== undefined ? { sort_order: data.sortOrder } : {}),
+        // A lane change without an explicit slot lands on top, like a create.
+        ...(data.sortOrder !== undefined
+          ? { sort_order: data.sortOrder }
+          : data.status !== undefined
+            ? {
+                sort_order: sql<number>`case when status = ${data.status} then sort_order else (
+                  select coalesce(min(lane.sort_order), 0) - 1
+                  from task_board_items lane
+                  where lane.organization_id = ${organizationId}
+                  and lane.status = ${data.status}
+                ) end`,
+              }
+            : {}),
         // Any move OUT of the two lanes a review can span closes the cycle.
         // Done here rather than at the call sites so it covers every one of
         // them — the ship paths, a human dragging a card back to To Do, the
