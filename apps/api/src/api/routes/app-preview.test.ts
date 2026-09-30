@@ -11,6 +11,7 @@ import type { StudioContext } from "@/core/studio-context";
 import {
   type AppPreviewSession,
   MAX_ACTIVE_DEVICES,
+  MAX_ACTIVE_SESSIONS,
   mergeOverlay,
   newDeviceToken,
   newPairingCode,
@@ -65,7 +66,17 @@ function memoryStorage() {
         revokedAt: null,
       };
       sessions.set(row.id, row);
-      return row;
+      const live = [...sessions.values()].filter(
+        (r) => owns(r, o) && active(r, now),
+      );
+      const revokedIds = live
+        .slice(0, Math.max(0, live.length - MAX_ACTIVE_SESSIONS))
+        .map((r) => {
+          r.revokedAt = now.toISOString();
+          r.codeHash = null;
+          return r.id;
+        });
+      return { ...row, revokedIds };
     },
     async rotatePairing(id: string, o: PreviewOwner, code: string, now: Date) {
       const r = sessions.get(id);
@@ -123,12 +134,13 @@ function memoryStorage() {
         (d) => d.sessionId === r.id && !d.revoked,
       );
       if (live.length >= MAX_ACTIVE_DEVICES) return null;
+      const deviceId = `apd_${devices.size}`;
       devices.set(sha256Hex(token), {
-        id: `apd_${devices.size}`,
+        id: deviceId,
         sessionId: r.id,
         revoked: false,
       });
-      return r;
+      return { ...r, deviceId };
     },
     async authenticateDevice(token: string, orgId: string, now: Date) {
       const d = devices.get(sha256Hex(token));
@@ -149,7 +161,7 @@ function memoryStorage() {
   };
 }
 
-const gates = { open: true };
+const gates = { open: true, manifest: true };
 const heads = { calls: 0, sha: "sha1" };
 const backend: AppPreviewBackend = {
   allowed: async (_ctx, org, vmcp) =>
@@ -162,8 +174,15 @@ const backend: AppPreviewBackend = {
             heads.calls++;
             return b === "main" ? heads.sha : null;
           },
-          previewLink: async () => "nb://preview?code={code}",
-          decofileAt: async (sha) => JSON.stringify({ at: sha }),
+          manifest: async () =>
+            gates.manifest
+              ? { kind: "eitri-app", previewLink: "nb://preview?code={code}" }
+              : null,
+          decofileAt: async (sha) =>
+            JSON.stringify({
+              at: sha,
+              key: { __resolveType: "website/loaders/secret.ts", name: "K" },
+            }),
         }
       : null,
 };
@@ -172,13 +191,15 @@ let storage: ReturnType<typeof memoryStorage>;
 let clock: { now: number };
 let notified: string[];
 let user: string | null;
+let authExtra: Record<string, unknown>;
 
 function buildApp() {
   const app = new Hono<{ Variables: { studioContext: StudioContext } }>();
   app.use("*", async (c, next) => {
     c.set("studioContext", {
       organization: { id: "org_1", slug: "acme", name: "Acme" },
-      auth: user ? { user: { id: user } } : {},
+      auth: user ? { user: { id: user }, ...authExtra } : {},
+      access: { getRole: () => "owner" },
       storage: { appPreviewSessions: storage },
     } as unknown as StudioContext);
     await next();
@@ -210,7 +231,9 @@ beforeEach(() => {
   clock = { now: Date.parse("2026-01-01T00:00:00Z") };
   notified = [];
   user = "user_1";
+  authExtra = {};
   gates.open = true;
+  gates.manifest = true;
   heads.calls = 0;
   heads.sha = "sha1";
 });
@@ -341,6 +364,49 @@ describe("editor endpoints", () => {
       json("POST", { branch: "main" }),
     );
     expect(res.status).toBe(404);
+  });
+
+  test("only a browser session may drive the editor", async () => {
+    const app = buildApp();
+    for (const extra of [
+      { apiKey: { id: "key_1", name: "k", userId: "user_1" } },
+      { tokenOrganizationId: "org_1", permissions: {} },
+      { user: { id: "user_1", connectionId: "conn_1" } },
+      { permissions: { self: ["*"] } },
+    ]) {
+      authExtra = extra;
+      const res = await app.request(
+        "/app-preview/vir_1/sessions",
+        json("POST", { branch: "main" }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+
+  test("create and pairing need the app manifest at the default head", async () => {
+    const app = buildApp();
+    const s = await createSession(app);
+    gates.manifest = false;
+    const res = await app.request(
+      "/app-preview/vir_1/sessions",
+      json("POST", { branch: "main" }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+    const rotate = await app.request(
+      `/app-preview/vir_1/sessions/${s.id}/pairing`,
+      { method: "POST" },
+    );
+    expect(rotate.status).toBe(404);
+  });
+
+  test("sessions revoked over the cap are notified", async () => {
+    const app = buildApp();
+    const first = await createSession(app);
+    for (let i = 0; i < MAX_ACTIVE_SESSIONS - 1; i++) await createSession(app);
+    expect(notified).toEqual([]);
+    await createSession(app);
+    expect(notified).toEqual([first.id]);
   });
 
   test("owner-only: another user gets 404 everywhere", async () => {
@@ -478,6 +544,53 @@ describe("device endpoints", () => {
       json("POST", { code: "0".repeat(32) }, headers),
     );
     expect(res.status).toBe(429);
+  });
+
+  test("the org limiter counts failures only and never blocks a valid code", async () => {
+    const app = buildApp();
+    const s = await createSession(app);
+    user = null;
+    const claim = (code: string, i: number) =>
+      app.request(
+        "/app-preview/claim",
+        json("POST", { code }, { "cf-connecting-ip": `198.51.100.${i}` }),
+      );
+    for (let i = 0; i < 200; i++) {
+      expect((await claim("0".repeat(32), i % 200)).status).toBe(404);
+    }
+    const over = await claim("0".repeat(32), 250);
+    expect(over.status).toBe(429);
+    expect((await claim(s.pairingCode, 251)).status).toBe(200);
+  });
+
+  test("claim re-checks the gates and mints nothing when they closed", async () => {
+    const app = buildApp();
+    const s = await createSession(app);
+    user = null;
+    gates.open = false;
+    const res = await app.request(
+      "/app-preview/claim",
+      json("POST", { code: s.pairingCode }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+    user = "user_1";
+    gates.open = true;
+    const got = (await (
+      await app.request(`/app-preview/vir_1/sessions/${s.id}`)
+    ).json()) as { devices: unknown[] };
+    expect(got.devices).toHaveLength(0);
+  });
+
+  test("a cached head does not skip the gates", async () => {
+    const app = buildApp();
+    const { auth } = await pair(app);
+    const state = () =>
+      app.request("/app-preview/device/state", { headers: auth });
+    expect((await state()).status).toBe(200);
+    gates.open = false;
+    expect((await state()).status).toBe(401);
+    expect(heads.calls).toBe(1);
   });
 
   test("state with ETag/304, base, and 401 cases", async () => {
@@ -689,5 +802,36 @@ describe("device events (SSE)", () => {
     });
     expect(again.status).toBe(200);
     for (const s of [...open.slice(1), frames(again)]) await s.cancel();
+  });
+
+  test("concurrent opens cannot overshoot the per-device cap", async () => {
+    const app = buildApp();
+    const { auth } = await pair(app);
+    const all = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        app.request("/app-preview/device/events", { headers: auth }),
+      ),
+    );
+    expect(all.filter((r) => r.status === 200)).toHaveLength(3);
+    expect(all.filter((r) => r.status === 429)).toHaveLength(3);
+    for (const r of all) if (r.status === 200) await frames(r).cancel();
+  });
+
+  test("a closed gate releases the reserved slot", async () => {
+    const app = buildApp();
+    const { auth } = await pair(app);
+    gates.open = false;
+    for (let i = 0; i < 4; i++) {
+      const r = await app.request("/app-preview/device/events", {
+        headers: auth,
+      });
+      expect(r.status).toBe(401);
+    }
+    gates.open = true;
+    const ok = await app.request("/app-preview/device/events", {
+      headers: auth,
+    });
+    expect(ok.status).toBe(200);
+    await frames(ok).cancel();
   });
 });

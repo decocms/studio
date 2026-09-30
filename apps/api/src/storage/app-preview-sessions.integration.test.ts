@@ -231,8 +231,13 @@ describe("AppPreviewSessionStorage", () => {
 
   it("keeps at most 10 active sessions per user and project", async () => {
     const ids: string[] = [];
-    for (let i = 0; i < 11; i++)
-      ids.push((await create(newPairingCode(), at(i))).id);
+    let revokedIds: string[] = [];
+    for (let i = 0; i < 11; i++) {
+      const created = await create(newPairingCode(), at(i));
+      ids.push(created.id);
+      revokedIds = created.revokedIds;
+    }
+    expect(revokedIds).toEqual([ids[0]!]);
     const oldest = await storage.getForOwner(ids[0]!, owner);
     expect(oldest?.session.revokedAt).not.toBeNull();
     const newest = await storage.getForOwner(ids[10]!, owner);

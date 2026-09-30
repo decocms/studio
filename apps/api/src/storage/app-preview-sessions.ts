@@ -17,7 +17,7 @@ import type {
 
 export const PAIRING_TTL_MS = 10 * 60 * 1000;
 export const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
-const MAX_ACTIVE_SESSIONS = 10;
+export const MAX_ACTIVE_SESSIONS = 10;
 export const MAX_ACTIVE_DEVICES = 5;
 export const MAX_OVERLAY_BYTES = 8 * 1024 * 1024;
 const LAST_SEEN_THROTTLE_MS = 60_000;
@@ -147,11 +147,12 @@ export class AppPreviewSessionStorage {
   constructor(private db: Kysely<Database>) {}
 
   /** New session with a fresh pairing code; revokes the owner's oldest active
-   *  sessions beyond {@link MAX_ACTIVE_SESSIONS}. */
+   *  sessions beyond {@link MAX_ACTIVE_SESSIONS} (`revokedIds`, so the caller
+   *  can end their open streams). */
   async create(
     owner: PreviewOwner & { branch: string; pairingCode: string },
     now = new Date(),
-  ): Promise<AppPreviewSession> {
+  ): Promise<AppPreviewSession & { revokedIds: string[] }> {
     return this.db.transaction().execute(async (trx) => {
       const row = await trx
         .insertInto("app_preview_sessions")
@@ -181,13 +182,14 @@ export class AppPreviewSessionStorage {
         .orderBy("created_at", "desc")
         .orderBy("id", "desc")
         .offset(MAX_ACTIVE_SESSIONS);
-      await trx
+      const revoked = await trx
         .updateTable("app_preview_sessions")
         .set({ revoked_at: now, pairing_code_hash: null, updated_at: now })
         .where("id", "in", beyondCap)
+        .returning("id")
         .execute();
 
-      return toSession(row);
+      return { ...toSession(row), revokedIds: revoked.map((r) => r.id) };
     });
   }
 
@@ -329,7 +331,7 @@ export class AppPreviewSessionStorage {
     organizationId: string,
     token: string,
     now = new Date(),
-  ): Promise<AppPreviewSession | null> {
+  ): Promise<(AppPreviewSession & { deviceId: string }) | null> {
     return this.db.transaction().execute(async (trx) => {
       const row = await trx
         .updateTable("app_preview_sessions as s")
@@ -356,17 +358,18 @@ export class AppPreviewSessionStorage {
         .executeTakeFirstOrThrow();
       if (Number(count) >= MAX_ACTIVE_DEVICES) return null;
 
+      const deviceId = `apd_${randomUUID()}`;
       await trx
         .insertInto("app_preview_devices")
         .values({
-          id: `apd_${randomUUID()}`,
+          id: deviceId,
           session_id: row.id,
           token_hash: sha256Hex(token),
           created_at: now,
           last_seen_at: now,
         })
         .execute();
-      return toSession(row);
+      return { ...toSession(row), deviceId };
     });
   }
 

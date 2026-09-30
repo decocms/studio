@@ -1,7 +1,9 @@
 /**
  * Phone preview sessions (QR) — doc `conteudo-runtime-e-preview.md` §3.3/§3.4.
  *
- *   Editor (signed-in owner only; anyone else gets 404):
+ *   Editor (the owner, signed in through the browser — API keys and
+ *   connection-scoped Studio tokens get 401 — within their role's project
+ *   scope; anyone else gets 404):
  *     POST   /api/:org/app-preview/:vmcp/sessions            { branch }
  *     POST   /api/:org/app-preview/:vmcp/sessions/:id/pairing
  *     GET    /api/:org/app-preview/:vmcp/sessions/:id
@@ -16,17 +18,22 @@
  *     DELETE /api/:org/app-preview/device
  *
  * Gates (org flag `app_content_delivery`, `cms` plan, project in the org with a
- * repository) are the ones of `/app-content`. Every claim failure is the same
- * 404 and every device-auth failure the same 401. Nothing here logs codes,
- * tokens, IPs or emails.
+ * repository) are the ones of `/app-content`, re-checked on every path: the
+ * claim, and each device request (the cached branch head never skips them).
+ * Creating a session or a pairing code also needs `.deco/app.json` with kind
+ * `eitri-app` at the default-branch head. Every claim failure is the same 404
+ * and every device-auth failure the same 401. Secret blocks never reach the
+ * device. Nothing here logs codes, tokens, IPs or emails.
  */
 
 import type { NatsConnection } from "@nats-io/nats-core";
+import { isProjectAllowed } from "@decocms/shared/auth/project-scope";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
+import { resolveCallerProjectScope } from "@/core/project-scope";
 import type { StudioContext } from "@/core/studio-context";
-import { readAppManifest } from "@/app-content/manifest";
+import { type AppManifest, readAppManifest } from "@/app-content/manifest";
 import { resolveAppProject, VIRTUAL_MCP_ID_RE } from "@/app-content/project";
 import { readDecofileAtSha } from "@/decofile/read-decofile";
 import { createSingleFlight } from "@/decofile/single-flight";
@@ -45,7 +52,7 @@ import {
 } from "@/storage/app-preview-sessions";
 import type { Env } from "../hono-env";
 import { clientIp, createWindowLimiter } from "../utils/rate-limit";
-import { etagMatches } from "./app-content";
+import { etagMatches, stripSecrets } from "./app-content";
 import {
   isValidBranch,
   patchBodyLimit,
@@ -67,8 +74,8 @@ export interface AppPreviewRepo {
   defaultHead(): Promise<string>;
   /** Null when the branch does not exist (never created here). */
   branchHead(branch: string): Promise<string | null>;
-  /** Manifest `previewLink` at `sha`, or null. */
-  previewLink(sha: string): Promise<string | null>;
+  /** The valid `.deco/app.json` at `sha` (kind `eitri-app`), or null. */
+  manifest(sha: string): Promise<AppManifest | null>;
   /** The merged decofile (JSON text) at `sha`. */
   decofileAt(sha: string): Promise<string>;
 }
@@ -127,8 +134,7 @@ const defaultBackend: AppPreviewBackend = {
         requireBranchHead(client, await client.getDefaultBranch()),
       branchHead: async (branch) =>
         (await client.getBranch(branch))?.sha ?? null,
-      previewLink: async (sha) =>
-        (await readAppManifest(client, sha, packagePath))?.previewLink ?? null,
+      manifest: (sha) => readAppManifest(client, sha, packagePath),
       decofileAt: async (sha) =>
         (await readDecofileAtSha(client, sha, packagePath)).decofile,
     };
@@ -244,8 +250,8 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
     windowMs: CLAIM_WINDOW_MS,
   });
 
-  // (org, vmcp, branch) → base sha. On a hit the gates are not re-checked
-  // for up to HEAD_TTL_MS.
+  // (org, vmcp, branch) → base sha for up to HEAD_TTL_MS. A hit saves the
+  // GitHub round trip, not the gates: those are re-checked every time.
   const heads = new Map<string, { sha: string; at: number }>();
   const headFlight = createSingleFlight<string | null>();
   const baseSha = async (
@@ -254,7 +260,15 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
   ): Promise<string | null> => {
     const key = `${session.organizationId}/${session.virtualMcpId}/${session.branch}`;
     const hit = heads.get(key);
-    if (hit && now() - hit.at < HEAD_TTL_MS) return hit.sha;
+    if (hit && now() - hit.at < HEAD_TTL_MS) {
+      if (
+        await backend.allowed(ctx, session.organizationId, session.virtualMcpId)
+      ) {
+        return hit.sha;
+      }
+      heads.delete(key);
+      return null;
+    }
     return headFlight.run(key, async () => {
       const repo = await backend.open(
         ctx,
@@ -289,30 +303,41 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
       const organization = ctx.organization;
       if (!organization) return notFound(c);
       const t = now();
-      if (
-        !ipLimiter.hit(clientIp(c), t) ||
-        !orgLimiter.hit(organization.id, t)
-      ) {
-        return c.json({ error: "Too many requests" }, 429, {
+      const tooMany = () =>
+        c.json({ error: "Too many requests" }, 429, {
           ...NO_STORE,
           "Retry-After": "300",
         });
-      }
+      if (!ipLimiter.hit(clientIp(c), t)) return tooMany();
+      // Only failures count per org, so guessing from many IPs cannot lock the
+      // org's own phones out: a valid code is always tried and never refused
+      // by this limiter.
+      const failed = () =>
+        orgLimiter.hit(organization.id, t) ? notFound(c) : tooMany();
       const body = (await c.req.json().catch(() => null)) as {
         code?: unknown;
       } | null;
       const code = body?.code;
       if (typeof code !== "string" || !PAIRING_CODE_RE.test(code)) {
-        return notFound(c);
+        return failed();
       }
       const token = newDeviceToken();
-      const session = await ctx.storage.appPreviewSessions.claim(
+      const sessions = ctx.storage.appPreviewSessions;
+      const session = await sessions.claim(
         code,
         organization.id,
         token,
         new Date(t),
       );
-      if (!session) return notFound(c);
+      if (!session) return failed();
+      // Gates closed since the code was minted: the code is burnt and the
+      // device row dies before its token ever leaves.
+      if (
+        !(await backend.allowed(ctx, organization.id, session.virtualMcpId))
+      ) {
+        await sessions.revokeDevice(session.deviceId, new Date(t));
+        return failed();
+      }
       return c.json(
         {
           token,
@@ -361,7 +386,10 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
         branch: session.branch,
         rev: session.rev,
         baseSha: sha,
-        overlay: { set: session.overlay.set, delete: session.overlay.delete },
+        overlay: {
+          set: stripSecrets(session.overlay.set),
+          delete: session.overlay.delete,
+        },
         expiresAt: session.expiresAt,
       },
       200,
@@ -388,7 +416,10 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
         session.virtualMcpId,
       );
       if (!repo) return unauthorized(c);
-      return c.body(await repo.decofileAt(sha), 200, {
+      const decofile = JSON.stringify(
+        stripSecrets(JSON.parse(await repo.decofileAt(sha))),
+      );
+      return c.body(decofile, 200, {
         ...headers,
         "Content-Type": "application/json; charset=utf-8",
       });
@@ -407,6 +438,8 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
     if (!auth) return unauthorized(c);
     const ctx = c.var.studioContext;
     const { session, deviceId } = auth;
+    // Check and reserve with no await in between, or concurrent opens all
+    // pass the cap. Every exit below releases the slot exactly once.
     if (
       (streams.get(deviceId) ?? 0) >= STREAMS_PER_DEVICE ||
       openStreams >= MAX_STREAMS
@@ -416,17 +449,31 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
         "Retry-After": "30",
       });
     }
+    streams.set(deviceId, (streams.get(deviceId) ?? 0) + 1);
+    openStreams++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      const left = (streams.get(deviceId) ?? 1) - 1;
+      if (left > 0) streams.set(deviceId, left);
+      else streams.delete(deviceId);
+      openStreams--;
+    };
+
     let sha: string | null;
     try {
       sha = await baseSha(ctx, session);
     } catch (err) {
+      release();
       if (repoErrorStatus(err) === 404) return unauthorized(c);
       return upstream(c, "events", err);
     }
-    if (!sha) return unauthorized(c);
+    if (!sha) {
+      release();
+      return unauthorized(c);
+    }
 
-    streams.set(deviceId, (streams.get(deviceId) ?? 0) + 1);
-    openStreams++;
     const res = streamSSE(c, async (stream) => {
       let last = { rev: session.rev, baseSha: sha };
       let ended = false;
@@ -437,8 +484,15 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
           resolve();
         };
       });
-      const state = () =>
-        stream.writeSSE({ event: "state", data: JSON.stringify(last) });
+      // Hono's write() swallows errors, so a dead client only shows up as
+      // `aborted`/`closed` after the write.
+      const wrote = () => {
+        if (stream.aborted || stream.closed) finish();
+      };
+      const send = async (event: "state" | "end", data: unknown) => {
+        await stream.writeSSE({ event, data: JSON.stringify(data) });
+        wrote();
+      };
 
       /** Re-authenticates and pushes a changed state; the end reason when
        *  the device may no longer watch. */
@@ -457,7 +511,7 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
         if (!next) return "revoked";
         if (again.session.rev !== last.rev || next !== last.baseSha) {
           last = { rev: again.session.rev, baseSha: next };
-          await state();
+          await send("state", last);
         }
         return null;
       };
@@ -476,15 +530,12 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
             dirty = false;
             const reason = await check();
             if (reason) {
-              await stream.writeSSE({
-                event: "end",
-                data: JSON.stringify({ reason }),
-              });
+              await send("end", { reason });
               finish();
             }
           } while (dirty && !ended);
         } catch {
-          finish(); // write or storage failure: the app reconnects
+          finish(); // storage failure re-authenticating: the app reconnects
         } finally {
           running = false;
         }
@@ -492,27 +543,24 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
 
       const unsubscribe = subscribe(session.id, () => void run());
       const ping = setInterval(() => {
-        void run().then(() =>
-          ended ? undefined : stream.write(": ping\n\n").catch(finish),
-        );
+        void run().then(async () => {
+          if (ended) return;
+          await stream.write(": ping\n\n");
+          wrote();
+        });
       }, pingMs);
       const cap = setTimeout(finish, maxStreamMs);
       stream.onAbort(finish);
       try {
-        await state();
+        await send("state", last);
         // A change between the pre-stream read and the subscription.
-        await run();
+        if (!ended) await run();
         await done;
-      } catch {
-        // client gone before the first write
       } finally {
         clearInterval(ping);
         clearTimeout(cap);
         unsubscribe();
-        const left = (streams.get(deviceId) ?? 1) - 1;
-        if (left > 0) streams.set(deviceId, left);
-        else streams.delete(deviceId);
-        openStreams--;
+        release();
       }
     });
     res.headers.set("Cache-Control", "no-store");
@@ -533,25 +581,44 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
 
   // ---- Editor (session owner) --------------------------------------------
 
-  /** Owner scope for `:virtualMcpId`, or null (→ 401/404) when the caller is
-   *  anonymous or the project fails a gate. */
+  /** Owner scope for `:virtualMcpId`; "unauthorized" (401) unless a person
+   *  signed in through the browser, null (404) when the project is outside
+   *  the caller's role scope or fails a gate. */
   const editor = async (
     c: Context<Env>,
   ): Promise<{ owner: PreviewOwner } | "unauthorized" | null> => {
     const ctx = c.var.studioContext;
-    const userId = ctx.auth?.user?.id;
-    if (!userId) return "unauthorized";
+    const auth = ctx.auth;
+    const userId = auth?.user?.id;
+    // Browser sessions carry no bearer org nor a resolved permission map;
+    // API keys, MCP OAuth and (connection-scoped) Studio JWTs all do. A
+    // pairing code is a handoff to a phone the person holds, never an
+    // automation's.
+    if (
+      !userId ||
+      auth.apiKey ||
+      auth.user?.connectionId ||
+      auth.tokenOrganizationId ||
+      auth.permissions
+    ) {
+      return "unauthorized";
+    }
     const organization = ctx.organization;
     const virtualMcpId = c.req.param("virtualMcpId") ?? "";
     const id = c.req.param("id");
     if (!organization || !VIRTUAL_MCP_ID_RE.test(virtualMcpId)) return null;
     if (id !== undefined && !SESSION_ID_RE.test(id)) return null;
+    // The role's project allowlist (`COLLECTION_VIRTUAL_MCP_GET`'s check).
+    if (!isProjectAllowed(await resolveCallerProjectScope(ctx), virtualMcpId)) {
+      return null;
+    }
     if (!(await backend.allowed(ctx, organization.id, virtualMcpId)))
       return null;
     return { owner: { organizationId: organization.id, virtualMcpId, userId } };
   };
 
-  /** Default-branch `previewLink` with `code`, or null. */
+  /** Default-branch `previewLink` with `code` (null without one), or
+   *  undefined (→ 404) when a gate fails or that head has no app manifest. */
   const linkFor = async (
     c: Context<Env>,
     owner: PreviewOwner,
@@ -563,10 +630,9 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
       owner.virtualMcpId,
     );
     if (!repo) return undefined;
-    return previewLinkFor(
-      await repo.previewLink(await repo.defaultHead()),
-      code,
-    );
+    const manifest = await repo.manifest(await repo.defaultHead());
+    if (!manifest) return undefined;
+    return previewLinkFor(manifest.previewLink ?? null, code);
   };
 
   app.post("/:virtualMcpId/sessions", async (c) => {
@@ -593,6 +659,8 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
       { ...scope.owner, branch, pairingCode: code },
       new Date(now()),
     );
+    // Revoked over the cap: their open streams must end too.
+    for (const id of session.revokedIds) notify(id);
     return c.json(pairingResponse(session, code, link), 201, NO_STORE);
   });
 

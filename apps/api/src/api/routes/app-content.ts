@@ -7,12 +7,14 @@
  * reach phones only through preview sessions). Every gate — org flag
  * `app_content_delivery`, `cms` plan, project in the org, repository binding,
  * `.deco/app.json` with `publishedContent: true` — fails to the same 404 so
- * the route cannot be used to enumerate projects.
+ * the route cannot be used to enumerate projects. Secret blocks (top-level or
+ * nested) are stripped before anything is cached or served.
  *
  * `resolveOrgFromPath` lets anonymous callers through with the org resolved;
  * this route self-enforces its gates.
  */
 
+import { isSecretBlock } from "@decocms/shared/decofile";
 import { Hono, type Context } from "hono";
 import type { StudioContext } from "@/core/studio-context";
 import { readAppManifest } from "@/app-content/manifest";
@@ -44,6 +46,9 @@ const CACHE_CONTROL =
 export interface PublishedLoad {
   sha: string | null;
   body: string | null;
+  /** Repository + package the body was read from; a binding change must not
+   *  reuse an entry of the previous one. */
+  source?: string;
   /** False for ids that are not a project of the org — never cached, so junk
    *  ids cannot evict real entries. */
   cache: boolean;
@@ -74,6 +79,13 @@ const loadPublishedDecofile: PublishedLoader = async (
   const gated: PublishedLoad = { sha: null, body: null, cache: true };
   const { repository, packagePath } = project;
   if (!repository) return gated;
+  const source = JSON.stringify([
+    repository.url,
+    repository.owner,
+    repository.name,
+    repository.repositoryId ?? null,
+    packagePath,
+  ]);
 
   try {
     const client = await contentClientForProjectRepo(
@@ -86,17 +98,31 @@ const loadPublishedDecofile: PublishedLoader = async (
       await client.getDefaultBranch(),
     );
     // Same commit, same answer: manifest and blocks are immutable per sha.
-    if (previous && previous.sha === sha) return previous;
+    if (previous?.sha === sha && previous.source === source) return previous;
     const manifest = await readAppManifest(client, sha, packagePath);
-    if (manifest?.publishedContent !== true) return { ...gated, sha };
+    if (manifest?.publishedContent !== true) return { ...gated, sha, source };
     const snapshot = await readDecofileAtSha(client, sha, packagePath);
-    return { sha, body: snapshot.decofile, cache: true };
+    return { sha, body: snapshot.decofile, source, cache: true };
   } catch (err) {
     // A missing repo/credential is a gate, not an outage.
     if (repoErrorStatus(err) === 404) return gated;
     throw err;
   }
 };
+
+/** Drops every secret block — top-level or nested, in objects and arrays.
+ *  Encrypted or not, secret material never leaves on an app surface. */
+export function stripSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.filter((v) => !isSecretBlock(v)).map(stripSecrets);
+  }
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, v]) => !isSecretBlock(v))
+      .map(([k, v]) => [k, stripSecrets(v)]),
+  );
+}
 
 function gzip(text: string): Promise<Uint8Array<ArrayBuffer>> {
   const stream = new Blob([text])
@@ -152,17 +178,18 @@ export function createAppContentRoutes(
     if (!organization || !VIRTUAL_MCP_ID_RE.test(virtualMcpId)) {
       return notFound(c);
     }
-    if (!limiter.hit(clientIp(c), now())) {
-      return c.json({ error: "Too many requests" }, 429, {
-        ...BASE_HEADERS,
-        "Cache-Control": "no-store",
-        "Retry-After": "60",
-      });
-    }
-
     const key = `${organization.id}/${virtualMcpId}`;
     let entry = cache.get(key);
     if (!entry || now() - entry.checkedAt >= REVALIDATE_MS) {
+      // Only the path that may reach GitHub is limited: cache hits are free,
+      // and carriers put many phones behind one CGNAT address.
+      if (!limiter.hit(clientIp(c), now())) {
+        return c.json({ error: "Too many requests" }, 429, {
+          ...BASE_HEADERS,
+          "Cache-Control": "no-store",
+          "Retry-After": "60",
+        });
+      }
       const previous = entry;
       try {
         entry = await flight.run(key, async () => {
@@ -175,7 +202,15 @@ export function createAppContentRoutes(
           // The loader hands `previous` back when the head is unchanged, which
           // keeps its gzip copy.
           const next: CacheEntry =
-            loaded === previous ? previous : { ...loaded, checkedAt: 0 };
+            loaded === previous
+              ? previous
+              : {
+                  ...loaded,
+                  body:
+                    loaded.body &&
+                    JSON.stringify(stripSecrets(JSON.parse(loaded.body))),
+                  checkedAt: 0,
+                };
           next.checkedAt = now();
           forget(key);
           if (loaded.cache) remember(key, next);
@@ -201,20 +236,29 @@ export function createAppContentRoutes(
 
     if (!entry.body || !entry.sha) return notFound(c);
 
-    const etag = `"${entry.sha}"`;
+    // One tag per encoding (a shared cache must not swap the bodies); either
+    // validates, since both carry the same content.
+    const identity = `"${entry.sha}"`;
+    const gzipped = `"${entry.sha}-gz"`;
+    const wantsGzip = /\bgzip\b/i.test(c.req.header("accept-encoding") ?? "");
     const headers: Record<string, string> = {
       ...BASE_HEADERS,
-      ETag: etag,
+      ETag: wantsGzip ? gzipped : identity,
       "Cache-Control": CACHE_CONTROL,
       Vary: "Accept-Encoding",
     };
-    if (etagMatches(c.req.header("if-none-match"), etag)) {
+    const inm = c.req.header("if-none-match");
+    if (etagMatches(inm, identity) || etagMatches(inm, gzipped)) {
       return c.body(null, 304, headers);
     }
     headers["Content-Type"] = "application/json; charset=utf-8";
-    if (/\bgzip\b/i.test(c.req.header("accept-encoding") ?? "")) {
-      entry.gzip ??= gzip(entry.body);
-      return c.body(await entry.gzip, 200, {
+    if (wantsGzip) {
+      const target = entry;
+      target.gzip ??= gzip(entry.body).catch((err: unknown) => {
+        target.gzip = undefined; // the next request retries
+        throw err;
+      });
+      return c.body(await target.gzip, 200, {
         ...headers,
         "Content-Encoding": "gzip",
       });

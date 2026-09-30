@@ -151,22 +151,71 @@ describe("GET /app-content/:virtualMcpId", () => {
     expect(cold.status).toBe(502);
   });
 
-  test("limits each IP to 120 requests a minute", async () => {
+  test("limits each IP to 120 loader calls a minute; cache hits are free", async () => {
     const { load } = countingLoader(() => published);
     const app = buildApp(load);
     const headers = { "cf-connecting-ip": "203.0.113.7" };
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 200; i++) {
       expect(
         (await app.request("/app-content/vir_1", { headers })).status,
       ).toBe(200);
     }
-    expect((await app.request("/app-content/vir_1", { headers })).status).toBe(
+    // Misses (ids never cached) spend the budget.
+    for (let i = 0; i < 119; i++) {
+      expect(
+        (await app.request(`/app-content/vir_x${i}`, { headers })).status,
+      ).toBe(200);
+    }
+    expect((await app.request("/app-content/vir_y", { headers })).status).toBe(
       429,
     );
-    const other = await app.request("/app-content/vir_1", {
+    expect((await app.request("/app-content/vir_1", { headers })).status).toBe(
+      200,
+    );
+    const other = await app.request("/app-content/vir_y", {
       headers: { "cf-connecting-ip": "203.0.113.8" },
     });
     expect(other.status).toBe(200);
+  });
+
+  test("gzip has its own ETag; either tag validates", async () => {
+    const { load } = countingLoader(() => published);
+    const app = buildApp(load);
+    const gz = { "accept-encoding": "gzip" };
+    const res = await app.request("/app-content/vir_1", { headers: gz });
+    expect(res.headers.get("etag")).toBe('"abc123-gz"');
+    for (const [headers, etag] of [
+      [{ ...gz, "if-none-match": '"abc123"' }, '"abc123-gz"'],
+      [{ "if-none-match": '"abc123-gz"' }, '"abc123"'],
+    ] as const) {
+      const r = await app.request("/app-content/vir_1", { headers });
+      expect(r.status).toBe(304);
+      expect(r.headers.get("etag")).toBe(etag);
+    }
+  });
+
+  test("strips top-level and nested secret blocks", async () => {
+    const secret = {
+      __resolveType: "website/loaders/secret.ts",
+      name: "API_KEY",
+      encrypted: "abcd",
+    };
+    const body = JSON.stringify({
+      "my-secret": secret,
+      "pages-home": {
+        sections: [{ token: secret, keep: 1 }, secret],
+        auth: {
+          apiKey: { ...secret, __resolveType: "site/loaders/secret.ts" },
+        },
+      },
+    });
+    const { load } = countingLoader(() => ({ ...published, body }));
+    const res = await buildApp(load).request("/app-content/vir_1");
+    const text = await res.text();
+    expect(JSON.parse(text)).toEqual({
+      "pages-home": { sections: [{ keep: 1 }], auth: {} },
+    });
+    expect(text).not.toContain("API_KEY");
   });
 });
 

@@ -11,14 +11,31 @@ import type { RepoContentClient } from "@/git-providers";
 const MAX_MANIFEST_CHARS = 64 * 1024;
 const MAX_PREVIEW_LINK_CHARS = 512;
 
+// Schemes that hand the code to another app, the OS or the page itself
+// rather than to the app's own handler.
 const FORBIDDEN_SCHEMES = new Set([
-  "http",
-  "javascript",
-  "data",
-  "file",
-  "blob",
-  "vbscript",
   "about",
+  "blob",
+  "content",
+  "data",
+  "facetime",
+  "facetime-audio",
+  "file",
+  "ftp",
+  "geo",
+  "http",
+  "intent",
+  "itms",
+  "itms-apps",
+  "itms-services",
+  "javascript",
+  "mailto",
+  "market",
+  "sms",
+  "tel",
+  "vbscript",
+  "ws",
+  "wss",
 ]);
 
 /** `https:` or an app's own scheme (`nb://…`), with a `{code}` slot. */
