@@ -21,6 +21,7 @@ import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
+import { useProjectRendersApp } from "@/components/sandbox/preview/preview-device-hint";
 import type { TranslationKey } from "@/i18n/use-t.ts";
 import {
   effectiveProjectSidebarViews,
@@ -144,6 +145,7 @@ export function ProjectApps({
   orgSlug: string;
 }) {
   const t = useT();
+  const rendersApp = useProjectRendersApp(project);
   /** Site Editor opens a repo; without one the tile would bounce to
    *  Settings. */
   const hasSource = agentHasClonableSource(project.metadata);
@@ -185,7 +187,11 @@ export function ProjectApps({
                 <app.Icon size={24} />
               </span>
               <span className="w-full truncate text-foreground text-xs font-medium">
-                {t(app.labelKey)}
+                {t(
+                  rendersApp && id === "site-editor"
+                    ? "projects.apps.appEditor"
+                    : app.labelKey,
+                )}
               </span>
             </Link>
           );

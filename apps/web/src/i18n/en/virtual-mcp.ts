@@ -118,6 +118,7 @@ export const virtualMcp = {
   "virtualMcp.layoutTabContent.showChatDescription":
     "Display Chat in the side panel alongside the main view.",
   "virtualMcp.layoutTabContent.siteEditor": "Site Editor",
+  "virtualMcp.layoutTabContent.appEditor": "App Editor",
   "virtualMcp.settings.title": "Project settings",
   "virtualMcp.settings.navigation": "Project settings sections",
   "virtualMcp.settings.identity.icon": "Project icon",

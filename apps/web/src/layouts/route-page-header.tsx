@@ -19,6 +19,7 @@ import { useProjectFirstNav } from "@/hooks/use-preferences";
 
 import { useScopeId } from "@/hooks/use-project-scope";
 import { useT } from "@/i18n/use-t";
+import { useProjectRendersApp } from "@/components/sandbox/preview/preview-device-hint";
 import { useProjectContext, useVirtualMCPNonBlocking } from "@/sdk";
 
 /** Router adapter for Page.Header. Settings stays independent of thread/runtime providers. */
@@ -33,6 +34,7 @@ export function RoutePageHeader({
   const { org } = useProjectContext();
   const scopeId = useScopeId();
   const project = useVirtualMCPNonBlocking(scopeId);
+  const rendersApp = useProjectRendersApp(project);
   const inSettings = useInSettings();
   const { toggleSidebar } = useSidebar();
   const takeover = useAppTakeover();
@@ -51,7 +53,11 @@ export function RoutePageHeader({
       scopeId
       ? projectTitle
       : t("sidebar.navDestinations.home")
-    : t(page?.pageTitle ?? "page.view");
+    : t(
+        rendersApp && page?.pageTitle === "sidebar.projectNav.siteEditor"
+          ? "sidebar.projectNav.appEditor"
+          : (page?.pageTitle ?? "page.view"),
+      );
   /** Project-first navigation: the crumb is the way out of an app, so it lands
    *  on the project as the reader knows it: its one screen. Sending them to
    *  the scoped workspace instead is how someone loses the sidebar and cannot

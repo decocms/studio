@@ -36,6 +36,7 @@ import { useTabLocked } from "./use-tab-locked";
 import { useNavigateToAgent } from "@/hooks/use-navigate-to-agent";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { useT } from "@/i18n/use-t.ts";
+import { useProjectRendersApp } from "@/components/sandbox/preview/preview-device-hint";
 import { track } from "@/lib/posthog-client";
 import { useLeafRoutePath } from "@/hooks/use-destination-route";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
@@ -89,6 +90,7 @@ interface ProjectView {
 export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
   const t = useT();
   const { project } = useProjectScope();
+  const rendersApp = useProjectRendersApp(project);
   const navigateToAgent = useNavigateToAgent();
   const leafPath = useLeafRoutePath();
   const activeTabId = useActivePanelTabId();
@@ -119,7 +121,11 @@ export function ProjectNav({ onNavigate }: { onNavigate?: () => void }) {
      *  already has instead of pinning a mode the thread cannot change later. */
     views.push({
       key: "site-editor",
-      label: t("sidebar.projectNav.siteEditor"),
+      label: t(
+        rendersApp
+          ? "sidebar.projectNav.appEditor"
+          : "sidebar.projectNav.siteEditor",
+      ),
       icon: <Monitor01 size={16} />,
       panel: "site-editor",
       /** Preview, Content and Code are three views of this one surface, so the

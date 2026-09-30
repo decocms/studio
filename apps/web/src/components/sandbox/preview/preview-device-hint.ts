@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { isSecurePreviewUrl } from "@decocms/shared/deco-site-production-url";
+import {
+  isSecurePreviewUrl,
+  resolvePreviewServerUrl,
+} from "@decocms/shared/deco-site-production-url";
 import type { TranslationKey } from "@/i18n/use-t.ts";
+import { useLocalPreviewUrl } from "@/hooks/use-local-preview-url";
 import { KEYS } from "@/lib/query-keys";
 
 /**
@@ -121,4 +125,27 @@ export function previewDeviceHintBadgeKey(
   if (hint?.kind === "eitri-app") return "sandbox.preview.deviceHintEitriApp";
   if (hint?.device === "mobile") return "sandbox.preview.deviceHintMobile";
   return null;
+}
+
+/**
+ * Whether the project's editor surface renders an app rather than a site, so
+ * labels say "App Editor". Same server and cached query the canvas reads.
+ */
+export function useProjectRendersApp(
+  project:
+    | {
+        id: string;
+        metadata?: Parameters<typeof resolvePreviewServerUrl>[0];
+      }
+    | null
+    | undefined,
+): boolean {
+  const { url: localPreviewUrl } = useLocalPreviewUrl(project?.id);
+  const previewServerUrl = project
+    ? resolvePreviewServerUrl(project.metadata)
+    : null;
+  const hint = usePreviewDeviceHint(
+    previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
+  );
+  return hint?.kind === "eitri-app";
 }

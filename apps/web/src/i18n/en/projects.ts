@@ -71,6 +71,7 @@ export const projects = {
   "projects.apps.reports": "Report",
   "projects.apps.reportsCaption": "What is wrong with the storefront",
   "projects.apps.siteEditor": "Site editor",
+  "projects.apps.appEditor": "App editor",
   "projects.apps.siteEditorCaption": "Pages, sections and content",
   "projects.apps.assets": "Assets",
   "projects.apps.assetsCaption": "Images and files the site uses",
