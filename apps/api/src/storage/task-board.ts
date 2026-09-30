@@ -343,6 +343,8 @@ export class TaskBoardStorage {
     /** `jira` hides the card from the board: it anchors a run, it is not work
      *  the board shows. */
     source?: "jira" | null;
+    /** The forum channel this card is a topic in. */
+    projectId?: string | null;
     by: string;
   }): Promise<TaskBoardItem> {
     const id = generatePrefixedId("board");
@@ -375,6 +377,7 @@ export class TaskBoardStorage {
           external_key: params.externalKey ?? null,
           external_url: params.externalUrl ?? null,
           source: params.source ?? null,
+          project_id: params.projectId ?? null,
           sort_order: sql<number>`(
           select coalesce(min(sort_order), 0) - 1
           from task_board_items
@@ -2713,6 +2716,7 @@ export class TaskBoardStorage {
     assigned_by: string | null;
     repo: string | null;
     repository_id?: string | null;
+    project_id?: string | null;
     due_date: string | Date | null;
     external_url?: string | null;
     preview_routes?: string[] | null;
@@ -2738,6 +2742,7 @@ export class TaskBoardStorage {
       assignedBy: row.assigned_by,
       repo: row.repo,
       repositoryId: row.repository_id ?? null,
+      projectId: row.project_id ?? null,
       dueDate:
         row.due_date instanceof Date
           ? row.due_date.toISOString()

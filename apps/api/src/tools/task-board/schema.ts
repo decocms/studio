@@ -168,6 +168,9 @@ export const TaskBoardItemSchema = z.object({
    *  `TaskBoardItem`, so — like `retryAttempts` below — it MUST be modeled
    *  here or Ajv-revalidating MCP clients reject every response with `-32602`. */
   repositoryId: z.string().nullable(),
+  /** The project this card was filed in, when its writer named one — how a
+   *  repo-less project (a forum channel) owns its cards. */
+  projectId: z.string().nullable().optional(),
   dueDate: z.string().datetime().nullable(),
   // Manual drag-to-reorder position within a lane, ascending.
   sortOrder: z.number(),

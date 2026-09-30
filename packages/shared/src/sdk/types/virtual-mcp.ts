@@ -155,6 +155,17 @@ export const VirtualMcpSidebarViewSchema = z.enum([
 
 export type VirtualMcpSidebarView = z.infer<typeof VirtualMcpSidebarViewSchema>;
 
+/** A project that is a forum channel. Its topics are task cards carrying the
+ *  project's id; `kinds` names the org tags offered as topic kinds, in order.
+ *  `visibility: "public"` marks the channel for community members (see
+ *  `apps/web/docs/public-org-forum-plan.md`). */
+export const VirtualMcpForumSchema = z.object({
+  visibility: z.enum(["org", "public"]),
+  kinds: z.array(z.string().min(1).max(64)).max(20),
+});
+
+export type VirtualMcpForum = z.infer<typeof VirtualMcpForumSchema>;
+
 /** How an agent offers content editing. `on` (the default) offers the Site
  *  Editor's Content view and opens a CMS session on it; `off` offers it
  *  nowhere — a UI gate only, since the decofile stays readable and the agent
@@ -830,6 +841,9 @@ const VirtualMcpMetadataFields = {
     .describe(
       "Version 1 marks metadata.sidebarViews as an exact list that can disable legacy default rows.",
     ),
+  forum: VirtualMcpForumSchema.nullable()
+    .optional()
+    .describe("Set when this project is a forum channel"),
   repository: RepositoryBindingSchema.nullable()
     .optional()
     .describe("Linked repository"),

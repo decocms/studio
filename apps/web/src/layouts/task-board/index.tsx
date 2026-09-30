@@ -1,5 +1,7 @@
 import { Page } from "@/components/page";
 import { Panel } from "@/components/panel";
+import { ThreadsView } from "@/views/forum/threads-view";
+import { TopicPage } from "@/views/forum/topic-page";
 /**
  * Task board — the org's own board of tasks (title,
  * description, status, priority, assignee), independent of chat threads.
@@ -1045,7 +1047,14 @@ function TaskBoardBody({
     sortDirection,
     setSortBy,
     setSortDirection,
-  } = useBoardSearch(inlineTabs && feedEnabled ? "feed" : "board");
+  } = useBoardSearch(
+    // A forum channel is read as threads first; its cards are topics.
+    scopedProject?.metadata?.forum
+      ? "threads"
+      : inlineTabs && feedEnabled
+        ? "feed"
+        : "board",
+  );
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
@@ -1344,6 +1353,18 @@ function TaskBoardBody({
         </Page.Tab>
       )}
       <Page.Tab
+        active={layout === "threads"}
+        aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
+          label: t("forum.threadsView"),
+        })}
+        onClick={() => {
+          setLayout("threads");
+          clearSelection();
+        }}
+      >
+        {t("forum.threadsView")}
+      </Page.Tab>
+      <Page.Tab
         active={layout === "board"}
         aria-label={t("taskBoard.taskBoard.layoutViewAriaLabel", {
           label: t("common.taskBoard.boardView"),
@@ -1475,7 +1496,9 @@ function TaskBoardBody({
         view={layout === "list" ? { grouping, sorting } : undefined}
       />
 
-      {items.length === 0 ? (
+      {layout === "threads" ? (
+        <ThreadsView project={scopedProject ?? undefined} onOpen={openTask} />
+      ) : items.length === 0 ? (
         <div
           className={cn(
             "mx-auto w-full max-w-[1680px]",
@@ -1630,7 +1653,12 @@ function TaskBoardBody({
 
       {/* Keyed by id so switching cards (a deep link changing under us) starts
           the editor's form over rather than carrying the last one's fields. */}
-      {openItem && (
+      {openItem && layout === "threads" && openItem.keySeq !== null && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <TopicPage keySeq={openItem.keySeq} onBack={() => closeTask()} />
+        </div>
+      )}
+      {openItem && layout !== "threads" && (
         <TaskBoardItemDetail
           key={openItem.id}
           item={openItem}

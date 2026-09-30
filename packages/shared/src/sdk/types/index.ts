@@ -37,6 +37,8 @@ export {
   type VirtualMcpUILayout,
   type VirtualMcpUILayoutTab,
   type VirtualMcpSidebarView,
+  VirtualMcpForumSchema,
+  type VirtualMcpForum,
   type VirtualMcpHomeTile,
   getHomeTiles,
   type RepositoryBinding,

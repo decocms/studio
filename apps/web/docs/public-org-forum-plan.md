@@ -1,6 +1,31 @@
 # Public org + forum plan
 
-Status: proposal · Owner: Gui · Branch: `gui/public-org-plan`
+Status: forum slice built (see below) · Owner: Gui · Branch: `gui/public-org-plan`
+
+## Built so far
+
+Built on the project-first navigation (#7532, the **New Layout** preference):
+projects are the channels, and the forum is a lens on the board.
+
+- **Org:** "Deco Builders", slug `/builders`.
+- **Data:** `task_board_items.project_id` and `task_board_item_votes`
+  (migration 227). A card filed in a project carries `projectId`, and the
+  board attributes it to that project. A channel is a project with
+  `metadata.forum` (`visibility`, `kinds`); topic kinds are org tags.
+- **Tools:** `FORUM_CHANNEL_LIST`, `FORUM_TOPIC_LIST`, `FORUM_TOPIC_GET` and
+  `FORUM_TOPIC_VOTE`. Topics are created with `TASK_BOARD_ITEM_CREATE`
+  (`projectId`) and replied to with the card comment tools.
+- **Web:** the board has a fourth view, **Threads** (Feed · Threads · Board ·
+  List), with Hot / New / Top / Unanswered and kind chips. A forum project
+  opens on Threads, and an open topic replaces the list. The org-wide Tasks
+  board's Threads view spans every channel.
+- **Seed:** `apps/api/scripts/seed-builders.ts` creates `/builders` with
+  Roadmap, Jobs & Bounties, Open to Work and Help, synthetic members, topics,
+  replies and votes.
+- **Not built yet:** unread counts on sidebar projects, and everything in P0
+  steps 1–3, 6 and 8 (the `community` role, open join, author checks, join
+  screen), and P1 onward. Until the role exists, only invite a trusted group:
+  members still get the `user` role.
 
 ## Why
 
@@ -93,7 +118,7 @@ topic, and ban members.
 - A forum row turns bold on unread activity, with a count, like channels
   elsewhere.
 
-**Forum view** (new project view `forum`, `/$org/projects/$agentId/forum`)
+**Threads view** (a board layout, `?view=threads`, default for forum projects)
 - Tabs: **Hot** · **New** · **Top** · **Unanswered**, plus chips for kinds and
   tags.
 - Each row shows: kind badge, title, author, votes, reply count, last activity,
@@ -224,7 +249,6 @@ apply without the flag.
 
 ## Open questions
 
-- **Org slug:** `/deco` or `/community`? The internal org stays `decocms`.
 - **Logged-out reading:** in v1 (better reach) or P2 (simpler)?
 - **Profiles:** visible to members only, or public?
 - **Bounty payouts:** do we ever hold or pay money through Studio, or does it
