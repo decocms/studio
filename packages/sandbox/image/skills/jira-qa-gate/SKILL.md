@@ -52,9 +52,8 @@ the web links. Read them before anything else.
   state,headRefOid,commits`). An approval that names no commit is still
   current when the head commit is older than the approval comment. New
   commits since the review mean nobody reviewed them.
-- Its checks must not be failing because of its own change. A run's token is
-  often not allowed to read checks; checks you cannot read are not a reason
-  to leave the card, only checks you saw fail.
+- Its checks (`gh pr checks <n>`) must not be failing because of its own
+  change.
 - The review's evidence must cover **every** point the issue asks for, on every
   site, device and surface the issue names. Walk the issue's list and find the
   evidence for each item. An item with no evidence is unvalidated.
