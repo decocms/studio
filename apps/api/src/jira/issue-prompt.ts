@@ -106,10 +106,32 @@ function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function renderIssueForPrompt(issue: IssueForPrompt): string {
+/** The status change that started a run — how a rule's run learns where the
+ *  card came from and who sent it. */
+export interface StatusMove {
+  toStatus: string;
+  fromStatus: string | null;
+  movedBy: JiraUser | null;
+  movedAt: string | null;
+}
+
+function renderMove(move: StatusMove): string {
+  const parts = [`Moved into ${move.toStatus}`];
+  if (move.fromStatus) parts.push(`from ${move.fromStatus}`);
+  const by = person(move.movedBy);
+  if (by) parts.push(`by ${by}`);
+  if (move.movedAt) parts.push(`at ${move.movedAt}`);
+  return `${parts.join(" ")} — the move that started this run.`;
+}
+
+export function renderIssueForPrompt(
+  issue: IssueForPrompt,
+  move?: StatusMove,
+): string {
   const lines: string[] = [
     `# ${issue.key}: ${issue.summary}`,
     `Status: ${issue.status}`,
+    ...(move ? [renderMove(move)] : []),
     ...(issue.reporter ? [`Reporter: ${issue.reporter}`] : []),
     ...(issue.assignee ? [`Assignee: ${issue.assignee}`] : []),
     `Link: ${issue.url}`,

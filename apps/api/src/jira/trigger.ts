@@ -26,7 +26,7 @@ import {
 } from "@/tools/task-board/enqueue-super-agent";
 import { openPrForIssue } from "./open-pr";
 import { supersedeLiveRuns } from "@/tools/task-board/rerun";
-import { JiraClient, type JiraChangelogHistory } from "./client";
+import { JiraClient, type JiraChangelogHistory, type JiraUser } from "./client";
 import {
   type IssueForPrompt,
   issueUrl,
@@ -40,8 +40,32 @@ export interface IssueTransition {
   issueKey: string;
   /** The status NAME the issue landed in — what a rule is keyed by. */
   toStatus: string;
+  /** The status it left. A run tells a card sent back by a person from one
+   *  handed forward by the previous run by this; null when Jira omits it. */
+  fromStatus: string | null;
+  /** Who moved it; null when Jira attributes the change to no one. */
+  movedBy: JiraUser | null;
+  /** When, as Jira reports it. */
+  movedAt: string | null;
   /** Jira's id for this changelog entry: the transition's identity. */
   changelogId: string;
+}
+
+function asJiraUser(value: unknown): JiraUser | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { accountId, displayName } = value as {
+    accountId?: unknown;
+    displayName?: unknown;
+  };
+  if (typeof accountId !== "string" || accountId === "") return null;
+  return {
+    accountId,
+    displayName: typeof displayName === "string" ? displayName : accountId,
+  };
+}
+
+function asStatusName(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
 }
 
 /**
@@ -54,10 +78,16 @@ export function parseWebhookTransition(
   if (typeof payload !== "object" || payload === null) return null;
   const p = payload as {
     webhookEvent?: unknown;
+    timestamp?: unknown;
+    user?: unknown;
     issue?: { id?: unknown; key?: unknown };
     changelog?: {
       id?: unknown;
-      items?: Array<{ field?: unknown; toString?: unknown }>;
+      items?: Array<{
+        field?: unknown;
+        fromString?: unknown;
+        toString?: unknown;
+      }>;
     };
   };
   if (p.webhookEvent !== "jira:issue_updated") return null;
@@ -77,6 +107,12 @@ export function parseWebhookTransition(
     issueId: String(issueId),
     issueKey,
     toStatus: status.toString,
+    fromStatus: asStatusName(status.fromString),
+    movedBy: asJiraUser(p.user),
+    movedAt:
+      typeof p.timestamp === "number" && Number.isFinite(p.timestamp)
+        ? new Date(p.timestamp).toISOString()
+        : null,
     changelogId: String(changelogId),
   };
 }
@@ -100,6 +136,9 @@ export function transitionsFromChangelog(
       issueId: issue.id,
       issueKey: issue.key,
       toStatus: status.toString,
+      fromStatus: asStatusName(status.fromString),
+      movedBy: asJiraUser(history.author),
+      movedAt: history.created,
       changelogId: history.id,
     });
   }
@@ -112,12 +151,13 @@ export type TriggerOutcome = "started" | "no_rule" | "duplicate" | "disabled";
 const DEFAULT_JIRA_INSTRUCTION =
   "A Jira issue was moved into a column you are responsible for. Work the issue.";
 
-/** What a run on ONE issue is dispatched with: that issue, in full. */
-function oneIssue(issue: IssueForPrompt) {
+/** What a run on ONE issue is dispatched with: that issue, in full, and the
+ *  move that started it when a rule did. */
+function oneIssue(issue: IssueForPrompt, move?: IssueTransition) {
   return {
     issueKeys: [issue.key],
     title: `Jira ${issue.key}: ${issue.summary}`,
-    body: renderIssueForPrompt(issue),
+    body: renderIssueForPrompt(issue, move),
   };
 }
 
@@ -176,7 +216,7 @@ export async function triggerRunForTransition(
   await dispatchJiraRun(ctx, integration, item, {
     instruction: rule.prompt,
     actorId: integration.createdBy,
-    ...oneIssue(issue),
+    ...oneIssue(issue, transition),
     ...(pr ? { pr } : {}),
   });
   return "started";

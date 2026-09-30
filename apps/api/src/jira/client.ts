@@ -80,11 +80,17 @@ export interface JiraAttachment {
   mimeType?: string;
 }
 
-/** One changelog entry: what changed on the issue, and when. */
+/** One changelog entry: what changed on the issue, when, and who did it. */
 export interface JiraChangelogHistory {
   id: string;
   created: string;
-  items: Array<{ field: string; toString?: string | null; to?: string | null }>;
+  author?: JiraUser | null;
+  items: Array<{
+    field: string;
+    fromString?: string | null;
+    toString?: string | null;
+    to?: string | null;
+  }>;
 }
 
 export interface JiraUser {
