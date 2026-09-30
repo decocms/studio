@@ -80,8 +80,7 @@ report the delta.
   then the GitHub deployment on the head commit —
   `gh api "repos/<owner>/<repo>/deployments?sha=<head>"`, and the
   `environment_url` of that deployment's latest status. Poll that, not the
-  comments, and not `gh pr checks`, which a run's token may not be allowed to
-  read.
+  comments.
 
 ### The tracking issue
 
