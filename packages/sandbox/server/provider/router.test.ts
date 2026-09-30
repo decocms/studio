@@ -86,6 +86,9 @@ describe("SandboxProviderRouter", () => {
         sandboxImage: "android",
       }),
     ).toBe("kubernetes");
+    await expect(
+      fsOnly.place(HANDLE, { sandboxImage: "android" }),
+    ).rejects.toThrow("needs the kubernetes provider");
   });
 
   test("defaults to kubernetes while it has room, then freestyle", async () => {

@@ -107,11 +107,16 @@ export class SandboxProviderRouter implements SandboxProvider {
     opts: EnsureOptions,
   ): Promise<SandboxProviderKind> {
     const { kubernetes, freestyle } = this.providers;
-    // Only the default image is built for Freestyle.
-    const freestyleCanRun =
-      !!freestyle && (opts.sandboxImage ?? "default") === "default";
+    // Only the default image is built for Freestyle; Android always runs on Kubernetes.
+    const image = opts.sandboxImage ?? "default";
+    if (image !== "default") {
+      if (!kubernetes) {
+        throw new Error(`sandbox image ${image} needs the kubernetes provider`);
+      }
+      return "kubernetes";
+    }
     if (!kubernetes) return "freestyle";
-    if (!freestyleCanRun) return "kubernetes";
+    if (!freestyle) return "kubernetes";
     if (await freestyle.owns(handle)) return "freestyle";
     if (await kubernetes.alive(handle).catch(() => false)) return "kubernetes";
     if (opts.provider) return opts.provider;
