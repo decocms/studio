@@ -580,35 +580,29 @@ function StatusAutomationCard({
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border p-3">
-      <div className="flex flex-col min-w-0">
-        <span className="truncate text-sm font-medium">{columnName}</span>
-        {showStatus && (
-          <span className="truncate text-xs text-muted-foreground">
-            {status}
-          </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col min-w-0">
+          <span className="truncate text-sm font-medium">{columnName}</span>
+          {showStatus && (
+            <span className="truncate text-xs text-muted-foreground">
+              {status}
+            </span>
+          )}
+        </div>
+        {!adding && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setAdding(true)}
+          >
+            <Plus size={14} />
+            {t("settings.jira.addAutomation")}
+          </Button>
         )}
       </div>
 
-      {rules.map((rule) => (
-        <AutomationRuleEditor
-          key={originKey(rule.from)}
-          rule={rule}
-          showOrigin={rules.length > 1 || rule.from.kind !== "any"}
-        />
-      ))}
-
-      {rules.length === 0 ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-fit"
-          disabled={setAutomation.isPending}
-          onClick={() => create({ kind: "any" })}
-        >
-          <Plus size={14} />
-          {t("settings.jira.addAutomation")}
-        </Button>
-      ) : adding ? (
+      {adding && (
         <NewOriginRule
           taken={new Set(rules.map((r) => originKey(r.from)))}
           otherStatuses={otherStatuses}
@@ -616,23 +610,18 @@ function StatusAutomationCard({
           onCreate={create}
           onCancel={() => setAdding(false)}
         />
-      ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-fit"
-          onClick={() => setAdding(true)}
-        >
-          <Plus size={14} />
-          {t("settings.jira.addOriginRule")}
-        </Button>
       )}
+
+      {rules.map((rule) => (
+        <AutomationRuleEditor key={originKey(rule.from)} rule={rule} />
+      ))}
     </div>
   );
 }
 
-/** Pick the origin a new rule on a status answers. The kinds the status
- *  already has a rule for are not offered; a list can always be added. */
+/** Pick the origin a new rule on a status answers, any column by default.
+ *  The kinds the status already has a rule for are not offered; a list can
+ *  always be added. */
 function NewOriginRule({
   taken,
   otherStatuses,
@@ -647,7 +636,7 @@ function NewOriginRule({
   onCancel: () => void;
 }) {
   const t = useT();
-  const kinds = (["earlier", "later", "any", "statuses"] as const).filter(
+  const kinds = (["any", "earlier", "later", "statuses"] as const).filter(
     (kind) => kind === "statuses" || !taken.has(kind),
   );
   const [kind, setKind] = useState<JiraRuleFrom["kind"]>(
@@ -714,13 +703,7 @@ function NewOriginRule({
 
 /** One rule: its origin, its prompt and whether it continues the open pull
  *  request. `prompt` null means the rule runs on the agent's own instruction. */
-function AutomationRuleEditor({
-  rule,
-  showOrigin,
-}: {
-  rule: JiraAutomation;
-  showOrigin: boolean;
-}) {
+function AutomationRuleEditor({ rule }: { rule: JiraAutomation }) {
   const t = useT();
   const setAutomation = useSetJiraAutomation();
   const { jiraStatus: status, from, prompt, continuePr } = rule;
@@ -750,11 +733,7 @@ function AutomationRuleEditor({
     <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-medium">
-          {showOrigin ? (
-            <OriginLabel from={from} />
-          ) : (
-            t("settings.jira.automationOn")
-          )}
+          <OriginLabel from={from} />
         </span>
         <Button
           variant="ghost"
