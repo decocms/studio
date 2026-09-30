@@ -44,6 +44,62 @@ export function useExperiments(site: string) {
   });
 }
 
+/** LOCAL DEV ONLY — writes a draft's manifest entry to a local site's
+ *  `.deco/TestesAB.json`, so its dev server can preview it via `?__ab=`
+ *  before anything is created. No-ops server-side (returns `synced: false`)
+ *  unless the API is run with `AB_TESTING_LOCAL_MANIFEST_PATH` set. */
+export function useSyncExperimentPreviewLocal(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (input: {
+      key: string;
+      variants: { id: string; weight: number }[];
+    }) => {
+      return await studio.call("EXPERIMENT_PREVIEW_SYNC_LOCAL", {
+        site,
+        ...input,
+      });
+    },
+  });
+}
+
+/** LOCAL DEV ONLY — writes the hook + gate directly into the local site's
+ *  source, right in the create flow. No-ops (`implemented: false`) unless
+ *  the API is run with `AB_TESTING_LOCAL_SITE_PATH` set. */
+export function useImplementExperimentLocal(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (input: {
+      key: string;
+      variants: {
+        id: string;
+        role?: "control" | "treatment" | null;
+        description?: string | null;
+      }[];
+    }) => {
+      return await studio.call("EXPERIMENT_IMPLEMENT_LOCAL", {
+        site,
+        ...input,
+      });
+    },
+    onSuccess: (result) => {
+      if (result.implemented) {
+        toast.success(`Wired into ${result.targetFile} locally.`);
+      } else {
+        toast.warning(
+          `Didn't implement it automatically (${result.reason ?? "unknown reason"}) — the experiment was still created.`,
+        );
+      }
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to implement this experiment locally",
+      ),
+  });
+}
+
 export function useCreateExperiment(site: string) {
   const queryClient = useQueryClient();
   const { locator } = useProjectContext();
@@ -63,6 +119,47 @@ export function useCreateExperiment(site: string) {
     onError: (error) =>
       toast.error(
         error instanceof Error ? error.message : "Failed to create experiment",
+      ),
+  });
+}
+
+export type SuggestedExperiment = StudioToolOutput<"EXPERIMENT_SUGGEST">;
+
+/** Turns a plain-language prompt into a proposed experiment (key, name,
+ *  hypothesis, variants) — read-only, nothing is persisted until the caller
+ *  reviews the result and calls `useCreateExperiment`. */
+export function useSuggestExperiment(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (prompt: string) => {
+      return await studio.call("EXPERIMENT_SUGGEST", { site, prompt });
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : "Failed to suggest experiment",
+      ),
+  });
+}
+
+/** Delegates an already-created experiment's frontend implementation to the
+ *  Super Agent (finds the affected component, wires `useExperiment(key)` in,
+ *  opens a PR). Requires an explicit call — never triggered by
+ *  `useCreateExperiment` itself. */
+export function useImplementExperiment(site: string) {
+  const studio = useStudioTools();
+  return useMutation({
+    mutationFn: async (key: string) => {
+      return await studio.call("EXPERIMENT_IMPLEMENT", { site, key });
+    },
+    onSuccess: () =>
+      toast.success(
+        "Sent to the Super Agent — check the task board for progress.",
+      ),
+    onError: (error) =>
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to start implementing this experiment",
       ),
   });
 }

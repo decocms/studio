@@ -4,6 +4,11 @@ const experimentVariantSchema = z.object({
   id: z.string().min(1).describe("Arm id, e.g. `control` or `variant-b`."),
   weight: z.number().int().min(0).max(100),
   role: z.enum(["control", "treatment"]).nullable().optional(),
+  description: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("One sentence: what this arm specifically shows or does."),
 });
 
 /** The experiment row as the tools return it (metadata; ISO timestamps). */

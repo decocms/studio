@@ -2342,6 +2342,10 @@ export interface ExperimentVariant {
   id: string;
   weight: number;
   role?: "control" | "treatment" | null;
+  /** One sentence, from EXPERIMENT_SUGGEST or typed by the operator: what
+   *  this arm specifically shows/does. Optional — manually-created rows
+   *  before this field existed have none. */
+  description?: string | null;
 }
 
 export interface ExperimentTable {

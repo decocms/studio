@@ -831,6 +831,10 @@ const agentAnalyticsRoute = createRoute({
     defaultMain: "analytics",
     mainView: "analytics",
   },
+  // `view` lets another tab deep-link straight to one of AnalyticsTab's
+  // DATA_VIEWS (e.g. Experiments' "ver dados" opens here with view=experiments)
+  // instead of always landing on "overview".
+  validateSearch: z.object({ view: z.string().optional() }),
   component: lazyRouteComponent(
     () => import("./routes/workspace/agent-analytics.tsx"),
   ),
@@ -842,6 +846,7 @@ const agentExperimentsRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
   staticData: {
+    pageTitle: "experiments.title",
     defaultMain: "experiments",
     mainView: "experiments",
   },
