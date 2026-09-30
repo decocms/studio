@@ -839,39 +839,34 @@ function ReviewPanel({
     if ("description" in patch) setImplementedInSource(false);
   };
 
-  const updatePreview = () => {
+  const updatePreview = async () => {
     // The manifest/admin-worker sync only lets `?__ab=` resolve a forced
     // arm — it doesn't put the actual gate in the site's code. Without also
     // (re-)running the local implementer here, the preview iframes would
-    // render both arms identically until after "Criar".
+    // render both arms identically until after "Criar". The implementer's
+    // LLM call is the slow part (a few seconds); it must finish BEFORE the
+    // iframe reload below, or the reload races it and shows stale content —
+    // that race, not the LLM call itself, is what made this feel stuck.
     if (canImplement && !implementedInSource) {
-      implementLocal.mutate(
-        {
-          key: key.trim(),
-          variants: variants.map((v) => ({
-            id: v.id.trim(),
-            role: v.role || null,
-            description: v.description,
-          })),
-        },
-        { onSuccess: (result) => setImplementedInSource(result.implemented) },
-      );
-    }
-    sync.mutate(
-      {
+      const result = await implementLocal.mutateAsync({
         key: key.trim(),
         variants: variants.map((v) => ({
           id: v.id.trim(),
-          weight: Number(v.weight) || 0,
+          role: v.role || null,
+          description: v.description,
         })),
-      },
-      {
-        onSuccess: (result) => {
-          setSynced(result.synced);
-          setPreviewNonce((n) => n + 1);
-        },
-      },
-    );
+      });
+      setImplementedInSource(result.implemented);
+    }
+    const result = await sync.mutateAsync({
+      key: key.trim(),
+      variants: variants.map((v) => ({
+        id: v.id.trim(),
+        weight: Number(v.weight) || 0,
+      })),
+    });
+    setSynced(result.synced);
+    setPreviewNonce((n) => n + 1);
   };
 
   const regenerate = () => {
@@ -1064,8 +1059,13 @@ function ReviewPanel({
               variant="outline"
               size="sm"
               onClick={updatePreview}
-              disabled={sync.isPending || !key.trim()}
+              disabled={
+                sync.isPending || implementLocal.isPending || !key.trim()
+              }
             >
+              {(sync.isPending || implementLocal.isPending) && (
+                <Spinner size="2xs" />
+              )}
               {t("experiments.preview.updatePreview")}
             </Button>
             <Button
