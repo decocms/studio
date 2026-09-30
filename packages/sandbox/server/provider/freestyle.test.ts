@@ -1,28 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { sleep } from "@decocms/shared/std";
 import { type Freestyle, FreestyleApiError } from "freestyle";
 import { FreestyleSandboxProvider } from "./freestyle";
 
 const ID = { userId: "u1", projectRef: "agent:org:vmcp:feature-x" };
 const realFetch = globalThis.fetch;
 
-/** Every daemon call answers 200; ghcr answers 404 for tags named `missing`. */
+/** Every daemon call answers 200. */
 beforeEach(() => {
-  globalThis.fetch = Object.assign(
-    async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.startsWith("https://ghcr.io/token")) {
-        return Response.json({ token: "t" });
-      }
-      if (url.startsWith("https://ghcr.io/v2/")) {
-        return new Response(null, {
-          status: url.endsWith("/missing") ? 404 : 200,
-        });
-      }
-      return Response.json({});
-    },
-    { preconnect: realFetch.preconnect },
-  );
+  globalThis.fetch = Object.assign(async () => Response.json({}), {
+    preconnect: realFetch.preconnect,
+  });
 });
 
 afterEach(() => {
@@ -68,24 +55,5 @@ describe("FreestyleSandboxProvider", () => {
     await provider.ensure(ID);
     expect(creates.at(-1)).not.toHaveProperty("autoDeleteSeconds");
     provider.close();
-  });
-
-  test("is unavailable while its image does not exist", async () => {
-    const { client } = fakeClient();
-    const missing = new FreestyleSandboxProvider({
-      apiKey: "k",
-      client,
-      image: "ghcr.io/decocms/studio/studio-sandbox-go:missing",
-    });
-    const present = new FreestyleSandboxProvider({
-      apiKey: "k",
-      client,
-      image: "ghcr.io/decocms/studio/studio-sandbox-go:1.0.0",
-    });
-    await sleep(0);
-    expect(missing.available()).toBe(false);
-    expect(present.available()).toBe(true);
-    missing.close();
-    present.close();
   });
 });

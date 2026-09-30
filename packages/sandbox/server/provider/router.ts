@@ -36,8 +36,6 @@ type HostMethods = Pick<
 export type OwningSandboxProvider = SandboxProvider &
   Partial<Pick<HostMethods, "daemonEndpoint">> & {
     owns(handle: string): Promise<boolean>;
-    /** False while the provider knows it cannot create sandboxes. */
-    available?(): boolean;
   };
 
 export interface SandboxProviders {
@@ -162,7 +160,7 @@ export class SandboxProviderRouter implements SandboxProvider {
         ? false
         : await freestyle.owns(handle).catch(() => null);
     if (owned) return { kind: "freestyle", reason: "existing" };
-    if (owned === null || freestyle.available?.() === false) {
+    if (owned === null) {
       return { kind: "kubernetes", reason: "freestyle-unavailable" };
     }
     if (opts.provider) return { kind: opts.provider, reason: "requested" };
@@ -206,8 +204,6 @@ export class SandboxProviderRouter implements SandboxProvider {
     if (
       !placed.reason ||
       placed.reason === "image" ||
-      (fallback === "freestyle" &&
-        this.providers.freestyle?.available?.() === false) ||
       repeatsElsewhere(failure)
     ) {
       throw failure;

@@ -67,8 +67,6 @@ const LOOKUP_MAX = 5_000;
 const WATCH_TIMEOUT_MS = 5 * 60_000;
 /** Lookups sit on every uncached handle-only call, Kubernetes ones included. */
 const LOOKUP_TIMEOUT_MS = 3_000;
-const IMAGE_RECHECK_MS = 5 * 60_000;
-const IMAGE_CHECK_TIMEOUT_MS = 10_000;
 
 export interface FreestyleSandboxProviderOptions {
   apiKey: string;
@@ -100,8 +98,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly image: string;
   private readonly idleTimeoutSeconds: number;
   private readonly autoDeleteSeconds: number;
-  private imageFound = true;
-  private imageRecheck: ReturnType<typeof setTimeout> | undefined;
+
   private readonly domainSuffix: string;
   private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
   private readonly inflight = new Inflight<string, Sandbox>();
@@ -141,52 +138,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 3 * 24 * 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
-    opts.meter
-      ?.createObservableGauge("studio.sandbox.freestyle.image_available", {
-        description:
-          "1 while the Freestyle sandbox image exists in its registry; 0 stops new Freestyle placements.",
-      })
-      .addCallback((result) =>
-        result.observe(this.imageFound ? 1 : 0, { image: this.image }),
-      );
-    void this.checkImage();
   }
 
   /** Whether this handle is a Freestyle sandbox. Cached; see `MISS_TTL_MS`. */
   async owns(handle: string): Promise<boolean> {
     return (await this.find(handle)) !== null;
-  }
-
-  /** False while the image is missing from its registry: every create would fail. */
-  available(): boolean {
-    return this.imageFound;
-  }
-
-  /** Only a registry's definite "no such tag" counts; an unreachable one doesn't stop placements. */
-  private async checkImage(): Promise<void> {
-    const found = await imageExists(this.image).catch((err: unknown) => {
-      console.warn(
-        `[${LOG_LABEL}] could not check image ${this.image}: ${errMsg(err)}`,
-      );
-      return true;
-    });
-    if (found !== this.imageFound) {
-      if (found) {
-        console.log(`[${LOG_LABEL}] image ${this.image} found`);
-      } else {
-        console.error(
-          `[${LOG_LABEL}] image ${this.image} does not exist; placing no new sandboxes on Freestyle until it does`,
-        );
-      }
-    }
-    this.imageFound = found;
-    if (!found) {
-      this.imageRecheck = setTimeout(
-        () => void this.checkImage(),
-        IMAGE_RECHECK_MS,
-      );
-      this.imageRecheck.unref?.();
-    }
   }
 
   // ---- Lookup ---------------------------------------------------------------
@@ -598,7 +554,6 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   close(): void {
-    clearTimeout(this.imageRecheck);
     for (const timer of this.releaseTimers.values()) clearTimeout(timer);
     this.releaseTimers.clear();
     this.lookups.clear();
@@ -615,36 +570,6 @@ async function daemonAnswers(url: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** HEAD on the image's manifest, anonymously. Only ghcr.io is checked. */
-async function imageExists(image: string): Promise<boolean> {
-  const match = /^ghcr\.io\/([^:@]+):([^:@/]+)$/.exec(image);
-  if (!match) return true;
-  const [, repo, tag] = match;
-  const signal = AbortSignal.timeout(IMAGE_CHECK_TIMEOUT_MS);
-  const auth = await fetch(
-    `https://ghcr.io/token?scope=repository:${repo}:pull`,
-    { signal },
-  );
-  if (!auth.ok) throw new Error(`ghcr token ${auth.status}`);
-  const { token } = (await auth.json()) as { token?: string };
-  const res = await fetch(`https://ghcr.io/v2/${repo}/manifests/${tag}`, {
-    method: "HEAD",
-    signal,
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: [
-        "application/vnd.oci.image.index.v1+json",
-        "application/vnd.docker.distribution.manifest.list.v2+json",
-        "application/vnd.oci.image.manifest.v1+json",
-        "application/vnd.docker.distribution.manifest.v2+json",
-      ].join(", "),
-    },
-  });
-  if (res.status === 404) return false;
-  if (!res.ok) throw new Error(`ghcr manifest ${res.status}`);
-  return true;
 }
 
 function shellQuote(s: string): string {

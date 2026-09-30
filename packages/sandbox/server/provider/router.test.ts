@@ -30,7 +30,6 @@ function fake(
     capacity?: boolean;
     owns?: boolean | Error;
     ensureError?: Error;
-    available?: boolean;
     pools?: { tenant: string; image: string }[];
   } = {},
 ) {
@@ -55,7 +54,6 @@ function fake(
       if (state.owns instanceof Error) throw state.owns;
       return state.owns ?? false;
     },
-    available: () => state.available ?? true,
     listTenantPools: () => state.pools ?? [],
     delete: async () => {
       calls.push("delete");
@@ -209,17 +207,6 @@ describe("SandboxProviderRouter", () => {
     });
     await router.place(HANDLE, {});
     expect(freestyle.calls).not.toContain("owns");
-  });
-
-  test("places nothing new on an unavailable Freestyle", async () => {
-    const router = new SandboxProviderRouter(
-      { kubernetes: fake("k8s"), freestyle: fake("fs", { available: false }) },
-      { freestyleShare: 1 },
-    );
-    expect(await router.place(HANDLE, {})).toEqual({
-      kind: "kubernetes",
-      reason: "freestyle-unavailable",
-    });
   });
 
   test("keeps orgs with a tenant warm pool on Kubernetes", async () => {

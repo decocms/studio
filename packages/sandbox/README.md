@@ -185,9 +185,7 @@ no state store. An idle VM is paused, and traffic resumes it; a VM paused for
 three days is deleted, or sooner if the Freestyle plan caps it lower. The first
 ensure for an image builds a base snapshot with the image pulled;
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
-release of this package's version. The provider checks that a ghcr.io image
-exists when it starts, and places no new sandboxes on Freestyle while it does
-not.
+release of this package's version.
 
 `SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
 input picks where a new sandbox runs, when that provider is configured and
