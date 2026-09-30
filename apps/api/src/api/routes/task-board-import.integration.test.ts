@@ -1076,6 +1076,57 @@ describe("Task Board Import Route", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("an item the org dismissed under another wording stays dismissed", async () => {
+    const storage = new TaskBoardStorage(database.db);
+    const dismissed = await storage.create({
+      organizationId: "org_board",
+      title: "Adicionar alt nas imagens do banner principal da home",
+      by: "system",
+    });
+    await storage.delete(dismissed.id, "org_board", "user_1");
+
+    const res = await withFastModel(
+      JSON.stringify({
+        matches: [
+          {
+            draft: 0,
+            duplicateOf: dismissed.id,
+            confidence: "high",
+            reason: "Same change.",
+          },
+        ],
+      }),
+      () =>
+        app.fetch(
+          post("org_board", "svc-secret", {
+            items: [
+              {
+                title: "Adicionar alt de fallback na imagem do banner da home",
+              },
+              { title: "Adicionar H1 na home" },
+            ],
+          }),
+        ),
+    );
+    expect(await res.json()).toEqual({
+      created: 1,
+      updated: 0,
+      delegated: 0,
+      dismissed: 1,
+      items: [
+        entry(0, "dismissed", { id: dismissed.id, key_seq: dismissed.keySeq }),
+        entry(1, "created", await cardTitled("Adicionar H1 na home")),
+      ],
+    });
+    const rows = await database.db
+      .selectFrom("task_board_items")
+      .select(["id"])
+      .where("organization_id", "=", "org_board")
+      .where("dismissed_at", "is", null)
+      .execute();
+    expect(rows).toHaveLength(1);
+  });
+
   it("a Super Agent delegation the task quota refuses reports quota_blocked for its card", async () => {
     const settings = getSettings();
     // With no free executions, the claim at dispatch throws TaskQuotaError.

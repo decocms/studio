@@ -276,6 +276,20 @@ export class TaskBoardStorage {
     return items;
   }
 
+  /** The reports cards the org dismissed. Off the board, and still what a new
+   *  finding must not come back as (the import's duplicate check). */
+  async listDismissed(organizationId: string): Promise<TaskBoardItem[]> {
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("dismissed_at", "is not", null)
+      .where("source", "is", null)
+      .orderBy("dismissed_at", "desc")
+      .execute();
+    return rows.map((row) => this.itemFromDbRow(row));
+  }
+
   /**
    * Title search for the command palette, ordered most-recent-first.
    *
