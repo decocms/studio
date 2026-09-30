@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import QRCode from "react-qr-code";
 import { Copy01, QrCode02 } from "@untitledui/icons";
@@ -72,6 +72,16 @@ function AppPreviewControl({
   const [ended, setEnded] = useState(false);
   const [overlayError, setOverlayError] = useState<string | null>(null);
   const [sync] = useState(() => createOverlaySync());
+  // A create that resolves after unmount (branch/project switch) must not
+  // start broadcasting; it is revoked instead.
+  const mounted = useRef(true);
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- tracks unmount so an in-flight create can revoke its orphaned session
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const markEnded = () => {
     sync.stop();
@@ -82,6 +92,7 @@ function AppPreviewControl({
   const create = useMutation({
     mutationFn: (_baseline: Decofile) => createSession(scope, branch),
     onSuccess: (pairing, baseline) => {
+      if (!mounted.current) return endSession(scope, pairing.id);
       setEnded(false);
       setOverlayError(null);
       setSession({ ...pairing, devicesAtIssue: 0 });
@@ -118,10 +129,14 @@ function AppPreviewControl({
   }, [decofile, sync]);
 
   const sessionId = session?.id;
-  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- leaving the preview stops broadcasting and revokes the session
+  // oxlint-disable-next-line ban-use-effect/ban-use-effect -- leaving the preview (unmount or closing the tab) stops broadcasting and revokes the session
   useEffect(() => {
     if (!sessionId) return;
+    // Closing the tab skips unmount cleanup; keepalive lets this outlive it.
+    const onPageHide = () => endSession({ org, virtualMcpId }, sessionId);
+    window.addEventListener("pagehide", onPageHide);
     return () => {
+      window.removeEventListener("pagehide", onPageHide);
       sync.stop();
       endSession({ org, virtualMcpId }, sessionId);
     };
