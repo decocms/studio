@@ -79,22 +79,41 @@ export async function githubCliPrincipal() {
   };
 }
 
-/** Tokens stay in memory; each use verifies the saved, immutable GitHub user ID. */
+// `gh auth token` takes seconds on Windows and serializes on the keyring, so
+// concurrent requests blew the 10 s timeout. One verified read per account
+// per minute, shared by everyone asking at the same time.
+const VERIFIED_TTL_MS = 60_000;
+const verified = new Map<string, { at: number; token: Promise<string> }>();
+
+/** Tokens stay in memory; each read verifies the saved, immutable GitHub user ID. */
 export function githubCliTokenSource(account: {
   host: string;
   login: string;
   externalAccountId: string;
 }): TokenSource {
+  const read = async () => {
+    const token = await readToken(account.login);
+    const user = await identify(token);
+    if (`cli:user:${user.id}` !== account.externalAccountId) {
+      throw cliError("Your GitHub CLI account changed. Connect it again.");
+    }
+    return token;
+  };
   return {
     kind: "token",
-    async get() {
+    async get(opts) {
       if (account.host !== HOST) throw cliError("Unsupported GitHub CLI host.");
-      const token = await readToken(account.login);
-      const user = await identify(token);
-      if (`cli:user:${user.id}` !== account.externalAccountId) {
-        throw cliError("Your GitHub CLI account changed. Connect it again.");
+      const key = `${account.login}\n${account.externalAccountId}`;
+      const hit = verified.get(key);
+      let pending = hit?.token;
+      if (!hit || opts?.forceRefresh || Date.now() - hit.at > VERIFIED_TTL_MS) {
+        pending = read();
+        verified.set(key, { at: Date.now(), token: pending });
+        pending.catch(() => {
+          if (verified.get(key)?.token === pending) verified.delete(key);
+        });
       }
-      return { token, kind: "token", expiresAt: null };
+      return { token: await pending!, kind: "token", expiresAt: null };
     },
   };
 }
