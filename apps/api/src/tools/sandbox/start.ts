@@ -758,15 +758,15 @@ async function provisionSandbox(params: StartParams): Promise<{
   // timeout this call already tolerates, so it adds no new liveness risk; past
   // the bound the error is phrased for the task-board retry to recognize as
   // infrastructure.
-  await waitForSchedulableCapacity(runner);
-
+  // Timed with the ensure: the wait is part of what a Kubernetes sandbox costs.
   const sandbox = await timeProvision(
     {
       start: existing ? "resume" : "fresh",
       purpose: purpose ?? "interactive",
     },
-    () =>
-      ensureOrRephrase(
+    async () => {
+      await waitForSchedulableCapacity(runner);
+      return ensureOrRephrase(
         runner,
         { userId: sandboxUserId, projectRef },
         {
@@ -800,7 +800,8 @@ async function provisionSandbox(params: StartParams): Promise<{
           },
           ...(orgFsConfigJson ? { orgFsConfigJson } : {}),
         },
-      ),
+      );
+    },
   );
 
   // Resolve declared env (literals + secret refs) and push to the daemon
