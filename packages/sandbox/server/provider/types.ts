@@ -31,6 +31,27 @@ export interface Sandbox {
   warmPoolAdopted: boolean;
   /** Where the sandbox runs. */
   provider: SandboxProviderKind;
+  /** Why it runs there, when `SandboxProviderRouter` had a choice to make. */
+  placement?: SandboxPlacement;
+}
+
+export const SANDBOX_PLACEMENT_REASONS = [
+  "existing",
+  "requested",
+  "split",
+  "capacity",
+  "fallback",
+  "image",
+  "warm-pool",
+  "freestyle-unavailable",
+] as const;
+
+export type SandboxPlacementReason = (typeof SANDBOX_PLACEMENT_REASONS)[number];
+
+export interface SandboxPlacement {
+  reason: SandboxPlacementReason;
+  /** The provider whose ensure failed, when `reason` is `fallback`. */
+  fallbackFrom?: SandboxProviderKind;
 }
 
 /** When omitted, no dev server is started; the default tool image is used. */

@@ -5,12 +5,18 @@
  *
  * The VM is the whole state: its slug is the handle and its metadata holds the
  * daemon bearer, so any Studio replica can find a sandbox without a database.
- * An idle VM is paused, not deleted, and traffic to its domain resumes it.
+ * An idle VM is paused, and traffic to its domain resumes it; one paused for
+ * `autoDeleteSeconds` is deleted.
  */
 
 import { createHash, randomBytes } from "node:crypto";
 import type { Meter } from "@opentelemetry/api";
-import { Freestyle, FreestyleApiError, type Vm } from "freestyle";
+import {
+  type CreateVmOptions,
+  Freestyle,
+  FreestyleApiError,
+  type Vm,
+} from "freestyle";
 import { sleep } from "@decocms/shared/std";
 import pkg from "../../package.json" with { type: "json" };
 import { postConfig, postOrgFsConfig } from "../daemon-client";
@@ -59,6 +65,10 @@ const LOOKUP_TTL_MS = 5 * 60_000;
 const MISS_TTL_MS = 10_000;
 const LOOKUP_MAX = 5_000;
 const WATCH_TIMEOUT_MS = 5 * 60_000;
+/** Lookups sit on every uncached handle-only call, Kubernetes ones included. */
+const LOOKUP_TIMEOUT_MS = 3_000;
+const IMAGE_RECHECK_MS = 5 * 60_000;
+const IMAGE_CHECK_TIMEOUT_MS = 10_000;
 
 export interface FreestyleSandboxProviderOptions {
   apiKey: string;
@@ -66,10 +76,17 @@ export interface FreestyleSandboxProviderOptions {
   image?: string;
   /** Pause a VM after this long without network activity. Default 15 min. */
   idleTimeoutSeconds?: number;
+  /**
+   * Delete a VM after this long without running. Default 3 days. A plan
+   * that caps it lower gets its cap.
+   */
+  autoDeleteSeconds?: number;
   /** Where daemon ports are published. Default `style.dev`, free on every account. */
   domainSuffix?: string;
   /** Records daemon request latency; see `daemonProxyTimer`. */
   meter?: Meter;
+  /** Replaces the API client, for tests. */
+  client?: Freestyle;
 }
 
 interface Found {
@@ -79,8 +96,12 @@ interface Found {
 
 export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly freestyle: Freestyle;
+  private readonly lookupClient: Freestyle;
   private readonly image: string;
   private readonly idleTimeoutSeconds: number;
+  private readonly autoDeleteSeconds: number;
+  private imageFound = true;
+  private imageRecheck: ReturnType<typeof setTimeout> | undefined;
   private readonly domainSuffix: string;
   private readonly timeDaemonRequest: ReturnType<typeof daemonProxyTimer>;
   private readonly inflight = new Inflight<string, Sandbox>();
@@ -95,17 +116,77 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   >();
 
   constructor(opts: FreestyleSandboxProviderOptions) {
-    this.freestyle = new Freestyle({ apiKey: opts.apiKey });
+    this.freestyle = opts.client ?? new Freestyle({ apiKey: opts.apiKey });
+    this.lookupClient =
+      opts.client ??
+      new Freestyle({
+        apiKey: opts.apiKey,
+        fetch: Object.assign(
+          (input: RequestInfo | URL, init?: RequestInit) =>
+            fetch(input, {
+              ...init,
+              signal: init?.signal
+                ? AbortSignal.any([
+                    init.signal,
+                    AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+                  ])
+                : AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+            }),
+          { preconnect: fetch.preconnect },
+        ),
+      });
     this.image =
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 15 * 60;
+    this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 3 * 24 * 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
     this.timeDaemonRequest = daemonProxyTimer(opts.meter);
+    opts.meter
+      ?.createObservableGauge("studio.sandbox.freestyle.image_available", {
+        description:
+          "1 while the Freestyle sandbox image exists in its registry; 0 stops new Freestyle placements.",
+      })
+      .addCallback((result) =>
+        result.observe(this.imageFound ? 1 : 0, { image: this.image }),
+      );
+    void this.checkImage();
   }
 
   /** Whether this handle is a Freestyle sandbox. Cached; see `MISS_TTL_MS`. */
   async owns(handle: string): Promise<boolean> {
     return (await this.find(handle)) !== null;
+  }
+
+  /** False while the image is missing from its registry: every create would fail. */
+  available(): boolean {
+    return this.imageFound;
+  }
+
+  /** Only a registry's definite "no such tag" counts; an unreachable one doesn't stop placements. */
+  private async checkImage(): Promise<void> {
+    const found = await imageExists(this.image).catch((err: unknown) => {
+      console.warn(
+        `[${LOG_LABEL}] could not check image ${this.image}: ${errMsg(err)}`,
+      );
+      return true;
+    });
+    if (found !== this.imageFound) {
+      if (found) {
+        console.log(`[${LOG_LABEL}] image ${this.image} found`);
+      } else {
+        console.error(
+          `[${LOG_LABEL}] image ${this.image} does not exist; placing no new sandboxes on Freestyle until it does`,
+        );
+      }
+    }
+    this.imageFound = found;
+    if (!found) {
+      this.imageRecheck = setTimeout(
+        () => void this.checkImage(),
+        IMAGE_RECHECK_MS,
+      );
+      this.imageRecheck.unref?.();
+    }
   }
 
   // ---- Lookup ---------------------------------------------------------------
@@ -128,7 +209,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     }
     let found: Found | null = null;
     try {
-      const data = await this.freestyle.vms.get(handle);
+      const data = await this.lookupClient.vms.get(handle);
       const token = data.metadata[TOKEN_KEY];
       // A VM without our token is someone else's that happens to share the slug.
       if (token) {
@@ -257,7 +338,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private async create(handle: string, opts: EnsureOptions): Promise<void> {
     const snapshotId = await this.baseSnapshot();
     const token = randomBytes(24).toString("hex");
-    const { vm } = await this.freestyle.vms.create({
+    const { vm } = await this.createVm({
       snapshotId,
       slug: handle,
       idleTimeoutSeconds: this.idleTimeoutSeconds,
@@ -312,6 +393,24 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       throw err;
     }
     this.remember(handle, { vm, daemon });
+  }
+
+  /** A plan that caps autoDelete lower answers 400; omitting it gets the cap. */
+  private async createVm(
+    opts: Omit<CreateVmOptions, "autoDeleteSeconds">,
+  ): ReturnType<Freestyle["vms"]["create"]> {
+    try {
+      return await this.freestyle.vms.create({
+        ...opts,
+        autoDeleteSeconds: this.autoDeleteSeconds,
+      });
+    } catch (err) {
+      if (!(err instanceof FreestyleApiError && err.status === 400)) throw err;
+      console.warn(
+        `[${LOG_LABEL}] autoDeleteSeconds=${this.autoDeleteSeconds} refused (${err.message}); creating with the plan's cap`,
+      );
+      return this.freestyle.vms.create(opts);
+    }
   }
 
   private configPayload(opts: EnsureOptions) {
@@ -499,6 +598,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   }
 
   close(): void {
+    clearTimeout(this.imageRecheck);
     for (const timer of this.releaseTimers.values()) clearTimeout(timer);
     this.releaseTimers.clear();
     this.lookups.clear();
@@ -515,6 +615,36 @@ async function daemonAnswers(url: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** HEAD on the image's manifest, anonymously. Only ghcr.io is checked. */
+async function imageExists(image: string): Promise<boolean> {
+  const match = /^ghcr\.io\/([^:@]+):([^:@/]+)$/.exec(image);
+  if (!match) return true;
+  const [, repo, tag] = match;
+  const signal = AbortSignal.timeout(IMAGE_CHECK_TIMEOUT_MS);
+  const auth = await fetch(
+    `https://ghcr.io/token?scope=repository:${repo}:pull`,
+    { signal },
+  );
+  if (!auth.ok) throw new Error(`ghcr token ${auth.status}`);
+  const { token } = (await auth.json()) as { token?: string };
+  const res = await fetch(`https://ghcr.io/v2/${repo}/manifests/${tag}`, {
+    method: "HEAD",
+    signal,
+    headers: {
+      authorization: `Bearer ${token}`,
+      accept: [
+        "application/vnd.oci.image.index.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.docker.distribution.manifest.v2+json",
+      ].join(", "),
+    },
+  });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(`ghcr manifest ${res.status}`);
+  return true;
 }
 
 function shellQuote(s: string): string {

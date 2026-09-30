@@ -381,6 +381,7 @@ export class RemoteSandboxProvider implements SandboxProvider {
       previewUrl: out.previewUrl,
       warmPoolAdopted: out.warmPoolAdopted,
       provider: out.provider,
+      ...(out.placement && { placement: out.placement }),
     };
   }
 

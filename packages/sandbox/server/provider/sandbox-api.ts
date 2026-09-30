@@ -9,11 +9,12 @@
 import { z } from "zod";
 import { SandboxImageSchema } from "@decocms/shared/git-providers";
 import type { ClaimPhase } from "./agent-sandbox/lifecycle-types";
-import type {
-  EnsureOptions,
-  PodTermination,
-  Sandbox,
-  SandboxId,
+import {
+  SANDBOX_PLACEMENT_REASONS,
+  type EnsureOptions,
+  type PodTermination,
+  type Sandbox,
+  type SandboxId,
 } from "./types";
 
 export const SANDBOX_TOOLS = {
@@ -121,6 +122,14 @@ export const ensureOutputSchema = z.object({
   previewUrl: z.string().nullable(),
   warmPoolAdopted: z.boolean(),
   provider: providerKindSchema.default("kubernetes"),
+  // A reason this build doesn't know drops the label, not the ensure.
+  placement: z
+    .object({
+      reason: z.enum(SANDBOX_PLACEMENT_REASONS),
+      fallbackFrom: providerKindSchema.optional(),
+    })
+    .optional()
+    .catch(undefined),
   daemon: daemonSchema,
 }) satisfies z.ZodType<Sandbox & { daemon: Daemon }>;
 
