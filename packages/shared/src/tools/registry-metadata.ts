@@ -145,6 +145,9 @@ const ALL_TOOL_NAMES = [
   "EXPERIMENT_GET",
   "EXPERIMENT_CREATE",
   "EXPERIMENT_SUGGEST",
+  "EXPERIMENT_IMPLEMENT",
+  "EXPERIMENT_IMPLEMENT_LOCAL",
+  "EXPERIMENT_PREVIEW_SYNC_LOCAL",
   "EXPERIMENT_UPDATE",
   "EXPERIMENT_DELETE",
   "EXPERIMENT_RESULTS",
@@ -777,6 +780,23 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "EXPERIMENT_SUGGEST",
     description: "Suggest an A/B experiment from a plain-language prompt",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_IMPLEMENT",
+    description:
+      "Delegate an experiment's frontend implementation to the Super Agent",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_PREVIEW_SYNC_LOCAL",
+    description: "[local dev only] Preview a draft experiment on a local site",
+    category: "Experiments",
+  },
+  {
+    name: "EXPERIMENT_IMPLEMENT_LOCAL",
+    description:
+      "[local dev only] Write an experiment's hook + gate directly into a local site's source",
     category: "Experiments",
   },
   {
@@ -1901,6 +1921,9 @@ const PERMISSION_CAPABILITIES: PermissionCapability[] = [
       "EXPERIMENT_GET",
       "EXPERIMENT_CREATE",
       "EXPERIMENT_SUGGEST",
+      "EXPERIMENT_IMPLEMENT",
+      "EXPERIMENT_IMPLEMENT_LOCAL",
+      "EXPERIMENT_PREVIEW_SYNC_LOCAL",
       "EXPERIMENT_UPDATE",
       "EXPERIMENT_DELETE",
       "EXPERIMENT_RESULTS",

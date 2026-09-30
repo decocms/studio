@@ -4980,6 +4980,7 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
@@ -5004,6 +5005,7 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
@@ -5024,6 +5026,7 @@ export interface StudioToolIO {
             id: string;
             weight: number;
             role?: "control" | "treatment" | null | undefined;
+            description?: string | null | undefined;
           }[]
         | undefined;
     };
@@ -5040,6 +5043,7 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;
@@ -5063,6 +5067,35 @@ export interface StudioToolIO {
       }[];
     };
   };
+  EXPERIMENT_IMPLEMENT: {
+    input: { site: string; key: string };
+    output: { taskBoardItemId: string };
+  };
+  EXPERIMENT_IMPLEMENT_LOCAL: {
+    input: {
+      site: string;
+      key: string;
+      variants: {
+        id: string;
+        role?: "control" | "treatment" | null | undefined;
+        description?: string | null | undefined;
+      }[];
+    };
+    output: {
+      implemented: boolean;
+      reason?: string | undefined;
+      hookFile?: string | undefined;
+      targetFile?: string | undefined;
+    };
+  };
+  EXPERIMENT_PREVIEW_SYNC_LOCAL: {
+    input: {
+      site: string;
+      key: string;
+      variants: { id: string; weight: number }[];
+    };
+    output: { synced: boolean };
+  };
   EXPERIMENT_UPDATE: {
     input: {
       site: string;
@@ -5075,6 +5108,7 @@ export interface StudioToolIO {
             id: string;
             weight: number;
             role?: "control" | "treatment" | null | undefined;
+            description?: string | null | undefined;
           }[]
         | undefined;
     };
@@ -5091,6 +5125,7 @@ export interface StudioToolIO {
           id: string;
           weight: number;
           role?: "control" | "treatment" | null | undefined;
+          description?: string | null | undefined;
         }[];
         startedAt: string | null;
         endedAt: string | null;

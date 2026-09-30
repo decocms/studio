@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { ArrowUpRight, Pencil01, Stars02, Trash01 } from "@untitledui/icons";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  CodeBrowser,
+  Eye,
+  Pencil01,
+  Stars02,
+  Trash01,
+} from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
@@ -26,6 +34,7 @@ import { Spinner } from "@decocms/ui/components/spinner.tsx";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
+import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useT } from "@/i18n/use-t.ts";
 import {
   type Experiment,
@@ -33,8 +42,11 @@ import {
   type SuggestedExperiment,
   useCreateExperiment,
   useDeleteExperiment,
+  useImplementExperiment,
+  useImplementExperimentLocal,
   useExperiments,
   useSuggestExperiment,
+  useSyncExperimentPreviewLocal,
   useUpdateExperiment,
 } from "@/hooks/use-experiments";
 
@@ -69,6 +81,9 @@ interface VariantForm {
   id: string;
   weight: string;
   role: "" | "control" | "treatment";
+  /** One sentence: what this arm specifically shows/does. From
+   *  EXPERIMENT_SUGGEST, or typed manually — optional either way. */
+  description?: string;
 }
 
 const BLANK_VARIANTS: VariantForm[] = [
@@ -166,6 +181,7 @@ function ExperimentDialog({
         id: v.id.trim(),
         weight: Number(v.weight) || 0,
         role: v.role || null,
+        description: v.description || null,
       })),
     };
     mutation.mutate(payload, {
@@ -247,30 +263,41 @@ function ExperimentDialog({
             </div>
             {variants.map((v, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: positional editable rows
-              <div key={i} className="flex items-center gap-1.5">
-                <Input
-                  value={v.id}
-                  onChange={(e) => setVar(i, { id: e.target.value })}
-                  placeholder="id"
-                  className="h-8 flex-1"
-                />
-                <Input
-                  value={v.weight}
-                  onChange={(e) => setVar(i, { weight: e.target.value })}
-                  inputMode="numeric"
-                  className="h-8 w-16"
-                />
-                <select
-                  value={v.role}
-                  onChange={(e) =>
-                    setVar(i, { role: e.target.value as VariantForm["role"] })
-                  }
-                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                >
-                  <option value="">role…</option>
-                  <option value="control">control</option>
-                  <option value="treatment">treatment</option>
-                </select>
+              <div key={i} className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={v.id}
+                    onChange={(e) => setVar(i, { id: e.target.value })}
+                    placeholder="id"
+                    className="h-8 flex-1"
+                  />
+                  <Input
+                    value={v.weight}
+                    onChange={(e) => setVar(i, { weight: e.target.value })}
+                    inputMode="numeric"
+                    className="h-8 w-16"
+                  />
+                  <select
+                    value={v.role}
+                    onChange={(e) =>
+                      setVar(i, {
+                        role: e.target.value as VariantForm["role"],
+                      })
+                    }
+                    className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  >
+                    <option value="">role…</option>
+                    <option value="control">control</option>
+                    <option value="treatment">treatment</option>
+                  </select>
+                </div>
+                {/* The before/after: what this arm will actually do once
+                    implemented — the text the Super Agent's run is scoped to. */}
+                {v.description && (
+                  <p className="pl-1 text-xs text-muted-foreground">
+                    {v.description}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -481,20 +508,598 @@ function SummaryStrip({ experiments }: { experiments: Experiment[] }) {
   );
 }
 
+/** Appends the SDK's forced-variant query param (the same `?__ab=test:arm`
+ *  QA override `useExperiment`'s own doc comment mentions) to a preview URL
+ *  — lets a single site render as any one variant, no real assignment
+ *  needed. Falls back to the raw base URL if it isn't a valid absolute URL. */
+function buildForcedVariantUrl(baseUrl: string, test: string, variant: string): string {
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set("__ab", `${test}:${variant}`);
+    return url.href;
+  } catch {
+    return baseUrl;
+  }
+}
+
+/**
+ * Before/after preview + traffic-split editor for one experiment. Renders
+ * the site's real preview URL once per variant, each forced to that arm via
+ * `?__ab=`, side by side — so "what does the treatment actually look like"
+ * never requires being bucketed into it for real.
+ */
+/** The variant's display name in the connected split bar / weight row —
+ *  capitalized role when present ("Controle"/"Tratamento"), else the raw id. */
+function variantLabel(t: ReturnType<typeof useT>, v: { id: string; role?: string | null }): string {
+  if (v.role === "control") return t("experiments.preview.control");
+  if (v.role === "treatment") return t("experiments.preview.treatment");
+  return v.id;
+}
+
+function PreviewPanel({
+  site,
+  experiment,
+  baseUrl,
+  onBack,
+}: {
+  site: string;
+  experiment: Experiment;
+  baseUrl: string | null;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const status = STATUS_STYLES[experiment.status];
+  const update = useUpdateExperiment(site);
+  const [weights, setWeights] = useState<Record<string, string>>(
+    Object.fromEntries(experiment.variants.map((v) => [v.id, String(v.weight)])),
+  );
+
+  const sum = Object.values(weights).reduce((a, w) => a + (Number(w) || 0), 0);
+  const dirty = experiment.variants.some(
+    (v) => weights[v.id] !== String(v.weight),
+  );
+  const total =
+    experiment.variants.reduce((a, v) => a + (Number(weights[v.id]) || 0), 0) ||
+    100;
+
+  const saveSplit = () => {
+    update.mutate({
+      key: experiment.key,
+      variants: experiment.variants.map((v) => ({
+        id: v.id,
+        weight: Number(weights[v.id]) || 0,
+        role: v.role,
+        description: v.description,
+      })),
+    });
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
+      <div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
+            <ArrowLeft size={14} />
+            {t("experiments.action.back")}
+          </Button>
+        </div>
+        <div className="mt-1 flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-xl font-semibold">{experiment.name}</h2>
+            <span
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                status.pill,
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
+              {experiment.status}
+            </span>
+          </div>
+          <Button onClick={saveSplit} disabled={!dirty || sum !== 100 || update.isPending}>
+            {t("experiments.preview.saveChanges")}
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-xl border border-border p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold">
+              {t("experiments.preview.trafficTitle")}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {t("experiments.preview.trafficDesc")}
+            </p>
+          </div>
+          <span
+            className={cn(
+              "flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium",
+              sum === 100
+                ? "bg-success/10 text-success"
+                : "bg-destructive/10 text-destructive",
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                sum === 100 ? "bg-success" : "bg-destructive",
+              )}
+            />
+            {sum === 100
+              ? t("experiments.preview.distributionValid")
+              : t("experiments.dialog.weightSum", { sum })}
+          </span>
+        </div>
+
+        <div
+          className="grid gap-4"
+          style={{
+            gridTemplateColumns: `repeat(${experiment.variants.length}, minmax(0, 1fr))`,
+          }}
+        >
+          {experiment.variants.map((v) => (
+            <div key={v.id} className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn("h-2.5 w-2.5 rounded-full", variantBarColor(v.role))}
+                />
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">{variantLabel(t, v)}</span>
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {v.id}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <Input
+                  value={weights[v.id]}
+                  onChange={(e) =>
+                    setWeights((w) => ({ ...w, [v.id]: e.target.value }))
+                  }
+                  inputMode="numeric"
+                  className="h-8 w-16"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+          {experiment.variants.map((v) => (
+            <div
+              key={v.id}
+              className={cn(variantBarColor(v.role))}
+              style={{ width: `${((Number(weights[v.id]) || 0) / total) * 100}%` }}
+            />
+          ))}
+        </div>
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{weights[experiment.variants[0]?.id ?? ""]}%</span>
+          <span>{weights[experiment.variants.at(-1)?.id ?? ""]}%</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">
+            {t("experiments.preview.variantsTitle")}
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            {t("experiments.preview.variantsDesc")}
+          </p>
+        </div>
+
+        {!baseUrl ? (
+          <EmptyState
+            title={t("experiments.preview.noUrlTitle")}
+            description={t("experiments.preview.noUrlDesc")}
+          />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {experiment.variants.map((v) => (
+              <div
+                key={v.id}
+                className="flex flex-col gap-2 overflow-hidden rounded-xl border border-border"
+              >
+                <div className="flex flex-col gap-1 p-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn("h-2.5 w-2.5 rounded-full", variantBarColor(v.role))}
+                    />
+                    <span className="text-sm font-semibold">{variantLabel(t, v)}</span>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {v.id}
+                    </span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                      {v.weight}%
+                    </span>
+                    <a
+                      href={buildForcedVariantUrl(baseUrl, experiment.key, v.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      {t("experiments.preview.openPage")}
+                      <ArrowUpRight size={12} />
+                    </a>
+                  </div>
+                  {v.description && (
+                    <p className="text-xs text-muted-foreground">{v.description}</p>
+                  )}
+                </div>
+                <iframe
+                  src={buildForcedVariantUrl(baseUrl, experiment.key, v.id)}
+                  title={`${experiment.name} — ${v.id}`}
+                  // `allow-same-origin` IS needed here, despite the usual
+                  // advice against combining it with `allow-scripts` (that
+                  // pair lets framed content strip its own sandbox — a real
+                  // risk for arbitrary third-party content). This iframe only
+                  // ever frames the developer's own local site, so that
+                  // escape isn't a new capability. Without it, the framed
+                  // page runs in an opaque origin and the ab-testing SDK's
+                  // manifest fetch silently degrades to "no assignment" —
+                  // confirmed by the same URL working when opened directly
+                  // but not when framed.
+                  // oxlint-disable-next-line react/iframe-missing-sandbox -- see comment above; sandbox is present and deliberately scoped
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                  className="h-[700px] w-full border-0 border-t border-border bg-background"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Full-screen review step between "Gerar"/"escrever manualmente" and
+ * actually creating the experiment. Combines the editable form with a live
+ * before/after preview (local dev only — see `EXPERIMENT_PREVIEW_SYNC_LOCAL`)
+ * and a "reformular" box, so a wrong AI suggestion gets fixed by prompting
+ * again instead of hand-editing fields that don't match what was asked for.
+ */
+function ReviewPanel({
+  site,
+  baseUrl,
+  initial,
+  onBack,
+  onCreated,
+}: {
+  site: string;
+  baseUrl: string | null;
+  initial: SuggestedExperiment | null;
+  onBack: () => void;
+  /** Called once the experiment is persisted — with its key, so the caller
+   *  can jump straight to that experiment's preview screen instead of just
+   *  closing back to the list. */
+  onCreated: (key: string) => void;
+}) {
+  const t = useT();
+  const create = useCreateExperiment(site);
+  const implementLocal = useImplementExperimentLocal(site);
+  const suggest = useSuggestExperiment(site);
+  const sync = useSyncExperimentPreviewLocal(site);
+  const [confirming, setConfirming] = useState(false);
+
+  const [key, setKey] = useState(initial?.key ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [hypothesis, setHypothesis] = useState(initial?.hypothesis ?? "");
+  const [variants, setVariants] = useState<VariantForm[]>(
+    initial?.variants.map((v) => ({
+      id: v.id,
+      weight: String(v.weight),
+      role: v.role,
+      description: v.description,
+    })) ?? BLANK_VARIANTS,
+  );
+  const [regeneratePrompt, setRegeneratePrompt] = useState("");
+  const [previewNonce, setPreviewNonce] = useState(0);
+  const [synced, setSynced] = useState(false);
+
+  const sum = variants.reduce((a, v) => a + (Number(v.weight) || 0), 0);
+  const setVar = (i: number, patch: Partial<VariantForm>) =>
+    setVariants((vs) => vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
+
+  const updatePreview = () => {
+    sync.mutate(
+      {
+        key: key.trim(),
+        variants: variants.map((v) => ({
+          id: v.id.trim(),
+          weight: Number(v.weight) || 0,
+        })),
+      },
+      {
+        onSuccess: (result) => {
+          setSynced(result.synced);
+          setPreviewNonce((n) => n + 1);
+        },
+      },
+    );
+  };
+
+  const regenerate = () => {
+    if (!regeneratePrompt.trim()) return;
+    suggest.mutate(regeneratePrompt.trim(), {
+      onSuccess: (result) => {
+        setKey(result.key);
+        setName(result.name);
+        setHypothesis(result.hypothesis);
+        setVariants(
+          result.variants.map((v) => ({
+            id: v.id,
+            weight: String(v.weight),
+            role: v.role,
+            description: v.description,
+          })),
+        );
+        setRegeneratePrompt("");
+      },
+    });
+  };
+
+  // Only the local implementer step needs a description to work from — a
+  // fully blank manual draft still creates fine, just with nothing to write.
+  const canImplement = variants.some((v) => v.description?.trim());
+
+  const confirmAndCreate = () => {
+    create.mutate(
+      {
+        key: key.trim(),
+        name: name.trim(),
+        variants: variants.map((v) => ({
+          id: v.id.trim(),
+          weight: Number(v.weight) || 0,
+          role: v.role || null,
+          description: v.description || null,
+        })),
+      },
+      {
+        onSuccess: (experiment) => {
+          if (canImplement) {
+            implementLocal.mutate({
+              key: experiment.key,
+              variants: experiment.variants.map((v) => ({
+                id: v.id,
+                role: v.role,
+                description: v.description,
+              })),
+            });
+          }
+          // Writes the local dev manifest entry so `?__ab=` forcing actually
+          // takes effect on the preview screen — same write "Atualizar
+          // preview" used to require as a separate click.
+          sync.mutate({
+            key: experiment.key,
+            variants: experiment.variants.map((v) => ({
+              id: v.id,
+              weight: v.weight,
+            })),
+          });
+          onCreated(experiment.key);
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-4">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft size={14} />
+          {t("experiments.action.back")}
+        </Button>
+        <span className="text-lg font-semibold">
+          {t("experiments.prompt.reviewTitle")}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        {hypothesis && (
+          <div className="rounded-md border border-border bg-muted/40 p-2.5 text-xs">
+            <span className="font-medium text-muted-foreground">
+              {t("experiments.prompt.hypothesis")}:{" "}
+            </span>
+            {hypothesis}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs">{t("experiments.dialog.key")}</Label>
+            <Input value={key} onChange={(e) => setKey(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs">{t("experiments.dialog.name")}</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">
+            {t("experiments.dialog.variants")} —{" "}
+            {t("experiments.dialog.weightSum", { sum })}
+          </Label>
+          {variants.map((v, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: positional editable rows
+            <div
+              key={i}
+              className="flex flex-col gap-1.5 rounded-md border border-border p-2"
+            >
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={v.id}
+                  onChange={(e) => setVar(i, { id: e.target.value })}
+                  className="h-8 flex-1"
+                />
+                <Input
+                  value={v.weight}
+                  onChange={(e) => setVar(i, { weight: e.target.value })}
+                  inputMode="numeric"
+                  className="h-8 w-16"
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
+              {/* What this arm will actually look like on the front —
+                  editable here so the operator can tighten it before
+                  anything is created or implemented. */}
+              <Textarea
+                value={v.description ?? ""}
+                onChange={(e) => setVar(i, { description: e.target.value })}
+                placeholder={t("experiments.dialog.variantDescriptionPlaceholder")}
+                rows={2}
+                className="resize-none text-xs"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-border pt-3">
+          <Textarea
+            value={regeneratePrompt}
+            onChange={(e) => setRegeneratePrompt(e.target.value)}
+            placeholder={t("experiments.prompt.regeneratePlaceholder")}
+            rows={2}
+            className="flex-1 resize-none"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={regenerate}
+            disabled={suggest.isPending || !regeneratePrompt.trim()}
+          >
+            <Stars02 size={14} />
+            {t("experiments.prompt.regenerate")}
+          </Button>
+        </div>
+
+        {confirming ? (
+          <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+            <p className="text-sm font-medium">
+              {t("experiments.confirm.title", { key: key.trim() })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {canImplement
+                ? t("experiments.confirm.withImplement")
+                : t("experiments.confirm.withoutImplement")}
+            </p>
+            <div className="flex items-center justify-end gap-2 border-t border-border pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirming(false)}
+              >
+                {t("experiments.dialog.cancel")}
+              </Button>
+              <Button
+                size="sm"
+                onClick={confirmAndCreate}
+                disabled={create.isPending}
+              >
+                {canImplement
+                  ? t("experiments.confirm.proceedWithImplement")
+                  : t("experiments.confirm.proceed")}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between border-t border-border pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={updatePreview}
+              disabled={sync.isPending || !key.trim()}
+            >
+              {t("experiments.preview.updatePreview")}
+            </Button>
+            <Button
+              onClick={() => setConfirming(true)}
+              disabled={!key.trim() || !name.trim()}
+            >
+              {t("experiments.dialog.create")}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {!baseUrl ? (
+        <EmptyState
+          title={t("experiments.preview.noUrlTitle")}
+          description={t("experiments.preview.noUrlDesc")}
+        />
+      ) : !synced ? (
+        <p className="px-1 text-xs text-muted-foreground">
+          {t("experiments.preview.notSyncedYet")}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {variants.map((v) => (
+            <div
+              key={`${v.id}-${previewNonce}`}
+              className="flex flex-col gap-1.5 overflow-hidden rounded-lg border border-border"
+            >
+              <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5">
+                <span className="text-xs font-medium">
+                  {v.id}
+                  {v.role === "control" && (
+                    <span className="ml-1.5 text-muted-foreground">
+                      ({t("experiments.preview.baseline")})
+                    </span>
+                  )}
+                </span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {v.weight}%
+                </span>
+                <a
+                  href={buildForcedVariantUrl(baseUrl, key, v.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                >
+                  {t("experiments.preview.openPage")}
+                  <ArrowUpRight size={12} />
+                </a>
+              </div>
+              <iframe
+                src={buildForcedVariantUrl(baseUrl, key, v.id)}
+                title={`${name} — ${v.id}`}
+                // See the matching comment in PreviewPanel's iframe —
+                // `allow-same-origin` is required for the ab-testing SDK's
+                // manifest fetch to resolve inside the frame at all.
+                // oxlint-disable-next-line react/iframe-missing-sandbox -- sandbox is present and deliberately scoped
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                className="h-[700px] w-full border-0 bg-background"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExperimentRow({
   experiment,
   org,
   agentId,
   onStatusChange,
+  onPreview,
   onEdit,
   onDelete,
+  onImplement,
+  implementing,
 }: {
   experiment: Experiment;
   org: string;
   agentId: string;
   onStatusChange: (status: ExperimentStatus) => void;
+  onPreview: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onImplement: () => void;
+  implementing: boolean;
 }) {
   const t = useT();
   const status = STATUS_STYLES[experiment.status];
@@ -550,6 +1155,28 @@ function ExperimentRow({
       <Button
         variant="ghost"
         size="sm"
+        aria-label={t("experiments.action.preview")}
+        onClick={onPreview}
+        className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
+      >
+        <Eye size={14} />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label={t("experiments.action.implement")}
+        title={t("experiments.action.implement")}
+        onClick={onImplement}
+        disabled={implementing}
+        className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
+      >
+        <CodeBrowser size={14} />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
         aria-label={t("experiments.action.edit")}
         onClick={onEdit}
         className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
@@ -576,22 +1203,24 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const { org } = useProjectContext();
   const siteSlug = resolveAgentSiteSlug(entity);
   const [promptOpen, setPromptOpen] = useState(false);
-  const [createDialog, setCreateDialog] = useState<{
+  const [review, setReview] = useState<{
     open: boolean;
-    suggestion: SuggestedExperiment | null;
-  }>({ open: false, suggestion: null });
+    initial: SuggestedExperiment | null;
+  }>({ open: false, initial: null });
   const [editDialog, setEditDialog] = useState<{
     open: boolean;
     experiment: Experiment | null;
   }>({ open: false, experiment: null });
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
 
   const { data: experiments, isLoading } = useExperiments(siteSlug ?? "");
   const update = useUpdateExperiment(siteSlug ?? "");
   const del = useDeleteExperiment(siteSlug ?? "");
+  const implement = useImplementExperiment(siteSlug ?? "");
 
   if (!siteSlug) {
     return (
-      <div className="p-8">
+      <div className="h-full min-h-0 overflow-y-auto p-8">
         <EmptyState
           title={t("experiments.title")}
           description={t("experiments.noSite")}
@@ -600,8 +1229,35 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
     );
   }
 
+  const previewing = experiments?.find((e) => e.key === previewKey) ?? null;
+  if (previewing) {
+    return (
+      <PreviewPanel
+        site={siteSlug}
+        experiment={previewing}
+        baseUrl={resolvePreviewServerUrl(entity?.metadata)}
+        onBack={() => setPreviewKey(null)}
+      />
+    );
+  }
+
+  if (review.open) {
+    return (
+      <ReviewPanel
+        site={siteSlug}
+        baseUrl={resolvePreviewServerUrl(entity?.metadata)}
+        initial={review.initial}
+        onBack={() => setReview({ open: false, initial: null })}
+        onCreated={(key) => {
+          setReview({ open: false, initial: null });
+          setPreviewKey(key);
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-4 p-4">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">{t("experiments.title")}</h2>
@@ -640,7 +1296,16 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
                 onStatusChange={(status) =>
                   update.mutate({ key: e.key, status })
                 }
+                onPreview={() => setPreviewKey(e.key)}
                 onEdit={() => setEditDialog({ open: true, experiment: e })}
+                onImplement={() => {
+                  if (window.confirm(t("experiments.implementConfirm", { key: e.key }))) {
+                    implement.mutate(e.key);
+                  }
+                }}
+                implementing={
+                  implement.isPending && implement.variables === e.key
+                }
                 onDelete={() => {
                   if (
                     window.confirm(t("experiments.deleteConfirm", { key: e.key }))
@@ -658,27 +1323,7 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
         site={siteSlug}
         open={promptOpen}
         onOpenChange={setPromptOpen}
-        onGenerated={(suggestion) =>
-          setCreateDialog({ open: true, suggestion })
-        }
-      />
-      <ExperimentDialog
-        // Remount with fresh initial values each time a new suggestion (or
-        // "write manually") comes in, rather than trying to sync props into
-        // already-mounted form state.
-        key={createDialog.suggestion?.key ?? "manual"}
-        mode="create"
-        site={siteSlug}
-        open={createDialog.open}
-        onOpenChange={(open) => setCreateDialog((s) => ({ ...s, open }))}
-        initialKey={createDialog.suggestion?.key}
-        initialName={createDialog.suggestion?.name}
-        initialVariants={createDialog.suggestion?.variants.map((v) => ({
-          id: v.id,
-          weight: String(v.weight),
-          role: v.role,
-        }))}
-        hypothesis={createDialog.suggestion?.hypothesis}
+        onGenerated={(suggestion) => setReview({ open: true, initial: suggestion })}
       />
       <ExperimentDialog
         key={editDialog.experiment?.key ?? "edit-none"}
@@ -692,6 +1337,7 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
           id: v.id,
           weight: String(v.weight),
           role: v.role ?? "",
+          description: v.description ?? undefined,
         }))}
       />
     </div>

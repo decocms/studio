@@ -101,7 +101,8 @@ RULES:
 - Weights are integers and sum to exactly 100. Default to an even split unless the prompt states otherwise.
 - One arm's role is always "control" — the unchanged/baseline behavior — even when the prompt only describes the new behavior (infer that control means "nothing changes").
 - Keep \`key\` short, kebab-case, and derived from what the test actually does, not generic ("valentine-banner", not "test-1").
-- If the prompt is ambiguous about the split, default to 50/50 for a two-arm test.`,
+- If the prompt is ambiguous about the split, default to 50/50 for a two-arm test.
+- When the prompt asks to hide, remove, or not show an existing element for some share of visitors (e.g. "ocultar o banner pra 50%"), say so explicitly and unambiguously in that arm's description — state that the element is not rendered/removed, not just that something "changes". Name the specific element. The other arm's description must state just as explicitly that the element keeps showing normally (this is usually the control). Avoid vague phrasing like "diferente" or "ajustado" for a hide case — an engineer reading only this sentence must be able to tell whether their arm renders the element or not.`,
       prompt: `Describe the experiment implied by this operator prompt:\n\n"""\n${input.prompt}\n"""`,
     });
 

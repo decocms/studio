@@ -30,6 +30,8 @@ export const experiments = {
   "experiments.prompt.reviewTitle": "Revise antes de criar",
   "experiments.prompt.hypothesis": "Hipótese",
   "experiments.prompt.regenerate": "Tentar outro prompt",
+  "experiments.prompt.regeneratePlaceholder":
+    "Tá errado? Descreve o ajuste e gera de novo.",
   "experiments.dialog.newTitle": "Novo experimento",
   "experiments.dialog.editTitle": "Editar experimento",
   "experiments.dialog.key": "Chave do teste",
@@ -37,13 +39,45 @@ export const experiments = {
     "A chave não pode mudar depois de criada — é o que o useExperiment() e o Worker usam pra bater.",
   "experiments.dialog.name": "Nome",
   "experiments.dialog.variants": "Variantes",
+  "experiments.dialog.variantDescriptionPlaceholder":
+    'Como essa variante vai ficar no front (ex.: "o item Deals fica oculto no navbar")',
   "experiments.dialog.weightSum": "Os pesos devem somar 100 (agora {sum})",
   "experiments.dialog.addVariant": "Adicionar variante",
   "experiments.dialog.create": "Criar",
   "experiments.dialog.save": "Salvar",
   "experiments.dialog.cancel": "Cancelar",
+  "experiments.action.back": "Voltar para a lista",
   "experiments.action.edit": "Editar",
+  "experiments.action.preview": "Visualizar",
+  "experiments.preview.baseline": "referência",
+  "experiments.preview.updatePreview": "Atualizar preview",
+  "experiments.preview.notSyncedYet":
+    "Clica em \"Atualizar preview\" pra renderizar esse rascunho no site local.",
+  "experiments.preview.noUrlTitle": "Sem URL de preview pra esse site",
+  "experiments.preview.noUrlDesc":
+    "Esse projeto não tem URL de preview/produção configurada, então não dá pra renderizar as variantes aqui.",
+  "experiments.preview.saveChanges": "Salvar alterações",
+  "experiments.preview.control": "Controle",
+  "experiments.preview.treatment": "Tratamento",
+  "experiments.preview.trafficTitle": "Distribuição de tráfego",
+  "experiments.preview.trafficDesc":
+    "Defina o percentual de visitantes para cada variante. A soma deve ser 100%.",
+  "experiments.preview.distributionValid": "Distribuição válida",
+  "experiments.preview.variantsTitle": "Variantes",
+  "experiments.preview.variantsDesc":
+    "Veja como cada variante será exibida no site.",
+  "experiments.preview.openPage": "Abrir página",
+  "experiments.confirm.title": 'Criar "{key}" e prosseguir?',
+  "experiments.confirm.withImplement":
+    "Isso também escreve o hook useExperiment() e o gate direto no código do site local — sem sandbox, sem PR. Best-effort: se não achar o lugar certo com confiança, não mexe em nada e isso aparece abaixo.",
+  "experiments.confirm.withoutImplement":
+    "Nenhuma variante tem descrição pra implementar, então isso só cria o rascunho — nada muda no front ainda.",
+  "experiments.confirm.proceed": "Sim, criar",
+  "experiments.confirm.proceedWithImplement": "Sim, criar e implementar",
   "experiments.action.delete": "Excluir",
+  "experiments.action.implement": "Implementar com o Super Agent",
+  "experiments.implementConfirm":
+    'Delegar a implementação de "{key}" pro Super Agent? Ele vai achar o componente afetado, conectar o experimento e abrir um PR — sem revisão antes desse PR.',
   "experiments.action.viewData": "Ver dados",
   "experiments.deleteConfirm":
     'Excluir o experimento "{key}"? Isso não pode ser desfeito.',
