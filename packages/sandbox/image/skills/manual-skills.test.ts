@@ -24,6 +24,7 @@ const MANUAL_ONLY = [
   "jira-merge",
   "jira-release",
   "jira-validate-production",
+  "jira-qa-gate",
 ];
 
 function meta(dir: string) {
