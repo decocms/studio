@@ -2,25 +2,47 @@ import { describe, expect, it } from "bun:test";
 import { parseWebhookTransition, transitionsFromChangelog } from "./trigger";
 
 describe("parseWebhookTransition", () => {
-  const updated = (items: Array<{ field: string; toString?: string }>) => ({
+  const updated = (
+    items: Array<{ field: string; fromString?: string; toString?: string }>,
+  ) => ({
     webhookEvent: "jira:issue_updated",
+    timestamp: Date.parse("2026-09-29T14:31:00Z"),
+    user: { accountId: "acc-ana", displayName: "Ana" },
     issue: { id: "10001", key: "EX-7" },
     changelog: { id: "5001", items },
   });
 
-  it("reads the status an issue landed in, with the transition's identity", () => {
+  it("reads the status an issue landed in, where it came from and who moved it", () => {
     expect(
       parseWebhookTransition(
         updated([
           { field: "assignee", toString: "Ana" },
-          { field: "status", toString: "Doing" },
+          { field: "status", fromString: "Review", toString: "Doing" },
         ]),
       ),
     ).toEqual({
       issueId: "10001",
       issueKey: "EX-7",
       toStatus: "Doing",
+      fromStatus: "Review",
+      movedBy: { accountId: "acc-ana", displayName: "Ana" },
+      movedAt: "2026-09-29T14:31:00.000Z",
       changelogId: "5001",
+    });
+  });
+
+  /** The origin is context for the run, never a reason to drop the trigger. */
+  it("still triggers when the payload lacks the origin, the mover or the time", () => {
+    const payload = {
+      ...updated([{ field: "status", toString: "Doing" }]),
+      timestamp: "yesterday",
+      user: { displayName: "No account id" },
+    };
+    expect(parseWebhookTransition(payload)).toMatchObject({
+      toStatus: "Doing",
+      fromStatus: null,
+      movedBy: null,
+      movedAt: null,
     });
   });
 
@@ -97,7 +119,8 @@ describe("transitionsFromChangelog", () => {
         {
           id: "9",
           created: "2026-09-02T10:01:00Z",
-          items: [{ field: "status", toString: "Doing" }],
+          author: { accountId: "acc-ana", displayName: "Ana" },
+          items: [{ field: "status", fromString: "Review", toString: "Doing" }],
         },
       ],
       since,
@@ -106,6 +129,9 @@ describe("transitionsFromChangelog", () => {
       issueId: "10001",
       issueKey: "EX-7",
       toStatus: "Doing",
+      fromStatus: "Review",
+      movedBy: { accountId: "acc-ana", displayName: "Ana" },
+      movedAt: "2026-09-02T10:01:00Z",
       changelogId: "9",
     });
   });
