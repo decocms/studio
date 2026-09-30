@@ -29,6 +29,7 @@ import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
 import {
   previewDeviceHintBadgeKey,
+  previewDeviceHintBase,
   resolveDefaultPreviewDevice,
   usePreviewDeviceHint,
 } from "./preview-device-hint";
@@ -506,9 +507,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
   const explicitPreviewDevice =
     agent?.id === virtualMcpId ? agent.metadata?.previewDevice : null;
-  // Only ask the preview server when the project leaves the device on automatic.
+  // Only ask the rendering server (Local tunnel, else the preview server) when
+  // the project leaves the device on automatic.
   const previewDeviceHint = usePreviewDeviceHint(
-    explicitPreviewDevice ? null : previewServerUrl,
+    explicitPreviewDevice
+      ? null
+      : previewDeviceHintBase({ localPreviewUrl, previewServerUrl }),
   );
   const previewDeviceSize: PreviewDeviceSize =
     chosenDeviceSize ??

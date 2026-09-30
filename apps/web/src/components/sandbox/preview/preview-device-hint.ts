@@ -27,6 +27,17 @@ const PreviewDeviceHintSchema = z.object({
 export type PreviewDeviceHint = z.infer<typeof PreviewDeviceHintSchema>;
 type PreviewDevice = PreviewDeviceHint["device"];
 
+/**
+ * Which server the hint is read from: the one the canvas actually renders.
+ * Local mode's tunnel replaces the preview server there, so it wins.
+ */
+export function previewDeviceHintBase(input: {
+  localPreviewUrl: string | null | undefined;
+  previewServerUrl: string | null | undefined;
+}): string | null {
+  return input.localPreviewUrl || input.previewServerUrl || null;
+}
+
 /** The hint URL for a preview server, or null when Studio must not ask it. */
 export function previewDeviceHintUrl(
   previewServerUrl: string | null | undefined,

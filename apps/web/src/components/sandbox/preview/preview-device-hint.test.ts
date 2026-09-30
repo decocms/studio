@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   parsePreviewDeviceHint,
   previewDeviceHintBadgeKey,
+  previewDeviceHintBase,
   previewDeviceHintUrl,
   resolveDefaultPreviewDevice,
 } from "./preview-device-hint";
@@ -19,6 +20,49 @@ const parse = (body: unknown, responseUrl = HINT_URL) =>
     responseUrl,
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
+
+describe("previewDeviceHintBase", () => {
+  it("reads the Local tunnel over the preview server", () => {
+    expect(
+      previewDeviceHintBase({
+        localPreviewUrl: "https://localhost:3100/",
+        previewServerUrl: "https://www.acme.com/",
+      }),
+    ).toBe("https://localhost:3100/");
+  });
+
+  it("falls back to the preview server, else nothing", () => {
+    expect(
+      previewDeviceHintBase({
+        localPreviewUrl: null,
+        previewServerUrl: "https://www.acme.com/",
+      }),
+    ).toBe("https://www.acme.com/");
+    expect(
+      previewDeviceHintBase({
+        localPreviewUrl: "",
+        previewServerUrl: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps the validation rules for a Local tunnel", () => {
+    const base = previewDeviceHintBase({
+      localPreviewUrl: "http://192.168.0.10:3100/",
+      previewServerUrl: "https://www.acme.com/",
+    });
+    // A cleartext LAN tunnel is never asked, and never swapped for production.
+    expect(previewDeviceHintUrl(base)).toBeNull();
+    expect(
+      previewDeviceHintUrl(
+        previewDeviceHintBase({
+          localPreviewUrl: "https://localhost:3100/some/page",
+          previewServerUrl: null,
+        }),
+      ),
+    ).toBe("https://localhost:3100/.well-known/deco-preview.json");
+  });
+});
 
 describe("previewDeviceHintUrl", () => {
   it("targets the well-known path on the preview server's own origin", () => {
