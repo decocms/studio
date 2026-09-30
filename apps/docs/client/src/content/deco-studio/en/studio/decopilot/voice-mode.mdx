@@ -140,7 +140,9 @@ cannot apply one provider's model ID to another provider.
 Set both columns to `NULL` to restore deployment defaults. Keep `voice_mode`
 enabled separately. These columns contain no credentials; the selected provider's
 key must exist on every API replica, and a missing key returns an error without
-switching providers.
+switching providers. An invalid `VOICE_CONVERSATION_PROVIDER` does not prevent API
+startup. Voice calls that inherit that invalid default return 503; an organization
+with a valid provider override can still use voice. Ordinary text chat is unaffected.
 
 The existing organization-settings read resolves overrides when a call starts.
 There is no additional database query or per-turn lookup. The resolved provider

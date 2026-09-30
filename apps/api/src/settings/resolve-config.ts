@@ -223,9 +223,6 @@ export function resolveConfig(
 
   const voiceProvider =
     envVars.VOICE_CONVERSATION_PROVIDER?.trim() || "elevenlabs";
-  if (voiceProvider !== "elevenlabs" && voiceProvider !== "openai") {
-    throw new Error("VOICE_CONVERSATION_PROVIDER must be elevenlabs or openai");
-  }
 
   const settings: Omit<Settings, "databaseUrl" | "natsUrls"> = {
     // Core
@@ -245,7 +242,10 @@ export function resolveConfig(
       envVars.MESH_PUBLIC_URL,
     ),
     dataDir,
-    voiceConversationProvider: voiceProvider,
+    voiceConversationProvider:
+      voiceProvider === "elevenlabs" || voiceProvider === "openai"
+        ? voiceProvider
+        : null,
     openaiLiveApiKey: envVars.OPENAI_LIVE_API_KEY,
     openaiLiveModel: envVars.OPENAI_LIVE_MODEL?.trim() || "gpt-live-1",
     openaiLiveVoice: envVars.OPENAI_LIVE_VOICE?.trim() || "marin",

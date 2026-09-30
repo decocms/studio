@@ -87,9 +87,16 @@ export class VoiceSessions {
       voice_model: string | null;
     } | null,
   ) {
-    const config = conversation
-      ? resolveVoiceConfig(this.deps.defaults, override)
-      : undefined;
+    let config: VoiceConversationConfig | undefined;
+    if (conversation) {
+      try {
+        config = resolveVoiceConfig(this.deps.defaults, override);
+      } catch {
+        throw new HTTPException(503, {
+          message: "Voice configuration is invalid",
+        });
+      }
+    }
     const adapter = config
       ? this.deps.conversationAdapters[config.provider]
       : this.adapter();

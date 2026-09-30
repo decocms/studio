@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { openAIConversationConfig } from "./openai";
 import { resolveConfig } from "../../settings/resolve-config";
+import { resolveVoiceConfig } from "../../voice/config";
 import { VoiceSessionSchema } from "@decocms/shared/voice";
 
 const flags = { port: "", home: "", localMode: false, skipMigrations: false };
@@ -19,7 +20,7 @@ test("OpenAI Live delegates to the existing agent without registering Realtime t
   expect(config.store).toBe(false);
 });
 
-test("provider selection is explicit and rejects unsupported values", () => {
+test("invalid provider defaults reject voice creation without rejecting API configuration", () => {
   expect(resolveConfig(flags, {}).settings.voiceConversationProvider).toBe(
     "elevenlabs",
   );
@@ -33,9 +34,17 @@ test("provider selection is explicit and rejects unsupported values", () => {
   expect(settings.openaiLiveModel).toBe("model-example");
   expect(settings.openaiLiveVoice).toBe("cedar");
   expect(settings.elevenlabsApiKey).toBeUndefined();
-  expect(() =>
-    resolveConfig(flags, { VOICE_CONVERSATION_PROVIDER: "unknown" }),
-  ).toThrow("VOICE_CONVERSATION_PROVIDER");
+  const invalid = resolveConfig(flags, {
+    VOICE_CONVERSATION_PROVIDER: "unknown",
+  }).settings;
+  expect(invalid.voiceConversationProvider).toBeNull();
+  expect(() => resolveVoiceConfig(invalid)).toThrow();
+  expect(
+    resolveVoiceConfig(invalid, {
+      voice_provider: "openai",
+      voice_model: null,
+    }),
+  ).toEqual({ provider: "openai", model: "gpt-live-1" });
 });
 
 test("bootstrap accepts both providers and legacy ElevenLabs responses without mixing credentials", () => {

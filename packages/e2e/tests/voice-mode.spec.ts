@@ -134,7 +134,7 @@ test("org voice selection overrides and restores the deployment default", async 
 }) => {
   test.skip(
     process.env.E2E_VOICE_ORG_CONFIG !== "1",
-    "Requires ElevenLabs as default, no ElevenLabs key, and a synthetic OpenAI key.",
+    "Requires an invalid default provider or unconfigured ElevenLabs, plus a synthetic OpenAI key.",
   );
   const { page, orgSlug } = authedPage;
   const api = page.context().request;
@@ -145,7 +145,21 @@ test("org voice selection overrides and restores the deployment default", async 
     (await api.post(path, { data: { mode: "conversation" } })).status(),
   ).toBe(503);
   const db = await connectDevDb();
+  const model = await startModel(0, "Ordinary text still works.");
   try {
+    await configureModel(api, orgSlug, model.url);
+    await page.goto(`/${orgSlug}/${threadId}`);
+    const input = page.locator('[data-chat-input="true"]');
+    await expect(input).toBeVisible({ timeout: 60_000 });
+    await input.fill("Reply to this ordinary text message");
+    await input.press("Enter");
+    await expect(
+      page.getByText("Ordinary text still works.", { exact: true }).last(),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(model.prompts.join("\n")).not.toContain(
+      "This turn is a spoken conversation",
+    );
+
     // No product API exposes provider or model overrides.
     await db.query(
       `update organization_settings set voice_provider = 'openai',
@@ -168,6 +182,7 @@ test("org voice selection overrides and restores the deployment default", async 
       (await api.post(path, { data: { mode: "conversation" } })).status(),
     ).toBe(503);
   } finally {
+    await model.close();
     await db.end();
   }
 });

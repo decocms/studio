@@ -20,7 +20,8 @@ export interface Settings {
   dataDir: string;
 
   // Voice
-  voiceConversationProvider: "elevenlabs" | "openai";
+  // Invalid deployment defaults disable voice creation, not API startup.
+  voiceConversationProvider: "elevenlabs" | "openai" | null;
   openaiLiveApiKey: string | undefined;
   openaiLiveModel: string;
   openaiLiveVoice: string;
