@@ -12,13 +12,17 @@
 const RAIL_ORG_LIMIT = 5;
 
 /** Newest first, one entry per slug. Kept longer than the rail's limit because
- *  search ranks by this history too. */
+ *  search ranks by this history too. `keep` is what the rail shows now: it goes
+ *  right behind `slug`, so switching to an org already on the rail cannot push
+ *  another one out of the first `RAIL_ORG_LIMIT` entries that `railOrgs`
+ *  reads. */
 export function pushRecentOrg(
   list: readonly string[],
   slug: string,
   limit = RAIL_ORG_LIMIT * 3,
+  keep: readonly string[] = [],
 ): string[] {
-  return [slug, ...list.filter((it) => it !== slug)].slice(0, limit);
+  return [...new Set([slug, ...keep, ...list])].slice(0, limit);
 }
 
 /**

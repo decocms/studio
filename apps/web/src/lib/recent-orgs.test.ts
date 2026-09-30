@@ -16,6 +16,16 @@ describe("pushRecentOrg", () => {
   test("trims to the limit", () => {
     expect(pushRecentOrg(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
   });
+
+  test("keeps the shown orgs right behind the newest", () => {
+    expect(pushRecentOrg(["a", "x", "y"], "b", 10, ["a", "b", "c"])).toEqual([
+      "b",
+      "a",
+      "c",
+      "x",
+      "y",
+    ]);
+  });
 });
 
 describe("railOrgs", () => {
@@ -57,5 +67,19 @@ describe("railOrgs", () => {
     const all = orgs("a", "b", "c", "d", "e");
     const { shown } = railOrgs(all, ["e"], null, 3);
     expect(slugs(shown)).toEqual(["a", "b", "e"]);
+  });
+});
+
+describe("switching to an org already on the rail", () => {
+  const all = orgs("a", "b", "c", "d", "e", "f", "g");
+
+  test("moves no mark", () => {
+    // `c` was reached by link, so history does not hold it.
+    const recent = ["a", "b", "d", "e", "f"];
+    const before = railOrgs(all, recent, "c", 5);
+    const next = pushRecentOrg(recent, "a", 15, slugs(before.shown));
+    expect(slugs(railOrgs(all, next, "a", 5).shown)).toEqual(
+      slugs(before.shown),
+    );
   });
 });

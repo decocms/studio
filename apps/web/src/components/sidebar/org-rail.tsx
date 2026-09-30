@@ -144,7 +144,11 @@ export function OrgRail() {
 
   const travelTo = (slug: string) => {
     track("org_rail_travel");
-    remember(slug);
+    /** An org already on the rail keeps the rail as it is. */
+    remember(
+      slug,
+      shown.map((it) => it.slug),
+    );
     navigate({ to: "/$org/home", params: { org: slug } });
   };
 
