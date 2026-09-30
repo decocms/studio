@@ -13,11 +13,10 @@
  * this route self-enforces its gates.
  */
 
-import { orgFlagEnabled } from "@decocms/shared/organization/schema";
 import { Hono, type Context } from "hono";
 import type { StudioContext } from "@/core/studio-context";
-import { orgHasFeature } from "@/core/plan-feature-gate";
 import { readAppManifest } from "@/app-content/manifest";
+import { resolveAppProject, VIRTUAL_MCP_ID_RE } from "@/app-content/project";
 import { readDecofileAtSha } from "@/decofile/read-decofile";
 import { createSingleFlight } from "@/decofile/single-flight";
 import {
@@ -25,7 +24,6 @@ import {
   repoErrorStatus,
   requireBranchHead,
 } from "@/git-providers";
-import { parseRepositoryBinding } from "@/tools/sandbox/sync-git-credentials";
 import type { Env } from "../hono-env";
 import { clientIp, createWindowLimiter } from "../utils/rate-limit";
 
@@ -34,7 +32,6 @@ const REVALIDATE_MS = 30_000;
 const MAX_CACHE_ENTRIES = 500;
 // ponytail: counts decofile chars, not gzip copies; fine while few orgs opt in.
 const MAX_CACHE_CHARS = 64 * 1024 * 1024;
-const VIRTUAL_MCP_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 const BASE_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -72,25 +69,11 @@ const loadPublishedDecofile: PublishedLoader = async (
   virtualMcpId,
   previous,
 ) => {
-  const settings = await ctx.storage.organizationSettings.get(organizationId);
-  if (!orgFlagEnabled(settings?.flags, "app_content_delivery")) {
-    return NOT_A_PROJECT;
-  }
-  if (!(await orgHasFeature(ctx, organizationId, "cms"))) return NOT_A_PROJECT;
-
-  const virtualMcp = await ctx.storage.virtualMcps.findById(virtualMcpId);
-  if (!virtualMcp || virtualMcp.organization_id !== organizationId) {
-    return NOT_A_PROJECT;
-  }
+  const project = await resolveAppProject(ctx, organizationId, virtualMcpId);
+  if (!project) return NOT_A_PROJECT;
   const gated: PublishedLoad = { sha: null, body: null, cache: true };
-  const metadata = (virtualMcp.metadata as Record<string, unknown>) ?? null;
-  const repository = parseRepositoryBinding(
-    metadata,
-    virtualMcp.connections?.map((conn) => conn.connection_id) ?? [],
-  );
+  const { repository, packagePath } = project;
   if (!repository) return gated;
-  const runtime = metadata?.runtime as { path?: string | null } | undefined;
-  const packagePath = runtime?.path?.replace(/^\/+|\/+$/g, "") || null;
 
   try {
     const client = await contentClientForProjectRepo(

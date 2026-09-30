@@ -196,6 +196,7 @@ import { RunRegistry } from "./routes/decopilot/run-registry";
 import type { RunReactorDeps } from "./routes/decopilot/run-reactor";
 import { emitTerminalThreadStatus } from "./routes/decopilot/thread-status-events";
 import { SqlThreadStorage } from "../storage/threads";
+import { AppPreviewSessionStorage } from "../storage/app-preview-sessions";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import { TaskBoardStorage } from "../storage/task-board";
 import { advanceTasksToReviewOnThreadFinish } from "../tools/task-board/run-reactions";
@@ -1988,12 +1989,20 @@ export async function createApp(options: CreateAppOptions = {}) {
   }
 
   // Expired API key cleanup — the api-key plugin's own sweep, not a raw query.
-  const cleanupExpiredApiKeys = () =>
+  // Same daily sweep drops phone preview sessions dead for over a day.
+  const appPreviewSessions = new AppPreviewSessionStorage(database.db);
+  const cleanupExpiredApiKeys = () => {
     auth.api
       .deleteAllExpiredApiKeys()
       .catch((err: unknown) =>
         console.error("[auth] Expired API key cleanup failed:", err),
       );
+    appPreviewSessions
+      .deleteExpired(new Date(Date.now() - 24 * 60 * 60 * 1000))
+      .catch((err: unknown) =>
+        console.error("[app-preview] Expired session cleanup failed:", err),
+      );
+  };
 
   cleanupExpiredApiKeys();
   setInterval(cleanupExpiredApiKeys, 24 * 60 * 60 * 1000).unref();

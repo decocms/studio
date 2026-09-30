@@ -2363,6 +2363,43 @@ export interface ExperimentTable {
   updated_at: ColumnType<Date, Date | string, Date | string>;
 }
 
+/** Phone preview session (QR). Only hashes of codes/tokens are stored. */
+export interface AppPreviewOverlay {
+  set: Record<string, unknown>;
+  delete: string[];
+}
+
+type NullableTimestamp = ColumnType<
+  Date | null,
+  Date | string | null | undefined,
+  Date | string | null
+>;
+
+export interface AppPreviewSessionTable {
+  id: string;
+  organization_id: string;
+  virtual_mcp_id: string;
+  user_id: string;
+  branch: string;
+  pairing_code_hash: string | null;
+  pairing_expires_at: NullableTimestamp;
+  overlay: ColumnType<AppPreviewOverlay, string | undefined, string>;
+  rev: ColumnType<number, number | undefined, number>;
+  expires_at: ColumnType<Date, Date | string, Date | string>;
+  revoked_at: NullableTimestamp;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface AppPreviewDeviceTable {
+  id: string;
+  session_id: string;
+  token_hash: string;
+  created_at: ColumnType<Date, Date | string | undefined, never>;
+  last_seen_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  revoked_at: NullableTimestamp;
+}
+
 export interface Experiment {
   id: string;
   organizationId: string;
@@ -2468,6 +2505,8 @@ export interface Database {
   // Asset tenancy: org ownership of globally-unique site slugs
   org_sites: OrgSiteTable;
   experiments: ExperimentTable;
+  app_preview_sessions: AppPreviewSessionTable;
+  app_preview_devices: AppPreviewDeviceTable;
 
   // Deployment-admin billing warning / block pinned on an org
   organization_notices: OrganizationNoticeTable;
