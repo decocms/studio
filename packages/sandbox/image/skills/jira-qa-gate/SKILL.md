@@ -47,10 +47,14 @@ the web links. Read them before anything else.
 
 - The latest review verdict must be an approval. If the latest verdict asks for
   changes, or there is none, the card should not be here: leave it and say so.
-- The approval names the commit it reviewed. The pull request must still be
-  open, its head must be that commit (`gh pr view <n> --json
-  state,headRefOid,mergeable`), and its checks must not be failing because of
-  its own change. New commits since the review mean nobody reviewed them.
+- Nothing landed after the review. The pull request must still be open, and
+  its head must be the commit the approval names (`gh pr view <n> --json
+  state,headRefOid,commits`). An approval that names no commit is still
+  current when the head commit is older than the approval comment. New
+  commits since the review mean nobody reviewed them.
+- Its checks must not be failing because of its own change. A run's token is
+  often not allowed to read checks; checks you cannot read are not a reason
+  to leave the card, only checks you saw fail.
 - The review's evidence must cover **every** point the issue asks for, on every
   site, device and surface the issue names. Walk the issue's list and find the
   evidence for each item. An item with no evidence is unvalidated.
