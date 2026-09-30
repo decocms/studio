@@ -170,7 +170,8 @@ import {
   groupLevels,
   groupListItems,
   NO_TAG_GROUP,
-  toggleCollapsed,
+  isGroupOpen,
+  toggleGroupOpen,
   type ListGroup,
 } from "./list-groups";
 import { UNASSIGNED_FILTER } from "./task-filters-core";
@@ -1067,9 +1068,9 @@ function TaskBoardBody({
     onSortByChange: setSortBy,
     onSortDirectionChange: setSortDirection,
   };
-  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
+  const [toggledGroups, setToggledGroups] = useState<
+    ReadonlyMap<string, boolean>
+  >(new Map());
   /** The board's buckets, closed over every repo a loaded card names so the
    *  "No project" bucket cannot claim a card that plainly has one. */
   const projectIndex = useProjectIndex(items, repos);
@@ -1252,12 +1253,16 @@ function TaskBoardBody({
    *  filter change must not leave a hidden card's id queued for a move, an
    *  assign — or a delete. */
   const selectedIds = visibleSelection(selection, visibleItems);
-  // The list view has no "Hidden columns" drawer, so it drops hidden lanes outright.
-  const shownListItems = visibleItems.filter(
-    (item) =>
-      !HIDDEN_STATUSES.includes(item.status) ||
-      preferences.shownTaskBoardLanes.includes(item.status),
-  );
+  const listLevels = groupLevels(groupBy, subgroupBy);
+  // Grouped by status, hidden lanes get their own collapsed section; otherwise
+  // the list has no "Hidden columns" drawer and drops them outright.
+  const shownListItems = listLevels.includes("status")
+    ? visibleItems
+    : visibleItems.filter(
+        (item) =>
+          !HIDDEN_STATUSES.includes(item.status) ||
+          preferences.shownTaskBoardLanes.includes(item.status),
+      );
   // Sorted before grouping, so every group reads in the chosen order too.
   const visibleListItems =
     sortBy === null
@@ -1594,20 +1599,16 @@ function TaskBoardBody({
               visibleListItems.map(listRow)
             ) : (
               <ListGroupTree
-                groups={groupListItems(
-                  visibleListItems,
-                  groupLevels(groupBy, subgroupBy),
-                  {
-                    memberIds: members.map((m) => m.userId),
-                    tagIds: orgTags.map((tag) => tag.id),
-                    index: projectIndex,
-                  },
-                )}
+                groups={groupListItems(visibleListItems, listLevels, {
+                  memberIds: members.map((m) => m.userId),
+                  tagIds: orgTags.map((tag) => tag.id),
+                  index: projectIndex,
+                })}
                 depth={0}
-                collapsed={collapsedGroups}
-                onToggle={(path, siblingPaths, all) =>
-                  setCollapsedGroups((prev) =>
-                    toggleCollapsed(prev, path, siblingPaths, all),
+                toggled={toggledGroups}
+                onToggle={(group, siblings, all) =>
+                  setToggledGroups((prev) =>
+                    toggleGroupOpen(prev, group, siblings, all),
                   )
                 }
                 renderRow={listRow}
@@ -3473,22 +3474,21 @@ type GroupHeadingContext = {
 function ListGroupTree({
   groups,
   depth,
-  collapsed,
+  toggled,
   onToggle,
   renderRow,
   heading,
 }: {
   groups: ListGroup[];
   depth: number;
-  collapsed: ReadonlySet<string>;
-  onToggle: (path: string, siblingPaths: string[], all: boolean) => void;
+  toggled: ReadonlyMap<string, boolean>;
+  onToggle: (group: ListGroup, siblings: ListGroup[], all: boolean) => void;
   renderRow: (item: TaskBoardItem) => ReactNode;
   heading: GroupHeadingContext;
 }) {
   const t = useT();
-  const siblingPaths = groups.map((group) => group.path);
   return groups.map((group) => {
-    const open = !collapsed.has(group.path);
+    const open = isGroupOpen(group, toggled);
     const { glyph, label } = listGroupHeading(group, { ...heading, t });
     return (
       <section
@@ -3501,9 +3501,7 @@ function ListGroupTree({
             <button
               type="button"
               aria-expanded={open}
-              onClick={(event) =>
-                onToggle(group.path, siblingPaths, event.altKey)
-              }
+              onClick={(event) => onToggle(group, groups, event.altKey)}
               className={cn(
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground transition-colors",
                 depth === 0
@@ -3538,7 +3536,7 @@ function ListGroupTree({
               <ListGroupTree
                 groups={group.children}
                 depth={depth + 1}
-                collapsed={collapsed}
+                toggled={toggled}
                 onToggle={onToggle}
                 renderRow={renderRow}
                 heading={heading}

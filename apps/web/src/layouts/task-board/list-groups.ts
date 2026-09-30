@@ -8,6 +8,7 @@ import {
   type ProjectIndex,
 } from "@/lib/project-index";
 import {
+  HIDDEN_STATUSES,
   PRIORITIES,
   SUPER_AGENT_ASSIGNEE_ID,
   type TaskBoardItem,
@@ -54,6 +55,8 @@ export type ListGroup = {
   path: string;
   items: TaskBoardItem[];
   children: ListGroup[] | null;
+  /** Archived and other hidden lanes stay out of the way until opened. */
+  collapsedByDefault: boolean;
 };
 
 export type GroupContext = {
@@ -119,6 +122,9 @@ export function groupListItems(
         key,
         path,
         items: groupItems,
+        collapsedByDefault:
+          groupBy === "status" &&
+          (HIDDEN_STATUSES as readonly string[]).includes(key),
         children:
           rest.length > 0
             ? groupListItems(groupItems, rest, context, path)
@@ -173,21 +179,26 @@ function strategy(
   }
 }
 
+/** Whether a group is open: the viewer's own toggle, else its default. */
+export function isGroupOpen(
+  group: ListGroup,
+  toggled: ReadonlyMap<string, boolean>,
+): boolean {
+  return toggled.get(group.path) ?? !group.collapsedByDefault;
+}
+
 /**
- * The collapsed set after a click on `path`'s header. With `all` (Alt+click,
- * as in Linear) every sibling follows the clicked group's new state.
+ * The toggles after a click on `group`'s header. With `all` (Alt+click, as in
+ * Linear) every sibling follows the clicked group's new state.
  */
-export function toggleCollapsed(
-  collapsed: ReadonlySet<string>,
-  path: string,
-  siblingPaths: readonly string[],
+export function toggleGroupOpen(
+  toggled: ReadonlyMap<string, boolean>,
+  group: ListGroup,
+  siblings: readonly ListGroup[],
   all: boolean,
-): Set<string> {
-  const next = new Set(collapsed);
-  const collapse = !collapsed.has(path);
-  for (const target of all ? siblingPaths : [path]) {
-    if (collapse) next.add(target);
-    else next.delete(target);
-  }
+): Map<string, boolean> {
+  const next = new Map(toggled);
+  const open = !isGroupOpen(group, toggled);
+  for (const target of all ? siblings : [group]) next.set(target.path, open);
   return next;
 }
