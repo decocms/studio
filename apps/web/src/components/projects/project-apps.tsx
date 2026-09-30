@@ -181,11 +181,13 @@ function AppTile({
       params={params}
       onClick={onClick}
       title={title}
-      className="group flex w-24 shrink-0 flex-col items-center gap-2 rounded-xl p-2 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
+      className="group flex w-28 shrink-0 flex-col items-start gap-2.5 rounded-xl p-3 text-left transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
     >
       {face}
       <span className="flex w-full flex-col">
-        <span className="truncate text-foreground text-xs font-medium">
+        {/* Two lines before an ellipsis: app names are phrases ("Funnel
+            dashboard"), and one line cut most of them mid-word. */}
+        <span className="line-clamp-2 break-words text-foreground text-xs font-medium">
           {label}
         </span>
         {caption && (
@@ -308,9 +310,13 @@ function useFirstLine(): readonly [
       const tiles = [...node.children] as HTMLElement[];
       const first = tiles[0];
       if (!first) return;
+      const firstLine = tiles.filter(
+        (tile) => tile.offsetTop === first.offsetTop,
+      );
       setLine({
-        overflows: tiles.some((tile) => tile.offsetTop > first.offsetTop),
-        height: first.offsetHeight,
+        overflows: firstLine.length < tiles.length,
+        /* The tallest tile on the line: a two-line name is taller. */
+        height: Math.max(...firstLine.map((tile) => tile.offsetHeight)),
       });
     };
     measure();
@@ -350,9 +356,10 @@ function AppsSection({
         ref={oneLine ? lineRef : undefined}
         className={cn(
           "flex min-w-0 flex-1 flex-wrap gap-4",
-          /* A tile is `w-24` around a 56px face, so the face sits 20px in;
-             the pull lands it on the card title's `px-5` column. */
-          oneLine && "-ml-5",
+          /* A tile's content sits inside its 12px hover padding. On a project
+             that already matches the `pl-3` heading; in the card the pull
+             lands it on the title's `px-5` column. */
+          oneLine && "-ml-3",
           clipped && "overflow-hidden",
         )}
         style={
@@ -364,12 +371,12 @@ function AppsSection({
         {children}
       </div>
       {oneLine && (line.overflows || expanded) && (
-        /* Centred on the icons, not the labels: `mt-2` is the tile's own
+        /* Centred on the icons, not the labels: `mt-3` is the tile's own
            padding and `h-14` its face. Styled like the page's other "See"
            links so the same action reads the same everywhere. */
         <button
           type="button"
-          className="mt-2 flex h-14 shrink-0 items-center self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
+          className="mt-3 flex h-14 shrink-0 items-center self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
           onClick={() => setExpanded((it) => !it)}
         >
           {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
@@ -397,9 +404,9 @@ function AppsSection({
   return (
     /* A quiet label for orientation; the tiles below already read as a group. */
     <section className="hidden flex-col gap-3 has-[a]:flex">
-      {/* `pl-5` puts the label over the first icon: a tile is `w-24` and its
-          56px face is centred, so the face starts 20px in. */}
-      <h2 className="pl-5 text-muted-foreground text-sm font-medium">
+      {/* `pl-3` matches the Board/List/Feed tabs below, whose `sm` pills carry
+          `px-3`. */}
+      <h2 className="pl-3 text-muted-foreground text-sm font-medium">
         {title}
       </h2>
       {row}
