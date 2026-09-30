@@ -97,9 +97,9 @@ describe("renderIssueForPrompt", () => {
     expect(text.length).toBeLessThan(13_000);
   });
 
-  /** The comment budget is spent per-comment; landing on exactly zero after
-   *  the LAST comment must not claim comments were omitted when none were. */
-  it("does not claim omitted comments when the last one exhausts the budget", () => {
+  /** The comment budget is spent per-comment; landing on exactly zero on the
+   *  OLDEST comment must not claim comments were omitted when none were. */
+  it("does not claim omitted comments when the oldest one exhausts the budget", () => {
     const text = renderIssueForPrompt({
       ...base,
       comments: [
@@ -115,24 +115,59 @@ describe("renderIssueForPrompt", () => {
         },
       ],
     });
+    expect(text).toContain("**Ana**");
     expect(text).toContain("**Bo**");
-    expect(text).not.toContain("[… older comments omitted]");
+    expect(text).not.toContain("omitted]");
   });
 
-  it("still reports omitted comments when one is dropped entirely", () => {
+  /** A long thread of earlier handoffs must not push out the comment a run
+   *  acts on — the latest verdict, or the client's rejection. */
+  it("keeps the newest comments and drops the oldest when over budget", () => {
     const text = renderIssueForPrompt({
       ...base,
       comments: [
         {
           author: "Ana",
           created: "2026-09-01T10:00:00Z",
-          body: "x".repeat(12_000),
+          body: "a".repeat(12_000),
         },
-        { author: "Bo", created: "2026-09-01T11:00:00Z", body: "second" },
+        {
+          author: "Bo",
+          created: "2026-09-01T11:00:00Z",
+          body: "b".repeat(6_000),
+        },
+        {
+          author: "Cy",
+          created: "2026-09-01T12:00:00Z",
+          body: "rejected: the modal opens behind the drawer",
+        },
       ],
     });
-    expect(text).toContain("[… older comments omitted]");
-    expect(text).not.toContain("**Bo**");
+    expect(text).toContain("rejected: the modal opens behind the drawer");
+    expect(text).toContain("**Bo**");
+    // Ana gets what budget is left, clipped, and nothing is dropped whole.
+    expect(text).toContain("[… truncated]");
+    expect(text).not.toContain("omitted]");
+    expect(text.indexOf("**Ana**")).toBeLessThan(text.indexOf("**Cy**"));
+  });
+
+  it("says how many older comments were dropped whole", () => {
+    const text = renderIssueForPrompt({
+      ...base,
+      comments: [
+        { author: "Old", created: "2026-09-01T09:00:00Z", body: "stale" },
+        {
+          author: "Ana",
+          created: "2026-09-01T10:00:00Z",
+          body: "a".repeat(12_000),
+        },
+        { author: "Bo", created: "2026-09-01T11:00:00Z", body: "latest" },
+      ],
+    });
+    expect(text).toContain("[… 1 older comment omitted]");
+    expect(text).not.toContain("**Old**");
+    expect(text).toContain("latest");
+    expect(text.indexOf("omitted]")).toBeLessThan(text.indexOf("**Ana**"));
   });
 });
 

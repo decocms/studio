@@ -161,16 +161,27 @@ export function renderIssueForPrompt(
   }
   if (issue.comments.length > 0) {
     lines.push("", "## Comments");
+    // The budget goes to the NEWEST comments: the latest review verdict or a
+    // client's rejection is what a run acts on, and it is the one a long
+    // thread of earlier handoffs would otherwise push out.
+    const kept: typeof issue.comments = [];
     let budget = MAX_COMMENTS_CHARS;
-    for (const [index, c] of issue.comments.entries()) {
-      const body = clip(c.body, Math.max(0, budget));
-      lines.push(`**${c.author}** (${c.created}):`, body, "");
+    for (let i = issue.comments.length - 1; i >= 0 && budget > 0; i--) {
+      const c = issue.comments[i];
+      if (!c) continue;
+      const body = clip(c.body, budget);
+      kept.unshift({ ...c, body });
       budget -= body.length;
-      const isLast = index === issue.comments.length - 1;
-      if (budget <= 0 && !isLast) {
-        lines.push("[… older comments omitted]");
-        break;
-      }
+    }
+    const omitted = issue.comments.length - kept.length;
+    if (omitted > 0) {
+      lines.push(
+        `[… ${omitted} older comment${omitted === 1 ? "" : "s"} omitted]`,
+        "",
+      );
+    }
+    for (const c of kept) {
+      lines.push(`**${c.author}** (${c.created}):`, c.body, "");
     }
   }
   return lines.join("\n").trim();
