@@ -43,6 +43,7 @@ import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
 import { TrainingCard } from "./training-card";
 import { buildProjectIndex } from "@/lib/project-index";
 import { useAutomations } from "@/hooks/use-automations";
+import { useAppOpens } from "@/hooks/use-recent-apps";
 import { useCapability } from "@/hooks/use-capability";
 import { scopableProjects } from "@/hooks/use-project-scope";
 import { authClient } from "@/lib/auth-client";
@@ -97,6 +98,7 @@ function OrgHomeBody({
   /** Non-blocking, read above the empty-state return so hook order matches on
    *  both branches. Says nothing until it lands rather than claiming zero. */
   const automations = useAutomations().data;
+  const { opens: appOpens } = useAppOpens(org.slug);
 
   const projects = scopableProjects(all).filter((p) => p.id !== org.id);
 
@@ -150,7 +152,7 @@ function OrgHomeBody({
         projectsById={new Map(projects.map((p) => [p.id, p]))}
         orgSlug={org.slug}
       />
-      <OrgApps projects={projects} orgSlug={org.slug} />
+      <OrgApps projects={projects} orgSlug={org.slug} opens={appOpens} />
       {/* The work on the left, the standing readouts on the right: what needs
           answering and what changed are read as sentences; what each project is
           moving and what is running are read as numbers. */}

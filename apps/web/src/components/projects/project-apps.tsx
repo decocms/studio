@@ -38,6 +38,7 @@ import {
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { track } from "@/lib/posthog-client";
+import { appOpenKey } from "@/lib/recent-apps";
 
 /** Board and Overview are the screen this sits on. Reports is not — it is a
  *  separate destination and must stay launchable. */
@@ -165,6 +166,7 @@ function AppTile({
   caption,
   face,
   onClick,
+  order,
 }: {
   to: string;
   params: Record<string, string>;
@@ -174,6 +176,9 @@ function AppTile({
   /** The 56px mark; takes `group-hover` from the tile. */
   face: ReactNode;
   onClick: () => void;
+  /** Flex `order`, so tiles from separate projects can interleave by
+   *  recency without leaving their project's component. */
+  order?: number;
 }) {
   return (
     <Link
@@ -181,6 +186,7 @@ function AppTile({
       params={params}
       onClick={onClick}
       title={title}
+      style={order === undefined ? undefined : { order }}
       className="group flex w-28 shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
     >
       {face}
@@ -212,10 +218,13 @@ function ProjectAppTiles({
   project,
   orgSlug,
   showProject,
+  rank,
 }: {
   project: VirtualMCPEntity;
   orgSlug: string;
   showProject?: boolean;
+  /** Position of an `appOpenKey` in the org's history, when ordering by it. */
+  rank?: (key: string) => number;
 }) {
   const t = useT();
   /** Site Editor opens a repo; without one the tile would bounce to
@@ -251,6 +260,7 @@ function ProjectAppTiles({
             title={t(app.captionKey)}
             label={t(app.labelKey)}
             caption={caption}
+            order={rank?.(appOpenKey(project.id, id))}
             face={
               <span className={cn(TILE_FACE, "flex items-center", app.tone)}>
                 <app.Icon size={24} />
@@ -274,6 +284,9 @@ function ProjectAppTiles({
             onClick={() => track("project_app_launched", { app: "pinned" })}
             label={label}
             caption={caption}
+            order={rank?.(
+              appOpenKey(project.id, `app:${pv.connectionId}:${pv.toolName}`),
+            )}
             /** The icon and colour picked in Settings › Views; unpicked, the
              *  same name-derived mark that picker previews. */
             face={
@@ -308,11 +321,10 @@ function useFirstLine(): readonly [
     if (!node) return;
     const measure = () => {
       const tiles = [...node.children] as HTMLElement[];
-      const first = tiles[0];
-      if (!first) return;
-      const firstLine = tiles.filter(
-        (tile) => tile.offsetTop === first.offsetTop,
-      );
+      if (tiles.length === 0) return;
+      /* By position, not DOM order: `order` reshuffles the tiles. */
+      const top = Math.min(...tiles.map((tile) => tile.offsetTop));
+      const firstLine = tiles.filter((tile) => tile.offsetTop === top);
       setLine({
         overflows: firstLine.length < tiles.length,
         /* The tallest tile on the line: a two-line name is taller. */
@@ -350,39 +362,34 @@ function AppsSection({
   const clipped = oneLine && !expanded;
 
   const title = t("projects.apps.heading");
+  /* In the card's header, where the page's other cards keep their "See"
+     links, styled the same so the same action reads the same everywhere. */
+  const seeAll = (line.overflows || expanded) && (
+    <button
+      type="button"
+      className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+      onClick={() => setExpanded((it) => !it)}
+    >
+      {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
+    </button>
+  );
   const row = (
-    <div className="flex gap-4">
-      <div
-        ref={oneLine ? lineRef : undefined}
-        className={cn(
-          "flex min-w-0 flex-1 flex-wrap gap-4",
-          /* A tile's text box sits inside its 12px hover padding, and a name
-             wraps rather than widening past it. On a project that box already
-             starts on the `pl-3` heading; in the card the pull starts it on
-             the title's `px-5` column, so no name hangs left of the title. */
-          oneLine && "-ml-3",
-          clipped && "overflow-hidden",
-        )}
-        style={
-          clipped && line.height !== null
-            ? { maxHeight: line.height }
-            : undefined
-        }
-      >
-        {children}
-      </div>
-      {oneLine && (line.overflows || expanded) && (
-        /* Centred on the icons, not the labels: `mt-3` is the tile's own
-           padding and `h-14` its face. Styled like the page's other "See"
-           links so the same action reads the same everywhere. */
-        <button
-          type="button"
-          className="mt-3 flex h-14 shrink-0 items-center self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
-          onClick={() => setExpanded((it) => !it)}
-        >
-          {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
-        </button>
+    <div
+      ref={oneLine ? lineRef : undefined}
+      className={cn(
+        "flex min-w-0 flex-wrap gap-4",
+        /* A tile's text box sits inside its 12px hover padding, and a name
+           wraps rather than widening past it. On a project that box already
+           starts on the `pl-3` heading; in the card the pull starts it on
+           the title's `px-5` column, so no name hangs left of the title. */
+        oneLine && "-ml-3",
+        clipped && "overflow-hidden",
       )}
+      style={
+        clipped && line.height !== null ? { maxHeight: line.height } : undefined
+      }
+    >
+      {children}
     </div>
   );
 
@@ -392,10 +399,11 @@ function AppsSection({
   if (oneLine) {
     return (
       <section className="hidden flex-col overflow-hidden rounded-2xl bg-card card-shadow has-[a]:flex">
-        <div className="flex h-12 items-center border-b border-border/70 px-5">
+        <div className="flex h-12 items-center justify-between gap-3 border-b border-border/70 px-5">
           <h2 className="text-[0.9rem] font-medium tracking-tight text-foreground">
             {title}
           </h2>
+          {seeAll}
         </div>
         <div className="px-5 py-3">{row}</div>
       </section>
@@ -429,14 +437,22 @@ export function ProjectApps({
   );
 }
 
-/** Every project's apps, on the org home. Each tile names its project. */
+/** Every project's apps, on the org home, most recently opened first. Each
+ *  tile names its project. */
 export function OrgApps({
   projects,
   orgSlug,
+  opens,
 }: {
   projects: VirtualMCPEntity[];
   orgSlug: string;
+  /** The org's app history, newest first — `useAppOpens`. Passed in because
+   *  that hook reads this module's catalogue. */
+  opens: readonly string[];
 }) {
+  const position = new Map(opens.map((key, i) => [key, i]));
+  /** Never-opened apps keep their project order, after every opened one. */
+  const rank = (key: string) => position.get(key) ?? opens.length;
   return (
     <AppsSection oneLine>
       {projects.map((project) => (
@@ -445,6 +461,7 @@ export function OrgApps({
           project={project}
           orgSlug={orgSlug}
           showProject
+          rank={rank}
         />
       ))}
     </AppsSection>

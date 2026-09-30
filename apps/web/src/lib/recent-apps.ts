@@ -30,3 +30,20 @@ export function pushRecentApp(
 ): RecentApp[] {
   return [entry, ...list.filter((it) => !isSame(it, entry))].slice(0, limit);
 }
+
+/** Enough history to order an org's whole launcher, not just the rail. */
+const APP_OPENS_LIMIT = 100;
+
+/** One app in one project. `app` is a `LaunchableViewId`, or
+ *  `app:<connectionId>:<toolName>` for a pinned connection app. */
+export function appOpenKey(projectId: string, app: string): string {
+  return `${projectId}|${app}`;
+}
+
+export function pushAppOpen(
+  list: readonly string[],
+  key: string,
+  limit: number = APP_OPENS_LIMIT,
+): string[] {
+  return [key, ...list.filter((it) => it !== key)].slice(0, limit);
+}

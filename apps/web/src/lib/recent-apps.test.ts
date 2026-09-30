@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { pushRecentApp, type RecentApp } from "./recent-apps";
+import {
+  appOpenKey,
+  pushAppOpen,
+  pushRecentApp,
+  type RecentApp,
+} from "./recent-apps";
 
 const entry = (app: string, projectId: string): RecentApp => ({
   app,
@@ -46,5 +51,21 @@ describe("pushRecentApp", () => {
       [],
     );
     expect(list.map((it) => it.app)).toEqual(["e", "d", "c", "b"]);
+  });
+});
+
+describe("pushAppOpen", () => {
+  test("newest first, one entry per app and project", () => {
+    const a = appOpenKey("p1", "hosting");
+    const b = appOpenKey("p2", "app:conn_1:open");
+    expect(pushAppOpen(pushAppOpen([a], b), a)).toEqual([a, b]);
+  });
+
+  test("the same app in two projects is two entries", () => {
+    expect(appOpenKey("p1", "hosting")).not.toBe(appOpenKey("p2", "hosting"));
+  });
+
+  test("drops the oldest past the limit", () => {
+    expect(pushAppOpen(["a", "b", "c"], "d", 3)).toEqual(["d", "a", "b"]);
   });
 });
