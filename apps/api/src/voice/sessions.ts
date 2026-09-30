@@ -11,11 +11,19 @@ import type {
 } from "@/ai-providers/voice/types";
 import { signVoiceGrant, verifyVoiceGrant, type VoiceClaims } from "./grant";
 
+import {
+  resolveVoiceConfig,
+  VoiceConversationConfigSchema,
+  type VoiceConversationConfig,
+  type VoiceDefaults,
+} from "./config";
+
 type Scope = Omit<VoiceClaims, "sessionId" | "expiresAt">;
 const ReservationSchema = z.object({
   sessionId: z.string().uuid(),
   expiresAt: z.number(),
   connected: z.boolean().optional(),
+  conversation: VoiceConversationConfigSchema.optional(),
   characters: z.number().int().nonnegative(),
   requests: z.number().int().nonnegative(),
 });
@@ -33,7 +41,11 @@ export class VoiceSessions {
   constructor(
     private readonly deps: {
       adapter: SpeechAdapter | null;
-      conversationAdapter: ConversationAdapter | null;
+      conversationAdapters: Record<
+        VoiceConversationConfig["provider"],
+        ConversationAdapter | null
+      >;
+      defaults: VoiceDefaults;
       secret: string;
       getConnection: () => NatsConnection | null;
     },
@@ -70,9 +82,16 @@ export class VoiceSessions {
     scope: Scope,
     conversation = false,
     language: "en" | "pt" = "en",
+    override?: {
+      voice_provider: string | null;
+      voice_model: string | null;
+    } | null,
   ) {
-    const adapter = conversation
-      ? this.deps.conversationAdapter
+    const config = conversation
+      ? resolveVoiceConfig(this.deps.defaults, override)
+      : undefined;
+    const adapter = config
+      ? this.deps.conversationAdapters[config.provider]
       : this.adapter();
     if (!adapter)
       throw new HTTPException(503, {
@@ -93,6 +112,7 @@ export class VoiceSessions {
       JSON.stringify({
         sessionId: claims.sessionId,
         expiresAt: claims.expiresAt,
+        conversation: config,
         characters: 0,
         requests: 0,
       }),
@@ -109,9 +129,10 @@ export class VoiceSessions {
       });
     }
     try {
-      if (conversation && "createSession" in adapter) {
+      if (config && "createSession" in adapter) {
         const connection = await adapter.createSession({
           language,
+          model: config.model,
           safetyIdentifier: userKey(scope),
         });
         return { token, ...connection, expiresAt: claims.expiresAt };
@@ -143,11 +164,6 @@ export class VoiceSessions {
     input: { token: string; sdp: string; language: "en" | "pt" },
   ) {
     const claims = this.authorize(scope, input.token);
-    const adapter = this.deps.conversationAdapter;
-    if (!adapter?.negotiate)
-      throw new HTTPException(409, {
-        message: "Voice provider does not use SDP negotiation",
-      });
     const kv = await this.kv();
     const key = userKey(claims);
     const entry = await kv.get(key);
@@ -160,6 +176,13 @@ export class VoiceSessions {
       value.expiresAt <= Date.now()
     )
       throw new HTTPException(403, { message: "Voice session expired" });
+    const adapter = value.conversation
+      ? this.deps.conversationAdapters[value.conversation.provider]
+      : null;
+    if (!adapter?.negotiate || !value.conversation)
+      throw new HTTPException(409, {
+        message: "Voice session does not support SDP negotiation",
+      });
     if (value.connected)
       throw new HTTPException(409, {
         message: "Voice session already connected",
@@ -177,6 +200,7 @@ export class VoiceSessions {
     return adapter.negotiate({
       sdp: input.sdp,
       language: input.language,
+      model: value.conversation.model,
       safetyIdentifier: key,
     });
   }

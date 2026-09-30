@@ -129,6 +129,49 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   }
 });
 
+test("org voice selection overrides and restores the deployment default", async ({
+  authedPage,
+}) => {
+  test.skip(
+    process.env.E2E_VOICE_ORG_CONFIG !== "1",
+    "Requires ElevenLabs as default, no ElevenLabs key, and a synthetic OpenAI key.",
+  );
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  const orgId = await setVoiceFlag(api, orgSlug, true);
+  const { threadId } = await createThread(api, orgSlug);
+  const path = `/api/${orgSlug}/threads/${threadId}/voice/sessions`;
+  expect(
+    (await api.post(path, { data: { mode: "conversation" } })).status(),
+  ).toBe(503);
+  const db = await connectDevDb();
+  try {
+    // No product API exposes provider or model overrides.
+    await db.query(
+      `update organization_settings set voice_provider = 'openai',
+      voice_model = 'live-example' where "organizationId" = $1`,
+      [orgId],
+    );
+    const started = await api.post(path, { data: { mode: "conversation" } });
+    expect(started.status()).toBe(200);
+    const session = await started.json();
+    expect(session).toMatchObject({ provider: "openai", transport: "webrtc" });
+    await db.query(
+      `update organization_settings set voice_provider = null,
+      voice_model = null where "organizationId" = $1`,
+      [orgId],
+    );
+    expect(
+      (await api.delete(path, { data: { token: session.token } })).status(),
+    ).toBe(204);
+    expect(
+      (await api.post(path, { data: { mode: "conversation" } })).status(),
+    ).toBe(503);
+  } finally {
+    await db.end();
+  }
+});
+
 test("OpenAI reservations remain scoped and revocation prevents SDP negotiation", async ({
   authedPage,
 }) => {

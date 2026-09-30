@@ -2315,24 +2315,24 @@ export async function createApp(options: CreateAppOptions = {}) {
         voiceId: voiceSettings.elevenlabsVoiceId,
       })
     : null;
-  const conversationAdapter =
-    voiceSettings.voiceConversationProvider === "openai"
-      ? voiceSettings.openaiLiveApiKey
-        ? new OpenAIConversationAdapter({
-            apiKey: voiceSettings.openaiLiveApiKey,
-            model: voiceSettings.openaiLiveModel,
-            voice: voiceSettings.openaiLiveVoice,
-          })
-        : null
-      : speechAdapter
-        ? new ElevenLabsConversationAdapter(
-            speechAdapter,
-            () => natsProvider?.getConnection() ?? null,
-          )
-        : null;
+  const conversationAdapters = {
+    openai: voiceSettings.openaiLiveApiKey
+      ? new OpenAIConversationAdapter({
+          apiKey: voiceSettings.openaiLiveApiKey,
+          voice: voiceSettings.openaiLiveVoice,
+        })
+      : null,
+    elevenlabs: speechAdapter
+      ? new ElevenLabsConversationAdapter(
+          speechAdapter,
+          () => natsProvider?.getConnection() ?? null,
+        )
+      : null,
+  };
   const voiceSessions = new VoiceSessions({
     adapter: speechAdapter,
-    conversationAdapter,
+    conversationAdapters,
+    defaults: voiceSettings,
     secret: voiceSettings.studioJwtSecret ?? voiceSettings.betterAuthSecret,
     getConnection: () => natsProvider?.getConnection() ?? null,
   });

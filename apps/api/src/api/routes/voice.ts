@@ -30,10 +30,13 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
       });
     await assertAiBudget(ctx, organization.id, "Chat");
     c.header("Cache-Control", "no-store");
-    return { organizationId: organization.id, userId, threadId: taskId };
+    return {
+      scope: { organizationId: organization.id, userId, threadId: taskId },
+      settings,
+    };
   }
   app.post("/threads/:threadId/voice/sessions", async (c) => {
-    const scope = await authorize(c);
+    const { scope, settings } = await authorize(c);
     const body = z
       .object({
         mode: z.literal("conversation").optional(),
@@ -54,11 +57,12 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
         scope,
         body.data.mode === "conversation",
         body.data.language,
+        settings,
       ),
     );
   });
   app.post("/threads/:threadId/voice/sessions/connect", async (c) => {
-    const scope = await authorize(c);
+    const { scope } = await authorize(c);
     const body = VoiceConnectSchema.safeParse(
       await c.req.json().catch(() => null),
     );
@@ -69,7 +73,7 @@ export function createVoiceRoutes(sessions: VoiceSessions) {
     return c.json(await sessions.connect(scope, body.data));
   });
   app.post("/threads/:threadId/voice/sessions/speech", async (c) => {
-    const scope = await authorize(c);
+    const { scope } = await authorize(c);
     const body = VoiceSpeechSchema.safeParse(
       await c.req.json().catch(() => null),
     );

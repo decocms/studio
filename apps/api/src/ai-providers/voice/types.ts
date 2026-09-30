@@ -11,10 +11,12 @@ export interface ConversationAdapter {
   negotiate?(input: {
     sdp: string;
     language: "en" | "pt";
+    model: string;
     safetyIdentifier: string;
   }): Promise<{ sdp: string }>;
   createSession(input: {
     language: "en" | "pt";
+    model: string;
     safetyIdentifier: string;
   }): Promise<VoiceConversationConnection>;
 }

@@ -17,9 +17,7 @@ export function openAIConversationConfig(config: {
 }
 
 export class OpenAIConversationAdapter implements ConversationAdapter {
-  constructor(
-    private readonly config: { apiKey: string; model: string; voice: string },
-  ) {}
+  constructor(private readonly config: { apiKey: string; voice: string }) {}
 
   async createSession() {
     return { provider: "openai" as const, transport: "webrtc" as const };
@@ -28,6 +26,7 @@ export class OpenAIConversationAdapter implements ConversationAdapter {
   async negotiate(input: {
     sdp: string;
     language: "en" | "pt";
+    model: string;
     safetyIdentifier: string;
   }) {
     const response = await fetch("https://api.openai.com/v1/live/sessions", {
@@ -41,6 +40,7 @@ export class OpenAIConversationAdapter implements ConversationAdapter {
         session: openAIConversationConfig({
           ...this.config,
           language: input.language,
+          model: input.model,
         }),
         transport: { type: "webrtc", sdp: input.sdp },
       }),

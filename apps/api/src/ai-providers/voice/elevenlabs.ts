@@ -22,6 +22,15 @@ export class ElevenLabsSpeechAdapter implements SpeechAdapter {
       .digest("hex");
   }
 
+  forConversationModel(model: string): ElevenLabsSpeechAdapter {
+    return model === this.config.conversationModel
+      ? this
+      : new ElevenLabsSpeechAdapter({
+          ...this.config,
+          conversationModel: model,
+        });
+  }
+
   private async request(path: string, body: unknown, signal: AbortSignal) {
     const response = await fetch(`https://api.elevenlabs.io/v1${path}`, {
       method: body === undefined ? "GET" : "POST",

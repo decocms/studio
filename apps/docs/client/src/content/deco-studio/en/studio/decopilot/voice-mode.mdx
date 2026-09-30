@@ -82,7 +82,7 @@ The web app needs HTTPS for microphone access, except on localhost. No inbound
 provider callback or manual agent provisioning is required. API replicas must
 share the same Studio authentication secret and NATS service.
 
-To use OpenAI instead, configure:
+To make OpenAI the deployment default, configure:
 
 ```bash
 VOICE_CONVERSATION_PROVIDER=openai
@@ -112,11 +112,43 @@ Optional variables:
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice |
 | `ELEVENLABS_CONVERSATION_MODEL` | `gemini-2.5-flash` | Conversational LLM model ID supported by ElevenLabs |
 
-The conversational model is a deployment setting, with no model selector in the
-product. Set the same value on every API replica and restart them to apply it to
-new voice sessions. Changing the ElevenLabs model selects a separate provisioned agent;
-existing voice sessions continue with their original model. It does not change
-the selected coding agent or its model. Unset or blank values use the default.
+Both providers' credentials can be configured together. Environment variables set
+the deployment defaults; administrators can override the provider and conversational
+model per organization in the database. No provider or model selector is exposed
+in the product or organization settings tools.
+
+After migration `227-org-voice-config`, choose OpenAI for an organization:
+
+```sql
+INSERT INTO organization_settings
+  ("organizationId", voice_provider, voice_model, "createdAt", "updatedAt")
+SELECT id, 'openai', 'gpt-live-1', now(), now()
+FROM organization WHERE slug = '<org-slug>'
+ON CONFLICT ("organizationId") DO UPDATE
+SET voice_provider = EXCLUDED.voice_provider,
+    voice_model = EXCLUDED.voice_model,
+    "updatedAt" = now();
+```
+
+Set `voice_provider = 'elevenlabs'` and `voice_model = NULL` to use ElevenLabs
+with `ELEVENLABS_CONVERSATION_MODEL`. An explicit ElevenLabs `voice_model` selects
+its conversational LLM, not its speech synthesis model. `ELEVENLABS_VOICE_MODEL`
+and `ELEVENLABS_VOICE_ID` continue to control speech synthesis and voice.
+A model override requires an explicit provider so changing the deployment default
+cannot apply one provider's model ID to another provider.
+
+Set both columns to `NULL` to restore deployment defaults. Keep `voice_mode`
+enabled separately. These columns contain no credentials; the selected provider's
+key must exist on every API replica, and a missing key returns an error without
+switching providers.
+
+The existing organization-settings read resolves overrides when a call starts.
+There is no additional database query or per-turn lookup. The resolved provider
+and model are stored in the session reservation and stay fixed for that call,
+even if the DB changes before WebRTC connects. DB edits apply to the next call
+without a restart. Environment changes still require restarting every replica.
+The first call with a new ElevenLabs configuration may provision a private agent;
+later calls reuse it. The working agent and its model are unaffected.
 
 ## Session behavior and limits
 

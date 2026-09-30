@@ -174,6 +174,8 @@ export interface DefaultHomeAgentsConfig {
 
 export interface OrganizationSettingsTable {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: JsonArray<SidebarItem[]> | null;
   // Connection ids a coding-agent run must not mount, even with
   // `coding_agent_org_mcps` on. See migration 212.
@@ -191,6 +193,8 @@ export interface OrganizationSettingsTable {
 
 export interface OrganizationSettings {
   organizationId: string;
+  voice_provider: string | null;
+  voice_model: string | null;
   sidebar_items: SidebarItem[] | null;
   coding_agent_mcp_excluded: string[] | null;
   simple_mode: SimpleModeConfig | null;

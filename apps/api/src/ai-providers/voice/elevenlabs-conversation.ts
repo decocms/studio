@@ -40,8 +40,9 @@ export class ElevenLabsConversationAdapter implements ConversationAdapter {
     return this.kvPromise;
   }
 
-  private async conversationAgent(): Promise<string> {
-    const adapter = this.adapter;
+  private async conversationAgent(
+    adapter: ElevenLabsSpeechAdapter,
+  ): Promise<string> {
     const kv = await this.kv();
     const key = `agent.${adapter.conversationKey}`;
     const deadline = Date.now() + 45_000;
@@ -87,17 +88,18 @@ export class ElevenLabsConversationAdapter implements ConversationAdapter {
     });
   }
 
-  async createSession() {
-    const agentId = await this.conversationAgent();
+  async createSession(input: { model: string }) {
+    const adapter = this.adapter.forConversationModel(input.model);
+    const agentId = await this.conversationAgent(adapter);
     try {
       return {
         provider: "elevenlabs" as const,
-        conversationToken: await this.adapter.createConversationToken(agentId),
+        conversationToken: await adapter.createConversationToken(agentId),
       };
     } catch (error) {
       // A removed or inaccessible provider agent must not poison later sessions.
       const kv = await this.kv();
-      const key = `agent.${this.adapter.conversationKey}`;
+      const key = `agent.${adapter.conversationKey}`;
       const entry = await kv.get(key);
       const value =
         entry?.operation === "PUT"
