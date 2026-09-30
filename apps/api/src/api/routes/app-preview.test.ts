@@ -23,6 +23,7 @@ import {
 } from "@/storage/app-preview-sessions";
 import {
   type AppPreviewBackend,
+  appPreviewSubject,
   createAppPreviewRoutes,
   parseOverlayPatch,
   previewLinkFor,
@@ -188,6 +189,7 @@ function buildApp() {
       backend,
       now: () => clock.now,
       notify: (id) => notified.push(id),
+      events: { pingMs: 30, maxMs: 60_000 },
     }),
   );
   return app;
@@ -577,5 +579,115 @@ describe("device endpoints", () => {
       (await app.request("/app-preview/device/state", { headers: auth }))
         .status,
     ).toBe(401);
+  });
+});
+
+/** Reads one SSE frame (up to the blank line) at a time. */
+function frames(res: Response) {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  return {
+    async next(): Promise<string | null> {
+      while (!buf.includes("\n\n")) {
+        const { value, done } = await reader.read();
+        if (done) return null;
+        buf += decoder.decode(value, { stream: true });
+      }
+      const at = buf.indexOf("\n\n");
+      const frame = buf.slice(0, at);
+      buf = buf.slice(at + 2);
+      return frame;
+    },
+    /** Next non-comment frame. */
+    async event(): Promise<string | null> {
+      for (;;) {
+        const f = await this.next();
+        if (f === null || !f.startsWith(":")) return f;
+      }
+    },
+    cancel: () => reader.cancel(),
+  };
+}
+
+const stateFrame = (rev: number, baseSha: string) =>
+  `event: state\ndata: ${JSON.stringify({ rev, baseSha })}`;
+
+describe("device events (SSE)", () => {
+  test("subject guard", () => {
+    const id = "aps_00000000-0000-0000-0000-000000000001";
+    expect(appPreviewSubject(id)).toBe(`studio.app-preview.${id}`);
+    for (const bad of ["", "a.b", "a*", "a>", "a b"]) {
+      expect(appPreviewSubject(bad)).toBeNull();
+    }
+  });
+
+  test("initial state, a state per nudge, pings, then end on revoke", async () => {
+    const app = buildApp();
+    const { auth, session } = await pair(app);
+    const res = await app.request("/app-preview/device/events", {
+      headers: auth,
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
+    const sse = frames(res);
+    expect(await sse.next()).toBe(stateFrame(0, "sha1"));
+
+    user = "user_1";
+    await app.request(
+      `/app-preview/vir_1/sessions/${session.id}/overlay`,
+      json("PATCH", { set: { a: {} } }),
+    );
+    expect(await sse.event()).toBe(stateFrame(1, "sha1"));
+    expect(await sse.next()).toBe(": ping");
+
+    await app.request(`/app-preview/vir_1/sessions/${session.id}`, {
+      method: "DELETE",
+    });
+    expect(await sse.event()).toBe(
+      `event: end\ndata: ${JSON.stringify({ reason: "revoked" })}`,
+    );
+    expect(await sse.next()).toBeNull();
+  });
+
+  test("the ping ends an expired session", async () => {
+    const app = buildApp();
+    const { auth } = await pair(app);
+    const sse = frames(
+      await app.request("/app-preview/device/events", { headers: auth }),
+    );
+    expect(await sse.next()).toBe(stateFrame(0, "sha1"));
+    clock.now += SESSION_TTL_MS;
+    expect(await sse.event()).toBe(
+      `event: end\ndata: ${JSON.stringify({ reason: "expired" })}`,
+    );
+  });
+
+  test("401 without a token; 429 past 3 streams per device", async () => {
+    const app = buildApp();
+    expect((await app.request("/app-preview/device/events")).status).toBe(401);
+    const { auth } = await pair(app);
+    const open = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await app.request("/app-preview/device/events", {
+        headers: auth,
+      });
+      expect(res.status).toBe(200);
+      open.push(frames(res));
+    }
+    const over = await app.request("/app-preview/device/events", {
+      headers: auth,
+    });
+    expect(over.status).toBe(429);
+
+    await open[0]!.cancel();
+    await new Promise((r) => setTimeout(r, 10));
+    const again = await app.request("/app-preview/device/events", {
+      headers: auth,
+    });
+    expect(again.status).toBe(200);
+    for (const s of [...open.slice(1), frames(again)]) await s.cancel();
   });
 });

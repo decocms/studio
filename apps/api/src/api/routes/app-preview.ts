@@ -12,6 +12,7 @@
  *     POST   /api/:org/app-preview/claim                      { code }
  *     GET    /api/:org/app-preview/device/state
  *     GET    /api/:org/app-preview/device/base
+ *     GET    /api/:org/app-preview/device/events             (SSE)
  *     DELETE /api/:org/app-preview/device
  *
  * Gates (org flag `app_content_delivery`, `cms` plan, project in the org with a
@@ -20,8 +21,10 @@
  * tokens, IPs or emails.
  */
 
+import type { NatsConnection } from "@nats-io/nats-core";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { streamSSE } from "hono/streaming";
 import type { StudioContext } from "@/core/studio-context";
 import { readAppManifest } from "@/app-content/manifest";
 import { resolveAppProject, VIRTUAL_MCP_ID_RE } from "@/app-content/project";
@@ -56,6 +59,8 @@ const SESSION_ID_RE = /^aps_[0-9a-f-]{36}$/;
 const PAIRING_CODE_RE = /^[0-9a-f]{32}$/;
 const DEVICE_AUTH_RE = /^DecoPreview (dpv_[A-Za-z0-9_-]{43})$/;
 const NO_STORE = { "Cache-Control": "no-store" } as const;
+const STREAMS_PER_DEVICE = 3;
+const MAX_STREAMS = 5_000;
 
 /** The repository side of a project, behind the app-content gates. */
 export interface AppPreviewRepo {
@@ -91,6 +96,16 @@ export interface AppPreviewDeps {
   backend?: AppPreviewBackend;
   notify?: OnSessionChanged;
   now?: () => number;
+  getNatsConnection?: () => NatsConnection | null;
+  /** `/device/events` timings (tests shrink them). */
+  events?: { pingMs?: number; maxMs?: number };
+}
+
+/** NATS subject of a session's change nudge, or null when the id carries a
+ *  character that is not subject-safe (ids are server-made; defensive). */
+export function appPreviewSubject(sessionId: string): string | null {
+  if (!sessionId || /[.*>\s]/.test(sessionId)) return null;
+  return `studio.app-preview.${sessionId}`;
 }
 
 const defaultBackend: AppPreviewBackend = {
@@ -183,8 +198,39 @@ function pairingResponse(
 export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
   const backend = deps.backend ?? defaultBackend;
   const now = deps.now ?? Date.now;
+  const getNc = deps.getNatsConnection ?? (() => null);
+  const pingMs = deps.events?.pingMs ?? 25_000;
+  const maxStreamMs = deps.events?.maxMs ?? 10 * 60 * 1000;
+  // Streams that subscribed while NATS was absent (tests, single-pod dev).
+  // Bounded by the open streams, which are capped below.
+  const local = new Map<string, Set<() => void>>();
+  const subscribe = (sessionId: string, wake: () => void): (() => void) => {
+    const nc = getNc();
+    const subject = appPreviewSubject(sessionId);
+    if (nc && subject) {
+      const sub = nc.subscribe(subject, { callback: () => wake() });
+      return () => {
+        try {
+          sub.unsubscribe();
+        } catch {
+          // already closed
+        }
+      };
+    }
+    let set = local.get(sessionId);
+    if (!set) local.set(sessionId, (set = new Set()));
+    set.add(wake);
+    return () => {
+      set.delete(wake);
+      if (set.size === 0) local.delete(sessionId);
+    };
+  };
   const notify: OnSessionChanged = (sessionId) => {
     try {
+      const subject = appPreviewSubject(sessionId);
+      const nc = getNc();
+      if (nc && subject) nc.publish(subject);
+      for (const wake of local.get(sessionId) ?? []) wake();
       deps.notify?.(sessionId);
     } catch (err) {
       console.error("[app-preview] notify failed", {
@@ -350,6 +396,128 @@ export function createAppPreviewRoutes(deps: AppPreviewDeps = {}) {
       if (repoErrorStatus(err) === 404) return unauthorized(c);
       return upstream(c, "base", err);
     }
+  });
+
+  // Open streams per device on this pod (entries die at zero).
+  const streams = new Map<string, number>();
+  let openStreams = 0;
+
+  app.get("/device/events", async (c) => {
+    const auth = await authDevice(c);
+    if (!auth) return unauthorized(c);
+    const ctx = c.var.studioContext;
+    const { session, deviceId } = auth;
+    if (
+      (streams.get(deviceId) ?? 0) >= STREAMS_PER_DEVICE ||
+      openStreams >= MAX_STREAMS
+    ) {
+      return c.json({ error: "Too many requests" }, 429, {
+        ...NO_STORE,
+        "Retry-After": "30",
+      });
+    }
+    let sha: string | null;
+    try {
+      sha = await baseSha(ctx, session);
+    } catch (err) {
+      if (repoErrorStatus(err) === 404) return unauthorized(c);
+      return upstream(c, "events", err);
+    }
+    if (!sha) return unauthorized(c);
+
+    streams.set(deviceId, (streams.get(deviceId) ?? 0) + 1);
+    openStreams++;
+    const res = streamSSE(c, async (stream) => {
+      let last = { rev: session.rev, baseSha: sha };
+      let ended = false;
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => {
+        finish = () => {
+          ended = true;
+          resolve();
+        };
+      });
+      const state = () =>
+        stream.writeSSE({ event: "state", data: JSON.stringify(last) });
+
+      /** Re-authenticates and pushes a changed state; the end reason when
+       *  the device may no longer watch. */
+      const check = async (): Promise<"revoked" | "expired" | null> => {
+        const again = await authDevice(c);
+        if (!again) {
+          return now() >= Date.parse(session.expiresAt) ? "expired" : "revoked";
+        }
+        let next: string | null;
+        try {
+          next = await baseSha(ctx, again.session);
+        } catch (err) {
+          if (repoErrorStatus(err) === 404) return "revoked";
+          return null; // transient; the next nudge or ping retries
+        }
+        if (!next) return "revoked";
+        if (again.session.rev !== last.rev || next !== last.baseSha) {
+          last = { rev: again.session.rev, baseSha: next };
+          await state();
+        }
+        return null;
+      };
+
+      // One check at a time; nudges landing mid-check fold into one rerun.
+      let running = false;
+      let dirty = false;
+      const run = async () => {
+        if (running) {
+          dirty = true;
+          return;
+        }
+        running = true;
+        try {
+          do {
+            dirty = false;
+            const reason = await check();
+            if (reason) {
+              await stream.writeSSE({
+                event: "end",
+                data: JSON.stringify({ reason }),
+              });
+              finish();
+            }
+          } while (dirty && !ended);
+        } catch {
+          finish(); // write or storage failure: the app reconnects
+        } finally {
+          running = false;
+        }
+      };
+
+      const unsubscribe = subscribe(session.id, () => void run());
+      const ping = setInterval(() => {
+        void run().then(() =>
+          ended ? undefined : stream.write(": ping\n\n").catch(finish),
+        );
+      }, pingMs);
+      const cap = setTimeout(finish, maxStreamMs);
+      stream.onAbort(finish);
+      try {
+        await state();
+        // A change between the pre-stream read and the subscription.
+        await run();
+        await done;
+      } catch {
+        // client gone before the first write
+      } finally {
+        clearInterval(ping);
+        clearTimeout(cap);
+        unsubscribe();
+        const left = (streams.get(deviceId) ?? 1) - 1;
+        if (left > 0) streams.set(deviceId, left);
+        else streams.delete(deviceId);
+        openStreams--;
+      }
+    });
+    res.headers.set("Cache-Control", "no-store");
+    res.headers.set("X-Accel-Buffering", "no");
+    return res;
   });
 
   app.delete("/device", async (c) => {
