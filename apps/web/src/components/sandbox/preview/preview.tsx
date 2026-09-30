@@ -1788,13 +1788,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
           >
             <LinkExternal01 size={16} />
           </ToolbarIconButton>
-          <AppPreviewButton
-            org={org.slug}
-            virtualMcpId={virtualMcpId}
-            branch={branch}
-            decofile={decofile}
-            eitriPlayUrl={previewDeviceHint?.eitriPlay}
-          />
+          <AppPreviewButton hint={previewDeviceHint} />
         </div>
       </div>
     ) : null;

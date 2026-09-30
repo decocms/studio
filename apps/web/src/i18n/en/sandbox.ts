@@ -711,32 +711,12 @@ export const sandbox = {
     "Selected template no longer exists.",
   "sandbox.preview.valueForParam": "Value for {label}",
   "sandbox.preview.appPreview.button": "View on phone",
-  "sandbox.preview.appPreview.description":
-    "Point the phone camera at the QR. The store app opens and asks to enter the preview. It shows this branch with this tab's edits, live.",
-  "sandbox.preview.appPreview.oldAppHint":
-    "The app opened without asking to enter the preview? That app version has no preview mode yet: update the store app.",
-  "sandbox.preview.appPreview.noLink":
-    "This app has no preview link yet (previewLink in .deco/app.json), so there is no QR to scan.",
-  "sandbox.preview.appPreview.singleUse":
-    "Each QR works for one scan and 10 minutes; a new one shows up here by itself.",
   "sandbox.preview.appPreview.eitriPlayDescription":
     "Scan it in Eitri Play. This tab's edits show up on the device in a few seconds.",
   "sandbox.preview.appPreview.eitriPlayTrouble":
     "Nothing changed on the phone? The eitri app start next to the preview server must be running, and edits only flow while the blocks editor is open.",
-  "sandbox.preview.appPreview.newQr": "New QR",
-  "sandbox.preview.appPreview.end": "End",
-  "sandbox.preview.appPreview.devices": "{count} device(s) connected",
-  "sandbox.preview.appPreview.expiresIn": "Expires in {time}",
-  "sandbox.preview.appPreview.ended":
-    "The phone preview ended (ended here or expired). Tap New QR to start another.",
-  "sandbox.preview.appPreview.unavailable":
-    "Phone preview isn't turned on for this project.",
-  "sandbox.preview.appPreview.createFailed":
-    "Could not start the phone preview. Check your connection and tap New QR.",
-  "sandbox.preview.appPreview.tooLarge":
-    "These edits are too large to send to the phone. Split the change or save and publish it.",
-  "sandbox.preview.appPreview.syncFailed":
-    "Could not send the latest edits to the phone. Check your connection; the next edit tries again.",
+  "sandbox.preview.appPreview.noEitriPlay":
+    "To see it on your phone, run this in the app repo, next to the preview server, then reload this page:",
   "sandbox.preview.blocksEditor": "Blocks editor",
   "sandbox.preview.visualEditor": "Visual editor",
   "sandbox.productBlocks.addProductIdButton": "Add product ID",
