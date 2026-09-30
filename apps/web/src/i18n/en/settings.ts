@@ -55,7 +55,7 @@ export const settings = {
   "settings.jira.createTokenLink": "Create an API token",
   "settings.jira.webhookTitle": "Instant updates (webhook)",
   "settings.jira.webhookDescription":
-    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts within seconds.",
+    "Optional. Without it, an issue entering an automated status is picked up on the next 10-minute check; with it, the run starts once the card has stayed put for a minute.",
   "settings.jira.webhookCopy": "Copy",
   "settings.jira.webhookCopied": "Webhook URL copied",
   "settings.jira.webhookStep1":
@@ -67,10 +67,10 @@ export const settings = {
   "settings.jira.webhookStep4":
     "Optionally scope it with a JQL filter, e.g. project = <your project key>.",
   "settings.jira.webhookStep5":
-    "Save. An issue entering an automated status now starts its run within seconds.",
+    "Save. An issue entering an automated status now starts its run once it has stayed there for a minute.",
   "settings.jira.automationsLabel": "Run the agent when an issue enters…",
   "settings.jira.automationsDescription":
-    "When an issue enters one of these statuses, Studio starts an agent run on it. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
+    "When an issue enters one of these statuses and stays there for a minute, Studio starts an agent run on it. A card dragged through a status, or into the wrong one and straight back, starts nothing. The agent reads the issue and updates it in Jira; nothing is copied to the board.",
   "settings.jira.addAutomation": "Add automation",
   "settings.jira.automationOn": "Automation on",
   "settings.jira.promptPlaceholder": "Review the issue and leave a comment…",
@@ -79,6 +79,17 @@ export const settings = {
   "settings.jira.promptSave": "Save",
   "settings.jira.promptDiscard": "Discard",
   "settings.jira.removeAriaLabel": "Stop running the agent on {status}",
+  "settings.jira.fromAny": "From any column",
+  "settings.jira.fromEarlier": "From an earlier column",
+  "settings.jira.fromLater": "From a later column (sent back)",
+  "settings.jira.fromStatuses": "From {statuses}",
+  "settings.jira.addOriginRule": "Add a rule for another origin",
+  "settings.jira.originLabel": "When the card comes from",
+  "settings.jira.originStatusesPlaceholder": "Pick statuses",
+  "settings.jira.originHelp":
+    "A move starts one rule: the one naming where the card came from, else the one for its direction on the board, else the one for any column. Where it came from is the status it last stayed in, not one it was dragged through.",
+  "settings.jira.createRule": "Create rule",
+  "settings.jira.cancelRule": "Cancel",
   "settings.jira.noColumnsYet": "No columns on this board yet",
   "settings.jira.columnsFailed": "Could not load this board's columns",
   "settings.jira.testRunLabel": "Run it by hand",

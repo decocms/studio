@@ -2184,6 +2184,15 @@ export interface OrgJiraColumnAutomationTable {
   /** Continue the pull request the issue already carries instead of opening
    *  a new one (migration 220). */
   continue_pr: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Which origins the rule answers, and its identity within the status
+   *  (migration 229, `jira/rule-from.ts`). */
+  from_kind: ColumnType<
+    "any" | "earlier" | "later" | "statuses",
+    "any" | "earlier" | "later" | "statuses" | undefined,
+    "any" | "earlier" | "later" | "statuses"
+  >;
+  from_statuses: ColumnType<string[], string[] | undefined, string[]>;
+  from_key: ColumnType<string, string | undefined, string>;
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }

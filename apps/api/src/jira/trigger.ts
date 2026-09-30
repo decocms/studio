@@ -39,6 +39,7 @@ import {
   renderIssuesForPrompt,
   type StatusMove,
 } from "./issue-prompt";
+import { directionOf, needsDirection, pickRule } from "./rule-from";
 import { type Settled, settle, settleWindowMs } from "./settle";
 
 /** A status change the webhook reported. Only its identity: what the change
@@ -121,8 +122,8 @@ function jiraClientFor(integration: OrgJiraIntegration): JiraClient {
 }
 
 /**
- * Dispatch a run for where an issue came to rest, if the org has a rule for
- * that status and nothing dispatched this move already.
+ * Dispatch a run for where an issue came to rest, if a rule on that status
+ * answers where it came from and nothing dispatched this move already.
  *
  * `changelogId` is the move the webhook reported, and the caller has waited
  * the settle window since; the poll omits it and passes `now`, asking about the
@@ -144,11 +145,20 @@ export async function triggerRunForSettledMove(
   });
   if (!settled) return "no_rule";
   if (settled.kind !== "moved") return settled.kind;
-  const { change } = settled;
-  const rule = await ctx.storage.jiraIntegrations.getAutomation(
+  const { change, from } = settled;
+  const rules = await ctx.storage.jiraIntegrations.listAutomationsFor(
     orgId,
     change.to,
   );
+  const direction =
+    needsDirection(rules) && integration.boardId
+      ? directionOf(
+          await client.getBoardColumnStatusIds(integration.boardId),
+          from.id,
+          change.toId,
+        )
+      : null;
+  const rule = pickRule(rules, from.name, direction);
   if (!rule) return "no_rule";
 
   const issue = await loadIssueForPrompt(
@@ -182,7 +192,7 @@ export async function triggerRunForSettledMove(
     actorId: integration.createdBy,
     ...oneIssue(issue, {
       toStatus: change.to,
-      fromStatus: settled.from.name,
+      fromStatus: from.name,
       movedBy: change.by,
       movedAt: new Date(change.at).toISOString(),
     }),

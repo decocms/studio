@@ -147,6 +147,7 @@ test.describe("Jira run trigger", () => {
       callSelfMcpTool<{
         automations: Array<{
           jiraStatus: string;
+          from: { kind: string; statuses?: string[] };
           prompt: string | null;
           continuePr: boolean;
         }>;
@@ -157,7 +158,12 @@ test.describe("Jira run trigger", () => {
       jiraStatus: AUTOMATED_STATUS,
     });
     expect((await list()).automations).toEqual([
-      { jiraStatus: AUTOMATED_STATUS, prompt: null, continuePr: false },
+      {
+        jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "any" },
+        prompt: null,
+        continuePr: false,
+      },
     ]);
 
     await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
@@ -168,6 +174,7 @@ test.describe("Jira run trigger", () => {
     expect((await list()).automations).toEqual([
       {
         jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "any" },
         prompt: "Implement it and open a pull request.",
         continuePr: true,
       },
@@ -178,17 +185,95 @@ test.describe("Jira run trigger", () => {
       continuePr: false,
     });
     expect((await list()).automations).toEqual([
-      { jiraStatus: AUTOMATED_STATUS, prompt: null, continuePr: false },
+      {
+        jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "any" },
+        prompt: null,
+        continuePr: false,
+      },
     ]);
 
-    const { removed } = await callSelfMcpTool<{ removed: boolean }>(
-      api,
-      orgSlug,
-      "JIRA_AUTOMATION_DELETE",
-      { jiraStatus: AUTOMATED_STATUS },
-    );
-    expect(removed).toBe(true);
+    // A second rule on the same status, for cards sent back to it.
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      from: { kind: "later" },
+      prompt: "Read why it came back and fix it.",
+      continuePr: true,
+    });
+    expect((await list()).automations.map((a) => a.from)).toEqual([
+      { kind: "any" },
+      { kind: "later" },
+    ]);
+
+    // Two lists on one status may not both claim the same origin.
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      from: { kind: "statuses", statuses: ["Teste"] },
+    });
+    await expect(
+      callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+        jiraStatus: AUTOMATED_STATUS,
+        from: { kind: "statuses", statuses: ["Code Review", "teste"] },
+      }),
+    ).rejects.toThrow(/already answers moves from "teste"/);
+
+    for (const from of [
+      { kind: "any" },
+      { kind: "later" },
+      { kind: "statuses", statuses: ["Teste"] },
+    ]) {
+      const { removed } = await callSelfMcpTool<{ removed: boolean }>(
+        api,
+        orgSlug,
+        "JIRA_AUTOMATION_DELETE",
+        { jiraStatus: AUTOMATED_STATUS, from },
+      );
+      expect(removed).toBe(true);
+    }
     expect((await list()).automations).toEqual([]);
+  });
+
+  test("a rule answers only the origin it names", async ({ authedPage }) => {
+    // Two settle windows, each waited out.
+    test.setTimeout(90_000);
+    const { page, orgSlug } = authedPage;
+    const api = page.context().request;
+    const orgId = await orgIdOf(orgSlug);
+
+    const integration = await connectIntegration(api, orgSlug);
+    // Only cards arriving from an earlier column: a first implementation.
+    await callSelfMcpTool(api, orgSlug, "JIRA_AUTOMATION_UPSERT", {
+      jiraStatus: AUTOMATED_STATUS,
+      from: { kind: "earlier" },
+      prompt: "Implement it and open a pull request.",
+    });
+    const hook = (payload: unknown) =>
+      api.post(`/api/_jira/webhook/${integration.webhookSecret}`, {
+        data: payload,
+      });
+    const claimed = async () =>
+      (
+        await db.query(
+          "select changelog_id from jira_trigger_claims where organization_id = $1 order by changelog_id",
+          [orgId],
+        )
+      ).rows.map((r) => r.changelog_id);
+
+    expect((await api.post(`${JIRA_STUB_ORIGIN}/__reset`)).ok()).toBe(true);
+    // Sent back from review, which is right of it on the board: not this rule.
+    await moveInJira(api, "9301", "Code Review", Date.now() - 10 * 60_000);
+    await moveInJira(api, "9302", AUTOMATED_STATUS);
+    expect((await hook(statusChange("9302"))).status()).toBe(202);
+    await page.waitForTimeout(SETTLED_MS);
+    expect(await claimed()).toEqual([]);
+
+    // Out of the backlog, left of it: this rule. The card has to rest there
+    // first, or it merely passed through on its way back.
+    await moveInJira(api, "9303", "Backlog");
+    await page.waitForTimeout(3_000);
+    await moveInJira(api, "9304", AUTOMATED_STATUS);
+    expect((await hook(statusChange("9304"))).status()).toBe(202);
+    await expect.poll(claimed, { timeout: 30_000 }).toEqual(["9304"]);
   });
 
   test("an issue entering an automated status is claimed exactly once", async ({

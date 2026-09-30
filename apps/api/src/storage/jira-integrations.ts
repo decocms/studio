@@ -1,5 +1,6 @@
 import type { Kysely } from "kysely";
 import type { CredentialVault } from "../encryption/credential-vault";
+import { fromKey, normalizeFrom, type RuleFrom } from "../jira/rule-from";
 import type { Database, OrgJiraIntegration } from "./types";
 
 /** The issue a run's anchor item stands for. */
@@ -10,13 +11,23 @@ export interface JiraIssueLink {
 }
 
 /** A rule on a Jira status: row existence is the switch, `prompt` null is the
- *  agent's own instruction. */
+ *  agent's own instruction. A status has at most one rule per origin. */
 export interface JiraColumnAutomation {
   jiraStatus: string;
+  /** Which moves into the status it answers, by where the card came from. */
+  from: RuleFrom;
   prompt: string | null;
   /** Runs this rule starts continue the issue's open pull request, if any. */
   continuePr: boolean;
 }
+
+const AUTOMATION_COLUMNS = [
+  "jira_status",
+  "from_kind",
+  "from_statuses",
+  "prompt",
+  "continue_pr",
+] as const;
 
 /**
  * Per-org Jira Cloud integration configs (see migration 171). One row per
@@ -231,60 +242,82 @@ export class JiraIntegrationStorage {
   ): Promise<JiraColumnAutomation[]> {
     const rows = await this.db
       .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt", "continue_pr"])
+      .select(AUTOMATION_COLUMNS)
       .where("organization_id", "=", organizationId)
       .orderBy("jira_status", "asc")
+      .orderBy("from_key", "asc")
       .execute();
     return rows.map(automationFromRow);
   }
 
-  async getAutomation(
+  /** Every rule on one status, for picking the one a move answers. */
+  async listAutomationsFor(
     organizationId: string,
     jiraStatus: string,
-  ): Promise<JiraColumnAutomation | null> {
-    const row = await this.db
+  ): Promise<JiraColumnAutomation[]> {
+    const rows = await this.db
       .selectFrom("org_jira_column_automations")
-      .select(["jira_status", "prompt", "continue_pr"])
+      .select(AUTOMATION_COLUMNS)
       .where("organization_id", "=", organizationId)
       .where("jira_status", "=", jiraStatus)
-      .executeTakeFirst();
-    return row ? automationFromRow(row) : null;
+      .orderBy("from_key", "asc")
+      .execute();
+    return rows.map(automationFromRow);
   }
 
+  /** Creates the status's rule for this origin, or replaces it. */
   async upsertAutomation(
     organizationId: string,
-    jiraStatus: string,
-    prompt: string | null,
-    continuePr = false,
+    rule: {
+      jiraStatus: string;
+      from?: RuleFrom;
+      prompt: string | null;
+      continuePr?: boolean;
+    },
   ): Promise<JiraColumnAutomation> {
+    const from = normalizeFrom(rule.from ?? { kind: "any" });
+    const continuePr = rule.continuePr ?? false;
+    const fromStatuses = from.kind === "statuses" ? from.statuses : [];
     await this.db
       .insertInto("org_jira_column_automations")
       .values({
         organization_id: organizationId,
-        jira_status: jiraStatus,
-        prompt,
+        jira_status: rule.jiraStatus,
+        from_kind: from.kind,
+        from_statuses: fromStatuses,
+        from_key: fromKey(from),
+        prompt: rule.prompt,
         continue_pr: continuePr,
       })
       .onConflict((oc) =>
-        oc.columns(["organization_id", "jira_status"]).doUpdateSet({
-          prompt,
+        oc.columns(["organization_id", "jira_status", "from_key"]).doUpdateSet({
+          // The key compares lists by lower case; keep the spelling given.
+          from_statuses: fromStatuses,
+          prompt: rule.prompt,
           continue_pr: continuePr,
           updated_at: new Date(),
         }),
       )
       .execute();
-    return { jiraStatus, prompt, continuePr };
+    return {
+      jiraStatus: rule.jiraStatus,
+      from,
+      prompt: rule.prompt,
+      continuePr,
+    };
   }
 
   /** Deleting IS the off switch. Returns whether there was a rule. */
   async removeAutomation(
     organizationId: string,
     jiraStatus: string,
+    from: RuleFrom = { kind: "any" },
   ): Promise<boolean> {
     const result = await this.db
       .deleteFrom("org_jira_column_automations")
       .where("organization_id", "=", organizationId)
       .where("jira_status", "=", jiraStatus)
+      .where("from_key", "=", fromKey(from))
       .executeTakeFirst();
     return (result.numDeletedRows ?? 0n) > 0n;
   }
@@ -292,11 +325,17 @@ export class JiraIntegrationStorage {
 
 function automationFromRow(row: {
   jira_status: string;
+  from_kind: RuleFrom["kind"];
+  from_statuses: string[];
   prompt: string | null;
   continue_pr: boolean;
 }): JiraColumnAutomation {
   return {
     jiraStatus: row.jira_status,
+    from:
+      row.from_kind === "statuses"
+        ? { kind: "statuses", statuses: row.from_statuses }
+        : { kind: row.from_kind },
     prompt: row.prompt,
     continuePr: row.continue_pr,
   };
