@@ -5,6 +5,7 @@
  */
 
 import { SimpleModeTierSchema } from "@decocms/shared/organization/schema";
+import { VoiceTranscriptSchema } from "@decocms/shared/voice";
 import { z } from "zod";
 import { DEFAULT_WINDOW_SIZE } from "./constants";
 
@@ -41,6 +42,7 @@ export const StreamRequestSchema = z
       .loose(),
     stream: z.boolean().optional(),
     voiceMode: z.boolean().optional(),
+    voiceTranscript: VoiceTranscriptSchema.optional(),
     temperature: z.number().default(0.5),
     thread_id: z.string().optional(),
     /**

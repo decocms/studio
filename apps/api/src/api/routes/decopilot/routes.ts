@@ -464,8 +464,14 @@ async function validate(
     toolApprovalLevel,
     mode,
     voiceMode,
+    voiceTranscript,
   } = await validateRequest(c);
 
+  if (voiceTranscript && voiceMode !== true) {
+    throw new HTTPException(400, {
+      message: "voiceTranscript requires voiceMode",
+    });
+  }
   if (voiceMode) {
     const settings = await ctx.storage.organizationSettings.get(
       organization.id,
@@ -558,6 +564,7 @@ async function validate(
   return {
     messages: [...systemMessages, requestMessage],
     voiceMode,
+    ...(voiceTranscript ? { voiceTranscript } : {}),
     models,
     agent,
     temperature,

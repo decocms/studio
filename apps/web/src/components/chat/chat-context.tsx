@@ -28,6 +28,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { usePanelNavigate } from "@/layouts/main-panel-tabs/use-panel-navigate";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadRuntime } from "@decocms/shared/thread/session-runtime";
+import type { VoiceTranscript } from "@decocms/shared/voice";
 import {
   AUTOSEND_QUERY_VALUE,
   claimStoredAutosend,
@@ -148,7 +149,11 @@ import {
 // ============================================================================
 
 export interface ChatStreamContextValue {
-  sendVoiceMessage?: (messageId: string, text: string) => Promise<boolean>;
+  sendVoiceMessage?: (
+    messageId: string,
+    text: string,
+    transcript?: VoiceTranscript,
+  ) => Promise<boolean>;
   voiceContext?: string;
   messages: ChatMessage[];
   status: "ready" | "submitted" | "streaming" | "error";
@@ -1224,6 +1229,7 @@ export function ActiveTaskProvider({
   async function dispatchUserMessage(
     message: ChatMessage,
     voiceMode = false,
+    voiceTranscript?: VoiceTranscript,
   ): Promise<boolean> {
     // Capture at dispatch time (frozen in closure)
     const capturedTaskId = taskId;
@@ -1296,6 +1302,7 @@ export function ActiveTaskProvider({
 
     const requestOptions: RequestOptions = {
       ...(voiceMode || voiceEnabled ? { voiceMode } : {}),
+      ...(voiceMode && voiceTranscript ? { voiceTranscript } : {}),
       tier: activeTier,
       mode: modeToSend,
       toolApprovalLevel:
@@ -1549,7 +1556,7 @@ export function ActiveTaskProvider({
           .filter(Boolean)
           .join("\n\n")
       : undefined,
-    sendVoiceMessage: async (messageId, text) => {
+    sendVoiceMessage: async (messageId, text, transcript) => {
       if (sendInFlight.has(taskId)) return false;
       sendInFlight.add(taskId);
       setChatError(null);
@@ -1567,6 +1574,7 @@ export function ActiveTaskProvider({
           },
         },
         true,
+        transcript,
       );
     },
     messages,
