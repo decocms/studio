@@ -181,7 +181,7 @@ function AppTile({
       params={params}
       onClick={onClick}
       title={title}
-      className="group flex w-28 shrink-0 flex-col items-start gap-2.5 rounded-xl p-3 text-left transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
+      className="group flex w-28 shrink-0 flex-col items-center gap-2.5 rounded-xl p-3 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
     >
       {face}
       <span className="flex w-full flex-col">
@@ -356,9 +356,10 @@ function AppsSection({
         ref={oneLine ? lineRef : undefined}
         className={cn(
           "flex min-w-0 flex-1 flex-wrap gap-4",
-          /* A tile's content sits inside its 12px hover padding. On a project
-             that already matches the `pl-3` heading; in the card the pull
-             lands it on the title's `px-5` column. */
+          /* A tile's text box sits inside its 12px hover padding, and a name
+             wraps rather than widening past it. On a project that box already
+             starts on the `pl-3` heading; in the card the pull starts it on
+             the title's `px-5` column, so no name hangs left of the title. */
           oneLine && "-ml-3",
           clipped && "overflow-hidden",
         )}
