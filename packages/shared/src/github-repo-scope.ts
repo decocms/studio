@@ -24,8 +24,12 @@
  * preview URL from the GitHub Deployments API (`GET /repos/{o}/{r}/deployments`
  * + `/statuses`, via `GET_PREVIEW_DEPLOYMENT`) — the ONLY place a VTEX FastStore
  * WebOps preview is published (not a commit-status target_url, not a bot
- * comment). Without each, the GitHub App installation token gets `403 Resource
- * not accessible by integration` on that endpoint. The backing GitHub App must
+ * comment). `statuses: read` lets it read commit statuses, the other half of a
+ * pull request's CI: a repository whose only signal is a status (a deploy bot's
+ * `deco/preview`, say) fails `gh pr checks` and the Checks tab without it, and
+ * GitHub's combined rollup refuses the whole list. Without each, the GitHub App
+ * installation token gets `403 Resource not accessible by integration` on that
+ * endpoint. The backing GitHub App must
  * also grant them (and github-mcp's mint allowlist must permit them) or the mint
  * is rejected — see OPTIONAL_MINT_PERMISSIONS / mintRepoTokenWithFallback, which
  * sheds them one at a time so an installation that grants neither still mints a
@@ -38,13 +42,15 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
   issues: "write",
   checks: "read",
   deployments: "read",
+  statuses: "read",
 };
 
 /**
  * The read permissions an installation (or github-mcp's mint allowlist) may not
- * grant yet, ordered MOST-DROPPABLE FIRST. `mintRepoTokenWithFallback` sheds
- * them one at a time on a permission rejection, so an installation that has the
- * long-standing `checks` but not the newer `deployments` keeps checks. Anything
+ * grant yet, ordered MOST-DROPPABLE FIRST (newest first). `mintRepoTokenWithFallback`
+ * sheds them one at a time on a permission rejection, so an installation that
+ * has the long-standing `checks` but not the newer `deployments` or `statuses`
+ * keeps checks. Anything
  * NOT listed here is required and never dropped — a rejection for one of those
  * surfaces instead of being silently downgraded.
  *
@@ -52,7 +58,11 @@ export const GITHUB_SCOPED_PERMISSIONS: Record<string, string> = {
  * unit test): this list marks which of the requested permissions are droppable,
  * it does not add new ones.
  */
-export const OPTIONAL_MINT_PERMISSIONS = ["deployments", "checks"] as const;
+export const OPTIONAL_MINT_PERMISSIONS = [
+  "statuses",
+  "deployments",
+  "checks",
+] as const;
 
 /**
  * Detects a mint rejection caused specifically by requesting a permission the
