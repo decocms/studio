@@ -151,6 +151,38 @@ export function VoiceModeToggle() {
   );
 }
 
+function VoiceOrb({
+  session,
+  phase,
+  muted,
+}: {
+  session: VoiceSession;
+  phase: string;
+  muted: boolean;
+}) {
+  const [attach] = useState(() => (node: HTMLDivElement | null) => {
+    if (!node || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let level = 0;
+    let frame = requestAnimationFrame(function pump() {
+      const volume = Math.min(1, session.outputVolume());
+      // Rise with each syllable, fall slowly enough not to flicker.
+      level += (volume - level) * (volume > level ? 0.55 : 0.12);
+      node.style.setProperty("--voice-level", level.toFixed(3));
+      frame = requestAnimationFrame(pump);
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+  return (
+    <div
+      ref={attach}
+      className="studio-voice-orb"
+      data-phase={phase}
+      data-muted={muted}
+      aria-hidden="true"
+    />
+  );
+}
+
 export function VoiceModePanel() {
   const t = useT();
   const { taskId } = useChatTask();
@@ -169,12 +201,10 @@ export function VoiceModePanel() {
       className="absolute inset-0 flex min-h-0 flex-col bg-background"
     >
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-7 overflow-y-auto px-6 py-8">
-        <div
-          className="studio-voice-orb"
-          data-phase={snapshot.phase}
-          data-muted={snapshot.muted}
-          aria-hidden="true"
-          style={{ transform: `scale(${1 + snapshot.level * 0.22})` }}
+        <VoiceOrb
+          session={session}
+          phase={snapshot.phase}
+          muted={snapshot.muted}
         />
         <p
           role="status"
@@ -182,22 +212,6 @@ export function VoiceModePanel() {
         >
           {status}
         </p>
-        {snapshot.transcript && (
-          <p
-            className="line-clamp-3 max-w-sm text-center text-sm"
-            data-voice-transcript
-          >
-            {snapshot.transcript}
-          </p>
-        )}
-        {snapshot.response && (
-          <p
-            className="line-clamp-3 max-w-sm text-center text-sm text-muted-foreground"
-            data-voice-response
-          >
-            {snapshot.response}
-          </p>
-        )}
         {snapshot.working && (
           <p className="text-center text-xs text-muted-foreground">
             {t("chat.voice.backgroundWork")}

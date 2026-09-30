@@ -204,6 +204,37 @@ describe("buildDurableDispatchInput", () => {
     );
     expect("systemContext" in durable).toBe(false);
   });
+
+  test("keeps the spoken transcript for the durable run", () => {
+    const voiceTranscript = [
+      { role: "user" as const, text: "Create two tasks" },
+      { role: "agent" as const, text: "Which pages?" },
+    ];
+    const durable = buildDurableDispatchInput(
+      {
+        messages: [
+          {
+            id: "msg-user",
+            role: "user",
+            parts: [{ type: "text", text: "Home and checkout" }],
+          } as ChatMessage,
+        ],
+        voiceMode: true,
+        voiceTranscript,
+        models: { credentialId: "cred-1", thinking: { id: "model-1" } },
+        agent: { id: "agent-1" },
+        temperature: 0.2,
+        toolApprovalLevel: "auto",
+        mode: "default",
+        organizationId: "org-1",
+        userId: "user-1",
+        harnessId: "decopilot",
+        taskId: "thread-1",
+      },
+      { messageId: "msg-user", runFenceToken: "fence-1" },
+    );
+    expect(durable.voiceTranscript).toEqual(voiceTranscript);
+  });
 });
 
 describe("assertHostedDispatchHarness", () => {

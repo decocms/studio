@@ -9,6 +9,7 @@ import {
   VoiceSessionSchema,
   VoiceAnswerSchema,
   VOICE_MAX_TEXT_LENGTH,
+  type VoiceTranscript,
 } from "@decocms/shared/voice";
 import type { ChatStreamContextValue } from "../chat-context";
 import { finalVoiceResponse } from "./final-response";
@@ -24,9 +25,6 @@ type VoiceError = "permission" | "unavailable" | "disconnected" | "sendFailed";
 interface Snapshot {
   phase: Phase;
   muted: boolean;
-  level: number;
-  transcript: string;
-  response: string;
   working: boolean;
   error: VoiceError | null;
 }
@@ -44,9 +42,6 @@ export class VoiceSession {
   private state: Snapshot = {
     phase: "idle",
     muted: false,
-    level: 0,
-    transcript: "",
-    response: "",
     working: false,
     error: null,
   };
@@ -82,6 +77,8 @@ export class VoiceSession {
     };
   };
   getSnapshot = () => this.state;
+  /** Read per animation frame; too frequent for snapshot updates. */
+  outputVolume = () => this.conversation?.getOutputVolume() ?? 0;
 
   private patch(next: Partial<Snapshot>) {
     if (
@@ -264,6 +261,7 @@ export class VoiceSession {
   private delegate = async (parameters: {
     request: string;
     delegationId?: string;
+    transcript?: VoiceTranscript;
   }): Promise<DelegationReceipt> => {
     if (this.utterance === 0 && !parameters.delegationId)
       return {
@@ -283,12 +281,12 @@ export class VoiceSession {
           "This voice session has reached its request limit. Continue in the text chat.",
       };
     const request = parsed.data.request;
-    const existing = [...this.jobs.values()].find(
-      (job) =>
-        (parameters.delegationId
-          ? job.delegationId === parameters.delegationId
-          : job.utterance === this.utterance) ||
-        (job.request === request && job.result === undefined),
+    // Identical short replies ("yes") can be distinct delegations.
+    const existing = [...this.jobs.values()].find((job) =>
+      parameters.delegationId
+        ? job.delegationId === parameters.delegationId
+        : job.utterance === this.utterance ||
+          (job.request === request && job.result === undefined),
     );
     if (existing)
       return {
@@ -313,7 +311,13 @@ export class VoiceSession {
     this.jobs.set(job.messageId, job);
     const dispatched = this.dispatchQueue.then(async () => {
       if (generation !== this.generation || !this.conversation) return false;
-      return this.bindings?.sendVoiceMessage?.(job.messageId, request) ?? false;
+      return (
+        this.bindings?.sendVoiceMessage?.(
+          job.messageId,
+          request,
+          parameters.transcript,
+        ) ?? false
+      );
     });
     this.dispatchQueue = dispatched.catch(() => {});
     try {
@@ -353,8 +357,6 @@ export class VoiceSession {
     this.patch({
       phase: "connecting",
       error: null,
-      transcript: "",
-      response: "",
       muted: false,
     });
     try {
@@ -411,11 +413,7 @@ export class VoiceSession {
                 this.utterance++;
               if (event_id !== undefined) this.seenUserEvents.add(event_id);
               this.lastActivity = Date.now();
-              this.patch({
-                transcript: message.slice(0, VOICE_MAX_TEXT_LENGTH),
-              });
-            } else
-              this.patch({ response: message.slice(0, VOICE_MAX_TEXT_LENGTH) });
+            }
           },
           onVadScore: ({ vadScore }) => {
             if (current() && vadScore > 0.5 && !this.state.muted)
@@ -490,11 +488,7 @@ export class VoiceSession {
         contextId: "studio-history",
       });
       this.timer = setInterval(() => {
-        if (!current()) return;
-        const level =
-          Math.round(Math.min(1, conversation.getOutputVolume()) * 20) / 20;
-        this.patch({ level });
-        this.flushAnnouncements();
+        if (current()) this.flushAnnouncements();
       }, 100);
       this.expires = setTimeout(
         () => {
@@ -561,9 +555,6 @@ export class VoiceSession {
     this.patch({
       phase: "idle",
       error: null,
-      level: 0,
-      transcript: "",
-      response: "",
       working: false,
     });
   };

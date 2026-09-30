@@ -1,6 +1,9 @@
 .studio-voice-orb {
+  --voice-level: 0;
   width: clamp(110px, 45cqw, 180px);
   aspect-ratio: 1;
+  /* Room to grow at full volume without covering the status text. */
+  margin-block: calc(clamp(110px, 45cqw, 180px) * 0.15);
   border-radius: 50%;
   background: radial-gradient(
     circle at 30% 25%,
@@ -8,14 +11,19 @@
     var(--color-primary) 50%,
     var(--color-foreground)
   );
-  box-shadow: 0 0 45px color-mix(in srgb, var(--color-primary) 20%, transparent);
-  transition:
-    transform 100ms ease-out,
-    opacity 200ms;
+  box-shadow: 0 0 calc(45px + var(--voice-level) * 45px)
+    color-mix(
+      in srgb,
+      var(--color-primary) calc(20% + var(--voice-level) * 30%),
+      transparent
+    );
+  transform: scale(calc(1 + var(--voice-level) * 0.3));
+  filter: brightness(calc(1 + var(--voice-level) * 0.2));
+  transition: opacity 200ms;
   animation: studio-voice-breathe 4s ease-in-out infinite;
 }
 .studio-voice-orb[data-phase="speaking"] {
-  animation-duration: 900ms;
+  animation: studio-voice-talk 1.1s ease-in-out infinite alternate;
 }
 .studio-voice-orb[data-phase="working"],
 .studio-voice-orb[data-phase="connecting"] {
@@ -29,6 +37,17 @@
 @keyframes studio-voice-breathe {
   50% {
     border-radius: 45% 55% 53% 47% / 52% 43% 57% 48%;
+  }
+}
+@keyframes studio-voice-talk {
+  0% {
+    border-radius: 47% 53% 55% 45% / 55% 45% 55% 45%;
+  }
+  50% {
+    border-radius: 55% 45% 42% 58% / 44% 58% 42% 56%;
+  }
+  100% {
+    border-radius: 42% 58% 52% 48% / 58% 42% 52% 48%;
   }
 }
 @media (prefers-reduced-motion: reduce) {

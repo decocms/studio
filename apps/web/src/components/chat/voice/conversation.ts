@@ -1,6 +1,7 @@
 import {
   VoiceDelegationSchema,
   type VoiceConversationConnection,
+  type VoiceTranscript,
 } from "@decocms/shared/voice";
 
 export interface ConversationUpdate {
@@ -27,6 +28,7 @@ export interface ConversationCallbacks {
   onDelegate(request: {
     request: string;
     delegationId?: string;
+    transcript?: VoiceTranscript;
   }): Promise<DelegationReceipt>;
   getWorkStatus(): unknown;
   cancelCurrentWork(): unknown;

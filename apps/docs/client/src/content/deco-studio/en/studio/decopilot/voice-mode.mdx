@@ -167,9 +167,10 @@ Studio's model usage accounting continues to cover the working agent's model cal
 Microphone audio and streamed replies travel directly between the browser and
 the selected provider over WebRTC. ElevenLabs uses Scribe transcription and its
 configured speech synthesis model. GPT-Live handles simultaneous listening and
-speaking, and emits transcript fragments and delegation IDs. Its adapter assembles
-new spoken requests with earlier conversational context and submits them through
-the same chat API. A delegation event is required; transcript fragments alone never
+speaking, and emits transcript fragments and delegation IDs. Its adapter submits
+the new speech as the chat message through the same chat API. Earlier spoken turns
+travel beside it as `voiceTranscript` and reach the working agent as per-turn context
+that the chat does not display. A delegation event is required; transcript fragments alone never
 start work. A short settling window allows delayed fragments to arrive, but provider
 transcripts have no completed-turn marker, so this needs evaluation with real audio.
 ElevenLabs client tools submit requests, read current-chat status, and request cancellation.
