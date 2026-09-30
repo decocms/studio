@@ -22,6 +22,9 @@ import type { OrganizationDomain } from "../../storage/types";
 const DOMAIN_REGEX =
   /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
+// Bounds how many distinct domains a member can claim for one org.
+const MAX_DOMAINS_PER_ORG = 50;
+
 const JOIN_MODE = z.enum(["off", "auto", "request"]);
 
 const domainSchema = z.object({
@@ -141,6 +144,15 @@ export const ORGANIZATION_DOMAIN_ADD = defineTool({
         return toOutput(upgraded);
       }
       return toOutput(existing);
+    }
+
+    const claimed = await ctx.storage.organizationDomains.listByOrganizationId(
+      org.id,
+    );
+    if (claimed.length >= MAX_DOMAINS_PER_ORG) {
+      throw new Error(
+        `An organization can claim at most ${MAX_DOMAINS_PER_ORG} domains.`,
+      );
     }
 
     const created = emailMatches
