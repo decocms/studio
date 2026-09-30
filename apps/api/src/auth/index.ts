@@ -37,6 +37,7 @@ import { posthog } from "@/posthog";
 import { getBaseUrl } from "@/core/server-constants";
 import { createAccessControl, Role } from "@decocms/better-auth/plugins/access";
 import { getDb, getDatabaseUrl, getDbDialect } from "../database";
+import { findOrgByPreviousSlug } from "../core/org-previous-slug";
 import { createEmailOtpConfig } from "./email-otp";
 import { createEmailSender, findEmailProvider } from "./email-providers";
 import { emailButton, emailParagraph, emailTemplate } from "./email-template";
@@ -249,6 +250,15 @@ const plugins = [
       // and MCP tool wrappers.
       beforeCreateOrganization: async ({ organization }) => {
         rejectReservedOrganizationSlug(organization.slug);
+        // A renamed org's old slug still routes to it; a new org must not take it over.
+        if (
+          organization.slug &&
+          (await findOrgByPreviousSlug(getDb().db, organization.slug))
+        ) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Organization slug is already taken.",
+          });
+        }
       },
       // Keep base64 logos out of the org row (they bloat every
       // organization.list response). Mirrors `backfill-assets
