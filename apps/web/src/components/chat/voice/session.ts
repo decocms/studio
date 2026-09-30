@@ -13,6 +13,11 @@ import {
 } from "@decocms/shared/voice";
 import type { ChatStreamContextValue } from "../chat-context";
 import { finalVoiceResponse } from "./final-response";
+import {
+  backgroundReactionId,
+  turnActivity,
+  type TrackedTask,
+} from "./work-status";
 
 type Phase =
   | "idle"
@@ -22,6 +27,19 @@ type Phase =
   | "speaking"
   | "error";
 type VoiceError = "permission" | "unavailable" | "disconnected" | "sendFailed";
+export type VoiceBindings = Pick<
+  ChatStreamContextValue,
+  | "sendVoiceMessage"
+  | "voiceContext"
+  | "messages"
+  | "status"
+  | "error"
+  | "finishReason"
+  | "isStreaming"
+  | "isRunInProgress"
+  | "isWaitingForApprovals"
+  | "stop"
+>;
 interface Snapshot {
   phase: Phase;
   muted: boolean;
@@ -34,6 +52,8 @@ interface Delegation {
   request: string;
   accepted: boolean;
   delegationId?: string;
+  /** Background subtasks the turn started; the result waits for their reactions. */
+  background?: string[];
   result?: string;
 }
 
@@ -53,7 +73,7 @@ export class VoiceSession {
   private token?: string;
   private timer?: ReturnType<typeof setInterval>;
   private expires?: ReturnType<typeof setTimeout>;
-  private bindings?: ChatStreamContextValue;
+  private bindings?: VoiceBindings;
   private jobs = new Map<string, Delegation>();
   private announcements: ConversationUpdate[] = [];
   private lastActivity = 0;
@@ -64,6 +84,9 @@ export class VoiceSession {
   private lastWorkStatus = "";
   private utterance = 0;
   private seenUserEvents = new Set<string | number>();
+  /** Board tasks created during this call. Other tasks are looked up on request. */
+  private tasks = new Map<string, TrackedTask>();
+  private boardUpdates = new Map<string, TrackedTask>();
 
   constructor(
     private readonly url: string,
@@ -91,7 +114,7 @@ export class VoiceSession {
     for (const listener of this.listeners) listener();
   }
 
-  updateBindings(bindings: ChatStreamContextValue, enabled: boolean) {
+  updateBindings(bindings: VoiceBindings, enabled: boolean) {
     this.bindings = bindings;
     if (!enabled && this.state.phase !== "idle") {
       this.stop();
@@ -100,6 +123,17 @@ export class VoiceSession {
     if (!this.conversation) return;
     this.updateContext();
     this.collectResults();
+  }
+
+  private requestStatus(job: Delegation) {
+    if (job.result !== undefined) return "finished";
+    if (!job.accepted) return "submitting";
+    if (job.background) return "running_in_background";
+    return this.bindings?.messages.some(
+      (message) => message.id === job.messageId,
+    )
+      ? "running"
+      : "queued";
   }
 
   private status() {
@@ -112,16 +146,15 @@ export class VoiceSession {
           : stream?.isStreaming || stream?.isRunInProgress
             ? "working"
             : "idle",
-      requests: [...this.jobs.values()].slice(-8).map((job) => ({
+      requests: [...this.jobs.values()].slice(-6).map((job) => ({
         id: job.messageId,
-        request: job.request.slice(0, 2000),
-        status:
-          job.result !== undefined
-            ? "finished"
-            : job.accepted
-              ? "accepted"
-              : "submitting",
-        result: job.result?.slice(0, 2000),
+        request: job.request.slice(0, 200),
+        status: this.requestStatus(job),
+        result: job.result?.slice(0, 500),
+      })),
+      tasks: [...this.tasks.values()].slice(-10).map((task) => ({
+        title: task.title.slice(0, 120),
+        status: task.status,
       })),
     };
   }
@@ -148,26 +181,7 @@ export class VoiceSession {
           (job) => job.accepted && job.result === undefined,
         ),
     });
-    const workStatus = JSON.stringify({
-      status: this.status().status,
-      requests: [...this.jobs.values()].map((job) => ({
-        requestId: job.messageId,
-        status:
-          job.result !== undefined
-            ? "finished"
-            : job.accepted
-              ? "accepted"
-              : "submitting",
-      })),
-    });
-    if (workStatus !== this.lastWorkStatus) {
-      this.lastWorkStatus = workStatus;
-      this.conversation.publishUpdate({
-        delivery: "context",
-        contextId: "studio-work",
-        text: workStatus,
-      });
-    }
+    this.publishWorkStatus();
     if (stream.isWaitingForApprovals) {
       if (!this.approvalReported) {
         this.approvalReported = true;
@@ -180,6 +194,10 @@ export class VoiceSession {
     this.approvalReported = false;
     for (const job of this.jobs.values()) {
       if (!job.accepted || job.result !== undefined) continue;
+      if (job.background) {
+        this.collectBackground(job, running);
+        continue;
+      }
       const index = stream.messages.findIndex(
         (message) => message.id === job.messageId,
       );
@@ -192,7 +210,7 @@ export class VoiceSession {
           .slice(index + 1)
           .some((message) => message.role === "user");
       if (running && !laterTurn) continue;
-      let result: string | null;
+      let result: string;
       if (
         !running &&
         !laterTurn &&
@@ -210,19 +228,22 @@ export class VoiceSession {
       ) {
         result = `The run ended with status ${stream.finishReason}; successful completion is not established.`;
       } else {
-        result = finalVoiceResponse(stream.messages, job.messageId);
+        const final = finalVoiceResponse(stream.messages, job.messageId);
+        if (final === null) continue;
+        result = final;
+        const activity = turnActivity(stream.messages, job.messageId);
+        this.track(activity.tasks);
+        if (activity.backgroundJobs.length) {
+          // The turn only started the work; its result arrives with the reactions.
+          job.background = activity.backgroundJobs;
+          this.collectBackground(job, running);
+          continue;
+        }
       }
-      if (result === null) continue;
-      job.result =
+      this.finish(
+        job,
         result ||
-        "The agent finished without a final text response. Do not infer that the requested change succeeded.";
-      this.report(
-        JSON.stringify({
-          requestId: job.messageId,
-          request: job.delegationId ? undefined : job.request,
-          result: job.result,
-        }),
-        job.delegationId,
+          "The agent finished without a final text response. Do not infer that the requested change succeeded.",
       );
     }
     this.patch({
@@ -232,7 +253,84 @@ export class VoiceSession {
           (job) => job.accepted && job.result === undefined,
         ),
     });
+    this.publishWorkStatus();
   }
+
+  private collectBackground(job: Delegation, running: boolean) {
+    const messages = this.bindings?.messages ?? [];
+    const results: string[] = [];
+    for (const jobId of job.background ?? []) {
+      const id = backgroundReactionId(jobId);
+      const index = messages.findIndex((message) => message.id === id);
+      if (index < 0) return;
+      const laterTurn = messages
+        .slice(index + 1)
+        .some((message) => message.role === "user");
+      if (running && !laterTurn) return;
+      const text = finalVoiceResponse(messages, id);
+      if (text === null) return;
+      this.track(turnActivity(messages, id).tasks);
+      results.push(text);
+    }
+    this.finish(
+      job,
+      results.filter(Boolean).join("\n") ||
+        "The background work finished without a final text response. Do not infer that the requested change succeeded.",
+    );
+  }
+
+  private finish(job: Delegation, result: string) {
+    job.result = result;
+    this.report(
+      JSON.stringify({
+        requestId: job.messageId,
+        request: job.delegationId ? undefined : job.request,
+        result,
+      }),
+      job.delegationId,
+    );
+  }
+
+  private track(tasks: TrackedTask[]) {
+    for (const task of tasks)
+      if (!this.tasks.has(task.id))
+        this.tasks.set(task.id, this.boardUpdates.get(task.id) ?? task);
+  }
+
+  private publishWorkStatus() {
+    const workStatus = JSON.stringify(this.status());
+    if (workStatus === this.lastWorkStatus) return;
+    this.lastWorkStatus = workStatus;
+    this.conversation?.publishUpdate({
+      delivery: "context",
+      contextId: "studio-work",
+      text: workStatus,
+    });
+  }
+
+  taskUpdated = (item: TrackedTask) => {
+    const update = { id: item.id, title: item.title, status: item.status };
+    // A board event can arrive before the tool output that reveals the id.
+    this.boardUpdates.delete(item.id);
+    this.boardUpdates.set(item.id, update);
+    for (const id of this.boardUpdates.keys()) {
+      if (this.boardUpdates.size <= 200) break;
+      this.boardUpdates.delete(id);
+    }
+    const task = this.tasks.get(item.id);
+    if (!task || !this.conversation || task.status === item.status) return;
+    this.tasks.set(item.id, update);
+    this.report(JSON.stringify({ task: item.title, status: item.status }));
+    this.publishWorkStatus();
+  };
+
+  taskDeleted = (id: string) => {
+    const task = this.tasks.get(id);
+    if (!task || !this.conversation) return;
+    this.tasks.delete(id);
+    this.report(JSON.stringify({ task: task.title, status: "deleted" }));
+    this.publishWorkStatus();
+  };
 
   private report(text: string, delegationId?: string) {
     const update: ConversationUpdate = {
@@ -545,6 +643,8 @@ export class VoiceSession {
       token ? this.revoke(token) : undefined,
     ]).then(() => {});
     this.jobs.clear();
+    this.tasks.clear();
+    this.boardUpdates.clear();
     this.announcements = [];
     this.lastContext = "";
     this.lastWorkStatus = "";

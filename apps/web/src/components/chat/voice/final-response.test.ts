@@ -102,3 +102,20 @@ test("does not read code blocks or tool-only responses aloud", () => {
   );
   expect(result!.length).toBeLessThanOrEqual(12000);
 });
+
+test("a subtask run nested in the thread is not the turn's answer", () => {
+  expect(
+    finalVoiceResponse(
+      [
+        user,
+        reply([{ type: "text", text: "Started the analysis." }]),
+        {
+          ...reply([{ type: "text", text: "Subagent notes" }]),
+          id: "subtask-1",
+          metadata: { subtaskJobId: "job-1" },
+        },
+      ],
+      user.id,
+    ),
+  ).toBe("Started the analysis.");
+});

@@ -10,6 +10,7 @@ import { Headphones, Mic, MicOff, MessageSquare, Square } from "lucide-react";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useProjectContext } from "@/sdk";
 import { useOrgFlag } from "@/hooks/use-organization-settings";
+import { useTaskBoardEvents } from "@/hooks/use-task-board-events";
 import { useIsDesktopApp } from "@/hooks/use-is-desktop-app";
 import { useIsMobile } from "@decocms/ui/hooks/use-mobile.ts";
 import {
@@ -72,6 +73,16 @@ function VoiceProvider({
   useLayoutEffect(() => {
     if (!enabled || !visible) session.stop();
   }, [session, enabled, visible]);
+  const active = useSyncExternalStore(
+    session.subscribe,
+    () => session.getSnapshot().phase !== "idle",
+  );
+  useTaskBoardEvents({
+    orgSlug: org.slug,
+    enabled: active,
+    onUpdate: session.taskUpdated,
+    onDelete: session.taskDeleted,
+  });
   const [attach] = useState(() => (_node: HTMLDivElement | null) => {
     if (
       enabled &&

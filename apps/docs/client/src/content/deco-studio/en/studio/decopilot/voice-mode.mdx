@@ -21,7 +21,9 @@ Choose **Start voice mode** beside the composer and allow microphone access.
 **Back to chat** stops the microphone and playback. It preserves the chat and
 any running work. **Stop agent work** is a separate control. Speaking while a
 reply plays interrupts the audio. Complete work requests join the chat's normal
-queue; pauses and greetings do not start coding turns. ElevenLabs can answer current-chat status locally; GPT-Live delegates fresh status questions to the working agent.
+queue; pauses and greetings do not start coding turns. Both companions answer
+progress questions about this call's requests and the tasks they created from
+Studio's work status, without starting a turn.
 Approvals, questions, errors, and queued requests remain visible in voice mode.
 
 The companion acknowledges accepted work without claiming it has finished. When
@@ -39,12 +41,21 @@ independent tasks, and then ask about their progress while discussing another to
 The Super Agent must have access to the relevant integrations. GA4 can answer
 analytics questions; fulfillment or order status requires a connected order system.
 
-The ElevenLabs companion's status tool tracks requests in the current chat, not all task-board
-items. Fresh status for independent tasks is another request to the Super Agent.
-If the agent creates tasks 1, 2, and 3 during this call, their creation can be
-announced from the chat result. Their later completion is not yet pushed into
-voice automatically; ask the Super Agent for fresh status. Work in the current chat uses its existing queue, so a fresh lookup
-can wait behind an active turn even while the voice conversation remains responsive.
+Studio keeps a work status for the call and supplies it to the companion as
+context. It lists each spoken request as queued, running, running in the
+background, or finished, and each board task created during the call with its
+current lane. If the agent creates tasks 1, 2, and 3 during this call, the
+browser follows them through the existing task-board push events and announces
+each lane change. Other tasks in the organization stay silent; a question about
+one is another request to the Super Agent.
+
+Requests in one chat run one turn at a time. In voice turns, the working agent is
+asked to start research or analysis as a background `subtask` so its turn ends
+quickly and the next spoken request does not wait. The companion waits for that
+subtask's result turn before announcing the answer; the turn that only started it
+is reported as background work. Separate pieces of work the user asks for become
+board tasks when the agent has task-board tools. Claude Code chats have no
+`subtask` tool, so their requests still queue.
 
 ## Shared conversation interface
 
@@ -56,13 +67,13 @@ OpenAI maps these to Live thinking/commentary appends; ElevenLabs maps them to
 contextual updates and explicitly labeled background messages. Provider tool names
 and event schemas stay inside the adapters.
 
-The intended subscription scope is tasks started or explicitly discussed in this
-call. An unrelated task finishing elsewhere should remain silent. The interface
-can carry these updates, but the current producer observes the active chat only.
-The remaining implementation gap is recording the relevant task IDs and filtering
-the existing task-board push events to that set. Re-entering voice would also need
-to restore the chosen task set. A task-creation turn finishing does not establish
-that the created tasks finished.
+The subscription scope is tasks created in this call. The browser reads their IDs
+from `TASK_BOARD_ITEM_CREATE` results in the call's turns, including background
+result turns, and filters task-board push events to that set. An unrelated task
+finishing elsewhere remains silent. A task-creation turn finishing does not
+establish that the created tasks finished. Known gaps: re-entering voice starts
+with an empty task set, and a lane change during a push-stream reconnect is
+reported only by the next change.
 
 ## Deployment setup
 
@@ -174,8 +185,8 @@ that the chat does not display. A delegation event is required; transcript fragm
 start work. A short settling window allows delayed fragments to arrive, but provider
 transcripts have no completed-turn marker, so this needs evaluation with real audio.
 ElevenLabs client tools submit requests, read current-chat status, and request cancellation.
-GPT-Live delegates status and cancellation requests to the working agent, so those
-requests can wait behind active work. The visible Stop agent work control remains
+GPT-Live answers status from the supplied work status and delegates cancellation
+requests to the working agent, so those requests can wait behind active work. The visible Stop agent work control remains
 available to cancel the current run immediately. Neither provider waits for long
 coding tasks before continuing the spoken conversation.
 Results arrive through Studio's existing chat stream and are supplied to the
@@ -215,8 +226,8 @@ checks that the companion responds while the working model is delayed, announces
 its result, and returns to text in the same chat. For ElevenLabs, with `E2E_VOICE_FOLLOWUP=1`, use
 a WAV containing a work request followed by a progress question; the test also
 checks that the second spoken answer arrives before work completes without
-submitting another coding turn. GPT-Live delegates fresh status requests, so that
-optional assertion is not a provider-parity check.
+submitting another coding turn. GPT-Live also answers from the supplied work
+status, but this optional assertion has only been run against ElevenLabs.
 
 The daemon suite also exercises the real Claude Code executable and SDK against
 an HTTP model stand-in. It starts in text, changes a file in voice mode, and
