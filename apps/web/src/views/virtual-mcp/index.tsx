@@ -94,6 +94,7 @@ import { omitSandboxMap } from "@/lib/omit-sandbox-map";
 import { RepoRow } from "@/components/sandbox/runtime-card/repo-row";
 import { RuntimeFields } from "@/components/sandbox/runtime-card/runtime-fields";
 import { PreviewServerUrlField } from "@/components/sandbox/runtime-card/preview-server-url-field";
+import { PreviewDeviceField } from "@/components/sandbox/runtime-card/preview-device-field";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { FieldDescriptionTooltipsField } from "@/components/sandbox/runtime-card/field-description-tooltips-field";
 import { FastPreviewField } from "@/components/sandbox/runtime-card/fast-preview-field";
@@ -1167,6 +1168,12 @@ function VirtualMcpDetailViewWithData({
                   <SettingsCard>
                     <SettingsCardRow>
                       <PreviewServerUrlField control={form.control} />
+                    </SettingsCardRow>
+                    <SettingsCardRow>
+                      <PreviewDeviceField
+                        control={form.control}
+                        onCommit={flushAndSave}
+                      />
                     </SettingsCardRow>
                     <SettingsCardRow>
                       <FastPreviewField

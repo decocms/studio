@@ -681,6 +681,8 @@ export const sandbox = {
   "sandbox.preview.createNewPage": "Create new page",
   "sandbox.preview.devServerPreviewTitle": "Dev Server Preview",
   "sandbox.preview.deviceDesktop": "Desktop",
+  "sandbox.preview.deviceHintEitriApp": "Mobile app (Eitri)",
+  "sandbox.preview.deviceHintMobile": "Mobile preview",
   "sandbox.preview.deviceMobile": "Mobile (375px)",
   "sandbox.preview.deviceTablet": "Tablet (768px)",
   "sandbox.preview.enterToGo": "Enter to go",
@@ -811,6 +813,12 @@ export const sandbox = {
     "Instant preview (experimental)",
   "sandbox.cmsSettings.fastPreviewInPlace.description":
     "Refresh edits in place, without waiting for a save — much faster, but only works on websites that have /live/previews route.",
+  "sandbox.cmsSettings.previewDevice.label": "Preview device",
+  "sandbox.cmsSettings.previewDevice.description":
+    "The device the preview opens on. Automatic follows what the preview server declares.",
+  "sandbox.cmsSettings.previewDevice.auto": "Automatic",
+  "sandbox.cmsSettings.previewDevice.mobile": "Mobile",
+  "sandbox.cmsSettings.previewDevice.desktop": "Desktop",
   "sandbox.cmsSettings.contentEditing.on": "Enabled",
   "sandbox.cmsSettings.contentEditing.onDescription":
     "The Site Editor offers Content and opens Blocks beside Preview on desktop.",

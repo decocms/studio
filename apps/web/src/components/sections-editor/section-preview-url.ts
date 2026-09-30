@@ -1,3 +1,5 @@
+import { isSecurePreviewUrl } from "@decocms/shared/deco-site-production-url";
+
 /** Matches admin `encodeProps` — URI-encode then base64. */
 export function encodePreviewProps(json: string): string {
   return btoa(encodeURIComponent(json));
@@ -118,7 +120,9 @@ export function buildFastPreviewDraftUrl(
  * with `__props` and resolves the page's section `$ref`s against `__decofile`.
  * `__decoFBT=0` disables deferred rendering so one POST returns the whole page.
  *
- * Returns null when the page block has no `__resolveType` (nothing to render).
+ * Returns null when the page block has no `__resolveType` (nothing to render),
+ * or when the frame origin is not {@link isSecurePreviewUrl} — the body is the
+ * whole unsaved decofile, which must not cross the network in cleartext.
  * deco-runtime only — the same assumption `resolveSectionPreviewBase` documents.
  */
 export function buildPageRenderRequest(input: {
@@ -135,6 +139,7 @@ export function buildPageRenderRequest(input: {
 }): { src: string; body: string } | null {
   const resolveType = input.pageBlock.__resolveType;
   if (typeof resolveType !== "string" || !resolveType) return null;
+  if (!isSecurePreviewUrl(input.previewBaseUrl)) return null;
   const origin = new URL(input.previewBaseUrl).origin;
   const url = new URL(
     `/live/previews/${encodeURIComponent(resolveType)}`,

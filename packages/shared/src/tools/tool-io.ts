@@ -2609,6 +2609,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -2881,6 +2882,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               previewServerUrl?: string | null | undefined;
+              previewDevice?: "mobile" | "desktop" | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
@@ -3067,6 +3069,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -3295,6 +3298,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -3514,6 +3518,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -3738,6 +3743,7 @@ export interface StudioToolIO {
                 | null
                 | undefined;
               previewServerUrl?: string | null | undefined;
+              previewDevice?: "mobile" | "desktop" | null | undefined;
               productionUrl?: string | null | undefined;
               fieldDescriptionTooltips?: boolean | null | undefined;
               fastPreview?: boolean | null | undefined;
@@ -3932,6 +3938,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -4149,6 +4156,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;
@@ -5477,6 +5485,7 @@ export interface StudioToolIO {
           siteSlug?: string | null | undefined;
           publishPolicy?: "smart" | "open" | "code-review" | null | undefined;
           previewServerUrl?: string | null | undefined;
+          previewDevice?: "mobile" | "desktop" | null | undefined;
           productionUrl?: string | null | undefined;
           fieldDescriptionTooltips?: boolean | null | undefined;
           fastPreview?: boolean | null | undefined;

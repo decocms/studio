@@ -18,6 +18,7 @@ import {
   CommandItem,
   CommandEmpty,
 } from "@decocms/ui/components/command.tsx";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { useState, useRef, useEffect } from "react";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
@@ -26,6 +27,11 @@ import { useProjectContext } from "@/sdk";
 import { useSandboxLifecycle } from "@/components/sandbox/hooks/sandbox-lifecycle-context";
 import { useVirtualMCPNonBlocking } from "@/sdk";
 import { resolvePreviewDisplay } from "./preview-display";
+import {
+  previewDeviceHintBadgeKey,
+  resolveDefaultPreviewDevice,
+  usePreviewDeviceHint,
+} from "./preview-device-hint";
 import { useIframeLoadRecovery } from "./preview-iframe-recovery";
 import { resolvePreviewServerUrl } from "@decocms/shared/deco-site-production-url";
 import { useSessionRuntime } from "@/hooks/use-session-runtime";
@@ -388,8 +394,10 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const [editingMode, setEditingMode] = useState<PreviewEditingMode>(() =>
     defaultPreviewEditingMode({ cmsMode, isMobile }),
   );
-  const [previewDeviceSize, setPreviewDeviceSize] =
-    useState<PreviewDeviceSize>("desktop");
+  /** The toolbar toggle's pick; null until the user toggles, so the default
+   *  below can still follow a device hint that resolves after mount. */
+  const [chosenDeviceSize, setChosenDeviceSize] =
+    useState<PreviewDeviceSize | null>(null);
   const [visualElement, setVisualElement] =
     useState<VisualEditorPayload | null>(null);
   /**
@@ -496,6 +504,19 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   // persisted) → the original blocking overlay is kept.
   const previewServerUrl =
     agent?.id === virtualMcpId ? resolvePreviewServerUrl(agent.metadata) : null;
+  const explicitPreviewDevice =
+    agent?.id === virtualMcpId ? agent.metadata?.previewDevice : null;
+  // Only ask the preview server when the project leaves the device on automatic.
+  const previewDeviceHint = usePreviewDeviceHint(
+    explicitPreviewDevice ? null : previewServerUrl,
+  );
+  const previewDeviceSize: PreviewDeviceSize =
+    chosenDeviceSize ??
+    resolveDefaultPreviewDevice({
+      explicit: explicitPreviewDevice,
+      hint: previewDeviceHint,
+    });
+  const previewDeviceHintBadge = previewDeviceHintBadgeKey(previewDeviceHint);
   const fastPreviewEnabled =
     !localPreviewUrl && agent?.id === virtualMcpId && session.runtime === "cms";
   /** This project defaults to CMS — the question `fastPreviewEnabled` answers for the SESSION. */
@@ -1334,7 +1355,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
 
   const handleDeviceToggle = () => {
     const idx = DEVICE_CYCLE.indexOf(previewDeviceSize);
-    setPreviewDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
+    setChosenDeviceSize(DEVICE_CYCLE[(idx + 1) % DEVICE_CYCLE.length]!);
   };
 
   const setPathParamValue = (name: string, value: string) => {
@@ -1725,6 +1746,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             {t(DEVICE_LABEL_KEYS[previewDeviceSize])}
           </TooltipContent>
         </Tooltip>
+        {previewDeviceHintBadge && (
+          <Badge variant="muted">{t(previewDeviceHintBadge)}</Badge>
+        )}
         {urlControls}
         <div className="flex shrink-0 items-center gap-1">
           <ToolbarIconButton
@@ -1742,7 +1766,12 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
   const canVisualEdit = display.mode === "sandbox";
 
   // Desktop stays fluid until the canvas is narrower than its logical width; then (and always for mobile/tablet) the frame scales to fit.
-  const previewViewport = PREVIEW_VIEWPORTS[previewDeviceSize];
+  // A hinting preview server knows its own device size (e.g. the app's phone).
+  const previewViewport =
+    previewDeviceHint?.device === previewDeviceSize &&
+    previewDeviceHint.viewport
+      ? previewDeviceHint.viewport
+      : PREVIEW_VIEWPORTS[previewDeviceSize];
   const previewFluid =
     previewDeviceSize === "desktop" &&
     (canvasSize.width === 0 ||
@@ -2019,7 +2048,9 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                             (navigation, hover, postMessage), so picking the token set is
                             a change that needs the real sandbox running to verify — a
                             missing token silently breaks a customer's site preview.
-                            Deliberately not bolted on during a lint sweep. */}
+                            Deliberately not bolted on during a lint sweep. The
+                            referrer policy is pinned so an external preview server
+                            only ever learns Studio's origin, never the project path. */}
                         {/* oxlint-disable-next-line react/iframe-missing-sandbox */}
                         <iframe
                           // Key on the iframe base: remount when the base URL changes
@@ -2028,6 +2059,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
                           key={display.iframeBase}
                           ref={previewIframeRef}
                           src={iframeSrc}
+                          referrerPolicy="strict-origin-when-cross-origin"
                           className="w-full h-full border-0"
                           title={t("sandbox.preview.devServerPreviewTitle")}
                           onError={iframeRecovery.handleError}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   defaultPreviewServerUrl,
+  isSecurePreviewUrl,
   pickProductionDomain,
   productionUrlFromDomain,
   resolvePreviewServerUrl,
@@ -128,5 +129,30 @@ describe("resolvePreviewServerUrl", () => {
     expect(resolvePreviewServerUrl({})).toBeNull();
     expect(resolvePreviewServerUrl(null)).toBeNull();
     expect(resolvePreviewServerUrl(undefined)).toBeNull();
+  });
+});
+
+describe("isSecurePreviewUrl", () => {
+  it("accepts https on any host", () => {
+    expect(isSecurePreviewUrl("https://acme.com/path?q=1")).toBe(true);
+    expect(isSecurePreviewUrl("https://localhost:3100")).toBe(true);
+  });
+
+  it("accepts plain http only on loopback", () => {
+    expect(isSecurePreviewUrl("http://localhost:3100")).toBe(true);
+    expect(isSecurePreviewUrl("http://sandbox.localhost:7070")).toBe(true);
+    expect(isSecurePreviewUrl("http://127.0.0.1:8000")).toBe(true);
+    expect(isSecurePreviewUrl("http://[::1]:8000")).toBe(true);
+  });
+
+  it("rejects plain http elsewhere, other schemes and garbage", () => {
+    expect(isSecurePreviewUrl("http://acme.com")).toBe(false);
+    expect(isSecurePreviewUrl("http://192.168.0.10:3000")).toBe(false);
+    expect(isSecurePreviewUrl("http://localhost.evil.com")).toBe(false);
+    expect(isSecurePreviewUrl("ftp://localhost")).toBe(false);
+    expect(isSecurePreviewUrl("javascript:alert(1)")).toBe(false);
+    expect(isSecurePreviewUrl("not a url")).toBe(false);
+    expect(isSecurePreviewUrl("")).toBe(false);
+    expect(isSecurePreviewUrl(null)).toBe(false);
   });
 });

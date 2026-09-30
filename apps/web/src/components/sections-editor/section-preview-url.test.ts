@@ -266,6 +266,25 @@ describe("buildPageRenderRequest", () => {
     expect(body.__decofile).toEqual(DECOFILE);
   });
 
+  it("refuses cleartext origins other than loopback", () => {
+    const build = (previewBaseUrl: string) =>
+      buildPageRenderRequest({
+        previewBaseUrl,
+        pageBlock: PAGE_BLOCK,
+        decofile: DECOFILE,
+        path: "/",
+        pathTemplate: "/",
+      });
+    expect(build("http://www.acme.com")).toBeNull();
+    expect(build("http://192.168.0.10:8000")).toBeNull();
+    expect(new URL(build("http://localhost:8000")!.src).origin).toBe(
+      "http://localhost:8000",
+    );
+    expect(new URL(build("http://127.0.0.1:8000")!.src).origin).toBe(
+      "http://127.0.0.1:8000",
+    );
+  });
+
   it("returns null when the page block has no __resolveType", () => {
     const req = buildPageRenderRequest({
       previewBaseUrl: PROD,
