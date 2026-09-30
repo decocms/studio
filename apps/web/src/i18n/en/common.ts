@@ -286,9 +286,6 @@ export const common = {
   "common.requestToJoinScreen.title": "Request to join {orgName}?",
   "common.signInScreen.configLoadFailed": "Couldn't load sign-in options.",
   "common.signInScreen.tryAgain": "Try again",
-  "common.simpleIconPicker.changeIcon": "Change icon",
-  "common.simpleIconPicker.filterPlaceholder": "Filter...",
-  "common.simpleIconPicker.noIconsFound": "No icons found",
   "common.ssoRequiredScreen.goBack": "Go back",
   "common.ssoRequiredScreen.orgRequiresSsoAuth":
     "This organization requires SSO authentication to access.",

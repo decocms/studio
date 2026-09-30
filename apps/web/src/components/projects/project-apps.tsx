@@ -10,7 +10,6 @@ import {
   BezierCurve02,
   FileSearch02,
   FlipBackward,
-  Grid01,
   Image01,
   LayoutAlt01,
   Server01,
@@ -20,6 +19,7 @@ import {
 import type { ComponentType, ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { AgentAvatar } from "@/components/agent-icon";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/use-t.ts";
@@ -35,9 +35,6 @@ import {
   keepAttachedPinnedViews,
   pinnedViewsOf,
 } from "@/layouts/main-panel-tabs/attached-pinned-views";
-import { resolveTabIcon } from "@/layouts/main-panel-tabs/resolve-tab-icon";
-import { TabIconGlyph } from "@/layouts/main-panel-tabs/tab-icon-glyph";
-import { formatPinnedViewTabId } from "@/layouts/main-panel-tabs/tab-id";
 import { useProjectNativeViewPresence } from "@/layouts/main-panel-tabs/use-project-native-view-presence";
 import { agentHasClonableSource } from "@/lib/agent-capabilities";
 import { track } from "@/lib/posthog-client";
@@ -158,22 +155,24 @@ export function launchableApps(
   );
 }
 
-/** One launcher tile. Native and pinned apps differ only in glyph and target. */
+/** One launcher tile. Native and pinned apps differ only in glyph and target;
+ *  `caption` names the project where tiles from several share a row. */
 function AppTile({
   to,
   params,
   title,
   label,
-  tone,
-  glyph,
+  caption,
+  face,
   onClick,
 }: {
   to: string;
   params: Record<string, string>;
   title?: string;
   label: string;
-  tone: string;
-  glyph: ReactNode;
+  caption?: string;
+  /** The 56px mark; takes `group-hover` from the tile. */
+  face: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -184,18 +183,128 @@ function AppTile({
       title={title}
       className="group flex w-20 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"
     >
-      <span
-        className={cn(
-          "relative flex size-14 shrink-0 items-center justify-center rounded-2xl transition-transform group-hover:scale-105",
-          tone,
+      {face}
+      <span className="flex w-full flex-col">
+        <span className="truncate text-foreground text-xs font-medium">
+          {label}
+        </span>
+        {caption && (
+          <span className="truncate text-muted-foreground text-xs">
+            {caption}
+          </span>
         )}
-      >
-        {glyph}
-      </span>
-      <span className="w-full truncate text-foreground text-xs font-medium">
-        {label}
       </span>
     </Link>
+  );
+}
+
+const TILE_FACE =
+  "size-14 justify-center rounded-2xl transition-transform group-hover:scale-105";
+
+const ORG_HIDDEN_APPS = new Set<LaunchableViewId>(["reports", "site-editor"]);
+
+/** A project's tiles, bare, so the org home can lay several projects' tiles
+ *  in one row. A component rather than a function because native presence is
+ *  a per-project hook. */
+function ProjectAppTiles({
+  project,
+  orgSlug,
+  showProject,
+}: {
+  project: VirtualMCPEntity;
+  orgSlug: string;
+  showProject?: boolean;
+}) {
+  const t = useT();
+  /** Site Editor opens a repo; without one the tile would bounce to
+   *  Settings. */
+  const hasSource = agentHasClonableSource(project.metadata);
+  const native = useProjectNativeViewPresence(project);
+  const apps = launchableApps(project, native.presence).filter(
+    (id) =>
+      (id !== "site-editor" || hasSource) &&
+      /* Every project has these two, so across an org they bury the apps
+         someone actually chose. They stay on each project's own screen. */
+      !(showProject && ORG_HIDDEN_APPS.has(id)),
+  );
+  /** The project's pinned app views, the same ones the scoped sidebar lists. */
+  const pinned = keepAttachedPinnedViews(
+    pinnedViewsOf(project),
+    (project.connections ?? []).map((c) => c.connection_id),
+  ).filter((pv) => pv.toolName !== "fetch_assets");
+  const caption = showProject ? project.title : undefined;
+
+  return (
+    <>
+      {apps.map((id) => {
+        const app = APPS[id];
+        return (
+          <AppTile
+            key={id}
+            to={app.to}
+            params={{ org: orgSlug, agentId: project.id }}
+            /** The rail records the open, not the click — see
+             *  `useRememberOpenApp`. */
+            onClick={() => track("project_app_launched", { app: id })}
+            title={t(app.captionKey)}
+            label={t(app.labelKey)}
+            caption={caption}
+            face={
+              <span className={cn(TILE_FACE, "flex items-center", app.tone)}>
+                <app.Icon size={24} />
+              </span>
+            }
+          />
+        );
+      })}
+      {pinned.map((pv) => {
+        const label = pv.label || pv.toolName;
+        return (
+          <AppTile
+            key={`${pv.connectionId}:${pv.toolName}`}
+            to={PROJECT_ROUTE.app}
+            params={{
+              org: orgSlug,
+              agentId: project.id,
+              connectionId: pv.connectionId,
+              toolName: pv.toolName,
+            }}
+            onClick={() => track("project_app_launched", { app: "pinned" })}
+            label={label}
+            caption={caption}
+            /** The icon and colour picked in Settings › Views; unpicked, the
+             *  same name-derived mark that picker previews. */
+            face={
+              <AgentAvatar
+                icon={pv.icon}
+                name={label}
+                size="md"
+                className={TILE_FACE}
+              />
+            }
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/** The heading and tile row. Hidden until a tile lands: which projects have
+ *  apps is only known once each one's presence resolves. */
+function AppsSection({ children }: { children: ReactNode }) {
+  const t = useT();
+  return (
+    /* A quiet label for orientation; the tiles below already read as a group. */
+    <section className="hidden flex-col gap-2 has-[a]:flex">
+      {/* `pl-3` matches the Board/List/Feed tabs below: those are `sm`-size
+          pill buttons with `px-3` built in, so their label sits 12px past the
+          shared page edge. This heading has no button padding of its own, so
+          it needs the same 12px to land on the same column. */}
+      <h2 className="pl-3 text-muted-foreground text-sm font-medium">
+        {t("projects.apps.heading")}
+      </h2>
+      <div className="flex flex-wrap gap-3">{children}</div>
+    </section>
   );
 }
 
@@ -206,80 +315,31 @@ export function ProjectApps({
   project: VirtualMCPEntity;
   orgSlug: string;
 }) {
-  const t = useT();
-  /** Site Editor opens a repo; without one the tile would bounce to
-   *  Settings. */
-  const hasSource = agentHasClonableSource(project.metadata);
-  const native = useProjectNativeViewPresence(project);
-  const apps = launchableApps(project, native.presence).filter(
-    (id) => id !== "site-editor" || hasSource,
-  );
-  /** The project's pinned app views, the same ones the scoped sidebar lists. */
-  const pinned = keepAttachedPinnedViews(
-    pinnedViewsOf(project),
-    (project.connections ?? []).map((c) => c.connection_id),
-  ).filter((pv) => pv.toolName !== "fetch_assets");
-  if (apps.length === 0 && pinned.length === 0) return null;
-
   return (
-    /* A quiet label for orientation; the tiles below already read as a group. */
-    <section className="flex flex-col gap-2">
-      {/* `pl-3` matches the Board/List/Feed tabs below: those are `sm`-size
-          pill buttons with `px-3` built in, so their label sits 12px past the
-          shared page edge. This heading has no button padding of its own, so
-          it needs the same 12px to land on the same column. */}
-      <h2 className="pl-3 text-muted-foreground text-sm font-medium">
-        {t("projects.apps.heading")}
-      </h2>
-      <div className="flex flex-wrap gap-3">
-        {apps.map((id) => {
-          const app = APPS[id];
-          return (
-            <AppTile
-              key={id}
-              to={app.to}
-              params={{ org: orgSlug, agentId: project.id }}
-              /** The rail records the open, not the click — see
-               *  `useRememberOpenApp`. */
-              onClick={() => track("project_app_launched", { app: id })}
-              title={t(app.captionKey)}
-              label={t(app.labelKey)}
-              tone={app.tone}
-              glyph={<app.Icon size={24} />}
-            />
-          );
-        })}
-        {pinned.map((pv) => {
-          const icon = resolveTabIcon({
-            tabId: formatPinnedViewTabId(pv.connectionId, pv.toolName),
-            kind: "expanded",
-            iconUrl: pv.icon,
-            connections: [],
-          });
-          return (
-            <AppTile
-              key={`${pv.connectionId}:${pv.toolName}`}
-              to={PROJECT_ROUTE.app}
-              params={{
-                org: orgSlug,
-                agentId: project.id,
-                connectionId: pv.connectionId,
-                toolName: pv.toolName,
-              }}
-              onClick={() => track("project_app_launched", { app: "pinned" })}
-              label={pv.label || pv.toolName}
-              tone="bg-muted text-muted-foreground"
-              glyph={
-                icon.kind === "fallback" ? (
-                  <Grid01 size={24} />
-                ) : (
-                  <TabIconGlyph icon={icon} />
-                )
-              }
-            />
-          );
-        })}
-      </div>
-    </section>
+    <AppsSection>
+      <ProjectAppTiles project={project} orgSlug={orgSlug} />
+    </AppsSection>
+  );
+}
+
+/** Every project's apps, on the org home. Each tile names its project. */
+export function OrgApps({
+  projects,
+  orgSlug,
+}: {
+  projects: VirtualMCPEntity[];
+  orgSlug: string;
+}) {
+  return (
+    <AppsSection>
+      {projects.map((project) => (
+        <ProjectAppTiles
+          key={project.id}
+          project={project}
+          orgSlug={orgSlug}
+          showProject
+        />
+      ))}
+    </AppsSection>
   );
 }

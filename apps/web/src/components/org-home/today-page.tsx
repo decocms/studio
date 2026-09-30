@@ -37,6 +37,7 @@ import { useOrgTasksSuspense } from "./use-org-tasks";
 import { ProjectRoster } from "./project-roster";
 import { HomeSplit } from "./section";
 import { WhatMoved } from "./what-moved";
+import { OrgApps } from "@/components/projects/project-apps";
 import { NewProjectButton } from "@/components/projects/new-project-dialog";
 import { ProjectsEmptyState } from "@/components/projects/projects-empty-state";
 import { TrainingCard } from "./training-card";
@@ -149,6 +150,7 @@ function OrgHomeBody({
         projectsById={new Map(projects.map((p) => [p.id, p]))}
         orgSlug={org.slug}
       />
+      <OrgApps projects={projects} orgSlug={org.slug} />
       {/* The work on the left, the standing readouts on the right: what needs
           answering and what changed are read as sentences; what each project is
           moving and what is running are read as numbers. */}
