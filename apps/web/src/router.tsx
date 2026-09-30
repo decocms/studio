@@ -809,6 +809,7 @@ const agentExperimentsRoute = createRoute({
   getParentRoute: () => agentWorkspaceRoute,
   path: "/experiments",
   staticData: {
+    pageTitle: "experiments.title",
     defaultMain: "experiments",
     mainView: "experiments",
   },

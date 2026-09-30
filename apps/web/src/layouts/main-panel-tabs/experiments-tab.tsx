@@ -1,36 +1,66 @@
-import { useState } from "react";
+import { type CSSProperties, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Cell, Pie, PieChart } from "recharts";
 import {
-  ArrowLeft,
   ArrowUpRight,
+  ChevronDown,
+  Clock,
   CodeBrowser,
-  Eye,
+  DotsHorizontal,
+  Image03,
+  FilterLines,
+  Monitor01,
+  PauseCircle,
   Pencil01,
+  Phone01,
+  PlayCircle,
+  Plus,
+  ShoppingCart01,
   Stars02,
+  StopCircle,
+  SwitchHorizontal01,
   Trash01,
+  XClose,
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
+import { Badge } from "@decocms/ui/components/badge.tsx";
 import { Button } from "@decocms/ui/components/button.tsx";
+import { Card } from "@decocms/ui/components/card.tsx";
+import { IconButton } from "@decocms/ui/components/icon-button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Slider } from "@decocms/ui/components/slider.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@decocms/ui/components/select.tsx";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@decocms/ui/components/dialog.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@decocms/ui/components/alert-dialog.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@decocms/ui/components/dropdown-menu.tsx";
 import { EmptyState } from "@decocms/ui/components/empty-state.tsx";
+import { SearchToggle } from "@decocms/ui/components/search-toggle.tsx";
 import { Spinner } from "@decocms/ui/components/spinner.tsx";
+import { Page } from "@/components/page";
 import { useProjectContext, useVirtualMCP } from "@/sdk";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
 import { resolveAgentSiteSlug } from "@decocms/shared/site-slug";
@@ -50,284 +80,495 @@ import {
   useUpdateExperiment,
 } from "@/hooks/use-experiments";
 
-const STATUSES: ExperimentStatus[] = ["draft", "running", "paused", "ended"];
+const STATUSES: ExperimentStatus[] = ["running", "paused", "draft", "ended"];
 
-/** Dot/pill colors per status — semantic, not the row's own accent (a variant
- *  split uses accent for "the non-control arm"; status is a different axis). */
-const STATUS_STYLES: Record<ExperimentStatus, { dot: string; pill: string }> = {
-  running: { dot: "bg-success", pill: "bg-success/10 text-success" },
-  paused: { dot: "bg-warning", pill: "bg-warning/10 text-warning" },
-  draft: {
-    dot: "bg-muted-foreground/60",
-    pill: "bg-muted text-muted-foreground",
-  },
-  ended: {
-    dot: "bg-muted-foreground/40",
-    pill: "bg-muted text-muted-foreground",
-  },
+const STATUS_DOT: Record<ExperimentStatus, string> = {
+  running: "bg-success",
+  paused: "bg-warning",
+  draft: "bg-muted-foreground/60",
+  ended: "bg-muted-foreground/40",
 };
 
-/** One arm's color in the split bar: the control arm is always neutral, every
- *  other arm (however many) shares the one accent — the bar communicates
- *  shape (relative widths) and role, not a distinct hue per arm. */
-function variantBarColor(role: string | null | undefined): string {
-  return role === "control" ? "bg-muted-foreground/50" : "bg-primary";
+function useStatusLabel() {
+  const t = useT();
+  return (status: ExperimentStatus) => {
+    switch (status) {
+      case "running":
+        return t("experiments.status.running");
+      case "paused":
+        return t("experiments.status.paused");
+      case "draft":
+        return t("experiments.status.draft");
+      case "ended":
+        return t("experiments.status.ended");
+      default: {
+        const unreachable: never = status;
+        return unreachable;
+      }
+    }
+  };
 }
 
-interface VariantForm {
+function StatusBadge({ status }: { status: ExperimentStatus }) {
+  const label = useStatusLabel();
+  return (
+    <Badge variant="secondary">
+      <span className={cn("size-1.5 rounded-full", STATUS_DOT[status])} />
+      {label(status)}
+    </Badge>
+  );
+}
+
+type StatusAction = {
+  to: ExperimentStatus;
+  label: string;
+  icon: typeof PlayCircle;
+};
+
+/** The transitions an operator can take from `status`, primary first. */
+function useStatusActions() {
+  const t = useT();
+  const start = {
+    to: "running",
+    label: t("experiments.action.start"),
+    icon: PlayCircle,
+  } as const;
+  const resume = { ...start, label: t("experiments.action.resume") };
+  const pause = {
+    to: "paused",
+    label: t("experiments.action.pause"),
+    icon: PauseCircle,
+  } as const;
+  const end = {
+    to: "ended",
+    label: t("experiments.action.end"),
+    icon: StopCircle,
+  } as const;
+  return (status: ExperimentStatus): StatusAction[] => {
+    switch (status) {
+      case "draft":
+        return [start];
+      case "running":
+        return [pause, end];
+      case "paused":
+        return [resume, end];
+      case "ended":
+        return [];
+      default: {
+        const unreachable: never = status;
+        return unreachable;
+      }
+    }
+  };
+}
+
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+}
+
+/** "Started 14d ago" / "Created today": the most relevant date for a row. */
+function useLifecycleLabel() {
+  const t = useT();
+  const when = (iso: string) => {
+    const days = daysSince(iso);
+    return days === 0
+      ? t("experiments.meta.today")
+      : t("experiments.meta.daysAgo", { days });
+  };
+  return (e: Experiment) => {
+    if (e.status === "ended" && e.endedAt) {
+      return t("experiments.meta.ended", { when: when(e.endedAt) });
+    }
+    if (e.startedAt && e.status !== "draft") {
+      return t("experiments.meta.started", { when: when(e.startedAt) });
+    }
+    return t("experiments.meta.created", { when: when(e.createdAt) });
+  };
+}
+
+/** One variant as the page edits it, before it's saved. */
+interface ArmDraft {
   id: string;
-  weight: string;
-  role: "" | "control" | "treatment";
-  /** One sentence: what this arm specifically shows/does. From
-   *  EXPERIMENT_SUGGEST, or typed manually — optional either way. */
-  description?: string;
+  role: "control" | "treatment" | null;
+  description: string;
+  weight: number;
 }
 
-const BLANK_VARIANTS: VariantForm[] = [
-  { id: "control", weight: "50", role: "control" },
-  { id: "variant-b", weight: "50", role: "treatment" },
+function toDrafts(variants: Experiment["variants"]): ArmDraft[] {
+  return variants.map((v) => ({
+    id: v.id,
+    role: v.role ?? null,
+    description: v.description ?? "",
+    weight: v.weight,
+  }));
+}
+
+function toVariants(arms: ArmDraft[]): Experiment["variants"] {
+  return arms.map((a) => ({
+    id: a.id.trim(),
+    weight: a.weight,
+    role: a.role,
+    description: a.description.trim() || null,
+  }));
+}
+
+const BLANK_ARMS: ArmDraft[] = [
+  { id: "control", role: "control", description: "", weight: 50 },
+  { id: "variant-b", role: "treatment", description: "", weight: 50 },
 ];
 
-/** Proportional split bar + per-arm legend — the same visual for the list row
- *  and (once results ship to Deco Analytics) anywhere else a variant split
- *  needs to read at a glance. */
-function SplitBar({ variants }: { variants: Experiment["variants"] }) {
-  const total = variants.reduce((a, v) => a + v.weight, 0) || 100;
+/** Control is a quiet neutral; each treatment gets its own hue. */
+const PRIMARY_COLOR = "var(--color-primary)";
+const TREATMENT_COLORS = [
+  PRIMARY_COLOR,
+  "var(--color-chart-1)",
+  "var(--color-chart-3)",
+  "var(--color-chart-4)",
+];
+const CONTROL_COLOR =
+  "color-mix(in oklch, var(--color-muted-foreground) 45%, transparent)";
+
+function armColors(arms: { role?: string | null }[]): string[] {
+  let treatment = 0;
+  return arms.map((a) =>
+    a.role === "control"
+      ? CONTROL_COLOR
+      : (TREATMENT_COLORS[treatment++ % TREATMENT_COLORS.length] as string),
+  );
+}
+
+function armLabel(
+  t: ReturnType<typeof useT>,
+  arm: { id: string; role?: string | null },
+): string {
+  return arm.role === "control" ? t("experiments.preview.control") : arm.id;
+}
+
+/** Set arm `index` to `value` and spread the remainder over the other arms in
+ *  proportion to their current weights, keeping integers that sum to 100. */
+function spreadProportionally(
+  weights: number[],
+  index: number,
+  value: number,
+): number[] {
+  const rest = 100 - value;
+  const othersSum = weights.reduce((a, w, i) => (i === index ? a : a + w), 0);
+  const raw = weights.map((w, i) =>
+    i === index
+      ? value
+      : othersSum > 0
+        ? (w / othersSum) * rest
+        : rest / (weights.length - 1),
+  );
+  const next = raw.map((r, i) => (i === index ? value : Math.floor(r)));
+  let leftover = 100 - next.reduce((a, w) => a + w, 0);
+  const byFraction = raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .filter(({ i }) => i !== index)
+    .sort((a, b) => b.frac - a.frac);
+  for (const { i } of byFraction) {
+    if (leftover <= 0) break;
+    next[i] = (next[i] ?? 0) + 1;
+    leftover -= 1;
+  }
+  return next;
+}
+
+/** Set arm `index` to `value`, keeping the split at 100. Moving a treatment
+ *  trades with the control first (then the other treatments), so the others
+ *  keep what was set for them; moving the control spreads over the rest. */
+function rebalance(
+  weights: number[],
+  index: number,
+  value: number,
+  controlIndex: number,
+): number[] {
+  if (weights.length < 2) return [100];
+  if (controlIndex < 0 || index === controlIndex) {
+    return spreadProportionally(weights, index, value);
+  }
+  const next = weights.map((w, i) => (i === index ? value : w));
+  let excess = next.reduce((a, w) => a + w, 0) - 100;
+  if (excess <= 0) {
+    next[controlIndex] = (next[controlIndex] ?? 0) - excess;
+    return next;
+  }
+  const donors = [
+    controlIndex,
+    ...weights
+      .map((_, i) => i)
+      .filter((i) => i !== index && i !== controlIndex)
+      .reverse(),
+  ];
+  for (const j of donors) {
+    const take = Math.min(next[j] ?? 0, excess);
+    next[j] = (next[j] ?? 0) - take;
+    excess -= take;
+    if (excess === 0) break;
+  }
+  return next;
+}
+
+/** The arm's share, editable by typing: click the number or the pencil. */
+function PercentField({
+  value,
+  label,
+  onCommit,
+}: {
+  value: number;
+  label: string;
+  onCommit: (value: number) => void;
+}) {
+  const t = useT();
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = () => {
+    const n = Math.round(Number(draft));
+    if (draft !== null && draft.trim() !== "" && Number.isFinite(n)) {
+      onCommit(Math.min(100, Math.max(0, n)));
+    }
+    setDraft(null);
+  };
+
+  if (draft !== null) {
+    return (
+      <span className="flex items-center text-xl font-medium tabular-nums">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setDraft(null);
+          }}
+          onFocus={(e) => e.target.select()}
+          inputMode="numeric"
+          aria-label={label}
+          // oxlint-disable-next-line jsx-a11y/no-autofocus -- editing was just requested
+          autoFocus
+          className="field-sizing-content min-w-[2ch] bg-transparent text-right outline-none"
+        />
+        %
+      </span>
+    );
+  }
+
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-      <div className="flex h-2 overflow-hidden rounded-full bg-muted">
-        {variants.map((v) => (
-          <div
-            key={v.id}
-            className={cn(variantBarColor(v.role))}
-            style={{ width: `${(v.weight / total) * 100}%` }}
-          />
+    <button
+      type="button"
+      onClick={() => setDraft(String(value))}
+      aria-label={t("experiments.split.editPercent", { label })}
+      className="group/percent flex items-center gap-1.5 rounded-md text-xl font-medium tabular-nums focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <Pencil01
+        size={14}
+        className="text-muted-foreground transition-colors group-hover/percent:text-foreground"
+      />
+      {value}%
+    </button>
+  );
+}
+
+function evenSplit(n: number): number[] {
+  const base = Math.floor(100 / n);
+  return Array.from({ length: n }, (_, i) =>
+    i === 0 ? 100 - base * (n - 1) : base,
+  );
+}
+
+function SplitDonut({
+  arms,
+  size,
+  thickness,
+}: {
+  arms: { id: string; role?: string | null; weight: number }[];
+  size: number;
+  thickness: number;
+}) {
+  const colors = armColors(arms);
+  const outer = size / 2;
+  return (
+    <PieChart width={size} height={size}>
+      <Pie
+        data={arms.map((a) => ({ id: a.id, value: a.weight }))}
+        dataKey="value"
+        nameKey="id"
+        innerRadius={outer - thickness}
+        outerRadius={outer}
+        startAngle={90}
+        endAngle={450}
+        paddingAngle={arms.filter((a) => a.weight > 0).length > 1 ? 2 : 0}
+        cornerRadius={thickness / 4}
+        stroke="none"
+        isAnimationActive={false}
+      >
+        {arms.map((a, i) => (
+          <Cell key={a.id} fill={colors[i]} />
         ))}
-      </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-        {variants.map((v) => (
-          <span
-            key={v.id}
-            className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-          >
-            <span
-              className={cn("h-1.5 w-1.5 rounded-sm", variantBarColor(v.role))}
-            />
-            {v.id}{" "}
-            <span className="font-mono text-muted-foreground/70">
-              {v.weight}%
-            </span>
-          </span>
-        ))}
-      </div>
-    </div>
+      </Pie>
+    </PieChart>
   );
 }
 
 /**
- * Create AND edit share this form — an experiment's shape (key, name,
- * variants) is the same either way, only the mutation and whether `key` can
- * still move differ. `mode: "edit"` locks `key`: it's the identifier
- * `useExperiment(key)` and the deco-ab-testing Worker's test name key off —
- * changing it here would silently detach the row from the live test.
+ * Donut + one slider per variant; ids are editable only on drafts, since a live test assigns on them.
  */
-function ExperimentDialog({
-  site,
-  open,
-  onOpenChange,
-  mode = "create",
-  initialKey,
-  initialName,
-  initialVariants,
-  hypothesis,
+function SplitCard({
+  arms,
+  onChange,
+  structureEditable,
 }: {
-  site: string;
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  mode?: "create" | "edit";
-  /** Pre-fills the form — from `EXPERIMENT_SUGGEST`'s output in create mode,
-   *  or the experiment being edited in edit mode. Pass a fresh object
-   *  identity (or key this component by it) to reset the form. */
-  initialKey?: string;
-  initialName?: string;
-  initialVariants?: VariantForm[];
-  /** Shown above the form when the fields came from a prompt suggestion (create mode only). */
-  hypothesis?: string;
+  arms: ArmDraft[];
+  onChange: (arms: ArmDraft[]) => void;
+  structureEditable: boolean;
 }) {
   const t = useT();
-  const create = useCreateExperiment(site);
-  const update = useUpdateExperiment(site);
-  const mutation = mode === "edit" ? update : create;
-  const [key, setKey] = useState(initialKey ?? "");
-  const [name, setName] = useState(initialName ?? "");
-  const [variants, setVariants] = useState<VariantForm[]>(
-    initialVariants ?? BLANK_VARIANTS,
+  const colors = armColors(arms);
+  const weights = arms.map((a) => a.weight);
+  const controlIndex = arms.findIndex((a) => a.role === "control");
+  const changedShare = arms.reduce(
+    (a, arm) => (arm.role === "control" ? a : a + arm.weight),
+    0,
   );
+  const withWeights = (ws: number[]) =>
+    onChange(arms.map((a, i) => ({ ...a, weight: ws[i] ?? 0 })));
+  const patch = (i: number, p: Partial<ArmDraft>) =>
+    onChange(arms.map((a, idx) => (idx === i ? { ...a, ...p } : a)));
+  const even = evenSplit(arms.length);
+  const isEven = even.every((w, i) => w === weights[i]);
 
-  const sum = variants.reduce((a, v) => a + (Number(v.weight) || 0), 0);
-  const setVar = (i: number, patch: Partial<VariantForm>) =>
-    setVariants((vs) =>
-      vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)),
-    );
-
-  const submit = () => {
-    const payload = {
-      key: key.trim(),
-      name: name.trim(),
-      variants: variants.map((v) => ({
-        id: v.id.trim(),
-        weight: Number(v.weight) || 0,
-        role: v.role || null,
-        description: v.description || null,
-      })),
-    };
-    mutation.mutate(payload, {
-      onSuccess: () => {
-        if (mode === "create") {
-          setKey("");
-          setName("");
-          setVariants(BLANK_VARIANTS);
-        }
-        onOpenChange(false);
+  const addArm = () => {
+    const next = [
+      ...arms,
+      {
+        id: `variant-${String.fromCharCode(97 + arms.length)}`,
+        role: "treatment" as const,
+        description: "",
+        weight: 0,
       },
-    });
+    ];
+    const ws = evenSplit(next.length);
+    onChange(next.map((a, i) => ({ ...a, weight: ws[i] ?? 0 })));
+  };
+  const removeArm = (index: number) => {
+    const next = arms.filter((_, i) => i !== index);
+    const ws = evenSplit(next.length);
+    onChange(next.map((a, i) => ({ ...a, weight: ws[i] ?? 0 })));
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {mode === "edit"
-              ? t("experiments.dialog.editTitle")
-              : hypothesis
-                ? t("experiments.prompt.reviewTitle")
-                : t("experiments.dialog.newTitle")}
-          </DialogTitle>
-          <DialogDescription>{t("experiments.subtitle")}</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          {hypothesis && (
-            <div className="rounded-md border border-border bg-muted/40 p-2.5 text-xs">
-              <span className="font-medium text-muted-foreground">
-                {t("experiments.prompt.hypothesis")}:{" "}
-              </span>
-              {hypothesis}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs">{t("experiments.dialog.key")}</Label>
-              <Input
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="valentine-banner"
-                disabled={mode === "edit"}
-                title={
-                  mode === "edit"
-                    ? t("experiments.dialog.keyLocked")
-                    : undefined
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-xs">{t("experiments.dialog.name")}</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="PLP ranking"
-              />
-            </div>
+    <Card className="flex-col items-center gap-10 p-8 md:flex-row">
+      <div className="flex flex-shrink-0 flex-col items-center gap-4">
+        <div className="relative">
+          <SplitDonut arms={arms} size={240} thickness={30} />
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-4xl font-medium tabular-nums">
+              {changedShare}%
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {t("experiments.split.seeChange")}
+            </span>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">
-                {t("experiments.dialog.variants")} —{" "}
-                {t("experiments.dialog.weightSum", { sum })}
-              </Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  setVariants((vs) => [
-                    ...vs,
-                    { id: "", weight: "0", role: "" },
-                  ])
-                }
-              >
-                {t("experiments.dialog.addVariant")}
-              </Button>
-            </div>
-            {variants.map((v, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: positional editable rows
-              <div key={i} className="flex flex-col gap-1">
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    value={v.id}
-                    onChange={(e) => setVar(i, { id: e.target.value })}
-                    placeholder="id"
-                    className="h-8 flex-1"
-                  />
-                  <Input
-                    value={v.weight}
-                    onChange={(e) => setVar(i, { weight: e.target.value })}
-                    inputMode="numeric"
-                    className="h-8 w-16"
-                  />
-                  <select
-                    value={v.role}
-                    onChange={(e) =>
-                      setVar(i, {
-                        role: e.target.value as VariantForm["role"],
-                      })
-                    }
-                    className="h-8 rounded-md border border-border bg-background px-2 text-xs"
-                  >
-                    <option value="">role…</option>
-                    <option value="control">control</option>
-                    <option value="treatment">treatment</option>
-                  </select>
-                </div>
-                {/* The before/after: what this arm will actually do once
-                    implemented — the text the Super Agent's run is scoped to. */}
-                {v.description && (
-                  <p className="pl-1 text-xs text-muted-foreground">
-                    {v.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-          {mutation.error && (
-            <p className="text-xs text-destructive">
-              {mutation.error instanceof Error
-                ? mutation.error.message
-                : "Error"}
-            </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="tab"
+            size="sm"
+            aria-pressed={isEven}
+            onClick={() => withWeights(even)}
+          >
+            {t("experiments.split.even")}
+          </Button>
+          {structureEditable && (
+            <Button variant="ghost" size="sm" onClick={addArm}>
+              <Plus size={14} />
+              {t("experiments.split.addVariant")}
+            </Button>
           )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("experiments.dialog.cancel")}
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={mutation.isPending || !key.trim() || !name.trim()}
-          >
-            {mode === "edit"
-              ? t("experiments.dialog.save")
-              : t("experiments.dialog.create")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+
+      <div className="flex w-full min-w-0 flex-1 flex-col gap-7">
+        {arms.map((arm, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: ids are editable, position is the identity
+          <div key={i} className="group flex flex-col gap-2.5">
+            <div className="flex items-center gap-2">
+              <span
+                className="size-2.5 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: colors[i] }}
+              />
+              {structureEditable && arm.role !== "control" ? (
+                <input
+                  value={arm.id}
+                  onChange={(e) => patch(i, { id: e.target.value })}
+                  aria-label={t("experiments.split.variantName")}
+                  className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none"
+                />
+              ) : (
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {armLabel(t, arm)}
+                </span>
+              )}
+              {structureEditable && arm.role !== "control" && (
+                <IconButton
+                  label={t("experiments.split.removeVariant")}
+                  onClick={() => removeArm(i)}
+                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                >
+                  <XClose size={14} />
+                </IconButton>
+              )}
+              <PercentField
+                value={arm.weight}
+                label={armLabel(t, arm)}
+                onCommit={(v) =>
+                  withWeights(rebalance(weights, i, v, controlIndex))
+                }
+              />
+            </div>
+            {/* Scoping --primary paints each slider in its variant's color. */}
+            <Slider
+              value={[arm.weight]}
+              max={100}
+              step={1}
+              onValueChange={([v]) =>
+                withWeights(rebalance(weights, i, v ?? 0, controlIndex))
+              }
+              aria-label={armLabel(t, arm)}
+              style={
+                colors[i] === PRIMARY_COLOR
+                  ? undefined
+                  : ({ "--primary": colors[i] } as CSSProperties)
+              }
+            />
+            <textarea
+              value={arm.description}
+              onChange={(e) => {
+                patch(i, { description: e.target.value });
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              ref={(el) => {
+                if (!el) return;
+                el.style.height = "auto";
+                el.style.height = `${el.scrollHeight}px`;
+              }}
+              rows={1}
+              placeholder={t(
+                "experiments.dialog.variantDescriptionPlaceholder",
+              )}
+              className="w-full resize-none overflow-hidden bg-transparent text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/50"
+            />
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
-
 /**
  * The "New experiment" entry point: a free-text prompt ("Valentine's Day
  * banner shows to 50% of users...") that `EXPERIMENT_SUGGEST` turns into a
- * structured proposal — the operator reviews and edits it in `ExperimentDialog`
+ * structured proposal — the operator reviews and edits it in `ReviewPanel`
  * before anything is created. Nothing here persists anything.
  */
 function PromptDialog({
@@ -346,6 +587,7 @@ function PromptDialog({
   const t = useT();
   const suggest = useSuggestExperiment(site);
   const [prompt, setPrompt] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const close = (v: boolean) => {
     onOpenChange(v);
@@ -355,9 +597,9 @@ function PromptDialog({
     }
   };
 
-  const generate = (text = prompt) => {
-    if (!text.trim()) return;
-    suggest.mutate(text.trim(), {
+  const generate = () => {
+    if (!prompt.trim() || suggest.isPending) return;
+    suggest.mutate(prompt.trim(), {
       onSuccess: (result) => {
         close(false);
         onGenerated(result);
@@ -366,53 +608,84 @@ function PromptDialog({
   };
 
   const examples = [
-    t("experiments.prompt.example1"),
-    t("experiments.prompt.example2"),
-    t("experiments.prompt.example3"),
+    { icon: Image03, text: t("experiments.prompt.example1") },
+    { icon: ShoppingCart01, text: t("experiments.prompt.example2") },
+    { icon: Clock, text: t("experiments.prompt.example3") },
   ];
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Stars02 size={18} />
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <DialogTitle>{t("experiments.prompt.title")}</DialogTitle>
-              <DialogDescription>
-                {t("experiments.prompt.subtitle")}
-              </DialogDescription>
-            </div>
-          </div>
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle>{t("experiments.prompt.title")}</DialogTitle>
+          <DialogDescription>
+            {t("experiments.prompt.subtitle")}
+          </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <Textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={t("experiments.prompt.placeholder")}
-            rows={4}
-            autoFocus
-            className="resize-none"
-          />
 
-          <div className="flex flex-wrap gap-1.5">
-            {examples.map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => setPrompt(example)}
-                className="rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        <div className="flex flex-col gap-4 px-6 pt-5 pb-6">
+          <div className="rounded-xl bg-[var(--studio-input-background)] card-shadow transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
+            <textarea
+              ref={inputRef}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  generate();
+                }
+              }}
+              placeholder={t("experiments.prompt.placeholder")}
+              aria-label={t("experiments.prompt.title")}
+              readOnly={suggest.isPending}
+              rows={4}
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- the dialog exists to take this one input
+              autoFocus
+              className="block w-full resize-none bg-transparent px-4 pt-4 text-base leading-relaxed outline-none placeholder:text-muted-foreground/60"
+            />
+            <div className="flex items-center justify-end gap-2 px-3 pb-3">
+              <span className="text-xs text-muted-foreground">
+                {suggest.isPending
+                  ? t("experiments.prompt.generating")
+                  : t("experiments.prompt.shortcut")}
+              </span>
+              <Button
+                size="sm"
+                onClick={generate}
+                disabled={suggest.isPending || !prompt.trim()}
               >
-                {example}
-              </button>
-            ))}
+                {suggest.isPending ? (
+                  <Spinner size="2xs" />
+                ) : (
+                  <Stars02 size={14} />
+                )}
+                {t("experiments.prompt.generate")}
+              </Button>
+            </div>
           </div>
 
-          <p className="text-[11px] text-muted-foreground">
-            {t("experiments.prompt.willGenerate")}
-          </p>
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-muted-foreground">
+              {t("experiments.prompt.tryOne")}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {examples.map(({ icon: Icon, text }) => (
+                <Button
+                  key={text}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setPrompt(text);
+                    inputRef.current?.focus();
+                  }}
+                  disabled={suggest.isPending}
+                >
+                  <Icon size={14} />
+                  {text}
+                </Button>
+              ))}
+            </div>
+          </div>
 
           {suggest.error && (
             <p className="text-xs text-destructive">
@@ -420,7 +693,11 @@ function PromptDialog({
             </p>
           )}
         </div>
-        <DialogFooter className="flex items-center justify-between sm:justify-between">
+
+        <div className="flex items-center justify-between border-t border-border px-6 py-3">
+          <span className="text-xs text-muted-foreground">
+            {t("experiments.prompt.willGenerate")}
+          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -429,77 +706,12 @@ function PromptDialog({
               onGenerated(null);
             }}
           >
+            <Pencil01 size={14} />
             {t("experiments.prompt.editManually")}
           </Button>
-          <Button
-            onClick={() => generate()}
-            disabled={suggest.isPending || !prompt.trim()}
-            className="gap-1.5"
-          >
-            {suggest.isPending ? (
-              <>
-                <Spinner size="2xs" />
-                {t("experiments.prompt.generating")}
-              </>
-            ) : (
-              <>
-                <Stars02 size={14} />
-                {t("experiments.prompt.generate")}
-              </>
-            )}
-          </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function SummaryStrip({ experiments }: { experiments: Experiment[] }) {
-  const t = useT();
-  const counts = {
-    running: experiments.filter((e) => e.status === "running").length,
-    paused: experiments.filter((e) => e.status === "paused").length,
-    draft: experiments.filter((e) => e.status === "draft").length,
-  };
-  return (
-    <div className="flex gap-6 rounded-lg border border-border bg-muted/30 px-4 py-3">
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xl font-semibold tabular-nums">
-          {experiments.length}
-        </span>
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          {t("experiments.summary.total")}
-        </span>
-      </div>
-      <div className="w-px bg-border" />
-      <div className="flex flex-col gap-0.5">
-        <span className="flex items-center gap-1.5 text-xl font-semibold tabular-nums text-success">
-          <span className="h-1.5 w-1.5 rounded-full bg-success" />
-          {counts.running}
-        </span>
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          {t("experiments.status.running")}
-        </span>
-      </div>
-      <div className="w-px bg-border" />
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xl font-semibold tabular-nums text-muted-foreground">
-          {counts.paused}
-        </span>
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          {t("experiments.status.paused")}
-        </span>
-      </div>
-      <div className="w-px bg-border" />
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xl font-semibold tabular-nums text-muted-foreground">
-          {counts.draft}
-        </span>
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          {t("experiments.status.draft")}
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -521,271 +733,498 @@ function buildForcedVariantUrl(
   }
 }
 
-/**
- * Before/after preview + traffic-split editor for one experiment. Renders
- * the site's real preview URL once per variant, each forced to that arm via
- * `?__ab=`, side by side — so "what does the treatment actually look like"
- * never requires being bucketed into it for real.
- */
-/** The variant's display name in the connected split bar / weight row —
- *  capitalized role when present ("Controle"/"Tratamento"), else the raw id. */
-function variantLabel(
-  t: ReturnType<typeof useT>,
-  v: { id: string; role?: string | null },
-): string {
-  if (v.role === "control") return t("experiments.preview.control");
-  if (v.role === "treatment") return t("experiments.preview.treatment");
-  return v.id;
+function PreviewFrame({ src, title }: { src: string; title: string }) {
+  return (
+    <iframe
+      src={src}
+      title={title}
+      // oxlint-disable-next-line react/iframe-missing-sandbox -- same-origin lets the ab-testing SDK fetch its manifest; frames only the project's own site
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+      className="h-full w-full border-0 bg-background"
+    />
+  );
 }
 
-function PreviewPanel({
+type CompareMode = "control" | "compare" | "treatment";
+
+/**
+ * De/para: control and one treatment stacked, split by a draggable divider;
+ * the one/both toggle only moves the divider, so neither page reloads.
+ */
+function CompareCard({
+  baseUrl,
+  testKey,
+  arms,
+  reloadNonce = 0,
+}: {
+  baseUrl: string;
+  testKey: string;
+  arms: { id: string; role?: string | null }[];
+  reloadNonce?: number;
+}) {
+  const t = useT();
+  const colors = armColors(arms);
+  const control = arms.find((a) => a.role === "control") ?? arms[0];
+  const treatments = arms.filter((a) => a !== control);
+  const [treatmentId, setTreatmentId] = useState(treatments[0]?.id);
+  const treatment =
+    treatments.find((a) => a.id === treatmentId) ?? treatments[0] ?? control;
+  const [mode, setMode] = useState<CompareMode>("compare");
+  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [position, setPosition] = useState(50);
+  const [dragging, setDragging] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  if (!control || !treatment) return null;
+
+  const colorOf = (arm: { id: string }) =>
+    colors[arms.findIndex((a) => a.id === arm.id)] ?? CONTROL_COLOR;
+  const urlOf = (arm: { id: string }) =>
+    buildForcedVariantUrl(baseUrl, testKey, arm.id);
+  const reveal = mode === "control" ? 100 : mode === "treatment" ? 0 : position;
+
+  const moveTo = (clientX: number) => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const pct = ((clientX - rect.left) / rect.width) * 100;
+    setPosition(Math.min(100, Math.max(0, pct)));
+  };
+
+  // A treatment tab also sets the compared arm, so views share the two iframes.
+  const showArm = (arm: { id: string }) => {
+    if (arm.id === control.id) return setMode("control");
+    setTreatmentId(arm.id);
+    setMode("treatment");
+  };
+  const isShown = (arm: { id: string }) =>
+    arm.id === control.id
+      ? mode === "control"
+      : mode === "treatment" && arm.id === treatment.id;
+
+  return (
+    <Card className="gap-4 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <Button
+            variant="tab"
+            size="sm"
+            aria-pressed={mode === "compare"}
+            onClick={() => setMode("compare")}
+          >
+            <SwitchHorizontal01 size={14} />
+            {t("experiments.compare.compare")}
+          </Button>
+          {arms.map((arm) => (
+            <Button
+              key={arm.id}
+              variant="tab"
+              size="sm"
+              aria-pressed={isShown(arm)}
+              onClick={() => showArm(arm)}
+            >
+              <span
+                className="size-2 rounded-full"
+                style={{ backgroundColor: colorOf(arm) }}
+              />
+              {armLabel(t, arm)}
+            </Button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="tab"
+            size="icon-sm"
+            aria-pressed={device === "desktop"}
+            aria-label={t("experiments.compare.desktop")}
+            onClick={() => setDevice("desktop")}
+          >
+            <Monitor01 size={14} />
+          </Button>
+          <Button
+            variant="tab"
+            size="icon-sm"
+            aria-pressed={device === "mobile"}
+            aria-label={t("experiments.compare.mobile")}
+            onClick={() => setDevice("mobile")}
+          >
+            <Phone01 size={14} />
+          </Button>
+          {mode === "compare" ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("experiments.preview.openPage")}
+                >
+                  <ArrowUpRight size={14} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {[control, treatment].map((arm) => (
+                  <DropdownMenuItem key={arm.id} asChild>
+                    <a
+                      href={urlOf(arm)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: colorOf(arm) }}
+                      />
+                      {t("experiments.compare.openArm", {
+                        arm: armLabel(t, arm),
+                      })}
+                    </a>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <IconButton
+              label={t("experiments.compare.openArm", {
+                arm: armLabel(t, mode === "treatment" ? treatment : control),
+              })}
+              asChild
+            >
+              <a
+                href={urlOf(mode === "treatment" ? treatment : control)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ArrowUpRight size={14} />
+              </a>
+            </IconButton>
+          )}
+        </div>
+      </div>
+
+      <div
+        ref={frameRef}
+        className={cn(
+          "relative h-[min(720px,75vh)] overflow-hidden rounded-lg bg-background card-shadow transition-[width] duration-300 ease-out",
+          device === "mobile" ? "mx-auto w-[390px] max-w-full" : "w-full",
+        )}
+        onPointerMove={dragging ? (e) => moveTo(e.clientX) : undefined}
+        onPointerUp={() => setDragging(false)}
+        onPointerLeave={() => setDragging(false)}
+      >
+        <div className="absolute inset-0">
+          <PreviewFrame
+            key={`${treatment.id}-${reloadNonce}`}
+            src={urlOf(treatment)}
+            title={armLabel(t, treatment)}
+          />
+        </div>
+        <div
+          className={cn(
+            "absolute inset-0",
+            !dragging && "transition-[clip-path] duration-300 ease-out",
+          )}
+          style={{ clipPath: `inset(0 ${100 - reveal}% 0 0)` }}
+        >
+          <PreviewFrame
+            key={`${control.id}-${reloadNonce}`}
+            src={urlOf(control)}
+            title={armLabel(t, control)}
+          />
+        </div>
+
+        {/* Iframes swallow pointer events; while dragging, this catches them. */}
+        {dragging && <div className="absolute inset-0 z-10 cursor-ew-resize" />}
+
+        {mode === "compare" && (
+          <>
+            {[control, treatment].map((arm, i) => {
+              const chip = (
+                <>
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: colorOf(arm) }}
+                  />
+                  {armLabel(t, arm)}
+                </>
+              );
+              const chipClass = cn(
+                "absolute bottom-3 z-20 flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-xs font-medium card-shadow transition-opacity",
+                i === 0 ? "left-3" : "right-3",
+                (i === 0 ? position < 15 : position > 85) &&
+                  "pointer-events-none opacity-0",
+              );
+              if (i === 0 || treatments.length < 2) {
+                return (
+                  <span
+                    key={arm.id}
+                    className={cn(chipClass, "pointer-events-none")}
+                  >
+                    {chip}
+                  </span>
+                );
+              }
+              return (
+                <DropdownMenu key={arm.id} modal={false}>
+                  <DropdownMenuTrigger
+                    className={cn(chipClass, "hover:bg-accent")}
+                    aria-label={t("experiments.compare.pickVariant")}
+                  >
+                    {chip}
+                    <ChevronDown size={12} className="text-muted-foreground" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" side="top">
+                    {treatments.map((a) => (
+                      <DropdownMenuCheckboxItem
+                        key={a.id}
+                        checked={a.id === treatment.id}
+                        onCheckedChange={() => setTreatmentId(a.id)}
+                      >
+                        <span
+                          className="size-2 rounded-full"
+                          style={{ backgroundColor: colorOf(a) }}
+                        />
+                        {armLabel(t, a)}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+            })}
+            <div
+              className="absolute inset-y-0 z-20 flex w-6 -translate-x-1/2 cursor-ew-resize justify-center"
+              style={{ left: `${position}%` }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+            >
+              <div className="h-full w-0.5 bg-card card-shadow" />
+              <button
+                type="button"
+                role="slider"
+                aria-label={t("experiments.compare.handle")}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(position)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft")
+                    setPosition((p) => Math.max(0, p - 5));
+                  if (e.key === "ArrowRight")
+                    setPosition((p) => Math.min(100, p + 5));
+                }}
+                className={cn(
+                  "absolute top-1/2 left-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-full bg-card text-foreground card-shadow transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  dragging && "scale-110",
+                )}
+              >
+                <SwitchHorizontal01 size={16} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+type ExperimentActions = {
+  onStatusChange: (status: ExperimentStatus) => void;
+  onImplement: () => void;
+  onDelete: () => void;
+};
+
+function sameArms(a: ArmDraft[], b: ArmDraft[]): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * One experiment: identity and actions in the top bar, split and de/para edited in place.
+ */
+function ExperimentDetail({
   site,
   experiment,
   baseUrl,
+  org,
+  agentId,
   onBack,
+  actions,
 }: {
   site: string;
   experiment: Experiment;
   baseUrl: string | null;
+  org: string;
+  agentId: string;
   onBack: () => void;
+  actions: ExperimentActions;
 }) {
   const t = useT();
-  const status = STATUS_STYLES[experiment.status];
   const update = useUpdateExperiment(site);
-  const [weights, setWeights] = useState<Record<string, string>>(
-    Object.fromEntries(
-      experiment.variants.map((v) => [v.id, String(v.weight)]),
-    ),
-  );
+  const lifecycle = useLifecycleLabel();
+  const [primary, ...secondaryStatus] = useStatusActions()(experiment.status);
+  const saved = toDrafts(experiment.variants);
+  const [arms, setArms] = useState(saved);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(experiment.name);
+  const dirty = !sameArms(arms, saved);
+  const valid =
+    arms.reduce((a, arm) => a + arm.weight, 0) === 100 &&
+    arms.every((a) => a.id.trim()) &&
+    new Set(arms.map((a) => a.id.trim())).size === arms.length;
 
-  const sum = Object.values(weights).reduce((a, w) => a + (Number(w) || 0), 0);
-  const dirty = experiment.variants.some(
-    (v) => weights[v.id] !== String(v.weight),
-  );
-  const total =
-    experiment.variants.reduce((a, v) => a + (Number(weights[v.id]) || 0), 0) ||
-    100;
-
-  const saveSplit = () => {
-    update.mutate({
-      key: experiment.key,
-      variants: experiment.variants.map((v) => ({
-        id: v.id,
-        weight: Number(weights[v.id]) || 0,
-        role: v.role,
-        description: v.description,
-      })),
-    });
+  const save = () =>
+    update.mutate({ key: experiment.key, variants: toVariants(arms) });
+  const commitName = () => {
+    setRenaming(false);
+    const next = name.trim();
+    if (next && next !== experiment.name) {
+      update.mutate({ key: experiment.key, name: next });
+    } else {
+      setName(experiment.name);
+    }
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-4">
-      <div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2">
-            <ArrowLeft size={14} />
-            {t("experiments.action.back")}
-          </Button>
-        </div>
-        <div className="mt-1 flex items-start justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-xl font-semibold">{experiment.name}</h2>
-            <span
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-                status.pill,
-              )}
-            >
-              <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
-              {experiment.status}
-            </span>
-          </div>
-          <Button
-            onClick={saveSplit}
-            disabled={!dirty || sum !== 100 || update.isPending}
-          >
-            {t("experiments.preview.saveChanges")}
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4 rounded-xl border border-border p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-semibold">
-              {t("experiments.preview.trafficTitle")}
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              {t("experiments.preview.trafficDesc")}
-            </p>
-          </div>
-          <span
-            className={cn(
-              "flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium",
-              sum === 100
-                ? "bg-success/10 text-success"
-                : "bg-destructive/10 text-destructive",
-            )}
-          >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full",
-                sum === 100 ? "bg-success" : "bg-destructive",
-              )}
-            />
-            {sum === 100
-              ? t("experiments.preview.distributionValid")
-              : t("experiments.dialog.weightSum", { sum })}
-          </span>
-        </div>
-
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: `repeat(${experiment.variants.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {experiment.variants.map((v) => (
-            <div key={v.id} className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "h-2.5 w-2.5 rounded-full",
-                    variantBarColor(v.role),
-                  )}
-                />
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">
-                    {variantLabel(t, v)}
-                  </span>
-                  <span className="font-mono text-[11px] text-muted-foreground">
-                    {v.id}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <Input
-                  value={weights[v.id]}
-                  onChange={(e) =>
-                    setWeights((w) => ({ ...w, [v.id]: e.target.value }))
+    <Page>
+      <Page.Breadcrumbs
+        after="page"
+        parent={{ label: t("experiments.title"), onSelect: onBack }}
+        items={[
+          {
+            key: "experiment",
+            label: renaming ? (
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={commitName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitName();
+                  if (e.key === "Escape") {
+                    setName(experiment.name);
+                    setRenaming(false);
                   }
-                  inputMode="numeric"
-                  className="h-8 w-16"
-                />
-                <span className="text-xs text-muted-foreground">%</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
-          {experiment.variants.map((v) => (
-            <div
-              key={v.id}
-              className={cn(variantBarColor(v.role))}
-              style={{
-                width: `${((Number(weights[v.id]) || 0) / total) * 100}%`,
-              }}
-            />
-          ))}
-        </div>
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{weights[experiment.variants[0]?.id ?? ""]}%</span>
-          <span>{weights[experiment.variants.at(-1)?.id ?? ""]}%</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <div>
-          <h3 className="text-sm font-semibold">
-            {t("experiments.preview.variantsTitle")}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {t("experiments.preview.variantsDesc")}
-          </p>
-        </div>
-
-        {!baseUrl ? (
-          <EmptyState
-            title={t("experiments.preview.noUrlTitle")}
-            description={t("experiments.preview.noUrlDesc")}
-          />
+                }}
+                aria-label={t("experiments.action.rename")}
+                // oxlint-disable-next-line jsx-a11y/no-autofocus -- rename was just requested from the menu
+                autoFocus
+                className="field-sizing-content min-w-24 max-w-md bg-transparent outline-none"
+              />
+            ) : (
+              experiment.name
+            ),
+          },
+        ]}
+      />
+      <Page.Actions
+        secondary={
+          <>
+            <span className="hidden text-xs text-muted-foreground @lg/panel-header:inline">
+              {lifecycle(experiment)}
+            </span>
+            <StatusBadge status={experiment.status} />
+          </>
+        }
+      >
+        {dirty ? (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setArms(saved)}
+            >
+              {t("experiments.split.reset")}
+            </Button>
+            <Button
+              size="sm"
+              onClick={save}
+              disabled={!valid || update.isPending}
+            >
+              {update.isPending && <Spinner size="2xs" />}
+              {t("experiments.preview.saveChanges")}
+            </Button>
+          </>
         ) : (
-          <div className="flex flex-col gap-4">
-            {experiment.variants.map((v) => (
-              <div
-                key={v.id}
-                className="flex flex-col gap-2 overflow-hidden rounded-xl border border-border"
-              >
-                <div className="flex flex-col gap-1 p-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "h-2.5 w-2.5 rounded-full",
-                        variantBarColor(v.role),
-                      )}
-                    />
-                    <span className="text-sm font-semibold">
-                      {variantLabel(t, v)}
-                    </span>
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      {v.id}
-                    </span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                      {v.weight}%
-                    </span>
-                    <a
-                      href={buildForcedVariantUrl(
-                        baseUrl,
-                        experiment.key,
-                        v.id,
-                      )}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      {t("experiments.preview.openPage")}
-                      <ArrowUpRight size={12} />
-                    </a>
-                  </div>
-                  {v.description && (
-                    <p className="text-xs text-muted-foreground">
-                      {v.description}
-                    </p>
-                  )}
-                </div>
-                <iframe
-                  src={buildForcedVariantUrl(baseUrl, experiment.key, v.id)}
-                  title={`${experiment.name} — ${v.id}`}
-                  // `allow-same-origin` IS needed here, despite the usual
-                  // advice against combining it with `allow-scripts` (that
-                  // pair lets framed content strip its own sandbox — a real
-                  // risk for arbitrary third-party content). This iframe only
-                  // ever frames the developer's own local site, so that
-                  // escape isn't a new capability. Without it, the framed
-                  // page runs in an opaque origin and the ab-testing SDK's
-                  // manifest fetch silently degrades to "no assignment" —
-                  // confirmed by the same URL working when opened directly
-                  // but not when framed.
-                  // oxlint-disable-next-line react/iframe-missing-sandbox -- see comment above; sandbox is present and deliberately scoped
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                  className="h-[700px] w-full border-0 border-t border-border bg-background"
-                />
-              </div>
-            ))}
-          </div>
+          primary && (
+            <Button
+              size="sm"
+              onClick={() => actions.onStatusChange(primary.to)}
+              disabled={update.isPending}
+            >
+              <primary.icon size={14} />
+              {primary.label}
+            </Button>
+          )
         )}
-      </div>
-    </div>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="secondary"
+              size="icon-sm"
+              aria-label={t("experiments.action.more")}
+            >
+              <DotsHorizontal size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onSelect={() => setRenaming(true)}>
+              <Pencil01 />
+              {t("experiments.action.rename")}
+            </DropdownMenuItem>
+            {secondaryStatus.map((a) => (
+              <DropdownMenuItem
+                key={a.to}
+                onSelect={() => actions.onStatusChange(a.to)}
+              >
+                <a.icon />
+                {a.label}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem onSelect={actions.onImplement}>
+              <CodeBrowser />
+              {t("experiments.action.implement")}
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to={PROJECT_ROUTE.analytics}
+                params={{ org, agentId }}
+                search={{ view: "experiments" }}
+              >
+                <ArrowUpRight />
+                {t("experiments.action.viewData")}
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={actions.onDelete}>
+              <Trash01 />
+              {t("experiments.action.delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Page.Actions>
+
+      <Page.Content>
+        <Page.Container className="flex flex-col gap-6">
+          <SplitCard
+            arms={arms}
+            onChange={setArms}
+            structureEditable={experiment.status === "draft"}
+          />
+          {baseUrl ? (
+            <CompareCard
+              baseUrl={baseUrl}
+              testKey={experiment.key}
+              arms={experiment.variants}
+            />
+          ) : (
+            <EmptyState
+              title={t("experiments.preview.noUrlTitle")}
+              description={t("experiments.preview.noUrlDesc")}
+            />
+          )}
+        </Page.Container>
+      </Page.Content>
+    </Page>
   );
 }
-
 /**
- * Full-screen review step between "Gerar"/"escrever manualmente" and
- * actually creating the experiment. Combines the editable form with a live
- * before/after preview (local dev only — see `EXPERIMENT_PREVIEW_SYNC_LOCAL`)
- * and a "reformular" box, so a wrong AI suggestion gets fixed by prompting
- * again instead of hand-editing fields that don't match what was asked for.
+ * Review step between the prompt and creating the experiment.
  */
 function ReviewPanel({
   site,
@@ -798,9 +1237,7 @@ function ReviewPanel({
   baseUrl: string | null;
   initial: SuggestedExperiment | null;
   onBack: () => void;
-  /** Called once the experiment is persisted — with its key, so the caller
-   *  can jump straight to that experiment's preview screen instead of just
-   *  closing back to the list. */
+  /** Called with the new experiment's key so the caller can open it. */
   onCreated: (key: string) => void;
 }) {
   const t = useT();
@@ -813,57 +1250,41 @@ function ReviewPanel({
   const [key, setKey] = useState(initial?.key ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [hypothesis, setHypothesis] = useState(initial?.hypothesis ?? "");
-  const [variants, setVariants] = useState<VariantForm[]>(
-    initial?.variants.map((v) => ({
-      id: v.id,
-      weight: String(v.weight),
-      role: v.role,
-      description: v.description,
-    })) ?? BLANK_VARIANTS,
+  const [arms, setArms] = useState<ArmDraft[]>(
+    initial ? toDrafts(initial.variants) : BLANK_ARMS,
   );
   const [regeneratePrompt, setRegeneratePrompt] = useState("");
   const [previewNonce, setPreviewNonce] = useState(0);
   const [synced, setSynced] = useState(false);
-  // EXPERIMENT_IMPLEMENT_LOCAL isn't idempotent — it inserts a new gate on
-  // every call. Once "Atualizar preview" has run it successfully for the
-  // current variant text, "Criar" must not run it again (double gate/import
-  // in the site's source). Any further edit to a description invalidates
-  // this, since the inserted gate no longer matches what's described.
-  const [implementedInSource, setImplementedInSource] = useState(false);
+  // The local implementer isn't idempotent: run it once per set of descriptions.
+  const [implementedFor, setImplementedFor] = useState<string | null>(null);
 
-  const sum = variants.reduce((a, v) => a + (Number(v.weight) || 0), 0);
-  const setVar = (i: number, patch: Partial<VariantForm>) => {
-    setVariants((vs) =>
-      vs.map((v, idx) => (idx === i ? { ...v, ...patch } : v)),
-    );
-    if ("description" in patch) setImplementedInSource(false);
-  };
+  const descriptionsKey = JSON.stringify(arms.map((a) => a.description));
+  const implementedInSource = implementedFor === descriptionsKey;
+  const canImplement = arms.some((a) => a.description.trim());
+  const sum = arms.reduce((a, arm) => a + arm.weight, 0);
+  const ready = !!key.trim() && !!name.trim() && sum === 100;
 
+  const implementPayload = (testKey: string) => ({
+    key: testKey,
+    variants: toVariants(arms).map(({ id, role, description }) => ({
+      id,
+      role,
+      description,
+    })),
+  });
+
+  // Implement before reloading the iframes, or they render the pre-gate site.
   const updatePreview = async () => {
-    // The manifest/admin-worker sync only lets `?__ab=` resolve a forced
-    // arm — it doesn't put the actual gate in the site's code. Without also
-    // (re-)running the local implementer here, the preview iframes would
-    // render both arms identically until after "Criar". The implementer's
-    // LLM call is the slow part (a few seconds); it must finish BEFORE the
-    // iframe reload below, or the reload races it and shows stale content —
-    // that race, not the LLM call itself, is what made this feel stuck.
     if (canImplement && !implementedInSource) {
-      const result = await implementLocal.mutateAsync({
-        key: key.trim(),
-        variants: variants.map((v) => ({
-          id: v.id.trim(),
-          role: v.role || null,
-          description: v.description,
-        })),
-      });
-      setImplementedInSource(result.implemented);
+      const result = await implementLocal.mutateAsync(
+        implementPayload(key.trim()),
+      );
+      if (result.implemented) setImplementedFor(descriptionsKey);
     }
     const result = await sync.mutateAsync({
       key: key.trim(),
-      variants: variants.map((v) => ({
-        id: v.id.trim(),
-        weight: Number(v.weight) || 0,
-      })),
+      variants: arms.map((a) => ({ id: a.id.trim(), weight: a.weight })),
     });
     setSynced(result.synced);
     setPreviewNonce((n) => n + 1);
@@ -876,50 +1297,20 @@ function ReviewPanel({
         setKey(result.key);
         setName(result.name);
         setHypothesis(result.hypothesis);
-        setVariants(
-          result.variants.map((v) => ({
-            id: v.id,
-            weight: String(v.weight),
-            role: v.role,
-            description: v.description,
-          })),
-        );
+        setArms(toDrafts(result.variants));
         setRegeneratePrompt("");
       },
     });
   };
 
-  // Only the local implementer step needs a description to work from — a
-  // fully blank manual draft still creates fine, just with nothing to write.
-  const canImplement = variants.some((v) => v.description?.trim());
-
   const confirmAndCreate = () => {
     create.mutate(
-      {
-        key: key.trim(),
-        name: name.trim(),
-        variants: variants.map((v) => ({
-          id: v.id.trim(),
-          weight: Number(v.weight) || 0,
-          role: v.role || null,
-          description: v.description || null,
-        })),
-      },
+      { key: key.trim(), name: name.trim(), variants: toVariants(arms) },
       {
         onSuccess: (experiment) => {
           if (canImplement && !implementedInSource) {
-            implementLocal.mutate({
-              key: experiment.key,
-              variants: experiment.variants.map((v) => ({
-                id: v.id,
-                role: v.role,
-                description: v.description,
-              })),
-            });
+            implementLocal.mutate(implementPayload(experiment.key));
           }
-          // Writes the local dev manifest entry so `?__ab=` forcing actually
-          // takes effect on the preview screen — same write "Atualizar
-          // preview" used to require as a separate click.
           sync.mutate({
             key: experiment.key,
             variants: experiment.variants.map((v) => ({
@@ -933,339 +1324,222 @@ function ReviewPanel({
     );
   };
 
+  const previewing = sync.isPending || implementLocal.isPending;
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft size={14} />
-          {t("experiments.action.back")}
-        </Button>
-        <span className="text-lg font-semibold">
-          {t("experiments.prompt.reviewTitle")}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        {hypothesis && (
-          <div className="rounded-md border border-border bg-muted/40 p-2.5 text-xs">
-            <span className="font-medium text-muted-foreground">
-              {t("experiments.prompt.hypothesis")}:{" "}
-            </span>
-            {hypothesis}
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs">{t("experiments.dialog.key")}</Label>
-            <Input value={key} onChange={(e) => setKey(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs">{t("experiments.dialog.name")}</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label className="text-xs">
-            {t("experiments.dialog.variants")} —{" "}
-            {t("experiments.dialog.weightSum", { sum })}
-          </Label>
-          {variants.map((v, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: positional editable rows
-            <div
-              key={i}
-              className="flex flex-col gap-1.5 rounded-md border border-border p-2"
-            >
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={v.id}
-                  onChange={(e) => setVar(i, { id: e.target.value })}
-                  className="h-8 flex-1"
-                />
-                <Input
-                  value={v.weight}
-                  onChange={(e) => setVar(i, { weight: e.target.value })}
-                  inputMode="numeric"
-                  className="h-8 w-16"
-                />
-                <span className="text-xs text-muted-foreground">%</span>
-              </div>
-              {/* What this arm will actually look like on the front —
-                  editable here so the operator can tighten it before
-                  anything is created or implemented. */}
-              <Textarea
-                value={v.description ?? ""}
-                onChange={(e) => setVar(i, { description: e.target.value })}
-                placeholder={t(
-                  "experiments.dialog.variantDescriptionPlaceholder",
-                )}
-                rows={2}
-                className="resize-none text-xs"
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2 border-t border-border pt-3">
-          <Textarea
-            value={regeneratePrompt}
-            onChange={(e) => setRegeneratePrompt(e.target.value)}
-            placeholder={t("experiments.prompt.regeneratePlaceholder")}
-            rows={2}
-            className="flex-1 resize-none"
-          />
+    <Page>
+      <Page.Breadcrumbs
+        after="page"
+        parent={{ label: t("experiments.title"), onSelect: onBack }}
+        items={[{ key: "new", label: t("experiments.new") }]}
+      />
+      <Page.Actions
+        secondary={
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
-            onClick={regenerate}
-            disabled={suggest.isPending || !regeneratePrompt.trim()}
+            onClick={updatePreview}
+            disabled={previewing || !key.trim()}
           >
-            <Stars02 size={14} />
-            {t("experiments.prompt.regenerate")}
+            {previewing && <Spinner size="2xs" />}
+            {t("experiments.preview.updatePreview")}
           </Button>
-        </div>
+        }
+      >
+        <Button size="sm" onClick={() => setConfirming(true)} disabled={!ready}>
+          {t("experiments.dialog.create")}
+        </Button>
+      </Page.Actions>
 
-        {confirming ? (
-          <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-            <p className="text-sm font-medium">
-              {t("experiments.confirm.title", { key: key.trim() })}
+      <Page.Content>
+        <Page.Container className="flex flex-col gap-6">
+          <Card className="gap-4 p-6">
+            {hypothesis && (
+              <p className="text-sm">
+                <span className="text-muted-foreground">
+                  {t("experiments.prompt.hypothesis")}:{" "}
+                </span>
+                {hypothesis}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>{t("experiments.dialog.name")}</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>{t("experiments.dialog.key")}</Label>
+                <Input value={key} onChange={(e) => setKey(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <Textarea
+                value={regeneratePrompt}
+                onChange={(e) => setRegeneratePrompt(e.target.value)}
+                placeholder={t("experiments.prompt.regeneratePlaceholder")}
+                rows={1}
+                className="flex-1 resize-none"
+              />
+              <Button
+                variant="secondary"
+                onClick={regenerate}
+                disabled={suggest.isPending || !regeneratePrompt.trim()}
+              >
+                {suggest.isPending ? (
+                  <Spinner size="2xs" />
+                ) : (
+                  <Stars02 size={14} />
+                )}
+                {t("experiments.prompt.regenerate")}
+              </Button>
+            </div>
+          </Card>
+
+          <SplitCard arms={arms} onChange={setArms} structureEditable />
+
+          {!baseUrl ? (
+            <EmptyState
+              title={t("experiments.preview.noUrlTitle")}
+              description={t("experiments.preview.noUrlDesc")}
+            />
+          ) : synced ? (
+            <CompareCard
+              baseUrl={baseUrl}
+              testKey={key.trim()}
+              arms={arms}
+              reloadNonce={previewNonce}
+            />
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">
+              {t("experiments.preview.notSyncedYet")}
             </p>
-            <p className="text-xs text-muted-foreground">
+          )}
+        </Page.Container>
+      </Page.Content>
+
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("experiments.confirm.title", { key: key.trim() })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {canImplement
                 ? t("experiments.confirm.withImplement")
                 : t("experiments.confirm.withoutImplement")}
-            </p>
-            <div className="flex items-center justify-end gap-2 border-t border-border pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirming(false)}
-              >
-                {t("experiments.dialog.cancel")}
-              </Button>
-              <Button
-                size="sm"
-                onClick={confirmAndCreate}
-                disabled={create.isPending}
-              >
-                {canImplement
-                  ? t("experiments.confirm.proceedWithImplement")
-                  : t("experiments.confirm.proceed")}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between border-t border-border pt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={updatePreview}
-              disabled={
-                sync.isPending || implementLocal.isPending || !key.trim()
-              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t("experiments.dialog.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmAndCreate}
+              disabled={create.isPending}
             >
-              {(sync.isPending || implementLocal.isPending) && (
-                <Spinner size="2xs" />
-              )}
-              {t("experiments.preview.updatePreview")}
-            </Button>
-            <Button
-              onClick={() => setConfirming(true)}
-              disabled={!key.trim() || !name.trim()}
-            >
-              {t("experiments.dialog.create")}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {!baseUrl ? (
-        <EmptyState
-          title={t("experiments.preview.noUrlTitle")}
-          description={t("experiments.preview.noUrlDesc")}
-        />
-      ) : !synced ? (
-        <p className="px-1 text-xs text-muted-foreground">
-          {t("experiments.preview.notSyncedYet")}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {variants.map((v) => (
-            <div
-              key={`${v.id}-${previewNonce}`}
-              className="flex flex-col gap-1.5 overflow-hidden rounded-lg border border-border"
-            >
-              <div className="flex items-center justify-between bg-muted/50 px-3 py-1.5">
-                <span className="text-xs font-medium">
-                  {v.id}
-                  {v.role === "control" && (
-                    <span className="ml-1.5 text-muted-foreground">
-                      ({t("experiments.preview.baseline")})
-                    </span>
-                  )}
-                </span>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {v.weight}%
-                </span>
-                <a
-                  href={buildForcedVariantUrl(baseUrl, key, v.id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  {t("experiments.preview.openPage")}
-                  <ArrowUpRight size={12} />
-                </a>
-              </div>
-              <iframe
-                src={buildForcedVariantUrl(baseUrl, key, v.id)}
-                title={`${name} — ${v.id}`}
-                // See the matching comment in PreviewPanel's iframe —
-                // `allow-same-origin` is required for the ab-testing SDK's
-                // manifest fetch to resolve inside the frame at all.
-                // oxlint-disable-next-line react/iframe-missing-sandbox -- sandbox is present and deliberately scoped
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-                className="h-[700px] w-full border-0 bg-background"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+              {canImplement
+                ? t("experiments.confirm.proceedWithImplement")
+                : t("experiments.confirm.proceed")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Page>
   );
 }
-
 function ExperimentRow({
   experiment,
-  org,
-  agentId,
-  onStatusChange,
-  onPreview,
-  onEdit,
-  onDelete,
-  onImplement,
-  implementing,
+  onOpen,
+  actions,
 }: {
   experiment: Experiment;
-  org: string;
-  agentId: string;
-  onStatusChange: (status: ExperimentStatus) => void;
-  onPreview: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onImplement: () => void;
-  implementing: boolean;
+  onOpen: () => void;
+  actions: ExperimentActions;
 }) {
   const t = useT();
-  const status = STATUS_STYLES[experiment.status];
-
+  const lifecycle = useLifecycleLabel();
+  const statusActions = useStatusActions()(experiment.status);
+  const treatments = experiment.variants.filter((v) => v.role !== "control");
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3.5">
-      <span
-        className={cn("h-2 w-2 flex-shrink-0 rounded-full", status.dot)}
-        aria-hidden
-      />
-
-      <div className="flex w-56 flex-shrink-0 flex-col gap-0.5">
-        <span className="text-sm font-semibold">{experiment.name}</span>
-        <span className="font-mono text-[11px] text-muted-foreground">
-          {experiment.key}
+    <div className="group relative flex items-center gap-4 px-5 py-4 transition-colors hover:bg-muted/50">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {/* Stretched over the row so the whole row opens the experiment. */}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="truncate text-left text-sm font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
+        >
+          {experiment.name}
+        </button>
+        <span className="truncate text-xs text-muted-foreground">
+          {treatments.map((v) => v.description || v.id).join(" · ")}
         </span>
       </div>
 
-      <SplitBar variants={experiment.variants} />
-
-      <Select
-        value={experiment.status}
-        onValueChange={(v) => onStatusChange(v as ExperimentStatus)}
-      >
-        <SelectTrigger
-          className={cn(
-            "h-7 w-auto flex-shrink-0 gap-1.5 rounded-full border-0 px-3 text-xs font-medium",
-            status.pill,
-          )}
-        >
-          <span className={cn("h-1.5 w-1.5 rounded-full", status.dot)} />
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {STATUSES.map((s) => (
-            <SelectItem key={s} value={s}>
-              {s}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Link
-        to={PROJECT_ROUTE.analytics}
-        params={{ org, agentId }}
-        search={{ view: "experiments" }}
-        className="flex flex-shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
-      >
-        {t("experiments.action.viewData")}
-        <ArrowUpRight size={12} />
-      </Link>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={t("experiments.action.preview")}
-        onClick={onPreview}
-        className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
-      >
-        <Eye size={14} />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={t("experiments.action.implement")}
-        title={t("experiments.action.implement")}
-        onClick={onImplement}
-        disabled={implementing}
-        className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
-      >
-        <CodeBrowser size={14} />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={t("experiments.action.edit")}
-        onClick={onEdit}
-        className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
-      >
-        <Pencil01 size={14} />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={t("experiments.action.delete")}
-        onClick={onDelete}
-        className="h-8 w-8 flex-shrink-0 p-0 text-muted-foreground"
-      >
-        <Trash01 size={14} />
-      </Button>
+      <div className="flex w-36 flex-shrink-0 items-center gap-2.5">
+        <SplitDonut arms={experiment.variants} size={22} thickness={5} />
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {experiment.variants.map((v) => v.weight).join(" / ")}
+        </span>
+      </div>
+      <span className="hidden w-32 flex-shrink-0 text-xs text-muted-foreground md:block">
+        {lifecycle(experiment)}
+      </span>
+      <div className="flex w-24 flex-shrink-0">
+        <StatusBadge status={experiment.status} />
+      </div>
+      <div className="relative z-10 flex-shrink-0">
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("experiments.action.more")}
+              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+            >
+              <DotsHorizontal size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {statusActions.map((a) => (
+              <DropdownMenuItem
+                key={a.to}
+                onSelect={() => actions.onStatusChange(a.to)}
+              >
+                <a.icon />
+                {a.label}
+              </DropdownMenuItem>
+            ))}
+            {statusActions.length > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuItem variant="destructive" onSelect={actions.onDelete}>
+              <Trash01 />
+              {t("experiments.action.delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   );
 }
 
+type PendingConfirm = { kind: "delete" | "implement"; key: string } | null;
+
 export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
   const t = useT();
+  const statusLabel = useStatusLabel();
   const entity = useVirtualMCP(virtualMcpId);
   const { org } = useProjectContext();
   const siteSlug = resolveAgentSiteSlug(entity);
+  const baseUrl = resolvePreviewServerUrl(entity?.metadata);
   const [promptOpen, setPromptOpen] = useState(false);
   const [review, setReview] = useState<{
     open: boolean;
     initial: SuggestedExperiment | null;
   }>({ open: false, initial: null });
-  const [editDialog, setEditDialog] = useState<{
-    open: boolean;
-    experiment: Experiment | null;
-  }>({ open: false, experiment: null });
-  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ExperimentStatus[]>([]);
+  const [search, setSearch] = useState("");
+  const [confirm, setConfirm] = useState<PendingConfirm>(null);
 
   const { data: experiments, isLoading } = useExperiments(siteSlug ?? "");
   const update = useUpdateExperiment(siteSlug ?? "");
@@ -1274,24 +1548,83 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
 
   if (!siteSlug) {
     return (
-      <div className="h-full min-h-0 overflow-y-auto p-8">
-        <EmptyState
-          title={t("experiments.title")}
-          description={t("experiments.noSite")}
-        />
-      </div>
+      <Page>
+        <Page.Content>
+          <Page.Container>
+            <EmptyState
+              title={t("experiments.title")}
+              description={t("experiments.noSite")}
+            />
+          </Page.Container>
+        </Page.Content>
+      </Page>
     );
   }
 
-  const previewing = experiments?.find((e) => e.key === previewKey) ?? null;
-  if (previewing) {
+  const actionsFor = (e: Experiment): ExperimentActions => ({
+    onStatusChange: (status) => update.mutate({ key: e.key, status }),
+    onImplement: () => setConfirm({ kind: "implement", key: e.key }),
+    onDelete: () => setConfirm({ kind: "delete", key: e.key }),
+  });
+
+  const confirmDialog = (
+    <AlertDialog
+      open={!!confirm}
+      onOpenChange={(open) => !open && setConfirm(null)}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {confirm?.kind === "delete"
+              ? t("experiments.deleteTitle")
+              : t("experiments.implementTitle")}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirm?.kind === "delete"
+              ? t("experiments.deleteConfirm", { key: confirm.key })
+              : t("experiments.implementConfirm", { key: confirm?.key ?? "" })}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            {t("experiments.dialog.cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (!confirm) return;
+              if (confirm.kind === "delete") {
+                del.mutate(confirm.key);
+                if (openKey === confirm.key) setOpenKey(null);
+              } else {
+                implement.mutate(confirm.key);
+              }
+            }}
+          >
+            {confirm?.kind === "delete"
+              ? t("experiments.action.delete")
+              : t("experiments.implementProceed")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  const opened = experiments?.find((e) => e.key === openKey) ?? null;
+  if (opened) {
     return (
-      <PreviewPanel
-        site={siteSlug}
-        experiment={previewing}
-        baseUrl={resolvePreviewServerUrl(entity?.metadata)}
-        onBack={() => setPreviewKey(null)}
-      />
+      <>
+        <ExperimentDetail
+          key={opened.key}
+          site={siteSlug}
+          experiment={opened}
+          baseUrl={baseUrl}
+          org={org.slug}
+          agentId={virtualMcpId}
+          onBack={() => setOpenKey(null)}
+          actions={actionsFor(opened)}
+        />
+        {confirmDialog}
+      </>
     );
   }
 
@@ -1299,85 +1632,118 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
     return (
       <ReviewPanel
         site={siteSlug}
-        baseUrl={resolvePreviewServerUrl(entity?.metadata)}
+        baseUrl={baseUrl}
         initial={review.initial}
         onBack={() => setReview({ open: false, initial: null })}
         onCreated={(key) => {
           setReview({ open: false, initial: null });
-          setPreviewKey(key);
+          setOpenKey(key);
         }}
       />
     );
   }
 
+  const countOf = (status: ExperimentStatus) =>
+    experiments?.filter((e) => e.status === status).length ?? 0;
+  const query = search.trim().toLowerCase();
+  const visible = (experiments ?? [])
+    .filter((e) => statusFilter.length === 0 || statusFilter.includes(e.status))
+    .filter((e) => !query || e.name.toLowerCase().includes(query))
+    .sort((a, b) => STATUSES.indexOf(a.status) - STATUSES.indexOf(b.status));
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">{t("experiments.title")}</h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            {t("experiments.subtitle")}
-          </p>
-        </div>
-        <Button onClick={() => setPromptOpen(true)}>
+    <Page>
+      <Page.Actions
+        secondary={
+          !!experiments?.length && (
+            <div className="flex items-center gap-2">
+              <SearchToggle
+                value={search}
+                onChange={setSearch}
+                label={t("experiments.filter.searchLabel")}
+                placeholder={t("experiments.filter.searchPlaceholder")}
+                clearLabel={t("experiments.filter.searchClear")}
+              />
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    label={t("experiments.filter.label")}
+                    tooltipSide="bottom"
+                    variant="secondary"
+                    aria-pressed={statusFilter.length > 0}
+                  >
+                    <FilterLines />
+                  </IconButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel>
+                    {t("experiments.filter.status")}
+                  </DropdownMenuLabel>
+                  {STATUSES.map((s) => (
+                    <DropdownMenuCheckboxItem
+                      key={s}
+                      checked={statusFilter.includes(s)}
+                      onSelect={(e) => e.preventDefault()}
+                      onCheckedChange={(checked) =>
+                        setStatusFilter((prev) =>
+                          checked ? [...prev, s] : prev.filter((x) => x !== s),
+                        )
+                      }
+                    >
+                      <span
+                        className={cn("size-1.5 rounded-full", STATUS_DOT[s])}
+                      />
+                      {statusLabel(s)}
+                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        {countOf(s)}
+                      </span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )
+        }
+      >
+        <Button size="sm" onClick={() => setPromptOpen(true)}>
+          <Plus size={16} />
           {t("experiments.new")}
         </Button>
-      </div>
+      </Page.Actions>
 
-      {isLoading ? (
-        <div className="flex justify-center p-12">
-          <Spinner />
-        </div>
-      ) : !experiments || experiments.length === 0 ? (
-        <EmptyState
-          title={t("experiments.empty.title")}
-          description={t("experiments.empty.desc")}
-          buttonProps={{
-            children: t("experiments.new"),
-            onClick: () => setPromptOpen(true),
-          }}
-        />
-      ) : (
-        <>
-          <SummaryStrip experiments={experiments} />
-          <div className="flex flex-col gap-2">
-            {experiments.map((e) => (
-              <ExperimentRow
-                key={e.key}
-                experiment={e}
-                org={org.slug}
-                agentId={virtualMcpId}
-                onStatusChange={(status) =>
-                  update.mutate({ key: e.key, status })
-                }
-                onPreview={() => setPreviewKey(e.key)}
-                onEdit={() => setEditDialog({ open: true, experiment: e })}
-                onImplement={() => {
-                  if (
-                    window.confirm(
-                      t("experiments.implementConfirm", { key: e.key }),
-                    )
-                  ) {
-                    implement.mutate(e.key);
-                  }
-                }}
-                implementing={
-                  implement.isPending && implement.variables === e.key
-                }
-                onDelete={() => {
-                  if (
-                    window.confirm(
-                      t("experiments.deleteConfirm", { key: e.key }),
-                    )
-                  ) {
-                    del.mutate(e.key);
-                  }
-                }}
-              />
-            ))}
-          </div>
-        </>
-      )}
+      <Page.Content>
+        <Page.Container>
+          {isLoading ? (
+            <div className="flex justify-center p-12">
+              <Spinner />
+            </div>
+          ) : !experiments || experiments.length === 0 ? (
+            <EmptyState
+              title={t("experiments.empty.title")}
+              description={t("experiments.empty.desc")}
+              buttonProps={{
+                children: t("experiments.new"),
+                onClick: () => setPromptOpen(true),
+              }}
+            />
+          ) : visible.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              {t("experiments.filter.empty")}
+            </p>
+          ) : (
+            <Card className="gap-0 divide-y divide-border overflow-hidden">
+              {visible.map((e) => (
+                <ExperimentRow
+                  key={e.key}
+                  experiment={e}
+                  onOpen={() => setOpenKey(e.key)}
+                  actions={actionsFor(e)}
+                />
+              ))}
+            </Card>
+          )}
+        </Page.Container>
+      </Page.Content>
 
       <PromptDialog
         site={siteSlug}
@@ -1387,21 +1753,7 @@ export function ExperimentsTab({ virtualMcpId }: { virtualMcpId: string }) {
           setReview({ open: true, initial: suggestion })
         }
       />
-      <ExperimentDialog
-        key={editDialog.experiment?.key ?? "edit-none"}
-        mode="edit"
-        site={siteSlug}
-        open={editDialog.open}
-        onOpenChange={(open) => setEditDialog((s) => ({ ...s, open }))}
-        initialKey={editDialog.experiment?.key}
-        initialName={editDialog.experiment?.name}
-        initialVariants={editDialog.experiment?.variants.map((v) => ({
-          id: v.id,
-          weight: String(v.weight),
-          role: v.role ?? "",
-          description: v.description ?? undefined,
-        }))}
-      />
-    </div>
+      {confirmDialog}
+    </Page>
   );
 }
