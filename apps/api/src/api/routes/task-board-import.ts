@@ -49,7 +49,10 @@ import { bearerToken, isVaultServiceToken } from "./credential-vault";
  *   a human may have touched those) instead of creating a duplicate, so
  *   recurring diagnostic runs converge on the same card. A done item is NOT
  *   matched — a regression creates a fresh card. Refreshes never re-trigger
- *   the Super Agent delegation.
+ *   the Super Agent delegation. A key no card holds yet is matched like a
+ *   keyless item (title, then the semantic pass), and a card without a key
+ *   that it lands on adopts it: cards filed before the sender sent keys
+ *   join them on the first keyed import and match by key from then on.
  *   When an item carries NO externalKey, its normalized title stands in as the
  *   finding identity. `externalKey` is optional and at least one real producer
  *   never sends it, so the dedup above was simply never reached: one board
@@ -135,8 +138,9 @@ export function normalizeTitleKey(title: string): string {
  * filed in their own words, one the org dismissed under another wording, or
  * two findings of one request that ask for the same change.
  *
- * Only items WITHOUT an externalKey and without an exact title match against
- * an open card are offered, and it runs before the transaction so no model
+ * Only items whose key no card holds (keyless ones included) and without an
+ * exact title match against an open card are offered, and it runs before the
+ * transaction so no model
  * latency sits inside it. Only a high-confidence verdict naming an offered
  * card or an earlier offered item counts (see `findDuplicatesForBatch`).
  * Best-effort: no model tier, a provider error, or a malformed answer yields
@@ -155,13 +159,14 @@ async function semanticMatchesFor(
     externalKey?: string;
   }[],
   openTitleKeys: ReadonlySet<string>,
+  heldKeys: ReadonlySet<string>,
 ): Promise<{
   matches: Map<number, BatchDuplicate>;
   dismissedIds: ReadonlySet<string>;
 }> {
   const drafts: IndexedDraft[] = [];
   items.forEach((item, index) => {
-    if (item.externalKey) return;
+    if (item.externalKey && heldKeys.has(item.externalKey)) return;
     if (openTitleKeys.has(normalizeTitleKey(item.title))) return;
     drafts.push({ index, title: item.title, description: item.description });
   });
@@ -312,11 +317,16 @@ export const createTaskBoardImportRoutes = () => {
         .filter((row) => row.status !== "done")
         .map((row) => normalizeTitleKey(row.title)),
     );
+    const heldKeys = await ctx.storage.taskBoard.heldFindingKeys(
+      organizationId,
+      items.flatMap((i) => i.externalKey ?? []),
+    );
     const { matches: semantic, dismissedIds } = await semanticMatchesFor(
       ctx,
       organizationId,
       items,
       openTitleKeys,
+      heldKeys,
     );
 
     const runId = parsed.data.source?.run_id;
@@ -343,32 +353,6 @@ export const createTaskBoardImportRoutes = () => {
       const openByKey = new Map<string, string>();
       const dismissedByKey = new Map<string, CardRef>();
 
-      // Title-keyed fallback for items with no externalKey. Scoped to the org's
-      // non-done cards and only paid for when some item actually lacks a key.
-      const openByTitle = new Map<string, string>();
-      const dismissedByTitle = new Map<string, CardRef>();
-      if (items.some((i) => !i.externalKey)) {
-        const rows = await trx
-          .selectFrom("task_board_items")
-          .select(["id", "key_seq", "title", "status", "dismissed_at"])
-          .where("organization_id", "=", organizationId)
-          .where((eb) =>
-            eb.or([
-              eb("dismissed_at", "is not", null),
-              eb("status", "!=", "done"),
-            ]),
-          )
-          .execute();
-        for (const row of rows) {
-          const key = normalizeTitleKey(row.title);
-          if (row.dismissed_at) {
-            dismissedByTitle.set(key, { id: row.id, key_seq: row.key_seq });
-          } else if (row.status !== "done" && !openByTitle.has(key)) {
-            openByTitle.set(key, row.id);
-          }
-        }
-      }
-
       if (keys.length > 0) {
         const rows = await trx
           .selectFrom("task_board_items")
@@ -392,6 +376,37 @@ export const createTaskBoardImportRoutes = () => {
             });
           } else if (row.status !== "done")
             openByKey.set(row.external_key, row.id);
+        }
+      }
+
+      /** Whether a card holds the item's key, so the key alone settles it. */
+      const heldKey = (key: string | undefined): key is string =>
+        key !== undefined && (openByKey.has(key) || dismissedByKey.has(key));
+
+      // Title-keyed fallback for an item whose key no card holds (keyless ones
+      // included). Scoped to the org's non-done cards and only paid for when
+      // some item needs it.
+      const openByTitle = new Map<string, string>();
+      const dismissedByTitle = new Map<string, CardRef>();
+      if (items.some((i) => !heldKey(i.externalKey))) {
+        const rows = await trx
+          .selectFrom("task_board_items")
+          .select(["id", "key_seq", "title", "status", "dismissed_at"])
+          .where("organization_id", "=", organizationId)
+          .where((eb) =>
+            eb.or([
+              eb("dismissed_at", "is not", null),
+              eb("status", "!=", "done"),
+            ]),
+          )
+          .execute();
+        for (const row of rows) {
+          const key = normalizeTitleKey(row.title);
+          if (row.dismissed_at) {
+            dismissedByTitle.set(key, { id: row.id, key_seq: row.key_seq });
+          } else if (row.status !== "done" && !openByTitle.has(key)) {
+            openByTitle.set(key, row.id);
+          }
         }
       }
 
@@ -446,17 +461,35 @@ export const createTaskBoardImportRoutes = () => {
       const results: ImportItemResult[] = [];
       for (const [index, item] of items.entries()) {
         const titleKey = normalizeTitleKey(item.title);
-        const dismissedCard = item.externalKey
-          ? dismissedByKey.get(item.externalKey)
+        const key = item.externalKey;
+        // A key a card holds settles the item. Otherwise it is matched as a
+        // keyless item is, and the card it lands on adopts its key: cards
+        // filed before the sender sent keys join them once, then match by key.
+        const byKey = heldKey(key);
+        const adopt = key !== undefined && !byKey ? key : undefined;
+        const dismissedCard = byKey
+          ? dismissedByKey.get(key)
           : dismissedByTitle.get(titleKey);
         if (dismissedCard) {
+          if (adopt) {
+            await storage.adoptExternalKey(
+              dismissedCard.id,
+              organizationId,
+              adopt,
+            );
+            dismissedByKey.set(adopt, dismissedCard);
+          }
           results.push({ index, outcome: "dismissed", ...dismissedCard });
           continue;
         }
-        const existingId = item.externalKey
-          ? openByKey.get(item.externalKey)
+        const existingId = byKey
+          ? openByKey.get(key)
           : openByTitle.get(titleKey);
         if (existingId) {
+          if (adopt) {
+            await storage.adoptExternalKey(existingId, organizationId, adopt);
+            openByKey.set(adopt, existingId);
+          }
           // Refresh the finding's card: new evidence + severity. Title,
           // status and assignee stay — a human may have touched them, and a
           // refresh must never re-queue a delegation.
@@ -485,7 +518,7 @@ export const createTaskBoardImportRoutes = () => {
           });
           continue;
         }
-        const match = item.externalKey ? undefined : semantic.get(index);
+        const match = byKey ? undefined : semantic.get(index);
         // A repeat of an earlier item lands where that item did, dismissal
         // included.
         const earlier =
@@ -498,6 +531,17 @@ export const createTaskBoardImportRoutes = () => {
         }
         // The org dismissed this finding under another wording.
         if (match && "item" in match && dismissedIds.has(match.item.id)) {
+          if (adopt) {
+            await storage.adoptExternalKey(
+              match.item.id,
+              organizationId,
+              adopt,
+            );
+            dismissedByKey.set(adopt, {
+              id: match.item.id,
+              key_seq: match.item.keySeq,
+            });
+          }
           results.push({
             index,
             outcome: "dismissed",
@@ -534,6 +578,10 @@ export const createTaskBoardImportRoutes = () => {
             actorId: null,
             data: { title: item.title, reason: match.reason },
           });
+          if (adopt) {
+            await storage.adoptExternalKey(matched.id, organizationId, adopt);
+            openByKey.set(adopt, matched.id);
+          }
           openByTitle.set(titleKey, matched.id);
           touched.push(await withTags(row, item.tags));
           results.push({
@@ -565,9 +613,9 @@ export const createTaskBoardImportRoutes = () => {
           repositoryId: item.repositoryId ?? null,
           by: "system",
         });
-        // A within-batch duplicate key folds into the row just created.
-        if (item.externalKey) openByKey.set(item.externalKey, row.id);
-        else openByTitle.set(titleKey, row.id);
+        // A within-batch duplicate key or title folds into the row just created.
+        if (key) openByKey.set(key, row.id);
+        openByTitle.set(titleKey, row.id);
         touched.push(await withTags(row, item.tags));
         const result: ImportItemResult = {
           index,

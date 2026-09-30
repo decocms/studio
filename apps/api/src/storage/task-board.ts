@@ -575,6 +575,40 @@ export class TaskBoardStorage {
     return new Set(rows.flatMap((r) => r.external_key ?? []));
   }
 
+  /** The keys among `externalKeys` a card already holds, open or dismissed. */
+  async heldFindingKeys(
+    organizationId: string,
+    externalKeys: string[],
+  ): Promise<Set<string>> {
+    if (externalKeys.length === 0) return new Set();
+    const rows = await this.db
+      .selectFrom("task_board_items")
+      .select(["external_key"])
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "in", externalKeys)
+      .where((eb) =>
+        eb.or([eb("dismissed_at", "is not", null), eb("status", "!=", "done")]),
+      )
+      .execute();
+    return new Set(rows.flatMap((r) => r.external_key ?? []));
+  }
+
+  /** Give a card without a key the finding key it turned out to track. A card
+   *  that already has a key keeps it. */
+  async adoptExternalKey(
+    id: string,
+    organizationId: string,
+    externalKey: string,
+  ): Promise<void> {
+    await this.db
+      .updateTable("task_board_items")
+      .set({ external_key: externalKey })
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .where("external_key", "is", null)
+      .execute();
+  }
+
   async listDismissedFindings(
     organizationId: string,
   ): Promise<DismissedFinding[]> {
