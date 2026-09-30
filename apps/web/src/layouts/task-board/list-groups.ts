@@ -1,7 +1,7 @@
 /** Pure grouping for the list view: which section each task lands in, and the
  *  order the sections read in. Labels are the component's job. */
 
-import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
   entryForTask,
   NO_PROJECT_FILTER,
@@ -27,6 +27,20 @@ export type GroupBy = (typeof GROUP_BY_OPTIONS)[number];
 export function isGroupBy(value: unknown): value is GroupBy {
   return (GROUP_BY_OPTIONS as readonly unknown[]).includes(value);
 }
+
+/** Status sections read from what needs attention now down to what is
+ *  settled, unlike the board, whose lanes run left to right through the flow. */
+export const LIST_STATUS_ORDER: readonly CanonicalColumnKey[] = [
+  "in_review",
+  "approved",
+  "in_progress",
+  "todo",
+  "triage",
+  "merged",
+  "post_deploy_validation",
+  "done",
+  "archived",
+];
 
 /** Section key for tasks without any tag. */
 export const NO_TAG_GROUP = "__no_tag__";
@@ -123,7 +137,7 @@ function strategy(
 } {
   switch (groupBy) {
     case "status":
-      return { keysOf: (item) => [item.status], order: CANONICAL_COLUMN_KEYS };
+      return { keysOf: (item) => [item.status], order: LIST_STATUS_ORDER };
     case "priority":
       return {
         keysOf: (item) => [item.priority],

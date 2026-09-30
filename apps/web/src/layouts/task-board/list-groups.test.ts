@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
 import { buildProjectIndex, NO_PROJECT_FILTER } from "@/lib/project-index";
 import { SUPER_AGENT_ASSIGNEE_ID, type TaskBoardItem } from "./config";
+import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
 import {
   groupLevels,
+  LIST_STATUS_ORDER,
   groupListItems,
   isGroupBy,
   toggleCollapsed,
@@ -66,18 +68,28 @@ describe("groupListItems", () => {
     expect(groupListItems([], ["status"], CONTEXT)).toEqual([]);
   });
 
-  test("status sections follow the board's lanes and keep item order", () => {
+  test("status sections read from review down to done and keep item order", () => {
     const items = [
       item("1", { status: "done" }),
       item("2", { status: "todo" }),
       item("3", { status: "done" }),
       item("4", { status: "triage" }),
+      item("5", { status: "in_progress" }),
+      item("6", { status: "in_review" }),
     ];
     expect(shape(groupListItems(items, ["status"], CONTEXT))).toEqual([
-      ["triage", ["4"]],
+      ["in_review", ["6"]],
+      ["in_progress", ["5"]],
       ["todo", ["2"]],
+      ["triage", ["4"]],
       ["done", ["1", "3"]],
     ]);
+  });
+
+  test("every board lane has a place in the list order", () => {
+    expect([...LIST_STATUS_ORDER].sort()).toEqual(
+      [...CANONICAL_COLUMN_KEYS].sort(),
+    );
   });
 
   test("archived closes the status sections", () => {

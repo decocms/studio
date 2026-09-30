@@ -32,7 +32,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { TaskBoardAdminBanner, TaskBoardAdminControls } from "./admin-controls";
-import { BoardOrgProvider } from "./board-org";
+import { BoardOrgProvider, useBoardOrgSlug } from "./board-org";
+import { authClient } from "@/lib/auth-client";
 import { getInitials } from "@/lib/get-initials";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Button } from "@decocms/ui/components/button.tsx";
@@ -1031,6 +1032,8 @@ function TaskBoardBody({
    *  a `?view=feed` link shared from a colleague who HAS the flag has to land
    *  on the board rather than on a view with no tab to leave it by. */
   const feedEnabled = useProjectFirstNav();
+  const { data: session } = authClient.useSession();
+  const foreignBoardOrg = useBoardOrgSlug() !== null;
   // Filters + layout live in the URL, so a refresh or a shared link keeps them.
   const {
     filters,
@@ -1045,7 +1048,12 @@ function TaskBoardBody({
     sortDirection,
     setSortBy,
     setSortDirection,
-  } = useBoardSearch(inlineTabs && feedEnabled ? "feed" : "board");
+  } = useBoardSearch({
+    layout: inlineTabs && feedEnabled ? "feed" : "board",
+    // Another org's board (admin view) has none of the viewer's own tasks.
+    assignee: foreignBoardOrg ? null : (session?.user?.id ?? null),
+    groupBy: "status",
+  });
   const layout = enabledLayout(urlLayout, feedEnabled);
   const grouping = {
     groupBy,
