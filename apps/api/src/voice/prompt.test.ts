@@ -24,14 +24,15 @@ test("turn style reaches the coding-agent message without changing persisted use
 });
 
 test("spoken request context follows the style without joining the user text", () => {
+  const speech = { type: "text" as const, text: "And the second one?" };
   const message: UIMessage = {
     id: "message_example",
     role: "user",
-    parts: [{ type: "text", text: "And the second one?" }],
+    parts: [speech],
   };
   const spoken = withVoiceResponseStyle(message, true, "voice context");
   expect(spoken.parts).toEqual([
-    message.parts[0],
+    speech,
     { type: "text", text: VOICE_MODE_PROMPT },
     { type: "text", text: "voice context" },
   ]);
