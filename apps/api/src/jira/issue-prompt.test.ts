@@ -28,6 +28,28 @@ describe("renderIssueForPrompt", () => {
     expect(text).toContain("Make it blue.");
   });
 
+  /** A rule's run reads here whether the card was handed forward or sent back. */
+  it("says which move started the run, with the mover as a mention", () => {
+    const text = renderIssueForPrompt(base, {
+      toStatus: "Doing",
+      fromStatus: "Client QA",
+      movedBy: { accountId: "acc-ana", displayName: "Ana" },
+      movedAt: "2026-09-29T14:31:00.000Z",
+    });
+    expect(text).toContain(
+      "Status: Doing\nMoved into Doing from Client QA by @[Ana](accountid:acc-ana) at 2026-09-29T14:31:00.000Z — the move that started this run.",
+    );
+    expect(
+      renderIssueForPrompt(base, {
+        toStatus: "Doing",
+        fromStatus: null,
+        movedBy: null,
+        movedAt: null,
+      }),
+    ).toContain("Moved into Doing — the move that started this run.");
+    expect(renderIssueForPrompt(base)).not.toContain("Moved into");
+  });
+
   /** The id is what the download tool takes, so it has to be on the page. */
   it("lists attachments by id and says how to fetch one", () => {
     const text = renderIssueForPrompt({
