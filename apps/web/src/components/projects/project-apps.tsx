@@ -16,8 +16,9 @@ import {
   Speedometer02,
   Zap,
 } from "@untitledui/icons";
-import type { ComponentType, ReactNode } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
+import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
@@ -181,7 +182,7 @@ function AppTile({
       params={params}
       onClick={onClick}
       title={title}
-      className="group flex w-20 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"
+      className="group flex w-24 shrink-0 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"
     >
       {face}
       <span className="flex w-full flex-col">
@@ -289,13 +290,63 @@ function ProjectAppTiles({
   );
 }
 
+/** Whether a wrapping row spilled past its first line, and that line's
+ *  height. Tiles land per project as presence resolves, so it re-reads when
+ *  children change, not only on resize. A callback ref: `useEffect` is banned
+ *  here. */
+function useFirstLine(): readonly [
+  { overflows: boolean; height: number | null },
+  (node: HTMLElement | null) => void | (() => void),
+] {
+  const [line, setLine] = useState<{
+    overflows: boolean;
+    height: number | null;
+  }>({ overflows: false, height: null });
+
+  const ref = (node: HTMLElement | null) => {
+    if (!node) return;
+    const measure = () => {
+      const tiles = [...node.children] as HTMLElement[];
+      const first = tiles[0];
+      if (!first) return;
+      setLine({
+        overflows: tiles.some((tile) => tile.offsetTop > first.offsetTop),
+        height: first.offsetHeight,
+      });
+    };
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(node);
+    const mutation = new MutationObserver(measure);
+    mutation.observe(node, { childList: true });
+    return () => {
+      resize.disconnect();
+      mutation.disconnect();
+    };
+  };
+
+  return [line, ref] as const;
+}
+
 /** The heading and tile row. Hidden until a tile lands: which projects have
- *  apps is only known once each one's presence resolves. */
-function AppsSection({ children }: { children: ReactNode }) {
+ *  apps is only known once each one's presence resolves. `oneLine` clips to
+ *  the first line and ends it with See all, for a page where apps are one
+ *  block among many. */
+function AppsSection({
+  children,
+  oneLine,
+}: {
+  children: ReactNode;
+  oneLine?: boolean;
+}) {
   const t = useT();
+  const [expanded, setExpanded] = useState(false);
+  const [line, lineRef] = useFirstLine();
+  const clipped = oneLine && !expanded;
+
   return (
     /* A quiet label for orientation; the tiles below already read as a group. */
-    <section className="hidden flex-col gap-2 has-[a]:flex">
+    <section className="hidden flex-col gap-3 has-[a]:flex">
       {/* `pl-3` matches the Board/List/Feed tabs below: those are `sm`-size
           pill buttons with `px-3` built in, so their label sits 12px past the
           shared page edge. This heading has no button padding of its own, so
@@ -303,7 +354,32 @@ function AppsSection({ children }: { children: ReactNode }) {
       <h2 className="pl-3 text-muted-foreground text-sm font-medium">
         {t("projects.apps.heading")}
       </h2>
-      <div className="flex flex-wrap gap-3">{children}</div>
+      <div className="flex items-center gap-4">
+        <div
+          ref={oneLine ? lineRef : undefined}
+          className={cn(
+            "flex min-w-0 flex-1 flex-wrap gap-4",
+            clipped && "overflow-hidden",
+          )}
+          style={
+            clipped && line.height !== null
+              ? { maxHeight: line.height }
+              : undefined
+          }
+        >
+          {children}
+        </div>
+        {oneLine && (line.overflows || expanded) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 self-start"
+            onClick={() => setExpanded((it) => !it)}
+          >
+            {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
+          </Button>
+        )}
+      </div>
     </section>
   );
 }
@@ -331,7 +407,7 @@ export function OrgApps({
   orgSlug: string;
 }) {
   return (
-    <AppsSection>
+    <AppsSection oneLine>
       {projects.map((project) => (
         <ProjectAppTiles
           key={project.id}
