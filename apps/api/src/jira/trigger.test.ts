@@ -1,48 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { parseWebhookTransition, transitionsFromChangelog } from "./trigger";
+import { parseWebhookTransition } from "./trigger";
 
 describe("parseWebhookTransition", () => {
-  const updated = (
-    items: Array<{ field: string; fromString?: string; toString?: string }>,
-  ) => ({
+  const updated = (items: Array<{ field: string; toString?: string }>) => ({
     webhookEvent: "jira:issue_updated",
-    timestamp: Date.parse("2026-09-29T14:31:00Z"),
-    user: { accountId: "acc-ana", displayName: "Ana" },
     issue: { id: "10001", key: "EX-7" },
     changelog: { id: "5001", items },
   });
 
-  it("reads the status an issue landed in, where it came from and who moved it", () => {
+  it("reads the status an issue landed in, with the transition's identity", () => {
     expect(
       parseWebhookTransition(
         updated([
           { field: "assignee", toString: "Ana" },
-          { field: "status", fromString: "Review", toString: "Doing" },
+          { field: "status", toString: "Doing" },
         ]),
       ),
     ).toEqual({
       issueId: "10001",
       issueKey: "EX-7",
       toStatus: "Doing",
-      fromStatus: "Review",
-      movedBy: { accountId: "acc-ana", displayName: "Ana" },
-      movedAt: "2026-09-29T14:31:00.000Z",
       changelogId: "5001",
-    });
-  });
-
-  /** The origin is context for the run, never a reason to drop the trigger. */
-  it("still triggers when the payload lacks the origin, the mover or the time", () => {
-    const payload = {
-      ...updated([{ field: "status", toString: "Doing" }]),
-      timestamp: "yesterday",
-      user: { displayName: "No account id" },
-    };
-    expect(parseWebhookTransition(payload)).toMatchObject({
-      toStatus: "Doing",
-      fromStatus: null,
-      movedBy: null,
-      movedAt: null,
     });
   });
 
@@ -79,60 +57,5 @@ describe("parseWebhookTransition", () => {
     ]) {
       expect(parseWebhookTransition(bad)).toBeNull();
     }
-  });
-});
-
-describe("transitionsFromChangelog", () => {
-  const issue = { id: "10001", key: "EX-7" };
-  const since = new Date("2026-09-02T10:00:00Z");
-
-  it("keeps only status changes inside the window, oldest first", () => {
-    const out = transitionsFromChangelog(
-      issue,
-      [
-        {
-          id: "3",
-          created: "2026-09-02T10:20:00Z",
-          items: [{ field: "status", toString: "Done" }],
-        },
-        {
-          id: "1",
-          created: "2026-09-02T09:00:00Z",
-          items: [{ field: "status", toString: "Doing" }],
-        },
-        {
-          id: "2",
-          created: "2026-09-02T10:10:00Z",
-          items: [{ field: "priority", toString: "High" }],
-        },
-      ],
-      since,
-    );
-    expect(out.map((t) => t.changelogId)).toEqual(["3"]);
-    expect(out[0]?.toStatus).toBe("Done");
-  });
-
-  it("yields the same shape the webhook does, so both feed one fence", () => {
-    const [t] = transitionsFromChangelog(
-      issue,
-      [
-        {
-          id: "9",
-          created: "2026-09-02T10:01:00Z",
-          author: { accountId: "acc-ana", displayName: "Ana" },
-          items: [{ field: "status", fromString: "Review", toString: "Doing" }],
-        },
-      ],
-      since,
-    );
-    expect(t).toEqual({
-      issueId: "10001",
-      issueKey: "EX-7",
-      toStatus: "Doing",
-      fromStatus: "Review",
-      movedBy: { accountId: "acc-ana", displayName: "Ana" },
-      movedAt: "2026-09-02T10:01:00Z",
-      changelogId: "9",
-    });
   });
 });

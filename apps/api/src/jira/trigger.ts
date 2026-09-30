@@ -7,6 +7,10 @@
  * into the run's opening message, and the agent updates the issue itself with
  * the Jira tools its run is served.
  *
+ * A rule reacts to where an issue RESTS, not to each drop (`settle.ts`): a card
+ * dragged through a column, or into the wrong one and straight back, starts
+ * nothing there and does not supersede the run it was waiting on.
+ *
  * Idempotency is per TRANSITION, not per issue: `jira_trigger_claims` holds
  * one row per changelog entry, so a redelivered webhook or the poll finding the
  * same entry dispatches nothing, while the issue entering the column again
@@ -26,46 +30,27 @@ import {
 } from "@/tools/task-board/enqueue-super-agent";
 import { openPrForIssue } from "./open-pr";
 import { supersedeLiveRuns } from "@/tools/task-board/rerun";
-import { JiraClient, type JiraChangelogHistory, type JiraUser } from "./client";
+import { JiraClient } from "./client";
 import {
   type IssueForPrompt,
   issueUrl,
   loadIssueForPrompt,
   renderIssueForPrompt,
   renderIssuesForPrompt,
+  type StatusMove,
 } from "./issue-prompt";
+import { type Settled, settle } from "./settle";
 
+/** A status change the webhook reported. Only its identity: what the change
+ *  amounts to is read back from the issue's history once it has settled. */
 export interface IssueTransition {
   issueId: string;
   issueKey: string;
-  /** The status NAME the issue landed in — what a rule is keyed by. */
+  /** The status NAME the issue landed in, for logs; a rule reacts to where
+   *  the issue rests, which a later drop may change. */
   toStatus: string;
-  /** The status it left. A run tells a card sent back by a person from one
-   *  handed forward by the previous run by this; null when Jira omits it. */
-  fromStatus: string | null;
-  /** Who moved it; null when Jira attributes the change to no one. */
-  movedBy: JiraUser | null;
-  /** When, as Jira reports it. */
-  movedAt: string | null;
   /** Jira's id for this changelog entry: the transition's identity. */
   changelogId: string;
-}
-
-function asJiraUser(value: unknown): JiraUser | null {
-  if (typeof value !== "object" || value === null) return null;
-  const { accountId, displayName } = value as {
-    accountId?: unknown;
-    displayName?: unknown;
-  };
-  if (typeof accountId !== "string" || accountId === "") return null;
-  return {
-    accountId,
-    displayName: typeof displayName === "string" ? displayName : accountId,
-  };
-}
-
-function asStatusName(value: unknown): string | null {
-  return typeof value === "string" && value !== "" ? value : null;
 }
 
 /**
@@ -78,16 +63,10 @@ export function parseWebhookTransition(
   if (typeof payload !== "object" || payload === null) return null;
   const p = payload as {
     webhookEvent?: unknown;
-    timestamp?: unknown;
-    user?: unknown;
     issue?: { id?: unknown; key?: unknown };
     changelog?: {
       id?: unknown;
-      items?: Array<{
-        field?: unknown;
-        fromString?: unknown;
-        toString?: unknown;
-      }>;
+      items?: Array<{ field?: unknown; toString?: unknown }>;
     };
   };
   if (p.webhookEvent !== "jira:issue_updated") return null;
@@ -107,45 +86,17 @@ export function parseWebhookTransition(
     issueId: String(issueId),
     issueKey,
     toStatus: status.toString,
-    fromStatus: asStatusName(status.fromString),
-    movedBy: asJiraUser(p.user),
-    movedAt:
-      typeof p.timestamp === "number" && Number.isFinite(p.timestamp)
-        ? new Date(p.timestamp).toISOString()
-        : null,
     changelogId: String(changelogId),
   };
 }
 
-/**
- * Every status change on an issue since `since`, oldest first — what the poll
- * reads off a search expanded with the changelog. The same shape the webhook
- * yields, so both feed one fence.
- */
-export function transitionsFromChangelog(
-  issue: { id: string; key: string },
-  histories: readonly JiraChangelogHistory[],
-  since: Date,
-): IssueTransition[] {
-  const out: IssueTransition[] = [];
-  for (const history of histories) {
-    if (new Date(history.created).getTime() < since.getTime()) continue;
-    const status = history.items.find((item) => item.field === "status");
-    if (!status || typeof status.toString !== "string") continue;
-    out.push({
-      issueId: issue.id,
-      issueKey: issue.key,
-      toStatus: status.toString,
-      fromStatus: asStatusName(status.fromString),
-      movedBy: asJiraUser(history.author),
-      movedAt: history.created,
-      changelogId: history.id,
-    });
-  }
-  return out.sort((a, b) => Number(a.changelogId) - Number(b.changelogId));
-}
-
-export type TriggerOutcome = "started" | "no_rule" | "duplicate" | "disabled";
+export type TriggerOutcome =
+  | "started"
+  | "no_rule"
+  | "duplicate"
+  | "disabled"
+  /** Not settled yet, or a later move decides instead — see `settle.ts`. */
+  | Exclude<Settled["kind"], "moved">;
 
 /** What the run is told first when the rule has no prompt of its own. */
 const DEFAULT_JIRA_INSTRUCTION =
@@ -153,7 +104,7 @@ const DEFAULT_JIRA_INSTRUCTION =
 
 /** What a run on ONE issue is dispatched with: that issue, in full, and the
  *  move that started it when a rule did. */
-function oneIssue(issue: IssueForPrompt, move?: IssueTransition) {
+function oneIssue(issue: IssueForPrompt, move?: StatusMove) {
   return {
     issueKeys: [issue.key],
     title: `Jira ${issue.key}: ${issue.summary}`,
@@ -170,27 +121,39 @@ function jiraClientFor(integration: OrgJiraIntegration): JiraClient {
 }
 
 /**
- * Dispatch a run for `transition` if the org has a rule for its status and
- * nothing dispatched this transition already.
+ * Dispatch a run for where an issue came to rest, if the org has a rule for
+ * that status and nothing dispatched this move already.
+ *
+ * `changelogId` is the move the webhook reported, and the caller has waited
+ * `SETTLE_MS` since; the poll omits it and passes `now`, asking about the
+ * issue's latest move. Either way the claim is on the move that settled, so
+ * the two never both dispatch it.
  */
-export async function triggerRunForTransition(
+export async function triggerRunForSettledMove(
   ctx: StudioContext,
   integration: OrgJiraIntegration,
-  transition: IssueTransition,
+  target: { issueId: string; changelogId?: string; now?: number },
 ): Promise<TriggerOutcome> {
   if (!integration.enabled) return "disabled";
   const orgId = integration.organizationId;
+  const client = jiraClientFor(integration);
+  const settled = settle(await client.listStatusChanges(target.issueId), {
+    changeId: target.changelogId,
+    now: target.now,
+  });
+  if (!settled) return "no_rule";
+  if (settled.kind !== "moved") return settled.kind;
+  const { change } = settled;
   const rule = await ctx.storage.jiraIntegrations.getAutomation(
     orgId,
-    transition.toStatus,
+    change.to,
   );
   if (!rule) return "no_rule";
 
-  const client = jiraClientFor(integration);
   const issue = await loadIssueForPrompt(
     client,
     integration.siteUrl,
-    transition.issueId,
+    target.issueId,
   );
   const item = await ensureAnchorItem(
     ctx,
@@ -200,8 +163,8 @@ export async function triggerRunForTransition(
   );
   const claimed = await ctx.storage.jiraIntegrations.claimTrigger(
     orgId,
-    transition.issueId,
-    transition.changelogId,
+    target.issueId,
+    change.id,
   );
   if (!claimed) return "duplicate";
 
@@ -216,7 +179,12 @@ export async function triggerRunForTransition(
   await dispatchJiraRun(ctx, integration, item, {
     instruction: rule.prompt,
     actorId: integration.createdBy,
-    ...oneIssue(issue, transition),
+    ...oneIssue(issue, {
+      toStatus: change.to,
+      fromStatus: settled.from.name,
+      movedBy: change.by,
+      movedAt: new Date(change.at).toISOString(),
+    }),
     ...(pr ? { pr } : {}),
   });
   return "started";
