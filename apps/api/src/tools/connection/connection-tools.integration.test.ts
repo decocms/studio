@@ -94,7 +94,6 @@ describe("Connection Tools", () => {
         ),
         subsidizedGatewayKeys: null as never,
         experiments: null as never,
-        appPreviewSessions: null as never,
         organizationSettings: {
           get: async () => null,
           upsert: async (_orgId: string) => ({

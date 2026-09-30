@@ -299,7 +299,6 @@ import type { OrganizationSettingsStorage } from "../storage/organization-settin
 import type { UserModelPreferencesStorage } from "../storage/user-model-preferences";
 import type { TagStorage } from "../storage/tags";
 import type { ExperimentStorage } from "../storage/experiments";
-import type { AppPreviewSessionStorage } from "../storage/app-preview-sessions";
 import type { UserStorage } from "../storage/user";
 import type { VirtualMCPStorage } from "../storage/virtual";
 import type { AutomationsStorage } from "../storage/automations";
@@ -365,7 +364,6 @@ export interface StudioStorage {
   asyncResearchJobs: OrgScopedAsyncResearchJobStorage;
   tags: TagStorage;
   experiments: ExperimentStorage;
-  appPreviewSessions: AppPreviewSessionStorage;
   aiProviderKeys: AIProviderKeyStorage;
   subsidizedGatewayKeys: SubsidizedGatewayKeyStorage;
   secrets: SecretStorage;

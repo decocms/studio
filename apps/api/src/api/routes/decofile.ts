@@ -67,7 +67,7 @@ type DecofileEnv = Env & {
 
 const BRANCH_RE = /^[a-zA-Z0-9][a-zA-Z0-9/._-]*$/;
 
-export function isValidBranch(branch: string): boolean {
+function isValidBranch(branch: string): boolean {
   return (
     branch.length > 0 &&
     branch.length <= 255 &&
@@ -126,64 +126,6 @@ export const patchBodySchema = z
       message: `Each block key must be at most ${MAX_BLOCK_KEY_LENGTH} characters`,
     },
   );
-
-/**
- * Body → patch, with every write rule of the decofile data plane: shape and
- * size bounds, plaintext secrets refused, safe keys, plain-object blocks, no
- * writes to resolver-shaped keys. Shared with the app-preview overlay.
- */
-export function validateDecofilePatch(
-  body: unknown,
-):
-  | { ok: true; patch: DecofilePatch }
-  | { ok: false; body: { error: string; details?: unknown } } {
-  const parsed = patchBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      body: { error: "Invalid body", details: parsed.error.issues },
-    };
-  }
-  let patch: DecofilePatch;
-  try {
-    patch = sanitizeSecretsForPersistence(parsed.data);
-  } catch (err) {
-    if (err instanceof PlaintextSecretError) {
-      return { ok: false, body: { error: err.message } };
-    }
-    throw err;
-  }
-
-  for (const key of [
-    ...Object.keys(patch.set ?? {}),
-    ...(patch.delete ?? []),
-  ]) {
-    try {
-      assertSafeDecoBlockKey(key);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { ok: false, body: { error: message } };
-    }
-  }
-  for (const [key, value] of Object.entries(patch.set ?? {})) {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return {
-        ok: false,
-        body: { error: `Block "${key}" must be a JSON object` },
-      };
-    }
-    // Deletes of resolver-shaped keys stay allowed above so a shadow is repairable.
-    if (isReservedResolverBlockKey(key)) {
-      return {
-        ok: false,
-        body: {
-          error: `Block key "${key}" collides with a framework resolver module and cannot be written`,
-        },
-      };
-    }
-  }
-  return { ok: true, patch };
-}
 
 /**
  * Resolves the virtual MCP, enforces the Fast Preview gate and (for
@@ -408,11 +350,50 @@ export function createDecofileRoutes() {
     const scope = c.get("decofileScope");
     const ctx = c.var.studioContext;
 
-    const validated = validateDecofilePatch(
+    const parsed = patchBodySchema.safeParse(
       await c.req.json().catch(() => null),
     );
-    if (!validated.ok) return c.json(validated.body, 400);
-    const patch = validated.patch;
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid body", details: parsed.error.issues },
+        400,
+      );
+    }
+    let patch: DecofilePatch;
+    try {
+      patch = sanitizeSecretsForPersistence(parsed.data);
+    } catch (err) {
+      if (err instanceof PlaintextSecretError) {
+        return c.json({ error: err.message }, 400);
+      }
+      throw err;
+    }
+
+    for (const key of [
+      ...Object.keys(patch.set ?? {}),
+      ...(patch.delete ?? []),
+    ]) {
+      try {
+        assertSafeDecoBlockKey(key);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 400);
+      }
+    }
+    for (const [key, value] of Object.entries(patch.set ?? {})) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return c.json({ error: `Block "${key}" must be a JSON object` }, 400);
+      }
+      // Deletes of resolver-shaped keys stay allowed above so a shadow is repairable.
+      if (isReservedResolverBlockKey(key)) {
+        return c.json(
+          {
+            error: `Block key "${key}" collides with a framework resolver module and cannot be written`,
+          },
+          400,
+        );
+      }
+    }
 
     try {
       const client = await contentClientForScope(c);

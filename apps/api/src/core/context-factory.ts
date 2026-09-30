@@ -50,7 +50,6 @@ import { OrgSsoConfigStorage } from "../storage/org-sso-config";
 import { OrgSsoSessionStorage } from "../storage/org-sso-sessions";
 import { TagStorage } from "../storage/tags";
 import { ExperimentStorage } from "../storage/experiments";
-import { AppPreviewSessionStorage } from "../storage/app-preview-sessions";
 import { OrganizationBillingStorage } from "../storage/organization-billing";
 import type { Database, Permission } from "../storage/types";
 import { UserStorage } from "../storage/user";
@@ -1461,7 +1460,6 @@ export async function createStudioContextFactory(
     users: new UserStorage(config.db),
     tags: new TagStorage(config.db),
     experiments: new ExperimentStorage(config.db),
-    appPreviewSessions: new AppPreviewSessionStorage(config.db),
     organizationBilling: new OrganizationBillingStorage(config.db),
     aiProviderKeys: new AIProviderKeyStorage(
       config.db,

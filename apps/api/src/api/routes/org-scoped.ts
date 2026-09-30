@@ -45,7 +45,6 @@ import { createVirtualMcpRoutes } from "./virtual-mcp";
 import { createSandboxRoutes } from "./sandbox-proxy";
 import { createDecofileRoutes } from "./decofile";
 import { createAppContentRoutes } from "./app-content";
-import { createAppPreviewRoutes } from "./app-preview";
 
 interface OrgScopedDeps {
   voiceSessions: VoiceSessions;
@@ -123,11 +122,6 @@ export const createOrgScopedApi = (deps: OrgScopedDeps) => {
   app.route("/sandbox", createSandboxRoutes()); // /api/:org/sandbox/:virtualMcpId/:branch/*
   app.route("/decofile", createDecofileRoutes()); // /api/:org/decofile/:virtualMcpId/:branch[/*] — sandbox-less Fast Preview CMS
   app.route("/app-content", createAppContentRoutes()); // /api/:org/app-content/:virtualMcpId — anonymous published decofile for mobile apps
-  // /api/:org/app-preview/* — phone preview sessions (QR); device endpoints are anonymous + DecoPreview token
-  app.route(
-    "/app-preview",
-    createAppPreviewRoutes({ getNatsConnection: deps.getNatsConnection }),
-  );
   app.route("/", createHomeNextActionsRoutes());
   app.route("/", createOrgNoticeRoutes()); // /api/:org/notice — the org's pinned billing notice
   app.route("/deco-sites", createDecoSitesOrgRoutes()); // /api/:org/deco-sites

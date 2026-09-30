@@ -4,7 +4,6 @@ import * as migration224repositorysandboximage from "./224-repository-sandbox-im
 import * as migration225threadanalyticsindexes from "./225-thread-analytics-indexes";
 import * as migration226decoscorenames from "./226-deco-score-names";
 import * as migration227taskboardfindingresolvedactivity from "./227-task-board-finding-resolved-activity";
-import * as migration228apppreviewsessions from "./228-app-preview-sessions";
 import * as migration223droporgmainagentid from "./223-drop-org-main-agent-id";
 import * as migration214connectionssanitizedididx from "./214-connections-sanitized-id-idx";
 import * as migration215commercediscoveryrepository from "./215-commerce-discovery-repository";
@@ -493,7 +492,6 @@ const migrations: Record<string, Migration> = {
   "226-deco-score-names": migration226decoscorenames,
   "227-task-board-finding-resolved-activity":
     migration227taskboardfindingresolvedactivity,
-  "228-app-preview-sessions": migration228apppreviewsessions,
 };
 
 export default migrations;
