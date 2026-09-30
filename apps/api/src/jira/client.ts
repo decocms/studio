@@ -455,6 +455,19 @@ export class JiraClient {
 
   /** The board's columns with their status NAMES, in board order — what the
    *  settings UI shows (tenants know column names, not raw statuses). */
+  /** Each column's status ids, left to right — the board's order, in one
+   *  request, for telling a move forward from one back. */
+  async getBoardColumnStatusIds(boardId: string): Promise<string[][]> {
+    const config = await this.request<{
+      columnConfig?: {
+        columns?: Array<{ statuses?: Array<{ id: string }> }>;
+      };
+    }>(`/rest/agile/1.0/board/${assertBoardId(boardId)}/configuration`);
+    return (config.columnConfig?.columns ?? []).map((column) =>
+      (column.statuses ?? []).map((status) => status.id),
+    );
+  }
+
   async getBoardColumns(boardId: string): Promise<JiraBoardColumn[]> {
     const config = await this.request<{
       columnConfig?: {

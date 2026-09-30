@@ -23,6 +23,14 @@ import {
 } from "@untitledui/icons";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { Combobox } from "@decocms/ui/components/combobox.tsx";
+import { MultiSelect } from "@decocms/ui/components/multi-select.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@decocms/ui/components/select.tsx";
 import { Skeleton } from "@decocms/ui/components/skeleton.tsx";
 import { Switch } from "@decocms/ui/components/switch.tsx";
 import { TiptapInput, TiptapProvider } from "@/components/chat/tiptap/input";
@@ -61,7 +69,9 @@ import {
 import { useT } from "@/i18n/use-t.ts";
 import type { TranslationKey } from "@/i18n/en";
 import {
+  type JiraAutomation,
   type JiraIntegration,
+  type JiraRuleFrom,
   useDeleteJiraIntegration,
   useJiraAutomations,
   useJiraBoardColumns,
@@ -321,7 +331,8 @@ function BoardRow({ integration }: { integration: JiraIntegration }) {
 /**
  * One card per Jira STATUS on the selected board. A Jira column is a bucket of
  * statuses, so the card is headed by the column and names the status beneath
- * it whenever that adds information. Rules are keyed by status name.
+ * it whenever that adds information. Rules are keyed by status name, and a
+ * status holds one rule per origin.
  */
 function AutomationsRow({ boardId }: { boardId: string }) {
   const t = useT();
@@ -344,9 +355,14 @@ function AutomationsRow({ boardId }: { boardId: string }) {
       </p>
     );
   } else {
-    const ruleOf = new Map(
-      (automations.data ?? []).map((a) => [a.jiraStatus, a]),
-    );
+    const rulesOf = new Map<string, JiraAutomation[]>();
+    for (const rule of automations.data ?? []) {
+      rulesOf.set(rule.jiraStatus, [
+        ...(rulesOf.get(rule.jiraStatus) ?? []),
+        rule,
+      ]);
+    }
+    const allStatuses = (columns.data ?? []).flatMap((c) => c.statuses);
     body = (
       <div className="flex w-full flex-col gap-3">
         {(columns.data ?? []).flatMap((column) =>
@@ -356,9 +372,8 @@ function AutomationsRow({ boardId }: { boardId: string }) {
               columnName={column.name}
               status={status}
               showStatus={status !== column.name || column.statuses.length > 1}
-              hasAutomation={ruleOf.has(status)}
-              prompt={ruleOf.get(status)?.prompt ?? null}
-              continuePr={ruleOf.get(status)?.continuePr ?? false}
+              rules={rulesOf.get(status) ?? []}
+              otherStatuses={allStatuses.filter((s) => s !== status)}
             />
           )),
         )}
@@ -507,43 +522,57 @@ function PromptEditor({
   );
 }
 
-/** `prompt` null with `hasAutomation` true means the rule runs on the agent's
- *  own instruction; the status is absent from the automations list when there
- *  is no rule at all. */
+/** A rule's identity within its status, for React keys and comparisons —
+ *  the server's `fromKey`, which lower-cases and sorts a list the same way. */
+function originKey(from: JiraRuleFrom): string {
+  if (from.kind !== "statuses") return from.kind;
+  const names = [...new Set(from.statuses.map((s) => s.trim().toLowerCase()))];
+  return `statuses:${names.sort().join("\n")}`;
+}
+
+function OriginLabel({ from }: { from: JiraRuleFrom }) {
+  const t = useT();
+  switch (from.kind) {
+    case "any":
+      return <>{t("settings.jira.fromAny")}</>;
+    case "earlier":
+      return <>{t("settings.jira.fromEarlier")}</>;
+    case "later":
+      return <>{t("settings.jira.fromLater")}</>;
+    case "statuses":
+      return (
+        <>
+          {t("settings.jira.fromStatuses", {
+            statuses: from.statuses.join(", "),
+          })}
+        </>
+      );
+  }
+}
+
+/** The rules on one status, one per origin, and the way to add another. */
 function StatusAutomationCard({
   columnName,
   status,
   showStatus,
-  hasAutomation,
-  prompt,
-  continuePr,
+  rules,
+  otherStatuses,
 }: {
   columnName: string;
   status: string;
   showStatus: boolean;
-  hasAutomation: boolean;
-  prompt: string | null;
-  continuePr: boolean;
+  rules: JiraAutomation[];
+  otherStatuses: string[];
 }) {
   const t = useT();
   const setAutomation = useSetJiraAutomation();
-  // A draft, so typing is not a write per keystroke. Re-seeded on change.
-  const [draft, setDraft] = useState(prompt ?? "");
-  const [syncedWith, setSyncedWith] = useState(prompt);
-  // Bumped to discard: the editor seeds itself once, so remounting it is what
-  // puts the saved text back.
-  const [editorKey, setEditorKey] = useState(0);
-  if (syncedWith !== prompt) {
-    setSyncedWith(prompt);
-    setDraft(prompt ?? "");
-    setEditorKey((n) => n + 1);
-  }
-  const dirty = draft !== (prompt ?? "");
+  const [adding, setAdding] = useState(false);
 
-  const save = (next: string | null, nextContinuePr = continuePr) =>
+  const create = (from: JiraRuleFrom) =>
     setAutomation.mutate(
-      { jiraStatus: status, prompt: next, continuePr: nextContinuePr },
+      { jiraStatus: status, from, prompt: "", continuePr: false },
       {
+        onSuccess: () => setAdding(false),
         onError: (err) =>
           toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
       },
@@ -560,82 +589,231 @@ function StatusAutomationCard({
         )}
       </div>
 
-      {hasAutomation ? (
-        <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium">
-              {t("settings.jira.automationOn")}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={t("settings.jira.removeAriaLabel", { status })}
-              onClick={() => save(null)}
-            >
-              <Trash01 size={14} />
-            </Button>
-          </div>
-          <div data-jira-automation-prompt={status}>
-            <PromptEditor
-              key={editorKey}
-              value={prompt ?? ""}
-              onChange={setDraft}
-              placeholder={t("settings.jira.promptPlaceholder")}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t("settings.jira.promptHelp")}
-          </p>
-          {/* Saved on its own, not with the prompt: it is a rule of the
-              column, and the prompt below may be mid-edit. Per rule rather
-              than inferred from the move, so a review column never pins its
-              run to the pull request it is about to judge. */}
-          <label className="flex w-fit cursor-pointer items-start gap-2 text-xs">
-            <Checkbox
-              className="mt-0.5"
-              checked={continuePr}
-              disabled={setAutomation.isPending}
-              onCheckedChange={(v) => save(prompt ?? "", v === true)}
-            />
-            <span className="flex flex-col gap-0.5">
-              {t("settings.jira.continuePr")}
-              <span className="text-muted-foreground">
-                {t("settings.jira.continuePrRuleHelp")}
-              </span>
-            </span>
-          </label>
-          {dirty && (
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setDraft(prompt ?? "");
-                  setEditorKey((n) => n + 1);
-                }}
-              >
-                {t("settings.jira.promptDiscard")}
-              </Button>
-              <Button
-                size="sm"
-                disabled={setAutomation.isPending}
-                onClick={() => save(draft)}
-              >
-                {t("settings.jira.promptSave")}
-              </Button>
-            </div>
-          )}
-        </div>
-      ) : (
+      {rules.map((rule) => (
+        <AutomationRuleEditor
+          key={originKey(rule.from)}
+          rule={rule}
+          showOrigin={rules.length > 1 || rule.from.kind !== "any"}
+        />
+      ))}
+
+      {rules.length === 0 ? (
         <Button
           variant="outline"
           size="sm"
           className="w-fit"
-          onClick={() => save("")}
+          disabled={setAutomation.isPending}
+          onClick={() => create({ kind: "any" })}
         >
           <Plus size={14} />
           {t("settings.jira.addAutomation")}
         </Button>
+      ) : adding ? (
+        <NewOriginRule
+          taken={new Set(rules.map((r) => originKey(r.from)))}
+          otherStatuses={otherStatuses}
+          pending={setAutomation.isPending}
+          onCreate={create}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-fit"
+          onClick={() => setAdding(true)}
+        >
+          <Plus size={14} />
+          {t("settings.jira.addOriginRule")}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Pick the origin a new rule on a status answers. The kinds the status
+ *  already has a rule for are not offered; a list can always be added. */
+function NewOriginRule({
+  taken,
+  otherStatuses,
+  pending,
+  onCreate,
+  onCancel,
+}: {
+  taken: Set<string>;
+  otherStatuses: string[];
+  pending: boolean;
+  onCreate: (from: JiraRuleFrom) => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  const kinds = (["earlier", "later", "any", "statuses"] as const).filter(
+    (kind) => kind === "statuses" || !taken.has(kind),
+  );
+  const [kind, setKind] = useState<JiraRuleFrom["kind"]>(
+    kinds[0] ?? "statuses",
+  );
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const from: JiraRuleFrom =
+    kind === "statuses" ? { kind, statuses } : { kind };
+  const ready =
+    (kind !== "statuses" || statuses.length > 0) && !taken.has(originKey(from));
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border p-2.5">
+      <span className="text-xs font-medium">
+        {t("settings.jira.originLabel")}
+      </span>
+      <Select
+        value={kind}
+        onValueChange={(v) => setKind(v as JiraRuleFrom["kind"])}
+      >
+        <SelectTrigger className="h-8 w-fit min-w-56 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {kinds.map((k) => (
+            <SelectItem key={k} value={k} className="text-xs">
+              {k === "any"
+                ? t("settings.jira.fromAny")
+                : k === "earlier"
+                  ? t("settings.jira.fromEarlier")
+                  : k === "later"
+                    ? t("settings.jira.fromLater")
+                    : t("settings.jira.fromStatuses", { statuses: "…" })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {kind === "statuses" && (
+        <MultiSelect
+          options={otherStatuses.map((s) => ({ label: s, value: s }))}
+          onValueChange={setStatuses}
+          placeholder={t("settings.jira.originStatusesPlaceholder")}
+          className="text-xs"
+        />
+      )}
+      <p className="text-xs text-muted-foreground">
+        {t("settings.jira.originHelp")}
+      </p>
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          {t("settings.jira.cancelRule")}
+        </Button>
+        <Button
+          size="sm"
+          disabled={!ready || pending}
+          onClick={() => onCreate(from)}
+        >
+          {t("settings.jira.createRule")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** One rule: its origin, its prompt and whether it continues the open pull
+ *  request. `prompt` null means the rule runs on the agent's own instruction. */
+function AutomationRuleEditor({
+  rule,
+  showOrigin,
+}: {
+  rule: JiraAutomation;
+  showOrigin: boolean;
+}) {
+  const t = useT();
+  const setAutomation = useSetJiraAutomation();
+  const { jiraStatus: status, from, prompt, continuePr } = rule;
+  // A draft, so typing is not a write per keystroke. Re-seeded on change.
+  const [draft, setDraft] = useState(prompt ?? "");
+  const [syncedWith, setSyncedWith] = useState(prompt);
+  // Bumped to discard: the editor seeds itself once, so remounting it is what
+  // puts the saved text back.
+  const [editorKey, setEditorKey] = useState(0);
+  if (syncedWith !== prompt) {
+    setSyncedWith(prompt);
+    setDraft(prompt ?? "");
+    setEditorKey((n) => n + 1);
+  }
+  const dirty = draft !== (prompt ?? "");
+
+  const save = (next: string | null, nextContinuePr = continuePr) =>
+    setAutomation.mutate(
+      { jiraStatus: status, from, prompt: next, continuePr: nextContinuePr },
+      {
+        onError: (err) =>
+          toast.error(errorMessage(err, t("settings.jira.saveFailed"))),
+      },
+    );
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium">
+          {showOrigin ? (
+            <OriginLabel from={from} />
+          ) : (
+            t("settings.jira.automationOn")
+          )}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={t("settings.jira.removeAriaLabel", { status })}
+          onClick={() => save(null)}
+        >
+          <Trash01 size={14} />
+        </Button>
+      </div>
+      <div data-jira-automation-prompt={`${status}:${originKey(from)}`}>
+        <PromptEditor
+          key={editorKey}
+          value={prompt ?? ""}
+          onChange={setDraft}
+          placeholder={t("settings.jira.promptPlaceholder")}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t("settings.jira.promptHelp")}
+      </p>
+      {/* Saved on its own, not with the prompt: it is a rule of the
+          column, and the prompt below may be mid-edit. Per rule rather
+          than inferred from the move, so a review column never pins its
+          run to the pull request it is about to judge. */}
+      <label className="flex w-fit cursor-pointer items-start gap-2 text-xs">
+        <Checkbox
+          className="mt-0.5"
+          checked={continuePr}
+          disabled={setAutomation.isPending}
+          onCheckedChange={(v) => save(prompt ?? "", v === true)}
+        />
+        <span className="flex flex-col gap-0.5">
+          {t("settings.jira.continuePr")}
+          <span className="text-muted-foreground">
+            {t("settings.jira.continuePrRuleHelp")}
+          </span>
+        </span>
+      </label>
+      {dirty && (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setDraft(prompt ?? "");
+              setEditorKey((n) => n + 1);
+            }}
+          >
+            {t("settings.jira.promptDiscard")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={setAutomation.isPending}
+            onClick={() => save(draft)}
+          >
+            {t("settings.jira.promptSave")}
+          </Button>
+        </div>
       )}
     </div>
   );
