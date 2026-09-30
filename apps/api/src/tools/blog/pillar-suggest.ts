@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { resolveTier } from "../../core/resolve-tier";
-import { BlogBrandSchema, type BrandRuleSchema } from "./schema";
+import { BlogContextSchema, type BrandRuleSchema } from "./schema";
 
 /**
  * A content pillar is a recurring territory of communication — "Product
@@ -59,7 +59,9 @@ function renderRules(
 }
 
 /** The brand profile as prose, skipping whatever the human hasn't filled in. */
-function renderBrand(brand: Partial<z.infer<typeof BlogBrandSchema>>): string {
+function renderBrand(
+  brand: Partial<z.infer<typeof BlogContextSchema>>,
+): string {
   return (
     [
       brand.companyName && `## Brand\n${brand.companyName}`,
@@ -88,7 +90,7 @@ export const BLOG_PILLAR_SUGGEST = defineTool({
     openWorldHint: false,
   },
   inputSchema: z.object({
-    brand: BlogBrandSchema.partial().describe(
+    brand: BlogContextSchema.partial().describe(
       "The site's editorial brand context, as stored in its blog-manager-brand block. Every field is optional — a half-filled profile is the normal case.",
     ),
     existingPillars: z

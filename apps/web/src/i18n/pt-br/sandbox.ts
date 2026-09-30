@@ -46,6 +46,59 @@ export const sandbox = {
   "sandbox.blogBrand.dosHint":
     "Instruções que todo post gerado deve seguir. Escreva instruções, não adjetivos.",
   "sandbox.blogBrand.dosNamePlaceholder": "Sobre o que é esta regra",
+  "sandbox.blogBrand.addDifferentiator": "Adicionar diferencial",
+  "sandbox.blogBrand.addKeyword": "Adicionar palavra-chave",
+  "sandbox.blogBrand.addPolicy": "Adicionar política",
+  "sandbox.blogBrand.addSpecialDate": "Adicionar data",
+  "sandbox.blogBrand.addVocabulary": "Adicionar palavra",
+  "sandbox.blogBrand.differentiatorsBodyPlaceholder":
+    "A afirmação, e o que a sustenta",
+  "sandbox.blogBrand.differentiatorsHint":
+    "O que esta marca tem que um concorrente não pode alegar. Se um rival copiaria para o site dele, não é diferencial.",
+  "sandbox.blogBrand.differentiatorsLabel": "Diferenciais",
+  "sandbox.blogBrand.differentiatorsNamePlaceholder": "Qual é o diferencial",
+  "sandbox.blogBrand.keywordsBodyPlaceholder":
+    "Quem busca por isso, e o que essa pessoa quer encontrar",
+  "sandbox.blogBrand.keywordsHint":
+    "Os termos pelos quais a marca quer ser encontrada — o que alguém digita procurando o que ela vende.",
+  "sandbox.blogBrand.keywordsLabel": "Palavras-chave da marca",
+  "sandbox.blogBrand.keywordsNamePlaceholder": "O termo, como alguém busca",
+  "sandbox.blogBrand.phaseResearching": "Pesquisando a marca na web…",
+  "sandbox.blogBrand.policiesBodyPlaceholder":
+    "Os termos, com os números e condições reais",
+  "sandbox.blogBrand.policiesHint":
+    "Trocas, frete, garantia. Fatos que um post pode precisar afirmar — copie os números exatamente.",
+  "sandbox.blogBrand.policiesLabel": "Políticas comerciais",
+  "sandbox.blogBrand.policiesNamePlaceholder": "Qual política",
+  "sandbox.blogBrand.specialDatesBodyPlaceholder":
+    "O que esta data significa para esta marca — o que ela vende, o que ela diz",
+  "sandbox.blogBrand.specialDatesHint":
+    "Os momentos comerciais em torno dos quais o ano da marca gira — os próprios e o calendário do varejo. Não é um pin no calendário: as datas mudam a cada ano.",
+  "sandbox.blogBrand.specialDatesLabel": "Datas especiais",
+  "sandbox.blogBrand.specialDatesNamePlaceholder": "O nome da data",
+  "sandbox.blogBrand.vocabularyBodyPlaceholder":
+    "O que ela nomeia, e qual palavra ela substitui",
+  "sandbox.blogBrand.vocabularyHint":
+    "As palavras próprias da marca, e as comuns que elas substituem. Um post usando a palavra substituída soa como impostor.",
+  "sandbox.blogBrand.vocabularyLabel": "Vocabulário",
+  "sandbox.blogBrand.vocabularyNamePlaceholder": "A palavra a usar",
+  "sandbox.blogBrand.extractReplaced": "{count} campo(s) reescrito(s)",
+  "sandbox.blogBrand.fillDialogDescription":
+    "Parte disso já está escrita. Escolha no que o preenchimento pode mexer.",
+  "sandbox.blogBrand.fillDialogTitle": "Preencher o contexto",
+  "sandbox.blogBrand.fillOnlyEmpty": "Só o que está vazio",
+  "sandbox.blogBrand.fillOnlyEmptyHint":
+    "Mantém tudo o que você escreveu exatamente como está, e preenche os campos em branco ao redor.",
+  "sandbox.blogBrand.fillReplace": "Começar do zero",
+  "sandbox.blogBrand.fillReplaceHint":
+    "Reescreve todo campo para o qual o modelo tiver resposta. O que você escreveu ali se perde; um campo que ele não souber responder mantém o valor atual.",
+  "sandbox.blogBrand.addVoiceExample": "Adicionar frase",
+  "sandbox.blogBrand.voiceExamplesDoesNotSound": "Não soa como a marca",
+  "sandbox.blogBrand.voiceExamplesHint":
+    "Uma voz se mostra mais rápido do que se descreve. Cole frases reais e marque cada uma: as que soam como a marca são o que um post gerado deve acompanhar, e as que não soam são o que delimita até onde as primeiras vão.",
+  "sandbox.blogBrand.voiceExamplesLabel": "Frases-exemplo",
+  "sandbox.blogBrand.voiceExamplesPlaceholder": "Cole uma frase",
+  "sandbox.blogBrand.voiceExamplesSounds": "Soa como a marca",
   "sandbox.blogBrand.extractButton": "Preencher",
   "sandbox.blogBrand.extractFailed":
     "Não foi possível ler a marca a partir do conteúdo deste site",
@@ -61,7 +114,6 @@ export const sandbox = {
     "Nenhum concorrente encontrado. Adicione à mão, ou configure um modelo de busca na web para esta organização.",
   "sandbox.blogBrand.phaseInferring": "Inferindo a voz e as regras…",
   "sandbox.blogBrand.phaseReading": "Lendo o conteúdo deste site…",
-  "sandbox.blogBrand.phaseSearching": "Buscando concorrentes na web…",
   "sandbox.blogBrand.removeItem": "Remover item",
   "sandbox.blogBrand.tabBasics": "Dados básicos",
   "sandbox.blogBrand.tabDos": "Instruções de geração",
@@ -90,8 +142,6 @@ export const sandbox = {
   "sandbox.blogContext.categoriesHint":
     "Os temas sob os quais seus posts são classificados. Adicione um e abra para editar.",
   "sandbox.blogContext.removeEntry": "Remover",
-  "sandbox.blogContext.soonDescription": "E muito mais…",
-  "sandbox.blogContext.soonTitle": "O contexto da sua marca chega em breve!",
   "sandbox.blogContext.subtitle":
     "O contexto de marca do qual seu blog é escrito — voz, formatos e os pilares aos quais ele sempre volta.",
   "sandbox.blogContext.tabAuthors": "Autores",

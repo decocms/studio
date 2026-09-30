@@ -5,17 +5,16 @@ import { useSaveBlock } from "@/components/sections-editor/use-save-block";
 import { type LiveMeta } from "@/components/sections-editor/resolve-schema";
 import {
   type AuthorRef,
-  BRAND_BLOCK_KEY,
+  contextForTools,
+  readBlogContext,
   buildGeneratedPostPayload,
   buildPlanningPostBlock,
   type CategoryRef,
   emptyDraftPostPayload,
-  filledBrandRules,
   listBlogPayloads,
   listPostsWithMeta,
   mentionableSections,
   newPostId,
-  normalizeBrandRules,
   type PlanningMeta,
   planningPostKey,
   sectionResolveTypes,
@@ -119,9 +118,7 @@ export function useGeneratePost({
     });
     onStarted?.(key);
 
-    const brandBlock = decofile[BRAND_BLOCK_KEY] as
-      | Record<string, unknown>
-      | undefined;
+    const { merged } = readBlogContext(decofile);
     const categories: CategoryRef[] = briefing.category
       ? [briefing.category]
       : listBlogPayloads(decofile, "categories")
@@ -141,16 +138,7 @@ export function useGeneratePost({
 
     try {
       const draft = await studio.call("BLOG_POST_DRAFT", {
-        brand: {
-          companyName: str(brandBlock?.companyName),
-          description: str(brandBlock?.description),
-          language: str(brandBlock?.language),
-          tone: str(brandBlock?.tone),
-          targetAudience: str(brandBlock?.targetAudience),
-          values: filledBrandRules(normalizeBrandRules(brandBlock?.values)),
-          dos: filledBrandRules(normalizeBrandRules(brandBlock?.dos)),
-          avoid: filledBrandRules(normalizeBrandRules(brandBlock?.avoid)),
-        },
+        brand: contextForTools(merged),
         pillar: briefing.pillar
           ? { title: briefing.pillar.title, body: briefing.pillar.body }
           : undefined,

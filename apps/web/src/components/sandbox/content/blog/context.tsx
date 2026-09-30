@@ -1,8 +1,6 @@
 /**
  * Autonomous content: Generate, Themes and Library behind one collection row.
- * Library
- * holds the brand context and the post formats, each persisted to the site's
- * own `.deco/blocks/blog-manager-*.json` as plain JSON.
+ * Library holds the brand, the writing rules and the post formats, each persisted to the site's own `.deco/blocks/blog-manager-*.json` as plain JSON. The brand and the writing rules are two blocks behind one seamless screen, and the fill button runs both passes.
  *
  * Scheduling deliberately lives outside this tab — it is a first-party feature
  * of the blog, and generation only produces the drafts it schedules.
@@ -18,7 +16,15 @@ import { toast } from "sonner";
 import { Button } from "@decocms/ui/components/button.tsx";
 import { Input } from "@decocms/ui/components/input.tsx";
 import { Label } from "@decocms/ui/components/label.tsx";
+import { Switch } from "@decocms/ui/components/switch.tsx";
 import { Textarea } from "@decocms/ui/components/textarea.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@decocms/ui/components/dialog.tsx";
 import {
   Popover,
   PopoverContent,
@@ -43,6 +49,7 @@ import {
   type BlogKind,
   BRAND_BLOCK_KEY,
   type BrandRule,
+  CONTEXT_BLOCK_KEY,
   buildBlogBlock,
   dedupeSuggestedThemes,
   defaultFormatSections,
@@ -54,22 +61,46 @@ import {
   newPillarKey,
   normalizeBrandRules,
   normalizeTitleKey,
+  normalizeVoiceExamples,
+  type VoiceExample,
   postStructures,
   scanBlogEntries,
   scanPillars,
-  selectBrandEvidenceBlocks,
+  selectBrandEvidence,
+  applyExtractResult,
+  asBlock,
+  type FillMode,
+  contextForTools,
+  readBlogContext,
+  pickBlogFields,
+  BRAND_FIELDS,
+  CONTEXT_FIELDS,
   unknownCitations,
 } from "./blog-data";
 import { AddButton, RemoveButton, str } from "./blocks/primitives";
+import {
+  fetchCatalogEvidence,
+  hasVtexCatalog,
+} from "./blocks/catalog-evidence";
 
-/** Stable empty seeds — `useAutosave` re-seeds on reference change. */
-const EMPTY_BRAND: Record<string, unknown> = {};
+/** Stable empty seed — `useAutosave` re-seeds on reference change. */
 const EMPTY_FORMATS: Record<string, unknown> = {};
 
-/** Free-text fields the extractor may fill. */
-const TEXT_FIELDS = ["description", "tone", "targetAudience"] as const;
-/** Fields holding `{ name, value }` rules. */
-const RULE_FIELDS = ["values", "dos", "avoid", "competitors"] as const;
+/** Free-text brand fields the extractor may fill. */
+const BRAND_TEXT_FIELDS = ["description", "targetAudience"] as const;
+/** Brand fields holding `{ name, value }` rules. */
+const BRAND_RULE_FIELDS = [
+  "values",
+  "competitors",
+  "keywords",
+  "differentiators",
+  "commercialPolicies",
+  "specialDates",
+] as const;
+/** Writing-context fields holding `{ name, value }` rules. */
+const CONTEXT_RULE_FIELDS = ["dos", "avoid", "vocabulary"] as const;
+/** Fields holding example sentences, which are not `{ name, value }` rules. */
+const CONTEXT_EXAMPLE_FIELDS = ["voiceExamples"] as const;
 
 /**
  * Fixed rail of the Context tab. Unlike Content OS's Library, whose items are
@@ -144,21 +175,47 @@ export function BlogContext({
   /** Jump to the Posts area to manage a category's posts. */
   onManageCategoryPosts?: (slug: string) => void;
 }) {
-  const block = decofile[BRAND_BLOCK_KEY] as
-    | Record<string, unknown>
-    | undefined;
+  const storedBrand = asBlock(decofile[BRAND_BLOCK_KEY]);
+  const storedContext = asBlock(decofile[CONTEXT_BLOCK_KEY]);
   const t = useT();
   const studio = useStudioTools();
   const save = useSaveBlock({ orgSlug, virtualMcpId, branch });
   /** Every button here spends org credits, so none of them work without a provider. */
   const hasAi = useHostedAiProviderKeys().length > 0;
 
-  const [brand, setBrand] = useAutosave(block ?? EMPTY_BRAND, (next) => {
-    save.mutate({ blockKey: BRAND_BLOCK_KEY, data: next });
+  /**
+   * Each draft is seeded from a whole stored block — a reference straight off
+   * the decofile, because `useAutosave` re-seeds on reference change and a
+   * value derived per render would discard the edit in progress. Narrowing to
+   * the fields the block owns happens on the way out instead, which is also
+   * what makes a legacy brand block shed the rules it no longer owns.
+   */
+  const [brand, setBrand] = useAutosave(storedBrand, (next) => {
+    save.mutate({
+      blockKey: BRAND_BLOCK_KEY,
+      data: pickBlogFields(next, BRAND_FIELDS),
+    });
   });
+
+  /**
+   * The writing rules. Before the split they lived in the brand block, so that
+   * is what seeds this one while `blog-manager-context` is absent.
+   */
+  const [context, setContext] = useAutosave(
+    decofile[CONTEXT_BLOCK_KEY] ? storedContext : storedBrand,
+    (next) => {
+      save.mutate({
+        blockKey: CONTEXT_BLOCK_KEY,
+        data: pickBlogFields(next, CONTEXT_FIELDS),
+      });
+    },
+  );
 
   const setField = (key: string, value: unknown) =>
     setBrand({ ...brand, [key]: value });
+
+  const setContextField = (key: string, value: unknown) =>
+    setContext({ ...context, [key]: value });
 
   const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
     | Record<string, unknown>
@@ -185,11 +242,9 @@ export function BlogContext({
     useState<FormatPhase>(FORMAT_PHASE_READING);
 
   const [isExtracting, setIsExtracting] = useState(false);
+  const [fillOpen, setFillOpen] = useState(false);
   /**
-   * Which step of the extract is running. Advanced on a timer, not by the
-   * server: the tool is one round trip, so these are the pipeline's known
-   * phases timed against how long each usually takes — never a real progress
-   * report, so the copy stays qualitative.
+   * Which step of the extract is running. Only the handover between the two passes is real; the rest is on a timer, so the copy stays qualitative.
    */
   const [phase, setPhase] = useState<ExtractPhase>(PHASE_READING);
   /** Bumped to remount the markdown editors: they read `defaultValue` once. */
@@ -198,61 +253,88 @@ export function BlogContext({
   const [section, setSection] = useState<ContextSection>("basics");
 
   /** The site's own content, ranked by how much it reveals about the voice. */
-  const evidence = selectBrandEvidenceBlocks(
-    decofile,
-    extractPages(decofile).map((page) => page.key),
+  const evidence = selectBrandEvidence(decofile, extractPages(decofile));
+
+  /**
+   * Whether anything here was written already. With nothing to overwrite the
+   * two fill modes do the same thing, so asking which one would be a question
+   * with one answer.
+   */
+  const hasWrittenContext = [
+    ...BRAND_FIELDS.map((field) => brand[field]),
+    ...CONTEXT_FIELDS.map((field) => context[field]),
+  ].some((value) =>
+    typeof value === "string"
+      ? value.trim().length > 0
+      : filledBrandRules(normalizeBrandRules(value)).length > 0,
   );
 
-  /** Fill from the site's own blocks, writing only into fields still empty. */
-  const extract = async () => {
-    if (evidence.length === 0) return;
+  /**
+   * Fill from the site's own blocks, writing only into fields still empty.
+   *
+   * Two passes, in order: who the brand is, then how it writes. The second is
+   * given the first's answer — writing rules read out of a site's copy are only
+   * as good as the understanding of whose copy it is — so they cannot run
+   * concurrently, and a failed brand pass aborts rather than inferring rules
+   * against a blank profile.
+   */
+  const extract = async (mode: FillMode) => {
+    if (evidence.blocks.length === 0) return;
     setIsExtracting(true);
     setPhase(PHASE_READING);
+    // Starts now so it overlaps the first model call instead of adding to it.
+    const catalogRead = hasVtexCatalog(meta)
+      ? fetchCatalogEvidence({ orgSlug, virtualMcpId, branch, threadId: null })
+      : Promise.resolve("");
     const timers = [
-      setTimeout(() => setPhase("sandbox.blogBrand.phaseInferring"), 4_000),
-      setTimeout(() => setPhase("sandbox.blogBrand.phaseSearching"), 15_000),
+      setTimeout(() => setPhase("sandbox.blogBrand.phaseResearching"), 15_000),
     ];
     try {
-      const result = await studio.call("BLOG_BRAND_EXTRACT", {
-        blocks: evidence,
+      const catalog = await catalogRead;
+      const brandResult = await studio.call("BLOG_BRAND_EXTRACT", {
+        blocks: evidence.blocks,
+        seo: evidence.seo,
+        catalog: catalog || undefined,
       });
-      const next: Record<string, unknown> = { ...brand };
-      const filled: string[] = [];
+      const nextBrand: Record<string, unknown> = { ...brand };
+      const filled = applyExtractResult(nextBrand, brandResult, {
+        mode,
+        textFields: ["companyName", "language", ...BRAND_TEXT_FIELDS],
+        ruleFields: BRAND_RULE_FIELDS,
+      });
+      setBrand(nextBrand);
 
-      if (!str(next.companyName) && result.companyName) {
-        next.companyName = result.companyName;
-        filled.push("companyName");
-      }
-      if (!str(next.language) && result.language) {
-        next.language = result.language;
-        filled.push("language");
-      }
-      for (const field of TEXT_FIELDS) {
-        if (!str(next[field]) && result[field]) {
-          next[field] = result[field];
-          filled.push(field);
-        }
-      }
-      for (const field of RULE_FIELDS) {
-        if (
-          filledBrandRules(normalizeBrandRules(next[field])).length === 0 &&
-          result[field]?.length
-        ) {
-          next[field] = result[field];
-          filled.push(field);
-        }
-      }
+      // The search belongs to the brand pass; don't relabel the next one.
+      for (const timer of timers) clearTimeout(timer);
+      setPhase("sandbox.blogBrand.phaseInferring");
+      const contextResult = await studio.call("BLOG_CONTEXT_EXTRACT", {
+        brand: brandResult,
+        blocks: evidence.blocks,
+        seo: evidence.seo,
+      });
+      const nextContext: Record<string, unknown> = { ...context };
+      filled.push(
+        ...applyExtractResult(nextContext, contextResult, {
+          mode,
+          textFields: ["tone"],
+          ruleFields: CONTEXT_RULE_FIELDS,
+          exampleFields: CONTEXT_EXAMPLE_FIELDS,
+        }),
+      );
+      setContext(nextContext);
 
-      setBrand(next);
       setEditorRevision((n) => n + 1);
       toast.success(
         filled.length > 0
-          ? t("sandbox.blogBrand.extractFilled", {
-              count: String(filled.length),
-            })
+          ? t(
+              mode === "replace"
+                ? "sandbox.blogBrand.extractReplaced"
+                : "sandbox.blogBrand.extractFilled",
+              { count: String(filled.length) },
+            )
           : t("sandbox.blogBrand.extractNothingEmpty"),
       );
-      if (result.searchedCompetitors && result.competitors.length === 0) {
+      if (brandResult.searched && brandResult.competitors.length === 0) {
         toast.info(t("sandbox.blogBrand.noCompetitorsFound"));
       }
     } catch (err) {
@@ -301,15 +383,7 @@ export function BlogContext({
     );
     try {
       const result = await studio.call("BLOG_FORMAT_SUGGEST", {
-        brand: {
-          companyName: str(brand.companyName),
-          description: str(brand.description),
-          language: str(brand.language),
-          tone: str(brand.tone),
-          targetAudience: str(brand.targetAudience),
-          dos: filledBrandRules(normalizeBrandRules(brand.dos)),
-          avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
-        },
+        brand: contextForTools({ ...brand, ...context }),
         sections,
         postStructures: postStructures(decofile).map((post) => ({
           title: post.title,
@@ -334,17 +408,26 @@ export function BlogContext({
   };
 
   const ruleListFor = (
-    field: (typeof RULE_FIELDS)[number],
+    field:
+      | (typeof BRAND_RULE_FIELDS)[number]
+      | (typeof CONTEXT_RULE_FIELDS)[number],
     labels: { add: string; namePlaceholder: string; bodyPlaceholder: string },
-  ) => (
-    <RuleList
-      rules={normalizeBrandRules(brand[field])}
-      onChange={(rules) => setField(field, rules)}
-      revision={editorRevision}
-      idPrefix={field}
-      {...labels}
-    />
-  );
+  ) => {
+    const writesToContext = (CONTEXT_RULE_FIELDS as readonly string[]).includes(
+      field,
+    );
+    const source = writesToContext ? context : brand;
+    const setValue = writesToContext ? setContextField : setField;
+    return (
+      <RuleList
+        rules={normalizeBrandRules(source[field])}
+        onChange={(rules) => setValue(field, rules)}
+        revision={editorRevision}
+        idPrefix={field}
+        {...labels}
+      />
+    );
+  };
 
   const sectionBody = () => {
     switch (section) {
@@ -376,8 +459,8 @@ export function BlogContext({
               id="brand-tone"
               label={t("sandbox.blogBrand.toneLabel")}
               hint={t("sandbox.blogBrand.toneHint")}
-              value={str(brand.tone)}
-              onChange={(v) => setField("tone", v)}
+              value={str(context.tone)}
+              onChange={(v) => setContextField("tone", v)}
               rows={5}
             />
             <TextAreaField
@@ -386,6 +469,16 @@ export function BlogContext({
               value={str(brand.targetAudience)}
               onChange={(v) => setField("targetAudience", v)}
             />
+            <section className="space-y-2">
+              <Label>{t("sandbox.blogBrand.voiceExamplesLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.blogBrand.voiceExamplesHint")}
+              </p>
+              <VoiceExampleList
+                examples={normalizeVoiceExamples(context.voiceExamples)}
+                onChange={(next) => setContextField("voiceExamples", next)}
+              />
+            </section>
           </div>
         );
       case "dos":
@@ -399,6 +492,21 @@ export function BlogContext({
               namePlaceholder: t("sandbox.blogBrand.dosNamePlaceholder"),
               bodyPlaceholder: t("sandbox.blogBrand.dosBodyPlaceholder"),
             })}
+            <section className="space-y-2 pt-4">
+              <Label>{t("sandbox.blogBrand.vocabularyLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.blogBrand.vocabularyHint")}
+              </p>
+              {ruleListFor("vocabulary", {
+                add: t("sandbox.blogBrand.addVocabulary"),
+                namePlaceholder: t(
+                  "sandbox.blogBrand.vocabularyNamePlaceholder",
+                ),
+                bodyPlaceholder: t(
+                  "sandbox.blogBrand.vocabularyBodyPlaceholder",
+                ),
+              })}
+            </section>
           </div>
         );
       case "guardrails":
@@ -439,6 +547,62 @@ export function BlogContext({
                 bodyPlaceholder: t(
                   "sandbox.blogBrand.competitorsBodyPlaceholder",
                 ),
+              })}
+            </section>
+
+            <section className="space-y-2">
+              <Label>{t("sandbox.blogBrand.differentiatorsLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.blogBrand.differentiatorsHint")}
+              </p>
+              {ruleListFor("differentiators", {
+                add: t("sandbox.blogBrand.addDifferentiator"),
+                namePlaceholder: t(
+                  "sandbox.blogBrand.differentiatorsNamePlaceholder",
+                ),
+                bodyPlaceholder: t(
+                  "sandbox.blogBrand.differentiatorsBodyPlaceholder",
+                ),
+              })}
+            </section>
+
+            <section className="space-y-2">
+              <Label>{t("sandbox.blogBrand.keywordsLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.blogBrand.keywordsHint")}
+              </p>
+              {ruleListFor("keywords", {
+                add: t("sandbox.blogBrand.addKeyword"),
+                namePlaceholder: t("sandbox.blogBrand.keywordsNamePlaceholder"),
+                bodyPlaceholder: t("sandbox.blogBrand.keywordsBodyPlaceholder"),
+              })}
+            </section>
+
+            <section className="space-y-2">
+              <Label>{t("sandbox.blogBrand.specialDatesLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.blogBrand.specialDatesHint")}
+              </p>
+              {ruleListFor("specialDates", {
+                add: t("sandbox.blogBrand.addSpecialDate"),
+                namePlaceholder: t(
+                  "sandbox.blogBrand.specialDatesNamePlaceholder",
+                ),
+                bodyPlaceholder: t(
+                  "sandbox.blogBrand.specialDatesBodyPlaceholder",
+                ),
+              })}
+            </section>
+
+            <section className="space-y-2">
+              <Label>{t("sandbox.blogBrand.policiesLabel")}</Label>
+              <p className="text-xs text-muted-foreground">
+                {t("sandbox.blogBrand.policiesHint")}
+              </p>
+              {ruleListFor("commercialPolicies", {
+                add: t("sandbox.blogBrand.addPolicy"),
+                namePlaceholder: t("sandbox.blogBrand.policiesNamePlaceholder"),
+                bodyPlaceholder: t("sandbox.blogBrand.policiesBodyPlaceholder"),
               })}
             </section>
           </div>
@@ -508,21 +672,73 @@ export function BlogContext({
               variant="outline"
               size="sm"
               className="my-2 shrink-0"
-              disabled={isExtracting || evidence.length === 0 || !hasAi}
+              disabled={isExtracting || evidence.blocks.length === 0 || !hasAi}
               title={
                 !hasAi
                   ? t("sandbox.autonomous.noAiProvider")
-                  : evidence.length > 0
+                  : evidence.blocks.length > 0
                     ? t("sandbox.blogBrand.extractHint", {
-                        count: String(evidence.length),
+                        count: String(evidence.blocks.length),
                       })
                     : t("sandbox.blogBrand.extractNoContent")
               }
-              onClick={() => void extract()}
+              onClick={() => {
+                if (hasWrittenContext) setFillOpen(true);
+                else void extract("empty");
+              }}
             >
               <Stars02 size={14} />
               {t("sandbox.blogBrand.extractButton")}
             </Button>
+            <Dialog open={fillOpen} onOpenChange={setFillOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>
+                    {t("sandbox.blogBrand.fillDialogTitle")}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {t("sandbox.blogBrand.fillDialogDescription")}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col gap-2">
+                  {(
+                    [
+                      {
+                        mode: "empty",
+                        label: "sandbox.blogBrand.fillOnlyEmpty",
+                        hint: "sandbox.blogBrand.fillOnlyEmptyHint",
+                      },
+                      {
+                        mode: "replace",
+                        label: "sandbox.blogBrand.fillReplace",
+                        hint: "sandbox.blogBrand.fillReplaceHint",
+                      },
+                    ] as const satisfies ReadonlyArray<{
+                      mode: FillMode;
+                      label: TranslationKey;
+                      hint: TranslationKey;
+                    }>
+                  ).map((option) => (
+                    <button
+                      key={option.mode}
+                      type="button"
+                      onClick={() => {
+                        setFillOpen(false);
+                        void extract(option.mode);
+                      }}
+                      className="cursor-pointer rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
+                    >
+                      <span className="text-sm font-medium">
+                        {t(option.label)}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {t(option.hint)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
         {tab === "formats" && (
@@ -757,6 +973,70 @@ function TextAreaField({
 }
 
 /**
+ * Example sentences, each with the side of the line it sits on.
+ *
+ * Flat rows rather than the collapsible {@link RuleList}: there is nothing to
+ * name and nothing to write a body for, and the pair only teaches when both
+ * sides are readable at once. The toggle is the whole point — the same sentence
+ * read as "like this" and as "never this" are opposite instructions.
+ */
+function VoiceExampleList({
+  examples,
+  onChange,
+}: {
+  examples: VoiceExample[];
+  onChange: (examples: VoiceExample[]) => void;
+}) {
+  const t = useT();
+  const replaceAt = (index: number, patch: Partial<VoiceExample>) =>
+    onChange(examples.map((e, i) => (i === index ? { ...e, ...patch } : e)));
+
+  return (
+    <div className="space-y-2">
+      {examples.length > 0 && (
+        <ul className="divide-y overflow-hidden rounded-lg border">
+          {examples.map((example, index) => (
+            <li
+              key={index}
+              className="flex items-center gap-2 bg-card px-3 py-2"
+            >
+              <Input
+                aria-label={t("sandbox.blogBrand.voiceExamplesLabel")}
+                placeholder={t("sandbox.blogBrand.voiceExamplesPlaceholder")}
+                value={example.text}
+                onChange={(e) => replaceAt(index, { text: e.target.value })}
+                className="min-w-0 flex-1 border-0 shadow-none focus-visible:ring-0"
+              />
+              <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                <Switch
+                  checked={example.sounds}
+                  onCheckedChange={(sounds) => replaceAt(index, { sounds })}
+                />
+                <span className="whitespace-nowrap">
+                  {t(
+                    example.sounds
+                      ? "sandbox.blogBrand.voiceExamplesSounds"
+                      : "sandbox.blogBrand.voiceExamplesDoesNotSound",
+                  )}
+                </span>
+              </label>
+              <RemoveButton
+                label={t("sandbox.blogBrand.removeItem")}
+                onClick={() => onChange(examples.filter((_, i) => i !== index))}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      <AddButton
+        label={t("sandbox.blogBrand.addVoiceExample")}
+        onClick={() => onChange([...examples, { text: "", sounds: true }])}
+      />
+    </div>
+  );
+}
+
+/**
  * List of `{ name, value }` rules. A row shows the name; clicking it opens that
  * rule's markdown body, and only one is open at a time — a column of editors is
  * unreadable once there are more than two rules. Rows key by index (no stable
@@ -900,8 +1180,8 @@ function PillarsPanel({
   const [phase, setPhase] = useState<PillarPhase>(PILLAR_PHASE_READING);
 
   const pillars = scanPillars(decofile);
-  const brand = (decofile[BRAND_BLOCK_KEY] as Record<string, unknown>) ?? {};
-  const hasBrand = Boolean(str(brand.companyName) || str(brand.description));
+  const { merged } = readBlogContext(decofile);
+  const hasBrand = Boolean(str(merged.companyName) || str(merged.description));
 
   const addPillar = () => {
     const blockKey = newPillarKey();
@@ -921,16 +1201,7 @@ function PillarsPanel({
     );
     try {
       const result = await studio.call("BLOG_PILLAR_SUGGEST", {
-        brand: {
-          companyName: str(brand.companyName),
-          description: str(brand.description),
-          language: str(brand.language),
-          tone: str(brand.tone),
-          targetAudience: str(brand.targetAudience),
-          values: filledBrandRules(normalizeBrandRules(brand.values)),
-          dos: filledBrandRules(normalizeBrandRules(brand.dos)),
-          avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
-        },
+        brand: contextForTools(merged),
         existingPillars: pillars.map((p) => p.title).filter(Boolean),
         guidance: guidance.trim() || undefined,
       });

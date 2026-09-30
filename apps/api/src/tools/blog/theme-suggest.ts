@@ -4,7 +4,7 @@ import { z } from "zod";
 import { defineTool } from "../../core/define-tool";
 import { requireAuth } from "../../core/studio-context";
 import { resolveTier, tryResolveTier } from "../../core/resolve-tier";
-import { BlogBrandSchema, type BrandRuleSchema } from "./schema";
+import { BlogContextSchema, type BrandRuleSchema } from "./schema";
 
 /**
  * A theme is the unit of editorial planning: a title plus a brief. It is what a
@@ -64,7 +64,7 @@ Variety is the point: themes that differ in angle, in reader intent and in how c
 async function researchThemeContext(
   ctx: Parameters<typeof resolveTier>[0],
   organizationId: string,
-  brand: Partial<z.infer<typeof BlogBrandSchema>>,
+  brand: Partial<z.infer<typeof BlogContextSchema>>,
   guidance: string | undefined,
 ): Promise<string> {
   const company = brand.companyName?.trim();
@@ -115,7 +115,9 @@ function renderRules(
 }
 
 /** The brand profile as prose, skipping whatever the human hasn't filled in. */
-function renderBrand(brand: Partial<z.infer<typeof BlogBrandSchema>>): string {
+function renderBrand(
+  brand: Partial<z.infer<typeof BlogContextSchema>>,
+): string {
   return (
     [
       brand.companyName && `## Brand\n${brand.companyName}`,
@@ -145,7 +147,7 @@ export const BLOG_THEME_SUGGEST = defineTool({
     openWorldHint: true,
   },
   inputSchema: z.object({
-    brand: BlogBrandSchema.partial().describe(
+    brand: BlogContextSchema.partial().describe(
       "The site's editorial brand context, as stored in its blog-manager-brand block. Every field is optional — a half-filled profile is the normal case.",
     ),
     existingTitles: z

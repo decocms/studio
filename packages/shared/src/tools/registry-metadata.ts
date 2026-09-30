@@ -65,6 +65,7 @@ const ALL_TOOL_NAMES = [
   "BRAND_CONTEXT_DELETE",
   "BRAND_CONTEXT_EXTRACT",
   "BLOG_BRAND_EXTRACT",
+  "BLOG_CONTEXT_EXTRACT",
   "BLOG_PILLAR_SUGGEST",
   "BLOG_THEME_SUGGEST",
   "BLOG_FORMAT_SUGGEST",
@@ -410,7 +411,13 @@ export const MANAGEMENT_TOOLS: ToolMetadata[] = [
   {
     name: "BLOG_BRAND_EXTRACT",
     description:
-      "Infer editorial brand context (tone, dos and don'ts) from a site",
+      "Infer a brand's identity (name, audience, values, competitors) from a site",
+    category: "Blog",
+  },
+  {
+    name: "BLOG_CONTEXT_EXTRACT",
+    description:
+      "Infer a blog's writing context (tone, dos and don'ts) from a site",
     category: "Blog",
   },
   {

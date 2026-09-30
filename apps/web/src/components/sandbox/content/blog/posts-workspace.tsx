@@ -62,12 +62,12 @@ import {
   type PostStatusMove,
 } from "./use-post-status-move";
 import {
-  BRAND_BLOCK_KEY,
+  contextForTools,
+  readBlogContext,
   buildIdeaBlock,
   buildPlanningPostBlock,
   dedupeSuggestedThemes,
   emptyDraftPostPayload,
-  filledBrandRules,
   FORMATS_BLOCK_KEY,
   getBlogPayload,
   type IdeaEntry,
@@ -373,8 +373,7 @@ export function PostsWorkspace({
     setIsGenerating(true);
     const pillar = pillars.find((entry) => entry.key === ideaPillarKey);
     try {
-      const brand =
-        (decofile[BRAND_BLOCK_KEY] as Record<string, unknown>) ?? {};
+      const { merged } = readBlogContext(decofile);
       const formatsBlock = decofile[FORMATS_BLOCK_KEY] as
         | Record<string, unknown>
         | undefined;
@@ -382,16 +381,7 @@ export function PostsWorkspace({
         .map((f) => f.name)
         .filter(Boolean);
       const result = await studio.call("BLOG_THEME_SUGGEST", {
-        brand: {
-          companyName: str(brand.companyName),
-          description: str(brand.description),
-          language: str(brand.language),
-          tone: str(brand.tone),
-          targetAudience: str(brand.targetAudience),
-          values: filledBrandRules(normalizeBrandRules(brand.values)),
-          dos: filledBrandRules(normalizeBrandRules(brand.dos)),
-          avoid: filledBrandRules(normalizeBrandRules(brand.avoid)),
-        },
+        brand: contextForTools(merged),
         existingTitles: ideas.map((idea) => idea.title).filter(Boolean),
         formats: formatNames,
         guidance:
@@ -481,11 +471,9 @@ export function PostsWorkspace({
           )}
           <Dialog open={askOpen} onOpenChange={setAskOpen}>
             <DialogTrigger asChild>
-              {/* Off until idea generation is good enough; trigger stays wired. */}
-              <Button type="button" variant="outline" size="sm" disabled>
+              <Button type="button" variant="outline" size="sm">
                 <Stars02 size={14} />
                 {t("sandbox.postBoard.generateIdeas")}
-                <Badge variant="secondary">{t("common.soon")}</Badge>
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
@@ -573,9 +561,7 @@ export function PostsWorkspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {/* Off until generation is good enough; the handler stays wired. */}
               <DropdownMenuItem
-                disabled
                 onClick={() => {
                   setGenerateSeed(undefined);
                   setGenerateOpen(true);
@@ -583,10 +569,7 @@ export function PostsWorkspace({
               >
                 <Stars02 size={14} />
                 <div className="flex flex-col">
-                  <span className="flex items-center gap-1.5">
-                    {t("sandbox.postBoard.newPostGenerate")}
-                    <Badge variant="secondary">{t("common.soon")}</Badge>
-                  </span>
+                  <span>{t("sandbox.postBoard.newPostGenerate")}</span>
                   <span className="text-xs text-muted-foreground">
                     {t("sandbox.postBoard.newPostGenerateHint")}
                   </span>
@@ -1267,15 +1250,11 @@ function IdeaTray({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled
                     className="h-7 w-full justify-start px-1.5 text-xs"
                     onClick={() => onGenerate(idea)}
                   >
                     <Stars02 size={13} />
                     {t("sandbox.postBoard.writeFromIdea")}
-                    <Badge variant="secondary" className="ml-auto">
-                      {t("common.soon")}
-                    </Badge>
                   </Button>
                 </div>
               </div>
