@@ -27,13 +27,16 @@ export function defaultVariantRule(): Record<string, unknown> {
   return { __resolveType: ALWAYS_MATCHER_RESOLVE_TYPE };
 }
 
-/** Human label from a deco resolve type path or block id. */
+/**
+ * Human label from a resolve type path or block id. Template-based sections
+ * (e.g. `vendor/sections/banner_carousel.html`) drop their extension too.
+ */
 export function labelFromResolveType(rt: string): string {
   const segments = rt.split("/");
   const filename = segments[segments.length - 1] ?? rt;
   return (
     filename
-      .replace(/\.(tsx?|jsx?)$/, "")
+      .replace(/\.(tsx?|jsx?|html?)$/, "")
       .replace(/[-_]/g, " ")
       .replace(/\b\w/g, (c) => c.toUpperCase()) || rt
   );
