@@ -185,7 +185,8 @@ no state store. An idle VM is paused, and traffic resumes it; a VM paused for
 three days is deleted, or sooner if the Freestyle plan caps it lower. The first
 ensure for an image builds a base snapshot with the image pulled;
 `STUDIO_SANDBOX_FREESTYLE_IMAGE` overrides the default image, which is the
-release of this package's version.
+release of this package's version. Org-fs runs there too, with the sidecar
+as a second container in the VM; see [`orgfs/README.md`](orgfs/README.md).
 
 `SandboxProviderRouter` sits in front of both. `SANDBOX_START`'s `provider`
 input picks where a new sandbox runs, when that provider is configured and

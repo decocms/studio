@@ -48,6 +48,25 @@ const DAEMON_PORT = 9000;
 const WORKDIR = "/app";
 const DEFAULT_DEV_PORT = 3000;
 const CONTAINER = "sandbox";
+const SIDECAR = "orgfs";
+/** Track `orgFs.image.tag` in deploy/helm/sandbox-env/values.yaml. */
+const DEFAULT_SIDECAR_IMAGE = "ghcr.io/decocms/studio/orgfs-sidecar:0.1.0";
+/** Host dirs standing in for the pod's `orgfs-org` and `orgfs-ctl` volumes. */
+const HOST_ORG_DIR = "/srv/sandbox/org";
+const HOST_CTL_DIR = "/srv/sandbox/orgfs-ctl";
+const CTL_DIR = "/run/orgfs";
+/**
+ * fstab, so both come back before Docker restarts the containers after a
+ * reboot. The org dir is shared so the sidecar's FUSE mounts reach the
+ * sandbox container. The ctl dir is tmpfs: a reboot drops the old
+ * status.json with the mounts it lists, and `resume` relays the config anew.
+ */
+const HOST_SETUP = [
+  `mkdir -p ${HOST_ORG_DIR} ${HOST_CTL_DIR}`,
+  `grep -q ' ${HOST_ORG_DIR} ' /etc/fstab || printf '%s\\n' '${HOST_ORG_DIR} ${HOST_ORG_DIR} none bind,rshared 0 0' 'tmpfs ${HOST_CTL_DIR} tmpfs uid=1000,gid=1000,mode=0755,size=1m 0 0' >> /etc/fstab`,
+  `mountpoint -q ${HOST_ORG_DIR} || mount ${HOST_ORG_DIR}`,
+  `mountpoint -q ${HOST_CTL_DIR} || mount ${HOST_CTL_DIR}`,
+].join(" && ");
 /** Metadata keys; values are capped at 63 chars, which the 48-hex token fits. */
 const TOKEN_KEY = "studio-daemon-token";
 const ORG_KEY = "studio-org-id";
@@ -72,6 +91,8 @@ export interface FreestyleSandboxProviderOptions {
   apiKey: string;
   /** The sandbox image. Default: the release built from this package's version. */
   image?: string;
+  /** The org-fs sidecar image. Default: the chart's `orgFs.image`. */
+  orgFsSidecarImage?: string;
   /** Pause a VM after this long without network activity. Default 15 min. */
   idleTimeoutSeconds?: number;
   /**
@@ -96,6 +117,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   private readonly freestyle: Freestyle;
   private readonly lookupClient: Freestyle;
   private readonly image: string;
+  private readonly sidecarImage: string;
   private readonly idleTimeoutSeconds: number;
   private readonly autoDeleteSeconds: number;
 
@@ -134,6 +156,7 @@ export class FreestyleSandboxProvider implements SandboxProvider {
       });
     this.image =
       opts.image ?? `ghcr.io/decocms/studio/studio-sandbox-go:${pkg.version}`;
+    this.sidecarImage = opts.orgFsSidecarImage ?? DEFAULT_SIDECAR_IMAGE;
     this.idleTimeoutSeconds = opts.idleTimeoutSeconds ?? 15 * 60;
     this.autoDeleteSeconds = opts.autoDeleteSeconds ?? 3 * 24 * 60 * 60;
     this.domainSuffix = opts.domainSuffix ?? "style.dev";
@@ -193,12 +216,12 @@ export class FreestyleSandboxProvider implements SandboxProvider {
   // ---- Base snapshot --------------------------------------------------------
 
   /**
-   * A snapshot of a VM with the image already pulled, so a sandbox boots in
-   * seconds instead of pulling ~2GB. One per image; built on first use.
+   * A snapshot of a VM with both images already pulled, so a sandbox boots in
+   * seconds instead of pulling ~2GB. One per image pair; built on first use.
    */
   private baseSnapshot(): Promise<string> {
-    const image = this.image;
-    const slug = `studio-sandbox-${createHash("sha256").update(image).digest("hex").slice(0, 16)}`;
+    const { image, sidecarImage } = this;
+    const slug = `studio-sandbox-${createHash("sha256").update(`${image}\n${sidecarImage}`).digest("hex").slice(0, 16)}`;
     return this.snapshotInflight.run(slug, async () => {
       if (await this.snapshotExists(slug)) return slug;
       console.log(`[${LOG_LABEL}] building base snapshot ${slug} for ${image}`);
@@ -211,9 +234,11 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         },
       });
       try {
-        await this.run(vm, `docker pull -q ${shellQuote(image)}`, {
-          timeoutMs: IMAGE_PULL_TIMEOUT_MS,
-        });
+        await this.run(
+          vm,
+          `docker pull -q ${shellQuote(image)} && docker pull -q ${shellQuote(sidecarImage)}`,
+          { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
+        );
         await vm.snapshot({ slug });
       } catch (err) {
         // Another replica took the slug first: theirs serves just as well.
@@ -280,6 +305,15 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     const { state } = await found.vm.data();
     if (state !== "running") await found.vm.start();
     await this.waitForDaemon(found.daemon.url);
+    // A rebooted VM lost its mounts with the tmpfs ctl dir. A mounted sidecar
+    // ignores the rewrite, and the daemon takes the fresh token either way.
+    if (opts.orgFsConfigJson) {
+      await postOrgFsConfig(
+        found.daemon.url,
+        found.daemon.token,
+        opts.orgFsConfigJson,
+      ).catch((err) => console.warn(`[${LOG_LABEL}] org-fs relay failed`, err));
+    }
     const patch = gitCredentialRefreshPatch(opts);
     if (patch) {
       await postConfig(found.daemon.url, found.daemon.token, patch).catch(
@@ -326,14 +360,22 @@ export class FreestyleSandboxProvider implements SandboxProvider {
         DAEMON_BOOT_ID: crypto.randomUUID(),
         APP_ROOT: WORKDIR,
         PROXY_PORT: String(DAEMON_PORT),
+        ORGFS_SIDECAR_CONFIG_PATH: `${CTL_DIR}/config.json`,
+        ORGFS_SIDECAR_STATUS_PATH: `${CTL_DIR}/status.json`,
       };
       // Bare `-e NAME` copies each value from the exec's env, keeping values out of the shell line.
       const envFlags = Object.keys(env)
         .map((k) => `-e ${shellQuote(k)}`)
         .join(" ");
+      // The sidecar first: it only polls for the config the daemon relays.
       await this.run(
         vm,
-        `docker run -d --name ${CONTAINER} --restart=always -p ${DAEMON_PORT}:${DAEMON_PORT} ${envFlags} ${shellQuote(this.image)}`,
+        `sudo sh -c ${shellQuote(HOST_SETUP)} && docker run -d --name ${SIDECAR} --restart=always --privileged --device /dev/fuse -e APP_ROOT=${WORKDIR} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rshared -v ${HOST_CTL_DIR}:${CTL_DIR} ${shellQuote(this.sidecarImage)}`,
+        { timeoutMs: IMAGE_PULL_TIMEOUT_MS },
+      );
+      await this.run(
+        vm,
+        `docker run -d --name ${CONTAINER} --restart=always -p ${DAEMON_PORT}:${DAEMON_PORT} -v ${HOST_ORG_DIR}:${WORKDIR}/org:rslave -v ${HOST_CTL_DIR}:${CTL_DIR} ${envFlags} ${shellQuote(this.image)}`,
         { env, timeoutMs: IMAGE_PULL_TIMEOUT_MS },
       );
       await this.waitForDaemon(daemon.url);
@@ -405,8 +447,12 @@ export class FreestyleSandboxProvider implements SandboxProvider {
     this.lookups.delete(handle);
     if (!found) return;
     // SIGTERM first: the daemon publishes unsaved work to git on shutdown.
+    // Then the sidecar, which detaches and flushes its mounts.
     await found.vm
-      .exec({ command: `docker stop -t 30 ${CONTAINER}`, timeoutMs: 45_000 })
+      .exec({
+        command: `docker stop -t 30 ${CONTAINER}; docker stop -t 10 ${SIDECAR}`,
+        timeoutMs: 60_000,
+      })
       .catch(() => {});
     await found.vm.delete();
   }
