@@ -281,7 +281,7 @@ export const OrgFlagsSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Serve the published decofile of app projects that opt in (`.deco/app.json`) to their mobile apps, and allow phone preview sessions by QR code.",
+      "Serve the published decofile of app projects that opt in (`.deco/app.json`) to their mobile apps.",
     ),
 });
 

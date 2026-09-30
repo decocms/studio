@@ -9,54 +9,10 @@ import { z } from "zod";
 import type { RepoContentClient } from "@/git-providers";
 
 const MAX_MANIFEST_CHARS = 64 * 1024;
-const MAX_PREVIEW_LINK_CHARS = 512;
-
-// Schemes that hand the code to another app, the OS or the page itself
-// rather than to the app's own handler.
-const FORBIDDEN_SCHEMES = new Set([
-  "about",
-  "blob",
-  "content",
-  "data",
-  "facetime",
-  "facetime-audio",
-  "file",
-  "ftp",
-  "geo",
-  "http",
-  "intent",
-  "itms",
-  "itms-apps",
-  "itms-services",
-  "javascript",
-  "mailto",
-  "market",
-  "sms",
-  "tel",
-  "vbscript",
-  "ws",
-  "wss",
-]);
-
-/** `https:` or an app's own scheme (`nb://…`), with a `{code}` slot. */
-export function isSafePreviewLink(link: string): boolean {
-  if (link.length > MAX_PREVIEW_LINK_CHARS || !link.includes("{code}")) {
-    return false;
-  }
-  if (/[\s\p{Cc}]/u.test(link)) return false;
-  const scheme = /^([a-z][a-z0-9+.-]*):/.exec(link)?.[1];
-  if (!scheme || FORBIDDEN_SCHEMES.has(scheme)) return false;
-  // A plain host: no userinfo, and `{code}` can never land in the authority.
-  return (
-    scheme !== "https" ||
-    /^https:\/\/[a-z0-9.-]+(?::\d+)?(?:[/?#]|$)/i.test(link)
-  );
-}
 
 const AppManifestSchema = z.object({
   kind: z.literal("eitri-app"),
   publishedContent: z.boolean().optional(),
-  previewLink: z.string().refine(isSafePreviewLink).optional(),
 });
 
 export type AppManifest = z.infer<typeof AppManifestSchema>;
