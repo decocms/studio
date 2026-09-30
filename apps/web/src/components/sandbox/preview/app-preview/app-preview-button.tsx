@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import QRCode from "react-qr-code";
-import { Copy01, QrCode02 } from "@untitledui/icons";
-import { toast } from "sonner";
+import { QrCode02 } from "@untitledui/icons";
 import { Button } from "@decocms/ui/components/button.tsx";
 import {
   Dialog,
@@ -41,11 +40,18 @@ interface AppPreviewButtonProps {
   branch: string | null | undefined;
   /** The editor's current decofile, unsaved edits included. */
   decofile: Decofile | undefined;
+  /**
+   * Dev: the `eitri app start` link the preview server announces. Its build
+   * already receives this tab's edits (the server writes them into the app),
+   * so the phone needs that one QR and no pairing.
+   */
+  eitriPlayUrl?: string | null;
 }
 
 /** "View on phone": pairs a device with this tab and streams its edits. */
 export function AppPreviewButton(props: AppPreviewButtonProps) {
   const enabled = useOrgFlag("app_content_delivery");
+  if (props.eitriPlayUrl) return <EitriPlayControl url={props.eitriPlayUrl} />;
   if (!enabled || !props.branch) return null;
   // A session belongs to one branch: switching remounts, ending the old one.
   return (
@@ -148,27 +154,14 @@ function AppPreviewControl({
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <ToolbarIconButton
-            active={!!session}
-            disabled={!decofile}
-            onClick={() => {
-              setOpen(true);
-              if (!session) start();
-            }}
-            aria-label={t("sandbox.preview.appPreview.button")}
-          >
-            <QrCode02 size={16} />
-            {session && (
-              <span className="absolute top-1 right-1 size-1.5 rounded-full bg-success" />
-            )}
-          </ToolbarIconButton>
-        </TooltipTrigger>
-        <TooltipContent>
-          {t("sandbox.preview.appPreview.button")}
-        </TooltipContent>
-      </Tooltip>
+      <PhoneButton
+        active={!!session}
+        disabled={!decofile}
+        onClick={() => {
+          setOpen(true);
+          if (!session) start();
+        }}
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -229,6 +222,65 @@ function AppPreviewControl({
   );
 }
 
+function PhoneButton({
+  active,
+  disabled,
+  onClick,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const t = useT();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <ToolbarIconButton
+          active={active}
+          disabled={disabled}
+          onClick={onClick}
+          aria-label={t("sandbox.preview.appPreview.button")}
+        >
+          <QrCode02 size={16} />
+          {active && (
+            <span className="absolute top-1 right-1 size-1.5 rounded-full bg-success" />
+          )}
+        </ToolbarIconButton>
+      </TooltipTrigger>
+      <TooltipContent>{t("sandbox.preview.appPreview.button")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Eitri Play (dev): one QR, the CLI's own; no session, no code. */
+function EitriPlayControl({ url }: { url: string }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <PhoneButton active={false} onClick={() => setOpen(true)} />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("sandbox.preview.appPreview.button")}</DialogTitle>
+            <DialogDescription>
+              {t("sandbox.preview.appPreview.eitriPlayDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex min-w-0 flex-col items-center gap-3">
+            <div className="rounded-md bg-white p-3">
+              <QRCode value={url} size={176} />
+            </div>
+            <p className="w-full text-xs text-muted-foreground">
+              {t("sandbox.preview.appPreview.eitriPlayTrouble")}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function subscribeClock(onTick: () => void) {
   const id = setInterval(onTick, 1000);
   return () => clearInterval(id);
@@ -283,42 +335,21 @@ function SessionPanel({
   const devices = state.data?.devices.length ?? 0;
   const remaining = Math.max(0, pairingExpiresAt - now);
 
-  const copyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(session.pairingCode);
-      toast.success(t("sandbox.preview.appPreview.copied"));
-    } catch {
-      toast.error(t("sandbox.preview.appPreview.copyFailed"));
-    }
-  };
-
   return (
     <div className="flex min-w-0 flex-col items-center gap-3">
-      {/* QR codes need a light quiet zone to scan, in either theme. */}
-      <div className="rounded-md bg-white p-3">
-        <QRCode value={session.link ?? session.pairingCode} size={176} />
-      </div>
-      <p className="w-full text-xs text-muted-foreground">
-        {t("sandbox.preview.appPreview.eitriPlayHint")}
-      </p>
-      <div className="flex w-full flex-col gap-1">
-        <span className="text-xs font-semibold text-muted-foreground">
-          {t("sandbox.preview.appPreview.codeLabel")}
-        </span>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
-            {session.pairingCode}
-          </code>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void copyCode()}
-            aria-label={t("sandbox.preview.appPreview.copy")}
-          >
-            <Copy01 size={13} />
-          </Button>
+      {session.link ? (
+        // QR codes need a light quiet zone to scan, in either theme.
+        <div className="rounded-md bg-white p-3">
+          <QRCode value={session.link} size={176} />
         </div>
-      </div>
+      ) : (
+        <p className="w-full text-sm text-muted-foreground">
+          {t("sandbox.preview.appPreview.noLink")}
+        </p>
+      )}
+      <p className="w-full text-xs text-muted-foreground">
+        {t("sandbox.preview.appPreview.oldAppHint")}
+      </p>
       <div className="flex w-full items-center justify-between text-xs text-muted-foreground">
         <span>
           {t("sandbox.preview.appPreview.expiresIn", {
@@ -329,6 +360,9 @@ function SessionPanel({
           {t("sandbox.preview.appPreview.devices", { count: devices })}
         </span>
       </div>
+      <p className="w-full text-xs text-muted-foreground">
+        {t("sandbox.preview.appPreview.singleUse")}
+      </p>
       {overlayError && (
         <p className="w-full text-xs text-destructive">{overlayError}</p>
       )}

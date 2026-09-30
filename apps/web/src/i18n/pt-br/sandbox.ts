@@ -737,27 +737,31 @@ export const sandbox = {
   "sandbox.preview.valueForParam": "Valor de {label}",
   "sandbox.preview.appPreview.button": "Ver no celular",
   "sandbox.preview.appPreview.description":
-    "Escaneie com a câmera do celular com o app instalado. Mostra este branch com as edições desta aba, em tempo real.",
-  "sandbox.preview.appPreview.codeLabel": "Código para Eitri Play (dev)",
-  "sandbox.preview.appPreview.eitriPlayHint":
-    "Eitri Play (dev): a câmera dele só lê o QR do eitri app start. Abra o app, toque em “Preview do Studio (QR)” e escaneie este QR pelo app.",
-  "sandbox.preview.appPreview.copy": "Copiar código",
-  "sandbox.preview.appPreview.copied": "Copiado",
-  "sandbox.preview.appPreview.copyFailed": "Não foi possível copiar",
+    "Aponte a câmera do celular para o QR. O app da loja abre e pede para entrar no preview. Mostra este branch com as edições desta aba, em tempo real.",
+  "sandbox.preview.appPreview.oldAppHint":
+    "O app abriu sem pedir para entrar no preview? Essa versão do app ainda não tem o modo preview: atualize o app da loja.",
+  "sandbox.preview.appPreview.noLink":
+    "Este app ainda não tem link de preview (previewLink no .deco/app.json), então não há QR para ler.",
+  "sandbox.preview.appPreview.singleUse":
+    "Cada QR vale uma leitura e 10 minutos; um novo aparece aqui sozinho.",
+  "sandbox.preview.appPreview.eitriPlayDescription":
+    "Escaneie no Eitri Play. As edições desta aba aparecem no aparelho em alguns segundos.",
+  "sandbox.preview.appPreview.eitriPlayTrouble":
+    "Nada mudou no celular? O eitri app start ao lado do servidor de preview precisa estar rodando, e as edições só seguem com o editor de blocos aberto.",
   "sandbox.preview.appPreview.newQr": "Novo QR",
   "sandbox.preview.appPreview.end": "Encerrar",
   "sandbox.preview.appPreview.devices": "{count} aparelho(s) conectado(s)",
   "sandbox.preview.appPreview.expiresIn": "Expira em {time}",
   "sandbox.preview.appPreview.ended":
-    "A sessão de preview no celular foi encerrada.",
+    "O preview no celular terminou (encerrado aqui ou expirou). Toque em Novo QR para começar outro.",
   "sandbox.preview.appPreview.unavailable":
-    "O preview no celular não está disponível para este projeto.",
+    "O preview no celular não está ligado para este projeto.",
   "sandbox.preview.appPreview.createFailed":
-    "Não foi possível iniciar o preview no celular.",
+    "Não foi possível iniciar o preview no celular. Confira a conexão e toque em Novo QR.",
   "sandbox.preview.appPreview.tooLarge":
-    "Estas edições são grandes demais para enviar ao celular.",
+    "Estas edições são grandes demais para enviar ao celular. Divida a mudança ou salve e publique.",
   "sandbox.preview.appPreview.syncFailed":
-    "Não foi possível enviar as últimas edições ao celular.",
+    "Não foi possível enviar as últimas edições ao celular. Confira a conexão; a próxima edição tenta de novo.",
   "sandbox.preview.blocksEditor": "Editor de blocos",
   "sandbox.preview.visualEditor": "Editor visual",
   "sandbox.productBlocks.addProductIdButton": "Adicionar ID do produto",

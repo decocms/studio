@@ -1793,6 +1793,7 @@ export function PreviewContent({ virtualMcpId }: { virtualMcpId: string }) {
             virtualMcpId={virtualMcpId}
             branch={branch}
             decofile={decofile}
+            eitriPlayUrl={previewDeviceHint?.eitriPlay}
           />
         </div>
       </div>

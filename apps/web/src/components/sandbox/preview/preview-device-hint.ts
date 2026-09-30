@@ -19,6 +19,8 @@ const MAX_HINT_BYTES = 4096;
 const HINT_TIMEOUT_MS = 3000;
 
 const ViewportSideSchema = z.number().int().min(200).max(4000);
+const EITRI_PLAY_RE =
+  /^eitri:\/\/workspace\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const PreviewDeviceHintSchema = z.object({
   kind: z.string().min(1).max(64),
@@ -26,6 +28,12 @@ const PreviewDeviceHintSchema = z.object({
   viewport: z
     .object({ width: ViewportSideSchema, height: ViewportSideSchema })
     .optional(),
+  /**
+   * Dev only: the `eitri app start` workspace this preview server follows.
+   * "View on phone" shows it as the single QR for Eitri Play. Anything but
+   * `eitri://workspace/<uuid>` is dropped, never shown.
+   */
+  eitriPlay: z.string().regex(EITRI_PLAY_RE).optional().catch(undefined),
 });
 
 export type PreviewDeviceHint = z.infer<typeof PreviewDeviceHintSchema>;

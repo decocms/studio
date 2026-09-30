@@ -104,6 +104,21 @@ describe("parsePreviewDeviceHint", () => {
     expect(parse({ device: "mobile" })).toBeNull();
   });
 
+  it("keeps only an eitri://workspace/<uuid> Eitri Play link", () => {
+    const eitriPlay = "eitri://workspace/053076c1-9321-4109-a7e5-880b8b8e8376";
+    expect(parse({ ...EITRI, eitriPlay })).toEqual({ ...EITRI, eitriPlay });
+    for (const bad of [
+      "https://evil.example/workspace/053076c1-9321-4109-a7e5-880b8b8e8376",
+      `${eitriPlay}?next=https://evil.example`,
+      "eitri://workspace/../../x",
+      "javascript:alert(1)",
+      42,
+    ]) {
+      // A bad link is dropped; the device hint itself still holds.
+      expect(parse({ ...EITRI, eitriPlay: bad })).toEqual(EITRI);
+    }
+  });
+
   it("rejects viewports outside sane integer bounds", () => {
     expect(
       parse({ ...EITRI, viewport: { width: 100, height: 844 } }),
