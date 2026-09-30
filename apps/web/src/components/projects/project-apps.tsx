@@ -18,7 +18,6 @@ import {
 } from "@untitledui/icons";
 import { useState, type ComponentType, type ReactNode } from "react";
 import type { VirtualMCPEntity } from "@decocms/shared/sdk/types";
-import { Button } from "@decocms/ui/components/button.tsx";
 import { cn } from "@decocms/ui/lib/utils.ts";
 import { AgentAvatar } from "@/components/agent-icon";
 import { PROJECT_ROUTE } from "@/hooks/use-destination-route";
@@ -182,7 +181,7 @@ function AppTile({
       params={params}
       onClick={onClick}
       title={title}
-      className="group flex w-24 shrink-0 flex-col items-center gap-2 rounded-xl p-2 text-center transition-colors hover:bg-accent/50"
+      className="group flex w-24 shrink-0 flex-col items-center gap-2 rounded-xl p-2 text-center transition-[background-color,transform] duration-150 ease-out hover:bg-accent/50 active:scale-[0.97]"
     >
       {face}
       <span className="flex w-full flex-col">
@@ -347,14 +346,20 @@ function AppsSection({
   return (
     /* A quiet label for orientation; the tiles below already read as a group. */
     <section className="hidden flex-col gap-3 has-[a]:flex">
-      {/* `pl-3` matches the Board/List/Feed tabs below: those are `sm`-size
-          pill buttons with `px-3` built in, so their label sits 12px past the
-          shared page edge. This heading has no button padding of its own, so
-          it needs the same 12px to land on the same column. */}
-      <h2 className="pl-3 text-muted-foreground text-sm font-medium">
+      {/* `pl-5` puts the label over the first icon: a tile is `w-24` and its
+          56px face is centred, so the face starts 20px in. On the org home that
+          is also where every card's title sits (`px-5`). */}
+      <h2
+        className={cn(
+          "pl-5",
+          oneLine
+            ? "text-[0.9rem] font-medium tracking-tight text-foreground"
+            : "text-muted-foreground text-sm font-medium",
+        )}
+      >
         {t("projects.apps.heading")}
       </h2>
-      <div className="flex items-center gap-4">
+      <div className="flex gap-4">
         <div
           ref={oneLine ? lineRef : undefined}
           className={cn(
@@ -370,14 +375,16 @@ function AppsSection({
           {children}
         </div>
         {oneLine && (line.overflows || expanded) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0 self-start"
+          /* Centred on the icons, not the labels: `mt-2` is the tile's own
+             padding and `h-14` its face. Styled like the page's other "See"
+             links so the same action reads the same everywhere. */
+          <button
+            type="button"
+            className="mt-2 flex h-14 shrink-0 items-center self-start text-xs text-muted-foreground hover:text-foreground hover:underline"
             onClick={() => setExpanded((it) => !it)}
           >
             {t(expanded ? "projects.apps.showLess" : "projects.apps.seeAll")}
-          </Button>
+          </button>
         )}
       </div>
     </section>

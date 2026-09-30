@@ -119,7 +119,13 @@ function ProjectRosterItem({
             label={t("home.projects.rhythm", { name: project.title })}
           />
           <span className="flex w-10 shrink-0 flex-col items-end">
-            <span className="text-sm tabular-nums text-foreground">
+            {/* A quiet zero, so the projects that did ship stand out. */}
+            <span
+              className={cn(
+                "text-sm tabular-nums",
+                shipped > 0 ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
               {shipped}
             </span>
             <Delta value={current} previous={previous} />
