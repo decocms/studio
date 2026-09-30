@@ -6,7 +6,10 @@ icon: Mic
 
 Voice mode replaces the web chat's messages and composer with a speaking orb.
 An adjacent page or site preview stays open. The selected agent, model, page
-context, tools, permissions, and message queue remain the same as in text chat.
+context, tools, permissions, and message queue remain the same for delegated work.
+A realtime conversation, provided by ElevenLabs or OpenAI, handles speech while
+the selected Studio agent performs that work in the background. You can keep talking, ask about
+progress, or submit another request while a coding task runs.
 
 Coding agents keep running Claude Code in their existing sandbox. Voice mode
 does not change the chat's pinned runtime, checkout, preview, or Claude session.
@@ -17,26 +20,81 @@ restore normal response style. Decopilot chats use the same speech transport.
 Choose **Start voice mode** beside the composer and allow microphone access.
 **Back to chat** stops the microphone and playback. It preserves the chat and
 any running work. **Stop agent work** is a separate control. Speaking while a
-reply plays interrupts the audio; the new request joins the chat's normal queue.
+reply plays interrupts the audio. Complete work requests join the chat's normal
+queue; pauses and greetings do not start coding turns. ElevenLabs can answer current-chat status locally; GPT-Live delegates fresh status questions to the working agent.
 Approvals, questions, errors, and queued requests remain visible in voice mode.
 
-Only the final text part of the current spoken turn is read aloud. A per-turn
-instruction asks the agent for a short, natural answer. Switching back to text
-restores normal response style for subsequent messages.
+The companion acknowledges accepted work without claiming it has finished. When
+the Studio agent finishes, its final text part is sent back to the companion,
+which announces the result during a quiet gap. A per-turn instruction asks the
+working agent for a short, natural answer. Switching back to text restores normal
+response style for subsequent messages.
+
+## Organization conversations
+
+Voice mode also works with the Super Agent. It can delegate questions about
+connected services, analytics, and task management through the same tools and
+permissions as text chat. For example, ask it to inspect analytics, start two
+independent tasks, and then ask about their progress while discussing another topic.
+The Super Agent must have access to the relevant integrations. GA4 can answer
+analytics questions; fulfillment or order status requires a connected order system.
+
+The ElevenLabs companion's status tool tracks requests in the current chat, not all task-board
+items. Fresh status for independent tasks is another request to the Super Agent.
+If the agent creates tasks 1, 2, and 3 during this call, their creation can be
+announced from the chat result. Their later completion is not yet pushed into
+voice automatically; ask the Super Agent for fresh status. Work in the current chat uses its existing queue, so a fresh lookup
+can wait behind an active turn even while the voice conversation remains responsive.
+
+## Shared conversation interface
+
+Both browser adapters implement `publishUpdate`, microphone controls, volume,
+and session close, and report requests through `onDelegate`. Updates distinguish
+quiet context from spoken announcements and can carry a delegation ID. This lets
+Studio deliver several tasks' progress or results independently and out of order.
+OpenAI maps these to Live thinking/commentary appends; ElevenLabs maps them to
+contextual updates and explicitly labeled background messages. Provider tool names
+and event schemas stay inside the adapters.
+
+The intended subscription scope is tasks started or explicitly discussed in this
+call. An unrelated task finishing elsewhere should remain silent. The interface
+can carry these updates, but the current producer observes the active chat only.
+The remaining implementation gap is recording the relevant task IDs and filtering
+the existing task-board push events to that set. Re-entering voice would also need
+to restore the chosen task set. A task-creation turn finishing does not establish
+that the created tasks finished.
 
 ## Deployment setup
 
-Set these variables on every API replica:
+Provider selection is server-only, with no provider or model picker in the product.
+ElevenLabs remains the default. Set these variables on every API replica:
 
 ```bash
 ELEVENLABS_API_KEY=<elevenlabs-api-key>
 ```
 
-The key needs Text to Speech and Speech to Text access. Keep it on the server.
-Browsers receive a single-use Scribe token and a signed Studio session token.
+The key needs ElevenAgents read and write access (`convai_read`, `convai_write`),
+plus Text to Speech and Speech to Text access for older browser sessions. Keep it
+on the server. Studio creates a private ElevenLabs agent for its voice configuration
+and reuses it across sessions. Browsers receive a conversation token and a signed
+Studio session token; they never receive the API key.
 The web app needs HTTPS for microphone access, except on localhost. No inbound
-provider callback or Speech Engine provisioning is required. API replicas must
+provider callback or manual agent provisioning is required. API replicas must
 share the same Studio authentication secret and NATS service.
+
+To make OpenAI the deployment default, configure:
+
+```bash
+VOICE_CONVERSATION_PROVIDER=openai
+OPENAI_LIVE_API_KEY=<openai-api-key>
+```
+
+The OpenAI adapter uses GPT-Live with client delegation and browser WebRTC.
+Studio negotiates the SDP offer on its authenticated API using a single-use
+session reservation. The browser receives an SDP answer, not an OpenAI credential. It does not require an ElevenLabs key. Keep the ElevenLabs key
+during a rolling deployment if older browsers still use the transcription/synthesis
+endpoints. The long-lived OpenAI key stays on the API server. Provider selection
+never falls back silently to the other provider when credentials are missing.
 
 Then enable **Settings → General → Voice mode** for the organization. The
 `voice_mode` organization flag defaults off. It is separate from authentication:
@@ -47,27 +105,93 @@ Optional variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `VOICE_CONVERSATION_PROVIDER` | `elevenlabs` | `elevenlabs` or `openai` |
+| `OPENAI_LIVE_MODEL` | `gpt-live-1` | OpenAI Live model |
+| `OPENAI_LIVE_VOICE` | `marin` | OpenAI Live voice |
 | `ELEVENLABS_VOICE_MODEL` | `eleven_v4_turbo` | Speech synthesis model |
 | `ELEVENLABS_VOICE_ID` | `JBFqnCBsd6RMkjVDRZzb` | ElevenLabs voice |
+| `ELEVENLABS_CONVERSATION_MODEL` | `gemini-2.5-flash` | Conversational LLM model ID supported by ElevenLabs |
+
+Both providers' credentials can be configured together. Environment variables set
+the deployment defaults; administrators can override the provider and conversational
+model per organization in the database. No provider or model selector is exposed
+in the product or organization settings tools.
+
+After migration `228-org-voice-config`, choose OpenAI for an organization:
+
+```sql
+INSERT INTO organization_settings
+  ("organizationId", voice_provider, voice_model, "createdAt", "updatedAt")
+SELECT id, 'openai', 'gpt-live-1', now(), now()
+FROM organization WHERE slug = '<org-slug>'
+ON CONFLICT ("organizationId") DO UPDATE
+SET voice_provider = EXCLUDED.voice_provider,
+    voice_model = EXCLUDED.voice_model,
+    "updatedAt" = now();
+```
+
+Set `voice_provider = 'elevenlabs'` and `voice_model = NULL` to use ElevenLabs
+with `ELEVENLABS_CONVERSATION_MODEL`. An explicit ElevenLabs `voice_model` selects
+its conversational LLM, not its speech synthesis model. `ELEVENLABS_VOICE_MODEL`
+and `ELEVENLABS_VOICE_ID` continue to control speech synthesis and voice.
+A model override requires an explicit provider so changing the deployment default
+cannot apply one provider's model ID to another provider.
+
+Set both columns to `NULL` to restore deployment defaults. Keep `voice_mode`
+enabled separately. These columns contain no credentials; the selected provider's
+key must exist on every API replica, and a missing key returns an error without
+switching providers. An invalid `VOICE_CONVERSATION_PROVIDER` does not prevent API
+startup. Voice calls that inherit that invalid default return 503; an organization
+with a valid provider override can still use voice. Ordinary text chat is unaffected.
+
+The existing organization-settings read resolves overrides when a call starts.
+There is no additional database query or per-turn lookup. The resolved provider
+and model are stored in the session reservation and stay fixed for that call,
+even if the DB changes before WebRTC connects. DB edits apply to the next call
+without a restart. Environment changes still require restarting every replica.
+The first call with a new ElevenLabs configuration may provision a private agent;
+later calls reuse it. The working agent and its model are unaffected.
 
 ## Session behavior and limits
 
 The browser closes sessions after ten minutes, with one active session per
-user per organization. Server speech grants expire after ten minutes and allow
-up to 120 synthesis requests and 24,000 characters. An interrupted browser that
+user per organization. ElevenLabs also enforces that limit at the provider. For
+OpenAI, ten minutes is a Studio browser limit, not a provider-enforced session limit.
+Up to 40 work requests can be delegated in one session. An interrupted browser that
 cannot release its reservation may need to wait for that expiry before reconnecting.
-ElevenLabs bills speech usage to the deployment's account; Studio's model usage
-accounting continues to cover the agent's model calls.
+The selected voice provider bills the conversation to the deployment's account.
+ElevenLabs defaults to Gemini 2.5 Flash for conversation, with no separate model key.
+OpenAI uses its configured Live model for speech-to-speech conversation.
+Studio's model usage accounting continues to cover the working agent's model calls.
 
-Microphone audio travels directly from the browser to ElevenLabs Scribe Realtime.
-Voice activity detection commits the utterance after a pause. The browser submits
-it through the existing chat API and waits for the agent to finish. Studio then
-synthesizes the final answer with ElevenLabs v4 Turbo and plays it in the browser.
-Transcription and synthesis are independent so a long-running coding task does
-not hit the Speech Engine's response timeout.
+Microphone audio and streamed replies travel directly between the browser and
+the selected provider over WebRTC. ElevenLabs uses Scribe transcription and its
+configured speech synthesis model. GPT-Live handles simultaneous listening and
+speaking, and emits transcript fragments and delegation IDs. Its adapter assembles
+new spoken requests with earlier conversational context and submits them through
+the same chat API. A delegation event is required; transcript fragments alone never
+start work. A short settling window allows delayed fragments to arrive, but provider
+transcripts have no completed-turn marker, so this needs evaluation with real audio.
+ElevenLabs client tools submit requests, read current-chat status, and request cancellation.
+GPT-Live delegates status and cancellation requests to the working agent, so those
+requests can wait behind active work. The visible Stop agent work control remains
+available to cancel the current run immediately. Neither provider waits for long
+coding tasks before continuing the spoken conversation.
+Results arrive through Studio's existing chat stream and are supplied to the
+companion as context. The browser requests a spoken announcement when the user
+is quiet. Permission and approval checks stay in the normal Studio path.
 
-Transcripts and answers remain in the normal Studio chat history. Studio does
-not store audio; ElevenLabs' data retention policy applies to its service.
+Delegated requests and agent answers remain in the normal Studio chat history.
+Conversational remarks and progress questions stay in the voice session. Recent
+chat text and the current page context are supplied to the companion when voice
+starts. Studio does not store audio. The provisioned ElevenLabs agent disables
+audio recording and requests one-day transcript retention. Those ElevenLabs
+settings do not apply to OpenAI; OpenAI data handling follows the deployment's
+OpenAI account and API data controls.
+
+During a rolling deployment, older browsers can continue using the original
+Scribe/TTS endpoints. Their signed speech grants retain the ten-minute limit,
+120 synthesis requests, and 24,000-character allowance.
 
 Leaving the chat, changing organizations, or disconnecting stops the voice
 session. Transport failures show an error with a path back to text. They do not
@@ -78,7 +202,7 @@ before repeating it. Stopping playback leaves the agent's work running.
 
 The regular `voice-mode.spec.ts` browser suite checks access gates, the default
 flag, and switching back to a preserved draft. Its optional live case requires
-an API server configured with ElevenLabs and a synthetic WAV input:
+an API server configured with either voice provider and a synthetic WAV input:
 
 ```bash
 E2E_VOICE_LIVE=1 E2E_VOICE_WAV=/tmp/synthetic-utterance.wav \
@@ -86,7 +210,12 @@ E2E_VOICE_LIVE=1 E2E_VOICE_WAV=/tmp/synthetic-utterance.wav \
 ```
 
 The live case uses the real speech service and an HTTP model stand-in, and
-checks that the voice instruction reaches the agent and the reply is spoken.
+checks that the companion responds while the working model is delayed, announces
+its result, and returns to text in the same chat. For ElevenLabs, with `E2E_VOICE_FOLLOWUP=1`, use
+a WAV containing a work request followed by a progress question; the test also
+checks that the second spoken answer arrives before work completes without
+submitting another coding turn. GPT-Live delegates fresh status requests, so that
+optional assertion is not a provider-parity check.
 
 The daemon suite also exercises the real Claude Code executable and SDK against
 an HTTP model stand-in. It starts in text, changes a file in voice mode, and

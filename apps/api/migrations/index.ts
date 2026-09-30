@@ -1,3 +1,4 @@
+import * as migration228orgvoiceconfig from "./228-org-voice-config";
 import * as migration221removeprivateregistry from "./221-remove-private-registry";
 import * as migration222orggitcredentials from "./222-org-git-credentials";
 import * as migration224repositorysandboximage from "./224-repository-sandbox-image";
@@ -492,6 +493,7 @@ const migrations: Record<string, Migration> = {
   "226-deco-score-names": migration226decoscorenames,
   "227-task-board-finding-resolved-activity":
     migration227taskboardfindingresolvedactivity,
+  "228-org-voice-config": migration228orgvoiceconfig,
 };
 
 export default migrations;

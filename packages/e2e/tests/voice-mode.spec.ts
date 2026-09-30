@@ -73,6 +73,16 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   const { threadId, agentId } = await createThread(api, orgSlug);
   const path = `/api/${orgSlug}/threads/${threadId}/voice/sessions`;
   expect((await api.post(path)).status()).toBe(403);
+  expect(
+    (
+      await api.post(`${path}/connect`, {
+        data: { token: "invalid", sdp: "v=0" },
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (await api.post(path, { data: { mode: "conversation" } })).status(),
+  ).toBe(403);
   const voiceTurn = await api.post(
     `/api/${orgSlug}/decopilot/threads/${threadId}/messages`,
     {
@@ -87,11 +97,156 @@ test("voice bootstrap checks membership, ownership and its default-off flag", as
   const outsider = await newApiContext(playwright);
   try {
     expect((await outsider.post(path)).status()).toBe(401);
+    expect((await outsider.post(`${path}/connect`)).status()).toBe(401);
     await signUpViaApi(outsider);
     expect((await outsider.post(path)).status()).toBe(403);
+    expect((await outsider.post(`${path}/connect`)).status()).toBe(403);
   } finally {
     await outsider.dispose();
   }
+  await setVoiceFlag(api, orgSlug, true);
+  for (const data of [
+    { token: "invalid", sdp: "" },
+    { token: "invalid", sdp: "x".repeat(100_001) },
+    { token: "invalid", sdp: "v=0", provider: "openai" },
+  ])
+    expect((await api.post(`${path}/connect`, { data })).status()).toBe(400);
+  expect(
+    (
+      await api.post(`${path}/connect`, {
+        data: { token: "invalid", sdp: "v=0" },
+      })
+    ).status(),
+  ).toBe(403);
+  for (const data of [
+    { mode: "unknown" },
+    { mode: "conversation", language: "unsupported" },
+    { mode: "conversation", provider: "openai" },
+    { mode: "conversation", agentId: "untrusted" },
+    null,
+  ]) {
+    expect((await api.post(path, { data })).status()).toBe(400);
+  }
+});
+
+test("org voice selection overrides and restores the deployment default", async ({
+  authedPage,
+}) => {
+  test.skip(
+    process.env.E2E_VOICE_ORG_CONFIG !== "1",
+    "Requires an invalid default provider or unconfigured ElevenLabs, plus a synthetic OpenAI key.",
+  );
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  const orgId = await setVoiceFlag(api, orgSlug, true);
+  const { threadId } = await createThread(api, orgSlug);
+  const path = `/api/${orgSlug}/threads/${threadId}/voice/sessions`;
+  expect(
+    (await api.post(path, { data: { mode: "conversation" } })).status(),
+  ).toBe(503);
+  const db = await connectDevDb();
+  const model = await startModel(0, "Ordinary text still works.");
+  try {
+    await configureModel(api, orgSlug, model.url);
+    await page.goto(`/${orgSlug}/${threadId}`);
+    const input = page.locator('[data-chat-input="true"]');
+    await expect(input).toBeVisible({ timeout: 60_000 });
+    await input.fill("Reply to this ordinary text message");
+    await input.press("Enter");
+    await expect(
+      page.getByText("Ordinary text still works.", { exact: true }).last(),
+    ).toBeVisible({ timeout: 30_000 });
+    expect(model.prompts.join("\n")).not.toContain(
+      "This turn is a spoken conversation",
+    );
+
+    // No product API exposes provider or model overrides.
+    await db.query(
+      `update organization_settings set voice_provider = 'openai',
+      voice_model = 'live-example' where "organizationId" = $1`,
+      [orgId],
+    );
+    const started = await api.post(path, { data: { mode: "conversation" } });
+    expect(started.status()).toBe(200);
+    const session = await started.json();
+    expect(session).toMatchObject({ provider: "openai", transport: "webrtc" });
+    await db.query(
+      `update organization_settings set voice_provider = null,
+      voice_model = null where "organizationId" = $1`,
+      [orgId],
+    );
+    expect(
+      (await api.delete(path, { data: { token: session.token } })).status(),
+    ).toBe(204);
+    expect(
+      (await api.post(path, { data: { mode: "conversation" } })).status(),
+    ).toBe(503);
+  } finally {
+    await model.close();
+    await db.end();
+  }
+});
+
+test("OpenAI reservations remain scoped and revocation prevents SDP negotiation", async ({
+  authedPage,
+}) => {
+  test.skip(
+    process.env.E2E_VOICE_OPENAI_RESERVATIONS !== "1",
+    "Requires the OpenAI deployment configuration; no provider call is made.",
+  );
+  const { page, orgSlug } = authedPage;
+  const api = page.context().request;
+  await setVoiceFlag(api, orgSlug, true);
+  const first = await createThread(api, orgSlug);
+  const second = await createThread(api, orgSlug);
+  const path = `/api/${orgSlug}/threads/${first.threadId}/voice/sessions`;
+  const response = await api.post(path, { data: { mode: "conversation" } });
+  expect(response.status()).toBe(200);
+  const session = await response.json();
+  expect(session).toMatchObject({ provider: "openai", transport: "webrtc" });
+  expect(session).not.toHaveProperty("clientSecret");
+  try {
+    expect(
+      (await api.post(path, { data: { mode: "conversation" } })).status(),
+    ).toBe(409);
+    expect(
+      (
+        await api.post(
+          `/api/${orgSlug}/threads/${second.threadId}/voice/sessions/connect`,
+          {
+            data: { token: session.token, sdp: "v=0" },
+          },
+        )
+      ).status(),
+    ).toBe(403);
+    await setVoiceFlag(api, orgSlug, false);
+    expect(
+      (
+        await api.post(`${path}/connect`, {
+          data: { token: session.token, sdp: "v=0" },
+        })
+      ).status(),
+    ).toBe(403);
+  } finally {
+    expect(
+      (await api.delete(path, { data: { token: session.token } })).status(),
+    ).toBe(204);
+  }
+  await setVoiceFlag(api, orgSlug, true);
+  expect(
+    (
+      await api.post(`${path}/connect`, {
+        data: { token: session.token, sdp: "v=0" },
+      })
+    ).status(),
+  ).toBe(403);
+  const replacement = await api.post(path, { data: { mode: "conversation" } });
+  expect(replacement.status()).toBe(200);
+  const next = await replacement.json();
+  expect(next.token).not.toBe(session.token);
+  expect(
+    (await api.delete(path, { data: { token: next.token } })).status(),
+  ).toBe(204);
 });
 
 for (const flag of ["absent", "false"] as const) {
@@ -105,6 +260,7 @@ for (const flag of ["absent", "false"] as const) {
     page.on("request", (request) => {
       if (
         request.url().includes("elevenlabs") ||
+        request.url().includes("api.openai.com/v1/") ||
         request.url().includes("/voice/sessions")
       )
         voiceRequests.push(request.url());
@@ -335,8 +491,9 @@ async function configureModel(
   });
 }
 
-async function startModel(delayMs = 0) {
+async function startModel(delayMs = 0, text = "Mensagem de voz recebida.") {
   const prompts: string[] = [];
+  let completed = 0;
   const server = createServer(async (request, response) => {
     if (request.url === "/v1/models") {
       response.setHeader("content-type", "application/json");
@@ -356,7 +513,6 @@ async function startModel(delayMs = 0) {
       messages?: unknown;
     };
     prompts.push(JSON.stringify(payload.messages));
-    const text = "Mensagem de voz recebida.";
     if (payload.stream) {
       const delay = JSON.stringify(payload.messages).includes(
         "This turn is a spoken conversation",
@@ -370,6 +526,7 @@ async function startModel(delayMs = 0) {
         `data: ${JSON.stringify({ id: "completion-example", object: "chat.completion.chunk", created: 1, model: "voice-test", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       response.write(event({ role: "assistant", content: text }, null));
       response.end(event({}, "stop") + "data: [DONE]\n\n");
+      completed++;
     } else {
       response.setHeader("content-type", "application/json");
       response.end(
@@ -397,6 +554,9 @@ async function startModel(delayMs = 0) {
   return {
     url: `http://127.0.0.1:${address.port}/v1`,
     prompts,
+    get completed() {
+      return completed;
+    },
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections();
@@ -405,10 +565,10 @@ async function startModel(delayMs = 0) {
   };
 }
 
-test.describe("ElevenLabs live voice", () => {
+test.describe("Live voice provider", () => {
   test.skip(
     process.env.E2E_VOICE_LIVE !== "1" || !process.env.E2E_VOICE_WAV,
-    "Requires a configured ElevenLabs API server and a synthetic WAV input",
+    "Requires a configured voice provider on the API server and a synthetic WAV input",
   );
   test("a spoken turn uses the current agent and returns to text in the same chat", async ({
     authedPage,
@@ -416,9 +576,13 @@ test.describe("ElevenLabs live voice", () => {
     test.setTimeout(180_000);
     const { page, orgSlug } = authedPage;
     const api = page.context().request;
+    const answer =
+      "O título foi atualizado. Também encontrei três páginas no site.";
     const model = await startModel(
-      Number(process.env.E2E_VOICE_MODEL_DELAY_MS ?? 0),
+      Number(process.env.E2E_VOICE_MODEL_DELAY_MS ?? 20_000),
+      answer,
     );
+    const submittedTurns: unknown[] = [];
     try {
       await configureModel(api, orgSlug, model.url);
       await setVoiceFlag(api, orgSlug, true);
@@ -432,6 +596,13 @@ test.describe("ElevenLabs live voice", () => {
           request.url().endsWith(`/threads/${threadId}/messages`),
         { timeout: 90_000 },
       );
+      page.on("request", (request) => {
+        if (
+          request.method() === "POST" &&
+          request.url().endsWith(`/threads/${threadId}/messages`)
+        )
+          submittedTurns.push(request.postDataJSON());
+      });
       const bootstrap = page.waitForResponse(
         (response) =>
           response.request().method() === "POST" &&
@@ -447,7 +618,11 @@ test.describe("ElevenLabs live voice", () => {
       expect(bootstrapped.status()).toBe(200);
       const { token } = await bootstrapped.json();
       const sessionPath = `/api/${orgSlug}/threads/${threadId}/voice/sessions`;
-      expect((await api.post(sessionPath)).status()).toBe(409);
+      expect(
+        (
+          await api.post(sessionPath, { data: { mode: "conversation" } })
+        ).status(),
+      ).toBe(409);
       for (const text of ["", " ", "x".repeat(12_001)]) {
         expect(
           (
@@ -487,11 +662,57 @@ test.describe("ElevenLabs live voice", () => {
           { timeout: 60_000 },
         )
         .toBe(true);
+      // The voice companion acknowledges the request while the coding model
+      // is deliberately still working. Waiting for its final answer regresses this.
+      await expect(page.locator("[data-voice-response]")).not.toBeEmpty({
+        timeout: 5_000,
+      });
+      expect(model.completed).toBe(0);
+      await expect(
+        page.getByText("The agent is working. You can keep talking."),
+      ).toBeVisible();
+      if (process.env.E2E_VOICE_EXIT_EARLY === "1") {
+        await page.getByRole("button", { name: "Back to chat" }).click();
+        expect(model.completed).toBe(0);
+        await expect(page.locator('[data-chat-input="true"]')).toBeVisible();
+        await expect(
+          page.getByText(answer, { exact: true }).last(),
+        ).toBeVisible({ timeout: 60_000 });
+        expect(model.completed).toBeGreaterThan(0);
+        return;
+      }
+      if (process.env.E2E_VOICE_FOLLOWUP === "1") {
+        const firstReply = await page
+          .locator("[data-voice-response]")
+          .textContent();
+        await expect(page.locator("[data-voice-transcript]")).toContainText(
+          /agente.*trabalhando/i,
+          { timeout: 25_000 },
+        );
+        await expect(page.locator("[data-voice-response]")).not.toHaveText(
+          firstReply!,
+          { timeout: 10_000 },
+        );
+        expect(model.completed).toBe(0);
+        expect(
+          model.prompts.filter((prompt) =>
+            prompt.includes("This turn is a spoken conversation"),
+          ),
+        ).toHaveLength(1);
+      }
+      await expect
+        .poll(() => model.completed, { timeout: 60_000 })
+        .toBeGreaterThan(0);
+      // This fact is known only to the working model. An idle voice prompt or
+      // an acknowledgment cannot satisfy the background-result assertion.
+      await expect(page.locator("[data-voice-response]")).toContainText(
+        /(?:três|3|three) p(?:áginas|ages)/i,
+        { timeout: 20_000 },
+      );
+      expect(submittedTurns).toHaveLength(1);
       await expect(
         page.locator('.studio-voice-orb[data-phase="speaking"]'),
-      ).toBeVisible({
-        timeout: 60_000 + Number(process.env.E2E_VOICE_MODEL_DELAY_MS ?? 0),
-      });
+      ).toBeVisible({ timeout: 20_000 });
       if (process.env.E2E_VOICE_SCREENSHOT)
         await page.screenshot({ path: process.env.E2E_VOICE_SCREENSHOT });
       await page.getByRole("button", { name: "Mute microphone" }).click();
@@ -514,11 +735,9 @@ test.describe("ElevenLabs live voice", () => {
       ).toBe(403);
       await expect(page.locator('[data-chat-input="true"]')).toBeVisible();
       await expect(
-        page.getByText("Mensagem de voz recebida.", { exact: true }).last(),
+        page.getByText(answer, { exact: true }).last(),
       ).toBeVisible();
-      const replyCount = await page
-        .getByText("Mensagem de voz recebida.", { exact: true })
-        .count();
+      const replyCount = await page.getByText(answer, { exact: true }).count();
       const nextTurn = page.waitForRequest(
         (request) =>
           request.method() === "POST" &&
@@ -527,9 +746,10 @@ test.describe("ElevenLabs live voice", () => {
       await page.locator('[data-chat-input="true"]').fill("Continue in text");
       await page.locator('[data-chat-input="true"]').press("Enter");
       expect((await nextTurn).postDataJSON().voiceMode).toBe(false);
-      await expect(
-        page.getByText("Mensagem de voz recebida.", { exact: true }),
-      ).toHaveCount(replyCount + 1, { timeout: 30_000 });
+      await expect(page.getByText(answer, { exact: true })).toHaveCount(
+        replyCount + 1,
+        { timeout: 30_000 },
+      );
     } finally {
       await model.close();
     }
