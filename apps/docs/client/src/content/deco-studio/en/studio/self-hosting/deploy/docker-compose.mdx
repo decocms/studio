@@ -52,7 +52,7 @@ open http://localhost:3000
 The `docker-compose.postgres.yml` file wires `DATABASE_URL` automatically from the `POSTGRES_*` variables, using the `postgres` service as the host.
 
 <Callout type="tip">
-  `BETTER_AUTH_SECRET` and `ENCRYPTION_KEY` both fall back to insecure dev-only defaults if unset — always set real values for anything shared. The `POSTGRES_*` variables also have defaults, but always set a real password.
+  `ENCRYPTION_KEY` is required: Studio refuses to start in production without it. `BETTER_AUTH_SECRET` falls back to an insecure dev-only default if unset — always set a real value for anything shared. The `POSTGRES_*` variables also have defaults, but always set a real password.
 </Callout>
 
 ## Environment variables
@@ -62,7 +62,7 @@ Set these in `.env` alongside the compose file:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BETTER_AUTH_SECRET` | `local-dev-better-auth-secret-change-me` (insecure) | Authentication secret — always set a real one. Generate with `openssl rand -base64 32` |
-| `ENCRYPTION_KEY` | deterministic dev-only fallback (insecure) | Credential-vault key for encrypting stored secrets/tokens — must stay stable across restarts. Always set a real one for anything shared. |
+| `ENCRYPTION_KEY` | none (required) | Credential-vault key for encrypting stored secrets/tokens — must stay stable across restarts. Generate with `openssl rand -base64 32` |
 | `IMAGE_REPOSITORY` | `ghcr.io/decocms/studio/studio` | Image repository |
 | `IMAGE_TAG` | `latest` | Image tag |
 | `PORT` | `3000` | Port exposed on the host |

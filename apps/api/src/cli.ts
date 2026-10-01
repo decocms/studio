@@ -123,7 +123,8 @@ Environment Variables:
   DATABASE_URL          Database connection URL
   NODE_ENV              Set to 'production' for production mode
   BETTER_AUTH_SECRET    Secret for authentication (auto-generated if not set)
-  ENCRYPTION_KEY        Key for encrypting secrets (auto-generated if not set)
+  ENCRYPTION_KEY        Credential vault key (required with NODE_ENV=production
+                        and --no-local-mode; local mode uses a fixed dev key)
 
 Examples:
   deco                            Start with defaults (~/deco/)
