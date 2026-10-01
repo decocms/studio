@@ -219,6 +219,10 @@ function CommentComposer({
   const [empty, setEmpty] = useState(true);
   const [sending, setSending] = useState(false);
   const attachments = useCommentAttachments(taskId);
+  // Draft preview URL → upload behind a failed post, which may have landed anyway.
+  const [landed] = useState(
+    () => new Map<string, { path: string; url: string }>(),
+  );
 
   const submit = () => ref.current?.submit();
 
@@ -229,7 +233,7 @@ function CommentComposer({
       const results = await Promise.allSettled(
         attached.map(async (draft) => ({
           draft,
-          ...(await attachments.upload(draft.file)),
+          ...(landed.get(draft.url) ?? (await attachments.upload(draft.file))),
         })),
       );
       const uploaded = results.flatMap((r) =>
@@ -239,7 +243,9 @@ function CommentComposer({
         (draft) => !uploaded.some((u) => u.draft === draft),
       );
       if (failed) {
-        void attachments.remove(uploaded.map((u) => u.path));
+        void attachments.remove(
+          uploaded.filter((u) => !landed.has(u.draft.url)).map((u) => u.path),
+        );
         toast.error(
           t("taskBoard.taskDialog.attachmentUploadFailed", {
             name: failed.file.name,
@@ -252,9 +258,12 @@ function CommentComposer({
         markdown,
       );
       if ((await onSubmit(body)) === false) {
-        void attachments.remove(uploaded.map((u) => u.path));
+        for (const u of uploaded) {
+          landed.set(u.draft.url, { path: u.path, url: u.url });
+        }
         return false;
       }
+      landed.clear();
       return true;
     } finally {
       setSending(false);
@@ -316,6 +325,7 @@ function CommentComposer({
       <div className="flex items-center justify-between">
         <IconButton
           label={t("taskBoard.taskDialog.attachFile")}
+          disabled={sending}
           onClick={() => fileInputRef.current?.click()}
         >
           <Attachment01 size={16} />

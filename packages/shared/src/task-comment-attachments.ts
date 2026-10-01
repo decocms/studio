@@ -56,23 +56,41 @@ export function commentAttachmentFolder(path: string): string {
   return path.slice(0, path.lastIndexOf("/"));
 }
 
+/** Whether a path is one of this task's uploads, exactly as `commentAttachmentPath` writes it. */
+export function isCommentAttachmentPath(path: string, taskId: string): boolean {
+  const folder = `${commentAttachmentDir(taskId)}/`;
+  if (!path.startsWith(folder)) return false;
+  const segments = path.slice(folder.length).split("/");
+  return segments.length === 2 && segments.every(isSafeSegment);
+}
+
+/** The read URL people's browsers load an attachment from. */
+export function commentAttachmentUrl(orgSlug: string, path: string): string {
+  return `/api/${encodeURIComponent(orgSlug)}/fs/${COMMENT_ATTACHMENT_VOLUME}/read?${new URLSearchParams({ path })}`;
+}
+
 // The read URL the web client stores: `/api/:org/fs/uploads/read?path=…`.
 const READ_URL = new RegExp(
   `/api/[^/\\s)]+/fs/${COMMENT_ATTACHMENT_VOLUME}/read\\?path=([^)\\s]+)`,
   "g",
 );
 
+/** Every link in a comment body to one of this task's attachments, as written. */
+export function commentAttachmentLinks(
+  body: string,
+  taskId: string,
+): { url: string; path: string }[] {
+  return [...body.matchAll(READ_URL)].flatMap((match) => {
+    const path = new URLSearchParams(`path=${match[1]}`).get("path") ?? "";
+    return isCommentAttachmentPath(path, taskId)
+      ? [{ url: match[0], path }]
+      : [];
+  });
+}
+
 /** The paths, in the uploads volume, of this task's files a comment links to. */
 export function commentAttachmentPaths(body: string, taskId: string): string[] {
-  const folder = `${commentAttachmentDir(taskId)}/`;
-  const paths = new Set<string>();
-  for (const match of body.matchAll(READ_URL)) {
-    const path = new URLSearchParams(`path=${match[1]}`).get("path") ?? "";
-    if (!path.startsWith(folder)) continue;
-    // Exactly `<upload id>/<name>`, the shape `commentAttachmentPath` writes.
-    const segments = path.slice(folder.length).split("/");
-    if (segments.length !== 2 || !segments.every(isSafeSegment)) continue;
-    paths.add(path);
-  }
-  return [...paths];
+  return [
+    ...new Set(commentAttachmentLinks(body, taskId).map((link) => link.path)),
+  ];
 }

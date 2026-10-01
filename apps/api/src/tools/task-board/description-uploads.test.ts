@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  sandboxPathsAsUploads,
   sandboxUploadHint,
   uploadsAsSandboxPaths,
 } from "./description-uploads";
@@ -70,26 +69,5 @@ describe("sandboxUploadHint", () => {
     expect(sandboxUploadHint(md, uploadsAsSandboxPaths(md))).toContain(
       "real paths in this sandbox",
     );
-  });
-});
-
-describe("sandboxPathsAsUploads", () => {
-  it("turns a body a run read back into the one people wrote", () => {
-    // A comment attachment as the composer stores it.
-    const written =
-      "See [spec.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec.pdf)\n\n" +
-      "![shot.png](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fb2%2Fshot.png)";
-
-    const read = uploadsAsSandboxPaths(written);
-
-    expect(read).not.toBe(written);
-    expect(sandboxPathsAsUploads(read, "acme")).toBe(written);
-  });
-
-  it("leaves the run's own outputs and plain text alone", () => {
-    const body =
-      "![qa](org/output/qa/home.png) wrote to org/.uploads/x.png in prose";
-
-    expect(sandboxPathsAsUploads(body, "acme")).toBe(body);
   });
 });

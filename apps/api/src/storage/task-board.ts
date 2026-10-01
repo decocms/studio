@@ -319,6 +319,20 @@ export class TaskBoardStorage {
     return rows.map((row) => this.itemFromDbRow(row));
   }
 
+  /** Just a task's description, for a caller that only reads its text. */
+  async getDescription(
+    id: string,
+    organizationId: string,
+  ): Promise<string | null> {
+    const row = await this.db
+      .selectFrom("task_board_items")
+      .select("description")
+      .where("id", "=", id)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+    return row?.description ?? null;
+  }
+
   async getById(
     id: string,
     organizationId: string,

@@ -208,27 +208,37 @@ test("a failed upload posts nothing, keeps the draft and removes what did upload
   await expect(composer.getByRole("img", { name: "fail.png" })).toBeVisible();
 });
 
-test("a comment that fails to post leaves no uploaded file behind", async ({
+test("a comment that fails to post keeps its uploads, and the retry reuses them", async ({
   mount,
   page,
 }) => {
-  const component = await mount(<TaskCommentsHarness postFails />);
+  const component = await mount(<TaskCommentsHarness postFailsOnce />);
+  const send = component.getByLabel("Send").last();
 
   await component.locator('input[type="file"]').setInputFiles(PDF);
-  await component.getByLabel("Send").last().click();
-
-  await expect
-    .poll(async () => (await uploads(page)).removed)
-    .toEqual(["task-comments/board_1/u0/spec v2.pdf"]);
+  await send.click();
   await expect(
     component.getByTestId("new-comment-composer").getByText("spec v2.pdf"),
   ).toBeVisible();
+  await expect(send).toBeEnabled();
+  await send.click();
+
+  // The failed post may still have landed, so its upload stays and is reused.
+  await expect(component.getByTestId("posted")).toHaveText(
+    JSON.stringify([
+      "[spec v2.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fu0%2Fspec+v2.pdf)",
+    ]),
+  );
+  expect(await uploads(page)).toEqual({
+    uploaded: ["task-comments/board_1/u0/spec v2.pdf"],
+    removed: [],
+  });
 });
 
 test("a posted attachment reads as a chip that downloads under its own name", async ({
   mount,
 }) => {
-  const component = await mount(<TaskCommentsHarness />);
+  const component = await mount(<TaskCommentsHarness withAttachment />);
 
   const chip = component.locator('a[download="spec v2.pdf"]');
   await expect(chip).toBeVisible();

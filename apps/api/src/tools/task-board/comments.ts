@@ -9,11 +9,11 @@ import { defineTool } from "@/core/define-tool";
 import { getUserId, requireAuth } from "@/core/studio-context";
 import type { StudioContext } from "@/core/studio-context";
 import { SUPER_AGENT_ASSIGNEE_ID } from "@decocms/shared/task-board";
-import { deleteCommentAttachments } from "./comment-attachments";
 import {
-  sandboxPathsAsUploads,
-  uploadsAsSandboxPaths,
-} from "./description-uploads";
+  attachmentsAsSandboxPaths,
+  deleteCommentAttachments,
+  sandboxPathsAsAttachments,
+} from "./comment-attachments";
 import { taskRunContextStore } from "./task-run-context";
 
 /** No real comment is this long — caps the row a single POST can write. */
@@ -44,12 +44,12 @@ function requireOrg(ctx: StudioContext): string {
   return organizationId;
 }
 
-/** A body a sandboxed run writes points its upload links back at Studio, as
- *  people wrote them before LIST handed the run its sandbox paths. */
-function bodyFromRun(body: string, ctx: StudioContext): string {
+/** A body a sandboxed run writes points its attachment links back at Studio,
+ *  as people wrote them before LIST handed the run its sandbox paths. */
+function bodyFromRun(body: string, taskId: string, ctx: StudioContext): string {
   const orgSlug = ctx.organization?.slug;
   return taskRunContextStore.getStore()?.sandboxed && orgSlug
-    ? sandboxPathsAsUploads(body, orgSlug)
+    ? sandboxPathsAsAttachments(body, taskId, orgSlug)
     : body;
 }
 
@@ -80,7 +80,7 @@ export const TASK_BOARD_COMMENT_LIST = defineTool({
       return {
         comments: comments.map((c) => ({
           ...c,
-          body: uploadsAsSandboxPaths(c.body),
+          body: attachmentsAsSandboxPaths(c.body, c.taskBoardItemId),
         })),
       };
     }
@@ -142,6 +142,7 @@ export const TASK_BOARD_COMMENT_CREATE = defineTool({
       taskRun?.threadId && orgSlug
         ? embedOrgOutputImages(input.body, taskRun.threadId, orgSlug)
         : input.body,
+      input.taskBoardItemId,
       ctx,
     );
     const comment = await ctx.storage.taskBoard.createComment({
@@ -206,7 +207,10 @@ export const TASK_BOARD_COMMENT_UPDATE = defineTool({
       id: input.id,
       organizationId,
       callerId: getUserId(ctx)!,
-      body: input.body === undefined ? undefined : bodyFromRun(input.body, ctx),
+      body:
+        input.body === undefined || !existing
+          ? input.body
+          : bodyFromRun(input.body, existing.taskBoardItemId, ctx),
       resolved: input.resolved,
     });
     if (!comment) {

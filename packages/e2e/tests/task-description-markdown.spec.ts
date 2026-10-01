@@ -150,10 +150,10 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await detail
+    await page
+      .getByTestId("task-description")
       .locator('input[type="file"]')
       .setInputFiles({ name: PNG_NAME, mimeType: "image/png", buffer: PNG });
 
@@ -235,14 +235,16 @@ test.describe("task description markdown editor", () => {
     );
 
     await openTask(page, orgSlug, title);
-    const detail = detailOf(page);
     const editor = editorOf(page);
 
-    await detail.locator('input[type="file"]').setInputFiles({
-      name: DOC_NAME,
-      mimeType: "text/plain",
-      buffer: DOC,
-    });
+    await page
+      .getByTestId("task-description")
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: DOC_NAME,
+        mimeType: "text/plain",
+        buffer: DOC,
+      });
 
     // A named chip with a download control — no preview, no raw markdown, no URL.
     const download = page.getByRole("link", { name: `Download ${DOC_NAME}` });

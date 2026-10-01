@@ -77,9 +77,15 @@ export function MentionInput({
   const [mentionStore] = useState(() => new MentionMenuStore());
   // Local preview URL → the file it shows, until the draft is sent.
   const [drafts] = useState(() => new Map<string, File>());
+  // One identity for the composer's life, so its cleanup runs only on unmount.
+  const [freeDraftsOnUnmount] = useState(() => () => () => {
+    for (const url of drafts.keys()) URL.revokeObjectURL(url);
+  });
   const sending = useRef(false);
 
   const attachAt = (view: EditorView, files: File[], at: number) => {
+    // The draft being sent is already counted; a file added now would be lost.
+    if (sending.current) return;
     let pos = at;
     for (const file of files) {
       if (!fitsSizeLimit(file)) continue;
@@ -175,7 +181,8 @@ export function MentionInput({
     editor.setEditable(false);
     try {
       if ((await onSubmit(markdown, attached)) !== false) {
-        editor.commands.clearContent();
+        // Out of undo history: undoing a send would bring back dead previews.
+        editor.chain().setMeta("addToHistory", false).clearContent().run();
         for (const url of drafts.keys()) URL.revokeObjectURL(url);
         drafts.clear();
         onEmptyChange(true);
@@ -200,6 +207,8 @@ export function MentionInput({
     <>
       <EditorContent editor={editor} className={className} />
       <MentionMenu store={mentionStore} />
+      {/* An unsent draft's previews go with the composer, not the session. */}
+      <span hidden ref={freeDraftsOnUnmount} />
     </>
   );
 }

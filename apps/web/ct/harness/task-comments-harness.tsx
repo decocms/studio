@@ -31,14 +31,15 @@ const THREAD: TaskComment = {
       createdAt: new Date("2026-07-30T12:01:00Z").toISOString(),
       replies: [],
     },
-    {
-      id: "c1-r2",
-      author: ME,
-      body: "The spec: [spec v2.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2.pdf)",
-      createdAt: new Date("2026-07-30T12:02:00Z").toISOString(),
-      replies: [],
-    },
   ],
+};
+
+const ATTACHMENT_REPLY: TaskComment = {
+  id: "c1-r2",
+  author: ME,
+  body: "The spec: [spec v2.pdf](/api/acme/fs/uploads/read?path=task-comments%2Fboard_1%2Fa1%2Fspec-v2.pdf)",
+  createdAt: new Date("2026-07-30T12:02:00Z").toISOString(),
+  replies: [],
 };
 
 const TASK_ID = "board_1";
@@ -51,16 +52,23 @@ const TASK_ID = "board_1";
  */
 export function TaskCommentsHarness({
   resolved = false,
-  postFails = false,
+  withAttachment = false,
+  postFailsOnce = false,
 }: {
   resolved?: boolean;
-  /** The post itself fails, after any uploads have landed. */
-  postFails?: boolean;
+  /** A reply of mine that links a file attached to the task. */
+  withAttachment?: boolean;
+  /** The first post fails after its uploads land; the next one goes through. */
+  postFailsOnce?: boolean;
 }) {
   const [thread, setThread] = useState<TaskComment | null>({
     ...THREAD,
+    replies: withAttachment
+      ? [...THREAD.replies, ATTACHMENT_REPLY]
+      : THREAD.replies,
     resolved,
   });
+  const [failNextPost, setFailNextPost] = useState(postFailsOnce);
   const [posted, setPosted] = useState<string[]>([]);
 
   return (
@@ -84,7 +92,10 @@ export function TaskCommentsHarness({
       <NewCommentComposer
         taskId={TASK_ID}
         onSubmit={(body) => {
-          if (postFails) return false;
+          if (failNextPost) {
+            setFailNextPost(false);
+            return false;
+          }
           setPosted((prev) => [...prev, body]);
           return true;
         }}

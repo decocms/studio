@@ -84,7 +84,9 @@ test("a comment's attachments upload on send and go away with it", async ({
   );
   const [posted] = comments;
   expect(posted).toBeDefined();
-  const [pngUrl, pdfUrl] = uploadUrls(posted!.body);
+  const urls = uploadUrls(posted!.body);
+  const pngUrl = urls.find((url) => url.endsWith(".png"));
+  const pdfUrl = urls.find((url) => url.endsWith(".pdf"));
   expect(pngUrl).toContain(
     `path=task-comments%2F${encodeURIComponent(item.id)}%2F`,
   );

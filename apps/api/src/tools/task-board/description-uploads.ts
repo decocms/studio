@@ -41,25 +41,6 @@ export function uploadsAsSandboxPaths(description: string): string {
   );
 }
 
-/** Markdown link targets pointing into the sandbox's uploads mount. */
-const SANDBOX_UPLOAD_LINK = new RegExp(
-  `\\]\\(${orgFsSandboxPath("uploads", "").replace(/\./g, "\\.")}/([^)\\s]+)\\)`,
-  "g",
-);
-
-/**
- * The inverse of `uploadsAsSandboxPaths` for the uploads volume: a body a
- * sandboxed run read and is writing back points at Studio again, so the link
- * still renders for people and still counts as the same attachment.
- */
-export function sandboxPathsAsUploads(body: string, orgSlug: string): string {
-  return body.replace(
-    SANDBOX_UPLOAD_LINK,
-    (_match, path: string) =>
-      `](/api/${encodeURIComponent(orgSlug)}/fs/uploads/read?${new URLSearchParams({ path })})`,
-  );
-}
-
 /**
  * The note to append after a rewritten description, so the run knows the
  * `org/.uploads/…` paths `uploadsAsSandboxPaths` just wrote are real files to

@@ -38,12 +38,12 @@ export const TASK_BOARD_ITEM_DELETE = defineTool({
     if (!deleted) {
       throw new Error(`Task board item not found: ${input.id}`);
     }
-    // A dismissed card keeps its comments, so their files stay too.
+    // Broadcast the removal so every open board drops the card live.
+    emitTaskBoardDeleted(organizationId, input.id);
+    // After the broadcast, so the board doesn't wait on storage; a dismissed card keeps its files.
     if (deleted === "deleted") {
       await deleteTaskCommentAttachments(ctx, input.id);
     }
-    // Broadcast the removal so every open board drops the card live.
-    emitTaskBoardDeleted(organizationId, input.id);
     return { success: true };
   },
 });
