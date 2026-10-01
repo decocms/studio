@@ -57,7 +57,8 @@ async function statusByTitle(request: APIRequestContext, orgSlug: string) {
 
 async function openBoard(page: Page, orgSlug: string) {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(`/${orgSlug}/tasks`);
+  // Seeded cards are unassigned; the board otherwise opens on the viewer's own.
+  await page.goto(`/${orgSlug}/tasks?assignee=any`);
   await expect(page.locator('button:has-text("Card 0")')).toBeVisible();
 }
 

@@ -1,13 +1,14 @@
 /** Pure grouping for the list view: which section each task lands in, and the
  *  order the sections read in. Labels are the component's job. */
 
-import { CANONICAL_COLUMN_KEYS } from "@decocms/shared/task-board";
+import type { CanonicalColumnKey } from "@decocms/shared/task-board";
 import {
   entryForTask,
   NO_PROJECT_FILTER,
   type ProjectIndex,
 } from "@/lib/project-index";
 import {
+  HIDDEN_STATUSES,
   PRIORITIES,
   SUPER_AGENT_ASSIGNEE_ID,
   type TaskBoardItem,
@@ -28,6 +29,20 @@ export function isGroupBy(value: unknown): value is GroupBy {
   return (GROUP_BY_OPTIONS as readonly unknown[]).includes(value);
 }
 
+/** Status sections read from what needs attention now down to what is
+ *  settled, unlike the board, whose lanes run left to right through the flow. */
+export const LIST_STATUS_ORDER: readonly CanonicalColumnKey[] = [
+  "in_review",
+  "approved",
+  "in_progress",
+  "todo",
+  "triage",
+  "merged",
+  "post_deploy_validation",
+  "done",
+  "archived",
+];
+
 /** Section key for tasks without any tag. */
 export const NO_TAG_GROUP = "__no_tag__";
 
@@ -40,6 +55,8 @@ export type ListGroup = {
   path: string;
   items: TaskBoardItem[];
   children: ListGroup[] | null;
+  /** Archived and other hidden lanes stay out of the way until opened. */
+  collapsedByDefault: boolean;
 };
 
 export type GroupContext = {
@@ -105,6 +122,9 @@ export function groupListItems(
         key,
         path,
         items: groupItems,
+        collapsedByDefault:
+          groupBy === "status" &&
+          (HIDDEN_STATUSES as readonly string[]).includes(key),
         children:
           rest.length > 0
             ? groupListItems(groupItems, rest, context, path)
@@ -123,7 +143,7 @@ function strategy(
 } {
   switch (groupBy) {
     case "status":
-      return { keysOf: (item) => [item.status], order: CANONICAL_COLUMN_KEYS };
+      return { keysOf: (item) => [item.status], order: LIST_STATUS_ORDER };
     case "priority":
       return {
         keysOf: (item) => [item.priority],
@@ -159,21 +179,26 @@ function strategy(
   }
 }
 
+/** Whether a group is open: the viewer's own toggle, else its default. */
+export function isGroupOpen(
+  group: ListGroup,
+  toggled: ReadonlyMap<string, boolean>,
+): boolean {
+  return toggled.get(group.path) ?? !group.collapsedByDefault;
+}
+
 /**
- * The collapsed set after a click on `path`'s header. With `all` (Alt+click,
- * as in Linear) every sibling follows the clicked group's new state.
+ * The toggles after a click on `group`'s header. With `all` (Alt+click, as in
+ * Linear) every sibling follows the clicked group's new state.
  */
-export function toggleCollapsed(
-  collapsed: ReadonlySet<string>,
-  path: string,
-  siblingPaths: readonly string[],
+export function toggleGroupOpen(
+  toggled: ReadonlyMap<string, boolean>,
+  group: ListGroup,
+  siblings: readonly ListGroup[],
   all: boolean,
-): Set<string> {
-  const next = new Set(collapsed);
-  const collapse = !collapsed.has(path);
-  for (const target of all ? siblingPaths : [path]) {
-    if (collapse) next.add(target);
-    else next.delete(target);
-  }
+): Map<string, boolean> {
+  const next = new Map(toggled);
+  const open = !isGroupOpen(group, toggled);
+  for (const target of all ? siblings : [group]) next.set(target.path, open);
   return next;
 }

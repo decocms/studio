@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type BoardDefaults,
   boardSearchParams,
+  NO_DEFAULTS,
   enabledLayout,
   type BoardView,
   parseBoardSearch,
@@ -25,6 +27,58 @@ const filters: TaskFilters = {
   tags: ["tag-1", "tag-2"],
   project: "acme/site",
 };
+
+const FEED_DEFAULTS: BoardDefaults = { ...NO_DEFAULTS, layout: "feed" };
+
+/** The tasks page: the viewer's own work, grouped by status. */
+const VIEWER_DEFAULTS: BoardDefaults = {
+  layout: "board",
+  assignee: "me-1",
+  groupBy: "status",
+};
+
+describe("the board opens on the viewer's work, grouped by status", () => {
+  test("an empty URL takes the defaults and writes nothing back", () => {
+    const view = parseBoardSearch({}, VIEWER_DEFAULTS);
+    expect(view.filters.assignee).toBe("me-1");
+    expect(view.groupBy).toBe("status");
+    const params = boardSearchParams(view, VIEWER_DEFAULTS);
+    expect(params.assignee).toBeUndefined();
+    expect(params.group).toBeUndefined();
+  });
+
+  test("clearing either default sticks across a reload", () => {
+    const cleared = {
+      ...parseBoardSearch({}, VIEWER_DEFAULTS),
+      filters: EMPTY_FILTERS,
+      groupBy: null,
+    };
+    const params = boardSearchParams(cleared, VIEWER_DEFAULTS);
+    expect(params.assignee).toBe("any");
+    expect(params.group).toBe("none");
+    const reloaded = parseBoardSearch(params, VIEWER_DEFAULTS);
+    expect(reloaded.filters.assignee).toBeNull();
+    expect(reloaded.groupBy).toBeNull();
+  });
+
+  test("an explicit choice beats the defaults", () => {
+    const view = parseBoardSearch(
+      { assignee: "user-2", group: "priority" },
+      VIEWER_DEFAULTS,
+    );
+    expect(view.filters.assignee).toBe("user-2");
+    expect(view.groupBy).toBe("priority");
+    expect(parseBoardSearch({ group: "bogus" }, VIEWER_DEFAULTS).groupBy).toBe(
+      null,
+    );
+  });
+
+  test("with no viewer yet, the cleared markers stay out of the URL", () => {
+    const params = boardSearchParams(parseBoardSearch({}), NO_DEFAULTS);
+    expect(params.assignee).toBeUndefined();
+    expect(params.group).toBeUndefined();
+  });
+});
 
 describe("board search params", () => {
   test("round-trips filters, layout, grouping and sorting through the URL", () => {
@@ -73,11 +127,15 @@ describe("board search params", () => {
 
   test("a mount's own default layout drops out of the URL, Board does not", () => {
     expect(
-      boardSearchParams({ ...EMPTY_VIEW, layout: "feed" }, "feed").view,
+      boardSearchParams({ ...EMPTY_VIEW, layout: "feed" }, FEED_DEFAULTS).view,
     ).toBeUndefined();
-    expect(boardSearchParams({ ...EMPTY_VIEW }, "feed").view).toBe("board");
-    expect(parseBoardSearch({}, "feed").layout).toBe("feed");
-    expect(parseBoardSearch({ view: "board" }, "feed").layout).toBe("board");
+    expect(boardSearchParams({ ...EMPTY_VIEW }, FEED_DEFAULTS).view).toBe(
+      "board",
+    );
+    expect(parseBoardSearch({}, FEED_DEFAULTS).layout).toBe("feed");
+    expect(parseBoardSearch({ view: "board" }, FEED_DEFAULTS).layout).toBe(
+      "board",
+    );
   });
 
   test("defaults are omitted from the URL", () => {
